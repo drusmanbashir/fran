@@ -1,0 +1,8 @@
+pip install nnunet
+mamba install -c conda-forge ipython ipywidgets pandas matplotlib medpy numpy openpyxl pillow pygments jupyterlab pyyaml scikit-image scipy SimpleITK connected-components-3d timm torchio tqdm einops monai ipdb gputil ray-tune neptune-client ipympl lxml
+#note some of these will downgrade your pytorch copy so re-install it after
+
+
+# build from source: 
+# surface-distance
+#pytorch, torchvision, confirm version remains intact AFTER running above installs and esp after fastai installation 

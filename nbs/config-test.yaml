@@ -1,0 +1,6 @@
+---
+neptune_folder: "/home/ub/fran/experiments/.neptune"
+slow_storage_folder: "/s/fran_test/datasets" # used to hold data for inference, original raw data should also be here.
+fast_storage_folder: "/s/fran_test/datasets/preprocessed"    # this data is used during each Deeplearning run. Ideally an SSD
+checkpoints_parent_folder: "/s/fran_test/checkpoints"
+experiments_folder: "/home/ub/Dropbox/code/fran/experiments"
