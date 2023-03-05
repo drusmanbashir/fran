@@ -67,14 +67,16 @@ class NeptuneManager():
         '''
         '''
         store_attr()
-        self.project_name, self.api_token = get_neptune_config(proj_defaults)
+        project_name, api_token = get_neptune_config(proj_defaults)
+        os.environ['NEPTUNE_API_TOKEN']= api_token
+        os.environ['NEPTUNE_PROJECT']= project_name
         self.df = self.fetch_project_df()
 
         #start a run or not?
 
     def new_run(self, config_dict,run_name=None):
         self.config_dict = config_dict
-        self.nep_run = neptune.init_run(project=self.project_name, api_token=self.api_token, mode="async") # Dont set a name here . It is bugged
+        self.nep_run = neptune.init_run( mode="async") # Dont set a name here . It is bugged
         self._upload_config_dict(config_dict)
         self._additional_init_settings(run_name)
 
@@ -93,7 +95,7 @@ class NeptuneManager():
             '''
             run_id,msg = self.get_run_id(run_name)
             print ("{}. Loading".format(msg))
-            self.nep_run = neptune.init_run(project=self.project_name, api_token=self.api_token, with_id=run_id,
+            self.nep_run = neptune.init_run(with_id=run_id,
                                             mode=nep_mode)
 
             if isinstance(update_nep_run_from_config,dict):

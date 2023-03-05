@@ -1,8 +1,10 @@
 from pathlib import Path
 import ast
+from fastai.callback.tracker import Union
 from fastcore.basics import store_attr
 import numpy as np
 from fastai.vision.augment import test_eq
+from torch.functional import Tensor
 from fran.utils.fileio import save_sitk, str_to_path
 
 import SimpleITK as sitk
@@ -80,12 +82,21 @@ class SITKImageMaskFixer():
     def log(self):
         return [self.match_string]+[self.img_fn,self.mask_fn]+self.pairs
 
-def align_mask_to_img(img,mask):
-                    mask.SetSpacing(img.GetSpacing())
-                    mask.SetOrigin(img.GetOrigin())
-                    mask.SetDirection(img.GetDirection())
-                    return mask
+def align_sitk_imgs(img,img_template):
+                    img_template.SetSpacing(img.GetSpacing())
+                    img_template.SetOrigin(img.GetOrigin())
+                    img_template.SetDirection(img.GetDirection())
+                    return img_template
 
+
+def create_sitk_as(img:sitk.Image,arr:Union[np.array,Tensor]=None)->sitk.Image:
+    if arr is not None:
+        img_new = sitk.GetImageFromArray(arr)
+    else:
+        img_new = sitk.Image(*img.GetSize())
+    img_new = align_sitk_imgs(img_new,img)
+    return img_new
+    
 if __name__ == "__main__":
     img_fn = "/media/ub/UB11/datasets/lits_short/volume-51.nii"
     mask_fn = "/media/ub/UB11/datasets/lits_short/segmentation-51.nii"

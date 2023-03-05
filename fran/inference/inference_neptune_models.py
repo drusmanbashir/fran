@@ -5,6 +5,7 @@ from fran.inference.scoring import compute_dice_fran
 from fran.utils.common import *
 from fran.inference.inference_raytune_models import ModelFromTuneTrial
 from fran.transforms.spatialtransforms import *
+from monai.inferers import sliding_window_inference 
 # def load_model(file, model, opt, with_opt=True, device=None, strict=True):
 #     "Load `model` from `file` along with `opt` (if available, and if `with_opt`)"
 #     distrib_barrier()
@@ -43,37 +44,63 @@ if __name__ == "__main__":
 
     
 
-    mask_files = list((proj_defaults.raw_data_folder/("masks")).glob("*nii*"))
-    img_files= list((proj_defaults.raw_data_folder/("images")).glob("*nii*"))
-    masks_valid = [filename for filename in mask_files if  get_case_id_from_filename(proj_defaults.project_title, filename) in valid_list]
+    mask_files = list((proj_defaults.raw_data_folder/("masks")).glob("*"))
+    img_files= list((proj_defaults.raw_data_folder/("images")).glob("*"))
+    masks_valid = [filename for filename in mask_files if  get_case_id_from_filename(None, filename) in valid_list]
     imgs_valid =  [proj_defaults.raw_data_folder/"images"/mask_file.name for mask_file in masks_valid]
-    imgs_test =  [filename for filename in img_files if  get_case_id_from_filename(proj_defaults.project_title, filename) in test_list]
+    imgs_test =  [filename for filename in img_files if  get_case_id_from_filename(None, filename) in test_list]
 
-    masks_train = [filename for filename in mask_files if  get_case_id_from_filename(proj_defaults.project_title, filename) in train_list]
-    imgs_train =  [proj_defaults.raw_data_folder/"images"/mask_file.name for mask_file in masks_train]
-    imgs_test =  [filename for filename in img_files if  get_case_id_from_filename(proj_defaults.project_title, filename) in test_list]
 # %%
 
 
     #note: horseshoe kidney  Path('/s/datasets/raw_database/raw_data/kits21/images/kits21_00005.nii.gz')
 
-    run_name_w= "LITS-206" # best trial
-    run_name_p  ="LITS-133"
+    run_name_w= "LITS-118" # best trial
+    run_name_p  ="LITS-265"
 
-    E = EndToEndPredictor(proj_defaults,run_name_w,run_name_p,use_neptune=True,device=1)
+    E = EndToEndPredictor(proj_defaults,run_name_w,run_name_p,use_neptune=True,device='cpu')
 
 # %%
     n= 16
-    img_fn = imgs_train[n]
+    img_fn = imgs_valid[n]
     mask_fn = img_fn.str_replace("images","masks")
+# %%
     E.predict(img_fn=img_fn , save_localiser=True)
+    case_id = get_case_id_from_filename(None,img_fn)
 # %%
 
     n_classes= 3
-    pred_fn = E.output_image_folder/(img_fn.name+".gz")
+    pred_fn = E.output_image_folder/(case_id+".nii.gz")
     pred_sitk,mask_sitk = map(sitk.ReadImage,[pred_fn,mask_fn])
     score = compute_dice_fran(mask_sitk,pred_sitk,n_classes=n_classes)
     print(score)
+# %%
+# %%
+    p = E.predictor_p
+    p.img_transformed , p.bboxes_transformed= p.encode_pipeline([p.img_np_orgres, p.bboxes])
+    p.dls=[]
+    # for bbox in p.bboxes_transformed:
+# %%
+    bbox = p.bboxes_transformed[0]
+    img_cropped = p.img_transformed[bbox]
+    img_tio= tio.ScalarImage(tensor=np.expand_dims(img_cropped,0))
+    subject = tio.Subject(image=img_tio)
+    grid_sampler = tio.GridSampler(subject=subject,patch_size=p.patch_size,patch_overlap=p.patch_overlap) 
+    aggregator = tio.inference.GridAggregator(grid_sampler,overlap_mode=p.grid_mode) 
+    patch_loader = torch.utils.data.DataLoader(grid_sampler, batch_size=p.batch_size)
+    p.dls.append([patch_loader,aggregator])
+
+# %%
+    img_input = torch.tensor(img_cropped,device=p.device).unsqueeze(0).unsqueeze(0)
+
+    s = sliding_window_inference(inputs = img_input,roi_size = p.patch_size,sw_batch_size =1,predictor=p.model)
+# %%
+    def create_grid_sampler_aggregator(self):
+            self.grid_sampler = tio.GridSampler(subject=self.subject,patch_size=self.patch_size,patch_overlap=self.patch_overlap) 
+            self.aggregator = tio.inference.GridAggregator(self.grid_sampler,overlap_mode=self.grid_mode) 
+            self.patch_loader = torch.utils.data.DataLoader(self.grid_sampler, batch_size=self.batch_size)
+
+
 # %%
     bb1 = E.predictor_w.get_bbox_from_pred()
 # %%
