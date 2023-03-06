@@ -12,7 +12,7 @@ tr = ipdb.set_trace
 from fran.utils.config_parsers import make_patch_size
 
 
-def create_model_from_conf(model_params, dataset_params,metadata=None):
+def create_model_from_conf(model_params, dataset_params,metadata=None,deep_supervision=True):
     # if 'out_channels' not in model_params:
     #         model_params["out_channels"] =  out_channels_from_dict_or_cell(model_params['src_dest_labels'])
 
@@ -22,9 +22,9 @@ def create_model_from_conf(model_params, dataset_params,metadata=None):
     if arch == "UNet3D":
         model = create_model_from_conf_unet(model_params, dataset_params)
     elif arch == "nnUNet":
-        model = create_model_from_conf_nnUNet(model_params, dataset_params)
+        model = create_model_from_conf_nnUNet(model_params, dataset_params,deep_supervision)
     elif arch == "SwinUNETR":
-        model = create_model_from_conf_swinunetr(model_params, dataset_params)
+        model = create_model_from_conf_swinunetr(model_params, dataset_params,deep_supervision)
     elif arch == "DynUNet":
         model = create_model_from_conf_dynunet(model_params, dataset_params)
     else:
@@ -51,11 +51,12 @@ def create_model_from_conf_dynunet(model_params, dataset_params):
     return model
 
 
-def create_model_from_conf_nnUNet(model_params, dataset_params):
+def create_model_from_conf_nnUNet(model_params, dataset_params,deep_supervision):
     in_channels, out_channels = (
         model_params["in_channels"],
         model_params["out_channels"],
     )
+
     model = Generic_UNet(
         in_channels,
         base_num_features=32,
@@ -70,7 +71,7 @@ def create_model_from_conf_nnUNet(model_params, dataset_params):
         dropout_op_kwargs={"p": 0, "inplace": True},
         nonlin=nn.LeakyReLU,
         nonlin_kwargs={"negative_slope": 0.01, "inplace": True},
-        deep_supervision=True,
+        deep_supervision=deep_supervision,
         dropout_in_localization=False,
         final_nonlin=lambda x: x,
         weightInitializer=InitWeights_He(1e-2),

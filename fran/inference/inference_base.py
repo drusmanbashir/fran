@@ -352,6 +352,7 @@ class EndToEndPredictor(object):
             model_w = P.model
             patch_size_w= make_patch_size(P.params_dict['dataset_params']['patch_dim0'], P.params_dict['dataset_params']['patch_dim1'])
 
+
         self.predictor_w = WholeImagePredictor(proj_defaults=proj_defaults,resample_spacings=resample_spacings_w, patch_size=patch_size_w,device=device)
         self.predictor_w.load_model(model_w,model_id=run_name_w)
         self.save_localiser = save_localiser
@@ -365,6 +366,7 @@ class EndToEndPredictor(object):
 
         print("---- You can set alternative save folders by setting properties: output_localiser_folder and output_image_folder for localiser and final predictions respectively.----")
 
+     
     def load_model_neptune(self, NepMan, run_name, device= 'cuda'):
             NepMan.load_run(run_name=run_name,param_names = 'default',nep_mode="read-only")
             metadata= NepMan.run_dict['metadata']
@@ -376,23 +378,28 @@ class EndToEndPredictor(object):
                 model_params['out_channels']  = out_channels_from_dict_or_cell(metadata['src_dest_labels'])
             out_channels = model_params['out_channels']
             patch_size=NepMan.run_dict['dataset_params']['patch_size']
-            model= create_model_from_conf(model_params,dataset_params,metadata)
+            model= create_model_from_conf(model_params,dataset_params,metadata,deep_supervision=False)
             load_checkpoint(metadata['model_dir'],model,device)
             return model, patch_size , resample_spacings, out_channels
 
     def predict(self,img_fn,mask_fn = None,save_localiser=None):
         if save_localiser: self.save_localiser=save_localiser
+        self.get_localiser_bbox(img_fn,mask_fn)
+        self.run_patch_prediction()
+
+    def get_localiser_bbox(self,img_fn,mask_fn=None):
         print("Running predictions. Whole image predictor is on device {0}. Patch-based predictor is on device {1}".format(self.predictor_w.device,self.predictor_p.device))
         self.predictor_w.load_case(img_filename=img_fn,mask_filename= mask_fn)
         self.predictor_w.make_prediction(save=self.save_localiser)
-        bb1 = self.predictor_w.get_bbox_from_pred()
-
-        self.predictor_p.load_case(img_filename=img_fn,mask_filename=mask_fn,bboxes=bb1)
-
-        self.predictor_p.make_prediction()
+        self.bboxes = self.predictor_w.get_bbox_from_pred()
 
     def score_prediction(self,mask_fn):
         self.scores = self.predictor_p.score_prediction(mask_fn,self.n_classes)
+
+
+    def run_patch_prediction(self):
+        self.predictor_p.load_case(img_filename=img_fn,mask_filename=mask_fn,bboxes=self.bboxes)
+        self.predictor_p.make_prediction()
 
 
     @property

@@ -114,9 +114,6 @@ class CaseIDRecorder(Callback):
             ranks.sort()
             largest = ranks[-1]
             return ranking[largest]
-        largest_label = str(max(ind))
-        full_string = [stn for stn in labels if largest_label in stn][0]
-        return full_string
 
     @property
     def track_var(self):

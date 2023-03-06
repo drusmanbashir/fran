@@ -79,6 +79,7 @@ if __name__ == "__main__":
     p = E.predictor_p
     p.img_transformed , p.bboxes_transformed= p.encode_pipeline([p.img_np_orgres, p.bboxes])
     p.dls=[]
+
     # for bbox in p.bboxes_transformed:
 # %%
     bbox = p.bboxes_transformed[0]
@@ -93,7 +94,12 @@ if __name__ == "__main__":
 # %%
     img_input = torch.tensor(img_cropped,device=p.device).unsqueeze(0).unsqueeze(0)
 
-    s = sliding_window_inference(inputs = img_input,roi_size = p.patch_size,sw_batch_size =1,predictor=p.model)
+# %%
+    with torch.no_grad():
+        s = sliding_window_inference(inputs = img_input,roi_size = p.patch_size,sw_batch_size =1,predictor=p.model)
+# %%
+    ms = s[0]
+    ImageMaskViewer([img_cropped,ms[0,2]])
 # %%
     def create_grid_sampler_aggregator(self):
             self.grid_sampler = tio.GridSampler(subject=self.subject,patch_size=self.patch_size,patch_overlap=self.patch_overlap) 
