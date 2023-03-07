@@ -11,18 +11,16 @@ from functools import wraps
 
 tr = ipdb.set_trace
 # %%
-T = ToTensorF()
-aa = T.encodes('10')
-T.encodes('20')
-# %%
 
 class KeepBBoxTransform(ItemTransform):
-    def func(self,x): return x
-        
+
     def encodes(self,x:Union[list,tuple]):
         if not isinstance(x[-1],Tensor): # may be dict / list or str
+            if len(x)==2:
+                y = [self.func(x[0])]
+            else:
                 y = self.func(x[:-1])
-                return *y, x[-1]
+            return *y, x[-1]
         else: return self.func(x)
 
 class ValidAndTrainingTransform(ItemTransform):

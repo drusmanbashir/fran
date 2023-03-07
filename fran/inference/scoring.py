@@ -12,7 +12,7 @@ import operator
 import cc3d
 from fran.utils.imageviewers import ImageMaskViewer
 from fastai.vision.augment import Transform, store_attr, typedispatch
-from fran/np.transforms.basetransforms import ToTensorF
+from fran.transforms.totensor import ToTensorF
 from fran.transforms.spatialtransforms import one_hot
 from fran.utils.common import *
 import SimpleITK as sitk

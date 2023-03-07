@@ -6,6 +6,7 @@ from monai.engines.evaluator import EnsembleEvaluator
 from monai.transforms.post.array import VoteEnsemble
 from fran.utils.common import *
 from fran.inference.inference_raytune_models import ModelFromTuneTrial
+from fran.transforms.totensor import ToTensorF
 from fran.transforms.spatialtransforms import *
 from monai.data import GridPatchDataset, PatchIter
 from monai.inferers import SlidingWindowInferer
@@ -111,24 +112,32 @@ if __name__ == "__main__":
         self.create_dl_tio()
 
 
-    device='cpu'
+    device='cuda'
     Nep = NeptuneManager(proj_defaults)
 
-# %%
-# %%
-#     pred_tmp_binary = np.array(E.predictor_w.pred_int,dtype=np.uint8)
-#     if organ_mode==True:
-#         pred_tmp_binary [pred_tmp_binary >1]= 1
-#     else:
-#         pred_tmp_binary [pred_tmp_binary <2]= 0
-#         pred_tmp_binary [pred_tmp_binary <1]= 1
-#     pred_tmp_binary = cc3d.dust(pred_tmp_binary,threshold=E.predictor_w.dusting_threshold)
-#     pred_k_largest, N= cc3d.largest_k(pred_tmp_binary,k=E.predictor_w.k_components, return_N=True)
 
 # %%
     E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device,save_localiser=True)
     E.get_localiser_bbox(img_fn,mask_fn)
     bboxes = E.bboxes
+    w = E.predictor_w
+    d = [x for x in w.encode_pipeline][::-1]
+# %%
+    x = w.pred.clone()
+    for dec in d[:-2]:
+        x = dec.decodes(x)
+
+# %%
+    dec = d[-2]
+    y = dec.decodes(x)
+# %%
+    x = w.encode_pipeline.decode(w.pred)
+# %%
+    w = E.predictor_w
+    img = w.img_np_orgres.copy()
+    img = img.transpose(2,0,1)
+    ImageMaskViewer([x[0][bboxes[0]],w.pred[0]],data_types=['mask','mask'])
+    ImageMaskViewer([img,x[0]])
 # %%
     a= E.load_model_neptune(Nep,runs_ensemble[0],device=device) 
 # %%

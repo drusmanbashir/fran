@@ -1,6 +1,15 @@
+
+# %%
+from typing import Union
+from fastai.vision.augment import typedispatch
 import numpy as np
+from torch.functional import Tensor
 import torchio as tio
 import ipdb
+
+from fran.transforms.basetransforms import KeepBBoxTransform
+
+from fran.inference.helpers import get_amount_to_pad
 tr = ipdb.set_trace
 
 import torch
@@ -122,49 +131,67 @@ class CreateDataLoaderAggregator(ItemTransform):
                 dls.append([patch_loader,aggregator])
             return dls
 
-class PadNpArray(ItemTransform):
+# %%
+class PadNpArray(KeepBBoxTransform):
 
         def __init__(self, patch_size, mode='constant'):
             store_attr()
-
-        def encodes(self, x):
-            img,bboxes = x
+            super().__init__()
+        def func(self, img:np.ndarray)->np.ndarray:
             patch_size_vs_img_size = [x > y for x, y in zip(self.patch_size, img.shape)]
             if any(patch_size_vs_img_size):  # check if any dim of image is smaller than patch_size
                 self.padding = get_amount_to_pad(img.shape, self.patch_size)
                 img= np.pad(img, self.padding, self.mode)
-            return img,bboxes
+            return img
         def decodes(self,img):
+            '''
+            note: this will crash if img.dim()>3
+            :param img:
+            :return:
+            '''
             if hasattr(self,'padding'):
                 s = [slice(p[0],s-p[1]) for p,s in zip(self.padding,img.shape)]
                 img = img[tuple(s)]
             return img
 
-class ResizeNP(ItemTransform):
+# %%
+        # dest = [200,300,400]
+        # x  = np.random.rand(50,100,200)
+        # R = ResizeNP(dest)
+        # P = PadNpArray(patch_size=[160,160,160])
+        # y = P.encodes([x])
+        # R.encodes([x])
+# %%
+class Resize(KeepBBoxTransform):
     '''
     Strictly an inference transform. Requires img and bbox
     '''
     
     def __init__(self,dest_size,mode='trilinear'):
         store_attr()
-    def encodes (self,x):
-        img,bboxes = x
+    def func(self,img):
         self.org_size = img.shape
         img = torch.tensor(img,dtype=torch.float32)
         img= img.unsqueeze(0).unsqueeze(0)
         img = F.interpolate(img,self.dest_size,mode=self.mode)
         img= img.squeeze(0).squeeze(0)
         img = img.numpy()
-        return img,bboxes
-    def decodes(self,x):
-        img, bboxes=x
+        return img
+    def decodes(self,img):
+        if isinstance(img,Union[list,tuple]):
+            img, bboxes=img
+            has_bbox=True
+        else: has_bbox=False
         img = torch.tensor(img)
         mode = 'nearest' if 'int' in str(img.dtype) else 'trilinear'
         img= img.unsqueeze(0).unsqueeze(0)
         img = F.interpolate(img,self.org_size,mode=mode)
         img= img.squeeze(0).squeeze(0)
         img = img.numpy()
-        return img, bboxes
+        if has_bbox==True:
+            return img, bboxes
+        else: return img
+# %%
 
 class ApplyBBox(ItemTransform):
     '''
@@ -172,18 +199,21 @@ class ApplyBBox(ItemTransform):
     param x: input image of 3 or greater dims. BBox is repeated over every extra dim (e.g., channel or batch dims)
     '''
     
-    def __init__(self,org_size,bbox):
-        store_attr(but='bbox')
-        self.bbox = tuple(bbox)
+    def __init__(self,bboxes):
+        self.bboxes = tuple(bboxes)
     def encodes(self, x):
-            x = x[self.bbox]
-            return x
+            self.org_size = x.shape
+            x_out = [x[bbox] for bbox in self.bboxes]
+            return x_out
+
     def decodes(self,x):
+            bbox = self.bboxes[0] # havent figured out a multi-bbox version
             img,anything = x
             self.bbox_equate_dims(img)
             output_img = torch.zeros(self.org_size)
-            output_img[tuple(self.bbox)]= img
+            output_img[bbox]= img
             return output_img,anything
+
     def bbox_equate_dims(self,img):
         first_dims = img.dim()- len(self.bbox)
         first_dims_output_img = img.dim() - len(self.org_size)
@@ -214,26 +244,42 @@ class AddBatchChannelDims(ItemTransform):
 
     
         
+# %%
 class TransposeSITKToNp(ItemTransform):
-    def encodes(self,x):
-        img,bboxes  = x
-        img= img.transpose(2,1,0)# not training is done on images facing up, and inference has to do the same.
-        bboxes_out=[]
-        for bbox in bboxes:
-            bbox=bbox[2],bbox[1],bbox[0]
-            bboxes_out.append(bbox)
-        return img,bboxes_out
+    '''
+    typedispatched class which handles arrays +/- bboxes. Bboxes, if present, MUST be in a list even if len-1
+    '''
 
-    def decodes (self,x):
-        img,bboxes  = x
-        img = img.transpose(2,1,0)
-        bboxes_out=[]
-        for bbox in bboxes:
-            bbox=bbox[2],bbox[1],bbox[0]
-            bboxes_out.append(bbox)
-        return img,bboxes_out
+    def decodes(self,x): return self.encodes(x)
 
-        
+@TransposeSITKToNp
+def encodes(self,x:Union[list,tuple]):
+    img,bboxes  = x
+    img= img.transpose(2,1,0)# not training is done on images facing up, and inference has to do the same.
+    bboxes_out=[]
+    for bbox in bboxes:
+        bbox=bbox[2],bbox[1],bbox[0]
+        bboxes_out.append(bbox)
+    return img,bboxes_out
+
+@TransposeSITKToNp
+def encodes(self,img:np.ndarray):
+    img= img.transpose(2,1,0)# not training is done on images facing up, and inference has to do the same.
+    return img
+
+@TransposeSITKToNp
+def encodes(self,img:Tensor):
+    img= img.permute(2,1,0)# not training is done on images facing up, and inference has to do the same.
+    return img
+
+# %%
+    # bb = [slice(0,10),slice(0,20),slice(0,30)]
+    # x = np.random.rand(50,100,200)
+    #
+    # T = TransposeSITKToNp()
+    # a = T([x,[bb]])
+    # b = T.decodes(a)
+# %%
 class Resample(Transform):
     def __init__(self,org_size,org_spacing,dest_spacing,order=None):
         self.sz_dest, self.scale_factor = get_scale_factor_from_spacings(org_size,org_spacing,dest_spacing)
