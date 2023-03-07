@@ -73,7 +73,7 @@ def get_k_organs(mask_labels):
 
 
 class PatchPredictor(object):
-    def __init__(self, proj_defaults,resample_spacings,  patch_size: list = [128,128,128] ,patch_overlap:Union[list,float,int]=0.5, grid_mode="crop",expand_bbox=0.1,k_components=None, batch_size=8,stride=None,device=None,softmax=False):
+    def __init__(self, proj_defaults,resample_spacings,  patch_size: list = [128,128,128] ,patch_overlap:Union[list,float,int]=0.5, grid_mode="crop",expand_bbox=0.1,k_components=None, batch_size=8,stride=None,device=None,softmax=True,dusting_threshold=10):
 
         '''
         params:
@@ -102,7 +102,7 @@ class PatchPredictor(object):
         self.unload_previous()
         self.gt_fn = mask_filename
         self.img_filename = img_filename
-        self.case_id = get_case_id_from_filename(self.proj_defaults.project_title,self.img_filename) if not case_id else case_id
+        self.case_id = get_case_id_from_filename(None,self.img_filename) if not case_id else case_id
         self.img_sitk= sitk.ReadImage(str(self.img_filename))
         self.img_np_orgres=sitk.GetArrayFromImage(self.img_sitk)
         self.size_source = self.img_sitk.GetSize()
@@ -153,7 +153,7 @@ class PatchPredictor(object):
         self.output_image_folder= ("segmentations"+"_"+self._model_id)
         print("Default output folder, based on model name is {}.".format(self.output_image_folder))
 
-    def make_prediction(self,save=True):
+    def make_prediction(self):
         self.pred_patches=[]
         for dl_a in self.dls:
             pl , agg = dl_a
@@ -170,24 +170,25 @@ class PatchPredictor(object):
             output_tensor = torch.nan_to_num(output_tensor,0)
             if self.softmax == True:
                 output_tensor=F.softmax(output_tensor,dim=0)
-            max_idx = torch.argmax(output_tensor, 0, keepdim=True)
-            self.pred_patches.append(max_idx)
-        self.patches_to_orgres()
+            self.pred_patches.append(output_tensor)
+            self.patches_to_orgres()
+
+
+    def post_process(self,save=True):
         self.retain_k_largest_components() # time consuming function
         if save==True:
-            self.pred_sitk = ArrayToSITK(self.img_sitk).encodes(self.pred_final)
             self.save_prediction()
 
     def patches_to_orgres(self):
         x = self.img_transformed, self.bboxes_transformed
+        tr() # pickup here
         pred_neo = torch.zeros(x[0].shape)
         for bbox,pred_patch in zip(x[1],self.pred_patches):
             pred_neo[bbox]=pred_patch[0]
         BM = BacksampleMask(self.img_sitk)
         pred_orgres= BM(pred_neo)
-        pred_orgres = pred_orgres.permute(2,1,0)
-        self.pred_orgres= pred_orgres.numpy()
-    #
+        self.pred= pred_orgres.permute(2,1,0)
+
     def save_prediction(self):
         maybe_makedirs(self._output_image_folder)
         self.pred_fn=str(self._output_image_folder/(self.case_id+".nii.gz"))
@@ -236,13 +237,16 @@ class PatchPredictor(object):
         torch.cuda.empty_cache()
         return  self.img_np_orgres, self.image_np, self.backsampled_pred
        
-    def retain_k_largest_components(self):
-        self.pred_final = self.pred_orgres.copy()
-        pred_tmp_binary = self.pred_orgres.copy()
-        pred_tmp_binary [pred_tmp_binary >1]= 1
-        pred_tmp_binary = pred_tmp_binary.astype(int)
-        self.pred_k_largest, N= cc3d.largest_k(pred_tmp_binary,k=self.k_components, return_N=True)
-        self.pred_final[self.pred_k_largest==0]=0
+    def retain_k_largest_components(self,organ_mode=False):
+        pred_tmp_binary = np.array(self.pred_int,dtype=np.uint8)
+        if organ_mode==True:
+            pred_tmp_binary [pred_tmp_binary >1]= 1
+        else:
+            pred_tmp_binary [pred_tmp_binary <2]= 0
+            pred_tmp_binary [pred_tmp_binary <1]= 1
+        pred_tmp_binary = cc3d.dust(pred_tmp_binary,threshold=self.dusting_threshold)
+        pred_k_largest, N= cc3d.largest_k(pred_tmp_binary,k=self.k_components, return_N=True)
+        return pred_k_largest
         
         
 
@@ -269,19 +273,35 @@ class PatchPredictor(object):
 
 
     def get_bbox_from_pred(self):
-        stats = cc3d.statistics(self.pred_k_largest.astype(np.uint8))
+        stats = cc3d.statistics(self.dusted_stencil_organ)
         bboxes = stats['bounding_boxes'][1:] # bbox 0 is the whole image
         bboxes
         if len(bboxes)<1:
             tr()
         return bboxes
-
+    
+    @property
+    def dusted_stencil_organ(self):
+        if not hasattr(self,"_dusted_stencil_organ"):
+            self._dusted_stencil_organ = self.retain_k_largest_components(organ_mode=True)
+        return self._dusted_stencil_organ
 
     @property
-    def mask(self):
-        if not hasattr(self,"mask_cc"):
-            self.create_binary_pred(save=False)
-        return self.mask_cc
+    def dusted_stencil_lesions(self):
+        if not hasattr(self,"_dusted_stencil_lesions"):
+            self._dusted_stencil_lesions= self.retain_k_largest_components(organ_mode=False)
+        return self._dusted_stencil_lesions
+
+    @property 
+    def pred_sitk(self):
+        if not hasattr(self,"_pred_sitk"):
+            self._pred_sitk = ArrayToSITK(self.img_sitk).encodes(self.pred)
+        return self._pred_sitk
+    @property
+    def pred_int(self):
+        if not hasattr(self,"_pred_int"):
+            self._pred_int= torch.argmax(self.pred, 0, keepdim=True)
+        return self._pred_int
     @property
     def output_image_folder(self):
         return self._output_image_folder
@@ -310,6 +330,7 @@ class PatchPredictor(object):
     @pred_fn.setter
     def pred_fn(self, value):
         self._pred_fn= value
+
 class WholeImageBBoxes(ItemTransform):
 
         def __init__(self, patch_size):
@@ -319,7 +340,11 @@ class WholeImageBBoxes(ItemTransform):
             img,bboxes = x
             bboxes=[tuple([slice(0,p) for p in self.patch_size])]
             return img,bboxes
+
+        def decodes(self,x) : return x # no processing to do
 # %%
+
+
                        
 # %%
 
@@ -390,7 +415,8 @@ class EndToEndPredictor(object):
     def get_localiser_bbox(self,img_fn,mask_fn=None):
         print("Running predictions. Whole image predictor is on device {0}. Patch-based predictor is on device {1}".format(self.predictor_w.device,self.predictor_p.device))
         self.predictor_w.load_case(img_filename=img_fn,mask_filename= mask_fn)
-        self.predictor_w.make_prediction(save=self.save_localiser)
+        self.predictor_w.make_prediction()
+        if self.save_localiser==True: self.predictor_w.save_prediction()
         self.bboxes = self.predictor_w.get_bbox_from_pred()
 
     def score_prediction(self,mask_fn):
@@ -440,10 +466,10 @@ class EndToEndPredictor(object):
         self._save_localiser=value
 
     @property
-    def pred_final(self): return self.predictor_p.pred_final
+    def pred(self): return self.predictor_p.pred
 
     @property
-    def pred_sitk(self): return self.predictor_p.pred_sitk_
+    def pred_sitk(self): return self.predictor_p.pred_sitk
 
 class SubsampleInferenceVersion(Transform):  # TRAINING TRANSFORM
     # Use for any number of dims as long as sample factor matches

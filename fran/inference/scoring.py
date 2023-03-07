@@ -11,7 +11,8 @@ from fran.utils.common import *
 import operator
 import cc3d
 from fran.utils.imageviewers import ImageMaskViewer
-from fastai.vision.augment import ToTensor, Transform, store_attr, typedispatch
+from fastai.vision.augment import Transform, store_attr, typedispatch
+from fran/np.transforms.basetransforms import ToTensorF
 from fran.transforms.spatialtransforms import one_hot
 from fran.utils.common import *
 import SimpleITK as sitk
@@ -21,33 +22,7 @@ import itertools as il
 
 # %%
 
-@ToTensor
-def encodes(self,x:Tensor): return x
 
-@ToTensor
-def encodes(self,x:np.ndarray): 
-   x = x.astype(np.uint8)
-   x_pt = torch.tensor(x,dtype=torch.uint8)
-   return x_pt
-
-@ToTensor
-def encodes(self,x:sitk.Image): 
-   x_np = sitk.GetArrayFromImage(x)
-   x_pt = torch.from_numpy(x_np)
-   return x_pt
-# %%
-@ToTensor
-def encodes(self,x:sitk.Image): 
-   x_np = sitk.GetArrayFromImage(x)
-   x_pt = torch.from_numpy(x_np)
-   return x_pt
-
-@ToTensor
-def encodes(self,x:Union[Path,str]): 
-   x_sitk = sitk.ReadImage(x)
-   x_np = sitk.GetArrayFromImage(x_sitk)
-   x_pt = torch.from_numpy(x_np)
-   return x_pt
 
 @typedispatch
 def img_shape(x:sitk.Image):

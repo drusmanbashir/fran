@@ -74,6 +74,7 @@ class ClipCenter(ItemTransform):
         img = clip_func(img,self.clip_range[0],self.clip_range[1])
         img = standardize(img,self.mean,self.std)
         return img,anything
+    def decodes (self,x):return x   # clipping cannot be reversed
 
 
 

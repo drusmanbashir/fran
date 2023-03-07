@@ -96,7 +96,11 @@ def create_sitk_as(img:sitk.Image,arr:Union[np.array,Tensor]=None)->sitk.Image:
         img_new = sitk.Image(*img.GetSize())
     img_new = align_sitk_imgs(img_new,img)
     return img_new
-    
+
+def get_metadata(img:sitk.Image)->list   :
+    res = img.GetSize(), img.GetSpacing(), img.GetDirection()
+    return  res
+# %%
 if __name__ == "__main__":
     img_fn = "/media/ub/UB11/datasets/lits_short/volume-51.nii"
     mask_fn = "/media/ub/UB11/datasets/lits_short/segmentation-51.nii"

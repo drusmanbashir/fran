@@ -141,7 +141,10 @@ class PadNpArray(ItemTransform):
             return img
 
 class ResizeNP(ItemTransform):
-    # resize entire image to patch_size
+    '''
+    Strictly an inference transform. Requires img and bbox
+    '''
+    
     def __init__(self,dest_size,mode='trilinear'):
         store_attr()
     def encodes (self,x):
@@ -153,30 +156,47 @@ class ResizeNP(ItemTransform):
         img= img.squeeze(0).squeeze(0)
         img = img.numpy()
         return img,bboxes
-    def decodes(self,img):
+    def decodes(self,x):
+        img, bboxes=x
         img = torch.tensor(img)
         mode = 'nearest' if 'int' in str(img.dtype) else 'trilinear'
         img= img.unsqueeze(0).unsqueeze(0)
         img = F.interpolate(img,self.org_size,mode=mode)
         img= img.squeeze(0).squeeze(0)
         img = img.numpy()
-        return img
+        return img, bboxes
 
-class ApplyBBox(Transform):
+class ApplyBBox(ItemTransform):
+    '''
+    param bbox: 3-tuple of slices
+    param x: input image of 3 or greater dims. BBox is repeated over every extra dim (e.g., channel or batch dims)
+    '''
+    
     def __init__(self,org_size,bbox):
-        store_attr()
+        store_attr(but='bbox')
+        self.bbox = tuple(bbox)
     def encodes(self, x):
-        if self.bbox:
-            x = x[tuple(self.bbox)]
-        return x
-    def decodes(self,x):
-        if self.bbox:
-            output_img = torch.zeros(self.org_size)
-            output_img[tuple(self.bbox)]= x
-            return output_img
-        else:
+            x = x[self.bbox]
             return x
+    def decodes(self,x):
+            img,anything = x
+            self.bbox_equate_dims(img)
+            output_img = torch.zeros(self.org_size)
+            output_img[tuple(self.bbox)]= img
+            return output_img,anything
+    def bbox_equate_dims(self,img):
+        first_dims = img.dim()- len(self.bbox)
+        first_dims_output_img = img.dim() - len(self.org_size)
+        if first_dims >0:
+            sizes = list(img.shape[:first_dims])
+            slices_added = [slice(0,end) for end in sizes]
+            self.bbox =tuple(slices_added)+self.bbox
+        if first_dims_output_img>0:
+            sizes = list(img.shape[:first_dims])
+            self.org_size = sizes+self.org_size
 
+# A = ApplyBBox([400,400,400],self.bboxes_transformed[0])
+# y = A.encodes([x,self.bboxes_transformed])
 class AddBatchChannelDims(ItemTransform):
     def __init__(self,preserve_dims_on_decode=[0,1]): # (batch,channel)
         self.preserve_dims_on_decode = preserve_dims_on_decode

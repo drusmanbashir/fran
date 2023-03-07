@@ -53,16 +53,17 @@ if __name__ == "__main__":
     imgs_test =  [filename for filename in img_files if  get_case_id_from_filename(None, filename) in test_list]
 
 # %%
+    mo_df = pd.read_csv(Path("/media/ub/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
 
-
-    n= 16
-    img_fn = imgs_valid[n]
-    mask_fn = img_fn.str_replace("images","masks")
+    n= 0
+    img_fn =Path(mo_df.image_filenames[n])
+    
+    mask_fn =Path(mo_df.mask_filenames[n] )
 # %%
     #note: horseshoe kidney  Path('/s/datasets/raw_database/raw_data/kits21/images/kits21_00005.nii.gz')
 
     run_name_w= "LITS-118" # best trial
-    runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271"]
+    runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
 
 
 # %%
@@ -113,7 +114,19 @@ if __name__ == "__main__":
     device='cpu'
     Nep = NeptuneManager(proj_defaults)
 
-    E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device)
+# %%
+# %%
+#     pred_tmp_binary = np.array(E.predictor_w.pred_int,dtype=np.uint8)
+#     if organ_mode==True:
+#         pred_tmp_binary [pred_tmp_binary >1]= 1
+#     else:
+#         pred_tmp_binary [pred_tmp_binary <2]= 0
+#         pred_tmp_binary [pred_tmp_binary <1]= 1
+#     pred_tmp_binary = cc3d.dust(pred_tmp_binary,threshold=E.predictor_w.dusting_threshold)
+#     pred_k_largest, N= cc3d.largest_k(pred_tmp_binary,k=E.predictor_w.k_components, return_N=True)
+
+# %%
+    E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device,save_localiser=True)
     E.get_localiser_bbox(img_fn,mask_fn)
     bboxes = E.bboxes
 # %%
@@ -136,6 +149,18 @@ if __name__ == "__main__":
     # img = img.to('cuda')
 
 # %%
+#     mask_sitk = sitk.ReadImage(mask_fn)
+#     mask_np = sitk.GetArrayFromImage(mask_sitk)
+#     mask_np = mask_np.astype(np.uint8)
+#
+#     img_sitk = sitk.ReadImage(img_fn)
+#     img_np = sitk.GetArrayFromImage(img_sitk)
+#
+#     mask_np = mask_np.astype(np.uint8)
+    # ImageMaskViewer([img_np,mask_np])
+    # ImageMaskViewer([img_np,preds[1]])
+
+# %%
     overlap=.25
     # S = SlidingWindowInferer(roi_size=patch_size,mode='gaussian',progress=True,overlap=overlap,sw_batch_size=4)
 # %%
@@ -147,7 +172,7 @@ if __name__ == "__main__":
 
 
         patch_overlap = [int(x*overlap) for x in patch_size]
-        P = PatchPredictor(proj_defaults,resample_spacings,patch_size,patch_overlap,device='cpu')
+        P = PatchPredictor(proj_defaults,resample_spacings,patch_size,patch_overlap,device='cpu',softmax=True)
         P.load_model(model,run_name_p,)
 
         P.load_case(img_filename=img_fn,mask_filename=mask_fn,bboxes=bboxes)
@@ -155,13 +180,13 @@ if __name__ == "__main__":
         P.retain_k_largest_components() # time consuming functio
         preds.append(torch.tensor(P.pred_orgres))
         preds_int.append(torch.tensor(P.pred_final))
-# %%
-        with torch.no_grad():
-            pred = S(inputs=img,network=P.model)
-            preds.append(S(inputs = img,network=model) )
-        del P
-        del model
-        torch.cuda.empty_cache()
+# # %%
+#         with torch.no_grad():
+#             pred = S(inputs=img,network=P.model)
+#             preds.append(S(inputs = img,network=model) )
+#         del P
+#         del model
+#         torch.cuda.empty_cache()
 # %%
     def pred_mean(preds:list):
         '''
@@ -179,14 +204,17 @@ if __name__ == "__main__":
         out.squeeze_(0)
         return out
 
+# %%
 
 
     mask_pt = ToTensor.encodes(mask_fn)
+    preds_avg= pred_mean(preds)
+    preds_voted = pred_voted(preds_int)
 # %%
     n_classes = 3
     scores=[]
 
-    for pred_pt in il.chain.from_iterable([preds, preds_int,pred_avg]):
+    for pred_pt in [*preds, *preds_int,preds_avg,preds_voted]:
         pred_onehot,mask_onehot = [one_hot(x,classes=n_classes,axis=0).unsqueeze(0) for x in [pred_pt,mask_pt]]
         aa = compute_dice(pred_onehot,mask_onehot, include_background=False)
         print(aa)
