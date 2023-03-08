@@ -15,7 +15,7 @@ tr = ipdb.set_trace
 class KeepBBoxTransform(ItemTransform):
 
     def encodes(self,x:Union[list,tuple]):
-        if not isinstance(x[-1],Tensor): # may be dict / list or str
+        if not isinstance(x[-1],Union[Tensor,np.ndarray]): # may be dict / list or str
             if len(x)==2:
                 y = [self.func(x[0])]
             else:

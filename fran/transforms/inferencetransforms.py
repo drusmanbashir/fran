@@ -68,53 +68,6 @@ class BBoxesToPatchSize(ItemTransform):
         return img,bboxes_out
 
 
-class ResampleToStage0(ItemTransform):
-    # resize entire image to patch_size
-    def __init__(self, img_sitk, resample_spacing,mode='trilinear'):
-        store_attr()
-
-        self.sz_source , spacing_source = img_sitk.GetSize(), img_sitk.GetSpacing()
-
-        self.scale_factor = [a / b for a, b in zip(spacing_source, resample_spacing)]
-        self.sz_dest,_ = get_scale_factor_from_spacings(self.sz_source,spacing_source,resample_spacing)
-    def encodes (self,x):
-        img,bboxes = x
-        bboxes_out=[]
-        for bbox in bboxes:
-            bbox = rescale_bbox(self.scale_factor,bbox)
-            bboxes_out.append(bbox)
-
-        is_numpy = isinstance(img,np.ndarray)
-        img = torch.tensor(img,dtype=torch.float32)
-        img= img.unsqueeze(0).unsqueeze(0)
-        img = F.interpolate(img,self.sz_dest,mode=self.mode)
-        img= img.squeeze(0).squeeze(0)
-        if is_numpy==True:
-            img = img.numpy()
-        x = img,bboxes_out
-        return x
-
-class Backsample(ItemTransform):
-        def __init__(self,img_sitk):
-            self.sz_source  = img_sitk.GetSize()
-        def encodes(self,x):
-            x_out=[]
-            modes  = ['trilinear','nearest']
-            for xx , mode in zip(x,modes):
-                xx= xx.unsqueeze(0).unsqueeze(0)
-                xx = F.interpolate(xx,self.sz_source,mode=mode)
-                xx= xx.squeeze(0).squeeze(0)
-                x_out.append(xx)
-            return x_out
-class BacksampleMask(Transform):
-        def __init__(self,img_sitk):
-            self.sz_source  = img_sitk.GetSize()
-        def encodes(self,x):
-                x= x.unsqueeze(0).unsqueeze(0)
-                x = F.interpolate(x,self.sz_source,mode='nearest')
-                x= x.squeeze(0).squeeze(0)
-                return x
-
 class CreateDataLoaderAggregator(ItemTransform):
         def __init__(self,patch_size,patch_overlap,grid_mode,batch_size):
             store_attr()
@@ -155,13 +108,59 @@ class PadNpArray(KeepBBoxTransform):
             return img
 
 # %%
+class ChangeDType(KeepBBoxTransform):
+    def __init__(self,target_dtype):store_attr()
+    def func(self,img):
+        return img.to(self.target_dtype)
         # dest = [200,300,400]
         # x  = np.random.rand(50,100,200)
         # R = ResizeNP(dest)
         # P = PadNpArray(patch_size=[160,160,160])
         # y = P.encodes([x])
         # R.encodes([x])
+        
 # %%
+
+class Backsample(ItemTransform):
+        def __init__(self,img_sitk):
+            self.sz_source  = img_sitk.GetSize()
+        def encodes(self,x):
+            x_out=[]
+            modes  = ['trilinear','nearest']
+            for xx , mode in zip(x,modes):
+                xx= xx.unsqueeze(0).unsqueeze(0)
+                xx = F.interpolate(xx,self.sz_source,mode=mode)
+                xx= xx.squeeze(0).squeeze(0)
+                x_out.append(xx)
+            return x_out
+class BacksampleMask(Transform):
+        def __init__(self,img_sitk):
+            self.sz_source  = img_sitk.GetSize()
+        def encodes(self,x):
+                x= x.unsqueeze(0).unsqueeze(0)
+                x = F.interpolate(x,self.sz_source,mode='nearest')
+                x= x.squeeze(0).squeeze(0)
+                return x
+
+class ResampleToStage0(ItemTransform):
+    # resize entire image to patch_size
+    def __init__(self, img_sitk, resample_spacing,mode='trilinear'):
+        store_attr()
+
+        self.sz_source , spacing_source = img_sitk.GetSize(), img_sitk.GetSpacing()
+
+        self.scale_factor = [a / b for a, b in zip(spacing_source, resample_spacing)]
+        self.sz_dest,_ = get_scale_factor_from_spacings(self.sz_source,spacing_source,resample_spacing)
+    def encodes (self,x):
+        img,bboxes = x
+        bboxes_out=[]
+        for bbox in bboxes:
+            bbox = rescale_bbox(self.scale_factor,bbox)
+            bboxes_out.append(bbox)
+
+        img = _resize_tensor(img,self.sz_dest,self.mode)
+        return img,bboxes_out
+
 class Resize(KeepBBoxTransform):
     '''
     Strictly an inference transform. Requires img and bbox
@@ -169,29 +168,30 @@ class Resize(KeepBBoxTransform):
     
     def __init__(self,dest_size,mode='trilinear'):
         store_attr()
-    def func(self,img):
+    def func(self,img:Tensor)->Tensor:
         self.org_size = img.shape
-        img = torch.tensor(img,dtype=torch.float32)
-        img= img.unsqueeze(0).unsqueeze(0)
-        img = F.interpolate(img,self.dest_size,mode=self.mode)
-        img= img.squeeze(0).squeeze(0)
-        img = img.numpy()
+        img = _resize_tensor(img,self.dest_size,self.mode)
         return img
-    def decodes(self,img):
+    def decodes(self,img:Tensor):
         if isinstance(img,Union[list,tuple]):
-            img, bboxes=img
-            has_bbox=True
-        else: has_bbox=False
-        img = torch.tensor(img)
+            if len(img)>=2:
+                img, bboxes=img
+                has_bbox=True
+            else: 
+                img = img[0]
         mode = 'nearest' if 'int' in str(img.dtype) else 'trilinear'
-        img= img.unsqueeze(0).unsqueeze(0)
-        img = F.interpolate(img,self.org_size,mode=mode)
-        img= img.squeeze(0).squeeze(0)
-        img = img.numpy()
-        if has_bbox==True:
+        img = _resize_tensor(img,self.org_size,mode)
+
+        try :
+            has_bbox==True
             return img, bboxes
-        else: return img
+        except: return img
 # %%
+def _resize_tensor(img,target_size,mode):
+        unsqueeze_times = 5-img.dim()
+        for times in range(unsqueeze_times):img= img.unsqueeze(0)
+        img = F.interpolate(img,target_size,mode=mode)
+        for times in range(unsqueeze_times): img= img.squeeze(0)
 
 class ApplyBBox(ItemTransform):
     '''
@@ -245,38 +245,38 @@ class AddBatchChannelDims(ItemTransform):
     
         
 # %%
-class TransposeSITKToNp(ItemTransform):
+class TransposeSITK(ItemTransform):
     '''
     typedispatched class which handles arrays +/- bboxes. Bboxes, if present, MUST be in a list even if len-1
     '''
 
     def decodes(self,x): return self.encodes(x)
 
-@TransposeSITKToNp
+@TransposeSITK
 def encodes(self,x:Union[list,tuple]):
     img,bboxes  = x
-    img= img.transpose(2,1,0)# not training is done on images facing up, and inference has to do the same.
+    func = torch.permute if isinstance(img,Tensor) else np.transpose
+    img= func(img,[2,1,0])# not training is done on images facing up, and inference has to do the same.
     bboxes_out=[]
     for bbox in bboxes:
         bbox=bbox[2],bbox[1],bbox[0]
         bboxes_out.append(bbox)
     return img,bboxes_out
 
-@TransposeSITKToNp
-def encodes(self,img:np.ndarray):
-    img= img.transpose(2,1,0)# not training is done on images facing up, and inference has to do the same.
+@TransposeSITK
+def encodes(self,img:Union[Tensor,np.ndarray]):
+    func = torch.permute if isinstance(img,Tensor) else np.transpose
+    if img.ndim== 3: tp_list = [2,1,0]
+    if img.ndim==4: tp_list = [0,3,2,1]
+    img = func(img,tp_list)
     return img
 
-@TransposeSITKToNp
-def encodes(self,img:Tensor):
-    img= img.permute(2,1,0)# not training is done on images facing up, and inference has to do the same.
-    return img
 
 # %%
     # bb = [slice(0,10),slice(0,20),slice(0,30)]
     # x = np.random.rand(50,100,200)
     #
-    # T = TransposeSITKToNp()
+    # T = TransposeSITK()
     # a = T([x,[bb]])
     # b = T.decodes(a)
 # %%

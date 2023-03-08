@@ -19,6 +19,8 @@ from fran.transforms.intensitytransforms import ClipCenter, clip_image, standard
 from monai.metrics.meandice import compute_dice
 from fran.managers.base import load_checkpoint
 import os
+
+from fran.transforms.totensor import ToTensorI
 # %%
 
 if 'get_ipython' in globals():
@@ -97,19 +99,28 @@ class PatchPredictor(object):
         self.global_properties = load_dict(global_properties_fname)
         if device is None:
             self.device = get_available_device()
-
-    def load_case(self, img_filename,mask_filename=None, case_id=None, bboxes=None):
+    def load_case(self, img_filename, bboxes=None):
         self.unload_previous()
-        self.gt_fn = mask_filename
         self.img_filename = img_filename
-        self.case_id = get_case_id_from_filename(None,self.img_filename) if not case_id else case_id
+        self.case_id = get_case_id_from_filename(None,self.img_filename) 
         self.img_sitk= sitk.ReadImage(str(self.img_filename))
         self.img_np_orgres=sitk.GetArrayFromImage(self.img_sitk)
         self.size_source = self.img_sitk.GetSize()
         self.sz_dest = get_sitk_target_size_from_spacings(self.img_sitk,self.resample_spacings)
         self.bboxes =bboxes if bboxes else self.set_patchsized_bbox()
+
+    def run(self) :
+        '''
+        Runs predictions. Then backsamples predictions to img size (DxHxW). Keeps num_channels
+        '''
+
+        assert hasattr(self,'img_np_orgres'), "run load_case first."
         self.create_encode_pipeline()
+        self.create_decode_pipeline()
         self.create_dl_tio()
+        self.make_prediction()
+        self.post_process()
+
 
 
     def set_patchsized_bbox(self):
@@ -120,11 +131,36 @@ class PatchPredictor(object):
         return ([tuple(slc)])
 
     def create_encode_pipeline(self):
-            T = TransposeSITKToNp()
+            To=ToTensorI()
+            Ch=ChangeDType(torch.float32)
+            T = TransposeSITK()
             R = ResampleToStage0(self.img_sitk,self.resample_spacings)
             B = BBoxesToPatchSize(self.patch_size,self.sz_dest,self.expand_bbox)
             C = ClipCenter(clip_range=self.global_properties['intensity_clip_range'],mean=self.global_properties['mean_fg'],std=self.global_properties['std_fg'])
-            self.encode_pipeline = Pipeline([T,R,B,C])
+            self.encode_pipeline = Pipeline([To,Ch,T,R,B,C])
+    def patches_to_orgres(self):
+        x = self.img_transformed, self.bboxes_transformed
+        pred_neo = torch.zeros(x[0].shape)
+        for bbox,pred_patch in zip(x[1],self.pred_patches):
+            pred_neo[bbox]=pred_patch[0]
+        BM = BacksampleMask(self.img_sitk)
+        pred_orgres= BM(pred_neo)
+        self.pred= pred_orgres.permute(2,1,0)
+
+
+    class FillBBoxPatches(ItemTransform):
+        '''
+        Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
+        '''
+        def __init__(self,img_size,out_channels): self.output_img= torch.zeros(out_channels,*img_size)
+        def encodes(self,patches,bboxes):
+            for bbox,pred_patch in zip(bboxes,patches):
+                for n in range(self.template.shape[0]):
+                    self.template[n,bbox]=pred_patch[0]
+            return self.output_img
+
+
+    def create_decode_pipeline(self):pass
 
     def create_dl_tio(self):
             self.img_transformed , self.bboxes_transformed= self.encode_pipeline([self.img_np_orgres, self.bboxes])
@@ -179,14 +215,7 @@ class PatchPredictor(object):
         if save==True:
             self.save_prediction()
 
-    def patches_to_orgres(self):
-        x = self.img_transformed, self.bboxes_transformed
-        pred_neo = torch.zeros(x[0].shape)
-        for bbox,pred_patch in zip(x[1],self.pred_patches):
-            pred_neo[bbox]=pred_patch[0]
-        BM = BacksampleMask(self.img_sitk)
-        pred_orgres= BM(pred_neo)
-        self.pred= pred_orgres.permute(2,1,0)
+
 
     def save_prediction(self):
         maybe_makedirs(self._output_image_folder)
@@ -285,6 +314,7 @@ class PatchPredictor(object):
         attr_name = "_".join(["dusted_stencil",str(axis)])
         if not hasattr(self,attr_name):
             dusted = self.retain_k_largest_components(axis=axis)
+
             setattr(self,attr_name,dusted)
         return getattr(self,attr_name)
 
@@ -292,7 +322,7 @@ class PatchPredictor(object):
     @property 
     def pred_sitk(self):
         if not hasattr(self,"_pred_sitk"):
-            self._pred_sitk = ArrayToSITK(self.img_sitk).encodes(self.pred)
+            self._pred_sitk = ArrayToSITK(self.img_sitk).encodes(self.pred_patches[0])
         return self._pred_sitk
     @property
     def pred_int(self):
@@ -350,17 +380,22 @@ class WholeImagePredictor(PatchPredictor):
         super().__init__(proj_defaults,resample_spacings,patch_size,patch_overlap=0,batch_size=1,device=device,**kwargs)
  
     def create_encode_pipeline(self):
-
-            T = TransposeSITKToNp()
+            To= ToTensorI()
+            Ch=ChangeDType(torch.float32)
+            T = TransposeSITK()
             Rz = Resize(self.patch_size)
-            P  = PadNpArray(patch_size=self.patch_size)
+            P  = PadDeficitImgMask(patch_size=self.patch_size,input_dims=3)
             W = WholeImageBBoxes(self.patch_size)
             C = ClipCenter(clip_range=self.global_properties['intensity_clip_range'],mean=self.global_properties['mean_fg'],
                            std=self.global_properties['std_fg'])
-            self.encode_pipeline = Pipeline([T,Rz,P,W,C])
+            self.encode_pipeline = Pipeline([To,Ch,T,Rz,P,W,C])
 
-    @property 
-    def pred(self): return self.pred_patches[0]
+    def create_decode_pipeline(self): 
+            self.decode_pipeline = Pipeline(self.encode_pipeline[2:4])
+
+    def post_process(self):
+        self.pred= self.decode_pipeline.decode(*self.pred_patches)
+
 
 class EndToEndPredictor(object):
     def __init__(self, proj_defaults,run_name_w,run_name_p,use_neptune=False,patch_overlap=0.5,device='cuda', save_localiser=False):
@@ -408,12 +443,12 @@ class EndToEndPredictor(object):
     def predict(self,img_fn,mask_fn = None,save_localiser=None):
         if save_localiser: self.save_localiser=save_localiser
         self.get_localiser_bbox(img_fn,mask_fn)
-        self.run_patch_prediction()
+        self.run_patch_prediction(img_fn)
 
     def get_localiser_bbox(self,img_fn,mask_fn=None):
         print("Running predictions. Whole image predictor is on device {0}. Patch-based predictor is on device {1}".format(self.predictor_w.device,self.predictor_p.device))
-        self.predictor_w.load_case(img_filename=img_fn,mask_filename= mask_fn)
-        self.predictor_w.make_prediction()
+        self.predictor_w.load_case(img_filename=img_fn)
+        self.predictor_w.run()
         if self.save_localiser==True: self.predictor_w.save_prediction()
         self.bboxes = self.predictor_w.get_bbox_from_pred()
 
@@ -421,8 +456,8 @@ class EndToEndPredictor(object):
         self.scores = self.predictor_p.score_prediction(mask_fn,self.n_classes)
 
 
-    def run_patch_prediction(self):
-        self.predictor_p.load_case(img_filename=img_fn,mask_filename=mask_fn,bboxes=self.bboxes)
+    def run_patch_prediction(self,img_fn):
+        self.predictor_p.load_case(img_filename=img_fn,bboxes=self.bboxes)
         self.predictor_p.make_prediction()
 
 
@@ -506,4 +541,28 @@ if __name__ =="__main__":
 
     common_paths_filename=os.environ['FRAN_COMMON_PATHS']
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
+# %%
+
+    mo_df = pd.read_csv(Path("/media/ub/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
+    n= 0
+    img_fn =Path(mo_df.image_filenames[n])
+    mask_fn =Path(mo_df.mask_filenames[n] )
+    patch_size = [160,160,160]
+    resample_spacings = [1,1,2]
+    run_name_w= "LITS-118" # best trial
+# %%
+    w = WholeImagePredictor(proj_defaults,resample_spacings,patch_size,'cuda')
+    w.load_model()
+    w.load_case(img_fn)
+    w.run()
+# %%
+    P = E.predictor_p
+    P.run
+# %%
+    sl = [w.img_np_orgres,w.bboxes]
+    a = w.encode_pipeline[0].encodes(sl)
+
+
+
+# %%
 

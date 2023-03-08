@@ -10,22 +10,6 @@ from fran.transforms.totensor import ToTensorF
 from fran.transforms.spatialtransforms import *
 from monai.data import GridPatchDataset, PatchIter
 from monai.inferers import SlidingWindowInferer
-# def load_model(file, model, opt, with_opt=True, device=None, strict=True):
-#     "Load `model` from `file` along with `opt` (if available, and if `with_opt`)"
-#     distrib_barrier()
-#     if isinstance(device, int): device = torch.device('cuda', device)
-#     elif device is None: device = 'cpu'
-#     state = torch.load(file, map_location=device)
-#     hasopt = set(state)=={'model', 'opt'}
-#     model_state = state['model'] if hasopt else state
-#     get_model(model).load_state_dict(model_state, strict=strict)
-#     if hasopt and with_opt:
-#         try: opt.load_state_dict(state['opt'])
-#         except:
-#             if with_opt: warn("Could not load the optimizer state.")
-#     elif with_opt: warn("Saved filed doesn't contain an optimizer state.")
-#
-
 from fran.managers.trainer import *
 from fran.managers.tune import *
 from fran.inference.inference_base import *
@@ -55,10 +39,8 @@ if __name__ == "__main__":
 
 # %%
     mo_df = pd.read_csv(Path("/media/ub/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
-
     n= 0
     img_fn =Path(mo_df.image_filenames[n])
-    
     mask_fn =Path(mo_df.mask_filenames[n] )
 # %%
     #note: horseshoe kidney  Path('/s/datasets/raw_database/raw_data/kits21/images/kits21_00005.nii.gz')
@@ -69,59 +51,24 @@ if __name__ == "__main__":
 
 # %%
 
-
-    @patch_to(EndToEndPredictor)
-    def unload_previous(self):
-        attributes = ["backsampled_pred", "mask_cc","mask_sitk", "subject"]
-        try:
-            for att in attributes:
-                delattr(self,att)
-        except:
-            pass
-
-
-
-    @patch_to(EndToEndPredictor)
-    def create_encode_pipeline(self):
-            T = TransposeSITKToNp()
-            R = ResampleToStage0(self.img_sitk,self.resample_spacings)
-            B = BBoxesToPatchSize(self.patch_size,self.sz_dest,self.expand_bbox)
-            C = ClipCenter(clip_range=self.global_properties['intensity_clip_range'],mean=self.global_properties['mean_fg'],std=self.global_properties['std_fg'])
-            self.encode_pipeline = Pipeline([T,R,B,C])
-
-    @patch_to(EndToEndPredictor)
-    def create_dl_tio(self):
-            self.img_transformed , self.bboxes_transformed= self.encode_pipeline([self.img_np_orgres, self.bboxes])
-            self.dls=[]
-            self.imgs=[]
-            for bbox in self.bboxes_transformed:
-                self.imgs.append(self.img_transformed[bbox])
-
-    @patch_to(EndToEndPredictor)
-    def load_case(self, img_filename,mask_filename=None, case_id=None, bboxes=None):
-        self.unload_previous()
-        self.gt_fn = mask_filename
-        self.img_filename = img_filename
-        self.case_id = get_case_id_from_filename(self.proj_defaults.project_title,self.img_filename) if not case_id else case_id
-        self.img_sitk= sitk.ReadImage(str(self.img_filename))
-        self.img_np_orgres=sitk.GetArrayFromImage(self.img_sitk)
-        self.size_source = self.img_sitk.GetSize()
-        self.sz_dest = get_sitk_target_size_from_spacings(self.img_sitk,self.resample_spacings)
-        self.bboxes =bboxes 
-        self.create_encode_pipeline()
-        self.create_dl_tio()
-
-
     device='cuda'
     Nep = NeptuneManager(proj_defaults)
 
 
+
 # %%
     E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device,save_localiser=True)
-    E.get_localiser_bbox(img_fn,mask_fn)
-    bboxes = E.bboxes
+    E.get_localiser_bbox(img_fn)
+    E.bboxes = w.bboxes
+    E.run_patch_prediction(img_fn)
+    bboxes = w.get_bbox_from_pred()
     w = E.predictor_w
+    w.decode_pipeline = Pipeline(w.encode_pipeline[:2])
+    y = w.decode_pipeline.decode(w.pred)
+    y = w.run()
     d = [x for x in w.encode_pipeline][::-1]
+# %%
+    ImageMaskViewer([w.img_np_orgres[bboxes[0]],w.img_np_orgres[bboxes[0]]])
 # %%
     x = w.pred.clone()
     for dec in d[:-2]:
@@ -130,6 +77,7 @@ if __name__ == "__main__":
 # %%
     dec = d[-2]
     y = dec.decodes(x)
+    y = d[-1].decodes(y)
 # %%
     x = w.encode_pipeline.decode(w.pred)
 # %%

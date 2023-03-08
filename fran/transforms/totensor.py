@@ -6,8 +6,9 @@ from typing import Union
 import numpy as np
 import SimpleITK as sitk
 from batchgenerators.dataloading.multi_threaded_augmenter import torch
-from fastcore.transform import Transform
+from fastcore.transform import ItemTransform, Transform, store_attr
 from torch.functional import Tensor
+from fran.transforms.basetransforms import KeepBBoxTransform
 
 from fran.utils import common
 
@@ -17,7 +18,7 @@ tr = ipdb.set_trace
 # %%
 class ToTensorF(Transform):
     "Convert item to appropriate tensor class"
-    order = 5
+    order = 0
 
 
 def enc_wrapper(encode_func):
@@ -80,3 +81,12 @@ if __name__ == "__main__":
    print(type(T.encodes(x)))
 
 # %%
+class ToTensorI(KeepBBoxTransform):
+    '''
+    works on img/bbox pair
+    '''
+    order = 0
+    def func(self,img:np.ndarray):
+        return torch.tensor(img)
+
+
