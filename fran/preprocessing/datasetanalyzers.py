@@ -3,6 +3,7 @@ from fastai.vision.augment import store_attr
 import numpy as np
 import ast
 from fran.preprocessing.archived.generic_preprocessors import nii_sitk_to_np
+from fran.transforms.totensor import ToTensorF
 from fran.utils.helpers import *
 import h5py
 
@@ -180,7 +181,7 @@ class SingleCaseAnalyzer:
         assert isinstance(case_files_tuple, list) or isinstance(
             case_files_tuple, tuple
         ), "case_files_tuple must be either a list or a tuple"
-        self._case_id = get_case_id_from_filename(project_title, case_files_tuple[0])
+        self.case_id = get_case_id_from_filename(None, case_files_tuple[0])
         store_attr("case_files_tuple,outside_value,percentile_range")
 
     def load_case(self):
@@ -199,7 +200,8 @@ class SingleCaseAnalyzer:
     @property
     def case_id(self):
         return self._case_id
-
+    @case_id.setter
+    def case_id(self,value): self._case_id = value
 
 class MultiCaseAnalyzer(object):
     """
@@ -250,7 +252,7 @@ class MultiCaseAnalyzer(object):
 
         all_spacings = np.zeros((dataset_size, 3))
         for ind, case_ in enumerate(self.case_properties):
-            if "case_id" in case_:
+            # if "case_id" in case_:
                 spacing = case_["properties"]["itk_spacing"]
                 all_spacings[ind, :] = spacing
 
@@ -300,9 +302,42 @@ class MultiCaseAnalyzer(object):
         if h5f:
             h5f.close()
 
+    def _compute_dataset_mean(self,num_processes,multiprocess,debug):
+        img_fnames = [case_[0] for case_ in self.list_of_raw_cases]
+        args = [[fname, self.clip_range] for fname in img_fnames]
+
+        print("Computing means from all nifty files (clipped to {})".format(self.clip_range))
+        means_sizes = multiprocess_multiarg(
+            get_means_voxelcounts,
+            args,
+            num_processes=num_processes,
+            multiprocess=multiprocess,
+            debug=debug,
+        )
+        means_sizes=  torch.tensor(means_sizes)
+        weighted_mn = torch.multiply(
+            means_sizes[:, 0], means_sizes[:, 1]
+        ) 
+
+        self.total_voxels = means_sizes[:, 1].sum()
+        self.dataset_mean = weighted_mn.sum() / self.total_voxels
+
+    def _compute_dataset_std(self,num_processes,multiprocess,debug):
+        img_fnames = [case_[0] for case_ in self.list_of_raw_cases]
+        args = [[fname, self.dataset_mean, self.clip_range] for fname in img_fnames]
+        print(
+            "Computing std from all nifty files, using global mean computed above (clipped to {})".format(
+                self.clip_range
+            )
+        )
+        std_num = multiprocess_multiarg(get_std_numerator, args,num_processes=num_processes,multiprocess=multiprocess, debug=debug)
+        std_num = torch.tensor(std_num)
+        self.std = torch.sqrt(std_num.sum() / self.total_voxels)
+
     def compute_std_mean_dataset(
         self, num_processes=32, multiprocess=True, debug=False
     ):
+
         """
         Stage 2:
         Requires global_properties (intensity_percentile_fg range) for clipping ()
@@ -326,44 +361,18 @@ class MultiCaseAnalyzer(object):
             except:
                 print("A valid clip_range is not entered. Using intensity-default")
                 self.clip_range = intensity_percentile_range
-        img_fnames = [case_[0] for case_ in self.list_of_raw_cases]
-        args = [[fname, self.clip_range] for fname in img_fnames]
-
-        print("Computing means from all nifty files (clipped to {})".format(self.clip_range))
-        means_sizes = multiprocess_multiarg(
-            get_means_voxelcounts,
-            args,
-            num_processes=num_processes,
-            multiprocess=multiprocess,
-            debug=debug,
-        )
-        means_sizes = np.array(means_sizes)
-        weighted_mn = np.multiply(
-            means_sizes[:, 0], means_sizes[:, 1]
-        )  # /np.sum(means_sizes[:,1])
-
-        total_voxels = means_sizes[:, 1].sum()
-        dataset_mean = weighted_mn.sum() / total_voxels
-        args = [[fname, dataset_mean, self.clip_range] for fname in img_fnames]
-        print(
-            "Computing std from all nifty files, using global mean computed above (clipped to {})".format(
-                self.clip_range
-            )
-        )
-        std_num = multiprocess_multiarg(get_std_numerator, args, debug=False)
-        std_num = np.array(std_num)
-        std = np.sqrt(std_num.sum() / total_voxels)
+        self._compute_dataset_mean(num_processes,multiprocess,debug)
+        self._compute_dataset_std(num_processes,multiprocess,debug)
         self.global_properties['intensity_clip_range']= self.clip_range
         self.global_properties[percentile_label]= intensity_percentile_range
-        self.global_properties["mean_dataset_clipped"] = dataset_mean
-        self.global_properties["std_dataset_clipped"] = std
-        self.global_properties["total_voxels"] = int(total_voxels)
+        self.global_properties["mean_dataset_clipped"] = self.dataset_mean.item()
+        self.global_properties["std_dataset_clipped"] = self.std.item()
+        self.global_properties["total_voxels"] = int(self.total_voxels)
         print(
             "Saving updated global_properties to file {}".format(
                 self.properties_outfilename
             )
         )
-        tr()
         save_dict(self.global_properties, self.global_properties_outfilename,sort=True)
 
 
@@ -413,21 +422,19 @@ def percentile_range_to_str(percentile_range):
 
 
 def get_std_numerator(img_fname, dataset_mean, clip_range=None):
-    img = nii_sitk_to_np(img_fname)
+    img = ToTensorF()(img_fname)
     if clip_range is not None:
-        img[img < clip_range[0]] = clip_range[0]
-        img[img >= clip_range[1]] = clip_range[1]
+        img = torch.clip(img,min=clip_range[0],max=clip_range[1])
     var = (img - dataset_mean) ** 2
     var_sum = var.sum()
     return var_sum
 
 
 def get_means_voxelcounts(img_fname, clip_range=None):
-    img = nii_sitk_to_np(img_fname)
+    img = ToTensorF()(img_fname)
     if clip_range is not None:
-        img[img < clip_range[0]] = clip_range[0]
-        img[img >= clip_range[1]] = clip_range[1]
-    return np.array([img.mean(), img.size])
+        img = torch.clip(img,min=clip_range[0],max=clip_range[1])
+    return img.mean().item(), img.numel()
 
 
 def bboxes_function_version(
@@ -467,10 +474,29 @@ if __name__ == "__main__":
 # %%
 
     M.store_projectwide_properties()
-# %%
     M.compute_std_mean_dataset()
 # %%
+    M.global_properties = load_dict(M.global_properties_outfilename)
+    percentile_label, intensity_percentile_range=  get_intensity_range(M.global_properties)
+    clip_range=[-5,200]
+# %%
+    img_fnames = [case_[0] for case_ in M.list_of_raw_cases]
+    img_fname = img_fnames[0]
+# %%
+    img = ToTensorF()(img_fname)
+    if clip_range is not None:
+        img = torch.clip(img,min=clip_range[0],max=clip_range[1])
+    var = (img - dataset_mean) ** 2
+ 
+# %%
+    args = [[fname, M.dataset_mean, M.clip_range] for fname in img_fnames]
+    print(
+        "Computing std from all nifty files, using global mean computed above (clipped to {})".format(
+            M.clip_range
+        )
+    )
 
+    M.compute_std_mean_dataset()
 # %% [markdown]
     # # Resample Nifty to Torch
 # %% [markdown]
@@ -502,6 +528,7 @@ if __name__ == "__main__":
 # %%
     # # Getting bbox properties from preprocessed images
     # ### KITS21 cropped nifty files bboxes
+    M.std = torch.sqrt(std_num.sum() / M.total_voxels)
 
 # %%
     P = Project(project_title="lits"); proj_defaults= P.proj_summary

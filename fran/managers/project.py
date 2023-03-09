@@ -41,6 +41,7 @@ class Project(DictToAttr):
 
     def _create_folder_tree(self):
         folders = []
+        maybe_makedirs(self.project_folder)
         for key, value in self.proj_summary.__dict__.items():
             if isinstance(value, Path) and "folder" in key:
                 folders.append(value)
@@ -51,6 +52,7 @@ class Project(DictToAttr):
         folders.extend(additional_folders)
         for folder in folders:
             maybe_makedirs(folder)
+        print("Make sure you have placed a 'maks_labels.json' file inside {}".format(self.project_folder))
 
     def populate_raw_data_folder(self):
 
@@ -82,6 +84,20 @@ class Project(DictToAttr):
             save_dict(self.datasets,self.proj_summary.raw_dataset_info_filename)
         else: print("Dataset {} already registered with same fileset in project. Will not add".format(dic['dataset_name']))
 
+
+    def _proj_summary_labels_info(self):
+                self._proj_summary.label_priority =self.label_dict[-1]["label_priority"]
+                self._proj_summary.mask_labels =self.label_dict[:-1]
+
+    @property
+    def label_dict(self):
+        if not hasattr(self,'_label_dict'):
+            self._label_dict="Place {}".format(self.label_dict_filename)
+            try:
+                self._label_dict= load_dict(self.label_dict_filename)
+                self._proj_summary_labels_info()
+            except: pass
+        return self._label_dict
 
     @property
     def datasets(self):
@@ -148,35 +164,18 @@ class Project(DictToAttr):
         return [dict(t) for t in {tuple(d.items()) for d in listi}]
 
     def save_summary(self):
-        save_pickle(self.proj_summary,self.summary_filename)
+        if hasattr(self.proj_summary,'label_priority'):
+            save_pickle(self.proj_summary,self.summary_filename)
+        else: 
+            try:
+                self.label_dict
+            except:
+                print("Project summary will be saved after you add file {}".format(self.label_dict_filename))
 
     def load_summary(self):
         self._proj_summary = load_pickle(self.summary_filename)
 
-    @ask_proceed("Create train/valid folds (80:20) ")
-    def create_train_valid_folds(self):
-        print("Existing datasets are :{}".format([[ds['dataset_name'],ds['test']] for ds in self.datasets]))
-        print("A fresh train/valid split should be created everytime a new training dataset is added")
-        train_val_list =  list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==False ]))
-        test_list =list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==True]))
-        json_fname = self.proj_summary.validation_folds_filename
-
-        create_train_valid_test_lists_from_filenames(
-             train_val_list,  test_list,0.2,  json_fname, shuffle=False
-        )
-
-    @property
-    def summary_filename(self): return self.project_folder/("proj_summary.pkl")
-
-    @property
-    def project_folder(self):
-        return self.common_paths["projects_folder"] /self.project_title
-
-    @property
-    def proj_summary(self):
-        if not hasattr(self, "_proj_summary"):
-            try: self.load_summary()
-            except FileNotFoundError:
+    def create_summary_dict(self):
                 proj_summary = {"project_title": self.project_title}
                 proj_summary["raw_data_folder"] = self.cold_datasets_folder / (
                     "raw_data/" + proj_summary["project_title"]
@@ -202,15 +201,8 @@ class Project(DictToAttr):
                     / proj_summary["project_title"]
                 )
                 proj_summary["global_properties_filename"] = (
-                    proj_summary["raw_data_folder"] / "global_properties"
+                    proj_summary["project_folder"] / "global_properties"
                 )
-                proj_summary["label_priority"] = load_dict(
-                    proj_summary["raw_data_folder"] / "mask_labels"
-                )[-1]["label_priority"]
-                proj_summary["log_folder"] = proj_summary["project_folder"] / ("logs")
-                proj_summary["mask_labels"] = load_dict(
-                    proj_summary["raw_data_folder"] / "mask_labels"
-                )[:-1]
                 proj_summary["neptune_folder"] = self.common_paths["neptune_folder"]
                 proj_summary["patches_folder"] = proj_summary[
                     "fixed_dimensions_folder"
@@ -219,7 +211,7 @@ class Project(DictToAttr):
                     "cold_storage_folder"
                 ] / ("predictions/" + proj_summary["project_title"])
                 proj_summary["raw_dataset_properties_filename"] = (
-                    proj_summary["raw_data_folder"] / "raw_dataset_properties"
+                    proj_summary["project_folder"] / "raw_dataset_properties"
                 )
                 proj_summary["validation_folds_filename"] = proj_summary[
                     "project_folder"
@@ -228,11 +220,46 @@ class Project(DictToAttr):
                     "fixed_dimensions_folder"
                 ] / ("whole_images")
                 proj_summary['raw_dataset_info_filename'] = proj_summary['project_folder']/("raw_dataset_info.pkl")
-                self._proj_summary = SimpleNamespace(**proj_summary)
-        return self._proj_summary
+                proj_summary["log_folder"] = proj_summary["project_folder"] / ("logs")
 
-    @proj_summary.setter
-    def proj_summary(self,dic): self._proj_summary = dic
+
+                return SimpleNamespace(**proj_summary)
+
+
+    @ask_proceed("Create train/valid folds (80:20) ")
+    def create_train_valid_folds(self):
+        print("Existing datasets are :{}".format([[ds['dataset_name'],ds['test']] for ds in self.datasets]))
+        print("A fresh train/valid split should be created everytime a new training dataset is added")
+        train_val_list =  list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==False ]))
+        test_list =list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==True]))
+        json_fname = self.proj_summary.validation_folds_filename
+
+        create_train_valid_test_lists_from_filenames(
+             train_val_list,  test_list,0.2,  json_fname, shuffle=False
+        )
+
+    @property
+    def summary_filename(self): return self.project_folder/("proj_summary.pkl")
+    
+    @property
+    def label_dict_filename(self):return self.project_folder/("mask_labels.json")
+
+    @property
+    def project_folder(self):
+        return self.common_paths["projects_folder"] /self.project_title
+
+    @property
+    def proj_summary(self):
+        if not hasattr(self, "_proj_summary"):
+            try: 
+                self.load_summary()
+
+            except FileNotFoundError:
+                self._proj_summary = self.create_summary_dict()
+        if not hasattr(self._proj_summary,"label_priority"):
+            try: self.label_dict
+            except: pass
+        return self._proj_summary
 
     @property
     def common_paths(self):
@@ -323,12 +350,13 @@ def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_
 # %%
 if __name__ == "__main__":
     P = Project(project_title="lits")
-    # P.create_project()
+    P = Project(project_title="lits_dummy")
+    P.create_project()
     pj = P.proj_summary
     pp(pj)
     P.save_summary()
 # %%
-    P.set_raw_data_sources(["/s/datasets/lits_segs_improved/","/s/datasets/drli/sitk_full_masks/"])
+    P.set_raw_data_sources(["/media/ub/datasets_bkp/lits_short_curate/"])
     P.populate_raw_data_folder()
     P.raw_data_imgs
     P.create_train_valid_folds()
@@ -336,6 +364,7 @@ if __name__ == "__main__":
     P.load_summary()
     pj = P.proj_summary
     pp(pj)
+    len(P)
     P.save_summary()
 # %%
 

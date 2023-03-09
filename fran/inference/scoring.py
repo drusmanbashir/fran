@@ -33,11 +33,9 @@ def img_shape(x:torch.Tensor):
    return x.shape
 
 
-def compute_dice_fran(mask,pred,n_classes):
-    mask_pt = ToTensor.encodes(mask)
-    pred_pt = ToTensor.encodes(pred)
-    pred_onehot = one_hot(pred_pt,classes=n_classes,axis=0)
-    pred_onehot = pred_onehot.unsqueeze(0)
+def compute_dice_fran(pred,mask,n_classes):
+    mask_pt = ToTensorF.encodes(mask)
+    pred_pt = ToTensorF.encodes(pred)
     pred_onehot,mask_onehot = [one_hot(x,classes=n_classes,axis=0).unsqueeze(0) for x in [pred_pt,mask_pt]]
     aa = compute_dice(pred_onehot,mask_onehot,include_background=False)
     return aa
@@ -59,17 +57,17 @@ if __name__ == "__main__":
     # %%
     mask_files = list((proj_defaults.raw_data_folder/("masks")).glob("*nii*"))
     img_files= list((proj_defaults.raw_data_folder/("images")).glob("*nii*"))
-    masks_valid = [filename for filename in mask_files if  get_case_id_from_filename(proj_defaults.project_title, filename) in valid_list]
-    masks_train = [filename for filename in mask_files if  get_case_id_from_filename(proj_defaults.project_title, filename) in train_list]
+    masks_valid = [filename for filename in mask_files if  get_case_id_from_filename(None, filename) in valid_list]
+    masks_train = [filename for filename in mask_files if  get_case_id_from_filename(None, filename) in train_list]
     imgs_valid =  [proj_defaults.raw_data_folder/"images"/mask_file.name for mask_file in masks_valid]
-    imgs_test =  [filename for filename in img_files if  get_case_id_from_filename(proj_defaults.project_title, filename) in test_list]
-    imgs_train =  [filename for filename in img_files if  get_case_id_from_filename(proj_defaults.project_title, filename) in train_list]
+    imgs_test =  [filename for filename in img_files if  get_case_id_from_filename(None, filename) in test_list]
+    imgs_train =  [filename for filename in img_files if  get_case_id_from_filename(None, filename) in train_list]
     # %%
     run_name = "LITS-122"
     preds_folder = list(proj_defaults.predictions_folder.glob(f"*{run_name}"))[0]
     pred_fns = list(preds_folder.glob("*"))
     pred_fn = pred_fns[0]
-    case_id = get_case_id_from_filename('lits',pred_fn)
+    case_id = get_case_id_from_filename(None,pred_fn)
 # %%
     
     mask_fn = [fn for fn in masks_train if 'lits-128' in str(fn)][0]

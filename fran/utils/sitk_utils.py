@@ -27,7 +27,7 @@ class SITKImageMaskFixer():
         self.essential_sitk_props()
         self.verify_img_mask_match()
         if self.match_string!="Match" and fix==True: 
-            self.mask = align_mask_to_img(self.img,self.mask)
+            self.mask = align_sitk_imgs(self.img,self.mask)
             self.match_string="Repaired"
             self.to_DICOM_orientation()
         self.save_altered_sitk(outname)
@@ -83,10 +83,10 @@ class SITKImageMaskFixer():
         return [self.match_string]+[self.img_fn,self.mask_fn]+self.pairs
 
 def align_sitk_imgs(img,img_template):
-                    img_template.SetSpacing(img.GetSpacing())
-                    img_template.SetOrigin(img.GetOrigin())
-                    img_template.SetDirection(img.GetDirection())
-                    return img_template
+                    img.SetSpacing(img_template.GetSpacing())
+                    img.SetOrigin(img_template.GetOrigin())
+                    img.SetDirection(img_template.GetDirection())
+                    return img
 
 
 def create_sitk_as(img:sitk.Image,arr:Union[np.array,Tensor]=None)->sitk.Image:

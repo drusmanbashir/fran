@@ -1,5 +1,6 @@
 
 # %%
+from skimage.transform import resize
 from typing import Union
 from fastai.vision.augment import typedispatch
 import numpy as np
@@ -9,14 +10,14 @@ import ipdb
 
 from fran.transforms.basetransforms import KeepBBoxTransform
 
-from fran.inference.helpers import get_amount_to_pad
+from fran.inference.helpers import get_amount_to_pad, get_scale_factor_from_spacings, rescale_bbox
 tr = ipdb.set_trace
 
 import torch
 from torch.nn import functional as F
 from fastcore.basics import store_attr
 from fastcore.transform import ItemTransform, Transform
-from fran.inference.inference_base import get_scale_factor_from_spacings, rescale_bbox
+# from fran.inference.inference_base import get_scale_factor_from_spacings, rescale_bbox
 from fran.transforms.spatialtransforms import slices_from_lists
 
 from fran.utils.helpers import multiply_lists
@@ -143,7 +144,7 @@ class BacksampleMask(Transform):
                 return x
 
 class ResampleToStage0(ItemTransform):
-    # resize entire image to patch_size
+    # Applies resample_spacing used to obtain training dataset corresponding to this model
     def __init__(self, img_sitk, resample_spacing,mode='trilinear'):
         store_attr()
 
@@ -160,6 +161,8 @@ class ResampleToStage0(ItemTransform):
 
         img = _resize_tensor(img,self.sz_dest,self.mode)
         return img,bboxes_out
+    def decodes(self,x):
+        return _resize_tensor(x,self.sz_source,mode='trilinear')
 
 class Resize(KeepBBoxTransform):
     '''
@@ -192,6 +195,7 @@ def _resize_tensor(img,target_size,mode):
         for times in range(unsqueeze_times):img= img.unsqueeze(0)
         img = F.interpolate(img,target_size,mode=mode)
         for times in range(unsqueeze_times): img= img.squeeze(0)
+        return img
 
 class ApplyBBox(ItemTransform):
     '''
@@ -280,21 +284,21 @@ def encodes(self,img:Union[Tensor,np.ndarray]):
     # a = T([x,[bb]])
     # b = T.decodes(a)
 # %%
-class Resample(Transform):
-    def __init__(self,org_size,org_spacing,dest_spacing,order=None):
-        self.sz_dest, self.scale_factor = get_scale_factor_from_spacings(org_size,org_spacing,dest_spacing)
-        store_attr()
-
-    def encodes(self,x):
-            x =  resize(x, self.sz_dest,order=self.order)
-            return x
-
-    def decodes(self,x):
-        x = x.unsqueeze(0).unsqueeze(0)
-        x = F.interpolate(input= x,size=self.org_size)
-        x = x.squeeze(0).squeeze(0)
-        return x
-
+# class Resample(Transform):
+#     def __init__(self,org_size,org_spacing,dest_spacing,order=None):
+#         self.sz_dest, self.scale_factor = get_scale_factor_from_spacings(org_size,org_spacing,dest_spacing)
+#         store_attr()
+#
+#     def encodes(self,x):
+#             x =  resize(x, self.sz_dest,order=self.order)
+#             return x
+#
+#     def decodes(self,x):
+#         x = x.unsqueeze(0).unsqueeze(0)
+#         x = F.interpolate(input= x,size=self.org_size)
+#         x = x.squeeze(0).squeeze(0)
+#         return x
+#
 class Stride(Transform):
     def __init__(self,stride=[1,1,1]):
         store_attr()

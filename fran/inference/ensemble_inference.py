@@ -23,7 +23,6 @@ if __name__ == "__main__":
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
 
     configs_excel = ConfigMaker(proj_defaults.configuration_filename,raytune=False).config
-# %%
     train_list, valid_list, test_list = get_fold_case_ids(
             fold=configs_excel['metadata']["fold"],
             json_fname=proj_defaults.validation_folds_filename,
@@ -39,7 +38,7 @@ if __name__ == "__main__":
 
 # %%
     mo_df = pd.read_csv(Path("/media/ub/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
-    n= 0
+    n= 1
     img_fn =Path(mo_df.image_filenames[n])
     mask_fn =Path(mo_df.mask_filenames[n] )
 # %%
@@ -59,7 +58,7 @@ if __name__ == "__main__":
 # %%
     E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device,save_localiser=True)
     E.get_localiser_bbox(img_fn)
-    E.bboxes = w.bboxes
+    bboxes = E.bboxes
     E.run_patch_prediction(img_fn)
     bboxes = w.get_bbox_from_pred()
     w = E.predictor_w
@@ -85,7 +84,8 @@ if __name__ == "__main__":
     img = w.img_np_orgres.copy()
     img = img.transpose(2,0,1)
     ImageMaskViewer([x[0][bboxes[0]],w.pred[0]],data_types=['mask','mask'])
-    ImageMaskViewer([img,x[0]])
+    ImageMaskViewer([w.pred[0],w.pred[1]],data_types=['mask','mask'])
+    ImageMaskViewer([img,w.pred[1]])
 # %%
     a= E.load_model_neptune(Nep,runs_ensemble[0],device=device) 
 # %%

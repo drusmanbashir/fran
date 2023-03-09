@@ -71,6 +71,8 @@ def encodes(self,x:sitk.Image):
 def encodes(self,x:Union[Path,str]): 
    x_sitk = sitk.ReadImage(x)
    x_np = sitk.GetArrayFromImage(x_sitk)
+   if x_np.dtype == np.uint16:
+        x_np = x_np.astype(np.uint8)
    x_pt = torch.from_numpy(x_np)
    return x_pt
 

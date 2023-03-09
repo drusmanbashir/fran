@@ -74,7 +74,8 @@ if __name__ == "__main__":
     parser.add_argument("-t", help="project title")
     parser.add_argument("-l", help="localiser run-name")
     parser.add_argument("-p", help="patch-predictor run-name")
-    parser.add_argument("-i","--images-folder" , help="folder containing files on which to run inference")
+    parser.add_argument("-i","--images-folder" , help="folder containing files on which to run inference",required=True)
+    parser.add_argument("-m","--masks-folder" , help="folder containing files on which to run inference")
     parser.add_argument("-o","--overwrite" , action='store_true')
     parser.add_argument("--no-neptune",action ='store_true')
 

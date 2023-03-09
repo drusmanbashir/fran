@@ -21,16 +21,8 @@ from fran.managers.base import load_checkpoint
 import os
 
 from fran.transforms.totensor import ToTensorI
-# %%
 
-if 'get_ipython' in globals():
-
-    from IPython import get_ipython
-    ipython = get_ipython()
-    # ipython.run_line_magic('load_ext', 'autoreload')
-    # ipython.run_line_magic('autoreload', '2') 
-    ipython.run_line_magic("load_ext","autoreload")
-    ipython.run_line_magic("autoreload",2)
+from fran.utils.sitk_utils import align_sitk_imgs
 import sys
 
 from fran.inference.helpers import *
@@ -40,7 +32,6 @@ from fran.managers.tune import ModelFromTuneTrial
 from fran.transforms.inferencetransforms import *
 from fastcore.transform import NoneType, Transform
 from fran.utils.imageviewers import *
-from skimage.transform import resize
 
 # %%
 from fran.inference.helpers import get_sitk_target_size_from_spacings
@@ -61,21 +52,48 @@ import cc3d
 #
 import ast
 
-class ArrayToSITK(Transform):
+class ArrayToSITKF(Transform):
+
     def __init__(self,img_sitk): store_attr()
-    def encodes(self,pred_pt):
-            pred = sitk.GetImageFromArray(pred_pt)
-            pred.SetOrigin(self.img_sitk.GetOrigin())
-            pred.SetSpacing(self.img_sitk.GetSpacing())
-            return pred
+    def encodes(self,pred_pt)->list:
+            assert pred_pt.ndim==4, "This requires 4d array, NxDxWxH"
+            preds_out = []
+            for pred in pred_pt: 
+                pred_ = sitk.GetImageFromArray(pred)
+                pred_ = align_sitk_imgs(pred_,self.img_sitk)
+                preds_out.append(pred_)
+            return preds_out
+
+class ArrayToSITKI(Transform):
+
+    def __init__(self,img_sitk): store_attr()
+    def encodes(self,pred):
+                assert all([pred.ndim==3,'int' in str(pred.dtype)]), "This requires 3d int array, DxWxH"
+                pred_ = sitk.GetImageFromArray(pred)
+                pred_ = align_sitk_imgs(pred_,self.img_sitk)
+                return pred_
 
 def get_k_organs(mask_labels):
             k_components = [tissue['k_largest'] for tissue in mask_labels if tissue['label']==1][0]
             return k_components
 
 
+class FillBBoxPatches(ItemTransform):
+        '''
+        Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
+        '''
+        def __init__(self,img_size,out_channels): self.output_img= torch.zeros(out_channels,*img_size)
+        def decodes(self,x):
+            patches,bboxes = x
+            for bbox,pred_patch in zip(bboxes,patches):
+                for n in range(self.output_img.shape[0]):
+                    self.output_img[n][bbox]=pred_patch[n]
+            return self.output_img
+
+
 class PatchPredictor(object):
-    def __init__(self, proj_defaults,resample_spacings,  patch_size: list = [128,128,128] ,patch_overlap:Union[list,float,int]=0.5, grid_mode="crop",expand_bbox=0.1,k_components=None, batch_size=8,stride=None,device=None,softmax=True,dusting_threshold=10):
+    def __init__(self, proj_defaults,out_channels, resample_spacings,  patch_size: list = [128,128,128] ,patch_overlap:Union[list,float,int]=0.5, grid_mode="crop",expand_bbox=0.1,k_components=None, 
+                     batch_size=8,stride=None,device=None,softmax=True,dusting_threshold=10):
 
         '''
         params:
@@ -93,9 +111,9 @@ class PatchPredictor(object):
         if len(patch_size)==2: #2d patch size
             patch_size = [1]+patch_size
         if isinstance(patch_overlap,float):
-            patch_overlap = [int(x*patch_overlap) for x in patch_size]
+            self.patch_overlap = [int(x*patch_overlap) for x in patch_size]
         elif isinstance(patch_overlap,int):
-            patch_overlap = [patch_overlap]*3
+            self.patch_overlap = [patch_overlap]*3
         self.global_properties = load_dict(global_properties_fname)
         if device is None:
             self.device = get_available_device()
@@ -116,8 +134,8 @@ class PatchPredictor(object):
 
         assert hasattr(self,'img_np_orgres'), "run load_case first."
         self.create_encode_pipeline()
+        self.create_dl_tio() 
         self.create_decode_pipeline()
-        self.create_dl_tio()
         self.make_prediction()
         self.post_process()
 
@@ -147,20 +165,10 @@ class PatchPredictor(object):
         pred_orgres= BM(pred_neo)
         self.pred= pred_orgres.permute(2,1,0)
 
-
-    class FillBBoxPatches(ItemTransform):
-        '''
-        Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
-        '''
-        def __init__(self,img_size,out_channels): self.output_img= torch.zeros(out_channels,*img_size)
-        def encodes(self,patches,bboxes):
-            for bbox,pred_patch in zip(bboxes,patches):
-                for n in range(self.template.shape[0]):
-                    self.template[n,bbox]=pred_patch[0]
-            return self.output_img
-
-
-    def create_decode_pipeline(self):pass
+    def create_decode_pipeline(self):
+        F = FillBBoxPatches(self.img_transformed.shape,self.out_channels)
+        self.decode_pipeline = Pipeline([*self.encode_pipeline[2:4],F]) # i.e., TransposeSITK, ResampleToStage0
+    
 
     def create_dl_tio(self):
             self.img_transformed , self.bboxes_transformed= self.encode_pipeline([self.img_np_orgres, self.bboxes])
@@ -210,28 +218,25 @@ class PatchPredictor(object):
             # self.patches_to_orgres()
 
 
-    def post_process(self,save=True):
-        self.retain_k_largest_components() # time consuming function
+    def post_process(self,save=True,retain_k_label=2): # which label should have k-largest components retains
+        self.pred= self.decode_pipeline.decode([self.pred_patches,self.bboxes_transformed])
+        self.retain_k_largest_components(retain_k_label) # time consuming function
         if save==True:
             self.save_prediction()
 
 
 
-    def save_prediction(self):
+    def save_prediction(self,ext=".nii.gz"):
         maybe_makedirs(self._output_image_folder)
-        self.pred_fn=str(self._output_image_folder/(self.case_id+".nii.gz"))
-        print("Saving prediction. File name : {}".format(self.pred_fn))
-        sitk.WriteImage(self.pred_sitk,self.pred_fn)
+        counts = ["","_1","_2","_3","_4"][:len([self.pred_sitk_i,*self.pred_sitk_f])]
+        self.pred_fns= [self._output_image_folder/(self.img_filename.name.split(".")[0]+c+ext) for c in counts]
+        print("Saving prediction. File name : {}".format(self.pred_fns))
+        for pred_sitk,fn in zip([self.pred_sitk_i]+self.pred_sitk_f,self.pred_fns):
+            sitk.WriteImage(pred_sitk,fn)
 
     def score_prediction(self,mask_filename,n_classes):
-        if self.gt_fn is None: self.gt_fn = mask_filename
-        if self.gt_fn is not None:
-            self.gt_fn=str(self.gt_fn)
-        else:
-            raise TypeError
         mask_sitk = sitk.ReadImage(mask_filename)
-        # self.scores = compute_metrics_for_case(self.pred_fn,self.gt_fn)
-        self.scores = compute_dice_fran(mask_sitk,self.pred_sitk,n_classes)
+        self.scores = compute_dice_fran(self.pred_int,mask_sitk,n_classes)
 
 
 
@@ -265,11 +270,11 @@ class PatchPredictor(object):
         torch.cuda.empty_cache()
         return  self.img_np_orgres, self.image_np, self.backsampled_pred
        
-    def retain_k_largest_components(self,axis:int):
-        pred_tmp_binary = np.array(self.pred_int[0],dtype=np.uint8)
-        if axis==1:
+    def retain_k_largest_components(self,label:int):
+        pred_tmp_binary = np.array(self.pred_int,dtype=np.uint8)
+        if label==1:
             pred_tmp_binary [pred_tmp_binary >1]= 1
-        if axis==2:
+        if label==2:
             pred_tmp_binary [pred_tmp_binary <2]= 0
             pred_tmp_binary [pred_tmp_binary <1]= 1
         pred_tmp_binary= cc3d.dust(pred_tmp_binary,threshold=self.dusting_threshold,connectivity=26,in_place=True)
@@ -313,21 +318,29 @@ class PatchPredictor(object):
         assert isinstance(axis,int),"Provide axis / label index which should serve as the foreground of bbox"
         attr_name = "_".join(["dusted_stencil",str(axis)])
         if not hasattr(self,attr_name):
-            dusted = self.retain_k_largest_components(axis=axis)
+            dusted = self.retain_k_largest_components(label=axis)
 
             setattr(self,attr_name,dusted)
         return getattr(self,attr_name)
 
 
     @property 
-    def pred_sitk(self):
-        if not hasattr(self,"_pred_sitk"):
-            self._pred_sitk = ArrayToSITK(self.img_sitk).encodes(self.pred_patches[0])
-        return self._pred_sitk
+    def pred_sitk_f(self): # list of sitk images len =  out_channels
+        if not hasattr(self,"_pred_sitk_f"):
+            self._pred_sitk_f = ArrayToSITKF(self.img_sitk).encodes(self.pred)
+        return self._pred_sitk_f[1:] #' first channel is only bg'
+
+    @property 
+    def pred_sitk_i(self): # list of sitk images len =  out_channels
+        if not hasattr(self,"_pred_sitk_i"):
+            self._pred_sitk_i = ArrayToSITKI(self.img_sitk).encodes(self.pred_int)
+        return self._pred_sitk_i
+
     @property
     def pred_int(self):
         if not hasattr(self,"_pred_int"):
-            self._pred_int= torch.argmax(self.pred, 0, keepdim=True)
+            self._pred_int= torch.argmax(self.pred, 0, keepdim=False)
+            self._pred_int=self._pred_int.to(torch.uint8)
         return self._pred_int
     @property
     def output_image_folder(self):
@@ -350,14 +363,7 @@ class PatchPredictor(object):
         return self.case['image']['data']
 
 
-    @property
-    def pred_fn(self):
-        return self._pred_fn
-
-    @pred_fn.setter
-    def pred_fn(self, value):
-        self._pred_fn= value
-
+                       
 class WholeImageBBoxes(ApplyBBox):
         def __init__(self, patch_size):
             bboxes=[tuple([slice(0,p) for p in patch_size])]
@@ -370,14 +376,14 @@ class WholeImageBBoxes(ApplyBBox):
         def decodes(self,x) : return x # no processing to do
         
 
-
-                       
-# %%
-
+class Unlist(Transform):  
+    def decodes(self,x:list): 
+        assert len(x)==1, "Only for lists len=1"
+        return x[0]
 
 class WholeImagePredictor(PatchPredictor):
-    def __init__(self, proj_defaults, resample_spacings,  patch_size: list = [128,128,128], device=None,**kwargs):
-        super().__init__(proj_defaults,resample_spacings,patch_size,patch_overlap=0,batch_size=1,device=device,**kwargs)
+    def __init__(self, proj_defaults, out_channels,resample_spacings,  patch_size: list = [128,128,128], device=None,**kwargs):
+        super().__init__(proj_defaults,out_channels,resample_spacings,patch_size,patch_overlap=0,batch_size=1,device=device,**kwargs)
  
     def create_encode_pipeline(self):
             To= ToTensorI()
@@ -391,10 +397,11 @@ class WholeImagePredictor(PatchPredictor):
             self.encode_pipeline = Pipeline([To,Ch,T,Rz,P,W,C])
 
     def create_decode_pipeline(self): 
-            self.decode_pipeline = Pipeline(self.encode_pipeline[2:4])
+            U = Unlist()
+            self.decode_pipeline = Pipeline([*self.encode_pipeline[2:4],U])
 
     def post_process(self):
-        self.pred= self.decode_pipeline.decode(*self.pred_patches)
+        self.pred= self.decode_pipeline.decode(self.pred_patches)
 
 
 class EndToEndPredictor(object):
@@ -402,8 +409,8 @@ class EndToEndPredictor(object):
         print("Loading model checkpoints for whole image predictor")
         if use_neptune==True:
             Nep = NeptuneManager(proj_defaults)
-            model_w, patch_size_w,resample_spacings_w,_= self.load_model_neptune(Nep,run_name_w,device=device)
-            model_p, patch_size_p, resample_spacings_p,self.n_classes= self.load_model_neptune(Nep,run_name_p,device=device)
+            model_w, patch_size_w,resample_spacings_w,out_channels_w= self.load_model_neptune(Nep,run_name_w,device=device)
+            model_p, patch_size_p, resample_spacings_p,out_channels_p= self.load_model_neptune(Nep,run_name_p,device=device)
         else:
             print("Not fully implemented")
             P = ModelFromTuneTrial(proj_defaults, trial_name=run_name_w,out_channels= 2)
@@ -411,16 +418,17 @@ class EndToEndPredictor(object):
             patch_size_w= make_patch_size(P.params_dict['dataset_params']['patch_dim0'], P.params_dict['dataset_params']['patch_dim1'])
 
 
-        self.predictor_w = WholeImagePredictor(proj_defaults=proj_defaults,resample_spacings=resample_spacings_w, patch_size=patch_size_w,device=device)
+        self.predictor_w = WholeImagePredictor(proj_defaults=proj_defaults,out_channels= out_channels_w,resample_spacings=resample_spacings_w, patch_size=patch_size_w,device=device)
         self.predictor_w.load_model(model_w,model_id=run_name_w)
         self.save_localiser = save_localiser
         print("\nLoading model checkpoints for patch-based predictor")
 
 
         patch_overlap = [int(x*patch_overlap) for x in patch_size_p]
-        self.predictor_p= PatchPredictor(proj_defaults=proj_defaults, resample_spacings=resample_spacings_p,patch_size=patch_size_p,patch_overlap=patch_overlap, 
+        self.predictor_p= PatchPredictor(proj_defaults=proj_defaults, out_channels= out_channels_p,resample_spacings=resample_spacings_p,patch_size=patch_size_p,patch_overlap=patch_overlap, 
                                             stride = [1,1,1], batch_size=4,device=device)
         self.predictor_p.load_model(model_p,model_id=run_name_p)
+        self.n_classes=out_channels_p
 
         print("---- You can set alternative save folders by setting properties: output_localiser_folder and output_image_folder for localiser and final predictions respectively.----")
 
@@ -458,7 +466,7 @@ class EndToEndPredictor(object):
 
     def run_patch_prediction(self,img_fn):
         self.predictor_p.load_case(img_filename=img_fn,bboxes=self.bboxes)
-        self.predictor_p.make_prediction()
+        self.predictor_p.run()
 
 
     @property
@@ -502,7 +510,7 @@ class EndToEndPredictor(object):
     def pred(self): return self.predictor_p.pred
 
     @property
-    def pred_sitk(self): return self.predictor_p.pred_sitk
+    def pred_sitk(self): return self.predictor_p.pred_sitk_i
 
 class SubsampleInferenceVersion(Transform):  # TRAINING TRANSFORM
     # Use for any number of dims as long as sample factor matches
@@ -536,12 +544,10 @@ def create_prediction_from_imagefilename(proj_defaults,predictor, filename_nii,s
        predictor.create_binary_pred(save=save)
 
 # %%
-# gui2([input_tensor[0].cpu().detach().numpy(),output_tensor[0].cpu().numpy()],shared_slider=True)
 if __name__ =="__main__":
-
+    from fran.utils.common import *
     common_paths_filename=os.environ['FRAN_COMMON_PATHS']
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
-# %%
 
     mo_df = pd.read_csv(Path("/media/ub/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
     n= 0
@@ -550,19 +556,40 @@ if __name__ =="__main__":
     patch_size = [160,160,160]
     resample_spacings = [1,1,2]
     run_name_w= "LITS-118" # best trial
+    runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
+    run_name_p = runs_ensemble[0]
+    device='cuda'
 # %%
+
+    E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device,save_localiser=True)
+    
+    bboxes = [(slice(229, 343, None), slice(182, 381, None), slice(77, 322, None))]
+    P = PatchPredictor(proj_defaults,3,resample_spacings,patch_size,device=device)
+    P.load_model(E.predictor_p.model,run_name_p)
+    P.load_case(img_fn,bboxes=bboxes)
+    P.run()
+# %%
+    score = P.score_prediction(img_fn,3)
+# %%
+    ImageMaskViewer([P.img_np_orgres,pred])
+# %%
+
     w = WholeImagePredictor(proj_defaults,resample_spacings,patch_size,'cuda')
     w.load_model()
     w.load_case(img_fn)
     w.run()
 # %%
-    P = E.predictor_p
-    P.run
-# %%
     sl = [w.img_np_orgres,w.bboxes]
     a = w.encode_pipeline[0].encodes(sl)
+    a = w.encode_pipeline[1].encodes(a)
+    a = w.encode_pipeline[2].encodes(a)
+    a = w.encode_pipeline[3].encodes(a)
 
 
+    Rz = Resize(w.patch_size)
+# %%
+    P.img_np_orgres.shape
+    P.img_transformed.shape
 
 # %%
 
