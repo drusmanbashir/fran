@@ -362,11 +362,6 @@ class EndToEndPredictor(object):
             Nep = NeptuneManager(proj_defaults)
             model_w, patch_size_w,resample_spacings_w,out_channels_w= self.load_model_neptune(Nep,run_name_w,device=device)
             model_p, patch_size_p, resample_spacings_p,out_channels_p= self.load_model_neptune(Nep,run_name_p,device=device)
-        else:
-            print("Not fully implemented")
-            P = ModelFromTuneTrial(proj_defaults, trial_name=run_name_w,out_channels= 2)
-            model_w = P.model
-            patch_size_w= make_patch_size(P.params_dict['dataset_params']['patch_dim0'], P.params_dict['dataset_params']['patch_dim1'])
 
 
         self.predictor_w = WholeImagePredictor(proj_defaults=proj_defaults,out_channels= out_channels_w,resample_spacings=resample_spacings_w, patch_size=patch_size_w,device=device)

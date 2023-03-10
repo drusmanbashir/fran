@@ -292,8 +292,8 @@ class PadDeficitImgMask(KeepBBoxTransform):
 
     def func(self, x):
         pad_deficits = []
-        if any(self.patch_size - x.shape[-self.last_dims:]):
-            difference = np.maximum(0, self.patch_size - x.shape[-self.last_dims:])
+        if any(self.patch_size - x[0].shape[-self.last_dims:]):
+            difference = np.maximum(0, self.patch_size - x[0].shape[-self.last_dims:])
             for diff in difference:
                 pad_deficits += [math.ceil(diff / 2), math.floor(diff / 2)]
             pad_deficits = pad_deficits[-1::-1]  # torch expects flipped backward

@@ -123,7 +123,7 @@ class BBoxesFromMask(object):
             self.label_settings = proj_defaults.mask_labels
         self.dusting_threshold_factor = dusting_threshold_factor  # a multiplier when processing subsampled datasets having proportionately fewer voxels for dusting
 
-        case_id = get_case_id_from_filename(self.proj_defaults.project_title, filename)
+        case_id = get_case_id_from_filename(None, filename)
         self._bboxes_info = {
             "case_id": case_id,
             "filename": filename,

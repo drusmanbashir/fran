@@ -327,7 +327,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "lits"
+    # args.project_title = "lits"
     # args.num_processes = 16
     # args.debug = True
     # args.overwrite=True
@@ -353,6 +353,13 @@ if __name__ == "__main__":
 
 
 
+
+            I.Resampler = ResampleDatasetNiftyToTorch(
+                I.proj_defaults,
+                minimum_final_spacing=0.5,
+                enforce_isotropy=I.enforce_entropy,
+                half_precision=I.half_precision
+            )
 
 
 

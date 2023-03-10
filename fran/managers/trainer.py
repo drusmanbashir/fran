@@ -475,7 +475,7 @@ if __name__ == "__main__":
 #     )
 #     #
 # # %%
-#     learn = La.create_learner(cbs=[], device=device)
+#     learn = La.create_learner(gbs=[], device=device)
 # #     # learn.model = model
 #     learn.fit(n_epoch=500, lr=1e-6)
 # # # %%
@@ -506,12 +506,15 @@ if __name__ == "__main__":
 
     ]
 # %%
+    # cbs =[]
+# %%
 
 
     La = Trainer.fromExcel(
         proj_defaults,
         bs=2
     )
+# %%
     learn = La.create_learner(cbs=cbs, device=1)
     # learn.dls.device=device
 # %%
@@ -521,7 +524,7 @@ if __name__ == "__main__":
     learn.fit(n_epoch=1, lr=La.model_params["lr"])
 # %%
     for i ,batch in enumerate(learn.dls.valid):
-        print(type(batch[-1][0]))
+        print(type(batch[0][0]))
 # %%
 #     a,b = learn.dls.one_batch()
 # # %%
