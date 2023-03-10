@@ -3,7 +3,7 @@ from fastai.vision.augment import store_attr
 import numpy as np
 import ast
 from fran.preprocessing.archived.generic_preprocessors import nii_sitk_to_np
-from fran.transforms.totensor import ToTensorF
+from fran.transforms.totensor import ToTensorT
 from fran.utils.helpers import *
 import h5py
 
@@ -302,7 +302,16 @@ class MultiCaseAnalyzer(object):
         if h5f:
             h5f.close()
 
-    def _compute_dataset_mean(self,num_processes,multiprocess,debug):
+    def user_query_clip_range(self):
+            try:
+                self.clip_range = input("A Clip range has not been given. Press enter to accept clip range based on intensity-percentiles (i.e.{}) or give a new range now: ".format(intensity_percentile_range))
+                if len(self.clip_range) == 0: self.clip_range = intensity_percentile_range
+                else: self.clip_range = ast.literal_eval(self.clip_range) 
+            except:
+                print("A valid clip_range is not entered. Using intensity-default")
+                self.clip_range = intensity_percentile_range
+
+    def compute_dataset_mean(self,num_processes,multiprocess,debug):
         img_fnames = [case_[0] for case_ in self.list_of_raw_cases]
         args = [[fname, self.clip_range] for fname in img_fnames]
 
@@ -322,7 +331,7 @@ class MultiCaseAnalyzer(object):
         self.total_voxels = means_sizes[:, 1].sum()
         self.dataset_mean = weighted_mn.sum() / self.total_voxels
 
-    def _compute_dataset_std(self,num_processes,multiprocess,debug):
+    def compute_dataset_std(self,num_processes,multiprocess,debug):
         img_fnames = [case_[0] for case_ in self.list_of_raw_cases]
         args = [[fname, self.dataset_mean, self.clip_range] for fname in img_fnames]
         print(
@@ -353,16 +362,9 @@ class MultiCaseAnalyzer(object):
             )
 
         percentile_label, intensity_percentile_range=  get_intensity_range(self.global_properties)
-        if not self.clip_range:
-            try:
-                self.clip_range = input("A Clip range has not been given. Press enter to accept clip range based on intensity-percentiles (i.e.{}) or give a new range now: ".format(intensity_percentile_range))
-                if len(self.clip_range) == 0: self.clip_range = intensity_percentile_range
-                else: self.clip_range = ast.literal_eval(self.clip_range) 
-            except:
-                print("A valid clip_range is not entered. Using intensity-default")
-                self.clip_range = intensity_percentile_range
-        self._compute_dataset_mean(num_processes,multiprocess,debug)
-        self._compute_dataset_std(num_processes,multiprocess,debug)
+        if not self.clip_range: self.user_query_clip_range()
+        self.compute_dataset_mean(num_processes,multiprocess,debug)
+        self.compute_dataset_std(num_processes,multiprocess,debug)
         self.global_properties['intensity_clip_range']= self.clip_range
         self.global_properties[percentile_label]= intensity_percentile_range
         self.global_properties["mean_dataset_clipped"] = self.dataset_mean.item()
@@ -422,7 +424,7 @@ def percentile_range_to_str(percentile_range):
 
 
 def get_std_numerator(img_fname, dataset_mean, clip_range=None):
-    img = ToTensorF()(img_fname)
+    img = ToTensorT(torch.float32)(img_fname)
     if clip_range is not None:
         img = torch.clip(img,min=clip_range[0],max=clip_range[1])
     var = (img - dataset_mean) ** 2
@@ -431,7 +433,7 @@ def get_std_numerator(img_fname, dataset_mean, clip_range=None):
 
 
 def get_means_voxelcounts(img_fname, clip_range=None):
-    img = ToTensorF()(img_fname)
+    img = ToTensorT(torch.float32)(img_fname)
     if clip_range is not None:
         img = torch.clip(img,min=clip_range[0],max=clip_range[1])
     return img.mean().item(), img.numel()
@@ -483,7 +485,7 @@ if __name__ == "__main__":
     img_fnames = [case_[0] for case_ in M.list_of_raw_cases]
     img_fname = img_fnames[0]
 # %%
-    img = ToTensorF()(img_fname)
+    img = ToTensorT()(img_fname)
     if clip_range is not None:
         img = torch.clip(img,min=clip_range[0],max=clip_range[1])
     var = (img - dataset_mean) ** 2
@@ -496,7 +498,7 @@ if __name__ == "__main__":
         )
     )
 
-    M.compute_std_mean_dataset()
+    M.compute_std_mean_dataset(debug=True)
 # %% [markdown]
     # # Resample Nifty to Torch
 # %% [markdown]

@@ -65,15 +65,15 @@ def zero_to_one(func):
         return img
     return _inner
 
-class ClipCenter(KeepBBoxTransform):
+class ClipCenter(ItemTransform):
     def __init__(self,clip_range,mean,std):
         store_attr()
-    def func(self,x):
-        img= x
+    def encodes(self,x):
+        img,mask= x
         clip_func = torch.clip if isinstance(img,Tensor) else np.clip # inference uses numpy
         img = clip_func(img,self.clip_range[0],self.clip_range[1])
         img = standardize(img,self.mean,self.std)
-        return img
+        return img,mask
     def decodes (self,x):return x   # clipping cannot be reversed
 
 

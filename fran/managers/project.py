@@ -2,11 +2,9 @@
 from pathlib import Path
 import os, sys
 import itertools as il
-from fran.preprocessing.datasetanalyzers import verify_datasets_integrity
 from fastai.vision.augment import store_attr
 from fran.utils.dictopts import dic_in_list
 from fran.utils.helpers import *
-from scipy.misc import common
 
 from fran.utils.helpers import DictToAttr, LazyDict, ask_proceed
 

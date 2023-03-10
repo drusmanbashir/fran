@@ -18,7 +18,7 @@ from torch.nn import functional as F
 from fastcore.basics import store_attr
 from fastcore.transform import ItemTransform, Transform
 # from fran.inference.inference_base import get_scale_factor_from_spacings, rescale_bbox
-from fran.transforms.spatialtransforms import slices_from_lists
+from fran.transforms.spatialtransforms import MaskLabelRemap, slices_from_lists
 
 from fran.utils.helpers import multiply_lists
 
@@ -41,6 +41,10 @@ class BBoxesToLists(Transform):
         return bboxes_out
 
 class BBoxesToPatchSize(ItemTransform):
+    '''
+    If the BBox is smaller than the patch size, it helps to enlarge it (if BBox is larger, the grid_sampler takes care of it).
+    '''
+    
     def __init__(self, patch_size,sz_dest,expand_bbox):
         store_attr()
     def encodes(self,x):
@@ -328,5 +332,32 @@ class ToTensorBBoxes(ItemTransform):
     def decodes(self,img):
         return img.detach().cpu().numpy()
         
+
+class MaskToBinary(Transform):
+    '''
+    list in merge_labels will merge mentioned labels into the target label
+    '''
+    def __init__(self,label,n_classes,return_type='numpy',merge_labels=[]):
+
+        maps = [[x,0] for x in range(n_classes)]
+        info= [label,1]
+        altered= [[m,1] for m in merge_labels]
+        altered.append(info)
+        self.mapping=[]
+        for m in maps:
+            if not  m[0] in [x[0] for x in altered]:
+                self.mapping.append(m)
+        self.mapping.extend(altered)
+        self.mapping.sort()
+        self.remapper= MaskLabelRemap(self.mapping)
+        self.return_type=return_type
+        
+   
+    
+    def encodes(self,mask):
+        _,mask = self.remapper([None,mask])
+        if self.return_type=='numpy': mask = np.array(mask)
+        return mask
+
 
 

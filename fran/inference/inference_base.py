@@ -118,7 +118,6 @@ class PatchPredictor(object):
         if device is None:
             self.device = get_available_device()
     def load_case(self, img_filename, bboxes=None):
-        self.unload_previous()
         self.img_filename = img_filename
         self.case_id = get_case_id_from_filename(None,self.img_filename) 
         self.img_sitk= sitk.ReadImage(str(self.img_filename))
@@ -182,10 +181,6 @@ class PatchPredictor(object):
                 patch_loader = torch.utils.data.DataLoader(grid_sampler, batch_size=self.batch_size)
                 self.dls.append([patch_loader,aggregator])
 
-    def create_grid_sampler_aggregator(self):
-            self.grid_sampler = tio.GridSampler(subject=self.subject,patch_size=self.patch_size,patch_overlap=self.patch_overlap) 
-            self.aggregator = tio.inference.GridAggregator(self.grid_sampler,overlap_mode=self.grid_mode) 
-            self.patch_loader = torch.utils.data.DataLoader(self.grid_sampler, batch_size=self.batch_size)
 
 
     def load_model(self,model, model_id):
@@ -215,7 +210,6 @@ class PatchPredictor(object):
             if self.softmax == True:
                 output_tensor=F.softmax(output_tensor,dim=0)
             self.pred_patches.append(output_tensor)
-            # self.patches_to_orgres()
 
 
     def post_process(self,save=True,retain_k_label=2): # which label should have k-largest components retains
@@ -237,10 +231,6 @@ class PatchPredictor(object):
     def score_prediction(self,mask_filename,n_classes):
         mask_sitk = sitk.ReadImage(mask_filename)
         self.scores = compute_dice_fran(self.pred_int,mask_sitk,n_classes)
-
-
-
-
         return self.scores
 
     def view_predictions(self, mode:str = "raw",view_channel=1,orientation='A'):
@@ -263,46 +253,16 @@ class PatchPredictor(object):
         ImageMaskViewer([i,j])
             
            
-    def dump(self):
-        # legacy function. destroy after one run of prediction storage
-        print ("Returning img_org , image_np, normalized_np, backsampled_pred(predictions).\nLoad model again after this")
-        del self._model
-        torch.cuda.empty_cache()
-        return  self.img_np_orgres, self.image_np, self.backsampled_pred
+    def unload_case(self):
+        to_delete = ['_pred_int','_pred_sitk_f','_pred_sitk_i']
+        for item in to_delete: delattr(self,item)
        
     def retain_k_largest_components(self,label:int):
-        pred_tmp_binary = np.array(self.pred_int,dtype=np.uint8)
-        if label==1:
-            pred_tmp_binary [pred_tmp_binary >1]= 1
-        if label==2:
-            pred_tmp_binary [pred_tmp_binary <2]= 0
-            pred_tmp_binary [pred_tmp_binary <1]= 1
+        M = MaskToBinary(label,self.out_channels)
+        pred_tmp_binary =  M.encodes(self.pred_int)
         pred_tmp_binary= cc3d.dust(pred_tmp_binary,threshold=self.dusting_threshold,connectivity=26,in_place=True)
         pred_k_largest, N= cc3d.largest_k(pred_tmp_binary,k=self.k_components, return_N=True)
         return pred_k_largest
-
-        
-
-    def save_np_prediction(self,original_res=True, overwrite=False):
-        self.prediction_filename_nonbinary=str(self._output_image_folder/(self.proj_defaults.project_title+"_"+self.case_id+".npy"))
-        pred = self.backsampled_pred if original_res==True else self.mask_cc
-        save_np(pred,self.prediction_filename_nonbinary)
-        return self.prediction_filename_nonbinary
- 
-    def save_binary_prediction(self, prefix=None):
-        if not hasattr(self,"pred_binary"): self.create_binary_pred()
-        if prefix is None: 
-            self.prediction_filename_binary= self._output_image_folder/(self.proj_defaults.project_title+"_"+self.case_id+".nii.gz")
-        save_to_nii(self.pred_binary,self.prediction_filename_binary,verbose=True)
-        return self.prediction_filename_binary
-
-    def unload_previous(self):
-        attributes = ["backsampled_pred", "mask_cc","mask_sitk", "subject"]
-        try:
-            for att in attributes:
-                delattr(self,att)
-        except:
-            pass
 
 
     def get_bbox_from_pred(self):
@@ -351,17 +311,8 @@ class PatchPredictor(object):
         self._output_image_folder =Path(self.proj_defaults.predictions_folder)/folder_name
 
     @property
-    def case(self):
-        return self.subject
-    @property
     def model(self):
         return self._model
-
-
-    @property
-    def image_np(self):
-        return self.case['image']['data']
-
 
                        
 class WholeImageBBoxes(ApplyBBox):
@@ -370,8 +321,8 @@ class WholeImageBBoxes(ApplyBBox):
             super().__init__(bboxes)
 
         def encodes(self, x):
-            img,bboxes = x
-            return img,bboxes
+            img,_= x
+            return img,self.bboxes
 
         def decodes(self,x) : return x # no processing to do
         
@@ -390,11 +341,11 @@ class WholeImagePredictor(PatchPredictor):
             Ch=ChangeDType(torch.float32)
             T = TransposeSITK()
             Rz = Resize(self.patch_size)
-            P  = PadDeficitImgMask(patch_size=self.patch_size,input_dims=3)
+            # P  = PadDeficitImgMask(patch_size=self.patch_size,input_dims=3)
             W = WholeImageBBoxes(self.patch_size)
             C = ClipCenter(clip_range=self.global_properties['intensity_clip_range'],mean=self.global_properties['mean_fg'],
                            std=self.global_properties['std_fg'])
-            self.encode_pipeline = Pipeline([To,Ch,T,Rz,P,W,C])
+            self.encode_pipeline = Pipeline([To,Ch,T,Rz,W,C])
 
     def create_decode_pipeline(self): 
             U = Unlist()
@@ -457,16 +408,18 @@ class EndToEndPredictor(object):
         print("Running predictions. Whole image predictor is on device {0}. Patch-based predictor is on device {1}".format(self.predictor_w.device,self.predictor_p.device))
         self.predictor_w.load_case(img_filename=img_fn)
         self.predictor_w.run()
-        if self.save_localiser==True: self.predictor_w.save_prediction()
         self.bboxes = self.predictor_w.get_bbox_from_pred()
+        if self.save_localiser==True: self.predictor_w.save_prediction()
+    def run_patch_prediction(self,img_fn):
+        self.predictor_p.load_case(img_filename=img_fn,bboxes=self.bboxes)
+        self.predictor_p.run()
+    def unload_case(self):
+        self.predictor_w.unload_case()
+        self.predictor_p.unload_case()
 
     def score_prediction(self,mask_fn):
         self.scores = self.predictor_p.score_prediction(mask_fn,self.n_classes)
 
-
-    def run_patch_prediction(self,img_fn):
-        self.predictor_p.load_case(img_filename=img_fn,bboxes=self.bboxes)
-        self.predictor_p.run()
 
 
     @property
@@ -511,38 +464,6 @@ class EndToEndPredictor(object):
 
     @property
     def pred_sitk(self): return self.predictor_p.pred_sitk_i
-
-class SubsampleInferenceVersion(Transform):  # TRAINING TRANSFORM
-    # Use for any number of dims as long as sample factor matches
-    def __init__(self, sample_factor=[1, 2, 2],dim=3):
-        store_attr()
-    def encodes(self, x):
-        slices = []
-        for dim,stride in zip(x.shape,self.sample_factor):
-            slices.append(slice(0,dim,stride))
-        return x[tuple(slices)]
-    def decodes(self,x):
-        upsample_factor = self.sample_factor[-self.dim:]
-        x = F.interpolate(x,scale_factor=upsample_factor,mode='trilinear')
-        return x
-
-def create_prediction_from_imagefilename(proj_defaults,predictor, filename_nii,save=True):
-       project_title = proj_defaults.project_title
-       mask_= filename_nii
-       
-       if project_title=="kits19":
-           img_=filename_nii.replace(".nii","_0000.nii")
-           proj_defaults=  proj_defaults
-       else:
-           img_= filename_nii
-           proj_defaults=  proj_defaults
-       img_filename = proj_defaults.raw_data_folder/("images"+"/"+img_)
-       mask_filename = proj_defaults.raw_data_folder/("masks"+"/"+mask_)
-       print("Files exist {},{}".format(img_filename.exists(), mask_filename.exists()))
-       predictor.load_case(img_filename,mask_filename=mask_filename)
-       predictor.make_prediction(save=save)
-       predictor.create_binary_pred(save=save)
-
 # %%
 if __name__ =="__main__":
     from fran.utils.common import *
@@ -560,10 +481,15 @@ if __name__ =="__main__":
     run_name_p = runs_ensemble[0]
     device='cuda'
 # %%
-
     E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device,save_localiser=True)
     
-    bboxes = [(slice(229, 343, None), slice(182, 381, None), slice(77, 322, None))]
+# %%
+    run_name_p='LITS-265'
+    bboxes = [(slice(359, 548, None), slice(173, 361, None), slice(111, 277, None))]
+    resample_spacings= [1,1,2]
+    patch_size = [192, 192, 96]
+    img_fn = Path('/media/ub/datasets_bkp/litq/complete_cases/images/litq_0564527_20191116.nii')
+# %%
     P = PatchPredictor(proj_defaults,3,resample_spacings,patch_size,device=device)
     P.load_model(E.predictor_p.model,run_name_p)
     P.load_case(img_fn,bboxes=bboxes)
@@ -571,19 +497,21 @@ if __name__ =="__main__":
 # %%
     score = P.score_prediction(img_fn,3)
 # %%
-    ImageMaskViewer([P.img_np_orgres,pred])
 # %%
-
-    w = WholeImagePredictor(proj_defaults,resample_spacings,patch_size,'cuda')
-    w.load_model()
+    w = E.predictor_w
+    w.img_np_orgres.shape
+    w = WholeImagePredictor(proj_defaults,2,resample_spacings,[160,160,160],'cuda')
+    w.load_model(E.predictor_w.model,'chap')
     w.load_case(img_fn)
     w.run()
 # %%
-    sl = [w.img_np_orgres,w.bboxes]
-    a = w.encode_pipeline[0].encodes(sl)
-    a = w.encode_pipeline[1].encodes(a)
-    a = w.encode_pipeline[2].encodes(a)
-    a = w.encode_pipeline[3].encodes(a)
+    P = E.predictor_p
+    bboxes = E.bboxes
+    sl = [P.img_np_orgres,P.bboxes]
+    a = P.encode_pipeline[0].encodes(sl)
+    a = P.encode_pipeline[1].encodes(a)
+    a = P.encode_pipeline[2].encodes(a)
+    b = P.encode_pipeline[3].encodes(a)
 
 
     Rz = Resize(w.patch_size)

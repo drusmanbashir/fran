@@ -6,7 +6,7 @@ from monai.engines.evaluator import EnsembleEvaluator
 from monai.transforms.post.array import VoteEnsemble
 from fran.utils.common import *
 from fran.inference.inference_raytune_models import ModelFromTuneTrial
-from fran.transforms.totensor import ToTensorF
+from fran.transforms.totensor import ToTensorT
 from fran.transforms.spatialtransforms import *
 from monai.data import GridPatchDataset, PatchIter
 from monai.inferers import SlidingWindowInferer
@@ -57,35 +57,19 @@ if __name__ == "__main__":
 
 # %%
     E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device,save_localiser=True)
-    E.get_localiser_bbox(img_fn)
-    bboxes = E.bboxes
-    E.run_patch_prediction(img_fn)
-    bboxes = w.get_bbox_from_pred()
-    w = E.predictor_w
-    w.decode_pipeline = Pipeline(w.encode_pipeline[:2])
-    y = w.decode_pipeline.decode(w.pred)
-    y = w.run()
-    d = [x for x in w.encode_pipeline][::-1]
 # %%
-    ImageMaskViewer([w.img_np_orgres[bboxes[0]],w.img_np_orgres[bboxes[0]]])
-# %%
-    x = w.pred.clone()
-    for dec in d[:-2]:
-        x = dec.decodes(x)
+
+    for img_fn in mo_df.image_filenames[5:]:
+        img_fn = Path(img_fn)
+        E.get_localiser_bbox(img_fn)
+        E.run_patch_prediction(img_fn)
+        E.unload_case()
+
 
 # %%
-    dec = d[-2]
-    y = dec.decodes(x)
-    y = d[-1].decodes(y)
+    P = E.predictor_p
 # %%
-    x = w.encode_pipeline.decode(w.pred)
-# %%
-    w = E.predictor_w
-    img = w.img_np_orgres.copy()
-    img = img.transpose(2,0,1)
-    ImageMaskViewer([x[0][bboxes[0]],w.pred[0]],data_types=['mask','mask'])
-    ImageMaskViewer([w.pred[0],w.pred[1]],data_types=['mask','mask'])
-    ImageMaskViewer([img,w.pred[1]])
+    ImageMaskViewer([w.img_np_orgres,E.predictor_p.pred_int])
 # %%
     a= E.load_model_neptune(Nep,runs_ensemble[0],device=device) 
 # %%

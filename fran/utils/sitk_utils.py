@@ -86,6 +86,7 @@ def align_sitk_imgs(img,img_template):
                     img.SetSpacing(img_template.GetSpacing())
                     img.SetOrigin(img_template.GetOrigin())
                     img.SetDirection(img_template.GetDirection())
+                    img.CopyInformation(img_template)
                     return img
 
 

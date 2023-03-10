@@ -70,6 +70,7 @@ class InteractiveAnalyserResampler:
                 self.proj_defaults,
                 minimum_final_spacing=0.5,
                 enforce_isotropy=self.enforce_entropy,
+                half_precision=self.half_precision
             )
 
 
@@ -316,6 +317,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     parser.add_argument("-c", "--clip-range", nargs=2, help="Give two values - lower and upper limit of clip-range. By default, percentiles will be used")
     parser.add_argument("-po", "--patch-overlap" ,help="Generating patches will overlying by this fraction range [0,.9). Default is 0.25 ", default=0.25, type=float)
+    parser.add_argument("-hp", "--half_precision" ,action="store_true")
     parser.add_argument("-nf", "--no-fix", action="store_false",help="By default if img/mask sitk arrays mismatch in direction, orientation or spacings, FRAN tries to align them. Set this flag to disable")
     parser.add_argument("-d", "--debug", action="store_true")
     parser.add_argument(
@@ -325,7 +327,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "lits"
+    args.project_title = "lits"
     # args.num_processes = 16
     # args.debug = True
     # args.overwrite=True

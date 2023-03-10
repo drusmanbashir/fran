@@ -12,7 +12,7 @@ import operator
 import cc3d
 from fran.utils.imageviewers import ImageMaskViewer
 from fastai.vision.augment import Transform, store_attr, typedispatch
-from fran.transforms.totensor import ToTensorF
+from fran.transforms.totensor import ToTensorT
 from fran.transforms.spatialtransforms import one_hot
 from fran.utils.common import *
 import SimpleITK as sitk
@@ -34,8 +34,8 @@ def img_shape(x:torch.Tensor):
 
 
 def compute_dice_fran(pred,mask,n_classes):
-    mask_pt = ToTensorF.encodes(mask)
-    pred_pt = ToTensorF.encodes(pred)
+    mask_pt = ToTensorT.encodes(mask)
+    pred_pt = ToTensorT.encodes(pred)
     pred_onehot,mask_onehot = [one_hot(x,classes=n_classes,axis=0).unsqueeze(0) for x in [pred_pt,mask_pt]]
     aa = compute_dice(pred_onehot,mask_onehot,include_background=False)
     return aa

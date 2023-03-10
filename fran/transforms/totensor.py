@@ -16,7 +16,8 @@ import ipdb
 tr = ipdb.set_trace
 
 # %%
-class ToTensorF(Transform):
+class ToTensorT(Transform):
+    def __init__(self,encode_dtype=None):store_attr()
     "Convert item to appropriate tensor class"
     order = 0
 
@@ -32,11 +33,11 @@ def dec_wrapper(decode_func):
         return decode_func(cls,x,cls.decode_type)
     return _inner
 
-@ToTensorF
+@ToTensorT
 @enc_wrapper
 def encodes(self,x:Tensor): return x
 
-@ToTensorF
+@ToTensorT
 @enc_wrapper
 def encodes(self,x:np.ndarray): 
     if x.dtype == np.uint16:
@@ -44,42 +45,42 @@ def encodes(self,x:np.ndarray):
     x_pt = torch.tensor(x)
     return x_pt
 
-@ToTensorF
+@ToTensorT
 @dec_wrapper
 def decodes(self,x,decode_type:np.ndarray):
     return np.array(x)
 
-@ToTensorF
+@ToTensorT
 @enc_wrapper
 def encodes(self,x:sitk.Image): 
    x_np = sitk.GetArrayFromImage(x)
-   x_pt = torch.from_numpy(x_np)
+   x_pt = torch.tensor(x_np,dtype=self.encode_dtype)
    return x_pt
 
-@ToTensorF
+@ToTensorT
 @enc_wrapper
 def encodes(self,x:sitk.Image): 
    x_np = sitk.GetArrayFromImage(x)
    if x_np.dtype == np.uint16:
         x_np = x_np.astype(np.uint8)
-   x_pt = torch.from_numpy(x_np)
+   x_pt = torch.tensor(x_np,dtype=self.encode_dtype)
    return x_pt
 
 
-@ToTensorF
+@ToTensorT
 @enc_wrapper
 def encodes(self,x:Union[Path,str]): 
    x_sitk = sitk.ReadImage(x)
    x_np = sitk.GetArrayFromImage(x_sitk)
    if x_np.dtype == np.uint16:
         x_np = x_np.astype(np.uint8)
-   x_pt = torch.from_numpy(x_np)
+   x_pt = torch.tensor(x_np,dtype=self.encode_dtype)
    return x_pt
 
 # %%
 if __name__ == "__main__":
    x = np.random.rand(10,10)
-   T = ToTensorF()
+   T = ToTensorT()
    print(type(T.encodes(x)))
 
 # %%
