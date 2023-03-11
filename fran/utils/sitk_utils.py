@@ -1,5 +1,6 @@
 from pathlib import Path
 import ast
+from SimpleITK.SimpleITK import TransformGeometry
 from fastai.callback.tracker import Union
 from fastcore.basics import store_attr
 import numpy as np
@@ -11,18 +12,42 @@ import SimpleITK as sitk
 from fran.utils.helpers import abs_list
 import ipdb
 tr = ipdb.set_trace
+from fastcore.transform import Transform, ItemTransform
 import itertools
 
-# %%
 
+# %%
+class ReadSITK(Transform):
+    def encodes(self,x): return sitk.ReadImage(x)
+
+class ReadSITKImgMask(ItemTransform):
+    '''
+    Applied to tuple(img, mask)
+    '''
+    
+    def encodes(self,x):
+        return list(map(sitk.ReadImage, x))
+
+
+class SITKDICOMOrient(Transform):    
+    '''
+    Re-orients SITK Images to DICOM. Allows all other datatypes to pass
+    '''
+
+    def __init__(self):
+        self.dicom_orientation =  (1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0)
+    def encodes(self,x:sitk.Image):
+            if isinstance(x,sitk.Image):
+                if x.GetDirection!=self.dicom_orientation:
+                    x = sitk.DICOMOrient(x,"LPS")
+            return x
 
 class SITKImageMaskFixer():
     @str_to_path([1,2])
     def __init__(self,img_fn, mask_fn): 
         store_attr()
         self.img,self.mask = map(sitk.ReadImage,[img_fn,mask_fn])
-        self.dicom_orientation = [1,0,0,0,1,0,0,0,1]
-        self.dicom_indices = [0,4,8]
+        self.dicom_orientation =  (1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0)
     def process(self,fix=True,outname=None):
         self.essential_sitk_props()
         self.verify_img_mask_match()
@@ -50,9 +75,8 @@ class SITKImageMaskFixer():
 
     def to_DICOM_orientation(self):
         direction = np.array(abs_list(ast.literal_eval(self.pairs[0][0])))
-        inds = np.where(direction==1)[0]
         try:
-            test_eq(inds,self.dicom_indices)
+            test_eq(direction,self.dicom_orientation)
         except: 
             print(f"Changing img/mask orientation from {direction} to {np.eye(3)}")
             self.img, self.mask = map(
@@ -82,11 +106,15 @@ class SITKImageMaskFixer():
     def log(self):
         return [self.match_string]+[self.img_fn,self.mask_fn]+self.pairs
 
+def set_sitk_props(img:sitk.Image,sitk_props:Union[list,tuple])->sitk.Image:
+        origin,spacing,direction = sitk_props
+        img.SetOrigin(origin)
+        img.SetSpacing(spacing)
+        img.SetDirection(direction)
+        return img
 def align_sitk_imgs(img,img_template):
-                    img.SetSpacing(img_template.GetSpacing())
-                    img.SetOrigin(img_template.GetOrigin())
-                    img.SetDirection(img_template.GetDirection())
-                    img.CopyInformation(img_template)
+                    img = set_sitk_props([img_template.GetOrigin(),img_template.GetSpacing(),img_template.GetDirection()])
+                    # img.CopyInformation(img_template)
                     return img
 
 
@@ -103,7 +131,7 @@ def get_metadata(img:sitk.Image)->list   :
     return  res
 # %%
 if __name__ == "__main__":
-    img_fn = "/media/ub/UB11/datasets/lits_short/volume-51.nii"
+    img_fn =  Path('/media/ub/datasets_bkp/litq/complete_cases/images/litq_0014389_20190925.nii')
     mask_fn = "/media/ub/UB11/datasets/lits_short/segmentation-51.nii"
 # %%
     F = SITKImageMaskFixer(img_fn,mask_fn)

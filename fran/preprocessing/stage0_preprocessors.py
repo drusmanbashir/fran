@@ -401,11 +401,6 @@ def update_resampling_configs(spacings, resampling_output_folder):
         print("Set of specs already exist in a folder. Nothing is changed.")
 
 
-class ReadSITK(ItemTransform):
-    def encodes(self,x):
-        return list(map(sitk.ReadImage, x))
-
-
 class GetSizeDest(ItemTransform):
     def __init__(self, spacings):
         store_attr()
@@ -505,7 +500,7 @@ class NiipairToTorch(DictToAttr):
     def process_sitk_to_tensors(self, single_case_properties, overwrite=True):
         self._create_output_filenames(single_case_properties)
         if self.proceed(overwrite) == True:
-            pipeline1 = Pipeline([GetFilenames, ReadSITK, GetSizeDest(self.spacings)])
+            pipeline1 = Pipeline([GetFilenames, ReadSITKImgMask, GetSizeDest(self.spacings)])
             img, mask, sz_dest = pipeline1(single_case_properties)
 
 

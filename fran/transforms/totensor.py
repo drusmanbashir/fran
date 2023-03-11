@@ -2,6 +2,7 @@
 from functools import wraps
 from pathlib import Path
 from typing import Union
+from fastai.vision.augment import GetAttr
 
 import numpy as np
 import SimpleITK as sitk
@@ -77,19 +78,17 @@ def encodes(self,x:Union[Path,str]):
    x_pt = torch.tensor(x_np,dtype=self.encode_dtype)
    return x_pt
 
-# %%
-if __name__ == "__main__":
-   x = np.random.rand(10,10)
-   T = ToTensorT()
-   print(type(T.encodes(x)))
-
-# %%
-class ToTensorI(KeepBBoxTransform):
+class ToTensorI(KeepBBoxTransform,GetAttr):
     '''
     works on img/bbox pair
     '''
     order = 0
     def func(self,img:np.ndarray):
         return torch.tensor(img)
-
+# %%
+if __name__ == "__main__":
+   T= ToTensorI
+   x = np.random.rand(10,10)
+   T = ToTensorT()
+   print(type(T.encodes(x)))
 

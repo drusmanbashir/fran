@@ -1,5 +1,6 @@
 
 # %%
+import SimpleITK as SITK
 from skimage.transform import resize
 from typing import Union
 from fastai.vision.augment import typedispatch
@@ -9,8 +10,11 @@ import torchio as tio
 import ipdb
 
 from fran.transforms.basetransforms import KeepBBoxTransform
+from fran.utils.sitk_utils import *
 
 from fran.inference.helpers import get_amount_to_pad, get_scale_factor_from_spacings, rescale_bbox
+
+from fran.utils.sitk_utils import align_sitk_imgs
 tr = ipdb.set_trace
 
 import torch
@@ -21,6 +25,52 @@ from fastcore.transform import ItemTransform, Transform
 from fran.transforms.spatialtransforms import MaskLabelRemap, slices_from_lists
 
 from fran.utils.helpers import multiply_lists
+
+from fastcore.all import GetAttr
+class PredictorTransform(ItemTransform,GetAttr):
+    _default = 'predictor'
+
+
+orientations = {
+    'LAS': (1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0),
+    'LPS': (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+}
+
+def reorient_sitk(img:sitk.Image,direction:tuple)->sitk.Image:
+    try:
+        orn = [key for key,val in orientations.items() if val == direction][0]
+    except:
+        tr()
+    return sitk.DICOMOrient (img, orn)
+class ArrayToSITKF(Transform):
+
+    def __init__(self,sitk_props=None,img_sitk=None): 
+        assert any([sitk_props,img_sitk]), "Either provide sitk_properties or a sitk_image to serve as templt"
+        if not sitk_props: 
+            sitk_props = img_sitk.GetOrigin(),img_sitk.GetSpacing(),img_sitk.GetDirection()
+        self.sitk_props= sitk_props
+    def encodes(self,pred_pt)->list:
+            assert pred_pt.ndim==4, "This requires 4d array, NxDxWxH"
+            preds_out = []
+            for pred in pred_pt: 
+                pred_ = sitk.GetImageFromArray(pred)
+                pred_ = reorient_sitk(pred_,self.sitk_props[-1])
+                pred_ = set_sitk_props(pred_,self.sitk_props)
+                preds_out.append(pred_)
+            return preds_out
+
+class ArrayToSITKI(PredictorTransform):
+    '''
+    only works inside PatchPredictor class
+    '''
+    
+    def encodes(self,pred):
+                assert all([pred.ndim==3,'int' in str(pred.dtype)]), "This requires 3d int array, DxWxH"
+                pred_ = sitk.GetImageFromArray(pred)
+                pred_ = reorient_sitk(pred_,self.sitk_props[-1])
+                pred_ = set_sitk_props(pred_,self.sitk_props)
+                return pred_
+
 
 class BBoxesToLists(Transform):
 
@@ -124,6 +174,21 @@ class ChangeDType(KeepBBoxTransform):
         # y = P.encodes([x])
         # R.encodes([x])
         
+class DICOMOrientSITK(ItemTransform):
+        def __init__(self): self.orientation = (1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0)
+        def encodes(self,x):
+            img,thing= x
+            org_direction = img.GetDirection()
+            if not org_direction==self.orientation:
+                self.org_direction = org_direction
+                return img.DICOMOrient(img,"LPS")
+            return img,thing
+        def decodes (self,x):
+            if not hasattr(self,'org_direction'): return x
+            img,thing = x
+            img = img.SetDirection(self.org_direction)
+            return img,thing
+
 # %%
 
 class Backsample(ItemTransform):
@@ -147,7 +212,7 @@ class BacksampleMask(Transform):
                 x= x.squeeze(0).squeeze(0)
                 return x
 
-class ResampleToStage0(ItemTransform):
+class ResampleToStage0(PredictorTransform):
     # Applies resample_spacing used to obtain training dataset corresponding to this model
     def __init__(self, img_sitk, resample_spacing,mode='trilinear'):
         store_attr()
@@ -250,10 +315,8 @@ class AddBatchChannelDims(ItemTransform):
 
 
 
-    
-        
 # %%
-class TransposeSITK(ItemTransform):
+class TransposeSITK(PredictorTransform):
     '''
     typedispatched class which handles arrays +/- bboxes. Bboxes, if present, MUST be in a list even if len-1
     '''

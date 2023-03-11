@@ -44,3 +44,40 @@ class DynUNet(DynUNet):
     #     x = x.unbind(1)
     #     return x
     #
+# %%
+if __name__ == "__main__":
+    from torchinfo import summary
+    patch_size = [192,192,96]
+    spacings=[1,1,1]
+    k,s=  get_kernel_strides(patch_size,spacings)
+# %%
+    kernels, strides = get_kernel_strides(
+        patch_size,[1,1,2]
+    )
+# %%
+    net= DynUNet(
+        3,
+        1,
+        3,
+        kernel_size=kernels,
+        strides=strides,
+        upsample_kernel_size=strides[1:],
+        norm_name="instance",
+        deep_supervision=True,
+        deep_supr_num=3,
+    )
+    net2= DynUNet(
+        3,
+        1,
+        3,
+        kernel_size=k,
+        strides=s,
+        upsample_kernel_size=s[1:],
+        norm_name="instance",
+        deep_supervision=True,
+        deep_supr_num=3,
+    )
+# %%
+    summ = summary(net, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
+    summ2 = summary(net2, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
+    print(summ2)

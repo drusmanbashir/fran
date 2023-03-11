@@ -1,3 +1,5 @@
+
+# %%
 from fran.architectures.unet3d.model import ResidualUNet3D, UNet3D
 from nnunet.network_architecture.generic_UNet import Generic_UNet
 from nnunet.network_architecture.generic_UNet import ConvDropoutNormNonlin
@@ -52,6 +54,10 @@ def create_model_from_conf_dynunet(model_params, dataset_params):
 
 
 def create_model_from_conf_nnUNet(model_params, dataset_params,deep_supervision):
+    # k , pool_op_kernel_sizes = get_kernel_strides(dataset_params['patch_size'],[1,1,1])
+    # pool_op_kernel_sizes = pool_op_kernel_sizes[1:]
+    # pool_op_kernel_sizes.reverse()
+    pool_op_kernel_sizes=None
     in_channels, out_channels = (
         model_params["in_channels"],
         model_params["out_channels"],
@@ -75,7 +81,7 @@ def create_model_from_conf_nnUNet(model_params, dataset_params,deep_supervision)
         dropout_in_localization=False,
         final_nonlin=lambda x: x,
         weightInitializer=InitWeights_He(1e-2),
-        pool_op_kernel_sizes=[[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]],
+        pool_op_kernel_sizes=[[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]] if pool_op_kernel_sizes is None else pool_op_kernel_sizes,
         conv_kernel_sizes=[
             [3, 3, 3],
             [3, 3, 3],
@@ -94,7 +100,7 @@ def create_model_from_conf_nnUNet(model_params, dataset_params,deep_supervision)
     return model
 
 
-def create_model_from_conf_swinunetr(model_params, dataset_params):
+def create_model_from_conf_swinunetr(model_params, dataset_params,deep_supervision=None):
     model = SwinUNETR(
         dataset_params["patch_size"],
         model_params["in_channels"],
@@ -117,3 +123,22 @@ def create_model_from_conf_unet(model_params, dataset_params):
         self_attention=model_params["self_attention"],
     )
     return model
+
+# %%
+if __name__ == "__main__":
+    import torch
+    from torchinfo import summary
+    patch_size = [192,192,96]
+    x = torch.rand(1,1,192,192,96)
+    model_params = {'in_channels':1, 'out_channels':3}
+    dataset_params = {'patch_size':patch_size}
+    deep_supervision=True
+    pool_op_kernel_sizes = [[2, 2, 1], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]] 
+    pool_op_kernel_sizes = [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
+    # net = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
+    net2 = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
+    # out = net(x)
+    # summ = summary(net, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
+    summ2 = summary(net2, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
+# %%
+    print(summ2)
