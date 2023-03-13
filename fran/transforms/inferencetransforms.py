@@ -29,7 +29,7 @@ from fran.utils.helpers import multiply_lists
 from fastcore.all import GetAttr
 class PredictorTransform(ItemTransform,GetAttr):
     _default = 'predictor'
-
+    def __repr__(self): return type(self).__name__
 
 orientations = {
     'LAS': (1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0),
@@ -59,11 +59,12 @@ class ArrayToSITKF(Transform):
                 preds_out.append(pred_)
             return preds_out
 
-class ArrayToSITKI(PredictorTransform):
-    '''
-    only works inside PatchPredictor class
-    '''
-    
+class ArrayToSITKI(Transform):
+    def __init__(self,sitk_props=None,img_sitk=None): 
+        assert any([sitk_props,img_sitk]), "Either provide sitk_properties or a sitk_image to serve as templt"
+        if not sitk_props: 
+            sitk_props = img_sitk.GetOrigin(),img_sitk.GetSpacing(),img_sitk.GetDirection()
+        self.sitk_props= sitk_props
     def encodes(self,pred):
                 assert all([pred.ndim==3,'int' in str(pred.dtype)]), "This requires 3d int array, DxWxH"
                 pred_ = sitk.GetImageFromArray(pred)

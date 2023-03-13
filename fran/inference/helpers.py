@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import cc3d
 import math
-
 def get_sitk_target_size_from_spacings(sitk_array,spacing_dest):
             sz_source , spacing_source = sitk_array.GetSize(), sitk_array.GetSpacing()
             sz_dest,_ = get_scale_factor_from_spacings(sz_source,spacing_source,spacing_dest)

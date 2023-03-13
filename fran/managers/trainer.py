@@ -10,6 +10,7 @@ from fastai.callback.tracker import (
     ReduceLROnPlateau,
 )
 from torch.cuda.amp.autocast_mode import autocast
+from fran.architectures.dynunet import get_kernel_strides
 from fran.data.dataloader import TfmdDLKeepBBox
 from fran.data.dataset import *
 
@@ -23,7 +24,7 @@ from fastai.learner import Learner
 from fastcore.foundation import L
 from fran.data.dataset import *
 from fran.evaluation.losses import *
-from fran.architectures.create_network import create_model_from_conf
+from fran.architectures.create_network import create_model_from_conf, pool_op_kernels_nnunet
 from fran.callback.neptune import NeptuneManager
 from fran.managers.base import *
 import fran.transforms.intensitytransforms as intensity
@@ -332,9 +333,11 @@ class Trainer:
 
             else:
                 num_pool = 5
-                self.net_num_pool_op_kernel_sizes = [
-                    [2, 2, 2],
-                ] * num_pool
+
+                self.net_num_pool_op_kernel_sizes =pool_op_kernels_nnunet(self.dataset_params['patch_size'])
+                # self.net_num_pool_op_kernel_sizes = [
+                #     [2, 2, 2],
+                # ] * num_pool
                 self.deep_supervision_scales = [[1, 1, 1]] + list(
                     list(i)
                     for i in 1
@@ -507,6 +510,7 @@ if __name__ == "__main__":
     ]
 # %%
     # cbs =[]
+
 # %%
 
 

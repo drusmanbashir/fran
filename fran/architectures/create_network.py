@@ -52,11 +52,13 @@ def create_model_from_conf_dynunet(model_params, dataset_params):
     )
     return model
 
-
+def pool_op_kernels_nnunet(patch_size):
+    _ , pool_op_kernel_sizes = get_kernel_strides(patch_size,[1,1,1])
+    pool_op_kernel_sizes = pool_op_kernel_sizes[1:]
+    # pool_op_kernel_sizes.reverse() # try witho reverse and without both
+    return pool_op_kernel_sizes
 def create_model_from_conf_nnUNet(model_params, dataset_params,deep_supervision):
-    # k , pool_op_kernel_sizes = get_kernel_strides(dataset_params['patch_size'],[1,1,1])
-    # pool_op_kernel_sizes = pool_op_kernel_sizes[1:]
-    # pool_op_kernel_sizes.reverse()
+    # pool_op_kernel_sizes = pool_op_kernels_nnunet(dataset_params['patch_size'])
     pool_op_kernel_sizes=None
     in_channels, out_channels = (
         model_params["in_channels"],

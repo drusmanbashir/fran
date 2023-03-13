@@ -50,7 +50,7 @@ class Project(DictToAttr):
         folders.extend(additional_folders)
         for folder in folders:
             maybe_makedirs(folder)
-        print("Make sure you have placed a 'maks_labels.json' file inside {}".format(self.project_folder))
+        print("Make sure you have placed a 'mask_labels.json' file inside {}".format(self.project_folder))
 
     def populate_raw_data_folder(self):
 
@@ -84,8 +84,7 @@ class Project(DictToAttr):
 
 
     def _proj_summary_labels_info(self):
-                self._proj_summary.label_priority =self.label_dict[-1]["label_priority"]
-                self._proj_summary.mask_labels =self.label_dict[:-1]
+                self._proj_summary.mask_labels =self.label_dict
 
     @property
     def label_dict(self):
@@ -348,7 +347,6 @@ def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_
 # %%
 if __name__ == "__main__":
     P = Project(project_title="lits")
-    P = Project(project_title="lits_dummy")
     P.create_project()
     pj = P.proj_summary
     pp(pj)

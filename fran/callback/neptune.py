@@ -381,7 +381,7 @@ class NeptuneCheckpointCallback(TrackerCallback):
         except:
             return None
     def _get_epoch_checkpoint(self):
-        fname = "_".join(self.fname,str(self.resume_epoch))
+        fname = "_".join([self.fname,str(self.resume_epoch)])
         if fname.exists(): return fname
         else: 
             print("{0} does not exist in folder {1}".format(fname,self.learn.model_dir/("model_checkpoints")))
