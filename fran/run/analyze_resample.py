@@ -159,7 +159,7 @@ class InteractiveAnalyserResampler:
         generate_bboxes_from_masks_folder(
             patches_output_folder / ("masks"),
             self.proj_defaults,
-            1,
+            0, # dust nothing
             self.debug,
             self.num_processes,
         )
@@ -300,6 +300,17 @@ def do_low_res(proj_defaults):
     args = [[fn, stage1_subfolder, low_res_shape, False] for fn in stage0_files]
     multiprocess_multiarg(resample_img_mask_tensors, args, debug=False)
 
+def testing():
+    generate_bboxes_from_masks_folder(
+            patches_output_folder / ("masks"),
+            I.proj_defaults,
+            1,
+            I.debug,
+            I.num_processes,
+        )
+
+
+
 # %%
 
 if __name__ == "__main__":
@@ -327,9 +338,9 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "lits_dummy"
+    args.project_title = "lits"
     # args.num_processes = 16
-    # args.debug = True
+    # args.debug = False
     # args.overwrite=True
 # %%
     I = InteractiveAnalyserResampler(args)
@@ -343,10 +354,7 @@ if __name__ == "__main__":
     I.generate_hires_patches_dataset()
 
 # %%
+    I.debug=False
+    patches_output_folder= Path("/home/ub/datasets/preprocessed/lits/patches/spc_100_100_200/dim_220_220_110")
 
-
-
-
-
-
-
+# %%

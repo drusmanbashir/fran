@@ -11,14 +11,12 @@ from batchgenerators.utilities.file_and_folder_operations import load_json, mayb
 from pathlib import Path
 from fastai.callback.core import Callback
 from fastcore.basics import listify, store_attr
-from neptune.new.types.atoms.file import File
 import torch.nn as nn
 from torchvision.utils import make_grid
 import torchvision
 import torch
 import matplotlib.pyplot as plt
 from fran.transforms.spatialtransforms import one_hot
-import neptune.new as neptune
 import ipdb
 tr = ipdb.set_trace
 import ray

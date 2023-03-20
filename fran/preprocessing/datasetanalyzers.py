@@ -133,22 +133,23 @@ class BBoxesFromMask(object):
         bboxes_all = []
         mask_all_fg = self.mask.copy()
         mask_all_fg[mask_all_fg > 1] = 1
-        for label_dict in self.label_settings:
-            if label_dict["label"] in self.mask:
-                stats = {"tissue_type": label_dict["name"]}
+        for label,label_info in self.label_settings.items():
+            label = int(label)
+            if label in self.mask:
+                stats = {"label": label}
                 stats.update(
                     get_cc3d_stats(
                         self.mask,
-                        label_dict["label"],
-                        k_largest=label_dict["k_largest"],
+                        label,
+                        k_largest=label_info["k_largest"],
                         dusting_threshold=int(
-                            label_dict["dusting_threshold"]
+                            label_info["dusting_threshold"]
                             * self.dusting_threshold_factor
                         ),
                     )
                 )
                 bboxes_all.append(stats)
-        stats = {"tissue_type": "all_fg"}
+        stats = {"label": "all_fg"}
         stats.update(
             get_cc3d_stats(
                 mask_all_fg,

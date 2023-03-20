@@ -929,18 +929,28 @@ def get_amount_to_pad_torch(img_shape, patch_size):
 
 
 def reassign_labels(src_dest_labels,x):
-        n_classes=len(src_dest_labels)
-        img,mask= x
-        mask_out = torch.zeros(mask.shape,dtype=mask.dtype)
-        mask_tmp = one_hot(mask,n_classes,0)
-        mask_reassigned = torch.zeros(mask_tmp.shape)
-        for src_des in src_dest_labels:
-            src,dest = src_des[0],src_des[1]
-            mask_reassigned[dest]+=mask_tmp[src]
+        def _inner(mask):
+            n_classes=len(src_dest_labels)
+            mask_out = torch.zeros(mask.shape,dtype=mask.dtype)
+            mask_tmp = one_hot(mask,n_classes,0)
+            mask_reassigned = torch.zeros(mask_tmp.shape)
+            for src_des in src_dest_labels:
+                src,dest = src_des[0],src_des[1]
+                mask_reassigned[dest]+=mask_tmp[src]
 
-        for x in range(n_classes):
-            mask_out[torch.isin(mask_reassigned[x],1.0)]=x
-        return img, mask_out
+            for x in range(n_classes):
+                mask_out[torch.isin(mask_reassigned[x],1.0)]=x
+            return mask_out
+        if len(x)==2:
+            img,mask= x
+            output=[img]
+        elif len(x)==1:
+            mask =x
+            output=[]
+        else: tr()
+        output.append(_inner(mask))
+        return output
+            
 
 
 class MaskLabelRemap(KeepBBoxTransform):

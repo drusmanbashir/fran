@@ -1,6 +1,6 @@
-pip install nnunet
-mamba install -c conda-forge ipython ipywidgets pandas matplotlib medpy numpy openpyxl pillow pygments jupyterlab pyyaml scikit-image scipy SimpleITK connected-components-3d timm torchio tqdm einops monai ipdb gputil ray-tune neptune-client ipympl lxml
+pip install nnunet neptune
 mamba install -c pytorch ignite
+mamba install -c conda-forge ipython ipywidgets pandas matplotlib medpy numpy openpyxl pillow pygments jupyterlab pyyaml scikit-image scipy SimpleITK connected-components-3d timm torchio tqdm einops monai ipdb gputil ray-tune ipympl lxml seaborn
 
 #note some of these will downgrade your pytorch copy so re-install it after
 

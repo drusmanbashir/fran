@@ -19,11 +19,10 @@ tr = ipdb.set_trace
 from scipy.special import softmax
 # %%
 
-def view_sitk(img_mask_pair):
-    img,mask = img_mask_pair
+def view_sitk(img,mask,**kwargs):
     img,mask=map(sitk.GetArrayFromImage,[img,mask])
-    img, mask = img.transpose(2,1,0), mask.transpose(2,1,0)
-    ImageMaskViewer([img,mask])
+    # img, mask = img.transpose(2,1,0), mask.transpose(2,1,0)
+    ImageMaskViewer([img,mask],**kwargs)
 
 
 def view_3d_np(x):

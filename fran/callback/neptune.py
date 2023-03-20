@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from fastai.callback.core import Callback
 from fastcore.basics import listify, store_attr
-from neptune.new.types.atoms.file import File
+from neptune.types import File
 import torch.nn as nn
 from torchvision.utils import make_grid
 import torch
@@ -16,9 +16,9 @@ import matplotlib.pyplot as plt
 from fran.transforms.spatialtransforms import one_hot
 from fran.managers.base import make_patch_size
 from fran.utils.fileio import load_dict, maybe_makedirs, save_dict
-import neptune.new as neptune
+import neptune
 import ipdb
-
+from neptune.utils import stringify_unsupported
 import ast
 from fastai.learner import *
 from fran.utils.config_parsers import *
@@ -139,11 +139,8 @@ class NeptuneManager():
                 return row['sys/id'], row['metadata/run_name']
 
     def _upload_config_dict(self, config_dict):
-        config_dict['dataset_params']['patch_size'] = make_patch_size(
-                config_dict["dataset_params"]["patch_dim0"],
-                config_dict["dataset_params"]["patch_dim1"])
         for key, value in config_dict.items():
-            self.nep_run[key] = value
+            self.nep_run[key] = stringify_unsupported(value)
             setattr(self, key, value)
 
     def _additional_init_settings(self,run_name):
@@ -337,7 +334,7 @@ class NeptuneCheckpointCallback(TrackerCallback):
         else:
             if not hasattr(self.learn,'tune_checkpoint'):
                 self.learn.model_dir = self.checkpoints_parent_folder / self.learn.run_name
-            self.learn.nep_run['metadata/model_dir']=self.learn.model_dir
+            self.learn.nep_run['metadata/model_dir']=str(self.learn.model_dir)
         maybe_makedirs(self.learn.model_dir)
 
     def after_epoch(self):
@@ -354,9 +351,10 @@ class NeptuneCheckpointCallback(TrackerCallback):
     def after_fit(self, **kwargs):
         "Load the best model."
         if self.at_end: self._save()
-        elif not self.every_epoch: 
-            fname = self._get_epoch_checkpoint()
-            self.learn.load(fname, with_opt=self.with_opt)      
+        elif not self.every_epoch: # if a resume_epoch number has been set
+            print("Loading suitable model at end of fit.")
+            self._load_model()
+
     
 
     def _load_model(self):
@@ -382,7 +380,7 @@ class NeptuneCheckpointCallback(TrackerCallback):
             return None
     def _get_epoch_checkpoint(self):
         fname = "_".join([self.fname,str(self.resume_epoch)])
-        if fname.exists(): return fname
+        if Path(fname).exists(): return fname
         else: 
             print("{0} does not exist in folder {1}".format(fname,self.learn.model_dir/("model_checkpoints")))
             return None

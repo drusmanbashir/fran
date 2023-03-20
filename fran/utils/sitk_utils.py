@@ -113,7 +113,7 @@ def set_sitk_props(img:sitk.Image,sitk_props:Union[list,tuple])->sitk.Image:
         img.SetDirection(direction)
         return img
 def align_sitk_imgs(img,img_template):
-                    img = set_sitk_props([img_template.GetOrigin(),img_template.GetSpacing(),img_template.GetDirection()])
+                    img = set_sitk_props(img,[img_template.GetOrigin(),img_template.GetSpacing(),img_template.GetDirection()])
                     # img.CopyInformation(img_template)
                     return img
 
@@ -126,7 +126,7 @@ def create_sitk_as(img:sitk.Image,arr:Union[np.array,Tensor]=None)->sitk.Image:
     img_new = align_sitk_imgs(img_new,img)
     return img_new
 
-def get_metadata(img:sitk.Image)->list   :
+def get_meta(img:sitk.Image)->list   :
     res = img.GetSize(), img.GetSpacing(), img.GetDirection()
     return  res
 # %%

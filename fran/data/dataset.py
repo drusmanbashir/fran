@@ -85,7 +85,7 @@ class ImageMaskBBoxDataset():
         store_attr('proj_defaults')
 
         """
-        class_ratios decide the proportionate representation of each class in the output including background
+        class_ratios decide the proportionate guarantee of each class in the output including background. While that class is guaranteed to be present at that frequency, others may still be present if they coexist
         """
         if not class_ratios: 
 
@@ -173,22 +173,13 @@ class ImageMaskBBoxDataset():
             labels_per_file = []
             for indx, bb in enumerate(case_bboxes):
                 bbox_stats  = bb['bbox_stats']
-                tissues= [bbox_stat['tissue_type'] for bbox_stat in bbox_stats if bbox_stat['tissue_type'] in self.tissue_labels.keys()]
-                labels = [self.tissue_labels[tissue] for tissue in tissues]
+                labels = [(a['label']) for a in bbox_stats if not a['label']=='all_fg']
                 if self.contains_bg(bbox_stats): labels = [0]+labels 
                 if len(labels)==0 : labels =[0] # background class only by exclusion
                 indices.append(indx)
                 labels_per_file.append(labels)
             labels_this_case = list(set(reduce(operator.add,labels_per_file)))
             return {'file_indices':indices,'labels_per_file':labels_per_file, 'labels_this_case': labels_this_case}
-
-    @property
-    def tissue_labels(self):
-        """The tissue_labels property."""
-        if not hasattr(self,'_tissue_labels'):
-            mask_labs = self.proj_defaults.mask_labels
-            self._tissue_labels= {entry['name']:entry['label'] for entry in mask_labs  }
-        return self._tissue_labels
 
     @property
     def num_classes(self):
@@ -230,7 +221,7 @@ class ImageMaskBBoxDataset():
         return data_properties['dataset_min']
     
     def contains_bg(self,bbox_stats):
-        all_fg_bbox = [bb for bb in bbox_stats if bb['tissue_type']=='all_fg'][0]
+        all_fg_bbox = [bb for bb in bbox_stats if bb['label']=='all_fg'][0]
         bboxes = all_fg_bbox['bounding_boxes']
         if len(bboxes) == 1 : return True
         if bboxes[0]!=bboxes[1]: return True
@@ -238,4 +229,36 @@ class ImageMaskBBoxDataset():
 
 # %%
 if __name__ == "__main__":
-    pass
+    from fran.utils.common import *
+    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    configs_excel = ConfigMaker(proj_defaults.configuration_filename,raytune=False).config
+
+    train_list, valid_list, test_list = get_fold_case_ids(
+            fold=configs_excel['metadata']["fold"],
+            json_fname=proj_defaults.validation_folds_filename,
+        )
+    fldr =Path("/home/ub/datasets/preprocessed/lits/patches/spc_100_100_200/dim_220_220_110") 
+
+
+    bboxes_fname = fldr/ ("bboxes_info")
+    dd = load_dict(bboxes_fname)
+
+
+# %%
+    for d in dd:
+        print("-----------")
+        for stats in d['bbox_stats']:
+            pp(stats['label'])
+    
+# %%
+    train_ds = ImageMaskBBoxDataset(
+            proj_defaults,
+            train_list,
+            bboxes_fname,
+            [0,1,0]
+        )
+# %%
+    for indx in range(len(train_ds)):
+        _,_,c = train_ds[indx]
+        pp([a['label'] for a  in c['bbox_stats']])
+# %%

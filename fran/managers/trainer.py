@@ -446,8 +446,8 @@ def update_nep_run_from_config(nep_run, config):
 
 
 
-
 # %%
+
 
 if __name__ == "__main__":
 
@@ -525,7 +525,7 @@ if __name__ == "__main__":
 
     # model = SwinUNETR(La.dataset_params['patch_size'],1,3)
     # learn.model = model
-    learn.fit(n_epoch=1, lr=La.model_params["lr"])
+    learn.fit(n_epoch=10, lr=La.model_params["lr"])
 # %%
     for i ,batch in enumerate(learn.dls.valid):
         print(type(batch[0][0]))

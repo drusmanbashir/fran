@@ -126,8 +126,10 @@ class PredFlToInt(Transform):
 class ToNumpy(Transform):
     def __init__(self,encode_dtype=np.uint8): 
         if encode_dtype == np.uint8: self.decode_dtype=torch.uint8
-        store_attr()
-    def encodes(self,tnsrs):
+        self.encode_dtype=encode_dtype
+
+
+def encodes(self,tnsrs):
         return [np.array(tnsr,dtype=self.encode_dtype) for tnsr in tnsrs]
 
 class Stencil(Transform):
@@ -675,9 +677,6 @@ if __name__ =="__main__":
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
 
     mo_df = pd.read_csv(Path("/media/ub/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
-    n= 10
-    img_fn =Path(mo_df.image_filenames[n])
-    mask_fn =Path(mo_df.mask_filenames[n] )
     patch_size = [160,160,160]
     resample_spacings = [1,1,2]
     run_name_w= "LITS-276" # best trial
@@ -687,11 +686,13 @@ if __name__ =="__main__":
     En = EnsemblePredictor(proj_defaults,run_name_w,runs_ensemble,device,debug=True)
 
 # %%
-    for img_fn in mo_df.image_filenames[4:]:
+    for n, img_fn in enumerate (mo_df.image_filenames[16:]):
+        print("file {}".format(n))
+
         img_fn=Path(img_fn)
         En.run(img_fn)
 # %%
-    ImageMaskViewer([En.img_np_orgres,En.pred_int])
+    ImageMaskViewer([En.w.img_np_orgres,En.w.pred[1]])
 # %%
     E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device,save_localiser=True)
     E.localiser_bbox(img_fn)
@@ -780,7 +781,9 @@ if __name__ =="__main__":
     w.postprocess_pipeline
     w.Stencil.merge_labels
 # %%
+    pp(w.postprocess_pipeline)
     pred = w.postprocess_pipeline[0].encodes(w.pred)
+    [[a.dtype, a.max()] for a in pred]
     pred = w.postprocess_pipeline[1].encodes(pred)
     pred = w.postprocess_pipeline[2].encodes(pred)
     pred = w.postprocess_pipeline[3].encodes(pred)
@@ -792,7 +795,20 @@ if __name__ =="__main__":
     En.bboxes = En.w.get_bbox_from_pred(1)
     w.pred_int = w.postprocess_pipeline(w.pred)
     bboxes = w.get_bbox_from_pred(1)
+# %%
+    pred_int = pred
+    stencils = [m.encodes(pred_int) for m in w.Stencil.ms]
+# %%
+    indx=0
+    stencils =   pred 
+    stencil = stencils[indx]
+    label = indx+1
+    info = w.DustKLargest.mask_labels[str(label)]
+    st = cc3d.statistics(stencil)
+    dusting_threshold = volvox(info['dusting_threshold'],w.DustKLargest.spacings)
+    stencil_dusted= cc3d.dust(stencil,threshold=dusting_threshold,connectivity=26,in_place=True)
 
+    stencil_k= cc3d.largest_k(stencil_dusted,k=info['k_largest'], return_N=False)
 # %%
     ext='.nii.gz'
     counts = ["","_1","_2","_3","_4"][:len([En._pred_sitk_i,*En.pred_sitk_f])]

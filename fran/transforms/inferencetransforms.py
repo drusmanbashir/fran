@@ -418,8 +418,8 @@ class MaskToBinary(Transform):
         
    
     
-    def encodes(self,mask):
-        _,mask = self.remapper([None,mask])
+    def encodes(self,x):
+        _,mask = self.remapper([None,x])
         if self.return_type=='numpy': mask = np.array(mask)
         return mask
 
