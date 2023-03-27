@@ -1,10 +1,13 @@
 # %matplotlib inline
 # %matplotlib widget
+from monai.utils.enums import LossReduction
 import numpy as np
 from fastai.callback.tracker import torch
 import matplotlib.pyplot as plt
 from ipywidgets import interact, FloatSlider
 from torch.functional import Tensor
+from fran.evaluation.losses import DiceLoss_ub
+from monai.losses import DiceLoss
 # %%
 
 from fran.utils.common import *
@@ -12,9 +15,9 @@ import operator
 import cc3d
 from fran.utils.imageviewers import ImageMaskViewer
 from fastai.vision.augment import Transform, store_attr, typedispatch
+from fran.utils.common import *
 from fran.transforms.totensor import ToTensorT
 from fran.transforms.spatialtransforms import one_hot
-from fran.utils.common import *
 import SimpleITK as sitk
 from monai.metrics import *
 import functools as fl
@@ -72,6 +75,7 @@ if __name__ == "__main__":
     
     mask_fn = [fn for fn in masks_train if 'lits-128' in str(fn)][0]
     img_fn = [fn for fn in imgs_train if 'lits-128' in str(fn)][0]
+    pred_fn = [fn for fn in pred_fns if 'lits-128' in str(fn)][0]
     img = sitk.ReadImage(img_fn)
     img_np= sitk.GetArrayFromImage(img)
     img_pt = torch.tensor(img_np)
@@ -86,11 +90,35 @@ if __name__ == "__main__":
 # %%
     n_classes = 3
 
-    mask_pt = ToTensor.encodes(mask)
-    pred_pt = ToTensor.encodes(pred)
-    pred_onehot = one_hot(pred_pt,classes=n_classes,axis=0)
-    pred_onehot = pred_onehot.unsqueeze(0)
-    pred_onehot,mask_onehot = [one_hot(x,classes=n_classes,axis=0).unsqueeze(0) for x in [pred_pt,mask_pt]]
+    mask_pt = ToTensorT().encodes(mask).unsqueeze(0)
+    pred_pt = ToTensorT().encodes(pred).unsqueeze(0)
+    pred_pt_ub = one_hot(pred_pt,classes=2,axis=1)
+
+# %%
+    D = DiceLoss_ub()
+# %%
+    import time
+    st = time.time()
+    for i in range(10):
+        l = D(pred_pt_ub,mask_pt)
+    eno = time.time()
+    lapse= eno-st
+    print(lapse)
+# %%
+    pred_onehot,mask_onehot = [one_hot(x,classes=n_classes,axis=1) for x in [pred_pt,mask_pt]]
+    D2 = DiceLoss(include_background=False,to_onehot_y=True,batch=True,reduction= LossReduction.NONE)
+    l2 = D2(input=pred_onehot,target=mask_pt)
+    pp(l2)
+# %%
+    st = time.time()
+    for i in range(10):
+        mask_onehot = one_hot(mask_pt,classes=n_classes,axis=1)
+        l2 = D2(pred_onehot,mask_onehot)
+    eno = time.time()
+    lapse2= eno-st
+    print(lapse2)
+
+# %%
     aa = compute_dice(pred_onehot,mask_onehot)
 
 

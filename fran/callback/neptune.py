@@ -242,7 +242,6 @@ class NeptuneCallback(NeptuneManager, Callback):
     order = TrackerCallback.order+1
     def __init__(self,proj_defaults,config_dict,run_name=None,nep_run=None, freq=2,metrics=None,hyperparameters=None,tmp_folder="/tmp"):
 
-        # self.project=get_neptune_project(proj_defaults, 'async')
         super().__init__(proj_defaults)
         if nep_run == None:
             super().new_run(config_dict, run_name)
@@ -253,8 +252,10 @@ class NeptuneCallback(NeptuneManager, Callback):
         if hyperparameters==None:
             self.hyperparameters = ['lr','mom','wd']
 
-
-     
+        self.ignore_losses =['loss_dice_batch']
+    def partial_str_match(self,x:str,y:list): 
+        if any ([a in x for a in y]): return True
+        return False
     def after_create(self):
         # if self.run_name is not None:
         #         self.run_id = self.id_from_name()
@@ -274,11 +275,13 @@ class NeptuneCallback(NeptuneManager, Callback):
             if self.training:
                 for hp in self.hyperparameters:
                     self.learn.nep_run['hyperparameters/{}'.format(hp)].log( self.opt.hypers[0][hp])
-                for key, val in self.loss_dict.items():
-                    self.learn.nep_run['metrics/train_loss/'+key].log(val)
+                for key, val in self.learn.loss_func.loss_dict.items():
+                    if not self.partial_str_match(key,self.ignore_losses):
+                        self.learn.nep_run['metrics/train_loss/'+key].log(val)
             else:
-                for key, val in self.loss_dict.items():
-                    self.learn.nep_run['metrics/valid_loss/'+key].log(val)
+                for key, val in self.learn.loss_func.loss_dict.items():
+                    if not self.partial_str_match(key,self.ignore_losses):
+                        self.learn.nep_run['metrics/valid_loss/'+key].log(val)
 
     def after_epoch(self):
 
@@ -502,10 +505,10 @@ class NeptuneImageGridCallback(Callback):
 #             if self.training:
 #                 for hp in self.hyperparameters:
 #                     self.learn.nep_run['hyperparameters/{}'.format(hp)].log( self.opt.hypers[0][hp])
-#                 for key, val in self.loss_dict.items():
+#                 for key, val in self.learn.loss_func.loss_dict.items():
 #                     self.learn.nep_run['metrics/train_loss/'+key].log(val)
 #             else:
-#                 for key, val in self.loss_dict.items():
+#                 for key, val in self.learn.loss_func.loss_dict.items():
 #                     self.learn.nep_run['metrics/valid_loss/'+key].log(val)
 #
 #     def after_epoch(self):

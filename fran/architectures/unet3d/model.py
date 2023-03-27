@@ -245,7 +245,7 @@ if __name__ == "__main__":
         xx = torch.rand(1,1,48,128,128)
     
         
-        # pred = model(xx)
+        pred = model(xx) 
     
 
 # %%

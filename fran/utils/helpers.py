@@ -29,6 +29,8 @@ import gc
 import random
 from datetime import datetime
 
+def range_inclusive(start, end):
+     return range(start, end+1)
 def multiply_lists(a,b):
     return [aa*bb for aa, bb in zip(a,b)]
 

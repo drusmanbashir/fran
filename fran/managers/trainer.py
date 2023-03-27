@@ -14,7 +14,7 @@ from fran.architectures.dynunet import get_kernel_strides
 from fran.data.dataloader import TfmdDLKeepBBox
 from fran.data.dataset import *
 
-
+import itertools as il
 from fran.utils.helpers import *
 from fran.utils.fileio import *
 from fran.utils.imageviewers import *
@@ -34,7 +34,7 @@ from fran.utils.helpers import *
 from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.callback.case_recorder import CaseIDRecorder
-from neptune.new.types import File
+from neptune.types import File
 
 class Learner_Plus(Learner):
 
@@ -51,29 +51,31 @@ class Learner_Plus(Learner):
             self.loss = self.loss_grad.clone()
         self('after_loss')
         if not self.training or not len(self.yb): return
-
-
-
-    def _do_one_batch(self):
-        # with torch.autocast(device_type='cuda',dtype=torch.float16):
-        self.pred= self.model(*self.xb)
-    # self.pred = self.model(*self.xb)
-        self("after_pred")
-        losses = self.loss_func(self.pred, *self.yb)
-        if isinstance(losses, dict):
-            self.loss_grad = losses["loss"]
-            self.loss_dict = losses
-        else:
-            self.loss_grad = losses
-        before = self.loss_grad.item()
-        if before > 100:
-            tr()
-        self.loss = self.loss_grad.clone()
-        self("after_loss")
-        if not self.training or not len(self.yb):
-            return
         self._do_grad_opt()
 
+
+
+    #
+    # def _do_one_batch(self):
+    #     # with torch.autocast(device_type='cuda',dtype=torch.float16):
+    #     self.pred= self.model(*self.xb)
+    # # self.pred = self.model(*self.xb)
+    #     self("after_pred")
+    #     losses = self.loss_func(self.pred, *self.yb)
+    #     if isinstance(losses, dict):
+    #         self.loss_grad = losses["loss"]
+    #         self.loss_dict = losses
+    #     else:
+    #         self.loss_grad = losses
+    #     before = self.loss_grad.item()
+    #     if before > 100:
+    #         tr()
+    #     self.loss = self.loss_grad.clone()
+    #     self("after_loss")
+    #     if not self.training or not len(self.yb):
+    #         return
+    #     self._do_grad_opt()
+    #
 
     def is_half_precision(self):
         param_dtypes=[]
@@ -310,7 +312,7 @@ class Trainer:
             if self.model_params["arch"] == "DynUNet":
                 num_pool = 4  # this is a hack i am not sure if that's the number of pools . this is just to equalize len(mask) and len(pred)
                 ds_factors = list(
-                    accumulate(
+                    il.accumulate(
                         [1]
                         + [
                             2,
@@ -344,8 +346,8 @@ class Trainer:
                     / np.cumprod(np.vstack(self.net_num_pool_op_kernel_sizes), axis=0)
                 )[:-1]
 
-            loss_func = setup_multioutputloss_nnunet(
-                net_numpool=num_pool, batch_dice=True
+            loss_func = DeepSupervisionLoss(
+                levels=num_pool, bs=self.dls.bs,fg_classes=self.model_params['out_channels']-1,device=self.device
             )
             cbs += [DownsampleMaskForDS(self.deep_supervision_scales)]
 
@@ -367,6 +369,7 @@ class Trainer:
         torch.cuda.set_device(self.device)
         learn.dls = learn.dls.to(torch.device(self.device))
         learn.to_non_native_fp16()
+        
         return learn
 
     @property
@@ -468,6 +471,7 @@ if __name__ == "__main__":
     
 
 # %%
+
 # # %%
 #     #     run_name = None
 #     run_name = "KITS-2490"
@@ -519,13 +523,13 @@ if __name__ == "__main__":
         bs=2
     )
 # %%
-    learn = La.create_learner(cbs=cbs, device=1)
+    learn = La.create_learner(cbs=cbs, device=0)
     # learn.dls.device=device
 # %%
 
     # model = SwinUNETR(La.dataset_params['patch_size'],1,3)
     # learn.model = model
-    learn.fit(n_epoch=10, lr=La.model_params["lr"])
+    learn.fit(n_epoch=30, lr=La.model_params["lr"])
 # %%
     for i ,batch in enumerate(learn.dls.valid):
         print(type(batch[0][0]))
@@ -539,8 +543,6 @@ if __name__ == "__main__":
     #  C =CombinedLossDeepSupervision()
 
     #  C(pred,targ)
-    a = La.dls.one_batch()
-    pred = learn.model(a[0].cuda())
 # %%
     #
     #        targs =  [F.interpolate(targ, size=a.shape[2:] ,mode="nearest") for a in pred]
@@ -592,4 +594,5 @@ if __name__ == "__main__":
     #     param = 'dataset_params'
     #
     #
-
+# %%
+# %%

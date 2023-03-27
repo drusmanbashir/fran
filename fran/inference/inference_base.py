@@ -686,11 +686,9 @@ if __name__ =="__main__":
     En = EnsemblePredictor(proj_defaults,run_name_w,runs_ensemble,device,debug=True)
 
 # %%
-    for n, img_fn in enumerate (mo_df.image_filenames[16:]):
-        print("file {}".format(n))
-
-        img_fn=Path(img_fn)
-        En.run(img_fn)
+    img_fn = Path("/media/ub/datasets_bkp/litq/sitk/images/litq_00060_20190815.nrrd")
+    img_fn=Path(img_fn)
+    En.run(img_fn)
 # %%
     ImageMaskViewer([En.w.img_np_orgres,En.w.pred[1]])
 # %%

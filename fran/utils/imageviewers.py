@@ -18,7 +18,18 @@ import ipdb
 tr = ipdb.set_trace
 from scipy.special import softmax
 # %%
+def fix_labels(func):
+    def _inner(*args,**kwargs):
+        img_mask = args
+        args_fixed =[]
+        for x in img_mask:
+            if x.GetPixelID()==22:
+                x = sitk.Cast(x,sitk.sitkUInt8)
+            args_fixed.append(x)
+        return func(*args_fixed,**kwargs)
+    return _inner
 
+@fix_labels
 def view_sitk(img,mask,**kwargs):
     img,mask=map(sitk.GetArrayFromImage,[img,mask])
     # img, mask = img.transpose(2,1,0), mask.transpose(2,1,0)
