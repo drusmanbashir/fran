@@ -2,7 +2,6 @@
 from fastai.vision.augment import store_attr
 import numpy as np
 import ast
-from fran.preprocessing.archived.generic_preprocessors import nii_sitk_to_np
 from fran.transforms.totensor import ToTensorT
 from fran.utils.helpers import *
 import h5py

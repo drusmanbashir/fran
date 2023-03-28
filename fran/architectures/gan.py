@@ -22,7 +22,6 @@ from fastai.vision.data import ImageBlock
 from pygments.token import Generic
 from fran.architectures.unet3d.buildingblocks import Encoder
 from fran.architectures.unet3d.utils import number_of_features_per_level
-from fran.architectures.archived.unet import UNet
 from fran.utils.imageviewers import ImageMaskViewer
 from fastai.learner import *
 from fastai.learner import Learner

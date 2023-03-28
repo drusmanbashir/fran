@@ -33,7 +33,9 @@ You need to store both the api token and project workspacename (NOT project name
 
 See the file `nbs/config.yaml` to set paths. The file provided here has my directory structure which you may emulate if you like. Among other paths, you will need to assign a `{fast_storage}` (used by the library for DL) and a `{slow_storage}`folder (where you download your dataset nifty files).
 \
-In your ~/.bashrc, create environmental variable pointing towards `config.yaml` :
+In your ~/.bashrc,
+\create environmental variable pointing towards `config.yaml` :
+\add fran directory to your pythonpath
 ```
 
 export FRAN_COMMON_PATHS={PATH-TO-config.yaml}
