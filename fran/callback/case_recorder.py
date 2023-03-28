@@ -11,7 +11,7 @@ from neptune.types import File
 # %%
 
 class CaseIDRecorder(Callback):
-    def __init__(self,freq=25, local_folder='/tmp',dpi=300):
+    def __init__(self,freq=3, local_folder='/tmp',dpi=300):
         '''
 
         :param freq:
@@ -73,13 +73,15 @@ class CaseIDRecorder(Callback):
                     storage_string_df = label
                     small_df = self.create_limited_df(self.dfs[label])
                     figure = self.create_plot(small_df)
+                    fname_df = Path(self.local_folder)/("{}.csv".format(label))
+                    fname_plot = fname_df.str_replace(".csv,.png")
+                    self.dfs[label].to_csv(fname_df, index=False)
+                    figure.savefig(fname_plot)
                     if hasattr(self.learn,'nep_run') :
-                        self.nep_run[self.nep_field+"_dataframes/{}".format(storage_string_df)].upload(File.as_html(self.dfs[label]))
-                        self.nep_run[self.nep_field+"_plots/{}".format(storage_string_plot)].upload(figure)
-                    else:
-                        fname_df = Path(self.local_folder)/("{}.csv".format(label))
-                        fname_plot = fname_df.str_replace(".csv,.jpg")
-                        self.dfs[label].to_csv(fname_df, index=False)
+                        # self.nep_run[self.nep_field+"_dataframes/{}".format(storage_string_df)].upload(File.as_html(self.dfs[label]))  TOO LARGE
+                        self.nep_run[self.nep_field+"_plots/{}".format(storage_string_plot)].upload(fname_plot)
+
+                        self.nep_run["images"].log(File.as_image(grd4))
     def compute_rows_per_plot(self):
         self.rows_per_plot =[len(self.dfs[label]) for label in self.df_titles]
 
@@ -92,6 +94,8 @@ class CaseIDRecorder(Callback):
         sns.set(rc=self.rcs[self.training])
         plt.ioff()
         df2 = dfd.melt(id_vars=['case_id','filename'])
+        df2 = df2[df2.variable.str.contains("Unnamed")==False]
+        df2.variable = df2.variable.astype("category")
         ax= sns.boxplot(x='case_id',y='value',hue='variable' ,data=df2)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
         figure = ax.figure
@@ -103,7 +107,31 @@ def case_id_from_series(series):
     output = [get_case_id_from_filename(None , Path(y)) for y in series]
     return output
 
+# %%
 if __name__ == "__main__":
-    dfd = pd.read_csv('fran/managers/dsd.csv')
+    # dfd = pd.read_html('~/Downloads/valid.html')
+    # rn = 45000
+    # df1 = dfd[0]
+    #
+    # df2 = df1[-45000::]
+# %%
+    df2 = pd.read_csv("fran/managers/df2.csv")
 
-
+# %%
+    plt.ioff()
+    df2 = dfd.melt(id_vars=['case_id','filename'])
+    df2 = df2[df2.variable.str.contains("Unnamed")==False]
+    df2.variable = df2.variable.astype("category")
+# %%
+    ax= sns.boxplot(x='case_id',y='value',hue='variable' ,data=df2)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
+    figure = ax.figure
+    figure.tight_layout()
+    plt.show()
+# %%
+    ax= sns.boxplot(x='case_id',y='value',hue='variable' ,data=df2)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
+    figure = ax.figure
+    figure.tight_layout()
+    plt.show()
+# %%

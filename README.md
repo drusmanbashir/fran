@@ -31,8 +31,14 @@ run = neptune.init_run(
 You need to store both the api token and project workspacename (NOT project name) inside experiements/config.json provided. Make sure every project you create under neptune has a projectname which matches the name you give it when you initialise it inside fran. For example, in neptune my lits project looks like this: project = 'drusmanbashir/lits' where drusmanbashir is the workspace-name and lits is the project_title
 ## Setting paths
 
-See the file `nbs/config.yaml` to set paths. The file provided here has my directory structure which you may emulate if you like. Among other paths, you will need to assign a `{fast_storage}` (used by the library for DL) and a `{slow_storage}`folder (where you download your dataset nifty files). 
+See the file `nbs/config.yaml` to set paths. The file provided here has my directory structure which you may emulate if you like. Among other paths, you will need to assign a `{fast_storage}` (used by the library for DL) and a `{slow_storage}`folder (where you download your dataset nifty files).
+\
+In your ~/.bashrc, create environmental variable pointing towards `config.yaml` :
+```
 
+export FRAN_COMMON_PATHS={PATH-TO-config.yaml}
+
+```
 *Note: In this instruction, names inside curly-braces are variable names. You can set them as any word you like.* Names without curly braces are fixed and must be the same in your schema.
 ## Organizing dataset folders
 

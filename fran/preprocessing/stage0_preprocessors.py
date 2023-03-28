@@ -187,7 +187,6 @@ class ResampleDatasetNiftyToTorch:
         """
         self.half_precision=half_precision
         self.proj_defaults = proj_defaults
-        self.label_priority = proj_defaults.label_priority
         self.raw_dataset_properties = load_dict(
             self.proj_defaults.raw_dataset_properties_filename
         )

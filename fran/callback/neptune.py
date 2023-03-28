@@ -369,7 +369,7 @@ class NeptuneCheckpointCallback(TrackerCallback):
 
         if fname:
             fname = fname.parent/fname.name.replace(".pth","")
-            self.learn.load(fname,device=self.device)
+            self.learn.load(fname)
             print("Successfully loaded model from checkpoint {} .".format(fname.name))
 
         else:

@@ -90,7 +90,7 @@ def main(args):
     n_epoch = args.epochs
     if not args.gpu:   args.gpu = get_available_device() 
 
-    run_name = process_run_name(args.r)
+    run_name = process_run_name(args.resume)
     if not run_name:
         La = initialize_run(proj_defaults, args)
     else:
@@ -105,12 +105,12 @@ def main(args):
 if __name__ == "__main__":
     from fran.utils.common import *
     parser = argparse.ArgumentParser(description="Trainer")
-    # parser.add_argument("-t", help="project title", required=True)
-    parser.add_argument("t", help="project title")
+    parser.add_argument("-t", help="project title")#, required=True)
+    # parser.add_argument("t", help="project title")
     parser.add_argument("-e","--epochs", help="num epochs", default=500,type=int)
     parser.add_argument("-n", help="No Neptune",action='store_true')
     parser.add_argument(
-        "-r",
+        "-r","--resume",
         const="",
         nargs='?',
         help="Leave empty to resume last training session or enter a run name.",
@@ -131,7 +131,8 @@ if __name__ == "__main__":
     parser.add_argument("--labels", help="list of mappings source to dest label values, e.e.,g [[0,0],[1,1],[2,1]] will map all foreground to 1")
 # %%
     args = parser.parse_known_args()[0]
-    # args.r=''
+    # args.t = 'lits'
+    # args.resume='LITS-276'
 
     # %%
     main(args)

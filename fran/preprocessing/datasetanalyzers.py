@@ -303,7 +303,7 @@ class MultiCaseAnalyzer(object):
         if h5f:
             h5f.close()
 
-    def user_query_clip_range(self):
+    def user_query_clip_range(self,intensity_percentile_range):
             try:
                 self.clip_range = input("A Clip range has not been given. Press enter to accept clip range based on intensity-percentiles (i.e.{}) or give a new range now: ".format(intensity_percentile_range))
                 if len(self.clip_range) == 0: self.clip_range = intensity_percentile_range
@@ -363,7 +363,7 @@ class MultiCaseAnalyzer(object):
             )
 
         percentile_label, intensity_percentile_range=  get_intensity_range(self.global_properties)
-        if not self.clip_range: self.user_query_clip_range()
+        if not self.clip_range: self.user_query_clip_range(intensity_percentile_range)
         self.compute_dataset_mean(num_processes,multiprocess,debug)
         self.compute_dataset_std(num_processes,multiprocess,debug)
         self.global_properties['intensity_clip_range']= self.clip_range

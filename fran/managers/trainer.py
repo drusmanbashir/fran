@@ -142,7 +142,6 @@ class Trainer:
         self.cbs = cbs + [
             TerminateOnNaNCallback_ub,
             # GradientClip(max_norm=12.0),
-            PredAsList,
 
             CaseIDRecorder,
         ]  # 12.0 following nnUNet
@@ -352,11 +351,10 @@ class Trainer:
             cbs += [DownsampleMaskForDS(self.deep_supervision_scales)]
 
         else:
-            loss_func = CombinedLoss(**self.loss_params)
+            loss_func = CombinedLoss(**self.loss_params,bs=self.dls.bs,fg_classes=self.model_params['out_channels']-1)
       
         self.cbs += cbs
-        learn = Learner_Plus(
-            device=self.device,
+        learn = Learner(
             dls=self.dls,
             model=model,
             loss_func=loss_func,
@@ -530,69 +528,4 @@ if __name__ == "__main__":
     # model = SwinUNETR(La.dataset_params['patch_size'],1,3)
     # learn.model = model
     learn.fit(n_epoch=30, lr=La.model_params["lr"])
-# %%
-    for i ,batch in enumerate(learn.dls.valid):
-        print(type(batch[0][0]))
-# %%
-#     a,b = learn.dls.one_batch()
-# # %%
-#     c = learn.model(a.cuda())
-#     c = [cc.to("cuda") for cc in c]
-#     torch.save(b, "tmp/mask.pt")
-
-    #  C =CombinedLossDeepSupervision()
-
-    #  C(pred,targ)
-# %%
-    #
-    #        targs =  [F.interpolate(targ, size=a.shape[2:] ,mode="nearest") for a in pred]
-    #        targs = [tn.squeeze(1) for tn in targs]
-    #        if C.apply_activation == True:
-    #                 pred=  [C.activation(pred) for pred in pred]
-    #        l1 = C.loss2(pred[-1], targs[-1].type(C.mask_dtype))
-    #        deep_losses=[]
-    #        for n in range(len(pred)):
-    #             targ= targs[n]
-    #             pred = pred[n]
-    #             l2 = C.dice_loss(pred, targ)
-    #             deep_losses.append(l2['loss_dice'])
-    #        l2['loss_dice']= torch.tensor(deep_losses).mean(0)
-    #        final =C.theta*l1 + (1-C.theta)*l2['loss_dice']
-# %%
-
-# %%
-    cbs = []
-    cbs += [
-        ReduceLROnPlateau(patience=10),
-        NeptuneCheckpointCallback(),
-        NeptuneCallback(proj_defaults, configs_excel, run_name=None),
-    ]
-
-    # La = LearnerManager(proj_defaults=proj_defaults,config_dict= configs,cbs=cbs)
-    #
-    #     configs = load_config_from_workbook(proj_defaults.configuration_filename, raytune=False)
-# %%
-    La = Trainer(proj_defaults=proj_defaults, config_dict=configs_excel)
-    #     La.create_dataloaders(train_list_w,valid_list_w, bs=5,max_workers=5,pin_memory=True)
-# %%
-    #
-    #
-# %%
-    learn = La.create_learner(cbs=cbs)
-    #     learn.load("model",with_opt=True)
-# %%
-    #     learn.fit(n_epoch=150, lr=config_dict['model_params']['lr'])
-    # #     # state_dict= torch.load(chkpoint_filename)
-    # #     # model = model_from_config(conf)
-    # #     # model_best = load_model_from_raytune_trial(folder_name)
-    # #     # model_best.load_state_dict(state_dict['model'])
-# %%
-    #     run_name = "KITS-1705"
-    #     config_dict = configs
-    #     nep_mode= 'async'
-    #     param_names = config_dict.keys()
-    #     param = 'dataset_params'
-    #
-    #
-# %%
 # %%

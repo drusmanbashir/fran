@@ -89,7 +89,6 @@ class Project(DictToAttr):
     @property
     def label_dict(self):
         if not hasattr(self,'_label_dict'):
-            self._label_dict="Place {}".format(self.label_dict_filename)
             try:
                 self._label_dict= load_dict(self.label_dict_filename)
                 self._proj_summary_labels_info()
@@ -161,11 +160,9 @@ class Project(DictToAttr):
         return [dict(t) for t in {tuple(d.items()) for d in listi}]
 
     def save_summary(self):
-        if hasattr(self.proj_summary,'label_priority'):
-            save_pickle(self.proj_summary,self.summary_filename)
-        else: 
             try:
                 self.label_dict
+                save_pickle(self.proj_summary,self.summary_filename)
             except:
                 print("Project summary will be saved after you add file {}".format(self.label_dict_filename))
 
@@ -253,9 +250,6 @@ class Project(DictToAttr):
 
             except FileNotFoundError:
                 self._proj_summary = self.create_summary_dict()
-        if not hasattr(self._proj_summary,"label_priority"):
-            try: self.label_dict
-            except: pass
         return self._proj_summary
 
     @property
@@ -346,13 +340,13 @@ def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="lits")
-    P.create_project()
+    P = Project(project_title="lits_tmp")
+    P.create_project(['/media/ub/datasets_bkp/lits_short_curate/', '/s/datasets/drli_short/'])
     pj = P.proj_summary
     pp(pj)
     P.save_summary()
 # %%
-    P.set_raw_data_sources(["/media/ub/datasets_bkp/lits_short_curate/"])
+    P.set_raw_data_sources(["/s/datasets/drli_short/"])
     P.populate_raw_data_folder()
     P.raw_data_imgs
     P.create_train_valid_folds()
@@ -362,7 +356,6 @@ if __name__ == "__main__":
     pp(pj)
     len(P)
     P.save_summary()
-# %%
 
 # %%
 

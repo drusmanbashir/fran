@@ -98,7 +98,7 @@ class CombinedLoss(_DiceCELossMultiOutput):
         super().__init__(*args,**kwargs)
         self.create_labels(bs,fg_classes)
 
-    def foward(self,input,target):
+    def forward(self,input,target):
         losses = super().forward(input,target)
         self.set_loss_dict(losses)
         return losses[0]
