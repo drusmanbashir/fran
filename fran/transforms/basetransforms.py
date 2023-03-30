@@ -6,6 +6,7 @@ import torch
 from torch.functional import Tensor 
 import ipdb
 
+import itertools as il
 
 tr = ipdb.set_trace
 # %%
@@ -18,7 +19,8 @@ class KeepBBoxTransform(ItemTransform):
                 y = [self.func(x[0])]
             else:
                 y = self.func(x[:-1])
-            return *y, x[-1]
+            y.extend(x[-1])
+            return y
         else: return self.func(x)
 
 
@@ -85,3 +87,13 @@ class FixDType(ItemTransform):
             img=img.float()
         return img,mask
 
+if __name__ == "__main__":
+# %%
+    def a(): 
+        j = [1,2,3]
+        r  = [11,10]
+        return list(il.chain(j,r[1]))
+
+
+# %%
+    b = a()
