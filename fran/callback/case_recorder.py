@@ -70,7 +70,6 @@ class CaseIDRecorder(Callback):
     def store_results(self):
                 for label in self.df_titles:
                     storage_string_plot = label+"_plot_epoch{}".format(self.epoch)
-                    storage_string_df = label
                     small_df = self.create_limited_df(self.dfs[label])
                     figure = self.create_plot(small_df)
                     fname_df = Path(self.local_folder)/("{}.csv".format(label))

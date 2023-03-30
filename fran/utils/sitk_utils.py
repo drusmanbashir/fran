@@ -1,12 +1,11 @@
 from pathlib import Path
 import ast
-from SimpleITK.SimpleITK import TransformGeometry
 from fastai.callback.tracker import Union
 from fastcore.basics import store_attr
 import numpy as np
 from fastai.vision.augment import test_eq
 from torch.functional import Tensor
-from fran.utils.fileio import save_sitk, str_to_path
+from fran.utils.fileio import str_to_path
 
 import SimpleITK as sitk
 from fran.utils.helpers import abs_list

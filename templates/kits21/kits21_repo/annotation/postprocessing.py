@@ -4,7 +4,6 @@ import json
 import numpy as np
 import nibabel as nib
 from PIL import Image, ImageDraw
-from numpy.core.fromnumeric import cumsum
 import torch
 import torch.nn.functional
 from scipy import signal
@@ -153,7 +152,6 @@ def distance(p1, p2):
 def find_nearest_neighbors_slow_v2(lg_cntr, sm_cntr):
     matches = np.zeros_like(lg_cntr)
     step = sm_cntr.shape[0]/lg_cntr.shape[0]
-    mini = None
     mind = np.inf
     for i in range(lg_cntr.shape[0]):
         candidate_matches = np.zeros_like(lg_cntr)
@@ -163,7 +161,6 @@ def find_nearest_neighbors_slow_v2(lg_cntr, sm_cntr):
 
         dist = np.square(lg_cntr - candidate_matches).sum()
         if dist < mind:
-            mini = i
             matches = candidate_matches.copy()
             mind = dist
             
@@ -208,14 +205,12 @@ def get_group(istr, bef_to_aft, aft_to_bef):
 def splice_contour(spliced, stretches, cntr, cur_sz, ctr_ind):
     # Get nearest pair
     mini = None
-    minj = None
     mind = np.inf
     for i in range(cur_sz):
         for j in range(cntr.shape[0]):
             dst = distance(spliced[i], cntr[j])
             if dst < mind:
                 mini = i
-                minj = j
                 mind = dst
                                 
     ret_sp = spliced.copy()

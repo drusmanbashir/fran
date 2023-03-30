@@ -1,27 +1,19 @@
 # %matplotlib inline
 # %matplotlib widget
 from monai.utils.enums import LossReduction
-import numpy as np
 from fastai.callback.tracker import torch
-import matplotlib.pyplot as plt
-from ipywidgets import interact, FloatSlider
-from torch.functional import Tensor
 from fran.evaluation.losses import DiceLoss_ub
 from monai.losses import DiceLoss
 # %%
 
 from fran.utils.common import *
-import operator
-import cc3d
 from fran.utils.imageviewers import ImageMaskViewer
-from fastai.vision.augment import Transform, store_attr, typedispatch
+from fastai.vision.augment import typedispatch
 from fran.utils.common import *
 from fran.transforms.totensor import ToTensorT
 from fran.transforms.spatialtransforms import one_hot
 import SimpleITK as sitk
 from monai.metrics import *
-import functools as fl
-import itertools as il
 
 # %%
 

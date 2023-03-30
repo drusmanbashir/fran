@@ -2,31 +2,18 @@
 
 # from fran.callback.neptune_manager import *
 from fran.utils.config_parsers import *
-from functools import partial
-import numpy as np
-import os
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data import random_split
 from ray import tune
-from ray.tune import CLIReporter
 from ray.air import session
-import ray.tune.execution.checkpoint_manager as cm
-from ray.tune.schedulers import ASHAScheduler
 from fran.managers.trainer import *
 from datetime import datetime
-import torch
-from torch.profiler import profile, record_function, ProfilerActivity
 import pandas as pd
 import ast,re
-from pandas.core.frame import DataFrame
 from ray import tune
 from fran.utils.config_parsers import load_metadata
 from fran.managers.base import load_checkpoint
 from fran.utils.fileio import load_json
-from fran.utils.helpers import path_to_str, make_channels
+from fran.utils.helpers import make_channels
 from fran.architectures.unet3d.model import  *
 from pathlib import Path
 # %%
@@ -57,8 +44,8 @@ def load_model_from_raytune_trial(folder_name,out_channels):
     params_dict = load_json(Path(folder_name)/"params.json")
     model =create_model_from_conf(params_dict,out_channels)
     
-    checkpoints_folder=folder_name/("model_checkpoints")
-    chkpoint_filename = list((folder_name/("model_checkpoints")).glob("model*"))[0]
+    folder_name/("model_checkpoints")
+    list((folder_name/("model_checkpoints")).glob("model*"))[0]
     load_checkpoint(folder_name / ("model_checkpoints"), model)
     # state_dict= torch.load(chkpoint_filename)
     # model.load_state_dict(state_dict['model'])

@@ -1,6 +1,6 @@
 # %%
 from fastcore.basics import store_attr
-import pandas as pd,os
+import pandas as pd
 import ast
 from ray import tune
 from openpyxl import load_workbook
@@ -111,7 +111,7 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
                     if "_" in var_type:
                         tr()
                         vals = parse_excel_cell(rr["tune_value"])
-                        var_split = var_type.split("_")
+                        var_type.split("_")
                         tune_fnc = resolve_tune_fnc(var_type)
                         val_sample = [tune_fnc(val[0], val[1]) for val in vals]
                     elif (

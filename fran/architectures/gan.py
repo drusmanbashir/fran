@@ -5,42 +5,31 @@
 # %%
 import argparse
 import  time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import OrderedDict
-from fastcore.script import docments
 import torch.optim as optim
 from torch.autograd import Variable
-from functools import reduce
 from fran.architectures.unet3d.buildingblocks import *
-from fastai.data.block import ConvLayer, DataBlock, inspect, to_float
-from fastai.data.external import URLs, untar_data
-from fastai.metrics import LossMetric, LossMetrics
+from fastai.data.block import ConvLayer
+from fastai.metrics import LossMetrics
 from fastai.vision import gan
 from fastai.vision.gan import *
-from fastai.vision.augment import Resize
-from fastai.vision.data import ImageBlock
-from pygments.token import Generic
-from fran.architectures.unet3d.buildingblocks import Encoder
-from fran.architectures.unet3d.utils import number_of_features_per_level
 from fran.utils.imageviewers import ImageMaskViewer
 from fastai.learner import *
 from fastai.learner import Learner
 from fastcore.foundation import L
 
-from fastai.data.core import DataLoaders, DataLoader, TfmdDL, TfmdLists
+from fastai.data.core import DataLoaders, TfmdDL
 from fran.transforms.batchtransforms import *
-from fran.architectures.unet3d.model import ResidualUNet3D, UNet3D, Generator, Discriminator_ub
+from fran.architectures.unet3d.model import Generator, Discriminator_ub
 from fran.data.dataset import *
 from fran.evaluation.losses import *
-from fran.callback.neptune import NeptuneManager
 from fran.utils.config_parsers import *
 from fran.utils.helpers import *
 from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.transforms.misc_transforms import *
 
-import fran.transforms.intensitytransforms as intensity
-import fran.transforms.spatialtransforms as spatial
 
 from fran.data.dataset import ImageMaskBBoxDataset
 def gen_loss(fake_pred, output, target,loss_fnc = nn.BCEWithLogitsLoss(), L1=nn.L1Loss()):

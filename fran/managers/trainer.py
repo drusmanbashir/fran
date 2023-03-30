@@ -1,9 +1,8 @@
 # %%
 import torch
 import operator
-from fran.preprocessing.stage0_preprocessors import dec_to_str, folder_name_from_list
+from fran.preprocessing.stage0_preprocessors import folder_name_from_list
 from functools import partial
-from fastai.callback.schedule import ParamScheduler, combined_cos
 from fastai.callback.tracker import (
     ReduceLROnPlateau,
 )
@@ -17,7 +16,6 @@ from fran.utils.imageviewers import *
 from fran.transforms.spatialtransforms import *
 from fastai.learner import *
 from fastai.learner import Learner
-from fastcore.foundation import L
 from fran.data.dataset import *
 from fran.evaluation.losses import *
 from fran.architectures.create_network import create_model_from_conf, pool_op_kernels_nnunet

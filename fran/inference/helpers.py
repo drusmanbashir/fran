@@ -1,5 +1,3 @@
-import SimpleITK as sitk
-from fastcore.transform import Transform
 import numpy as np 
 import torch
 import cc3d

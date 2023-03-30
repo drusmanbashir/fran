@@ -1,9 +1,8 @@
-from fastai.vision.augment import Path
 import numpy as np
 from numpy.core.fromnumeric import resize
 import torch
 import SimpleITK as sitk
-from fran.utils.fileio import save_np, str_to_path
+from fran.utils.fileio import save_np
 from fran.utils.helpers import abs_list, get_case_id_from_filename
 import torch.nn.functional as F
 import ipdb

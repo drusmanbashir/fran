@@ -5,7 +5,6 @@ from fastai.vision.augment import shutil
 from fran.preprocessing.stage1_preprocessors import *
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.stage0_preprocessors import ResampleDatasetNiftyToTorch, verify_dataset_integrity
-from torchio.data.io import get_reader
 from fran.utils.helpers import *
 from fran.utils.fileio import *
 

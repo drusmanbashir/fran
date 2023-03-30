@@ -2,19 +2,12 @@
 import os
 import argparse
 # from fran.inference.transforms import *
-from fran.inference.scoring import compute_dice_fran
-from monai.transforms.post.array import VoteEnsemble
 from fran.utils.common import *
-from fran.inference.inference_raytune_models import ModelFromTuneTrial
-from fran.transforms.totensor import ToTensorT
 from fran.transforms.spatialtransforms import *
-from monai.data import GridPatchDataset, PatchIter
-from monai.inferers import SlidingWindowInferer
 from fran.managers.trainer import *
 from fran.managers.tune import *
 from fran.inference.inference_base import *
 from fran.utils.imageviewers import *
-from torch.utils.data import DataLoader as DataLoaderT
 
     # ImageMaskViewer([img_np,mask_np])
 
@@ -27,7 +20,7 @@ def main(args):
     mo_df = pd.read_csv(Path("/media/ub/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
     n= 10
     img_fn =Path(mo_df.image_filenames[n])
-    mask_fn =Path(mo_df.mask_filenames[n] )
+    Path(mo_df.mask_filenames[n] )
     device = 0
     E = EnsemblePredictor(proj_defaults,run_name_w,runs_ensemble,device=device)
     E.run(img_fn)

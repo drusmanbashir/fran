@@ -143,7 +143,6 @@ def str_to_list_int(input):
     return int(input)
 
 def purge_cuda(learn):
-    learn = None
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -296,7 +295,7 @@ def create_train_valid_test_lists_from_filenames(project_title, files_list, json
     final_dict= {"all_cases":case_ids} 
     n_test= int(pct_test*len(case_ids))
     n_valid = int(pct_valid*len(case_ids))
-    n_train = len(case_ids)-n_test-n_valid
+    len(case_ids)-n_test-n_valid
     cases_test =case_ids[:n_test]
     final_dict.update({"test_cases": cases_test})
     cases_train_valid = case_ids[n_test:]

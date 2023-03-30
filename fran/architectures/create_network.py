@@ -1,6 +1,6 @@
 
 # %%
-from fran.architectures.unet3d.model import ResidualUNet3D, UNet3D
+from fran.architectures.unet3d.model import UNet3D
 from nnunet.network_architecture.generic_UNet import Generic_UNet
 from nnunet.network_architecture.generic_UNet import ConvDropoutNormNonlin
 from nnunet.network_architecture.initialization import InitWeights_He

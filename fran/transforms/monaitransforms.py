@@ -1,7 +1,7 @@
 
 from monai.utils import ImageMetaKey as Key
 from monai.data.meta_obj import get_track_meta
-from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
+from typing import List, Optional, Sequence, Union
 from monai.transforms.inverse import TraceableTransform
 from monai.transforms.transform import Randomizable
 from monai.transforms.utils import generate_label_classes_crop_centers, map_classes_to_indices

@@ -1,10 +1,10 @@
 # %%
 from pathlib import Path
-import os,sys
+import sys
 sys.path+= ["/home/ub/Dropbox/code"]
 from types import SimpleNamespace
 from fran.utils.fileio import *
-import json, yaml
+import yaml
 
 # proj_defaults= dict()
 # proj_defaults["num_processes"]= 32

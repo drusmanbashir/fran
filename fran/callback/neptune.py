@@ -1,5 +1,4 @@
 # %%
-import seaborn as sns
 from fastai.callback.tracker import TrackerCallback
 
 
@@ -7,17 +6,14 @@ import torch.nn.functional as F
 import os
 from pathlib import Path
 from fastai.callback.core import Callback
-from fastcore.basics import listify, store_attr
+from fastcore.basics import store_attr
 from neptune.types import File
-import torch.nn as nn
 from torchvision.utils import make_grid
 import torch
-import matplotlib.pyplot as plt
 from fran.transforms.spatialtransforms import one_hot
 from fran.managers.base import make_patch_size
-from fran.utils.fileio import load_dict, maybe_makedirs, save_dict
+from fran.utils.fileio import maybe_makedirs
 import neptune
-import ipdb
 from neptune.utils import stringify_unsupported
 import ast
 from fastai.learner import *

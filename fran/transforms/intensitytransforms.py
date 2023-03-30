@@ -2,7 +2,7 @@
 from functools import wraps
 from fastai.basics import *
 from scipy.ndimage.filters import gaussian_filter
-from fastcore.transform import Pipeline, Transform
+from fastcore.transform import Transform
 from fran.transforms.basetransforms import *
 
 class _IntensityAugmentation():
@@ -130,7 +130,7 @@ def standardize(img,mn,std):
 
 # %%
 if __name__ == "__main__":
-    import os
+    pass
     
     if 'get_ipython' in globals():
     

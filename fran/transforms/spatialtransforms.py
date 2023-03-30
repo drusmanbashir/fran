@@ -176,9 +176,9 @@ def expand_lesion(lesion_start_ind,lesion_end_ind,all_locs,expand_factor=0.2):
     lesion_start_x = all_locs[lesion_start_ind]
     lesion_end_x = all_locs[lesion_end_ind-1]
     lesion_span = lesion_end_ind-lesion_start_ind
-    lesion_xy_len= lesion_end_x-lesion_start_x
+    lesion_end_x-lesion_start_x
     lesion_center = (lesion_end_x+lesion_start_x)/2
-    lesion_to_total_frac = lesion_span/len(all_locs)
+    lesion_span/len(all_locs)
     lesion_locs_shifted = [lesion_start_x-lesion_center, lesion_end_x-lesion_center]
     lesion_start_y = expand_factor*lesion_locs_shifted[0]+lesion_center
     lesion_end_y = expand_factor*lesion_locs_shifted[1]+lesion_center
@@ -186,9 +186,9 @@ def expand_lesion(lesion_start_ind,lesion_end_ind,all_locs,expand_factor=0.2):
     smooth_before_x = all_locs[smooth_before_ind]
     smooth_after_ind = np.minimum(num_inds, int(lesion_end_ind+lesion_span))
     smooth_after_x = all_locs[smooth_after_ind]
-    smooth_before_len = np.minimum(lesion_span,lesion_start_ind)
-    smooth_after_len = np.minimum(lesion_span,lesion_start_ind)
-    knots = [-1.0,smooth_before_x,lesion_start_x,lesion_end_x,smooth_after_x,1.0]
+    np.minimum(lesion_span,lesion_start_ind)
+    np.minimum(lesion_span,lesion_start_ind)
+    [-1.0,smooth_before_x,lesion_start_x,lesion_end_x,smooth_after_x,1.0]
     seg_y_lims = [-1,smooth_before_x,lesion_start_y,lesion_end_y,smooth_after_x,1.0]
     seg_lengths=[smooth_before_ind,lesion_start_ind-smooth_before_ind, lesion_end_ind-lesion_start_ind,smooth_after_ind-lesion_end_ind,num_inds-smooth_after_ind]
     

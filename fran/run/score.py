@@ -2,7 +2,6 @@
 # %%
 from fran.inference.scoring import compute_dice_fran
 from fran.utils.helpers import *
-import ray
 import argparse
 
 from fran.inference.inference_base import EndToEndPredictor
@@ -23,7 +22,7 @@ def main (args):
     P = Project(project_title=project_title); proj_defaults= P.proj_summary
     print("Project: {0}".format(project_title))
 
-    run_name_p  =args.p
+    args.p
     masks_folder = Path(args.masks_folder)
     mask_fnames = list(masks_folder.glob("*"))
     predictions_folder ="/s/fran_storage/predictions/lits/segmentations_LITS-206/"

@@ -1,15 +1,7 @@
 
 # %%
 import SimpleITK as sitk
-import operator
-import numpy as np
-import cc3d
-from fastai.callback.tracker import Transform, store_attr
-from fran.transforms.totensor import ToTensorT
-from fran.transforms.spatialtransforms import MaskLabelRemap
-from fran.transforms.inferencetransforms import MaskToBinary
 
-from fran.utils.imageviewers import ImageMaskViewer
 
 
 # %%

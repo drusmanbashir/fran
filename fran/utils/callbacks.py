@@ -18,7 +18,6 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
 from torchvision.utils import make_grid
 import torchvision
-import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from fran.utils.fileio import maybe_makedirs
@@ -604,7 +603,7 @@ class TuneCheckpointCallback(TrackerCallback):
         if self.checkpoint_dir:
             with open(os.path.join(self.checkpoint_dir, "checkpoint")) as f:
                 state = json.loads(f.read())
-                start = state["step"] + 1
+                state["step"] + 1
         self.learn.model_dir = Path(tune.get_trial_dir()) / "model_checkpoints"
         # self.learn.model_dir = Path(self.checkpoint_dir)/ "model_checkpoints"
         self.fname_prefix = self.learn.model_dir/self.fname

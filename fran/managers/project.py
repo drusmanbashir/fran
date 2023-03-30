@@ -2,16 +2,15 @@
 from pathlib import Path
 import os, sys
 import itertools as il
-from fastai.vision.augment import shutil, store_attr
+from fastai.vision.augment import store_attr
 from fran.utils.dictopts import dic_in_list
 from fran.utils.helpers import *
 
-from fran.utils.helpers import DictToAttr, LazyDict, ask_proceed
+from fran.utils.helpers import DictToAttr, ask_proceed
 
 sys.path += ["/home/ub/Dropbox/code"]
 from types import SimpleNamespace
 from fran.utils.fileio import *
-import json, yaml
 
 common_paths_filename = os.environ["FRAN_COMMON_PATHS"]
 from fran.utils.templates import mask_labels_template

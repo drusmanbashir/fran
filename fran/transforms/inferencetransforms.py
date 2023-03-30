@@ -1,9 +1,6 @@
 
 # %%
-import SimpleITK as SITK
-from skimage.transform import resize
 from typing import Union
-from fastai.vision.augment import typedispatch
 import numpy as np
 from torch.functional import Tensor
 import torchio as tio
@@ -14,7 +11,6 @@ from fran.utils.sitk_utils import *
 
 from fran.inference.helpers import get_amount_to_pad, get_scale_factor_from_spacings, rescale_bbox
 
-from fran.utils.sitk_utils import align_sitk_imgs
 tr = ipdb.set_trace
 
 import torch

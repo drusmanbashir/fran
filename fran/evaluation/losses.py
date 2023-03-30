@@ -1,6 +1,5 @@
 # %o%
 from pipe import map  as pmap
-from fastai.basics import Callback
 from monai.utils.enums import DiceCEReduction, LossReduction
 from monai.utils.module import look_up_option
 from typing import Callable, Optional
@@ -9,11 +8,10 @@ import itertools as il
 
 import torch
 import ipdb
-import numpy as np
 
 from nnunet.utilities.nd_softmax import softmax_helper
 
-from fran.utils.helpers import pp, range_inclusive
+from fran.utils.helpers import range_inclusive
 
 tr = ipdb.set_trace
 from monai.losses import DiceLoss, DiceCELoss

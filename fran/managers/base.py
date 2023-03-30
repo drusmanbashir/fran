@@ -1,6 +1,4 @@
 from fastai.torch_core import get_model
-import ast
-import pandas as pd
 import torch
 import ipdb
 

@@ -5,7 +5,6 @@ import SimpleITK as sitk
 import numpy as np
 from batchgenerators.utilities.file_and_folder_operations import join, subfolders, subfiles, save_json, isfile, \
     load_json, isdir
-from numpy.lib.utils import source
 from surface_distance import compute_surface_distances
 
 from kits21.configuration.labels import HEC_NAME_LIST, KITS_HEC_LABEL_MAPPING

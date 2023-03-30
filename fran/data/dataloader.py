@@ -1,8 +1,6 @@
-from fastai.torch_core import to_device
 import torch
-from fastai.data.load import *
 from fastai.callback.fp16 import TfmdDL
-from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter,_DatasetKind
+from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter, _SingleProcessDataLoaderIter
 _loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
 import ipdb
 tr = ipdb.set_trace

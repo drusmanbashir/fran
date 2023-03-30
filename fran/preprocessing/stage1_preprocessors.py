@@ -1,10 +1,9 @@
 
 # %%
-from batchgenerators.augmentations.utils import center_crop_3D_image
 import torchio as tio
 import cc3d
 
-from fran.transforms.spatialtransforms import PadDeficitImgMask, get_amount_to_pad_torch, get_slices_shifted_from_centroid, get_bbox_size
+from fran.transforms.spatialtransforms import PadDeficitImgMask
 
 from fran.utils.image_utils import resize_tensor_3d
 if 'get_ipython' in globals():
@@ -13,34 +12,22 @@ if 'get_ipython' in globals():
         ipython = get_ipython()
         ipython.run_line_magic('load_ext', 'autoreload')
         ipython.run_line_magic('autoreload', '2')
-from fastcore.basics import itertools, listify, store_attr
+from fastcore.basics import listify, store_attr
 import nibabel as nib
-from fastai.vision.augment import mask_tensor
-from skimage.transform import resize
-from functools import partial
 from pathlib import Path
-from typing import Union
-import h5py
-import sys,os, json
-from fran.preprocessing.datasetanalyzers import BBoxesFromMask, bboxes_function_version, get_cc3d_stats
+import os
+from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.utils.fileio import *
 from fran.utils.imageviewers import *
-from fran.utils.fileio import save_np
 from fran.utils.helpers import   *
 import ipdb
 import SimpleITK as sitk
 import numpy as np
-from typing import List
-from torch.nn.functional import pad
-from multiprocessing import Pool
-import os, sys
-from fastai.basics import L
+import os
 # from fastai.vision.all import *
 # export
-import ipdb, re
+import ipdb
 tr = ipdb.set_trace
-import torch.nn.functional as F
-from fran.preprocessing.stage0_preprocessors import generate_bboxes_from_masks_folder
 # %%
 
 def tensors_from_dict_file(filename):
@@ -156,7 +143,6 @@ class CropToPatientTorchToTorch(object):
 class CropToPatientTorchToNifty(CropToPatientTorchToTorch):
     def __init__(self,*args,**kwargs) -> None:
         super().__init__(*args,**kwargs)
-        pass
 
     @property
     def output_folders(self):

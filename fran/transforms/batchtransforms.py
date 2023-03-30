@@ -1,13 +1,9 @@
 
-from math import pi
-import math
 import ipdb
 tr = ipdb.set_trace
 
 import torch.nn.functional as F
-import torch
 from fran.transforms.basetransforms import *
-from fran.transforms.spatialtransforms import get_affine_grid
 # class AffineTrainingTransform3D(ItemTransform):
 #     '''
 #     to-do: verify if nearestneighbour method preserves multiple mask labels

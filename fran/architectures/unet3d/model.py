@@ -1,5 +1,5 @@
 # %%
-import os,sys
+import sys
 from fastai.data.block import ConvLayer
 
 from fastcore.meta import delegates
@@ -14,7 +14,6 @@ import torch.nn.functional as F
 tr = ipdb.set_trace
 import torch.nn as nn
 import ipdb
-from torch.nn.modules.pooling import MaxPool3d
 tr = ipdb.set_trace
 
 from fran.architectures.unet3d.buildingblocks import DoubleConv, ExtResNetBlock, SingleConv, create_attention_gates, create_deep_segmenters, create_encoders, \
@@ -72,7 +71,6 @@ class Abstract3DUNet(nn.Module):
         # create decoder path
         self.decoders = create_decoders(f_maps, basic_module, conv_kernel_size, conv_padding, layer_order, num_groups,
                                         upsample=True,**kwargs)
-        convs=[]
         # in the last layer a 1×1 convolution reduces the number of output
         # channels to the number of labels
         self.final_conv = nn.Conv3d(f_maps[0], out_channels, 1)
