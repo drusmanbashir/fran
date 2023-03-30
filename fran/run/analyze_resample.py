@@ -337,9 +337,9 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "litac"
+    # args.project_title = "litac"
     # args.num_processes = 16
-    args.debug = False
+    # args.debug = False
     # args.overwrite=True
     I = InteractiveAnalyserResampler(args)
 # %%
