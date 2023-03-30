@@ -3,8 +3,7 @@ import argparse
 import torch
 import yaml
 
-from pytorch3dunet.unet3d import utils
-
+from fran.architectures.unet3d import utils
 logger = utils.get_logger('ConfigLoader')
 
 

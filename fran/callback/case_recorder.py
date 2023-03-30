@@ -1,4 +1,5 @@
 import re
+from fastcore.foundation import L
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -8,6 +9,7 @@ from fran.utils.helpers import get_case_id_from_filename
 import itertools as il
 
 from neptune.types import File
+from pathlib import Path
 # %%
 
 class CaseIDRecorder(Callback):
@@ -78,9 +80,9 @@ class CaseIDRecorder(Callback):
                     figure.savefig(fname_plot)
                     if hasattr(self.learn,'nep_run') :
                         # self.nep_run[self.nep_field+"_dataframes/{}".format(storage_string_df)].upload(File.as_html(self.dfs[label]))  TOO LARGE
-                        self.nep_run[self.nep_field+"_plots/{}".format(storage_string_plot)].upload(fname_plot)
+                        # self.nep_run["_".self.nep_field+"_plots/{}".format(storage_string_plot)].upload(fname_plot)
+                        self.nep_run["_".join([self.nep_field,label])].log(File.as_image(figure))
 
-                        self.nep_run["images"].log(File.as_image(grd4))
     def compute_rows_per_plot(self):
         self.rows_per_plot =[len(self.dfs[label]) for label in self.df_titles]
 
@@ -118,7 +120,7 @@ if __name__ == "__main__":
 
 # %%
     plt.ioff()
-    df2 = dfd.melt(id_vars=['case_id','filename'])
+    df2 = df2.melt(id_vars=['case_id','filename'])
     df2 = df2[df2.variable.str.contains("Unnamed")==False]
     df2.variable = df2.variable.astype("category")
 # %%

@@ -2,6 +2,7 @@
 from fastai.vision.augment import partial
 from fastcore.transform import Pipeline
 import math
+from fran.transforms.misc_transforms import Squeeze
 from fran.utils.image_utils import get_bbox_from_mask
 from fran.utils.helpers import *
 from fran.utils.fileio import *
@@ -697,7 +698,7 @@ class ExpandAndPadNpArray(ItemTransform):
 
 class ExpandAndPadTorch(ItemTransform):
 
-    def __init__(self, patch_size, expand_by:list|float=0.3, stride=[1, 1, 1], mode='constant'):
+    def __init__(self, patch_size, expand_by:Union[list,float]=0.3, stride=[1, 1, 1], mode='constant'):
         if isinstance(expand_by,float): expand_by=[expand_by,]*3
         self.patch_size = [int((ps + ps * expand) * strd) for ps, expand ,strd in zip(patch_size,expand_by, stride)]
         self.mode = mode
@@ -1165,7 +1166,6 @@ if __name__ == "__main__":
     after_item_intensity = TrainingAugmentations(augs=intensity_augs, p=probabilities_intensity)
     after_item_spatial = TrainingAugmentations(augs=spatial_augs, p=probabilities_spatial)
 # %%
-    sampler = RandSpatialCropSamples(roi_size=[128,128,128],random_size=False,random_center=True,num_samples=3) # %% for i in range(self.__len__()):
     from fran.data.dataset import ImageMaskBBoxDataset
     from fran.utils.imageviewers import *
     P = Project(project_title="lits"); proj_defaults= P.proj_summary

@@ -4,7 +4,7 @@ import ast
 from fastai.vision.augment import shutil
 from fran.preprocessing.stage1_preprocessors import *
 from fran.preprocessing.datasetanalyzers import *
-from fran.preprocessing.stage0_preprocessors import ResampleDatasetNiftyToTorch, verify_dataset_integrity
+from fran.preprocessing.stage0_preprocessors import ResampleDatasetNiftyToTorch, generate_bboxes_from_masks_folder, verify_dataset_integrity
 from fran.utils.helpers import *
 from fran.utils.fileio import *
 

@@ -19,7 +19,7 @@ from fastai.learner import *
 from fastai.learner import Learner
 from fastcore.foundation import L
 
-from fastai.data.core import DataLoaders, TfmdDL
+from fastai.data.core import DataLoaders, TfmdDL, delegates
 from fran.transforms.batchtransforms import *
 from fran.architectures.unet3d.model import Generator, Discriminator_ub
 from fran.data.dataset import *

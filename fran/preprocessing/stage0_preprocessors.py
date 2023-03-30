@@ -613,27 +613,28 @@ if __name__ == "__main__":
     multiprocess = True
     R.resample_cases(debug=debug, overwrite=True, multiprocess=multiprocess)
 # %%
-    aa = pipeline2[0]([img,mask])
-    aa = pipeline2[1](aa)
-    aa = pipeline2[2](aa)
-    aa = pipeline2[3](aa)
-    aa = pipeline2[4](aa)
-    aa = pipeline2[5](aa)
-    aa = pipeline2[6](aa)
-    aa = pipeline2[7](aa)
-# %%
-    aa = pipeline2[8](aa)
-
-# %%
-    args = [[output_folder, patch_size, inf, stride] for inf in stage0_bbox]
-    multiprocess_multiarg(patch_generator_wrapper, args, debug=False)
-
-    spacing_dest = R.global_properties["spacings_median"]
-    img_fname = R.raw_dataset_properties[0]["properties"]["img_file"]
-    mask_fname = R.raw_dataset_properties[0]["properties"]["mask_file"]
-
-# %%
-
-    single_case_properties = [
-        p for p in R.raw_dataset_properties if p["case_id"] == "00063"
-    ][0]
+#     aa = pipeline2[0]([img,mask])
+#     aa = pipeline2[1](aa)
+#     aa = pipeline2[2](aa)
+#     aa = pipeline2[3](aa)
+#     aa = pipeline2[4](aa)
+#     aa = pipeline2[5](aa)
+#     aa = pipeline2[6](aa)
+#     aa = pipeline2[7](aa)
+# # %%
+#     aa = pipeline2[8](aa)
+#
+# # %%
+#     args = [[output_folder, patch_size, inf, stride] for inf in stage0_bbox]
+#     multiprocess_multiarg(patch_generator_wrapper, args, debug=False)
+#
+#     spacing_dest = R.global_properties["spacings_median"]
+#     img_fname = R.raw_dataset_properties[0]["properties"]["img_file"]
+#     mask_fname = R.raw_dataset_properties[0]["properties"]["mask_file"]
+#
+# # %%
+#
+#     single_case_properties = [
+#         p for p in R.raw_dataset_properties if p["case_id"] == "00063"
+#     ][0]
+#

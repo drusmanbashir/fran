@@ -104,6 +104,7 @@ def main(args):
 
 if __name__ == "__main__":
     from fran.utils.common import *
+    import argparse
     parser = argparse.ArgumentParser(description="Trainer")
     parser.add_argument("-t", help="project title")#, required=True)
     # parser.add_argument("t", help="project title")

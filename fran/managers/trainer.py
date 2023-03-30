@@ -1,4 +1,6 @@
 # %%
+from fastai.data.core import DataLoaders
+from fastai.torch_core import delegates
 import torch
 import operator
 from fran.preprocessing.stage0_preprocessors import folder_name_from_list
@@ -10,6 +12,7 @@ from fran.data.dataloader import TfmdDLKeepBBox
 from fran.data.dataset import *
 
 import itertools as il
+from fran.managers.tune import load_model_from_raytune_trial
 from fran.utils.helpers import *
 from fran.utils.fileio import *
 from fran.utils.imageviewers import *

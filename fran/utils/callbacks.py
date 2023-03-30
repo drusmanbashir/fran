@@ -1,4 +1,5 @@
 # %%
+from fastai.callback.schedule import CancelFitException
 from fastai.callback.tracker import TrackerCallback
 
 from torchinfo import summary
@@ -13,7 +14,7 @@ import ray
 from pathlib import Path
 from fastai.callback.core import Callback
 from fastcore.basics import listify, store_attr
-from neptune.new.types.atoms.file import File
+from neptune.types import File
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
 from torchvision.utils import make_grid

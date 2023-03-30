@@ -46,7 +46,7 @@ def view_sitk(img_mask_pair):
 
 def resample_tensor_dict(in_filename,out_filename,output_size,overwrite=True):
     if write_file_or_not(out_filename, overwrite) == True:
-        img_mask= torch.load(filename)
+        img_mask= torch.load(in_filename)
         resized_tensor={}
         resized_tensor = {{img_type: resize_tensor_3d(tensr)} for img_type,tensr in img_mask.items()}
         torch.save(resized_tensor,out_filename)
@@ -164,7 +164,7 @@ class CropToPatientTorchToNifty(CropToPatientTorchToTorch):
     def _save_to_file(self,img_cropped,mask_cropped):
         for im, fn in zip([img_cropped,mask_cropped],self.output_filenames):
                     im = im.numpy()
-                    save_to_nii(im,fn)
+                    save_sitk(im,fn)
 
     def _get_organ_stats(self,mask):
         mask_binary = mask.clone().numpy()
@@ -411,124 +411,3 @@ if __name__ == "__main__":
 # %% [markdown]
 ## Trialling torch to nibabel format for rapid loading 
 # 
-
-# %%
-# %%
-    # stage0_few=stage0_files[:20]
-    multiprocess_multiarg(cropper_wrapper_nifty,args,debug=False)
-    args = [[filename,[output_folder,spacings,'3.5cm',True]] for filename in stage0_files]
-# %%
-    n=0
-    filename =stage0_files[0]
-    filename_cropped = output_folder/filename.name
-    filename='/home/ub/datasets/preprocessed/kits21/stage0//images/kits21_00147.pt'
-    filename0='/home/ub/datasets/preprocessed/kits21/stage1/cropped/images/kits21_00147.pt'
-    t = torch.load(filename)
-    img,mask = t['img'],t['mask']
-
-    ImageMaskViewer([img,mask])
-
-    os.path.getsize(filename),os.path.getsize(filename0)
-
-######################################################################################
-######################################################################################
-######################################################################################
-# %% [markdown]
-##  Creating tumour examples at original stage0 resolution
-# %%
-    
-    folder = proj_defaults.stage0_folder/"images"
-    outfolder = folder.parent/("tumour_only")
-    maybe_makedirs(outfolder)
-    label = "tumour"
-    bboxes = load_dict(folder.parent/"bboxes_info")
-    args=[[outfolder,info,"tumour"] for info in bboxes]
-
-    a= multiprocess_multiarg(get_cropped_label_from_bbox_info,args,multiprocess=True,debug=False)
-
-# %%
-
-    fn = '/home/ub/datasets/preprocessed/kits21/stage0/tumours_only/kits21_00000.pt'
-    im = torch.load(fn)
-    img,mask = im['img'],im['mask']
-    ImageMaskViewer([img,mask])
-# %%
-######################################################################################
-# %% [markdown]
-## Creating tumour examples for augmentation
-# %%
-
-    outfolder = folder.parent/("tumour_only")
-    maybe_makedirs(outfolder)
-    label = "tumour"
-    bboxes = load_dict(folder.parent/"bboxes_info")
-
-    a= multiprocess_multiarg(get_cropped_label_from_bbox_info,args,multiprocess=True,debug=True)
-    args=[[outfolder,info,"tumour"] for info in bboxes]
-# %%
-######################################################################################
-# %% [markdown]
-## Cropped to kidney dataset
-# %%
-    outfolder = proj_defaults.stage1_folder/("cropped_separate_kidneys")
-# %%
-    caseid = "00002"
-    b = [bb for bb in stage0_bbox if bb['case_id']==caseid ][0]
-# %%
-    P = PatchGenerator(output_folder,patch_size,info=b)
-    P.create_patches_from_all_bboxes()
-# %%
-######################################################################################
-# %% [markdown]
-## Creating Patches separate kidney
-# %%
-######################################################################################
-# %% [markdown]
-## BBoxes need to only get 1 largest component per kidney , otherwise it introduces bugs ifusing default 2
-# %%
-    dusting_threshold_factor=1 # as no subsampling in this dataset
-    filenames = list(output_folder.glob("*.pt"))
-    label_settings = proj_defaults.mask_labels
-    label_settings[0]['k_largest']=1
-
-    arguments =[[x,proj_defaults,label_settings,dusting_threshold_factor] for x in filenames]
-    res_cropped= multiprocess_multiarg(func=bboxes_function_version,arguments=arguments,num_processes=16,debug=False)
-    save_dict(res_cropped,output_folder.parent/"bboxes_info")
-# %%
-
-# %%
-    fn = '/home/ub/datasets/preprocessed/kits21/stage0/images1/kits21_00011.pt'
-    im = torch.load(fn)
-    img,mask = im['img'],im['mask']
-    ImageMaskViewer([img,mask])
-# %%
-# %%
-    mask_fn = '/s/datasets/raw_database/raw_data/kits21/masks/kits21_00011.nii.gz'
-    tumour_fn ='/s/datasets/raw_database/raw_data/kits21/images/kits21_00011.nii.gz' 
-    img = sitk.ReadImage(tumour_fn)
-    mask =sitk.ReadImage(mask_fn)
-    view_sitk([img,mask])
-
-# %% [markdown]
-## Creating bboxes from nifty masks
-# %%
-    folder = proj_defaults.stage1_folder/("cropped/images_nii/masks")
-    cropped_masks_filenames = get_fileslist_from_path(folder,ext=".nii.gz")
-
-    filename = cropped_masks_filenames[0]
-
-    mask = nib.load(filename)
-    dat = mask.get_fdata()
-    dat.dtype
-
-    arguments =[[x,proj_defaults] for x in cropped_masks_filenames]
-# %% [markdown]
-## Splitting dict files into separate img mask tensor files
-    in_fldr = stage1_subfolder
-    tnsrs = list(in_fldr.glob("*pt"))
-    im = tensors_from_dict_file(tnsrs[0])
-    outfldrs =[in_fldr]
-# %%
-
-    res_cropped= multiprocess_multiarg(func=bboxes_function_version,arguments=arguments,num_processes=16,debug=True)
-# %%

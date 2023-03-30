@@ -78,15 +78,4 @@ if __name__ == "__main__":
     bboxes_fn =images_folder/"bboxes_info"  
     bboxes = load_dict(bboxes_fn)
     fold = 0
-    train_ids,val_ids,_ =  get_fold_case_ids(fold=0, json_fname=proj_defaults.validation_folds_filename)
-
-    train_ids,val_ids,_ =  get_fold_case_ids(fold=0, json_fname=proj_defaults.validation_folds_filename)
-
-    ds = ImageMaskBBoxDataset(proj_defaults,train_ids, bboxes_fn,,[0,1,2])
- 
-# %%
-    bb = ds.bboxes_per_id[0]
-    fn = bb[0]['filename']
-    s = Subject(image =tio.ScalarImage(fn))
-    s.load()
 # %%

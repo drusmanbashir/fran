@@ -146,7 +146,6 @@ if __name__ == "__main__":
     from fran.transforms.spatialtransforms import *
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
-    bboxes_19 = proj_defaults_kits19.bboxes_info_filename
     bboxes_21= proj_defaults.bboxes_voxels_info_filename
     train_list,valid_list = get_train_valid_test_lists_from_json(project_title=proj_defaults.project_title,fold=0, json_fname="experiments/kits21/metadata/validation_folds.pkl")
     train_ds = ImageMaskBBoxDataset(proj_defaults,train_list,[bboxes_21],[0,1,2])

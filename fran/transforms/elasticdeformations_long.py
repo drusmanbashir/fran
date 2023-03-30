@@ -23,7 +23,6 @@ if __name__ == "__main__":
     json_fname=proj_defaults.validation_folds_filename
     fold = 0
     train_list,valid_list,_ = get_fold_case_ids(project_title=proj_defaults.project_title,fold=fold,json_fname=json_fname)
-    train_ds = ImageMaskBBoxDataset(proj_defaults,train_list,bbox_fn= folder/"bboxes_info",,[0,1,2])
 
     print(len(train_ds))
 # %%
@@ -101,7 +100,6 @@ if __name__ == "__main__":
     patch_size= [64,160,160]
     folder_p = proj_defaults.stage2_folder / ("{0}_{1}_{1}".format(patch_size[0],patch_size[1]))
 
-    train_ds_p = ImageMaskBBoxDataset(proj_defaults,train_list,bbox_fn= folder_p/"bboxes_info",,[0,1,2])
     ind = 10
     a, b, c = train_ds_p[ind]
     # ImageMaskViewer([a,b])

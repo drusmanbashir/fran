@@ -16,6 +16,7 @@
 # %%
 
 import ast
+from fastcore.foundation import L
 from fastcore.all import GetAttr
 from fran.inference.scoring import compute_dice_fran
 from fran.transforms.intensitytransforms import ClipCenter
