@@ -335,7 +335,7 @@ def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="lits_tmp2345")
+    P = Project(project_title="lits_tmp23456")
     P.create_project(['/media/ub/datasets_bkp/lits_short_curate/', '/s/datasets/drli_short/'])
     pj = P.proj_summary
     pp(pj)
