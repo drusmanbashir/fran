@@ -2,7 +2,7 @@
 from pathlib import Path
 import os, sys
 import itertools as il
-from fastai.vision.augment import store_attr
+from fastai.vision.augment import shutil, store_attr
 from fran.utils.dictopts import dic_in_list
 from fran.utils.helpers import *
 
@@ -14,6 +14,7 @@ from fran.utils.fileio import *
 import json, yaml
 
 common_paths_filename = os.environ["FRAN_COMMON_PATHS"]
+from fran.utils.templates import mask_labels_template
 
 
 class Project(DictToAttr):
@@ -50,7 +51,6 @@ class Project(DictToAttr):
         folders.extend(additional_folders)
         for folder in folders:
             maybe_makedirs(folder)
-        print("Make sure you have placed a 'mask_labels.json' file inside {}".format(self.project_folder))
 
     def populate_raw_data_folder(self):
 
@@ -83,17 +83,15 @@ class Project(DictToAttr):
         else: print("Dataset {} already registered with same fileset in project. Will not add".format(dic['dataset_name']))
 
 
-    def _proj_summary_labels_info(self):
-                self._proj_summary.mask_labels =self.label_dict
 
     @property
     def label_dict(self):
-        if not hasattr(self,'_label_dict'):
-            try:
-                self._label_dict= load_dict(self.label_dict_filename)
-                self._proj_summary_labels_info()
-            except: pass
+        if not self.label_dict_filename.exists():
+            save_dict(mask_labels_template, self.label_dict_filename)
+            print("Using a template mask_labels.json file. Amend {} later to match your target config.".format(self.label_dict_filename))
+        self._label_dict= load_dict(self.label_dict_filename)
         return self._label_dict
+
 
     @property
     def datasets(self):
@@ -160,11 +158,7 @@ class Project(DictToAttr):
         return [dict(t) for t in {tuple(d.items()) for d in listi}]
 
     def save_summary(self):
-            try:
-                self.label_dict
                 save_pickle(self.proj_summary,self.summary_filename)
-            except:
-                print("Project summary will be saved after you add file {}".format(self.label_dict_filename))
 
     def load_summary(self):
         self._proj_summary = load_pickle(self.summary_filename)
@@ -215,6 +209,8 @@ class Project(DictToAttr):
                 ] / ("whole_images")
                 proj_summary['raw_dataset_info_filename'] = proj_summary['project_folder']/("raw_dataset_info.pkl")
                 proj_summary["log_folder"] = proj_summary["project_folder"] / ("logs")
+
+                proj_summary['mask_labels'] =self.label_dict
 
 
                 return SimpleNamespace(**proj_summary)
@@ -340,7 +336,7 @@ def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="lits_tmp")
+    P = Project(project_title="lits_tmp2345")
     P.create_project(['/media/ub/datasets_bkp/lits_short_curate/', '/s/datasets/drli_short/'])
     pj = P.proj_summary
     pp(pj)
