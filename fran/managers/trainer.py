@@ -1,16 +1,12 @@
 # %%
 import torch
 import operator
-from fastai.callback.fp16 import FP16TestCallback, ModelToHalf, NonNativeMixedPrecision
-from fastai.test_utils import synth_learner
 from fran.preprocessing.stage0_preprocessors import dec_to_str, folder_name_from_list
 from functools import partial
-from fastai.callback.schedule import ParamScheduler, combined_cos, one_hot_decode
+from fastai.callback.schedule import ParamScheduler, combined_cos
 from fastai.callback.tracker import (
     ReduceLROnPlateau,
 )
-from torch.cuda.amp.autocast_mode import autocast
-from fran.architectures.dynunet import get_kernel_strides
 from fran.data.dataloader import TfmdDLKeepBBox
 from fran.data.dataset import *
 
@@ -29,97 +25,11 @@ from fran.callback.neptune import NeptuneManager
 from fran.managers.base import *
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
-from fran.transforms.misc_transforms import DropBBoxFromDataset, BGToMin, FilenameFromBBox
+from fran.transforms.misc_transforms import  FilenameFromBBox
 from fran.utils.helpers import *
 from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.callback.case_recorder import CaseIDRecorder
-from neptune.types import File
-
-class Learner_Plus(Learner):
-
-    # This learner allows the loss function to return more  than one output (e.g., for combined loss ,dice is additionally reported separately for plotting) '''
-    def __init__(self, device=None, *args, **kwargs):
-        self.device = device
-        super().__init__(*args, **kwargs)
-
-    def _do_one_batch(self):
-        self.pred = self.model(*self.xb)
-        self('after_pred')
-        if len(self.yb):
-            self.loss_grad = self.loss_func(self.pred, *self.yb)
-            self.loss = self.loss_grad.clone()
-        self('after_loss')
-        if not self.training or not len(self.yb): return
-        self._do_grad_opt()
-
-
-
-    #
-    # def _do_one_batch(self):
-    #     # with torch.autocast(device_type='cuda',dtype=torch.float16):
-    #     self.pred= self.model(*self.xb)
-    # # self.pred = self.model(*self.xb)
-    #     self("after_pred")
-    #     losses = self.loss_func(self.pred, *self.yb)
-    #     if isinstance(losses, dict):
-    #         self.loss_grad = losses["loss"]
-    #         self.loss_dict = losses
-    #     else:
-    #         self.loss_grad = losses
-    #     before = self.loss_grad.item()
-    #     if before > 100:
-    #         tr()
-    #     self.loss = self.loss_grad.clone()
-    #     self("after_loss")
-    #     if not self.training or not len(self.yb):
-    #         return
-    #     self._do_grad_opt()
-    #
-
-    def is_half_precision(self):
-        param_dtypes=[]
-        for param in self.model.parameters():
-            param_dtypes.append(param.dtype)
-        return all([p == torch.float16 for p in param_dtypes])
-
-    def fit_one_cycle(
-        self: Learner,
-        n_epoch,
-        lr_max=None,
-        div=25.0,
-        div_final=1e5,
-        pct_start=0.25,
-        wd=None,
-        moms=None,
-        cbs=None,
-        reset_opt=False,
-    ):
-        "Fit `self.model` for `n_epoch` using the 1cycle policy."
-        if self.opt is None:
-            self.create_opt()
-        self.opt.set_hyper("lr", self.lr if lr_max is None else lr_max)
-        lr_max = np.array([h["lr"] for h in self.opt.hypers])
-        scheds = {
-            "lr": combined_cos(pct_start, lr_max / div, lr_max, lr_max / div_final),
-            "mom": combined_cos(pct_start, *(self.moms if moms is None else moms)),
-        }
-        self.fit(
-            n_epoch, cbs=ParamScheduler(scheds) + L(cbs), reset_opt=reset_opt, wd=wd
-        )
-
-    @property
-    def model(self):
-        """The model property."""
-        return self._model
-
-    @model.setter
-    def model(self, model):
-        self._model = model
-        self = self.to(self.device)
-
-
-
 
 class Trainer:
     def __init__(

@@ -4,6 +4,7 @@ mamba install -c conda-forge ipython ipywidgets pandas matplotlib medpy numpy op
 mamba install -c fastchan fastai
 
 # -----------others --------------------
+pip install ipympl ipdb
 mamba install -c radiomics pyradiomics
 mamba install -c conda-forge black
 #note some of these will downgrade your pytorch copy so re-install it after

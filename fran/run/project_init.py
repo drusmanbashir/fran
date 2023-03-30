@@ -16,7 +16,10 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
     parser = argparse.ArgumentParser(description="Create new project or manage existing ones")
-    parser.add_argument("t", help="project title")
+    parser.add_argument("-t", help="project title")
     parser.add_argument("-i","--input-folders" , help="Folders containing nifti files you wish to add to this project")
+
+    args = parser.parse_known_args()[0]
+    main(args)
 # %%
 

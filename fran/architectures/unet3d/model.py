@@ -241,13 +241,16 @@ if __name__ == "__main__":
         # model=UNet3D(in_channels=1,out_channels=2,final_sigmoid=False,f_maps = 32,num_levels=4,layer_order='clb')
         f_maps = 32
         levels= 5
-        model=UNet3D(in_channels=1,out_channels=2,final_sigmoid=False,f_maps = f_maps,num_levels=levels,layer_order='clb',heavy=True,deep_supervision=True,n_bottlenecks=10, pool_stride=1)
+        model=UNet3D(in_channels=1,out_channels=2,final_sigmoid=False,f_maps = f_maps,num_levels=levels,layer_order='clb',heavy=True,deep_supervision=True,n_bottlenecks=2, pool_stride=1)
         xx = torch.rand(1,1,48,128,128)
     
+        [a.to('cuda') for a in model.parameters()]
         
         pred = model(xx) 
     
+        patch_size= [48,128,128]
 
+        summ = summary(model, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0)
 # %%
         c= ConvLayer(1,32,ndim=3)
         
