@@ -39,18 +39,6 @@ def model_from_config(config):
     return model
 
 
-def load_model_from_raytune_trial(folder_name,out_channels):
-    #requires params.json inside raytune trial
-    params_dict = load_json(Path(folder_name)/"params.json")
-    model =create_model_from_conf(params_dict,out_channels)
-    
-    folder_name/("model_checkpoints")
-    list((folder_name/("model_checkpoints")).glob("model*"))[0]
-    load_checkpoint(folder_name / ("model_checkpoints"), model)
-    # state_dict= torch.load(chkpoint_filename)
-    # model.load_state_dict(state_dict['model'])
-    return  model
-
 def get_raytune_folder_from_trialname(proj_defaults, trial_name:str):
     pat = re.compile("([a-z]*_[0-9]*)_",flags=re.IGNORECASE)
     experiment_name= re.match(pat,trial_name).groups()[0]

@@ -12,7 +12,7 @@ from torchvision.utils import make_grid
 import torch
 from fran.transforms.spatialtransforms import one_hot
 from fran.managers.base import make_patch_size
-from fran.utils.fileio import maybe_makedirs
+from fran.utils.fileio import load_json, maybe_makedirs
 import neptune
 from neptune.utils import stringify_unsupported
 import ast

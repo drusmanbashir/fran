@@ -19,7 +19,7 @@ class KeepBBoxTransform(ItemTransform):
                 y = [self.func(x[0])]
             else:
                 y = self.func(x[:-1])
-            y.extend(x[-1])
+            y.append(x[-1])
             return y
         else: return self.func(x)
 

@@ -12,7 +12,6 @@ from fran.data.dataloader import TfmdDLKeepBBox
 from fran.data.dataset import *
 
 import itertools as il
-from fran.managers.tune import load_model_from_raytune_trial
 from fran.utils.helpers import *
 from fran.utils.fileio import *
 from fran.utils.imageviewers import *
@@ -32,6 +31,18 @@ from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.callback.case_recorder import CaseIDRecorder
 
+
+def load_model_from_raytune_trial(folder_name,out_channels):
+    #requires params.json inside raytune trial
+    params_dict = load_json(Path(folder_name)/"params.json")
+    model =create_model_from_conf(params_dict,out_channels)
+    
+    folder_name/("model_checkpoints")
+    list((folder_name/("model_checkpoints")).glob("model*"))[0]
+    load_checkpoint(folder_name / ("model_checkpoints"), model)
+    # state_dict= torch.load(chkpoint_filename)
+    # model.load_state_dict(state_dict['model'])
+    return  model
 class Trainer:
     def __init__(
             self, proj_defaults, config_dict, cbs=[], bs=None, max_workers=0, pin_memory=True, device:Union[int,None]=None
@@ -433,6 +444,8 @@ if __name__ == "__main__":
     )
 # %%
     learn = La.create_learner(cbs=cbs, device=0)
+# %%
+    a,b ,c = learn.dls.one_batch()
     # learn.dls.device=device
 # %%
 
