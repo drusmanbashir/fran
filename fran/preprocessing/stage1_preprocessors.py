@@ -271,7 +271,7 @@ class PatchGenerator(DictToAttr):
         self.assimilate_dict(dataset_properties)
         bbs= info['bbox_stats']
 
-        b = [b for b in bbs if b['tissue_type']=="all_fg"][0]
+        b = [b for b in bbs if b['label']=="all_fg"][0]
         self.bboxes = b['bounding_boxes'][1:]
         if expand_by:
             self.add_to_bbox=  [ int(expand_by/sp) for sp in self.dataset_spacings]
