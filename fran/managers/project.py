@@ -54,26 +54,26 @@ class Project(DictToAttr):
 
     def populate_raw_data_folder(self):
 
-        for ds in P.raw_data_sources:
+        for ds in self.raw_data_sources:
             dataset_name = ds['dataset_name']
             test = ds['test']
             filenames = (ds['source_path'] / ("images")).glob("*")
             pairs = [[img_fn, img_fn.str_replace("images", "masks")] for img_fn in filenames]
             images,masks=[],[]
-            if P.paths_exist(pairs) == True:
-                print("Populating raw data folder (with symlinks)")
+            if self.paths_exist(pairs) == True:
+                print("self.pulating raw data folder (with symlinks)")
                 for org_names in pairs:
                     case_filename = org_names[0].name
                     new_names= [
-                        P.raw_data_folder / subfolder / case_filename
+                        self.raw_data_folder / subfolder / case_filename
                         for subfolder in ["images", "masks"]
                     ]
                     images.append(new_names[0])
                     masks.append(new_names[1])
 
-                    P._create_img_mask_symlinks(org_names, new_names)
+                    self._create_img_mask_symlinks(org_names, new_names)
             ds_new = {'dataset_name':dataset_name,'test':test, 'images':images,'masks':masks}
-            P.add_dataset(ds_new)
+            self.add_dataset(ds_new)
 
 
     def add_dataset(self,dic):
