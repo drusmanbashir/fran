@@ -10,7 +10,6 @@ def main(args):
     input_folders = args.input_folders
     P = Project(project_title=project_title); 
     print("Project: {0}".format(project_title))
-    tr()
     P.create_project(args.input_folders)
     P.set_raw_data_sources(input_folders)
     P.populate_raw_data_folder()
