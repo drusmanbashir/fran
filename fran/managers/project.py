@@ -206,7 +206,7 @@ class Project(DictToAttr):
                 proj_summary["whole_images_folder"] = proj_summary[
                     "fixed_dimensions_folder"
                 ] / ("whole_images")
-                proj_summary['raw_dataset_info_filename'] = proj_summary['project_folder']/("raw_dataset_info.pkl")
+                proj_summary['raw_dataset_info_filename'] = proj_summary['project_folder']/("raw_dataset_srcs.pkl")
                 proj_summary["log_folder"] = proj_summary["project_folder"] / ("logs")
 
                 proj_summary['mask_labels'] =self.label_dict

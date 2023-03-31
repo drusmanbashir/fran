@@ -75,7 +75,7 @@ class CaseIDRecorder(Callback):
                     small_df = self.create_limited_df(self.dfs[label])
                     figure = self.create_plot(small_df)
                     fname_df = Path(self.local_folder)/("{}.csv".format(label))
-                    fname_plot = fname_df.str_replace(".csv,.png")
+                    fname_plot = fname_df.str_replace(".csv",".png")
                     self.dfs[label].to_csv(fname_df, index=False)
                     figure.savefig(fname_plot)
                     if hasattr(self.learn,'nep_run') :
