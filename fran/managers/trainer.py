@@ -219,8 +219,8 @@ class Trainer:
 
         self.dls = DataLoaders(train_dl, valid_dl)
 
-    def create_learner(self, cbs=[], device=None,distrib=False,compile=False, **kwargs):
-        self.device = device
+    def create_learner(self, cbs=[], device=None,distributed=False,compile=False, **kwargs):
+        # self.device = device
         # creates learner from configs. Loads checkpoint if any exists in self.checkpoints_folder
 
         model = create_model_from_conf(self.model_params, self.dataset_params)
@@ -286,18 +286,19 @@ class Trainer:
             **kwargs
         )
         # learn.to(device)
-        learn.dls = learn.dls.to(torch.device(self.device))
-        learn.to_non_native_fp16()
-        if distrib==True:
+        if distributed==True:
              learn.model  = torch.nn.DataParallel(learn.model)
         else:
             print("Training will be done on cuda: {}".format(self.device))
+            # learn.dls = learn.dls.to(torch.device(self.device))
             torch.cuda.set_device(self.device)
         if compile==True:
 
             print("Compiling model")
             learn.model = torch.compile(learn.model)
        
+        learn.dls.cuda()
+        learn.to_non_native_fp16()
         return learn
 
     @property

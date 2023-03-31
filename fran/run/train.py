@@ -88,7 +88,7 @@ def main(args):
     print("Project: {0}".format(project_title))
 
     n_epoch = args.epochs
-    if not args.gpu:   args.gpu = get_available_device() 
+    if not args.gpu and not args.distributed:   args.gpu = get_available_device() 
 
     run_name = process_run_name(args.resume)
     if not run_name:
@@ -134,8 +134,12 @@ if __name__ == "__main__":
     parser.add_argument("--labels", help="list of mappings source to dest label values, e.e.,g [[0,0],[1,1],[2,1]] will map all foreground to 1")
 # %%
     args = parser.parse_known_args()[0]
-    args.t = 'lits'
-    # args.resume='LITS-276'
+    # args.t = 'lits'
+    # args.distributed = True
+    # args.compiled= True
+    # args.bs = 4
+    # # args.resume='LITS-276'
 
     # %%
     main(args)
+# %%
