@@ -88,7 +88,8 @@ class _DiceCELossMultiOutput(DiceCELoss):
         total_loss: torch.Tensor = (
             self.lambda_dice * dice_loss_reduced + self.lambda_ce * ce_loss
         )
-        return total_loss, ce_loss, dice_loss_reduced , dice_loss_unreduced.squeeze((2,3,4))
+        # return total_loss, ce_loss, dice_loss_reduced , dice_loss_unreduced.squeeze((2,3,4))
+        return total_loss, ce_loss, dice_loss_reduced , dice_loss_unreduced.squeeze(2).squeeze(2).squeeze(2)
 
 
 class CombinedLoss(_DiceCELossMultiOutput):

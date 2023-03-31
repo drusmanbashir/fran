@@ -2,7 +2,7 @@
 # %matplotlib widget
 from monai.utils.enums import LossReduction
 from fastai.callback.tracker import torch
-from fran.evaluation.losses import DiceLoss_ub
+
 from monai.losses import DiceLoss
 # %%
 
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     pred_pt_ub = one_hot(pred_pt,classes=2,axis=1)
 
 # %%
-    D = DiceLoss_ub()
+    D = DiceLoss()
 # %%
     import time
     st = time.time()

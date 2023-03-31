@@ -445,8 +445,6 @@ if __name__ == "__main__":
 # %%
     learn = La.create_learner(cbs=cbs, device=0)
 # %%
-    a,b ,c = learn.dls.one_batch()
-    # learn.dls.device=device
 # %%
 
     # model = SwinUNETR(La.dataset_params['patch_size'],1,3)
