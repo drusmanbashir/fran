@@ -13,7 +13,7 @@ from pathlib import Path
 # %%
 
 class CaseIDRecorder(Callback):
-    def __init__(self,freq=3, local_folder='/tmp',dpi=300):
+    def __init__(self,freq=50, local_folder='/tmp',dpi=300):
         '''
 
         :param freq:
