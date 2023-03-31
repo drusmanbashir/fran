@@ -1,5 +1,6 @@
 # %%
 from fastai.data.core import DataLoaders
+# from fastai.distributed import *
 from fastai.torch_core import delegates
 import torch
 import operator
@@ -218,7 +219,7 @@ class Trainer:
 
         self.dls = DataLoaders(train_dl, valid_dl)
 
-    def create_learner(self, cbs=[], device=None, **kwargs):
+    def create_learner(self, cbs=[], device=None,distrib=False,compile=False, **kwargs):
         self.device = device
         # creates learner from configs. Loads checkpoint if any exists in self.checkpoints_folder
 
@@ -285,11 +286,18 @@ class Trainer:
             **kwargs
         )
         # learn.to(device)
-        print("Training will be done on cuda: {}".format(self.device))
-        torch.cuda.set_device(self.device)
         learn.dls = learn.dls.to(torch.device(self.device))
         learn.to_non_native_fp16()
-        
+        if distrib==True:
+             learn.model  = torch.nn.DataParallel(learn.model)
+        else:
+            print("Training will be done on cuda: {}".format(self.device))
+            torch.cuda.set_device(self.device)
+        if compile==True:
+
+            print("Compiling model")
+            learn.model = torch.compile(learn.model)
+       
         return learn
 
     @property
@@ -391,7 +399,6 @@ if __name__ == "__main__":
     
 
 # %%
-
 # # %%
 #     #     run_name = None
 #     run_name = "KITS-2490"
@@ -435,15 +442,13 @@ if __name__ == "__main__":
 # %%
     # cbs =[]
 
-# %%
-
 
     La = Trainer.fromExcel(
         proj_defaults,
-        bs=2
+        bs=4
     )
 # %%
-    learn = La.create_learner(cbs=cbs, device=0)
+    learn = La.create_learner(cbs=cbs, device=0,compile=True,distrib=True)
 # %%
 # %%
 
@@ -451,3 +456,4 @@ if __name__ == "__main__":
     # learn.model = model
     learn.fit(n_epoch=30, lr=La.model_params["lr"])
 # %%
+# b n m , . zdfghgbuhy

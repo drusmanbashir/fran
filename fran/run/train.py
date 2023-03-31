@@ -96,7 +96,7 @@ def main(args):
     else:
         La = load_existing_run(proj_defaults, run_name,args)
 
-    learn = La.create_learner()
+    learn = La.create_learner(compile=args.compile,distributed=args.distributed)
 
 #     # learn.model = model
     learn.fit(n_epoch=n_epoch, lr=La.model_params["lr"])
@@ -119,6 +119,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--bs", help="batch size",type=int)
     parser.add_argument("-f","--fold", type=int, default=0)
+    parser.add_argument("-d","--distributed", action='store_true')
+    parser.add_argument("-c","--compile", action='store_true')
     parser.add_argument("--lr", help="learning rate",type=float)
     parser.add_argument("--gpu", help="gpu id",type=int, default=None)
 
@@ -132,7 +134,7 @@ if __name__ == "__main__":
     parser.add_argument("--labels", help="list of mappings source to dest label values, e.e.,g [[0,0],[1,1],[2,1]] will map all foreground to 1")
 # %%
     args = parser.parse_known_args()[0]
-    # args.t = 'lits'
+    args.t = 'lits'
     # args.resume='LITS-276'
 
     # %%
