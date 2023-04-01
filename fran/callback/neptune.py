@@ -27,6 +27,7 @@ from torchinfo import summary
 
 
 _ast_keys= ['dataset_params,patch_size','metadata,src_dest_labels' ]
+_immutable_keys =['fold'] # once set in a particular runs these will not be changed without corrupting the run
 str_to_key = lambda string: string.split(',')
 
 def dictionary_fix_ast(dictionary:dict):
@@ -100,9 +101,11 @@ class NeptuneManager():
     def update_run_from_config (self,update_nep_run_from_config):
         for category, dict in update_nep_run_from_config.items():
             for key,value in dict.items():
-                old_val = self.nep_run[category][key].fetch()
-                if old_val != value: print("Updating nep-run {0}/{1} from config provided. Previous value: {2}. New value {3}".format(category,key,old_val,value))
-                self.nep_run[category][key]=value
+                if all ([key !=k for k in _immutable_keys]):
+                    old_val = self.nep_run[category][key].fetch()
+                    if str(old_val) != str(value):
+                        print("Updating nep-run {0}/{1} from config provided. Previous value: {2}. New value {3}".format(category,key,old_val,value))
+                        self.nep_run[category][key]=stringify_unsupported(value)
 
        
     def get_run_id(self,run_name):

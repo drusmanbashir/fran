@@ -19,8 +19,7 @@ def process_run_name(run_name):
         else: return run_name
 
 
-def override_configs(args , configs=None):
-    if not configs: configs={}
+def override_configs(args , configs:dict):
     def _alter_config_key(ans,val):
         if isinstance(ans,str):
             keys = str_to_key(ans)
@@ -43,13 +42,16 @@ def override_configs(args , configs=None):
 
 
 def load_and_update_configs(proj_defaults, args):
-    configs = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+    if args.resume is None or args.update == True:
+        configs = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+    else:
+        configs = {}
     updated_configs =override_configs(args, configs)
     return updated_configs
 
 
 def load_existing_run(proj_defaults,run_name,args):
-    updated_configs = override_configs(args , None)
+    updated_configs = load_and_update_configs(proj_defaults, args )
     La = Trainer.fromNeptuneRun(
         proj_defaults,
         run_name=run_name,
@@ -125,6 +127,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", help="gpu id",type=int, default=None)
 
     parser.add_argument("-a", "--arch", help="Architecture. Supports: nnUNet, SwinUNETR, DynUNet")
+    parser.add_argument("-u", "--update", help="Update existing run from configs excel spreadsheet.",action='store_true')
     parser.add_argument(
         "--mode",
         choices=["hi", "lo"],
@@ -134,11 +137,12 @@ if __name__ == "__main__":
     parser.add_argument("--labels", help="list of mappings source to dest label values, e.e.,g [[0,0],[1,1],[2,1]] will map all foreground to 1")
 # %%
     args = parser.parse_known_args()[0]
-    # args.t = 'lits'
-    # args.distributed = True
-    # # args.compiled= True
-    # # args.bs = 4
-    # args.resume='LITS-408'
+    args.t = 'lits'
+    args.distributed = True
+    # args.compiled= True
+    args.bs = 4
+    args.resume='LITS-408'
+    args.update = True
     #
     # %%
     main(args)

@@ -675,7 +675,8 @@ if __name__ =="__main__":
     patch_size = [160,160,160]
     resample_spacings = [1,1,2]
     run_name_w= "LITS-276" # best trial
-    runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
+    # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
+    runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357"]
     run_name_p = runs_ensemble[0]
     device=1
     En = EnsemblePredictor(proj_defaults,run_name_w,runs_ensemble,device,debug=True)

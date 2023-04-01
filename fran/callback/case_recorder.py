@@ -14,7 +14,7 @@ from pathlib import Path
 # %%
 
 class CaseIDRecorder(Callback):
-    def __init__(self,freq=2, local_folder='/tmp',dpi=300):
+    def __init__(self,freq=50, local_folder='/tmp',dpi=300):
         '''
 
         :param freq:
@@ -82,7 +82,7 @@ class CaseIDRecorder(Callback):
                         # self.nep_run["_".self.nep_field+"_plots/{}".format(storage_string_plot)].upload(fname_plot)
                         # self.nep_run["_".join([self.nep_field,label])].log(File.as_image(figure))
 
-                        field_name = "/".join([self.nep_field, label])+"_epoch_"+str(self.epoch)+"/interactive_img"
+                        field_name = "/".join([self.nep_field, label,"epoch_{}".format(self.epoch),"interactive_img"])
                         self.nep_run[field_name].upload(figure)
 
     def compute_rows_per_plot(self):
