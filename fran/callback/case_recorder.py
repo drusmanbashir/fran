@@ -1,4 +1,5 @@
 import re
+import plotly.express as px
 from fastcore.foundation import L
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -13,7 +14,7 @@ from pathlib import Path
 # %%
 
 class CaseIDRecorder(Callback):
-    def __init__(self,freq=50, local_folder='/tmp',dpi=300):
+    def __init__(self,freq=2, local_folder='/tmp',dpi=300):
         '''
 
         :param freq:
@@ -71,17 +72,18 @@ class CaseIDRecorder(Callback):
 
     def store_results(self):
                 for label in self.df_titles:
-                    storage_string_plot = label+"_plot_epoch{}".format(self.epoch)
                     small_df = self.create_limited_df(self.dfs[label])
-                    figure = self.create_plot(small_df)
+                    figure = self.create_plotly(small_df)
                     fname_df = Path(self.local_folder)/("{}.csv".format(label))
-                    fname_plot = fname_df.str_replace(".csv",".png")
                     self.dfs[label].to_csv(fname_df, index=False)
-                    figure.savefig(fname_plot)
+                    # figure.savefig(fname_plot)
                     if hasattr(self.learn,'nep_run') :
                         # self.nep_run[self.nep_field+"_dataframes/{}".format(storage_string_df)].upload(File.as_html(self.dfs[label]))  TOO LARGE
                         # self.nep_run["_".self.nep_field+"_plots/{}".format(storage_string_plot)].upload(fname_plot)
-                        self.nep_run["_".join([self.nep_field,label])].log(File.as_image(figure))
+                        # self.nep_run["_".join([self.nep_field,label])].log(File.as_image(figure))
+
+                        field_name = "/".join([self.nep_field, label])+"_epoch_"+str(self.epoch)+"/interactive_img"
+                        self.nep_run[field_name].upload(figure)
 
     def compute_rows_per_plot(self):
         self.rows_per_plot =[len(self.dfs[label]) for label in self.df_titles]
@@ -90,13 +92,24 @@ class CaseIDRecorder(Callback):
         dfd = dfd[-self.rows_per_plot[self.training]::]
         return dfd
 
+
+    def df_plottable(self,dfd):
                 
-    def create_plot(self, dfd):
-        sns.set(rc=self.rcs[self.training])
-        plt.ioff()
         df2 = dfd.melt(id_vars=['case_id','filename'])
         df2 = df2[df2.variable.str.contains("Unnamed")==False]
         df2.variable = df2.variable.astype("category")
+        return df2
+    def create_plotly(self, dfd):
+
+        df2 = self.df_plottable(dfd)
+        figure = px.box(df2, x="case_id", y="value", color="variable")
+        return figure
+
+
+    def create_plot_sns(self,dfd):
+        sns.set(rc=self.rcs[self.training])
+        plt.ioff()
+        df2 = self.df_plottable(dfd)
         ax= sns.boxplot(x='case_id',y='value',hue='variable' ,data=df2)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
         figure = ax.figure
@@ -116,18 +129,29 @@ if __name__ == "__main__":
     #
     # df2 = df1[-45000::]
 # %%
-    df2 = pd.read_csv("fran/managers/df2.csv")
-
+    df2 = pd.read_csv("/tmp/small2.csv")
 # %%
     plt.ioff()
     df2 = df2.melt(id_vars=['case_id','filename'])
     df2 = df2[df2.variable.str.contains("Unnamed")==False]
     df2.variable = df2.variable.astype("category")
+
+    figure = px.box(df2, x="case_id", y="value", color="variable")
+    figure.write_image(file = "/tmp/valid.png",width=1000,height=700,scale=2)
+    # figure.show()
+# %%
+# %%
+    np.random.seed(1234)
+    df = pd.DataFrame(np.random.randn(10, 4),
+                      columns=['Col1', 'Col2', 'Col3', 'Col4'])
+# %%
+    box  = df2.boxplot(column =['variable'])
 # %%
     ax= sns.boxplot(x='case_id',y='value',hue='variable' ,data=df2)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
     figure = ax.figure
     figure.tight_layout()
+    figure.savefig('/tmp/tt.png')
     plt.show()
 # %%
     ax= sns.boxplot(x='case_id',y='value',hue='variable' ,data=df2)

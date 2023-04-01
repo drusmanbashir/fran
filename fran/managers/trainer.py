@@ -71,7 +71,7 @@ class Trainer:
 
         self.create_datasets()
         self.create_transforms()
-        self.create_dataloaders( max_workers=max_workers, bs=bs, pin_memory=pin_memory)
+        self.create_dataloaders( max_workers=max_workers, bs=bs, pin_memory=pin_memory,device=self.device)
 
     def assimilate_config(self, config_dict):
         for key, value in config_dict.items():
@@ -193,7 +193,7 @@ class Trainer:
             bboxes_fname,
         )
 
-    def create_dataloaders(self, bs=None, max_workers=4, **kwargs):
+    def create_dataloaders(self, bs=None, max_workers=4,device=None, **kwargs):
         if bs == None:
             bs = self.dataset_params["bs"]
         train_dl = TfmdDLKeepBBox(
@@ -217,9 +217,9 @@ class Trainer:
             **kwargs
         )
 
-        self.dls = DataLoaders(train_dl, valid_dl)
+        self.dls = DataLoaders(train_dl, valid_dl,device=device)
 
-    def create_learner(self, cbs=[], device=None,distributed=False,compile=False, **kwargs):
+    def create_learner(self, cbs=[], distributed=False,compile=False, **kwargs):
         # self.device = device
         # creates learner from configs. Loads checkpoint if any exists in self.checkpoints_folder
 
@@ -446,10 +446,10 @@ if __name__ == "__main__":
 
     La = Trainer.fromExcel(
         proj_defaults,
-        bs=4
+        bs=2
     )
 # %%
-    learn = La.create_learner(cbs=cbs, device=0,compile=True,distrib=True)
+    learn = La.create_learner(cbs=cbs, device=0,compile=False,distributed=False)
 # %%
 # %%
 

@@ -88,7 +88,7 @@ def main(args):
     print("Project: {0}".format(project_title))
 
     n_epoch = args.epochs
-    if not args.gpu and not args.distributed:   args.gpu = get_available_device() 
+    if args.distributed:   args.gpu  = 0
 
     run_name = process_run_name(args.resume)
     if not run_name:
@@ -136,10 +136,10 @@ if __name__ == "__main__":
     args = parser.parse_known_args()[0]
     # args.t = 'lits'
     # args.distributed = True
-    # args.compiled= True
-    # args.bs = 4
-    # # args.resume='LITS-276'
-
+    # # args.compiled= True
+    # # args.bs = 4
+    # args.resume='LITS-408'
+    #
     # %%
     main(args)
 # %%
