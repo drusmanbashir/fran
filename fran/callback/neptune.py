@@ -399,7 +399,8 @@ class NeptuneCheckpointCallback(TrackerCallback):
 
 class NeptuneImageGridCallback(Callback):
     order = NeptuneCallback.order+1
-    def __init__(self, classes, patch_size, imgs_per_grid=32, imgs_per_batch=4, publish_deep_preds=False, apply_activation=True):
+    def __init__(self, classes, patch_size,freq=10,imgs_per_grid=32, imgs_per_batch=4, publish_deep_preds=False, apply_activation=True):
+        store_attr('freq')
         if not isinstance(patch_size, torch.Size): patch_size = torch.Size(patch_size)
         self.iter_num_train = int(imgs_per_grid/imgs_per_batch) -1 # minus 1 because 1 valid iter batch will be saved too
         self.stride=int(patch_size[0]/ imgs_per_batch)
@@ -420,17 +421,18 @@ class NeptuneImageGridCallback(Callback):
                 self.populate_grid()
 
     def after_epoch(self):
-        grd_final=[]
-        for grd,category in zip([self.grid_imgs,self.grid_preds,self.grid_masks], ["imgs","preds","masks"]):
-            grd = torch.cat(grd)
-            if category=="imgs":
-                    grd = normalize(grd)
-            grd_final.append(grd)
-        grd= torch.stack(grd_final)
-        grd2 = grd.permute(1,0,2,3,4).contiguous().view(-1,3,grd.shape[-2],grd.shape[-1])
-        grd3 = make_grid(grd2,nrow=self.imgs_per_batch*3)
-        grd4 = grd3.permute(1,2,0)
-        self.learn.nep_run["images"].log(File.as_image(grd4))
+        if self.epoch%self.freq==0:
+            grd_final=[]
+            for grd,category in zip([self.grid_imgs,self.grid_preds,self.grid_masks], ["imgs","preds","masks"]):
+                grd = torch.cat(grd)
+                if category=="imgs":
+                        grd = normalize(grd)
+                grd_final.append(grd)
+            grd= torch.stack(grd_final)
+            grd2 = grd.permute(1,0,2,3,4).contiguous().view(-1,3,grd.shape[-2],grd.shape[-1])
+            grd3 = make_grid(grd2,nrow=self.imgs_per_batch*3)
+            grd4 = grd3.permute(1,2,0)
+            self.learn.nep_run["images"].log(File.as_image(grd4))
 
     def img_to_grd(self,batch):
                     imgs = batch[0,:,::self.stride,:,:].clone()
