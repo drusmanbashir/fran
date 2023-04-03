@@ -335,13 +335,13 @@ def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="lits")
+    P = Project(project_title="litsx")
     P.create_project()
     pj = P.proj_summary
     pp(pj)
     P.save_summary()
 # %%
-    P.set_raw_data_sources(["/s/datasets_bkp/drli/", '/s/datasets_bkp/litqsmall/sitk/', '/s/datasets_bkp/lits_segs_improved/'])
+    P.set_raw_data_sources(['/s/datasets_bkp/litqsmall/sitk/'])
     P.populate_raw_data_folder()
     P.raw_data_imgs
     P.create_train_valid_folds()
