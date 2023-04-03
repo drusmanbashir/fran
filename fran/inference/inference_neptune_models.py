@@ -32,14 +32,6 @@ if __name__ == "__main__":
 
 
 # %%
-    a = 'std'
-    b = 'j'
-    e = 1
-
-    field_name = "/".join([a, b,"epoch_{}".format(e),"interactive_img"])
-    print(field_name)
-# %%
-# %%
     common_paths_filename=os.environ['FRAN_COMMON_PATHS']
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
 

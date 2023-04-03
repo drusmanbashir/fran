@@ -50,7 +50,7 @@ class ArrayToSITKF(Transform):
             preds_out = []
             for pred in pred_pt: 
                 pred_ = sitk.GetImageFromArray(pred)
-                pred_ = reorient_sitk(pred_,self.sitk_props[-1])
+                # pred_ = reorient_sitk(pred_,self.sitk_props[-1])
                 pred_ = set_sitk_props(pred_,self.sitk_props)
                 preds_out.append(pred_)
             return preds_out
@@ -64,7 +64,7 @@ class ArrayToSITKI(Transform):
     def encodes(self,pred):
                 assert all([pred.ndim==3,'int' in str(pred.dtype)]), "This requires 3d int array, DxWxH"
                 pred_ = sitk.GetImageFromArray(pred)
-                pred_ = reorient_sitk(pred_,self.sitk_props[-1])
+                # pred_ = reorient_sitk(pred_,self.sitk_props[-1])
                 pred_ = set_sitk_props(pred_,self.sitk_props)
                 return pred_
 

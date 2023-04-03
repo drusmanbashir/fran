@@ -302,7 +302,7 @@ class Project(DictToAttr):
 
     def __len__(self): 
         self._len = len(self.raw_data_imgs)
-        assert (self._len == len(self.folds['all_cases'])), "Have you accounted for all files in creawting train/valid folds?"
+        assert (self._len == len(self.folds['all_cases'])), "Have you accounted for all files in creating train/valid folds?"
         self._proj_summary.training_data_total = self._len
         return self._len
 
@@ -335,16 +335,17 @@ def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="lits_tmp23456")
-    P.create_project(['/media/ub/datasets_bkp/lits_short_curate/', '/s/datasets/drli_short/'])
+    P = Project(project_title="lits")
+    P.create_project()
     pj = P.proj_summary
     pp(pj)
     P.save_summary()
 # %%
-    P.set_raw_data_sources(["/s/datasets/drli_short/"])
+    P.set_raw_data_sources(["/s/datasets_bkp/drli/", '/s/datasets_bkp/litqsmall/sitk/', '/s/datasets_bkp/lits_segs_improved/'])
     P.populate_raw_data_folder()
     P.raw_data_imgs
     P.create_train_valid_folds()
+
 # %%
     P.load_summary()
     pj = P.proj_summary

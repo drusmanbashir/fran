@@ -141,7 +141,7 @@ if __name__ == "__main__":
     args.distributed = True
     # args.compiled= True
     args.bs = 4
-    args.resume='LITS-408'
+    # args.resume='LITS-408'
     args.update = True
     #
     # %%

@@ -16,16 +16,17 @@ def main(args):
 
 
 
-    runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
-    mo_df = pd.read_csv(Path("/media/ub/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
-    n= 10
-    img_fn =Path(mo_df.image_filenames[n])
-    Path(mo_df.mask_filenames[n] )
-    device = 0
+    runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357"]
+    # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
+    mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
     E = EnsemblePredictor(proj_defaults,run_name_w,runs_ensemble,device=device)
-    E.run(img_fn)
-    E.run_patch_prediction(img_fn)
-    # w = E.predictor_w
+    
+    for n in range(len(mo_df)):
+        img_fn =Path(mo_df.image_filenames[n])
+        Path(mo_df.mask_filenames[n] )
+        device = 0
+        E.run(img_fn)
+        # w = E.predictor_w
     # print("Available device set as {}: ".format(w.device))
     # print("torch.cuda.memory_allocated: %fGB"%(torch.cuda.memory_allocated(w.device)/1024/1024/1024))
     # torch.cuda.mem_get_info(1)[0]/(1024**3)

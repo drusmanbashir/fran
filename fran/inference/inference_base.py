@@ -180,7 +180,9 @@ class FillBBoxPatches(ItemTransform):
 
 class _Predictor(GetAttr):
 
-    def save_prediction(self,ext=".nii.gz"):
+    def save_prediction(self,ext=None):
+        if not ext:
+            ext = "."+get_extension(self.img_filename)
         maybe_makedirs(self._output_image_folder)
         if self.debug==True:
             counts = ["","_1","_2","_3","_4"][:len([self.pred_sitk_i,*self.pred_sitk_f])]
@@ -671,20 +673,22 @@ if __name__ =="__main__":
     common_paths_filename=os.environ['FRAN_COMMON_PATHS']
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
 
-    mo_df = pd.read_csv(Path("/media/ub/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
+    mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
     patch_size = [160,160,160]
     resample_spacings = [1,1,2]
     run_name_w= "LITS-276" # best trial
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
-    runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357"]
+    runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357","LITS-413"]
     run_name_p = runs_ensemble[0]
     device=1
     En = EnsemblePredictor(proj_defaults,run_name_w,runs_ensemble,device,debug=True)
 
 # %%
-    img_fn = Path("/media/ub/datasets_bkp/litq/sitk/images/litq_00060_20190815.nrrd")
-    img_fn=Path(img_fn)
-    En.run(img_fn)
+    fldr =Path("/s/datasets_bkp/litqsmall/sitk/images/")
+    fnames = list(fldr.glob("*nrrd"))
+# %%
+    for fname in fnames[24:]:
+        En.run(fname)
 # %%
     ImageMaskViewer([En.w.img_np_orgres,En.w.pred[1]])
 # %%

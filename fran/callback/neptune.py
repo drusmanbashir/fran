@@ -1,7 +1,7 @@
 # %%
 from fastai.callback.tracker import TrackerCallback
 
-
+from paramiko import SSHClient
 import torch.nn.functional as F
 import os
 from pathlib import Path
@@ -12,7 +12,7 @@ from torchvision.utils import make_grid
 import torch
 from fran.transforms.spatialtransforms import one_hot
 from fran.managers.base import make_patch_size
-from fran.utils.fileio import load_json, maybe_makedirs
+from fran.utils.fileio import load_json, load_yaml, maybe_makedirs
 import neptune
 from neptune.utils import stringify_unsupported
 import ast
@@ -24,6 +24,10 @@ from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.utils.config_parsers import *
 from torchinfo import summary
+
+try:
+    hpc_settings_fn = os.environ['HPC_SETTINGS']
+except: pass
 
 
 _ast_keys= ['dataset_params,patch_size','metadata,src_dest_labels' ]
@@ -139,7 +143,7 @@ class NeptuneManager():
 
     def _upload_config_dict(self, config_dict):
         for key, value in config_dict.items():
-            self.nep_run[key] = stringify_unsupported(value)
+            self.set_run_value(key,value)
             setattr(self, key, value)
 
     def _additional_init_settings(self,run_name):
@@ -167,6 +171,11 @@ class NeptuneManager():
                     config_dict.update({param: parse_neptune_dict(neptune_dict)})
 
             return config_dict
+    def set_run_value(self,key,value):
+        value = stringify_unsupported(value)
+        print("Setting Neptune field {0} value: {1}".format(key,value))
+        self.nep_run[key]= value
+        self.nep_run.wait()
 
 
 
@@ -311,8 +320,9 @@ class NeptuneCallback(NeptuneManager, Callback):
     def from_existing_run(cls,proj_defaults, config_dict, run_name, nep_run,**kwargs):
          cls = cls(proj_defaults,config_dict,run_name=run_name,nep_run=nep_run,**kwargs)
          return cls
-        
-class NeptuneCheckpointCallback(TrackerCallback):
+
+
+class NeptuneCheckpointCallback(TrackerCallback, NeptuneManager):
     "A `TrackerCallback` that saves the model's best during training and loads it at the end."
     order = NeptuneCallback.order+1
     def __init__(self, checkpoints_parent_folder, fname='model',monitor='valid_loss', comp=None, min_delta=0.,   every_epoch=False, at_end=False,
@@ -322,6 +332,37 @@ class NeptuneCheckpointCallback(TrackerCallback):
         assert not (every_epoch and at_end), "every_epoch and at_end cannot both be set to True"
         self.last_saved_path = None
 
+    def download_remote_folder(self, hpc, remote_dir):
+
+        print("\nSSH to remote folder {}".format(remote_dir))
+        client = SSHClient()
+        client.load_system_host_keys()
+        client.connect(hpc['host'], username=hpc['username'], password=hpc['password'])
+        ftp_client = client.open_sftp()
+
+
+        local_dir =self.checkpoints_parent_folder/self.run_name
+        fnames = ftp_client.listdir(remote_dir)
+        remote_fnames =[os.path.join(remote_dir,f) for f in fnames]
+        local_fnames =[os.path.join(local_dir,f) for f in fnames]
+        maybe_makedirs(local_dir)
+        for rem,loc in zip(remote_fnames,local_fnames):
+            print("Copying file {0} to local folder {1}".format(rem,local_dir))
+            ftp_client.get(rem, loc)
+        self.set_run_value('metadata/model_dir',local_dir)
+
+
+
+    def set_model_dir(self,model_dir:str):
+    # model_dir = '/data/scratch/mpx588/fran_storage/checkpoints/lits/LITS-413'
+
+
+        hpc = load_yaml(hpc_settings_fn)
+        if hpc['hpc_storage'] in model_dir:
+                self.download_remote_folder(hpc,model_dir)
+
+        self.learn.model_dir=Path(self.nep_run['metadata/model_dir'].fetch())
+
     def after_create(self):
         # keep track of file path for loggers
         # if self.learn.nep_run.exists('metadata/best_loss'):
@@ -330,8 +371,9 @@ class NeptuneCheckpointCallback(TrackerCallback):
         #     self.learn.nep_run['metadata/best_loss']=self.best
         #     self.learn.nep_run.wait()
         if self.nep_run.exists('metadata/model_dir'):
-            self.learn.model_dir=Path(self.nep_run['metadata/model_dir'].fetch())
+            model_dir = self.nep_run['metadata/model_dir'].fetch()
             self.nep_run.wait()
+            self.set_model_dir(model_dir)
             self._load_model()
         else:
             if not hasattr(self.learn,'tune_checkpoint'):

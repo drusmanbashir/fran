@@ -1,5 +1,4 @@
 # %o%
-from pipe import map  as pmap
 from monai.utils.enums import DiceCEReduction, LossReduction
 from monai.utils.module import look_up_option
 from typing import Callable, Optional
@@ -123,7 +122,8 @@ class CombinedLoss(_DiceCELossMultiOutput):
 
        self.neptune_labels =  ["loss", "loss_ce","loss_dice"] + ["loss_dice_label{}".format(x) for x in classes]
 
-       self.case_recorder_labels = list(il.product(batches,classes) | pmap (label_maker))
+       self.case_recorder_labels = il.product(batches,classes) 
+       self.case_recorder_labels= map(label_maker,self.case_recorder_labels)
        self.labels =list(il.chain(self.neptune_labels,self.case_recorder_labels))
 
 
