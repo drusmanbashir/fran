@@ -1,4 +1,5 @@
 # %%
+from SimpleITK import ImageViewer_SetProcessDelay
 from fastai.data.core import DataLoaders
 # from fastai.distributed import *
 from fastai.torch_core import delegates
@@ -385,7 +386,7 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
     project_title = "lits"
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title=project_title); proj_defaults= P.proj_summary
     from fran.managers.tune import get_raytune_folder_from_trialname
 
     # trial_name = "kits_675_080"
@@ -441,7 +442,7 @@ if __name__ == "__main__":
 
     ]
 # %%
-    # cbs =[]
+    cbs =[]
 
 
     La = Trainer.fromExcel(
@@ -449,12 +450,39 @@ if __name__ == "__main__":
         bs=2
     )
 # %%
-    learn = La.create_learner(cbs=cbs, device=0,compile=False,distributed=False)
+    learn = La.create_learner(cbs=cbs, compile=False,distributed=False)
 # %%
+    ImageMaskViewer([a.detach().cpu()[0,0],b.detach().cpu()[0,0]])
 # %%
 
     # model = SwinUNETR(La.dataset_params['patch_size'],1,3)
     # learn.model = model
     learn.fit(n_epoch=30, lr=La.model_params["lr"])
+## %%
+# %%
+# %%
+    bboxes_fname = La.dataset_folder / "bboxes_info"
+    ds = ImageMaskBBoxDataset(
+                La.proj_defaults,
+                La.train_list,
+                bboxes_fname,
+                [0,0 ,100]
+            )
+
+# %%
+    present =[]
+    for x in range(len(ds)):
+        a,b,c = ds[x]
+        s = c['bbox_stats']
+        labs =[a['label'] for a in s]
+        present.append(2 in labs)
+    sum(present)
+# %%
+    x = 2
+    a,b,c = ds[x]
+    ImageMaskViewer([a,b])
+# %%
+# %%
+    a,b,c = La.dls.one_batch()
 # %%
 # b n m , . zdfghgbuhy
