@@ -5,7 +5,7 @@ import itertools as il
 from fastai.vision.augment import store_attr
 from fran.utils.dictopts import dic_in_list
 from fran.utils.helpers import *
-
+import shutil
 from fran.utils.helpers import DictToAttr, ask_proceed
 
 sys.path += ["/home/ub/Dropbox/code"]
@@ -19,7 +19,6 @@ from fran.utils.templates import mask_labels_template
 class Project(DictToAttr):
     def __init__(self, project_title):
         store_attr()
-
     def create_project(self, datasets: list = None, test: bool = None):
         """
         param datasets: list of datasets to add to raw_data_folder
@@ -38,17 +37,12 @@ class Project(DictToAttr):
 
 
     def _create_folder_tree(self):
-        folders = []
         maybe_makedirs(self.project_folder)
-        for key, value in self.proj_summary.__dict__.items():
-            if isinstance(value, Path) and "folder" in key:
-                folders.append(value)
-        additional_folders = [
+        additional_folders=[
             self.proj_summary.raw_data_folder / ("images"),
             self.proj_summary.raw_data_folder / ("masks"),
         ]
-        folders.extend(additional_folders)
-        for folder in folders:
+        for folder in il.chain(self.folders,additional_folders):
             maybe_makedirs(folder)
 
     def populate_raw_data_folder(self):
@@ -82,6 +76,14 @@ class Project(DictToAttr):
         else: print("Dataset {} already registered with same fileset in project. Will not add".format(dic['dataset_name']))
 
 
+
+    @property
+    def folders(self):
+        self._folders = []
+        for key, value in self.proj_summary.__dict__.items():
+            if isinstance(value, Path) and "folder" in key:
+                self._folders.append(value)
+        return self._folders
 
     @property
     def label_dict(self):
@@ -190,7 +192,6 @@ class Project(DictToAttr):
                 proj_summary["global_properties_filename"] = (
                     proj_summary["project_folder"] / "global_properties"
                 )
-                proj_summary["neptune_folder"] = self.common_paths["neptune_folder"]
                 proj_summary["patches_folder"] = proj_summary[
                     "fixed_dimensions_folder"
                 ] / ("patches")
@@ -308,6 +309,13 @@ class Project(DictToAttr):
 
     def __repr__(self): return "Project"
 
+    @ask_proceed("Remove all project files and folders?")
+    def delete(self):
+        for folder in self.folders:
+            if folder.exists():
+                shutil.rmtree(folder)
+        print("Done")
+
 def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_valid , json_filename, shuffle=False):
     pct_valid = 0.2
     train_val_ids = [get_case_id_from_filename(None,fn) for fn in train_val_list]
@@ -335,13 +343,13 @@ def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="litsx")
+    P = Project(project_title="litsxa")
     P.create_project()
     pj = P.proj_summary
     pp(pj)
     P.save_summary()
 # %%
-    P.set_raw_data_sources(['/s/datasets_bkp/litqsmall/sitk/'])
+    P.set_raw_data_sources(['/s/datasets_bkp/drli_short//'])
     P.populate_raw_data_folder()
     P.raw_data_imgs
     P.create_train_valid_folds()

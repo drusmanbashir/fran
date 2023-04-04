@@ -1,6 +1,7 @@
 # %%
 from fastai.callback.tracker import TrackerCallback
 
+from fran.utils.common import *
 from paramiko import SSHClient
 import torch.nn.functional as F
 import os
@@ -45,9 +46,9 @@ def get_neptune_config(proj_defaults):
     '''
     Returns particular project workspace
     '''
-     
-    config_json = proj_defaults.neptune_folder / ("config.json")
-    project_title = proj_defaults.project_title
+    project_title =proj_defaults.project_title
+    commons= load_yaml(common_paths_filename)
+    config_json= Path(commons['neptune_folder'])/("config.json")
     neptune_project_info = load_json(config_json)
     project_name = f"{neptune_project_info['workspace-name']}/{project_title}"
     api_token = neptune_project_info['api_token']
@@ -614,7 +615,6 @@ class NeptuneImageGridCallback(Callback):
 #
 # %%
 if __name__ == "__main__":
-    from fran.utils.common import *
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
     config = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
 # %%

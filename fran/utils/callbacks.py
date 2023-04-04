@@ -161,316 +161,316 @@ class TensorboardCallback(Callback):
 #     def after_fit(self): self.run=True
 
 
-class NeptuneCallback(Callback):
-
-    order = TrackerCallback.order+1
-    def __init__(self,proj_defaults,config_dict,run_name=None,freq=2,metrics=None,hyperparameters=None,tmp_folder="/tmp"):
-        self.neptune_settings=load_json(Path(proj_defaults.neptune_folder)/"config.json")
-        self.project=neptune.init_project(**self.neptune_settings)
-        self.tmp_folder =tmp_folder
-        self.freq=freq
-        self.run_name=run_name
-
-        self.config_dict = config_dict
-        if hyperparameters==None:
-            self.hyperparameters = ['lr','mom','wd']
-
-    def after_create(self):
-        # self.checkpoints_folder=Path(tune.get_trial_dir())
-
-        self.df = self.project.fetch_runs_table(
-            owner="drusmanbashir",
-        ).to_pandas()
-
-        self.neptune_settings['project']=self.neptune_settings['name']
-        self.neptune_run_settings={'project':self.neptune_settings['name'], 'api_token':self.neptune_settings['api_token']}
-
-        if self.run_name == None and self.config_dict:
-            self.learn.nep_run = self._init_run()
-
-
-        else:
-            self.learn.nep_run = self.load_run()
-            if self.config_dict:
-                self.learn.nep_run = self.populate_nep_run(self.learn.nep_run,self.config_dict)
-        try:
-            self.learn.epoch_running_total=self.learn.nep_run["model_params/epoch"].fetch()
-        except:
-            self.learn.epoch_running_total = 0
-        self.learn.run_name = self.run_name
-        self.learn.nep_run['model_params/summary'].upload(self.summary()) 
-
-    def after_batch(self):
-        if self.iter%self.freq==0:
-            if self.training:
-                for hp in self.hyperparameters:
-                    self.learn.nep_run['hyperparameters/{}'.format(hp)].log( self.opt.hypers[0][hp])
-                for loss_item in self.loss_dict.items():
-                    self.learn.nep_run['metrics/train_loss/'+loss_item[0]].log(loss_item[1].item())
-            else:
-
-                for loss_item in self.loss_dict.items():
-                    self.learn.nep_run['metrics/valid_loss/'+loss_item[0]].log(loss_item[1])
-
-    def after_epoch(self):
-
-        self.learn.epoch_running_total+=1
-        self.learn.nep_run['model_params/epoch']=self.learn.epoch_running_total
-
-    def after_fit(self):
-        self.learn.nep_run.stop()
-
-    def summary(self):
-         patch_size=make_patch_size(self.config_dict['dataset_params']['patch_dim0'],self.config_dict['dataset_params']['patch_dim1'])
-         summ = summary(self.learn.model, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0)
-         tmp_filename = self.tmp_folder+"/summary.txt"
-         with open (tmp_filename,"w") as f:
-                f.write(str(summ))
-         return tmp_filename
-
-    def _init_run(self):
-            nep_run = neptune.init_run(run=None,mode="async",**self.neptune_run_settings)
-            nep_run['model_params/epoch']= self.learn.epoch_running_total =0
-            nep_run = self.populate_nep_run(nep_run,self.config_dict)
-            self.run_name = nep_run['sys/id'].fetch()
-            return nep_run
-
-    def load_run(self,param_names=None,nep_mode="async"):
-        try:
-            nep_run = neptune.init(run=self.run_name,mode=nep_mode,**self.neptune_settings)
-            print("Existing Run loaded. Run id {}".format(self.run_name))
-        except:
-            run_name_old = self.run_name
-            self.run_name= self.df.sort_values("sys/creation_time")["sys/id"].iloc[-1]
-            print("Run id {} does not exist. Loading most recent".format(run_name_old, self.run_name))
-            nep_run = neptune.init(run=self.run_name,mode=nep_mode,  **self.neptune_settings)
-        return nep_run
-
-    def populate_nep_run(self,nep_run,config_dict):
-            for key, value in config_dict.items():
-                nep_run[key] = value
-                setattr(self, key, value)
-            return nep_run
-
- 
-class NeptuneCheckpointCallback(TrackerCallback):
-    "A `TrackerCallback` that saves the model's best during training and loads it at the end."
-    order = NeptuneCallback.order+1
-    def __init__(self, monitor='valid_loss', comp=None, min_delta=0., fname='model', every_epoch=False, at_end=False,
-                 with_opt=True, reset_on_fit=True,resume=True,raytune_trial_name=None):
-        super().__init__(monitor=monitor, comp=comp, min_delta=min_delta, reset_on_fit=reset_on_fit)
-        assert not (every_epoch and at_end), "every_epoch and at_end cannot both be set to True"
-        # keep track of file path for logg`ers
-        self.last_saved_path = None
-        store_attr('fname,every_epoch,at_end,with_opt,resume,raytune_trial_name')
-
-    def after_create(self):
-        try:
-            self.best=self.learn.nep_run["model_params/best_loss"].fetch()
-            self.learn.nep_run.wait()
-        except: pass
-        # keep track of file path for loggers
-        self.learn.nep_run['meta/model_dir']=self.learn.model_dir
-        if not self.raytune_trial_name:
-            self.learn.nep_run['model_params/best_loss']=self.best
-            # self.learn.model_dir = self.learn.model_dir/self.learn.run_name
-            maybe_makedirs(self.learn.model_dir)
-        else:
-            self.learn.nep_run["meta/run_name"]=self.raytune_trial_name
-        if self.resume==True:
-            print("Loading model state from {}".format(self.learn.model_dir))
-            try:
-                self.learn.load(self.fname,device=self.device)
-                print("Successfully loaded model.")
-            except:
-                print("{0} does not exist in folder {1}".format(self.fname,self.learn.model_dir))
-                print("Training with new initialization.")
-    def _save(self, name):
-
-        self.learn.nep_run['model_params/best_loss']=self.best
-        self.last_saved_path = self.learn.save(name, with_opt=self.with_opt)
-
-    def after_epoch(self):
-        "Compare the value monitored to its best score and save if best."
-
-        if self.every_epoch:
-            if (self.epoch%self.every_epoch) == 0: self._save(f'{self.fname}_{self.epoch}')
-        else: #every improvement
-            super().after_epoch()
-            if self.new_best:
-                print(f'Better model found at epoch {self.epoch} with {self.monitor} value: {self.best}.')
-                self._save(f'{self.fname}')
-
-    def after_fit(self, **kwargs):
-        "Load the best model."
-        if self.at_end: self._save(f'{self.fname}')
-        elif not self.every_epoch: self.learn.load(f'{self.fname}', with_opt=self.with_opt)      
-
-
- #
-class NeptuneCheckpointCallback_old(TrackerCallback):
-    "A `TrackerCallback` that saves the model's best during training and loads it at the end."
-    _only_train_loop,order = True,NeptuneCallback.order+1
-    def __init__(self, monitor='valid_loss', comp=None, min_delta=0.,  freq=None, at_end=False,
-                 with_opt=True, reset_on_fit=False, upload_model=False,delete_previous_checkpoints=True,one_file_only=True):
-        # ray.util.pdb.set_trace()
-        super().__init__(monitor=monitor, comp=comp, min_delta=min_delta, reset_on_fit=reset_on_fit)
-        store_attr()
-
-    def after_create(self):
-        try:
-            self.best=self.learn.nep_run["model_params/best_loss"].fetch()
-            self.learn.nep_run.wait()
-        except: pass
-        # keep track of file path for loggers
-        self.learn.model_dir = self.learn.model_dir/self.learn.run_name
-        maybe_makedirs(self.learn.model_dir)
-        # store_attr('manager,every_epoch,at_end,with_opt, upload_model')
-
-    def save(self): 
-        if self.one_file_only == True:
-            name = "model"
-        else:
-            name ="epoch_" + str(self.learn.epoch_running_total)
-        self.learn.nep_run['model_params/best_loss']=self.best
-        self.lastsaved_path = self.learn.save(name, with_opt=self.with_opt)
-        if self.upload_model == True:
-            file_to_upload = str(self.lastsaved_path)
-            self.learn.nep_run["checkpoints"][name].upload(file_to_upload)
-
-    def after_epoch(self):
-        "Compare the value monitored to its best score and save if best."
-
-        if self.freq:
-            if (self.epoch%self.freq) == 0: self.save()
-        else: #every improvement
-             if hasattr(self,"new_best"):
-                print(f'Better model found at epoch {self.epoch} with {self.monitor} value: {self.best}.')
-                self.save()
-
-    def after_fit(self, **kwargs):
-        "Load the best model."
-        if self.at_end: self.save()
-        elif not self.freq: 
-                self.load()
-
-    def load(self):
-            list_of_files= self.learn.model_dir.glob('*.pth')     
-            try:
-                latest_chckpnt= max(list_of_files, key=lambda p: p.stat().st_ctime)
-                name =latest_chckpnt.name.split(".")[0]
-                self.learn.load(name)
-                # self.learn.load(f'{name}', with_opt=self.with_opt)
-            except:
-                print("no checkpoints to load yet")
-    def __del__(self):
-        print("Cleaning up..")
-        self.nep_run.stop()
-
-class NeptuneCallback_old(Callback):
-    def __init__(self,manager, frequency, metrics=None):
-
-        self.manager= manager
-        if metrics: self.metrics = listify(metrics)
-        self.frequency = frequency
-
-    def before_fit(self):
-        # self.manager.update_logs()
-        self.learn.epoch_running_total=self.manager.nep_run["model_params/epoch"].fetch()
-
-    def after_batch(self):
-        if self.training:
-            self.manager.nep_run['hyperparameters/lr'].log( self.opt.hypers[0]["lr"])
-            for loss_item in self.loss_dict.items():
-                self.manager.nep_run['metrics/train_loss/'+loss_item[0]].log(loss_item[1].item())
-        else:
-
-            for loss_item in self.loss_dict.items():
-                self.manager.nep_run['metrics/valid_loss/'+loss_item[0]].log(loss_item[1])
-
-    def after_epoch(self):
-        self.learn.epoch_running_total+=1
-        self.manager.nep_run['model_params/epoch']=self.learn.epoch_running_total
-
-    def after_fit(self):
-        self.manager.nep_run.stop()
-
-
-
-class NeptuneCallback_old(Callback):
-    def __init__(self,config_dict,experiment_name, neptune_dir= "/home/ub/Dropbox/code/fran/experiments/.neptune",run_name=None, freq=2,metrics=None):
-
-        if metrics: self.metrics = listify(metrics)
-        self.neptune_settings=load_json(Path(neptune_dir)/"config.json")
-        self.project=neptune.init_project(**self.neptune_settings)
-        self.config_dict = config_dict
-        self.config_dict.update({'experiment_name':experiment_name})
-        self.freq=freq
-        self.run_name = run_name
-
-    def after_create(self):
-        # self.checkpoints_folder=Path(tune.get_trial_dir())
-
-        self.df = self.project.fetch_runs_table(
-            owner="drusmanbashir",
-        ).to_pandas()
-
-        self.neptune_settings['project']=self.neptune_settings['name']
-        self.neptune_run_settings={'project':self.neptune_settings['name'], 'api_token':self.neptune_settings['api_token']}
-        if self.run_name == None:
-            self.learn.nep_run = self._init_run(self.config_dict)
-        else:
-            self.learn.nep_run = self.load_run(self.run_name)
-
-    def _init_run(self,config_dict):
-            nep_run = neptune.init_run(run=None,mode="async",**self.neptune_run_settings)
-            nep_run['model_params/epoch']= self.learn.epoch_running_total =0
-            for key, value in config_dict.items():
-                nep_run[key] = value
-                setattr(self, key, value)
-            return nep_run
-
-
-    def load_run(self,run_name,param_names=None,nep_mode="async"):
-        try:
-            self.learn.nep_run = neptune.init(run=run_name,mode=nep_mode,**self.neptune_settings)
-            print("Existing Run loaded. Run id {}".format(run_name))
-        except:
-            run_name_old = self.run_name
-            self.run_name= self.df.sort_values("sys/creation_time")["sys/id"].iloc[-1]
-            print("Run id {} does not exist. Loading most recent".format(run_name_old, self.run_name))
-            self.learn.nep_run = neptune.init(run=run_name,mode=nep_mode,  **self.neptune_settings)
-        # config_dict = {}
-        # if not param_names:
-        #     pass # not impl
-        # for param in param_names:
-        #     neptune_dict = self.nep_run[param].fetch()
-        #     config_dict.update({param: parse_neptune_dict(neptune_dict)})
-        #
-        # self.assimilate_attribs(config_dict)
-        # self.config_dict = config_dict
-        # learn = self.create_learner()
-        #     self.learn.nep_run = self.load_run(run_name)
- 
-    def after_batch(self):
-        if self.iter%self.freq==0:
-            if self.training:
-                self.learn.nep_run['hyperparameters/lr'].log( self.opt.hypers[0]["lr"])
-                for loss_item in self.loss_dict.items():
-                    self.learn.nep_run['metrics/train_loss/'+loss_item[0]].log(loss_item[1].item())
-            else:
-
-                for loss_item in self.loss_dict.items():
-                    self.learn.nep_run['metrics/valid_loss/'+loss_item[0]].log(loss_item[1])
-
-    def after_epoch(self):
-        self.learn.epoch_running_total+=1
-        self.learn.nep_run['model_params/epoch']=self.learn.epoch_running_total
-
-    def after_fit(self):
-        self.learn.nep_run.stop()
-
-
+# class NeptuneCallback(Callback):
+#
+#     order = TrackerCallback.order+1
+#     def __init__(self,proj_defaults,config_dict,run_name=None,freq=2,metrics=None,hyperparameters=None,tmp_folder="/tmp"):
+#         self.neptune_settings=load_json(Path(proj_defaults.neptune_folder)/"config.json")
+#         self.project=neptune.init_project(**self.neptune_settings)
+#         self.tmp_folder =tmp_folder
+#         self.freq=freq
+#         self.run_name=run_name
+#
+#         self.config_dict = config_dict
+#         if hyperparameters==None:
+#             self.hyperparameters = ['lr','mom','wd']
+#
+#     def after_create(self):
+#         # self.checkpoints_folder=Path(tune.get_trial_dir())
+#
+#         self.df = self.project.fetch_runs_table(
+#             owner="drusmanbashir",
+#         ).to_pandas()
+#
+#         self.neptune_settings['project']=self.neptune_settings['name']
+#         self.neptune_run_settings={'project':self.neptune_settings['name'], 'api_token':self.neptune_settings['api_token']}
+#
+#         if self.run_name == None and self.config_dict:
+#             self.learn.nep_run = self._init_run()
+#
+#
+#         else:
+#             self.learn.nep_run = self.load_run()
+#             if self.config_dict:
+#                 self.learn.nep_run = self.populate_nep_run(self.learn.nep_run,self.config_dict)
+#         try:
+#             self.learn.epoch_running_total=self.learn.nep_run["model_params/epoch"].fetch()
+#         except:
+#             self.learn.epoch_running_total = 0
+#         self.learn.run_name = self.run_name
+#         self.learn.nep_run['model_params/summary'].upload(self.summary()) 
+#
+#     def after_batch(self):
+#         if self.iter%self.freq==0:
+#             if self.training:
+#                 for hp in self.hyperparameters:
+#                     self.learn.nep_run['hyperparameters/{}'.format(hp)].log( self.opt.hypers[0][hp])
+#                 for loss_item in self.loss_dict.items():
+#                     self.learn.nep_run['metrics/train_loss/'+loss_item[0]].log(loss_item[1].item())
+#             else:
+#
+#                 for loss_item in self.loss_dict.items():
+#                     self.learn.nep_run['metrics/valid_loss/'+loss_item[0]].log(loss_item[1])
+#
+#     def after_epoch(self):
+#
+#         self.learn.epoch_running_total+=1
+#         self.learn.nep_run['model_params/epoch']=self.learn.epoch_running_total
+#
+#     def after_fit(self):
+#         self.learn.nep_run.stop()
+#
+#     def summary(self):
+#          patch_size=make_patch_size(self.config_dict['dataset_params']['patch_dim0'],self.config_dict['dataset_params']['patch_dim1'])
+#          summ = summary(self.learn.model, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0)
+#          tmp_filename = self.tmp_folder+"/summary.txt"
+#          with open (tmp_filename,"w") as f:
+#                 f.write(str(summ))
+#          return tmp_filename
+#
+#     def _init_run(self):
+#             nep_run = neptune.init_run(run=None,mode="async",**self.neptune_run_settings)
+#             nep_run['model_params/epoch']= self.learn.epoch_running_total =0
+#             nep_run = self.populate_nep_run(nep_run,self.config_dict)
+#             self.run_name = nep_run['sys/id'].fetch()
+#             return nep_run
+#
+#     def load_run(self,param_names=None,nep_mode="async"):
+#         try:
+#             nep_run = neptune.init(run=self.run_name,mode=nep_mode,**self.neptune_settings)
+#             print("Existing Run loaded. Run id {}".format(self.run_name))
+#         except:
+#             run_name_old = self.run_name
+#             self.run_name= self.df.sort_values("sys/creation_time")["sys/id"].iloc[-1]
+#             print("Run id {} does not exist. Loading most recent".format(run_name_old, self.run_name))
+#             nep_run = neptune.init(run=self.run_name,mode=nep_mode,  **self.neptune_settings)
+#         return nep_run
+#
+#     def populate_nep_run(self,nep_run,config_dict):
+#             for key, value in config_dict.items():
+#                 nep_run[key] = value
+#                 setattr(self, key, value)
+#             return nep_run
+#
+#  
+# class NeptuneCheckpointCallback(TrackerCallback):
+#     "A `TrackerCallback` that saves the model's best during training and loads it at the end."
+#     order = NeptuneCallback.order+1
+#     def __init__(self, monitor='valid_loss', comp=None, min_delta=0., fname='model', every_epoch=False, at_end=False,
+#                  with_opt=True, reset_on_fit=True,resume=True,raytune_trial_name=None):
+#         super().__init__(monitor=monitor, comp=comp, min_delta=min_delta, reset_on_fit=reset_on_fit)
+#         assert not (every_epoch and at_end), "every_epoch and at_end cannot both be set to True"
+#         # keep track of file path for logg`ers
+#         self.last_saved_path = None
+#         store_attr('fname,every_epoch,at_end,with_opt,resume,raytune_trial_name')
+#
+#     def after_create(self):
+#         try:
+#             self.best=self.learn.nep_run["model_params/best_loss"].fetch()
+#             self.learn.nep_run.wait()
+#         except: pass
+#         # keep track of file path for loggers
+#         self.learn.nep_run['meta/model_dir']=self.learn.model_dir
+#         if not self.raytune_trial_name:
+#             self.learn.nep_run['model_params/best_loss']=self.best
+#             # self.learn.model_dir = self.learn.model_dir/self.learn.run_name
+#             maybe_makedirs(self.learn.model_dir)
+#         else:
+#             self.learn.nep_run["meta/run_name"]=self.raytune_trial_name
+#         if self.resume==True:
+#             print("Loading model state from {}".format(self.learn.model_dir))
+#             try:
+#                 self.learn.load(self.fname,device=self.device)
+#                 print("Successfully loaded model.")
+#             except:
+#                 print("{0} does not exist in folder {1}".format(self.fname,self.learn.model_dir))
+#                 print("Training with new initialization.")
+#     def _save(self, name):
+#
+#         self.learn.nep_run['model_params/best_loss']=self.best
+#         self.last_saved_path = self.learn.save(name, with_opt=self.with_opt)
+#
+#     def after_epoch(self):
+#         "Compare the value monitored to its best score and save if best."
+#
+#         if self.every_epoch:
+#             if (self.epoch%self.every_epoch) == 0: self._save(f'{self.fname}_{self.epoch}')
+#         else: #every improvement
+#             super().after_epoch()
+#             if self.new_best:
+#                 print(f'Better model found at epoch {self.epoch} with {self.monitor} value: {self.best}.')
+#                 self._save(f'{self.fname}')
+#
+#     def after_fit(self, **kwargs):
+#         "Load the best model."
+#         if self.at_end: self._save(f'{self.fname}')
+#         elif not self.every_epoch: self.learn.load(f'{self.fname}', with_opt=self.with_opt)      
+#
+#
+#  #
+# class NeptuneCheckpointCallback_old(TrackerCallback):
+#     "A `TrackerCallback` that saves the model's best during training and loads it at the end."
+#     _only_train_loop,order = True,NeptuneCallback.order+1
+#     def __init__(self, monitor='valid_loss', comp=None, min_delta=0.,  freq=None, at_end=False,
+#                  with_opt=True, reset_on_fit=False, upload_model=False,delete_previous_checkpoints=True,one_file_only=True):
+#         # ray.util.pdb.set_trace()
+#         super().__init__(monitor=monitor, comp=comp, min_delta=min_delta, reset_on_fit=reset_on_fit)
+#         store_attr()
+#
+#     def after_create(self):
+#         try:
+#             self.best=self.learn.nep_run["model_params/best_loss"].fetch()
+#             self.learn.nep_run.wait()
+#         except: pass
+#         # keep track of file path for loggers
+#         self.learn.model_dir = self.learn.model_dir/self.learn.run_name
+#         maybe_makedirs(self.learn.model_dir)
+#         # store_attr('manager,every_epoch,at_end,with_opt, upload_model')
+#
+#     def save(self): 
+#         if self.one_file_only == True:
+#             name = "model"
+#         else:
+#             name ="epoch_" + str(self.learn.epoch_running_total)
+#         self.learn.nep_run['model_params/best_loss']=self.best
+#         self.lastsaved_path = self.learn.save(name, with_opt=self.with_opt)
+#         if self.upload_model == True:
+#             file_to_upload = str(self.lastsaved_path)
+#             self.learn.nep_run["checkpoints"][name].upload(file_to_upload)
+#
+#     def after_epoch(self):
+#         "Compare the value monitored to its best score and save if best."
+#
+#         if self.freq:
+#             if (self.epoch%self.freq) == 0: self.save()
+#         else: #every improvement
+#              if hasattr(self,"new_best"):
+#                 print(f'Better model found at epoch {self.epoch} with {self.monitor} value: {self.best}.')
+#                 self.save()
+#
+#     def after_fit(self, **kwargs):
+#         "Load the best model."
+#         if self.at_end: self.save()
+#         elif not self.freq: 
+#                 self.load()
+#
+#     def load(self):
+#             list_of_files= self.learn.model_dir.glob('*.pth')     
+#             try:
+#                 latest_chckpnt= max(list_of_files, key=lambda p: p.stat().st_ctime)
+#                 name =latest_chckpnt.name.split(".")[0]
+#                 self.learn.load(name)
+#                 # self.learn.load(f'{name}', with_opt=self.with_opt)
+#             except:
+#                 print("no checkpoints to load yet")
+#     def __del__(self):
+#         print("Cleaning up..")
+#         self.nep_run.stop()
+#
+# class NeptuneCallback_old(Callback):
+#     def __init__(self,manager, frequency, metrics=None):
+#
+#         self.manager= manager
+#         if metrics: self.metrics = listify(metrics)
+#         self.frequency = frequency
+#
+#     def before_fit(self):
+#         # self.manager.update_logs()
+#         self.learn.epoch_running_total=self.manager.nep_run["model_params/epoch"].fetch()
+#
+#     def after_batch(self):
+#         if self.training:
+#             self.manager.nep_run['hyperparameters/lr'].log( self.opt.hypers[0]["lr"])
+#             for loss_item in self.loss_dict.items():
+#                 self.manager.nep_run['metrics/train_loss/'+loss_item[0]].log(loss_item[1].item())
+#         else:
+#
+#             for loss_item in self.loss_dict.items():
+#                 self.manager.nep_run['metrics/valid_loss/'+loss_item[0]].log(loss_item[1])
+#
+#     def after_epoch(self):
+#         self.learn.epoch_running_total+=1
+#         self.manager.nep_run['model_params/epoch']=self.learn.epoch_running_total
+#
+#     def after_fit(self):
+#         self.manager.nep_run.stop()
+#
+#
+#
+# class NeptuneCallback_old(Callback):
+#     def __init__(self,config_dict,experiment_name, neptune_dir= "/home/ub/Dropbox/code/fran/experiments/.neptune",run_name=None, freq=2,metrics=None):
+#
+#         if metrics: self.metrics = listify(metrics)
+#         self.neptune_settings=load_json(Path(neptune_dir)/"config.json")
+#         self.project=neptune.init_project(**self.neptune_settings)
+#         self.config_dict = config_dict
+#         self.config_dict.update({'experiment_name':experiment_name})
+#         self.freq=freq
+#         self.run_name = run_name
+#
+#     def after_create(self):
+#         # self.checkpoints_folder=Path(tune.get_trial_dir())
+#
+#         self.df = self.project.fetch_runs_table(
+#             owner="drusmanbashir",
+#         ).to_pandas()
+#
+#         self.neptune_settings['project']=self.neptune_settings['name']
+#         self.neptune_run_settings={'project':self.neptune_settings['name'], 'api_token':self.neptune_settings['api_token']}
+#         if self.run_name == None:
+#             self.learn.nep_run = self._init_run(self.config_dict)
+#         else:
+#             self.learn.nep_run = self.load_run(self.run_name)
+#
+#     def _init_run(self,config_dict):
+#             nep_run = neptune.init_run(run=None,mode="async",**self.neptune_run_settings)
+#             nep_run['model_params/epoch']= self.learn.epoch_running_total =0
+#             for key, value in config_dict.items():
+#                 nep_run[key] = value
+#                 setattr(self, key, value)
+#             return nep_run
+#
+#
+#     def load_run(self,run_name,param_names=None,nep_mode="async"):
+#         try:
+#             self.learn.nep_run = neptune.init(run=run_name,mode=nep_mode,**self.neptune_settings)
+#             print("Existing Run loaded. Run id {}".format(run_name))
+#         except:
+#             run_name_old = self.run_name
+#             self.run_name= self.df.sort_values("sys/creation_time")["sys/id"].iloc[-1]
+#             print("Run id {} does not exist. Loading most recent".format(run_name_old, self.run_name))
+#             self.learn.nep_run = neptune.init(run=run_name,mode=nep_mode,  **self.neptune_settings)
+#         # config_dict = {}
+#         # if not param_names:
+#         #     pass # not impl
+#         # for param in param_names:
+#         #     neptune_dict = self.nep_run[param].fetch()
+#         #     config_dict.update({param: parse_neptune_dict(neptune_dict)})
+#         #
+#         # self.assimilate_attribs(config_dict)
+#         # self.config_dict = config_dict
+#         # learn = self.create_learner()
+#         #     self.learn.nep_run = self.load_run(run_name)
+#  
+#     def after_batch(self):
+#         if self.iter%self.freq==0:
+#             if self.training:
+#                 self.learn.nep_run['hyperparameters/lr'].log( self.opt.hypers[0]["lr"])
+#                 for loss_item in self.loss_dict.items():
+#                     self.learn.nep_run['metrics/train_loss/'+loss_item[0]].log(loss_item[1].item())
+#             else:
+#
+#                 for loss_item in self.loss_dict.items():
+#                     self.learn.nep_run['metrics/valid_loss/'+loss_item[0]].log(loss_item[1])
+#
+#     def after_epoch(self):
+#         self.learn.epoch_running_total+=1
+#         self.learn.nep_run['model_params/epoch']=self.learn.epoch_running_total
+#
+#     def after_fit(self):
+#         self.learn.nep_run.stop()
+#
+#
 class NeptuneCallback_Ray(NeptuneCallback):
     def _init_run(self):
         if not hasattr(self,"trial_name"):
