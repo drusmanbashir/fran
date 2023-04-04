@@ -112,6 +112,7 @@ class ImageMaskViewer(object):
                  cmap_mask = 'RdPu_r',
                  apply_transpose=True) ->None:
         self.cmap_img ,self.cmap_mask, self.data_types= cmap_img, cmap_mask, data_types
+
         self.npa_list, self.wl_range, self.wl_init = get_window_level_numpy_array(
             image_list, intensity_slider_range_percentile, self.data_types)
 

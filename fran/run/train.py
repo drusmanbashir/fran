@@ -138,11 +138,11 @@ if __name__ == "__main__":
 # %%
     args = parser.parse_known_args()[0]
     args.t = 'lits'
-    args.distributed = True
+    # args.distributed = True
     # args.compiled= True
-    args.bs = 4
+    # args.bs = 4
     # args.resume='LITS-408'
-    args.update = True
+    # args.update = True
     #
     # %%
     main(args)

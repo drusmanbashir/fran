@@ -211,7 +211,7 @@ if __name__ == "__main__":
             fold=configs_excel['metadata']["fold"],
             json_fname=proj_defaults.validation_folds_filename,
         )
-    fldr =Path("/home/ub/datasets/preprocessed/lits/patches/spc_100_100_200/dim_220_220_110") 
+    fldr =Path("/home/ub/datasets/preprocessed/lits/patches/spc_080_080_150/dim_192_192_128") 
 
 
     bboxes_fname = fldr/ ("bboxes_info")
@@ -229,7 +229,7 @@ if __name__ == "__main__":
             proj_defaults,
             train_list,
             bboxes_fname,
-            [0,1,0]
+            [0,0,1]
         )
 # %%
     for indx in range(len(train_ds)):

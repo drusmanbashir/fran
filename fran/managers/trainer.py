@@ -425,22 +425,22 @@ if __name__ == "__main__":
 
     # for a ,b in enumerate(La.dls.train):
     #     print (b[0].shape,b[1].shape)
-
-    cbs = [
-        ReduceLROnPlateau(patience=50),
-        NeptuneCallback(proj_defaults, configs_excel, run_name=None),
-        NeptuneCheckpointCallback(proj_defaults.checkpoints_parent_folder),
-        NeptuneImageGridCallback(
-            classes=out_channels_from_dict_or_cell(
-                configs_excel["metadata"]["src_dest_labels"]
-            ),
-            patch_size=make_patch_size(
-                configs_excel["dataset_params"]["patch_dim0"],
-                configs_excel["dataset_params"]["patch_dim1"],
-            ),
-        ),
-
-    ]
+    #
+    # cbs = [
+    #     ReduceLROnPlateau(patience=50),
+    #     NeptuneCallback(proj_defaults, configs_excel, run_name=None),
+    #     NeptuneCheckpointCallback(proj_defaults.checkpoints_parent_folder),
+    #     NeptuneImageGridCallback(
+    #         classes=out_channels_from_dict_or_cell(
+    #             configs_excel["metadata"]["src_dest_labels"]
+    #         ),
+    #         patch_size=make_patch_size(
+    #             configs_excel["dataset_params"]["patch_dim0"],
+    #             configs_excel["dataset_params"]["patch_dim1"],
+    #         ),
+    #     ),
+    #
+    # ]
 # %%
     cbs =[]
 
@@ -449,6 +449,20 @@ if __name__ == "__main__":
         proj_defaults,
         bs=2
     )
+# %%
+#     ds = La.valid_ds
+#     bb = [b for b in ds.bboxes_per_id if b[0]['case_id']=='lits-9']
+# # %%
+#     for x , bb in enumerate(La.dls.valid):
+#         a,b,c = bb
+#         ids  = [get_case_id_from_filename(None,Path(cc)) for cc in c]
+#         if any([i == 'lits-9' for i in ids]):
+#               inx = np.where(np.array(ids)=='lits-9')
+#               img = a[inx]
+#               mask = b[inx]
+#               
+# # %%
+#     ImageMaskViewer([img[0,0].detach().cpu(), mask[0,0].detach().cpu()])
 # %%
     learn = La.create_learner(cbs=cbs, compile=False,distributed=False)
 # %%

@@ -123,9 +123,8 @@ class ToNumpy(Transform):
         if encode_dtype == np.uint8: self.decode_dtype=torch.uint8
         self.encode_dtype=encode_dtype
 
-
-def encodes(self,tnsrs):
-        return [np.array(tnsr,dtype=self.encode_dtype) for tnsr in tnsrs]
+    def encodes(self,tnsrs):
+            return [np.array(tnsr,dtype=self.encode_dtype) for tnsr in tnsrs]
 
 class Stencil(Transform):
     def __init__(self,n_classes, merge_labels=[]): 
