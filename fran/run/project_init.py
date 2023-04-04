@@ -33,8 +33,9 @@ if __name__ == "__main__":
 
 # %%
     args = parser.parse_known_args()[0]
+    # args.t = "lits"
+    # args.delete=True
     # args.i = "/s/datasets/drli_short/"
-    # args.t = "litsxyz"
     main(args)
 # %%
 
