@@ -149,7 +149,9 @@ class DeepSupervisionLoss(nn.Module):
 
        self.neptune_labels =  ["loss", "loss_ce","loss_dice"] + ["loss_dice_label{}".format(x) for x in classes]
 
-       self.case_recorder_labels = list(il.product(batches,classes) | pmap (label_maker))
+       self.case_recorder_labels = list(il.product(batches,classes) )
+
+       self.case_recorder_labels= map(label_maker,self.case_recorder_labels)
        self.labels =list(il.chain(self.neptune_labels,self.case_recorder_labels))
 
 

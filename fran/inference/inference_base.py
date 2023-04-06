@@ -514,10 +514,9 @@ class EndToEndPredictor(_Predictor):
     def __init__(self, proj_defaults,run_name_w,run_name_p,use_neptune=False,patch_overlap=0.5,device:int=None, save_localiser=False):
         print("Loading model checkpoints for whole image predictor")
         if not device: device = get_available_device()
-        if use_neptune==True:
-            Nep = NeptuneManager(proj_defaults)
-            model_w, patch_size_w,resample_spacings_w,out_channels_w= self.load_model_neptune(Nep,run_name_w,device=device)
-            model_p, patch_size_p, resample_spacings_p,out_channels_p= self.load_model_neptune(Nep,run_name_p,device=device)
+        self.NepMan = NeptuneManager(proj_defaults)
+        model_w, patch_size_w,resample_spacings_w,out_channels_w= self.load_model_neptune(run_name_w,device=device)
+        model_p, patch_size_p, resample_spacings_p,out_channels_p= self.load_model_neptune(run_name_p,device=device)
 
 
         self.w = WholeImagePredictor(proj_defaults=proj_defaults,out_channels= out_channels_w,resample_spacings=resample_spacings_w, patch_size=patch_size_w,device=device)
@@ -535,20 +534,21 @@ class EndToEndPredictor(_Predictor):
         print("---- You can set alternative save folders by setting properties: output_localiser_folder and output_image_folder for localiser and final predictions respectively.----")
 
      
-    def load_model_neptune(self, NepMan, run_name, device= 'cuda'):
-            NepMan.load_run(run_name=run_name,param_names = 'default',nep_mode="read-only")
-            metadata= NepMan.run_dict['metadata']
-            model_params = NepMan.run_dict['model_params']
-            dataset_params = NepMan.run_dict['dataset_params']
-            resample_spacings = ast.literal_eval(NepMan.run_dict['dataset_params']['spacings'])
-            if not   'out_channels' in model_params:
-                oc = {'out_channels':  out_channels_from_dict_or_cell(NepMan.run_dict['metadata']['src_dest_labels'])}
-                model_params['out_channels']  = out_channels_from_dict_or_cell(metadata['src_dest_labels'])
-            out_channels = model_params['out_channels']
-            patch_size=NepMan.run_dict['dataset_params']['patch_size']
-            model= create_model_from_conf(model_params,dataset_params,metadata,deep_supervision=False)
-            load_checkpoint(metadata['model_dir'],model,device)
-            return model, patch_size , resample_spacings, out_channels
+    def load_model_neptune(self,  run_name, device= 'cuda'):
+            self.NepMan.load_run(run_name=run_name,param_names = 'default',nep_mode="read-only")
+            # metadata= self.NepMan.run_dict['metadata']
+            # model_params = NepMan.run_dict['model_params']
+            # dataset_params = NepMan.run_dict['dataset_params']
+            # resample_spacings = ast.literal_eval(NepMan.run_dict['dataset_params']['spacings'])
+            # if not   'out_channels' in model_params:
+            #     oc = {'out_channels':  out_channels_from_dict_or_cell(NepMan.run_dict['metadata']['src_dest_labels'])}
+            #     model_params['out_channels']  = out_channels_from_dict_or_cell(metadata['src_dest_labels'])
+            # out_channels = model_params['out_channels']
+            # patch_size=NepMan.run_dict['dataset_params']['patch_size']
+            # model= create_model_from_conf(model_params,dataset_params,metadata,deep_supervision=False)
+            # load_checkpoint(metadata['model_dir'],model,device)
+            
+            return self.NepMan.load_model(device)
 
     def predict(self,img_fn,save_localiser=None):
         if save_localiser: self.save_localiser=save_localiser
@@ -606,18 +606,18 @@ class EnsemblePredictor(EndToEndPredictor):
         '''
         
         store_attr()
-        self.Nep = NeptuneManager(proj_defaults)
+        self.NepMan = NeptuneManager(proj_defaults)
         self.patch_overlap=0.25
         self.output_image_folder = "ensemble_"+"_".join(self.runs_p)
 
     def load_localiser_model(self,run_name_w):
-            model_w, patch_size_w,resample_spacings_w,out_channels_w= self.load_model_neptune(self.Nep,run_name_w,device='cpu')
+            model_w, patch_size_w,resample_spacings_w,out_channels_w= self.load_model_neptune(run_name_w,device='cpu')
             self.w = WholeImagePredictor(proj_defaults=self.proj_defaults,out_channels= out_channels_w,resample_spacings=resample_spacings_w, patch_size=patch_size_w,device=self.device)
             self.w.load_model(model_w,model_id=run_name_w)
             self.save_localiser=True
     def load_patch_model(self,n):
         run_name_p = self.runs_p[n]
-        model_p, patch_size_p, resample_spacings_p,out_channels_p= self.load_model_neptune(self.Nep,run_name_p,device='cpu')
+        model_p, patch_size_p, resample_spacings_p,out_channels_p= self.load_model_neptune(run_name_p,device='cpu')
         if n ==0:
             self.p= PatchPredictor(proj_defaults=self.proj_defaults, out_channels= out_channels_p,resample_spacings=resample_spacings_p,patch_size=patch_size_p,patch_overlap=self.patch_overlap, 
                                             stride = [1,1,1], batch_size=4,device=self.device,debug=self.debug)
@@ -676,8 +676,10 @@ if __name__ =="__main__":
     patch_size = [160,160,160]
     resample_spacings = [1,1,2]
     run_name_w= "LITS-276" # best trial
+# %%
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
-    runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357","LITS-413"]
+    # runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357","LITS-413"]
+    runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436"]
     run_name_p = runs_ensemble[0]
     device=1
     En = EnsemblePredictor(proj_defaults,run_name_w,runs_ensemble,device,debug=True)
@@ -686,7 +688,7 @@ if __name__ =="__main__":
     fldr =Path("/s/datasets_bkp/litqsmall/sitk/images/")
     fnames = list(fldr.glob("*nrrd"))
 # %%
-    for fname in fnames[24:]:
+    for fname in fnames:
         En.run(fname)
 # %%
     ImageMaskViewer([En.w.img_np_orgres,En.w.pred[1]])

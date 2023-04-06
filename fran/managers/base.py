@@ -1,9 +1,18 @@
 from fastai.torch_core import get_model
 import torch
 import ipdb
+from pathlib import Path
 
 from fran.utils.fileio import str_to_path
 tr = ipdb.set_trace
+import re
+def get_epoch(fn:Path):
+    pat = r"model_(\d*)"
+    name = fn.name
+    m = re.match(pat,name)
+    epoch = int(m.groups()[0])
+    return epoch
+
 
 
 def make_patch_size(patch_dim0, patch_dim1):
@@ -18,7 +27,8 @@ def make_patch_size(patch_dim0, patch_dim1):
 def load_checkpoint(checkpoints_folder, model,device='cuda',strict = True, **torch_load_kwargs):
     try:
         list_of_files = checkpoints_folder.glob('*')
-        file = max(list_of_files, key=lambda p: p.stat().st_ctime)
+        # file = max(list_of_files, key=lambda p: p.stat().st_ctime)
+        file = max(list_of_files, key=get_epoch)
 
         print("Loading last checkpoint {}".format(file))
 
@@ -39,5 +49,4 @@ def load_checkpoint(checkpoints_folder, model,device='cuda',strict = True, **tor
     except:
         print("\n ---No checkpoints found. Initializing weights.")
 # %%
-
-
+# %%

@@ -1,5 +1,6 @@
 # %%
-from fastai.callback.tracker import TrackerCallback
+from fastai.callback.tracker import GetAttr, TrackerCallback
+from fran.architectures.create_network import create_model_from_conf
 
 from fran.utils.common import *
 from paramiko import SSHClient
@@ -12,7 +13,7 @@ from neptune.types import File
 from torchvision.utils import make_grid
 import torch
 from fran.transforms.spatialtransforms import one_hot
-from fran.managers.base import make_patch_size
+from fran.managers.base import load_checkpoint, make_patch_size
 from fran.utils.fileio import load_json, load_yaml, maybe_makedirs
 import neptune
 from neptune.utils import stringify_unsupported
@@ -41,6 +42,10 @@ def dictionary_fix_ast(dictionary:dict):
         dictionary[keys[0]][keys[1]]= ast.literal_eval(val)
     return dictionary
 
+def is_remote(model_dir):
+        hpc_settings = load_yaml(hpc_settings_fn)
+        if hpc_settings['hpc_storage'] in model_dir: return True
+        else: return False
 
 def get_neptune_config(proj_defaults):
     '''
@@ -64,7 +69,8 @@ def get_neptune_project(proj_defaults, mode):
     return neptune.init_project(project=project_name, api_token=api_token, mode=mode)
 
 
-class NeptuneManager():
+class NeptuneManager(GetAttr):
+    _default ='proj_defaults'
     def __init__(self, proj_defaults):
         '''
         '''
@@ -112,6 +118,26 @@ class NeptuneManager():
                         print("Updating nep-run {0}/{1} from config provided. Previous value: {2}. New value {3}".format(category,key,old_val,value))
                         self.nep_run[category][key]=stringify_unsupported(value)
 
+    def load_model(self,device):
+            # self.load_run(run_name=run_name,param_names = 'default',nep_mode="read-only")
+            # metadata= self.run_dict['metadata']
+            # model_params = self.run_dict['model_params']
+            # dataset_params = self.run_dict['dataset_params']
+            config_dict = self.download_run_params()
+            resample_spacings = config_dict['dataset_params']['spacings']
+            # if not   'out_channels' in model_params:
+            #     oc = {'out_channels':  out_channels_from_dict_or_cell(self.run_dict['metadata']['src_dest_labels'])}
+            #     model_params['out_channels']  = out_channels_from_dict_or_cell(metadata['src_dest_labels'])
+            out_channels = config_dict['model_params']['out_channels']
+            patch_size=config_dict['dataset_params']['patch_size']
+
+            model= create_model_from_conf(config_dict['model_params'],config_dict['dataset_params'],config_dict['metadata'],deep_supervision=False)
+        
+            model_dir = config_dict['metadata']['model_dir']
+            if is_remote(model_dir):
+                model_dir = self.shadow_remote_folder(model_dir)
+            load_checkpoint(model_dir,model,device)
+            return model, patch_size, resample_spacings, out_channels
        
     def get_run_id(self,run_name):
             if run_name == "most_recent":
@@ -233,6 +259,27 @@ class NeptuneManager():
 
     def stop(self):
         self.nep_run.stop()
+    def shadow_remote_folder(self,  remote_dir):
+        hpc_settings = load_yaml(hpc_settings_fn)
+        local_dir =self.checkpoints_parent_folder/self.run_name
+        print("\nSSH to remote folder {}".format(remote_dir))
+        client = SSHClient()
+        client.load_system_host_keys()
+        client.connect(hpc_settings['host'], username=hpc_settings['username'], password=hpc_settings['password'])
+        ftp_client = client.open_sftp()
+        fnames = ftp_client.listdir(remote_dir)
+        remote_fnames =[os.path.join(remote_dir,f) for f in fnames]
+        local_fnames =[os.path.join(local_dir,f) for f in fnames]
+        maybe_makedirs(local_dir)
+        for rem,loc in zip(remote_fnames,local_fnames):
+            if Path(loc).exists():
+                print("Local file {} exists already.".format(loc))
+            else:
+                print("Copying file {0} to local folder {1}".format(rem,local_dir))
+                ftp_client.get(rem, loc)
+        return local_dir
+        # self.set_run_value('metadata/model_dir',local_dir)
+
 
 
 def normalize(tensr,intensity_percentiles=[0.,1.]):
@@ -247,6 +294,7 @@ def normalize(tensr,intensity_percentiles=[0.,1.]):
         return tensr
 
 class NeptuneCallback(NeptuneManager, Callback):
+    _default = 'learn'
 
     order = TrackerCallback.order+1
     def __init__(self,proj_defaults,config_dict,run_name=None,nep_run=None, freq=2,metrics=None,hyperparameters=None,tmp_folder="/tmp"):
@@ -333,36 +381,12 @@ class NeptuneCheckpointCallback(TrackerCallback, NeptuneManager):
         assert not (every_epoch and at_end), "every_epoch and at_end cannot both be set to True"
         self.last_saved_path = None
 
-    def download_remote_folder(self, hpc, remote_dir):
-
-        print("\nSSH to remote folder {}".format(remote_dir))
-        client = SSHClient()
-        client.load_system_host_keys()
-        client.connect(hpc['host'], username=hpc['username'], password=hpc['password'])
-        ftp_client = client.open_sftp()
-
-
-        local_dir =self.checkpoints_parent_folder/self.run_name
-        fnames = ftp_client.listdir(remote_dir)
-        remote_fnames =[os.path.join(remote_dir,f) for f in fnames]
-        local_fnames =[os.path.join(local_dir,f) for f in fnames]
-        maybe_makedirs(local_dir)
-        for rem,loc in zip(remote_fnames,local_fnames):
-            print("Copying file {0} to local folder {1}".format(rem,local_dir))
-            ftp_client.get(rem, loc)
-        self.set_run_value('metadata/model_dir',local_dir)
-
 
 
     def set_model_dir(self,model_dir:str):
     # model_dir = '/data/scratch/mpx588/fran_storage/checkpoints/lits/LITS-413'
-
-
-        hpc = load_yaml(hpc_settings_fn)
-        if hpc['hpc_storage'] in model_dir:
-                self.download_remote_folder(hpc,model_dir)
-
-        self.learn.model_dir=Path(self.nep_run['metadata/model_dir'].fetch())
+                # self.shadow_remote_folder(hpc,model_dir)
+        self.learn.model_dir=model_dir
 
     def after_create(self):
         # keep track of file path for loggers

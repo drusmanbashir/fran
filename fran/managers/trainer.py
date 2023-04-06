@@ -32,8 +32,6 @@ from fran.utils.helpers import *
 from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.callback.case_recorder import CaseIDRecorder
-
-
 def load_model_from_raytune_trial(folder_name,out_channels):
     #requires params.json inside raytune trial
     params_dict = load_json(Path(folder_name)/"params.json")

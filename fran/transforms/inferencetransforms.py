@@ -21,7 +21,7 @@ from fastcore.transform import ItemTransform, Transform
 from fran.transforms.spatialtransforms import MaskLabelRemap, slices_from_lists
 
 from fran.utils.helpers import multiply_lists
-
+from fastcore.test import is_close
 from fastcore.all import GetAttr
 class PredictorTransform(ItemTransform,GetAttr):
     _default = 'predictor'
@@ -34,7 +34,7 @@ orientations = {
 
 def reorient_sitk(img:sitk.Image,direction:tuple)->sitk.Image:
     try:
-        orn = [key for key,val in orientations.items() if val == direction][0]
+        orn = [key for key,val in orientations.items() if is_close(val ,direction,eps=1e-5)][0]
     except:
         tr()
     return sitk.DICOMOrient (img, orn)
@@ -50,7 +50,7 @@ class ArrayToSITKF(Transform):
             preds_out = []
             for pred in pred_pt: 
                 pred_ = sitk.GetImageFromArray(pred)
-                # pred_ = reorient_sitk(pred_,self.sitk_props[-1])
+                pred_ = reorient_sitk(pred_,self.sitk_props[-1])
                 pred_ = set_sitk_props(pred_,self.sitk_props)
                 preds_out.append(pred_)
             return preds_out
@@ -64,7 +64,7 @@ class ArrayToSITKI(Transform):
     def encodes(self,pred):
                 assert all([pred.ndim==3,'int' in str(pred.dtype)]), "This requires 3d int array, DxWxH"
                 pred_ = sitk.GetImageFromArray(pred)
-                # pred_ = reorient_sitk(pred_,self.sitk_props[-1])
+                pred_ = reorient_sitk(pred_,self.sitk_props[-1])
                 pred_ = set_sitk_props(pred_,self.sitk_props)
                 return pred_
 

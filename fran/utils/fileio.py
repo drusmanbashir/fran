@@ -79,13 +79,6 @@ def load_file(*ar,**kwargs):
         return wrapper
     return inner
         
-@str_to_path()
-def get_extension(fn):
-    pat = r".*\.([a-z]{2,5})$"
-    match = re.match(pat,str(fn))
-    if match: return match[1]
-    else: return None
-
 @load_file("r")
 def load_json(filename): return json.load(filename)
 
@@ -171,10 +164,10 @@ def load_dict(filename):
                 else:
                     return load_pickle(filename)
 
-    ext =get_extension(filename)
-    if ext:
+    try:
+                ext =(filename.name.split(".")[1])
                 return _inner(filename,ext)
-    else:
+    except:
                 for ext in ["json", "pkl"]:
                     filename_ = filename.parent/(".".join([filename.name,ext]))
                     if filename_.exists(): return _inner(filename_,ext)

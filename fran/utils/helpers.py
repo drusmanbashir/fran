@@ -245,6 +245,11 @@ def match_filename_with_case_id(project_title, case_id,filename):
                 return pat,filename
 
 
+@regex_matcher
+def get_extension(fn):
+    pat = r"[^\.]*\.(.*)"
+    return pat, fn.name
+
 def get_pbar():
     if 'get_ipython' in globals():
         if get_ipython().__class__.__name__ == 'TerminalInteractiveShell' :
