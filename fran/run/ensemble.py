@@ -36,7 +36,8 @@ def main_old(args):
 
     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
 
-    runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436","LITS-445"]
+    # runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436","LITS-445"]
+    runs_ensemble=["LITS-451","LITS-452","LITS-453"]
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
     device = 0
     E = EnsemblePredictor(proj_defaults,run_name_w,runs_ensemble,device=device)
@@ -62,7 +63,6 @@ def main(args):
     chunks = list(il.starmap(slice_list,zip([fnames]*n_lists,inds)))
     # runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357"]
     Es = []
-# %%
     for x  in range(n_lists):
      Es.append(EnsembleActor.remote()) 
 # %%
@@ -79,11 +79,12 @@ if __name__ == "__main__":
     common_paths_filename=os.environ['FRAN_COMMON_PATHS']
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
     args = parser.parse_known_args()[0]
+    args.debug = True
     #note: horseshoe kidney  Path('/s/datasets/raw_database/raw_data/kits21/images/kits21_00005.nii.gz')
 
     run_name_w= "LITS-276" # best trial
 
-    main(args)
+    main_old(args)
 
 
 # %%

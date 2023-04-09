@@ -1,4 +1,8 @@
 # %%
+import math
+import ipdb
+tr = ipdb.set_trace
+
 from pathlib import Path
 import os, sys
 import itertools as il
@@ -54,7 +58,7 @@ class Project(DictToAttr):
             pairs = [[img_fn, img_fn.str_replace("images", "masks")] for img_fn in filenames]
             images,masks=[],[]
             if self.paths_exist(pairs) == True:
-                print("self.pulating raw data folder (with symlinks)")
+                print("self.populating raw data folder (with symlinks)")
                 for org_names in pairs:
                     case_filename = org_names[0].name
                     new_names= [
@@ -153,6 +157,18 @@ class Project(DictToAttr):
             self.proj_summary.raw_data_sources.extend([dd])
         self.proj_summary.raw_data_sources = self.unique_list_of_dicts(self.proj_summary.raw_data_sources)
 
+    def fold_update_needed(self):
+        names = [a.name.split('.')[0] for a in self.raw_data_imgs]
+        af= set(names)
+        old= set(self.folds['all_cases'])
+        dif = af.difference(old)
+        old.difference(af)
+        d = list(dif)
+        n_new = len(d)
+        print("New cases have been added (n={0})".format(n_new))
+        print("Train valid indices need to be updated")
+
+
 
     def unique_list_of_dicts(self,listi):
         # removes duplicates
@@ -215,6 +231,19 @@ class Project(DictToAttr):
 
                 return SimpleNamespace(**proj_summary)
 
+    def fold_update_needed(self)->bool:
+        n_new = len(self.new_case_ids)
+        if n_new>0:
+            print("New cases have been added (n={0})".format(n_new))
+            print("Train valid indices need to be updated")
+            return True
+        else: return False
+
+    def update_folds(self)->None:
+        folds_new = create_folds(self.new_case_ids)
+        self.folds = merge_dicts(self.folds,folds_new)
+        save_dict(self.folds, self.proj_summary.validation_folds_filename)
+
 
     @ask_proceed("Create train/valid folds (80:20) ")
     def create_train_valid_folds(self):
@@ -223,10 +252,27 @@ class Project(DictToAttr):
         train_val_list =  list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==False ]))
         test_list =list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==True]))
         json_fname = self.proj_summary.validation_folds_filename
-
         create_train_valid_test_lists_from_filenames(
              train_val_list,  test_list,0.2,  json_fname, shuffle=False
         )
+
+    @property
+    def new_case_ids(self):
+        '''
+        case ids which have been added to raw data but are not the validation folds
+        '''
+        names = il.chain.from_iterable([d['images'] for d in self.datasets  if d['test']==False])
+        names = [a.name.split('.')[0] for a in names]
+        files= set(names)
+        folds_old= set(self.folds['all_cases'])
+        added = files.difference(folds_old)
+        removed = folds_old.difference(files)
+        if len(removed)>0: 
+            print("Some cases have been removed. The logic to remove them from folds is not implemeneted")
+            tr()
+        self._new_case_ids = list(added)
+        return self._new_case_ids
+
 
     @property
     def summary_filename(self): return self.project_folder/("proj_summary.pkl")
@@ -300,6 +346,10 @@ class Project(DictToAttr):
             
         return self._folds
 
+    @folds.setter
+    def folds(self,value):
+        self._folds = value
+
 
     def __len__(self): 
         self._len = len(self.raw_data_imgs)
@@ -317,14 +367,18 @@ class Project(DictToAttr):
         print("Done")
 
 def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_valid , json_filename, shuffle=False):
-    pct_valid = 0.2
     train_val_ids = [get_case_id_from_filename(None,fn) for fn in train_val_list]
     test_ids = [get_case_id_from_filename(None,fn) for fn in test_list]
+    folds_dict = create_folds(train_val_ids,test_ids,pct_valid,shuffle=shuffle)
+    print("Saving folds to {}  ..".format(json_filename))
+    save_dict(folds_dict,json_filename)
+
+def create_folds(train_val_ids,test_ids=[], pct_valid=0.2,shuffle=False):
     if shuffle==True: 
-        print("Shuffling all files")
+        print("Shuffling all cases")
         random.shuffle(train_val_ids)
     else:    
-        print("Putting files in sorted order")
+        print("Putting cases in sorted order")
         train_val_ids.sort()
     final_dict= {"all_cases":train_val_ids+test_ids} 
     n_valid = int(pct_valid*len(train_val_ids))
@@ -337,23 +391,29 @@ def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_
         train_cases_fold = list(set(train_val_ids)-set(val_cases_per_fold[n]))
         fold = {'fold_{}'.format(n):{'train':train_cases_fold, 'valid':val_cases_per_fold[n]}}
         final_dict.update(fold)
-    print("Saving folds to {}  ..".format(json_filename))
-    save_dict(final_dict,json_filename)
+    return final_dict
 
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="litsxa")
+    P = Project(project_title="litsxas")
     P.create_project()
+    P.raw_data_imgs
+    P.set_raw_data_sources(['/s/datasets_bkp/drli_short/'])
+    P.populate_raw_data_folder()
+    # P.update_fold_indices()
     pj = P.proj_summary
     pp(pj)
     P.save_summary()
 # %%
-    P.set_raw_data_sources(['/s/datasets_bkp/drli_short//'])
-    P.populate_raw_data_folder()
     P.raw_data_imgs
     P.create_train_valid_folds()
 
+# %%
+
+    P.set_raw_data_sources(['/s/datasets_bkp/litsmall/'])
+    P.populate_raw_data_folder()
+# %%
 # %%
     P.load_summary()
     pj = P.proj_summary
@@ -362,6 +422,12 @@ if __name__ == "__main__":
     P.save_summary()
 
 # %%
-
+# %%
+    d1 = load_dict(P.proj_summary.validation_folds_filename)
+    d2 = create_folds([1,3,4],pct_valid=.5)
+# %%
+# %%
+d3 = merge_dicts(d1,d2)
+pp(d3)
 # %%
         

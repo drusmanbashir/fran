@@ -386,7 +386,7 @@ class NeptuneCheckpointCallback(TrackerCallback, NeptuneManager):
     def set_model_dir(self,model_dir:str):
     # model_dir = '/data/scratch/mpx588/fran_storage/checkpoints/lits/LITS-413'
                 # self.shadow_remote_folder(hpc,model_dir)
-        self.learn.model_dir=model_dir
+        self.learn.model_dir=Path(model_dir)
 
     def after_create(self):
         # keep track of file path for loggers

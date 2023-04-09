@@ -14,7 +14,11 @@
 # ---
 
 # %%
+import sys
+import gc
 
+# These are the usual ipython objects, including this one you are creating
+ipython_vars = ['In', 'Out', 'exit', 'quit', 'get_ipython', 'ipython_vars']
 import ast
 from fastcore.foundation import L
 from fastcore.all import GetAttr
@@ -178,21 +182,40 @@ class FillBBoxPatches(ItemTransform):
             return self.output_img
 
 class _Predictor(GetAttr):
+    def __init__(self,overwrite=False): store_attr()
+
+    @property
+    def n_classes (self): return self.out_channels
+
+    def set_pred_fns(self,img_fn, ext=None):
+        if not ext:
+            ext = "."+get_extension(img_fn)
+        fn_no_ext=img_fn.name.split(".")[0]
+        counts=  ["_"+str(x+1) for x in range(self.n_classes)]
+        self.pred_fn_i = self._output_image_folder/(fn_no_ext+ext)
+        self.pred_fns_f= [self._output_image_folder/(fn_no_ext+c+ext) for c in counts]
+
+
+    def files_exist(self):
+        files_exist  = [self.pred_fn_i.exists()]
+        if self.debug==True:
+            files_exist.append([a.exists() for a in self.pred_fns_f])
+        return all(files_exist)
+
+    def save_sitk(self,img,fn):
+            print("Saving prediction. File name : {}".format(fn))
+            sitk.WriteImage(img,fn)
 
     def save_prediction(self,ext=None):
-        if not ext:
-            ext = "."+get_extension(self.img_filename)
         maybe_makedirs(self._output_image_folder)
+        imgs = [self.pred_sitk_i]
+        fns = [self.pred_fn_i]
         if self.debug==True:
-            counts = ["","_1","_2","_3","_4"][:len([self.pred_sitk_i,*self.pred_sitk_f])]
-            self.pred_fns= [self._output_image_folder/(self.img_filename.name.split(".")[0]+c+ext) for c in counts]
-            print("Saving prediction. File name : {}".format(self.pred_fns))
-            for pred_sitk,fn in zip([self.pred_sitk_i]+self.pred_sitk_f,self.pred_fns):
-                sitk.WriteImage(pred_sitk,fn)
-        else:
-            fn  = self._output_image_folder/(self.img_filename.name.split(".")[0]+ext)
-            print("Saving prediction. File name : {}".format(fn))
-            sitk.WriteImage(self.pred_sitk_i,fn)
+            imgs.extend(self.pred_sitk_f)
+            fns.extend(self.pred_fns_f)
+        for img,fn in zip(imgs,fns):
+            self.save_sitk(img,fn)
+
     def score_prediction(self,mask_filename,n_classes):
         mask_sitk = sitk.ReadImage(mask_filename)
         self.scores = compute_dice_fran(self.pred_int,mask_sitk,n_classes)
@@ -229,6 +252,19 @@ class _Predictor(GetAttr):
         for item in to_delete: 
             if hasattr(self,item):
                 delattr(self,item)
+        gc.collect()
+
+    # @property
+    # def pred_fns(self):
+    #     if self.debug==True:
+    #         counts = ["","_1","_2","_3","_4"][:len([self.pred_sitk_i,*self.pred_sitk_f])]
+    #         self.pred_fns= [self._output_image_folder/(self.img_filename.name.split(".")[0]+c+ext) for c in counts]
+    #         print("Saving prediction. File name : {}".format(self.pred_fns))
+    #         for pred_sitk,fn in zip([self.pred_sitk_i]+self.pred_sitk_f,self.pred_fns):
+    #             sitk.WriteImage(pred_sitk,fn)
+    #     else:
+    #         fn  = self._output_image_folder/(self.img_filename.name.split(".")[0]+ext)
+    #
 
     @property 
     def pred_sitk_f(self): # list of sitk images len =  out_channels
@@ -259,7 +295,7 @@ class _Predictor(GetAttr):
 
 class PatchPredictor(_Predictor):
     def __init__(self, proj_defaults,out_channels, resample_spacings,  patch_size: list = [128,128,128] ,patch_overlap:Union[list,float,int]=0.5, grid_mode="crop",expand_bbox=0.1,
-                     batch_size=8,stride=None,softmax=True,device=None,merge_labels = [[2],[]] ,postprocess_label=2, cc3d=True, debug=False):
+                     batch_size=8,stride=None,softmax=True,device=None,merge_labels = [[2],[]] ,postprocess_label=2, cc3d=True, debug=False,overwrite=False):
 
         '''
         params:
@@ -268,6 +304,7 @@ class PatchPredictor(_Predictor):
                         int : single number -> [int,int,int]
                         list : e.g., [1,256, 256]
         '''
+        super().__init__(overwrite)
         store_attr(but='new_subfolder')
         # used by stencil transform. WHen creating label1 stencil, label2 will be counted in label1 to avoid holes after dusting
 
@@ -282,7 +319,7 @@ class PatchPredictor(_Predictor):
             self.patch_overlap = [patch_overlap]*3
         self.global_properties = load_dict(global_properties_fname)
         if device is None:
-            self.device = get_available_device()
+            self.device = 'cuda'
 
    
 
@@ -298,26 +335,34 @@ class PatchPredictor(_Predictor):
 
     def load_case(self, img_filename, bboxes=None): # tip put this inside a transform which saves these attrs to parent like callbacks do in learner
         self.img_filename = img_filename
-        self.case_id = get_case_id_from_filename(None,self.img_filename) 
-        self.img_sitk= sitk.ReadImage(str(self.img_filename))
-        self.set_sitk_props()
-        self.img_np_orgres=sitk.GetArrayFromImage(self.img_sitk)
-        self.bboxes =bboxes if bboxes else self.set_patchsized_bbox()
+        self.set_pred_fns(img_filename)
+        if all ([self.overwrite==False,self.files_exist()]): 
+            print("Files exists {}. Skipping. ".format(self.pred_fn_i))
+            self.already_processed=True
+        else:
+            self.case_id = get_case_id_from_filename(None,self.img_filename) 
+            self.img_sitk= sitk.ReadImage(str(self.img_filename))
+            self.set_sitk_props()
+            self.img_np_orgres=sitk.GetArrayFromImage(self.img_sitk)
+            self.bboxes =bboxes if bboxes else self.set_patchsized_bbox()
+            self.already_processed=False
 
     def run(self,img_filename,bboxes=None,save=True) :
         '''
         Runs predictions. Then backsamples predictions to img size (DxHxW). Keeps num_channels
         '''
         self.load_case(img_filename,bboxes)
-        self.create_encode_pipeline()
-        self.create_dl_tio() 
-        self.create_decode_pipeline()
-        self.create_postprocess_pipeline()
-        self.make_prediction()
-        self.backsample()
-        self.postprocess(self.cc3d)
-        if save==True:
-            self.save_prediction()
+        if self.already_processed==False:
+            self.create_encode_pipeline()
+            self.create_dl_tio() 
+            self.create_decode_pipeline()
+            self.create_postprocess_pipeline()
+            self.make_prediction()
+
+            self.backsample()
+            self.postprocess(self.cc3d)
+            if save==True:
+                self.save_prediction()
 
 
 
@@ -511,7 +556,8 @@ class WholeImagePredictor(PatchPredictor):
         self.pred= self.decode_pipeline.decode(self.pred_patches)
 
 class EndToEndPredictor(_Predictor):
-    def __init__(self, proj_defaults,run_name_w,run_name_p,use_neptune=False,patch_overlap=0.5,device:int=None, save_localiser=False):
+    def __init__(self, proj_defaults,run_name_w,run_name_p,use_neptune=False,patch_overlap=0.5,device:int=None, save_localiser=False,overwrite=False):
+        super().__init__(overwrite)
         print("Loading model checkpoints for whole image predictor")
         if not device: device = get_available_device()
         self.NepMan = NeptuneManager(proj_defaults)
@@ -600,11 +646,10 @@ class EndToEndPredictor(_Predictor):
 
 
 class EnsemblePredictor(EndToEndPredictor):
-    def __init__(self,proj_defaults,run_name_w,runs_p,device,debug=False,cc3d=False):
+    def __init__(self,proj_defaults,out_channels,run_name_w,runs_p,device,debug=False,cc3d=False,overwrite=False):
         '''
         param  debug: When true, prediction heatmaps are stored as numbered sitk files, each number representing the prob of that label versus all others
         '''
-        
         store_attr()
         self.NepMan = NeptuneManager(proj_defaults)
         self.patch_overlap=0.25
@@ -612,7 +657,8 @@ class EnsemblePredictor(EndToEndPredictor):
 
     def load_localiser_model(self,run_name_w):
             model_w, patch_size_w,resample_spacings_w,out_channels_w= self.load_model_neptune(run_name_w,device='cpu')
-            self.w = WholeImagePredictor(proj_defaults=self.proj_defaults,out_channels= out_channels_w,resample_spacings=resample_spacings_w, patch_size=patch_size_w,device=self.device)
+            self.w = WholeImagePredictor(proj_defaults=self.proj_defaults,out_channels= out_channels_w,resample_spacings=resample_spacings_w, patch_size=patch_size_w,device=self.device,overwrite=True)
+        # OVERWRITE = TRUE UNTIL I CODE THE FACILITY TO LOAD BBOX FROM SAVED PREDICTION
             self.w.load_model(model_w,model_id=run_name_w)
             self.save_localiser=True
     def load_patch_model(self,n):
@@ -620,26 +666,26 @@ class EnsemblePredictor(EndToEndPredictor):
         model_p, patch_size_p, resample_spacings_p,out_channels_p= self.load_model_neptune(run_name_p,device='cpu')
         if n ==0:
             self.p= PatchPredictor(proj_defaults=self.proj_defaults, out_channels= out_channels_p,resample_spacings=resample_spacings_p,patch_size=patch_size_p,patch_overlap=self.patch_overlap, 
-                                            stride = [1,1,1], batch_size=4,device=self.device,debug=self.debug)
-            self.n_classes=out_channels_p
+                                            stride = [1,1,1], batch_size=4,device=self.device,debug=self.debug,overwrite=True)
+            # self.n_classes=out_channels_p
 
         self.p.load_model(model_p,model_id=run_name_p)
 
-    def run_patch_prediction(self,img_fn,n):
-        if n ==0:
-            self.p.load_case(img_fn,self.bboxes)
-            self.p.create_encode_pipeline()
-            self.p.create_dl_tio() 
-            self.p.create_decode_pipeline()
-            self.p.create_postprocess_pipeline()
-        self.p.make_prediction()
-        
-        self.p.backsample()
-        self.p.postprocess(self.cc3d)
-        self.p.save_prediction()
-        print("Patch predictions done. Deleting current model in the ensemble and loading next")
-        self.p.unload_case()
-        torch.cuda.empty_cache()
+    def patch_prediction(self,img_fn,n):
+            if n ==0:
+                self.p.load_case(img_fn,self.bboxes)
+                self.p.create_encode_pipeline()
+                self.p.create_dl_tio() 
+                self.p.create_decode_pipeline()
+                self.p.create_postprocess_pipeline()
+            self.p.make_prediction()
+            
+            self.p.backsample()
+            self.p.postprocess(self.cc3d)
+            self.p.save_prediction()
+            print("Patch predictions done. Deleting current model in the ensemble and loading next") # move this to start
+            self.p.unload_case()
+            torch.cuda.empty_cache()
 
     def postprocess(self,cc3d:bool): 
         if cc3d==True:
@@ -652,19 +698,25 @@ class EnsemblePredictor(EndToEndPredictor):
         super().save_prediction()
 
     def run(self,img_fn):
-        self.img_filename = img_fn
-        self.load_localiser_model(self.run_name_w)
-        self.localiser_bbox(img_fn)
-        self.preds=[]
-        for n in range(len(self.runs_p)):
-            self.load_patch_model(n)
-            self.run_patch_prediction(img_fn,n)
-            self.preds.append(self.p.pred)
 
-        self.pred = pred_mean(self.preds)
-        self.postprocess(self.cc3d)
-        self.save_prediction()
-        self.unload_case()
+        self.set_pred_fns(img_fn)
+        if all([self.files_exist(),self.overwrite==False]): 
+            print("{} already been processed with this ensemble. Skipping.".format(img_fn))
+        else:
+            self.img_filename = img_fn
+            self.load_localiser_model(self.run_name_w)
+            self.localiser_bbox(img_fn)
+            self.preds=[]
+            for n in range(len(self.runs_p)):
+                self.load_patch_model(n)
+                self.patch_prediction(img_fn,n)
+                self.preds.append(self.p.pred)
+
+            self.pred = pred_mean(self.preds)
+            self.postprocess(self.cc3d)
+            self.save_prediction()
+            self.unload_case()
+
 # %%
 
 if __name__ =="__main__":
@@ -679,16 +731,22 @@ if __name__ =="__main__":
 # %%
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
     # runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357","LITS-413"]
-    runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436"]
-    run_name_p = runs_ensemble[0]
-    device=1
-    En = EnsemblePredictor(proj_defaults,run_name_w,runs_ensemble,device,debug=True)
+    runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436","LITS-445"]
+    runs_ensemble=["LITS-451","LITS-452","LITS-453","LITS-454", "LITS-456"]
+    ensemble=["LITS-451"]
+    device=None
+    En = EnsemblePredictor(proj_defaults,3,run_name_w,runs_ensemble,device,debug=False,overwrite=False)
 
 # %%
     fldr =Path("/s/datasets_bkp/litqsmall/sitk/images/")
     fnames = list(fldr.glob("*nrrd"))
+    # fldr  = Path("/media/ub2/datasets/drli/sitktmp/images/")
+    # fnames = list(mo_df.image_filenames)
+    # fname = "/media/ub2/datasets/drli/sitktmp/images/drli_048.nrrd"
 # %%
     for fname in fnames:
+    # fname = fnames[-3]
+        fname = Path(fname)
         En.run(fname)
 # %%
     ImageMaskViewer([En.w.img_np_orgres,En.w.pred[1]])
@@ -764,7 +822,7 @@ if __name__ =="__main__":
     En.localiser_bbox(img_fn)
 
     En.load_patch_model(1)
-    En.run_patch_prediction(img_fn,n)
+    En.patch_prediction(img_fn,n)
     En.preds.append(En.p.pred)
 # %%
     p = En.p

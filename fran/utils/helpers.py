@@ -7,8 +7,7 @@ if 'get_ipython' in globals():
         ipython.run_line_magic('autoreload', '2')
 
 # %%
-
-import math
+import collections
 import pprint
 import re
 from multiprocessing import Pool
@@ -54,6 +53,25 @@ def abs_list(numlist:list):
     return [abs(num) for num in numlist]
 
 
+def chunks (listi, n):
+    chunk_size = round(len(listi)/n)
+    sld = [[x*chunk_size,(x+1)*chunk_size] for x in range(0,n-1)]
+    sld.append([(n-1)*chunk_size,None])
+    for s in sld:
+        yield (listi[s[0]:s[1]])
+
+
+def merge_dicts(d1, d2):
+    outdict={}
+    for k, v in d1.items():
+        if not k in d2.keys():
+            outdict[k]=d1[k]
+        else:
+            if isinstance(v, collections.abc.Mapping):
+                outdict[k] = merge_dicts(d1[k],d2[k])
+            else:
+                outdict[k] = d1[k]+ d2[k]
+    return outdict
 
 def maybe_to_torch(d):
     if isinstance(d, list):
@@ -218,34 +236,37 @@ def convert_sigmoid_to_label(y,threshold = 0.5):
     return y.int()
 
 
-def regex_matcher(func):
-    def _inner(*args,**kwargs):
-            pat, string= func(*args,**kwargs)
-            pat = re.compile(pat,re.IGNORECASE)
-            answer = re.search(pat,string)
-            return answer[0] if answer else None
-    return _inner
+def regex_matcher(indx=0):
+    def _outer(func):
 
-@regex_matcher
+        def _inner(*args,**kwargs):
+                pat, string= func(*args,**kwargs)
+                pat = re.compile(pat,re.IGNORECASE)
+                answer = re.search(pat,string)
+                return answer[indx] if answer else None
+        return _inner
+    return _outer
+
+@regex_matcher(0)
 def infer_dataset_name(filename):
     pat ="^([^-_]*)"
     return pat, filename.name
 
 
-@regex_matcher
+@regex_matcher()
 def get_case_id_from_filename(dataset_name, filename:Path):
                if dataset_name is None: dataset_name = infer_dataset_name(filename)
                pat = "{}[-_][a-z\d]*".format(dataset_name)
                return pat, filename.name
 
 @path_to_str
-@regex_matcher
+@regex_matcher()
 def match_filename_with_case_id(project_title, case_id,filename):
                 pat = project_title+"_"+case_id+"_?\."
                 return pat,filename
 
 
-@regex_matcher
+@regex_matcher(1)
 def get_extension(fn):
     pat = r"[^\.]*\.(.*)"
     return pat, fn.name
@@ -288,33 +309,33 @@ def project_title_from_folder(folder_name: Union[str,Path]):
 #     return _inner
 #
 
-def create_train_valid_test_lists_from_filenames(project_title, files_list, json_filename,pct_test=0.1,pct_valid=0.2,shuffle=False):
-    pct_valid = 0.2
-    case_ids = [get_case_id_from_filename(project_title,fn) for fn in files_list]
-    if shuffle==True: 
-        print("Shuffling all files")
-        random.shuffle(case_ids)
-    else:    
-        print("Files are in sorted order")
-        case_ids.sort()
-    final_dict= {"all_cases":case_ids} 
-    n_test= int(pct_test*len(case_ids))
-    n_valid = int(pct_valid*len(case_ids))
-    len(case_ids)-n_test-n_valid
-    cases_test =case_ids[:n_test]
-    final_dict.update({"test_cases": cases_test})
-    cases_train_valid = case_ids[n_test:]
-    folds = int(1/pct_valid)
-    n_valid_per_fold =  math.ceil(len(cases_train_valid)*pct_valid)
-    print("Given proportion {0} of validation files yield {1} folds".format(pct_valid,folds))
-    slices = [slice(fold*n_valid_per_fold,(fold+1)*n_valid_per_fold) for fold in range(folds)]
-    val_cases_per_fold = [cases_train_valid[slice] for slice in slices]
-    for n in range(folds):
-        train_cases_fold = list(set(cases_train_valid)-set(val_cases_per_fold[n]))
-        fold = {'fold_{}'.format(n):{'train':train_cases_fold, 'valid':val_cases_per_fold[n]}}
-        final_dict.update(fold)
-    print("Saving folds to {}  ..".format(json_filename))
-    save_dict(final_dict,json_filename)
+# def create_train_valid_test_lists_from_filenames(project_title, files_list, json_filename,pct_test=0.1,pct_valid=0.2,shuffle=False):
+#     pct_valid = 0.2
+#     case_ids = [get_case_id_from_filename(project_title,fn) for fn in files_list]
+#     if shuffle==True: 
+#         print("Shuffling all files")
+#         random.shuffle(case_ids)
+#     else:    
+#         print("Files are in sorted order")
+#         case_ids.sort()
+#     final_dict= {"all_cases":case_ids} 
+#     n_test= int(pct_test*len(case_ids))
+#     n_valid = int(pct_valid*len(case_ids))
+#     len(case_ids)-n_test-n_valid
+#     cases_test =case_ids[:n_test]
+#     final_dict.update({"test_cases": cases_test})
+#     cases_train_valid = case_ids[n_test:]
+#     folds = int(1/pct_valid)
+#     n_valid_per_fold =  math.ceil(len(cases_train_valid)*pct_valid)
+#     print("Given proportion {0} of validation files yield {1} folds".format(pct_valid,folds))
+#     slices = [slice(fold*n_valid_per_fold,(fold+1)*n_valid_per_fold) for fold in range(folds)]
+#     val_cases_per_fold = [cases_train_valid[slice] for slice in slices]
+#     for n in range(folds):
+#         train_cases_fold = list(set(cases_train_valid)-set(val_cases_per_fold[n]))
+#         fold = {'fold_{}'.format(n):{'train':train_cases_fold, 'valid':val_cases_per_fold[n]}}
+#         final_dict.update(fold)
+#     print("Saving folds to {}  ..".format(json_filename))
+#     save_dict(final_dict,json_filename)
 
 def get_train_valid_test_lists_from_json(project_title, fold, json_fname, image_folder,ext=".pt"):
         all_folds= load_dict(json_fname)
