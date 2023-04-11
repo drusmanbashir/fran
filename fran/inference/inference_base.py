@@ -16,31 +16,33 @@
 # %%
 import sys
 import gc
+from fran.callback.neptune import NeptuneManager
+from fran.transforms.inferencetransforms import *
+from torch.functional import Tensor
+import numpy as np
+from fran.inference.helpers import get_scale_factor_from_spacings
+from fran.utils.fileio import load_dict, maybe_makedirs
+import SimpleITK as sitk
+from pathlib import Path
+from fran.utils.helpers import get_available_device, get_case_id_from_filename, get_extension
 
 # These are the usual ipython objects, including this one you are creating
 ipython_vars = ['In', 'Out', 'exit', 'quit', 'get_ipython', 'ipython_vars']
-import ast
-from fastcore.foundation import L
-from fastcore.all import GetAttr
+from fastcore.foundation import L, Union, operator
+from fastcore.all import GetAttr, ItemTransform, Pipeline
 from fran.inference.scoring import compute_dice_fran
 from fran.transforms.intensitytransforms import ClipCenter
 from monai.transforms.post.array import VoteEnsemble
-from fran.managers.base import load_checkpoint
 import os
 
 from fran.transforms.totensor import ToTensorI, ToTensorT
 
 import sys
 
-from fran.inference.helpers import *
 sys.path+=["/home/ub/Dropbox/code/fran/"]
-from fran.managers.trainer import *
-from fran.transforms.inferencetransforms import *
 from fastcore.transform import Transform
-from fran.utils.imageviewers import *
+from fran.utils.imageviewers import ImageMaskViewer
 import functools as fl
-from fran.transforms.inferencetransforms import *
-from fran.utils.helpers import *
 
 import torchio as tio
 from fastcore.basics import store_attr
@@ -55,6 +57,33 @@ import cc3d
 #     'tumor': 1.1498198361434828,
 # }
 #
+# %%
+import linecache
+import os
+import tracemalloc
+def display_top(snapshot, key_type='lineno', limit=10):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>"),
+    ))
+    top_stats = snapshot.statistics(key_type)
+
+    print("Top %s lines" % limit)
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        print("#%s: %s:%s: %.1f KiB"
+              % (index, frame.filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            print('    %s' % line)
+
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        print("%s other: %.1f KiB" % (len(other), size / 1024))
+    total = sum(stat.size for stat in top_stats)
+    print("Total allocated size: %.1f KiB" % (total / 1024))
+# %%
 def pred_mean(preds):
     '''
     preds are supplied as raw model output
@@ -608,6 +637,7 @@ class EndToEndPredictor(_Predictor):
 
     def unload_localizer_model(self):
         delattr(self,'w')
+        gc.collect()
         print("BBoxes obtained. Deleting localiser and freeing ram")
         torch.cuda.empty_cache()
 
@@ -706,6 +736,7 @@ class EnsemblePredictor(EndToEndPredictor):
             self.img_filename = img_fn
             self.load_localiser_model(self.run_name_w)
             self.localiser_bbox(img_fn)
+            self.unload_localizer_model()
             self.preds=[]
             for n in range(len(self.runs_p)):
                 self.load_patch_model(n)
@@ -720,10 +751,14 @@ class EnsemblePredictor(EndToEndPredictor):
 # %%
 
 if __name__ =="__main__":
+
+# ... run your application ...
+
     from fran.utils.common import *
     common_paths_filename=os.environ['FRAN_COMMON_PATHS']
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
 
+    import pandas as pd
     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
     patch_size = [160,160,160]
     resample_spacings = [1,1,2]
@@ -738,8 +773,8 @@ if __name__ =="__main__":
     En = EnsemblePredictor(proj_defaults,3,run_name_w,runs_ensemble,device,debug=False,overwrite=False)
 
 # %%
-    fldr =Path("/s/datasets_bkp/litqsmall/sitk/images/")
-    fnames = list(fldr.glob("*nrrd"))
+    fldr =Path("/s/datasets_bkp/litq/complete_cases/images/")
+    fnames = list(fldr.glob("*"))
     # fldr  = Path("/media/ub2/datasets/drli/sitktmp/images/")
     # fnames = list(mo_df.image_filenames)
     # fname = "/media/ub2/datasets/drli/sitktmp/images/drli_048.nrrd"
@@ -749,9 +784,21 @@ if __name__ =="__main__":
         fname = Path(fname)
         En.run(fname)
 # %%
+# %%
     ImageMaskViewer([En.w.img_np_orgres,En.w.pred[1]])
 # %%
     E = EndToEndPredictor(proj_defaults,run_name_w,runs_ensemble[0],use_neptune=True,device=device,save_localiser=True)
+# %%
+    sn= tracemalloc.take_snapshot()
+
+    top_stats = sn.statistics('traceback')
+
+# pick the biggest memory block
+    stat = top_stats[0]
+    print("%s memory blocks: %.1f KiB" % (stat.count, stat.size / 1024))
+    for line in stat.traceback.format():
+        print(line)
+# %%
     E.localiser_bbox(img_fn)
     E.run_patch_prediction(img_fn)
     bboxes = E.bboxes
@@ -830,7 +877,6 @@ if __name__ =="__main__":
     p.backsample()
     p.postprocess()
 # %%
-    ImageMaskViewer([w.img_np_orgres,pred[0]])
 # %%
     pred_int= torch.argmax(w.pred, 0, keepdim=False)
     pred_int=pred_int.to(torch.uint8)

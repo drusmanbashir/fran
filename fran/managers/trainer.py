@@ -1,4 +1,5 @@
 # %%
+import time
 from SimpleITK import ImageViewer_SetProcessDelay
 from fastai.data.core import DataLoaders
 # from fastai.distributed import *
@@ -18,7 +19,7 @@ from fran.utils.helpers import *
 from fran.utils.fileio import *
 from fran.utils.imageviewers import *
 from fran.transforms.spatialtransforms import *
-from fastai.learner import *
+# from fastai.learner import *
 from fastai.learner import Learner
 from fran.data.dataset import *
 from fran.evaluation.losses import *
@@ -32,6 +33,41 @@ from fran.utils.helpers import *
 from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.callback.case_recorder import CaseIDRecorder
+
+def compute_bs(proj_defaults,distributed,min_bs=2):
+        bs = min_bs
+        buffer =2 if distributed==True else 1
+        while True:
+            try:
+                print(bs)
+                cbs =[]
+                La = Trainer.fromExcel(
+                    proj_defaults,
+                    bs=bs,
+                    dummy_ds=bs*2,
+
+                )
+                learn = La.create_learner(cbs=cbs, compile=False,distributed=distributed)
+                learn.fit(1)
+                del learn
+                del La
+                gc.collect()
+                torch.cuda.empty_cache()
+                prev_bs = bs
+                bs+=2
+            except RuntimeError:
+                print("Final broken bs: {}\n-----------------".format(bs))
+                bs  = prev_bs-buffer
+                del learn
+                del La
+                gc.collect()
+                torch.cuda.empty_cache()
+                print("\n----- accepted bs: {}".format(bs))
+                break
+        return bs
+
+
+
 def load_model_from_raytune_trial(folder_name,out_channels):
     #requires params.json inside raytune trial
     params_dict = load_json(Path(folder_name)/"params.json")
@@ -45,13 +81,13 @@ def load_model_from_raytune_trial(folder_name,out_channels):
     return  model
 class Trainer:
     def __init__(
-            self, proj_defaults, config_dict, cbs=[], bs=None, max_workers=0, pin_memory=True, device:Union[int,None]=None
+            self, proj_defaults, config_dict, cbs=[], bs=None, max_workers=0, pin_memory=True, device='cuda', dummy_ds:int=0
     ):
         '''
-        device: If None, it is passed as such. Otherwise supply an integer for cuda device or 'auto' for system to determine a free GPU.
+        dummy_ds if >0, creates a short ds=dummy_ds. Used to run quick fits (to estimate vram needs)
+
         '''
-        self.device= device
-        self.proj_defaults = proj_defaults
+        store_attr('device,proj_defaults,dummy_ds')
         self.assimilate_config(config_dict)
 
         self.patch_based = bool(self.metadata["patch_based"])
@@ -180,6 +216,9 @@ class Trainer:
     ):
         self.set_dataset_folders()
         bboxes_fname = self.dataset_folder / "bboxes_info"
+        if self.dummy_ds> 0:
+            self.train_list = self.train_list[:self.dummy_ds]
+            self.valid_list= self.train_list[:1]
         self.train_ds = ImageMaskBBoxDataset(
             self.proj_defaults,
             self.train_list,
@@ -193,6 +232,8 @@ class Trainer:
         )
 
     def create_dataloaders(self, bs=None, max_workers=4,device=None, **kwargs):
+        if not device:
+            device= 'cuda'
         if bs == None:
             bs = self.dataset_params["bs"]
         train_dl = TfmdDLKeepBBox(
@@ -299,18 +340,18 @@ class Trainer:
         learn.dls.cuda()
         learn.to_non_native_fp16()
         return learn
-
-    @property
-    def device(self):
-        """The device property."""
-        return self._device
-    @device.setter
-    def device(self, value):
-        assert value in [None]+list(range(100)), "Print device can only be None or int "
-        if isinstance(value,int):
-            self._device = value
-        elif not hasattr(self,'_device'):
-            self._device= get_available_device()
+    #
+    # @property
+    # def device(self):
+    #     """The device property."""
+    #     return self._device
+    # @device.setter
+    # def device(self, value):
+    #     assert value in [None]+list(range(100)), "Print device can only be None or int "
+    #     if isinstance(value,int):
+    #         self._device = value
+    #     # elif not hasattr(self,'_device'):
+    #     #     self._device= get_available_device()
 
 
     @classmethod
@@ -440,14 +481,14 @@ if __name__ == "__main__":
     #
     # ]
 # %%
-    cbs =[]
 
 
-    La = Trainer.fromExcel(
-        proj_defaults,
-        bs=2
-    )
+
 # %%
+# %%
+
+# %%
+# %%debu%
 #     ds = La.valid_ds
 #     bb = [b for b in ds.bboxes_per_id if b[0]['case_id']=='lits-9']
 # # %%
@@ -462,39 +503,5 @@ if __name__ == "__main__":
 # # %%
 #     ImageMaskViewer([img[0,0].detach().cpu(), mask[0,0].detach().cpu()])
 # %%
-    learn = La.create_learner(cbs=cbs, compile=False,distributed=False)
-# %%
-    ImageMaskViewer([a.detach().cpu()[0,0],b.detach().cpu()[0,0]])
 # %%
 
-    # model = SwinUNETR(La.dataset_params['patch_size'],1,3)
-    # learn.model = model
-    learn.fit(n_epoch=30, lr=La.model_params["lr"])
-## %%
-# %%
-# %%
-    bboxes_fname = La.dataset_folder / "bboxes_info"
-    ds = ImageMaskBBoxDataset(
-                La.proj_defaults,
-                La.train_list,
-                bboxes_fname,
-                [0,0 ,100]
-            )
-
-# %%
-    present =[]
-    for x in range(len(ds)):
-        a,b,c = ds[x]
-        s = c['bbox_stats']
-        labs =[a['label'] for a in s]
-        present.append(2 in labs)
-    sum(present)
-# %%
-    x = 2
-    a,b,c = ds[x]
-    ImageMaskViewer([a,b])
-# %%
-# %%
-    a,b,c = La.dls.one_batch()
-# %%
-# b n m , . zdfghgbuhy

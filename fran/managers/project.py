@@ -423,11 +423,5 @@ if __name__ == "__main__":
 
 # %%
 # %%
-    d1 = load_dict(P.proj_summary.validation_folds_filename)
-    d2 = create_folds([1,3,4],pct_valid=.5)
-# %%
-# %%
-d3 = merge_dicts(d1,d2)
-pp(d3)
 # %%
         

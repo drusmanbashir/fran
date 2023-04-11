@@ -186,7 +186,7 @@ def multiprocess_multiarg(func,arguments, num_processes=8,multiprocess=True,debu
 
   
 
-def get_available_device(max_memory=0.8):
+def get_available_device(max_memory=0.8)->int:
     '''
     select available device based on the memory utilization status of the device
     :param max_memory: the maximum memory utilization ratio that is considered available

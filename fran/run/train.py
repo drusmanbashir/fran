@@ -42,6 +42,7 @@ def override_configs(args , configs:dict):
 
 
 def load_and_update_configs(proj_defaults, args):
+    args.bs = compute_bs(proj_defaults,args.distributed,12)
     if args.resume is None or args.update == True:
         configs = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
     else:
