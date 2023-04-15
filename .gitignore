@@ -11,6 +11,7 @@
 .ipynb_checkpoints/
 .neptune/
 .project_root
+.*rope*
 .pyc
 __pycache__/
 archived/

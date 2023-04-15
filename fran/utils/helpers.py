@@ -26,17 +26,11 @@ tr = ipdb.set_trace
 import gc
 # from fran.utils.fileio import *
 import random
-from datetime import datetime
 
 def range_inclusive(start, end):
      return range(start, end+1)
 def multiply_lists(a,b):
     return [aa*bb for aa, bb in zip(a,b)]
-
-def append_time(input_str, now=True):
-    now = datetime.now()
-    dt_string = now.strftime("_%d%m%y_%H%M")
-    return input_str+dt_string
  
 class no_op(object):
     def __enter__(self):

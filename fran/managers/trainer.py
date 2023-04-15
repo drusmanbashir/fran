@@ -333,7 +333,6 @@ class Trainer:
             # learn.dls = learn.dls.to(torch.device(self.device))
             torch.cuda.set_device(self.device)
         if compile==True:
-
             print("Compiling model")
             learn.model = torch.compile(learn.model)
        
