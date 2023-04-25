@@ -4,6 +4,8 @@ from fran.architectures.gan import create_augmentations
 from fran.transforms.spatialtransforms import *
 from monai.transforms.croppad.array import RandSpatialCropSamples
 from fran.data.dataset import *
+from fran.managers.project import Project
+from fran.utils.imageviewers import ImageMaskViewer
 
 from fran.transforms.misc_transforms import DropBBoxFromDataset
 
@@ -27,8 +29,8 @@ if __name__ == "__main__":
     common_paths_filename=os.environ['FRAN_COMMON_PATHS']
     P = Project(project_title="lits"); proj_defaults= P.proj_summary
     spacings = [1,1,1]
-    src_patch_size = [192,192,192]
-    images_folder = proj_defaults.patches_folder/("spc_100_100_100")/("dim_{0}_{0}_{2}".format(*src_patch_size))/("images")
+    src_patch_size = [192,192,128]
+    images_folder = proj_defaults.patches_folder/("spc_080_080_150")/("dim_{0}_{0}_{2}".format(*src_patch_size))/("images")
     bboxes_fn =images_folder.parent/"bboxes_info"  
     bboxes = load_dict(bboxes_fn)
     fold = 0
@@ -46,11 +48,32 @@ if __name__ == "__main__":
     train_list_w,valid_list_w,_ = get_train_valid_test_lists_from_json(project_title=proj_defaults.project_title,fold=fold,image_folder =images_folder, json_fname=json_fname)
     
 # %%
-    for x in range(len(train_ds)):
-        a,b,c = train_ds[x]
+    import matplotlib.pyplot as plt
+    import torch_radon.examples
+    x=np.load("/home/ub/Downloads/phantom.npy")
+    a,b,c = train_ds[x]
 
+    a = a[50:178,50:178,100]
+    plt.imshow(a)
 # %%
-    aa = train_ds.median_shape
+    import torch.nn as nn
+    from torch_radon import Radon
+    from torch_radon.solvers import  Landweber
+# %%
+    batch_size = 8
+    n_angles = 64
+    imsize = 128
+    a,b = a[:128,:128,:],  b[:128,:128,:]
+    ImageMaskViewer([a,b])
+# %%
+    a = a.unsqueeze(0).unsqueeze(0).to(device)
+    device='cuda'
+    sino_model = nn.Conv3d(1, 1, 5, padding=2).to(device)
+    image_model = nn.Conv3d(1, 1, 3, padding=1).to(device)
+    angles = np.linspace(0,np.pi,n_angles)
+    radon = Radon(imsize,angles)
+    sinogram = radon.forward(a)
+    filtered_sinogram = sino_model(sinogram)
 # %%
     bb = train_ds.bboxes_per_id[0]
 

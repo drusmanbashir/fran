@@ -183,7 +183,8 @@ def multiprocess_multiarg(func,arguments, num_processes=8,multiprocess=True,debu
 def get_available_device(max_memory=0.8)->int:
     '''
     select available device based on the memory utilization status of the device
-    :param max_memory: the maximum memory utilization ratio that is considered available
+    :param max_memory: the maximum memory utilization ratio that is considered availablj
+
     :return: GPU id that is available, -1 means no GPU is available/uses CPU, if GPUtil package is not installed, will
     return 0 
     '''

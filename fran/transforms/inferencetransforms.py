@@ -50,7 +50,7 @@ class ArrayToSITKF(Transform):
             assert pred_pt.ndim==4, "This requires 4d array, NxDxWxH"
             preds_out = []
             for pred in pred_pt: 
-                pred_ = sitk.GetImageFromArray(pred)
+                pred_ = array_to_sitk(pred)
                 pred_ = reorient_sitk(pred_,self.sitk_props[-1])
                 pred_ = set_sitk_props(pred_,self.sitk_props)
                 preds_out.append(pred_)
@@ -64,7 +64,7 @@ class ArrayToSITKI(Transform):
         self.sitk_props= sitk_props
     def encodes(self,pred):
                 assert all([pred.ndim==3,'int' in str(pred.dtype)]), "This requires 3d int array, DxWxH"
-                pred_ = sitk.GetImageFromArray(pred)
+                pred_ = array_to_sitk(pred)
                 pred_ = reorient_sitk(pred_,self.sitk_props[-1])
                 pred_ = set_sitk_props(pred_,self.sitk_props)
                 return pred_
@@ -336,7 +336,8 @@ def encodes(self,x:Union[list,tuple]):
 def encodes(self,img:Union[Tensor,np.ndarray]):
     func = torch.permute if isinstance(img,Tensor) else np.transpose
     if img.ndim== 3: tp_list = [2,1,0]
-    if img.ndim==4: tp_list = [0,3,2,1]
+    elif img.ndim==4: tp_list = [0,3,2,1]
+    else: raise NotImplementedError
     img = func(img,tp_list)
     return img
 
@@ -394,9 +395,11 @@ class ToTensorBBoxes(ItemTransform):
         return img.detach().cpu().numpy()
         
 
-class MaskToBinary(Transform):
+class LabelMapToBinary(Transform):
     '''
-    list in merge_labels will merge mentioned labels into the target label
+    outputs a binary mask of 1s and 0s.
+    label: label which should be mapped to 1.
+    list in merge_labels will merge mentioned labels into label
     '''
     def __init__(self,label,n_classes,return_type='numpy',merge_labels=[]):
 

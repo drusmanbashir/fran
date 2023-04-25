@@ -16,6 +16,16 @@ import itertools
 
 
 # %%
+
+def array_to_sitk(arr:Union[Tensor,np.ndarray]):
+    '''
+    converts cuda to cpu. Rest is as sitk.GetImageFromArray
+    '''
+    if isinstance(arr,Tensor) and arr.device.type=='cuda':
+        arr = arr.detach().cpu()
+    return sitk.GetImageFromArray(arr)
+    
+
 class ReadSITK(Transform):
     def encodes(self,x): return sitk.ReadImage(x)
 

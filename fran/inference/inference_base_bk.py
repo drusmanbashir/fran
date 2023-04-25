@@ -18,7 +18,6 @@ import gc
 from fran.callback.neptune import NeptuneManager
 from fran.transforms.inferencetransforms import *
 from monai.inferers.utils import sliding_window_inference
-from monai.inferers import SlidingWindowInferer
 from torch.functional import Tensor
 import numpy as np
 from fran.inference.helpers import get_scale_factor_from_spacings
@@ -78,6 +77,7 @@ def sitk_to_slices(bb):
 #     'tumor': 1.1498198361434828,
 # }
 #
+# %%
 
 
 def get_bbox_from_tnsr(pred_int):
@@ -127,6 +127,48 @@ def volvox(vol_tot, spacings) -> int:  # gives number of voxels which cover said
     return int(vol_tot_mm3 / voxelvol)
 
 
+def dust_and_k_largest(self, pred_int):
+    self.dusted_stencils = self.create_dusted_stencils_k_largest(pred_int)
+    return self.mask_fill_incremental()
+
+
+def mask_fill_incremental(self):
+    pred_int_dusted = self.dusted_stencils[0]  # zero mask
+    for n in range(1, len(self.dusted_stencils)):
+        pred_int_dusted[self.dusted_stencils[n] == 1] = n
+    return pred_int_dusted
+
+
+def create_dusted_stencils_k_largest(self, pred_int):
+    dusted_stencils = [torch.zeros(pred_int.shape, dtype=torch.uint8)]
+    for axis in range(1, self.out_channels):
+        dusted_stencils.append(self.create_dusted_stencil_k_largest(pred_int, axis))
+    return dusted_stencils
+
+
+def create_dusted_stencil_k_largest(self, pred_int, axis: int):
+    assert isinstance(
+        axis, int
+    ), "Provide axis / label index which should serve as the foreground of bbox"
+    M = LabelMapToBinary(axis, self.out_channels)
+    pred_tmp_binary = M.encodes(pred_int)
+    pred_tmp_binary = cc3d.dust(
+        pred_tmp_binary,
+        threshold=self.dusting_threshold,
+        connectivity=26,
+        in_place=True,
+    )
+    dusted = self.retain_k_largest_components(pred_tmp_binary)
+    return dusted
+
+
+def retain_k_largest_components(self, tnsr_binary):  # works with pred_int form
+    pred_k_largest, N = cc3d.largest_k(tnsr_binary, k=self.k_components, return_N=True)
+    pred_k_largest = pred_k_largest.astype(np.uint8)
+    pred_k_largest = torch.tensor(pred_k_largest)
+    return pred_k_largest
+
+
 class PredFlToInt(Transform):
     def encodes(self, pred_fl: Tensor):
         pred_int = torch.argmax(pred_fl, 0, keepdim=False)
@@ -168,6 +210,7 @@ class Stencil(Transform):
         stencils = [m.encodes(pred_int) for m in self.ms]
         return stencils
 
+
 class DustKLargest(Transform):
     def __init__(self, mask_labels, spacings):
         store_attr()
@@ -205,8 +248,8 @@ class FillBBoxPatches(ItemTransform):
     Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
     """
 
-    def __init__(self, img_size, out_channels,device='cuda'):
-        self.output_img = torch.zeros(out_channels, *img_size,device=device)
+    def __init__(self, img_size, out_channels):
+        self.output_img = torch.zeros(out_channels, *img_size)
 
     def decodes(self, x):
         patches, bboxes = x
@@ -222,61 +265,45 @@ class _Predictor():
         out_channels,
         resample_spacings,
         patch_size: list ,
-        patch_overlap:  float = 0.25,
-        grid_mode="constant",  # constant or gaussian
-        bs=8,
+        patch_overlap:  float = 0.5,
+        grid_mode="crop",
+        batch_size=8,
         device='cuda',
-        half=False,
-        merge_labels:list=[[]], #list of lists used by stencil transform. 
+        merge_labels:list=[],
         postprocess_label:int=1,
         cc3d=True,
         debug=False,
         overwrite=False):
-
-        """
-        params:
-        cc3d: If True, dusting and k-largest components are extracted based on mask-labels.json (corrected from mm^3 to voxels)
-        patch_overlap: float : [0,1] percent overlap of patch_size
-
-        """
-
+        # used by stencil transform. WHen creating label1 stencil, label2 will be counted in label1 to avoid holes after dusting
 
         assert grid_mode in [
-            "constant",
-            "gaussian",
-        ], "grid_mode should be either 'constant' or 'gaussian' "
+            "crop",
+            "average",
+        ], "grid_mode should be either 'crop' or 'average' "
         self.grid_mode = grid_mode
-        global_properties_fname = proj_defaults.global_properties_filename
+        global_properties_fname = self.proj_defaults.global_properties_filename
         self.global_properties = load_dict(global_properties_fname)
-        self.inferer = SlidingWindowInferer(roi_size = patch_size,sw_batch_size =bs,overlap=patch_overlap,device=device,
-                                                     mode=grid_mode,progress=True)
-
-        store_attr(but='bs,patch_overlap,grid_mode')
+        assert patch_overlap <1.0 , "Patch overlap should be a fraction. 0.5 implies 50% overlap"
+        self.patch_overlap = [int(x * patch_overlap) for x in patch_size]
+        store_attr()
 
     def load_model(self, model, model_id):
-        self.model = model
-        self.model.eval()
-        self.model.to(self.device)
-        if self.half==True:
-            self.model.half()
-        self.model_id = model_id
+        self._model = model
+        self._model.eval()
+        self._model.to(self.device)
+        self._model_id = model_id
+        self.output_image_folder = self._model_id
         print(
             "Default output folder, based on model name is {}.".format(
                 self.output_image_folder
             )
         )
 
-    def img_sized_bbox(self):
-        shape = self.img_np_orgres.shape
-        slc = []
-        for s in shape:
-            slc.append(slice(0, s))
-        return [tuple(slc)]
-
     def load_case(
         self, img_filename, bboxes=None
     ):  # tip put this inside a transform which saves these attrs to parent like callbacks do in learner
         self.img_filename = img_filename
+        self.set_pred_fns(img_filename)
         if all([self.overwrite == False, self.files_exist()]):
             print("Files exists {}. Skipping. ".format(self.pred_fn_i))
             self.already_processed = True
@@ -288,6 +315,27 @@ class _Predictor():
             self.bboxes = bboxes if bboxes else self.img_sized_bbox()
             self.already_processed = False
 
+    def create_dl_tio(self):
+        self.img_transformed, self.bboxes_transformed = self.encode_pipeline(
+            [self.img_np_orgres, self.bboxes]
+        )
+        self.dls = []
+        for bbox in self.bboxes_transformed:
+            img_cropped = self.img_transformed[bbox]
+            img_tio = tio.ScalarImage(tensor=np.expand_dims(img_cropped, 0))
+            subject = tio.Subject(image=img_tio)
+            grid_sampler = tio.GridSampler(
+                subject=subject,
+                patch_size=self.patch_size,
+                patch_overlap=self.patch_overlap,
+            )
+            aggregator = tio.inference.GridAggregator(
+                grid_sampler, overlap_mode=self.grid_mode
+            )
+            patch_loader = torch.utils.data.DataLoader(
+                grid_sampler, batch_size=self.batch_size
+            )
+            self.dls.append([patch_loader, aggregator])
 
     def create_postprocess_pipeline(self):
         self.postprocess_tfms = L(
@@ -297,15 +345,6 @@ class _Predictor():
             DustKLargest(self.proj_defaults.mask_labels, self.sitk_props[1]),
             ToTensorT,
             MergeStencils(self.img_np_orgres.shape),
-        )
-
-        self.postprocess_tfms.map(self.add_tfm)
-        self.postprocess_pipeline = Pipeline(self.postprocess_tfms)
-
-    def create_postprocess_pipeline(self):
-        self.postprocess_tfms = L(
-            PredFlToInt,
-            ArrayToSITKI(sitk_props=self.sitk_props),
         )
 
         self.postprocess_tfms.map(self.add_tfm)
@@ -343,17 +382,12 @@ class _Predictor():
         """
         Runs predictions. Then backsamples predictions to img size (DxHxW). Keeps num_channels
         """
-
-        self.set_pred_fns(img_filename)
         self.load_case(img_filename, bboxes)
         if self.already_processed == False:
             self.create_encode_pipeline()
+            self.create_dl_tio()
             self.create_decode_pipeline()
             self.create_postprocess_pipeline()
-
-            self.img_transformed, self.bboxes_transformed = self.encode_pipeline(
-                        [self.img_np_orgres, self.bboxes]
-                    )
             self.make_prediction()
 
             self.backsample()
@@ -370,9 +404,9 @@ class _Predictor():
             ext = "." + get_extension(img_fn)
         fn_no_ext = img_fn.name.split(".")[0]
         counts = ["_" + str(x + 1) for x in range(self.n_classes)]
-        self.pred_fn_i = self.output_image_folder / (fn_no_ext + ext)
+        self.pred_fn_i = self._output_image_folder / (fn_no_ext + ext)
         self.pred_fns_f = [
-            self.output_image_folder / (fn_no_ext + c + ext) for c in counts
+            self._output_image_folder / (fn_no_ext + c + ext) for c in counts
         ]
 
     def files_exist(self):
@@ -386,7 +420,7 @@ class _Predictor():
         sitk.WriteImage(img, fn)
 
     def save_prediction(self, ext=None):
-        maybe_makedirs(self.output_image_folder)
+        maybe_makedirs(self._output_image_folder)
         imgs = [self.pred_sitk_i]
         fns = [self.pred_fn_i]
         if self.debug == True:
@@ -394,43 +428,39 @@ class _Predictor():
             fns.extend(self.pred_fns_f)
         for img, fn in zip(imgs, fns):
             self.save_sitk(img, fn)
-
     def make_prediction(self):
         self.pred_patches = []
-        img_input= self.img_transformed[self.bboxes_transformed[0]]
-        img_input = img_input.unsqueeze(0).unsqueeze(0).to(self.device)
-        if self.half==True:
-            img_input = img_input.half()
-        with torch.no_grad():
-            output_tensor = self.inferer(inputs = img_input,network=self.model)        
-        output_tensor= output_tensor.squeeze(0)
+        for dl_a in self.dls:
+            pl, agg = dl_a
+            with torch.no_grad():
+                for i, patches_batch in enumerate(pl):
+                    input_tensor = (
+                        patches_batch["image"][tio.DATA].float().to(self.device)
+                    )
+                    locations = patches_batch[tio.LOCATION]
+                    y = self._model(input_tensor)
+                    if isinstance(y, (tuple, list)):
+                        y = y[0]
+                    agg.add_batch(y, locations)
 
-        output_tensor = torch.nan_to_num(output_tensor, 0,)
-        # output_tensor = output_tensor.float().cpu()
-        output_tensor = F.softmax(output_tensor, dim=0)
-        self.pred_patches.append(output_tensor)
+            output_tensor = agg.get_output_tensor()
+            output_tensor = torch.nan_to_num(output_tensor, 0)
+            output_tensor = F.softmax(output_tensor, dim=0)
+            self.pred_patches.append(output_tensor)
 
-   
- 
 
     def postprocess(self, cc3d: bool):  # starts : pred->dust->k-largest->pred_int
         if cc3d == True:
-            self.pred_sitk_i= self.postprocess_pipeline(self.pred)
+            self.pred_int = self.postprocess_pipeline(self.pred)
         else:
             pred_int = torch.argmax(self.pred, 0, keepdim=False)
-            pred_int = pred_int.to(torch.uint8)
-            ArrayToSITKI = [Tf for Tf in self.postprocess_pipeline if Tf.name=='ArrayToSITKI'][0]
-            self.pred_sitk_i = ArrayToSITKI.encodes(pred_int)
-        self.pred = self.pred.float().cpu()
-
-
+            self.pred_int = pred_int.to(torch.uint8)
     def unload_case(self):
-        to_delete = ["pred_int", "_pred_sitk_f", "pred_sitk_i"]
+        to_delete = ["_pred_int", "_pred_sitk_f", "_pred_sitk_i"]
         for item in to_delete:
             if hasattr(self, item):
                 delattr(self, item)
         gc.collect()
-        torch.cuda.empty_cache()
 
     def score_prediction(self, mask_filename, n_classes):
         mask_sitk = sitk.ReadImage(mask_filename)
@@ -466,20 +496,23 @@ class _Predictor():
     def pred_sitk_f(self):  # list of sitk images len =  out_channels
         self._pred_sitk_f = ArrayToSITKF(sitk_props=self.sitk_props).encodes(self.pred)
         return self._pred_sitk_f[1:]  #' first channel is only bg'
-    #
-    # @property
-    # def pred_sitk_i(self):  # list of sitk images len =  out_channels
-    #     self._pred_sitk_i = ArrayToSITKI(sitk_props=self.sitk_props).encodes(
-    #         self.pred_int
-    #     )
-    #     return self._pred_sitk_i
-    #
+
+    @property
+    def pred_sitk_i(self):  # list of sitk images len =  out_channels
+        self._pred_sitk_i = ArrayToSITKI(sitk_props=self.sitk_props).encodes(
+            self.pred_int
+        )
+        return self._pred_sitk_i
+
     @property
     def output_image_folder(self):
-        self._output_image_folder = (
-            Path(self.proj_defaults.predictions_folder) / self.model_id
-        )
         return self._output_image_folder
+
+    @output_image_folder.setter
+    def output_image_folder(self, folder_name: Path):
+        self._output_image_folder = (
+            Path(self.proj_defaults.predictions_folder) / folder_name
+        )
 
     @property
     def case_id(self):
@@ -493,43 +526,111 @@ class _Predictor():
 
 class PatchPredictor(_Predictor):
     def __init__(
-
         self,
         proj_defaults,
         out_channels,
         resample_spacings,
-        patch_size: list ,
-        patch_overlap=0.2,
-        bs = 8,
-        device=None,
-        half = False,
-        merge_labels=[[2],[]],
+        patch_size: list = [128, 128, 128],
+        patch_overlap: Union[list, float, int] = 0.5,
+        grid_mode="crop",
+        expand_bbox=0.1,
+        batch_size=8,
+        device='cuda',
+        merge_labels=[[2], []],
         postprocess_label=2,
         cc3d=True,
         debug=False,
         overwrite=False,
-        expand_bbox=0.1
     ):
-        store_attr('expand_bbox')
-        super().__init__(
+        """
+        params:
+        cc3d: If True, dusting and k-largest components are extracted based on mask-labels.json (corrected from mm^3 to voxels)
+        patch_overlap: float : [0,1] percent overlap of patch_size
+                        int : single number -> [int,int,int]
+                        list : e.g., [1,256, 256]
 
-            proj_defaults=proj_defaults,
-            out_channels=out_channels,
-            resample_spacings=resample_spacings,
-            patch_size=patch_size,
-            patch_overlap=patch_overlap,
-            bs=bs,
-            device=device,
-            half = half,
-            merge_labels=merge_labels,
-            postprocess_label=postprocess_label,
-            cc3d=cc3d,
-            debug=debug,
-            overwrite=overwrite
+        """
+        super().__init__(overwrite)
+        store_attr()
+        # used by stencil transform. WHen creating label1 stencil, label2 will be counted in label1 to avoid holes after dusting
+
+        assert grid_mode in [
+            "crop",
+            "average",
+        ], "grid_mode should be either 'crop' or 'average' "
+        self.grid_mode = grid_mode
+        global_properties_fname = self.proj_defaults.global_properties_filename
+        if len(patch_size) == 2:  # 2d patch size
+            patch_size = [1] + patch_size
+        if isinstance(patch_overlap, float):
+            self.patch_overlap = [int(x * patch_overlap) for x in patch_size]
+        elif isinstance(patch_overlap, int):
+            self.patch_overlap = [patch_overlap] * 3
+        self.global_properties = load_dict(global_properties_fname)
+
+    def set_sitk_props(self):
+        origin = self.img_sitk.GetOrigin()
+        spacing = self.img_sitk.GetSpacing()
+        direction = self.img_sitk.GetDirection()
+        if direction != (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+            self.img_sitk = sitk.DICOMOrient(self.img_sitk, "LPS")
+        self.sz_dest, self.scale_factor = get_scale_factor_from_spacings(
+            self.img_sitk.GetSize(), spacing, self.resample_spacings
+        )
+        self.sitk_props = origin, spacing, direction
+
+    def load_model(self, model, model_id):
+        self._model = model
+        self._model.eval()
+        self._model.to(self.device)
+        self._model_id = model_id
+        self.output_image_folder = self._model_id
+        print(
+            "Default output folder, based on model name is {}.".format(
+                self.output_image_folder
+            )
         )
 
+    def load_case(
+        self, img_filename, bboxes=None
+    ):  # tip put this inside a transform which saves these attrs to parent like callbacks do in learner
+        self.img_filename = img_filename
+        self.set_pred_fns(img_filename)
+        if all([self.overwrite == False, self.files_exist()]):
+            print("Files exists {}. Skipping. ".format(self.pred_fn_i))
+            self.already_processed = True
+        else:
+            self.case_id = get_case_id_from_filename(None, self.img_filename)
+            self.img_sitk = sitk.ReadImage(str(self.img_filename))
+            self.set_sitk_props()
+            self.img_np_orgres = sitk.GetArrayFromImage(self.img_sitk)
+            self.bboxes = bboxes if bboxes else self.img_sized_bbox()
+            self.already_processed = False
 
- 
+    def run(self, img_filename, bboxes=None, save=True):
+        """
+        Runs predictions. Then backsamples predictions to img size (DxHxW). Keeps num_channels
+        """
+        self.load_case(img_filename, bboxes)
+        if self.already_processed == False:
+            self.create_encode_pipeline()
+            self.create_dl_tio()
+            self.create_decode_pipeline()
+            self.create_postprocess_pipeline()
+            self.make_prediction()
+
+            self.backsample()
+            self.postprocess(self.cc3d)
+            if save == True:
+                self.save_prediction()
+
+    def img_sized_bbox(self):
+        shape = self.img_np_orgres.shape
+        slc = []
+        for s in shape:
+            slc.append(slice(0, s))
+        return [tuple(slc)]
+
     def create_encode_pipeline(self):
         self.encode_tfms = L(
             ToTensorI(),
@@ -545,9 +646,17 @@ class PatchPredictor(_Predictor):
         )
         self.encode_tfms.map(self.add_tfm)
         self.encode_pipeline = Pipeline(self.encode_tfms)
-
+    # def patches_to_orgres(self):
+    #     x = self.img_transformed, self.bboxes_transformed
+    #     pred_neo = torch.zeros(x[0].shape)
+    #     for bbox,pred_patch in zip(x[1],self.pred_patches):
+    #         pred_neo[bbox]=pred_patch[0]
+    #     BM = BacksampleMask(self.img_sitk)
+    #     pred_orgres= BM(pred_neo)
+    #     self.pred= pred_orgres.permute(2,1,0)
+    #
     def create_decode_pipeline(self):
-        F = FillBBoxPatches(self.sz_dest, self.out_channels)
+        F = FillBBoxPatches(self.img_transformed.shape, self.out_channels)
         self.decode_pipeline = Pipeline(
             [*self.encode_pipeline[2:4], F]
         )  # i.e., TransposeSITK, ResampleToStage0
@@ -556,8 +665,49 @@ class PatchPredictor(_Predictor):
         self.pred = self.decode_pipeline.decode(
             [self.pred_patches, self.bboxes_transformed]
         )
-        # self.pred = self.pred.float().cpu()
 
+    def retain_k_largest_components(self, tnsr_binary):  # works with pred_int form
+        pred_k_largest, N = cc3d.largest_k(
+            tnsr_binary, k=self.k_components, return_N=True
+        )
+        pred_k_largest = pred_k_largest.astype(np.uint8)
+        pred_k_largest = torch.tensor(pred_k_largest)
+        return pred_k_largest
+
+    def dust_and_k_largest(self, pred_int):
+        self.dusted_stencils = self.create_dusted_stencils_k_largest(pred_int)
+        return self.mask_fill_incremental()
+
+    def mask_fill_incremental(self):
+        pred_int_dusted = self.dusted_stencils[0]  # zero mask
+        for n in range(1, len(self.dusted_stencils)):
+            pred_int_dusted[self.dusted_stencils[n] == 1] = n
+        return pred_int_dusted
+
+    def create_dusted_stencils_k_largest(self, pred_int):
+        dusted_stencils = [torch.zeros(pred_int.shape, dtype=torch.uint8)]
+        for axis in range(1, self.out_channels):
+            dusted_stencils.append(self.create_dusted_stencil_k_largest(pred_int, axis))
+        return dusted_stencils
+
+    def create_dusted_stencil_k_largest(self, pred_int, axis: int):
+        assert isinstance(
+            axis, int
+        ), "Provide axis / label index which should serve as the foreground of bbox"
+        M = LabelMapToBinary(axis, self.out_channels)
+        pred_tmp_binary = M.encodes(pred_int)
+        pred_tmp_binary = cc3d.dust(
+            pred_tmp_binary,
+            threshold=self.dusting_threshold,
+            connectivity=26,
+            in_place=True,
+        )
+        dusted = self.Retain_k_largest_components(pred_tmp_binary)
+        return dusted
+
+    @property
+    def model(self):
+        return self._model
 
 
 class WholeImageBBoxes(ApplyBBox):
@@ -577,7 +727,6 @@ class Unlist(Transform):
     def decodes(self, x: list):
         assert len(x) == 1, "Only for lists len=1"
         return x[0]
-    def encodes(self,x): return self.decodes(x)
 
 
 class WholeImagePredictor(_Predictor):
@@ -587,23 +736,19 @@ class WholeImagePredictor(_Predictor):
         out_channels,
         resample_spacings,
         patch_size: list = [128, 128, 128],
-        bs = 8,
         device=None,
-        half = False,
         merge_labels=[[]],
         postprocess_label=1,
         **kwargs
     ):
         super().__init__(
-
             proj_defaults=proj_defaults,
             out_channels=out_channels,
             resample_spacings=resample_spacings,
             patch_size=patch_size,
             patch_overlap=0.2,
-            bs=bs,
+            batch_size=1,
             device=device,
-            half = half,
             merge_labels=merge_labels,
             postprocess_label=postprocess_label,
             **kwargs
@@ -631,7 +776,6 @@ class WholeImagePredictor(_Predictor):
 
     def backsample(self):
         self.pred = self.decode_pipeline.decode(self.pred_patches)
-        # self.pred = self.pred.float().cpu()
 
 
 class EndToEndPredictor(_Predictor):
@@ -682,7 +826,7 @@ class EndToEndPredictor(_Predictor):
             resample_spacings=resample_spacings_p,
             patch_size=patch_size_p,
             patch_overlap=patch_overlap,
-            bs=self.bs,
+            batch_size=4,
             device=device,
         )
         self.p.load_model(model_p, model_id=run_name_p)
@@ -696,6 +840,18 @@ class EndToEndPredictor(_Predictor):
         self.NepMan.load_run(
             run_name=run_name, param_names="default", nep_mode="read-only"
         )
+        # metadata= self.NepMan.run_dict['metadata']
+        # model_params = NepMan.run_dict['model_params']
+        # dataset_params = NepMan.run_dict['dataset_params']
+        # resample_spacings = ast.literal_eval(NepMan.run_dict['dataset_params']['spacings'])
+        # if not   'out_channels' in model_params:
+        #     oc = {'out_channels':  out_channels_from_dict_or_cell(NepMan.run_dict['metadata']['src_dest_labels'])}
+        #     model_params['out_channels']  = out_channels_from_dict_or_cell(metadata['src_dest_labels'])
+        # out_channels = model_params['out_channels']
+        # patch_size=NepMan.run_dict['dataset_params']['patch_size']
+        # model= create_model_from_conf(model_params,dataset_params,metadata,deep_supervision=False)
+        # load_checkpoint(metadata['model_dir'],model,device)
+
         return self.NepMan.load_model(device)
 
     # def predict(self, img_fn, save_localiser=None):
@@ -715,6 +871,11 @@ class EndToEndPredictor(_Predictor):
         if pred_fn and self.overwrite==False: 
            pred_i = sitk.ReadImage(pred_fn)
            pred_i = sitk.DICOMOrient(pred_i, "LPS")
+           fil = sitk.LabelShapeStatisticsImageFilter()
+           fil.Execute(pred_i)
+           bboxes = fil.GetBoundingBox(1)
+           bboxes = sitk_bbox_readable(bboxes)
+           self.bboxes = [sitk_to_slices(bboxes)] # only implmeneted for a single organ
            # self.bboxes = get_bbox_from_tnsr(pred_int)
 
         else:
@@ -726,16 +887,9 @@ class EndToEndPredictor(_Predictor):
                 )
             )
            self.w.run(img_filename=img_fn, bboxes=None, save=self.save_localiser)
-           pred_i = self.w.pred_sitk_i
+           self.bboxes = get_bbox_from_tnsr(self.w.pred_int)
            self.unload_localizer_model()
-        fil = sitk.LabelShapeStatisticsImageFilter()
-        fil.Execute(pred_i)
-        bboxes = fil.GetBoundingBox(1)
-        bboxes = sitk_bbox_readable(bboxes)
-        self.bboxes = [sitk_to_slices(bboxes)] # only implmeneted for a single organ
-
-           # self.bboxes = get_bbox_from_tnsr(self.w.pred_int)
-       # self.w.unload_case()
+           # self.w.unload_case()
 
     def unload_localizer_model(self):
         delattr(self, "w")
@@ -787,9 +941,7 @@ class EnsemblePredictor(EndToEndPredictor):
         out_channels,
         run_name_w,
         runs_p,
-        half=False,
-        bs=6,
-        device='cuda',
+        device,
         debug=False,
         cc3d=False,
         overwrite=False,
@@ -800,7 +952,7 @@ class EnsemblePredictor(EndToEndPredictor):
         store_attr()
         self.NepMan = NeptuneManager(proj_defaults)
         self.patch_overlap = 0.25
-        self.model_id = "ensemble_" + "_".join(self.runs_p)
+        self.output_image_folder = "ensemble_" + "_".join(self.runs_p)
 
     def load_localiser_model(self, run_name_w):
         (
@@ -810,13 +962,10 @@ class EnsemblePredictor(EndToEndPredictor):
             out_channels_w,
         ) = self.load_model_neptune(run_name_w, device="cpu")
         self.w = WholeImagePredictor(
-            
             proj_defaults=self.proj_defaults,
             out_channels=out_channels_w,
             resample_spacings=resample_spacings_w,
             patch_size=patch_size_w,
-            bs = self.bs,
-            half = self.half,
             device=self.device,
             overwrite=self.overwrite,
         )
@@ -840,8 +989,7 @@ class EnsemblePredictor(EndToEndPredictor):
                 resample_spacings=resample_spacings_p,
                 patch_size=patch_size_p,
                 patch_overlap=self.patch_overlap,
-                bs=self.bs,
-                half = self.half,
+                batch_size=4,
                 device=self.device,
                 debug=self.debug,
                 overwrite=True,
@@ -851,62 +999,31 @@ class EnsemblePredictor(EndToEndPredictor):
         self.p.load_model(model_p, model_id=run_name_p)
 
     def patch_prediction(self, img_fn, n):
-        self.p.set_pred_fns(img_fn)
         if n == 0:
             self.p.load_case(img_fn, self.bboxes)
             self.p.create_encode_pipeline()
+            self.p.create_dl_tio()
             self.p.create_decode_pipeline()
             self.p.create_postprocess_pipeline()
-
-            self.p.img_transformed, self.p.bboxes_transformed = self.p.encode_pipeline(
-                        [self.p.img_np_orgres, self.p.bboxes]
-                    )
         self.p.make_prediction()
 
-        # self.p.backsample()
-        # self.p.postprocess(self.cc3d)
-        # self.p.save_prediction()
+        self.p.backsample()
+        self.p.postprocess(self.cc3d)
+        self.p.save_prediction()
         print(
             "Patch predictions done. Deleting current model in the ensemble and loading next"
         )  # move this to start
         self.p.unload_case()
-        del self.p.model
         torch.cuda.empty_cache()
 
-    @property
-    def postprocess_pipeline(self):
-        return self.p.postprocess_pipeline
+    def postprocess(self, cc3d: bool):
+        if cc3d == True:
+            self.pred_int = self.p.postprocess_pipeline(self.pred)
+        else:
+            super().postprocess(cc3d=False)
 
-    def backsample(self):
-        self.pred = self.p.decode_pipeline.decode(
-            [self.pred_patches, self.p.bboxes_transformed]
-        )
-
-    # def postprocess(self, cc3d: bool):
-    #     if cc3d == True:
-    #         self.pred_sitk_i = self.postprocess_pipeline(self.pred)
-    #     else:
-    #         pred_int = torch.argmax(self.pred, 0, keepdim=False)
-    #         self.pred_int = pred_int.to(torch.uint8)
-    #         ArrayToSITKI = [Tf for Tf in self.postprocess_pipeline if Tf.name=='ArrayToSITKI'][0]
-    #         self.pred_sitk_i = ArrayToSITKI.encodes(self.pred_int)
-    #
-    #
-    #
-    # def postprocess(self, cc3d: bool):  # starts : pred->dust->k-largest->pred_int
-    #     if cc3d == True:
-    #         self.pred_sitk_i= self.postprocess_pipeline(self.pred)
-    #     else:
-    #         pred_int = torch.argmax(self.pred, 0, keepdim=False)
-    #         self.pred_int = pred_int.to(torch.uint8)
-    #         ArrayToSITKI = [Tf for Tf in self.postprocess_pipeline if Tf.name=='ArrayToSITKI'][0]
-    #         self.pred_sitk_i = ArrayToSITKI.encodes(self.pred_int)
-    #
-
-
-    @property
-    def sitk_props(self): return self.p.sitk_props
     def save_prediction(self):
+        self.sitk_props = self.p.sitk_props
         super().save_prediction()
 
     def run(self, img_fn):
@@ -918,23 +1035,22 @@ class EnsemblePredictor(EndToEndPredictor):
         else:
             self.img_filename = img_fn
             self.localiser_bbox(self.run_name_w, img_fn)
+            # self.unload_localizer_model()
 
-            self.pred_patches = []
+            self.preds = []
             for n in range(len(self.runs_p)):
                 self.load_patch_model(n)
                 self.patch_prediction(img_fn, n)
-                self.p.pred_patches= Unlist().encodes(self.p.pred_patches)
-                self.pred_patches.append(self.p.pred_patches)
-            self.pred_patches = pred_mean(self.pred_patches)
-            self.backsample()
-            del self.pred_patches
-            gc.collect()
+                self.preds.append(self.p.pred)
+
+            self.pred = pred_mean(self.preds)
             self.postprocess(self.cc3d)
             self.save_prediction()
             self.unload_case()
 
 
 # %%
+
 if __name__ == "__main__":
     # ... run your application ...
 
@@ -955,9 +1071,8 @@ if __name__ == "__main__":
     # runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357","LITS-413"]
     runs_ensemble = ["LITS-444", "LITS-443", "LITS-439", "LITS-436", "LITS-445"]
     runs_ensemble = ["LITS-451", "LITS-452", "LITS-453", "LITS-454", "LITS-456"]
-    # runs_ensemble = ["LITS-451", "LITS-452"]
     ensemble = ["LITS-451"]
-    fldr = Path("/s/datasets_bkp/litqsmall/sitk/images/")
+    fldr = Path("/s/datasets_bkp/litq/sitk/images/")
     fnames = list(fldr.glob("*"))
     fns =[fn for fn in fnames if "litq_00073" in fn.name]
     device ='cuda'
@@ -968,9 +1083,7 @@ if __name__ == "__main__":
         3,
         run_name_w,
         runs_ensemble,
-        bs=3,
-        device=device,
-        half=True,
+        device,
         debug=False,
         overwrite=True,
     )
@@ -980,14 +1093,103 @@ if __name__ == "__main__":
     # fnames = list(mo_df.image_filenames)
     # fname = "/media/ub2/datasets/drli/sitktmp/images/drli_048.nrrd"
 # %%
-    for fname in fnames:
-        fname = fnames[4]
-        fname = "/s/datasets_bkp/litqsmall/sitk/images_bk/litqsmall_00040.nrrd"
+    for fname in fns:
         fname = Path(fname)
         En.run(fname)
 # %%
 # %%
     ImageMaskViewer([En.w.img_np_orgres, En.w.pred[1]])
+# %%
+    E = EndToEndPredictor(
+        proj_defaults,
+        run_name_w,
+        runs_ensemble[0],
+        use_neptune=True,
+        device=device,
+        save_localiser=True,
+    )
+# %%
+    E.localiser_bbox(fname)
+    E.run_patch_prediction(img_fn)
+    bboxes = E.bboxes
+    ImageMaskViewer([E.predictor_w.img_np_orgres, E.predictor_w.pred_int])
+    ImageMaskViewer(
+        [E.predictor_w.img_np_orgres[bboxes[0]], E.predictor_w.pred_int[bboxes[0]]]
+    )
+# %%
+    P = E.predictor_p
+    ImageMaskViewer([P.img_np_orgres, P.pred_int])
+# %%
+    dl = P.dls[0][0]
+    iteri = iter(dl)
+    b = next(iteri)
+    ImageMaskViewer([b["image"]["data"][0, 0], b["image"]["data"][0, 0]])
+# %%
+    run_name_p = "LITS-265"
+    resample_spacings = [1, 1, 2]
+    patch_size = [192, 192, 96]
+    img_fn = Path(
+        "/media/ub/datasets_bkp/litq/complete_cases/images/litq_0014389_20190925.nii"
+    )
+# %%
+    run_name = runs_ensemble[0]
+    NepMan = NeptuneManager(proj_defaults)
+# %%
+    img_fn = fnames[0]
+    run_name = "LITS-276"
+    NepMan.load_run(
+            run_name=run_name, param_names="default", nep_mode="read-only"
+        )
+    m,p,r,o = NepMan.load_model('cuda')
+# %%
+    W = WholeImagePredictor(proj_defaults,o,r,p,device='cuda',overwrite=True)
+    W.load_model(m, run_name)
+    W.load_case(img_fn)
+    # W.run(img_fn)
+# %%
+# %%
+    img_input= W.img_transformed[W.bboxes_transformed[0]]
+    img_input = img_input.unsqueeze(0).unsqueeze(0).to('cuda')
+    
+# %%
+    with torch.no_grad():
+        s = sliding_window_inference(inputs = img_input,roi_size = 160,sw_batch_size =8,predictor=W.model)
+
+# %%
+        self.img_transformed, self.bboxes_transformed = self.encode_pipeline(
+            [self.img_np_orgres, self.bboxes]
+        )
+        self.dls = []
+        for bbox in self.bboxes_transformed:
+            img_cropped = self.img_transformed[bbox]
+            img_tio = tio.ScalarImage(tensor=np.expand_dims(img_cropped, 0))
+            subject = tio.Subject(image=img_tio)
+            grid_sampler = tio.GridSampler(
+                subject=subject,
+                patch_size=self.patch_size,
+                patch_overlap=self.patch_overlap,
+            )
+            aggregator = tio.inference.GridAggregator(
+                grid_sampler, overlap_mode=self.grid_mode
+            )
+            patch_loader = torch.utils.data.DataLoader(
+                grid_sampler, batch_size=self.batch_size
+            )
+            self.dls.append([patch_loader, aggregator])
+
+# %%
+    NepMan.load_run(
+            run_name=run_name, param_names="default", nep_mode="read-only"
+        )
+    device='cuda'
+    m,p,r,o = NepMan.load_model('cuda')
+    P = PatchPredictor(proj_defaults, 3, r, p, device=device)
+
+    P.load_model(m,  run_name)
+    P.run(img_fn, bboxes=bboxes)
+# %%
+    score = P.score_prediction(img_fn, 3)
+# %%
 # %%
 # %%
 
@@ -1079,27 +1281,9 @@ if __name__ == "__main__":
     for pred_sitk, fn in zip([En._pred_sitk_i] + En.pred_sitk_f, En.pred_fns):
         sitk.WriteImage(pred_sitk, fn)
 # %%
-    img_fn = fname
-    En.img_filename = img_fn
-    En.localiser_bbox(En.run_name_w, img_fn)
-    # En.unload_localizer_model()
 
-    En.preds = []
-    for n in range(len(En.runs_p)):
-        En.load_patch_model(n)
-        En.patch_prediction(img_fn, n)
-        En.preds.append(En.p.pred)
-
-    En.pred = pred_mean(En.preds)
-    En.postprocess(En.cc3d)
-    En.save_prediction()
-    En.unload_case()
 
 # %%
-    mn = np.array([0.9947076974578355, 0.0, 0.10274529973741485, 0.0, 1.0, 0.0, -0.10274529973741488, 0.0, 0.9947076974578355])
-    mn = mn.reshape(3,3)
-    mon = np.linalg.inv(mn)
-# %%
-    import itk
-    O = itk.OrientImageFilter(img)
+
+
 # %%

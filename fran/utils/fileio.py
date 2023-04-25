@@ -62,15 +62,15 @@ def str_to_path(arg_inds=None):
 def save_np(object,filename):
     np.save(filename,object)
 
-
-def load(fnc):
-    def _inner(filename):
-        with open(filename, 'rb') as file:
-            object = fnc.load(file)
-            return object
-    return _inner
-
-
+#
+# def load(fnc):
+#     def _inner(filename):
+#         with open(filename, 'rb') as file:
+#             object = fnc.load(file)
+#             return object
+#     return _inner
+#
+#
 def load_file(*ar,**kwargs):
     def inner(func ):
         def wrapper (filename ):
@@ -90,6 +90,13 @@ def load_pickle(filename): return pickle.load(filename)
 def load_yaml(filename):
             output_dic_ = yaml.safe_load(filename)
             return output_dic_
+
+def load_text(filename):
+    with open(filename) as f:
+        contents = f.readlines()
+        contents = [a.strip() for a in contents]
+        return contents
+
 
 def save_json(dictionary, filename):
     with open(filename,'w') as f:

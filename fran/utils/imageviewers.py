@@ -71,6 +71,7 @@ def get_window_level_numpy_array(
     if type(image_list[0] == np.ndarray):  # if images are already np_array..
         npa_list = image_list
     elif type(image_list[0]) == torch.Tensor:
+        image_list = [a.detach().cpu() for a in image_list]
         npa_list = [image_list[0].numpy(), image_list[1].numpy()]
 
     else:

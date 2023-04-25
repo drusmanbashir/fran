@@ -934,7 +934,7 @@ def reassign_labels(src_dest_labels,x):
             n_classes=len(src_dest_labels)
             mask_out = torch.zeros(mask.shape,dtype=mask.dtype)
             mask_tmp = one_hot(mask,n_classes,0)
-            mask_reassigned = torch.zeros(mask_tmp.shape)
+            mask_reassigned = torch.zeros(mask_tmp.shape,device=mask.device)
             for src_des in src_dest_labels:
                 src,dest = src_des[0],src_des[1]
                 mask_reassigned[dest]+=mask_tmp[src]

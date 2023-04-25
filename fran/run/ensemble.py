@@ -32,8 +32,8 @@ class EnsembleActor(object):
     def __init__(self):
         self.value = 0
 
-    def process(self,proj_defaults,run_name_w,runs_ensemble ,fnames,debug,overwrite=False):
-        self.En = EnsemblePredictor(proj_defaults,3,run_name_w,runs_ensemble,device=None,debug=debug,overwrite=overwrite)
+    def process(self,proj_defaults,run_name_w,runs_ensemble ,fnames,half,debug,overwrite=False):
+        self.En = EnsemblePredictor(proj_defaults,3,run_name_w,runs_ensemble,bs=3,half=half,device='cuda',debug=debug,overwrite=overwrite)
         for img_fn in fnames:
             img_fn = Path(img_fn)
             self.En.run(img_fn)
@@ -43,16 +43,16 @@ def main(args):
     run_name_w= "LITS-276" # best trial
     input_folder = args.input_folder
     overwrite=args.overwrite
+    half = args.half
     debug = args.debug
     # ensemble = args.ensemble
     P = Project(project_title=args.t); proj_defaults= P.proj_summary
     ensemble=["LITS-451","LITS-452","LITS-453","LITS-454","LITS-456"]
     # ensemble=["LITS-451"]
-    if not input_folder:
-        mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
-        fnames = list(mo_df.image_filenames)
-    else:
-        fnames = list(Path(input_folder).glob("*"))
+    # if not input_folder:
+    #     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
+    #     fnames = list(mo_df.image_filenames)
+    fnames = list(Path(input_folder).glob("*"))
 
     fpl= int(len(fnames)/n_lists)
     inds = [[fpl*x,fpl*(x+1)] for x in range(n_lists-1)]
@@ -60,7 +60,7 @@ def main(args):
 
     chunks = list(il.starmap(slice_list,zip([fnames]*n_lists,inds)))
     actors = [EnsembleActor.remote() for _ in range(n_lists)]
-    results = ray.get([c.process.remote(proj_defaults,run_name_w,ensemble, fnames ,debug,overwrite) for c,fnames in zip(actors,chunks)])
+    results = ray.get([c.process.remote(proj_defaults,run_name_w,ensemble, fnames ,half, debug,overwrite) for c,fnames in zip(actors,chunks)])
     print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 # gpu_actor = GPUActor.remote()
 # %%
@@ -78,6 +78,7 @@ if __name__ == "__main__":
 
     parser.add_argument("-t", help="project title")
     parser.add_argument('-i','--input-folder')
+    parser.add_argument('-f','--half', action='store_true')
     parser.add_argument('-e','--ensemble', nargs='+')
     args = parser.parse_known_args()[0]
     # args.overwrite=False
