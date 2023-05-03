@@ -75,7 +75,7 @@ if __name__ == "__main__":
     sinogram = radon.forward(a)
     filtered_sinogram = sino_model(sinogram)
 # %%
-    bb = train_ds.bboxes_per_id[0]
+    bboxes = train_ds.bboxes_per_id[0]
 
 # %%
     mask_labs = proj_defaults.mask_labels
@@ -91,14 +91,14 @@ if __name__ == "__main__":
         case_id = case_bboxes[0]['case_id']
         indices = []
         labels_per_file = []
-        for indx, bb in enumerate(case_bboxes):
-            bbox_stats  = bb['bbox_stats']
+        for indx, bboxes in enumerate(case_bboxes):
+            bbox_stats  = bboxes['bbox_stats']
 
             tissues= [bbox_stat['tissue_type'] for bbox_stat in bbox_stats if bbox_stat['tissue_type'] not in excluded]
             labels = [tissue_label_dict[tissue] for tissue in tissues]
             if self.contains_bg(bbox_stats): labels = [0]+labels 
             if len(labels)==0 : labels =[0] # background class only by exclusion
-            fn = bb['filename']
+            fn = bboxes['filename']
             indices.append(indx)
             labels_per_file.append(labels)
         labels_this_case = list(set(reduce(operator.add,labels_per_file)))

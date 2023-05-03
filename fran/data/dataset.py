@@ -218,11 +218,8 @@ if __name__ == "__main__":
     dd = load_dict(bboxes_fname)
 
 
+   
 # %%
-    for d in dd:
-        print("-----------")
-        for stats in d['bbox_stats']:
-            pp(stats['label'])
     
 # %%
     train_ds = ImageMaskBBoxDataset(
@@ -232,7 +229,17 @@ if __name__ == "__main__":
             [0,0,1]
         )
 # %%
-    for indx in range(len(train_ds)):
-        _,_,c = train_ds[indx]
-        pp([a['label'] for a  in c['bbox_stats']])
+    axes = 2,0,1
+    a,b,c = train_ds[0]
+    a = a.permute(*axes)
+# %%
+    import pywt
+    wavelet = pywt.Wavelet('haar')
+    d = pywt.wavedec2(a, wavelet, mode='zero', level=2)
+    dd = torch.tensor(d[0])
+
+    ImageMaskViewer([dd,a],data_types=['img','img'])
+
+     
+# Create geometries and projector.
 # %%

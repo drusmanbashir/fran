@@ -30,10 +30,12 @@ from fran.utils.helpers import (
     get_case_id_from_filename,
     get_extension,
 )
+sys.path+=["/home/ub/code"]
+from mask_analysis.helpers import to_int, to_label, to_cc
 
 # These are the usual ipython objects, including this one you are creating
 ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]
-from fastcore.foundation import L, Union, operator
+from fastcore.foundation import L, Union, listify, operator
 from fastcore.all import GetAttr, ItemTransform, Pipeline
 from fran.inference.scoring import compute_dice_fran
 from fran.transforms.intensitytransforms import ClipCenter
@@ -46,7 +48,7 @@ import sys
 
 sys.path += ["/home/ub/Dropbox/code/fran/"]
 from fastcore.transform import Transform
-from fran.utils.imageviewers import ImageMaskViewer
+from fran.utils.imageviewers import ImageMaskViewer, view_sitk
 import functools as fl
 
 import torchio as tio
@@ -57,19 +59,26 @@ import torch.nn.functional as F
 import cc3d
 
 
-def sitk_bbox_readable(bb):
-     starts = bb[:3]
-     sizes = bb[3:]
-     stops = [a+b for a,b in zip(starts, sizes)]
-     bb_out = [*bb[:3],*stops]
-     return bb_out
+def sitk_bbox_readable(bboxes:list):# input list of bboxes in sitk format as [starts*3, sizes*3 ]. Outputs lists of [starts*3,stops*3]
+     bboxes_out = []
+     for bb in bboxes:
+         starts = bb[:3]
+         sizes = bb[3:]
+         stops = [a+b for a,b in zip(starts, sizes)]
+         bb_final= [*bb[:3],*stops]
+         bboxes_out.append(bb_final)
+     return bboxes_out
 
-def sitk_to_slices(bb):
+def sitk_to_slices(bboxes:list)-> list  :#of slices of bboxes
+
     a = 0
     b = 3
-    sl = [slice(bb[a+x],bb[b+x]) for x in range(3)]
-    sl = tuple([sl[2],sl[1],sl[0]])
-    return sl
+    sls =[]
+    for bb in bboxes:
+        sl = [slice(bb[a+x],bb[b+x]) for x in range(3)]
+        sl = tuple([sl[2],sl[1],sl[0]])
+        sls.append(sl)
+    return sls
 
 # from experiments.kits21.kits21_repo.evaluation.metrics import *
 # HEC_SD_TOLERANCES_MM = {
@@ -107,26 +116,6 @@ def pred_voted(preds_int: list):
     return out
 
 
-def get_k_organs(mask_labels):
-    k_components = [
-        tissue["k_largest"] for tissue in mask_labels if tissue["label"] == 1
-    ][0]
-    return k_components
-
-
-def voxvol(spacings):
-    return fl.reduce(operator.mul, spacings)  # returnc volume of voxel  in mm3
-
-
-def volvox(vol_tot, spacings) -> int:  # gives number of voxels which cover said volume
-    """
-    vol_tot must be in cc
-    """
-    vol_tot_mm3 = vol_tot * 1e3
-    voxelvol = voxvol(spacings)  # mm^3
-    return int(vol_tot_mm3 / voxelvol)
-
-
 class PredFlToInt(Transform):
     def encodes(self, pred_fl: Tensor):
         pred_int = torch.argmax(pred_fl, 0, keepdim=False)
@@ -144,62 +133,6 @@ class ToNumpy(Transform):
         return [np.array(tnsr, dtype=self.encode_dtype) for tnsr in tnsrs]
 
 
-class Stencil(Transform):
-    def __init__(self, n_classes, merge_labels=[]):
-        """
-        param 
-        merge_labels: list of lists, with one list for each of label 1 onwards, containing the label to be merged into the target label
-        e.g., for a 0,1,2 label mask (1 is organ, 2 is tumour) [2],[] maps 2->1 when creating organ stencil.
-        Note: No stencil is needed/created for background label 0.
-        """
-
-        # if not merge_labels: merge_labels = [2],[1]
-        fg_classes = n_classes - 1
-        assert (
-            len(merge_labels) == fg_classes
-        ), "Give a list (even if empty) for each channel from 1 onwards"
-        self.ms = [
-            LabelMapToBinary(axis, n_classes, merge_labels=ml)
-            for ml, axis in zip(merge_labels, range(1, n_classes))
-        ]
-
-    def encodes(self, x):
-        pred_int = x
-        stencils = [m.encodes(pred_int) for m in self.ms]
-        return stencils
-
-class DustKLargest(Transform):
-    def __init__(self, mask_labels, spacings):
-        store_attr()
-
-    def encodes(self, stencils):
-        stencils_out = []
-        for indx, stencil in enumerate(stencils):
-            label = indx + 1
-            info = self.mask_labels[str(label)]
-            dusting_threshold = volvox(info["dusting_threshold"], self.spacings)
-            stencil_dusted = cc3d.dust(
-                stencil, threshold=dusting_threshold, connectivity=26, in_place=True
-            )
-
-            stencil_k = cc3d.largest_k(
-                stencil_dusted, k=info["k_largest"], return_N=False
-            )
-            stencils_out.append(stencil_k)
-        return stencils_out
-
-
-class MergeStencils(Transform):
-    def __init__(self, img_shape):
-        store_attr()
-
-    def encodes(self, stencils):
-        pred_int = torch.zeros(self.img_shape, dtype=torch.uint8)
-        for n, stencil in enumerate(stencils):
-            pred_int[stencil == 1] = n + 1  # +1 because there is no zero stencil
-        return pred_int
-
-
 class FillBBoxPatches(ItemTransform):
     """
     Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
@@ -209,7 +142,8 @@ class FillBBoxPatches(ItemTransform):
         self.output_img = torch.zeros(out_channels, *img_size,device=device)
 
     def decodes(self, x):
-        patches, bboxes = x
+        patches, bboxes = map(listify,x)
+        
         for bbox, pred_patch in zip(bboxes, patches):
             for n in range(self.output_img.shape[0]):
                 self.output_img[n][bbox] = pred_patch[n]
@@ -248,6 +182,9 @@ class _Predictor():
         self.grid_mode = grid_mode
         global_properties_fname = proj_defaults.global_properties_filename
         self.global_properties = load_dict(global_properties_fname)
+        mask_label  = proj_defaults.mask_labels[str(postprocess_label)]
+        self.k_largest = mask_label['k_largest']
+        self.dusting_threshold=mask_label['dusting_threshold']
         self.inferer = SlidingWindowInferer(roi_size = patch_size,sw_batch_size =bs,overlap=patch_overlap,device=device,
                                                      mode=grid_mode,progress=True)
 
@@ -288,19 +225,6 @@ class _Predictor():
             self.bboxes = bboxes if bboxes else self.img_sized_bbox()
             self.already_processed = False
 
-
-    def create_postprocess_pipeline(self):
-        self.postprocess_tfms = L(
-            PredFlToInt,
-            Stencil(self.out_channels, self.merge_labels),
-            ToNumpy,
-            DustKLargest(self.proj_defaults.mask_labels, self.sitk_props[1]),
-            ToTensorT,
-            MergeStencils(self.img_np_orgres.shape),
-        )
-
-        self.postprocess_tfms.map(self.add_tfm)
-        self.postprocess_pipeline = Pipeline(self.postprocess_tfms)
 
     def create_postprocess_pipeline(self):
         self.postprocess_tfms = L(
@@ -381,8 +305,24 @@ class _Predictor():
             files_exist.append([a.exists() for a in self.pred_fns_f])
         return all(files_exist)
 
+    def dust(self):
+        pred_binary_cc = sitk.ConnectedComponent(self.pred_sitk_i)
+        fil_cc = sitk.RelabelComponentImageFilter()
+        fil_cc.SetSortByObjectSize(True)
+        pred_cc_sorted = fil_cc.Execute(pred_binary_cc)
+        n_labels_pred = fil_cc.GetNumberOfObjects()
+        if n_labels_pred>self.k_largest:
+            dust_labels = np.arange(self.k_largest,n_labels_pred)+1
+            dici = {int(label):0 for label in dust_labels}
+            pred_cc_sorted = sitk.ChangeLabelLabelMap(to_label(pred_cc_sorted), dici)
+        self.pred_sitk_i  = sitk.Cast(pred_cc_sorted,sitk.sitkUInt32)
+
+
     def save_sitk(self, img, fn):
         print("Saving prediction. File name : {}".format(fn))
+        if img.GetPixelID() == 22:
+                img = to_int(img)
+
         sitk.WriteImage(img, fn)
 
     def save_prediction(self, ext=None):
@@ -416,6 +356,7 @@ class _Predictor():
     def postprocess(self, cc3d: bool):  # starts : pred->dust->k-largest->pred_int
         if cc3d == True:
             self.pred_sitk_i= self.postprocess_pipeline(self.pred)
+            self.dust()
         else:
             pred_int = torch.argmax(self.pred, 0, keepdim=False)
             pred_int = pred_int.to(torch.uint8)
@@ -713,8 +654,8 @@ class EndToEndPredictor(_Predictor):
     def localiser_bbox(self, run_name_w, img_fn):
         pred_fn =  self.localizer_pred_fn(run_name_w,img_fn)
         if pred_fn and self.overwrite==False: 
-           pred_i = sitk.ReadImage(pred_fn)
-           pred_i = sitk.DICOMOrient(pred_i, "LPS")
+           pred_localiser = sitk.ReadImage(pred_fn)
+           pred_localiser = sitk.DICOMOrient(pred_localiser, "LPS")
            # self.bboxes = get_bbox_from_tnsr(pred_int)
 
         else:
@@ -726,22 +667,26 @@ class EndToEndPredictor(_Predictor):
                 )
             )
            self.w.run(img_filename=img_fn, bboxes=None, save=self.save_localiser)
-           pred_i = self.w.pred_sitk_i
-           self.unload_localizer_model()
-        fil = sitk.LabelShapeStatisticsImageFilter()
-        fil.Execute(pred_i)
-        bboxes = fil.GetBoundingBox(1)
-        bboxes = sitk_bbox_readable(bboxes)
-        self.bboxes = [sitk_to_slices(bboxes)] # only implmeneted for a single organ
+           pred_localiser = self.w.pred_sitk_i
+        self.create_bboxes_from_localiser(pred_localiser)
+        self.unload_localizer_model()
 
-           # self.bboxes = get_bbox_from_tnsr(self.w.pred_int)
-       # self.w.unload_case()
+    def create_bboxes_from_localiser(self,pred_localiser: sitk.Image):
+        fil = sitk.LabelShapeStatisticsImageFilter()
+        fil.Execute(pred_localiser)
+        bboxes =[]
+        for label in np.arange(self.w.k_largest)+1:
+            bbox = fil.GetBoundingBox(int(label))
+            bboxes.append(bbox)
+        bboxes = sitk_bbox_readable(bboxes)
+        self.bboxes = sitk_to_slices(bboxes) # only implmeneted for a single organ
 
     def unload_localizer_model(self):
-        delattr(self, "w")
-        gc.collect()
-        print("BBoxes obtained. Deleting localiser and freeing ram")
-        torch.cuda.empty_cache()
+        if hasattr(self,"w"):
+            delattr(self, "w")
+            gc.collect()
+            print("BBoxes obtained. Deleting localiser and freeing ram")
+            torch.cuda.empty_cache()
 
     def run_patch_prediction(self, img_fn):
         self.p.run(img_filename=img_fn, bboxes=self.bboxes, save=True)
@@ -938,6 +883,7 @@ class EnsemblePredictor(EndToEndPredictor):
 if __name__ == "__main__":
     # ... run your application ...
 
+
     from fran.utils.common import *
 
     common_paths_filename = os.environ["FRAN_COMMON_PATHS"]
@@ -957,11 +903,8 @@ if __name__ == "__main__":
     runs_ensemble = ["LITS-451", "LITS-452", "LITS-453", "LITS-454", "LITS-456"]
     # runs_ensemble = ["LITS-451", "LITS-452"]
     ensemble = ["LITS-451"]
-    fldr = Path("/s/datasets_bkp/litqsmall/sitk/images/")
-    fnames = list(fldr.glob("*"))
-    fns =[fn for fn in fnames if "litq_00073" in fn.name]
+    fldr = Path("/s/datasets_bkp/normal/sitk/images")
     device ='cuda'
-# %%
 # %%
     En = EnsemblePredictor(
         proj_defaults,
@@ -969,137 +912,22 @@ if __name__ == "__main__":
         run_name_w,
         runs_ensemble,
         bs=3,
-        device=device,
+
         half=True,
+        device=device,
         debug=False,
         overwrite=True,
     )
 
-# %%
     # fldr  = Path("/media/ub2/datasets/drli/sitktmp/images/")
     # fnames = list(mo_df.image_filenames)
     # fname = "/media/ub2/datasets/drli/sitktmp/images/drli_048.nrrd"
+    fnames = list(fldr.glob("*"))
 # %%
-    for fname in fnames:
-        fname = fnames[4]
-        fname = "/s/datasets_bkp/litqsmall/sitk/images_bk/litqsmall_00040.nrrd"
-        fname = Path(fname)
-        En.run(fname)
-# %%
-# %%
-    ImageMaskViewer([En.w.img_np_orgres, En.w.pred[1]])
-# %%
+    # for fname in fnames[1:]:
+    #     fname = Path(fname)
+    fname = [fn for fn in fnames if "normal_00023" in fn.name][0]
+    fname = fnames[0]
+    En.run(fname)
 # %%
 
-    E.predictor_p.make_prediction()
-    E.predictor_p.postprocess()
-    E.predictor_p.save_prediction()
-    delattr(E.predictor_p, "_model")
-    torch.cuda.empty_cache()
-    E.preds.append(E.predictor_p.pred)
-# %%
-
-    E.preds_ensemble = pred_mean(E.preds)
-    E.output_image_folder
-
-    E.output_image_folder = "ensemble_" + "_".join(E.runs_p)
-# %%
-    [p.shape for p in E.preds]
-    E.preds[0].shape
-# %%
-    E.pred_int
-
-    pred_int = torch.argmax(En.p.pred, 0, keepdim=False)
-    pred_int = pred_int.to(torch.uint8)
-    En.p.pred_int = En.p.retain_k_largest_components(pred_int, En.p.postprocess_label)
-
-# %%
-
-    n = 0
-    En.img_filename = img_fn
-    En.load_localiser_model(En.run_name_w)
-    En.localiser_bbox(img_fn)
-
-    En.load_patch_model(1)
-    En.patch_prediction(img_fn, n)
-    En.preds.append(En.p.pred)
-# %%
-    p = En.p
-
-    p.backsample()
-    p.postprocess()
-# %%
-# %%
-    pred_int = torch.argmax(w.pred, 0, keepdim=False)
-    pred_int = pred_int.to(torch.uint8)
-    w = En.w
-    w.postprocess_pipeline
-    w.Stencil.merge_labels
-# %%
-    pp(w.postprocess_pipeline)
-    pred = w.postprocess_pipeline[0].encodes(w.pred)
-    [[a.dtype, a.max()] for a in pred]
-    pred = w.postprocess_pipeline[1].encodes(pred)
-    pred = w.postprocess_pipeline[2].encodes(pred)
-    pred = w.postprocess_pipeline[3].encodes(pred)
-
-    pred = w.postprocess_pipeline[4].encodes(pred)
-# %%
-    pred = w.postprocess_pipeline[5].encodes(pred)
-
-    En.bboxes = En.w.get_bbox_from_pred(1)
-    w.pred_int = w.postprocess_pipeline(w.pred)
-    bboxes = w.get_bbox_from_pred(1)
-# %%
-    pred_int = pred
-    stencils = [m.encodes(pred_int) for m in w.Stencil.ms]
-# %%
-    indx = 0
-    stencils = pred
-    stencil = stencils[indx]
-    label = indx + 1
-    info = w.DustKLargest.mask_labels[str(label)]
-    st = cc3d.statistics(stencil)
-    dusting_threshold = volvox(info["dusting_threshold"], w.DustKLargest.spacings)
-    stencil_dusted = cc3d.dust(
-        stencil, threshold=dusting_threshold, connectivity=26, in_place=True
-    )
-
-    stencil_k = cc3d.largest_k(stencil_dusted, k=info["k_largest"], return_N=False)
-# %%
-    ext = ".nii.gz"
-    counts = ["", "_1", "_2", "_3", "_4"][: len([En._pred_sitk_i, *En.pred_sitk_f])]
-    En.pred_fns = [
-        En._output_image_folder / (En.img_filename.name.split(".")[0] + c + ext)
-        for c in counts
-    ]
-    print("Saving prediction. File name : {}".format(En.pred_fns))
-# %%
-    En._pred_sitk_i = ArrayToSITKI(sitk_props=En.sitk_props).encodes(En.pred_int)
-    for pred_sitk, fn in zip([En._pred_sitk_i] + En.pred_sitk_f, En.pred_fns):
-        sitk.WriteImage(pred_sitk, fn)
-# %%
-    img_fn = fname
-    En.img_filename = img_fn
-    En.localiser_bbox(En.run_name_w, img_fn)
-    # En.unload_localizer_model()
-
-    En.preds = []
-    for n in range(len(En.runs_p)):
-        En.load_patch_model(n)
-        En.patch_prediction(img_fn, n)
-        En.preds.append(En.p.pred)
-
-    En.pred = pred_mean(En.preds)
-    En.postprocess(En.cc3d)
-    En.save_prediction()
-    En.unload_case()
-
-# %%
-    mn = np.array([0.9947076974578355, 0.0, 0.10274529973741485, 0.0, 1.0, 0.0, -0.10274529973741488, 0.0, 0.9947076974578355])
-    mn = mn.reshape(3,3)
-    mon = np.linalg.inv(mn)
-# %%
-    import itk
-    O = itk.OrientImageFilter(img)
-# %%
