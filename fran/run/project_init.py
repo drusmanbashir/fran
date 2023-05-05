@@ -12,7 +12,7 @@ def main(args):
     print("Project: {0}".format(project_title))
     if not args.delete==True:
         P.create_project(args.input_folders)
-        P.set_raw_data_sources(input_folders)
+        P.add_raw_data_sources(input_folders)
         P.populate_raw_data_folder()
         P.create_train_valid_folds()
         pp(P.proj_summary)
@@ -33,9 +33,9 @@ if __name__ == "__main__":
 
 # %%
     args = parser.parse_known_args()[0]
-    # args.t = "lits"
-    # args.delete=True
-    # args.i = "/s/datasets/drli_short/"
+    args.t = "litsssass"
+    args.delete=True
+    args.i = "/s/datasets/drli_short/"
     main(args)
 # %%
 

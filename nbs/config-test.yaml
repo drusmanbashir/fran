@@ -1,5 +1,0 @@
----
-neptune_folder: "/s/fran_storage/.neptune"
-cold_storage_folder: "/s/fran_storage" # used to hold data for inference,checkpoints, original raw data should also be here.
-rapid_access_folder: "/home/ub/datasets/preprocessed"    # this data is used during each Deeplearning run. Ideally an SSD
-projects_folder: "/s/fran_storage/projects"

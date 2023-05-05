@@ -1,7 +1,0 @@
-  [{"name": "kidney", "label":1, "dusting_threshold": 3000, "k_largest":2},
-    {"name": "tumour", "label": 2, "dusting_threshold":50, "k_largest":5},
-    {"name": "cyst","label":3, "dusting_threshold":50,"k_largest":5},
-  {"label_priority": [1,3,2]}
-]
-  
-

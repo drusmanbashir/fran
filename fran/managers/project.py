@@ -6,6 +6,7 @@ tr = ipdb.set_trace
 from pathlib import Path
 import os, sys
 import itertools as il
+import functools as fl
 from fastai.vision.augment import store_attr
 from fran.utils.dictopts import dic_in_list
 from fran.utils.helpers import *
@@ -23,28 +24,39 @@ from fran.utils.templates import mask_labels_template
 class Project(DictToAttr):
     def __init__(self, project_title):
         store_attr()
-    def create_project(self, datasets: list = None, test: bool = None):
+        self.set_folder_file_names()
+        if  self.raw_dataset_info_filename.exists():
+            self.raw_data_sources = load_dict(self.raw_dataset_info_filename)
+        else:
+            self.raw_data_sources=[]
+
+    def create_project(self, datasets: list = None,label_dict_filename=None, test: bool = None):
         """
         param datasets: list of datasets to add to raw_data_folder
         param test: list of bool assigning some (or none) as test set(s)
         """
 
-        if self.summary_filename.exists():
+        if self.label_dict_filename.exists():
             ask_proceed("Project already exists. Proceed and make folders again (e.g., if some were deleted)?")(
                 self._create_folder_tree
             )()
         else:
             self._create_folder_tree()
         if datasets:
-            self.set_raw_data_sources(datasets, test)
-        self._raw_data_folder = self.proj_summary.raw_data_folder
+            self.add_raw_data_sources(datasets, test)
 
+        if not label_dict_filename:
+            save_dict(mask_labels_template, self.label_dict_filename)
+            print("Using a template mask_labels.json file. Amend {} later to match your target config.".format(self.label_dict_filename))
+        else:
+            shutil.copy(label_dict_filename,self.label_dict_filename)
+        self.label_dict= load_dict(self.label_dict_filename)
 
     def _create_folder_tree(self):
         maybe_makedirs(self.project_folder)
         additional_folders=[
-            self.proj_summary.raw_data_folder / ("images"),
-            self.proj_summary.raw_data_folder / ("masks"),
+            self.raw_data_folder / ("images"),
+            self.raw_data_folder / ("masks"),
         ]
         for folder in il.chain(self.folders,additional_folders):
             maybe_makedirs(folder)
@@ -55,6 +67,7 @@ class Project(DictToAttr):
             dataset_name = ds['dataset_name']
             test = ds['test']
             filenames = (ds['source_path'] / ("images")).glob("*")
+            source_path = ds['source_path']
             pairs = [[img_fn, img_fn.str_replace("images", "masks")] for img_fn in filenames]
             images,masks=[],[]
             if self.paths_exist(pairs) == True:
@@ -69,14 +82,14 @@ class Project(DictToAttr):
                     masks.append(new_names[1])
 
                     self._create_img_mask_symlinks(org_names, new_names)
-            ds_new = {'dataset_name':dataset_name,'test':test, 'images':images,'masks':masks}
-            self.add_dataset(ds_new)
+            ds_new = {'dataset_name':dataset_name,'source_path':source_path, 'test':test, 'images':images,'masks':masks}
+            self._add_dataset(ds_new)
 
 
-    def add_dataset(self,dic):
+    def _add_dataset(self,dic):
         if dic_in_list(dic,self.datasets)==False:
             self.datasets.append(dic)
-            save_dict(self.datasets,self.proj_summary.raw_dataset_info_filename)
+            save_dict(self.datasets,self.raw_dataset_info_filename)
         else: print("Dataset {} already registered with same fileset in project. Will not add".format(dic['dataset_name']))
 
 
@@ -84,32 +97,24 @@ class Project(DictToAttr):
     @property
     def folders(self):
         self._folders = []
-        for key, value in self.proj_summary.__dict__.items():
+        for key, value in self.__dict__.items():
             if isinstance(value, Path) and "folder" in key:
                 self._folders.append(value)
         return self._folders
-
-    @property
-    def label_dict(self):
-        if not self.label_dict_filename.exists():
-            save_dict(mask_labels_template, self.label_dict_filename)
-            print("Using a template mask_labels.json file. Amend {} later to match your target config.".format(self.label_dict_filename))
-        self._label_dict= load_dict(self.label_dict_filename)
-        return self._label_dict
 
 
     @property
     def datasets(self):
         if not hasattr(self,'_datasets'): 
             try: 
-                self._datasets = load_dict(self.proj_summary.raw_dataset_info_filename)
+                self._datasets = load_dict(self.raw_dataset_info_filename)
             except:  self._datasets = []
         return self._datasets
         
 
     def purge(self): 
         self.purge_raw_data_folder()
-        files_to_del = self.proj_summary.raw_dataset_info_filename,self.summary_filename
+        files_to_del = [self.raw_dataset_info_filename]
         for fn in files_to_del:
             try: 
                 print("Deleting {} (if it exists)".format(fn))
@@ -138,11 +143,13 @@ class Project(DictToAttr):
             print("Matching image / mask file pairs found in all raw_data sources")
             return True
 
-    def set_raw_data_sources(self, datasets: Union[list, str, Path], test=None) -> None:
-        if not hasattr(self.proj_summary, "raw_data_sources"):
-            self.proj_summary.raw_data_sources= []
+    def path_to_dataset(self,folder,test):
+            folder = Path(folder)
+            dd = {'dataset_name':self.get_dataset_name(folder),   'source_path':folder,'test':test}
+            return dd
 
-        datasets = listify(datasets)
+    def add_raw_data_sources(self, datasets: Union[list, str, Path], test=None) -> None:
+
         if not test:
             test = [
                 False,
@@ -151,11 +158,9 @@ class Project(DictToAttr):
             test
         ), "datasets and test-status bool lists should have same length"
 
-        datasets = [Path(ds) for ds in datasets]
-        for ds, ts in zip(datasets,test):
-            dd = {'dataset_name':self.get_dataset_name(ds),   'source_path':ds,'test':ts}
-            self.proj_summary.raw_data_sources.extend([dd])
-        self.proj_summary.raw_data_sources = self.unique_list_of_dicts(self.proj_summary.raw_data_sources)
+        datasets = [self.path_to_dataset(ds,ts) for ds,ts in zip(listify(datasets), listify(test))]
+        datasets = self.filter_existing_datasets(datasets)
+        self.raw_data_sources.extend(datasets)
 
     def fold_update_needed(self):
         names = [a.name.split('.')[0] for a in self.raw_data_imgs]
@@ -170,67 +175,74 @@ class Project(DictToAttr):
 
 
 
-    def unique_list_of_dicts(self,listi):
+    def filter_existing_datasets(self,datasets:list):
         # removes duplicates
-        return [dict(t) for t in {tuple(d.items()) for d in listi}]
+        names = [ll['dataset_name'] for ll in datasets]
+        new_dsets=[]
+        for name in names:
+            is_new_dset = any([name == dset['dataset_name'] for dset in self.datasets])
+            new_dsets.append(not is_new_dset)
 
-    def save_summary(self):
-                save_pickle(self.proj_summary,self.summary_filename)
+        datasets =  list(il.compress(datasets,new_dsets))
+        return datasets
 
-    def load_summary(self):
-        self._proj_summary = load_pickle(self.summary_filename)
-
-    def create_summary_dict(self):
-                proj_summary = {"project_title": self.project_title}
-                proj_summary["raw_data_folder"] = self.cold_datasets_folder / (
-                    "raw_data/" + proj_summary["project_title"]
-                )
-                proj_summary["project_folder"] = self.project_folder
-                
-                proj_summary["bboxes_voxels_info_filename"] = (
-                    proj_summary["raw_data_folder"] / "bboxes_voxels_info"
-                )
-                proj_summary["checkpoints_parent_folder"] = self.common_paths[
-                    "cold_storage_folder"
-                ] / ("checkpoints/" + proj_summary["project_title"])
-                proj_summary["configuration_filename"] = proj_summary[
-                    "project_folder"
-                ] / ("experiment_configs.xlsx")
-                proj_summary["fixed_dimensions_folder"] = (
-                    self.common_paths["rapid_access_folder"]
-                    / proj_summary["project_title"]
-                )
-                proj_summary["fixed_spacings_folder"] = (
-                    self.cold_datasets_folder
-                    / ("preprocessed/fixed_spacings")
-                    / proj_summary["project_title"]
-                )
-                proj_summary["global_properties_filename"] = (
-                    proj_summary["project_folder"] / "global_properties"
-                )
-                proj_summary["patches_folder"] = proj_summary[
-                    "fixed_dimensions_folder"
-                ] / ("patches")
-                proj_summary["predictions_folder"] = self.common_paths[
-                    "cold_storage_folder"
-                ] / ("predictions/" + proj_summary["project_title"])
-                proj_summary["raw_dataset_properties_filename"] = (
-                    proj_summary["project_folder"] / "raw_dataset_properties"
-                )
-                proj_summary["validation_folds_filename"] = proj_summary[
-                    "project_folder"
-                ] / ("validation_folds.json")
-                proj_summary["whole_images_folder"] = proj_summary[
-                    "fixed_dimensions_folder"
-                ] / ("whole_images")
-                proj_summary['raw_dataset_info_filename'] = proj_summary['project_folder']/("raw_dataset_srcs.pkl")
-                proj_summary["log_folder"] = proj_summary["project_folder"] / ("logs")
-
-                proj_summary['mask_labels'] =self.label_dict
-
-
-                return SimpleNamespace(**proj_summary)
-
+    # def save_summary(self):
+    #             save_pickle(self.proj_summary,self.summary_filename)
+    #
+    # def load_summary(self):
+    #     self._proj_summary = load_pickle(self.summary_filename)
+    #
+    # def create_summary_dict(self):
+    #             proj_summary = {"project_title": self.project_title}
+    #             proj_summary["raw_data_folder"] = self.cold_datasets_folder / (
+    #                 "raw_data/" + proj_summary["project_title"]
+    #             )
+    #             proj_summary["project_folder"] = self.project_folder
+    #             
+    #             proj_summary["bboxes_voxels_info_filename"] = (
+    #                 proj_summary["raw_data_folder"] / "bboxes_voxels_info"
+    #             )
+    #             proj_summary["checkpoints_parent_folder"] = self.common_paths[
+    #                 "cold_storage_folder"
+    #             ] / ("checkpoints/" + proj_summary["project_title"])
+    #             proj_summary["configuration_filename"] = proj_summary[
+    #                 "project_folder"
+    #             ] / ("experiment_configs.xlsx")
+    #             proj_summary["fixed_dimensions_folder"] = (
+    #                 self.common_paths["rapid_access_folder"]
+    #                 / proj_summary["project_title"]
+    #             )
+    #             proj_summary["fixed_spacings_folder"] = (
+    #                 self.cold_datasets_folder
+    #                 / ("preprocessed/fixed_spacings")
+    #                 / proj_summary["project_title"]
+    #             )
+    #             proj_summary["global_properties_filename"] = (
+    #                 proj_summary["project_folder"] / "global_properties"
+    #             )
+    #             proj_summary["patches_folder"] = proj_summary[
+    #                 "fixed_dimensions_folder"
+    #             ] / ("patches")
+    #             proj_summary["predictions_folder"] = self.common_paths[
+    #                 "cold_storage_folder"
+    #             ] / ("predictions/" + proj_summary["project_title"])
+    #             proj_summary["raw_dataset_properties_filename"] = (
+    #                 proj_summary["project_folder"] / "raw_dataset_properties"
+    #             )
+    #             proj_summary["validation_folds_filename"] = proj_summary[
+    #                 "project_folder"
+    #             ] / ("validation_folds.json")
+    #             proj_summary["whole_images_folder"] = proj_summary[
+    #                 "fixed_dimensions_folder"
+    #             ] / ("whole_images")
+    #             proj_summary['raw_dataset_info_filename'] = proj_summary['project_folder']/("raw_dataset_srcs.pkl")
+    #             proj_summary["log_folder"] = proj_summary["project_folder"] / ("logs")
+    #
+    #             proj_summary['mask_labels'] =self.label_dict
+    #
+    #
+    #             return SimpleNamespace(**proj_summary)
+    #
     def fold_update_needed(self)->bool:
         n_new = len(self.new_case_ids)
         if n_new>0:
@@ -242,7 +254,7 @@ class Project(DictToAttr):
     def update_folds(self)->None:
         folds_new = create_folds(self.new_case_ids)
         self.folds = merge_dicts(self.folds,folds_new)
-        save_dict(self.folds, self.proj_summary.validation_folds_filename)
+        save_dict(self.folds, self.validation_folds_filename)
 
 
     @ask_proceed("Create train/valid folds (80:20) ")
@@ -251,7 +263,7 @@ class Project(DictToAttr):
         print("A fresh train/valid split should be created everytime a new training dataset is added")
         train_val_list =  list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==False ]))
         test_list =list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==True]))
-        json_fname = self.proj_summary.validation_folds_filename
+        json_fname = self.validation_folds_filename
         create_train_valid_test_lists_from_filenames(
              train_val_list,  test_list,0.2,  json_fname, shuffle=False
         )
@@ -273,40 +285,22 @@ class Project(DictToAttr):
         self._new_case_ids = list(added)
         return self._new_case_ids
 
+    #
+    # @property
+    # def summary_filename(self): return self.project_folder/("pkl")
+    # 
+    #
+    #
+    # @property
+    # def proj_summary(self):
+    #     if not hasattr(self, "_proj_summary"):
+    #         try: 
+    #             self.load_summary()
+    #
+    #         except FileNotFoundError:
+    #             self._proj_summary = self.create_summary_dict()
+    #     return self._proj_summary
 
-    @property
-    def summary_filename(self): return self.project_folder/("proj_summary.pkl")
-    
-    @property
-    def label_dict_filename(self):return self.project_folder/("mask_labels.json")
-
-    @property
-    def project_folder(self):
-        return self.common_paths["projects_folder"] /self.project_title
-
-    @property
-    def proj_summary(self):
-        if not hasattr(self, "_proj_summary"):
-            try: 
-                self.load_summary()
-
-            except FileNotFoundError:
-                self._proj_summary = self.create_summary_dict()
-        return self._proj_summary
-
-    @property
-    def common_paths(self):
-        if not hasattr(self, "_common_paths"):
-            output_dic_ = load_yaml(common_paths_filename)
-            output_dic = {}
-            for ke, val in output_dic_.items():
-                output_dic[ke] = Path(val)
-            self._common_paths = output_dic
-        return self._common_paths
-
-    @property
-    def raw_data_sources(self):
-        return self.proj_summary.raw_data_sources
 
     def get_dataset_name(self,folder):
         fnames = (folder/ ("images")).glob("*")
@@ -315,15 +309,40 @@ class Project(DictToAttr):
         res=   re.match(pat, fname.name)[1] 
         return res
 
-    @property
-    def cold_datasets_folder(self):
-        return self.common_paths["cold_storage_folder"] / (
-                "datasets"
-            )
+    def set_folder_file_names(self):
 
-    @property
-    def raw_data_folder(self):
-        return self.proj_summary.raw_data_folder
+        common_paths= load_yaml(common_paths_filename)
+        self.project_folder = Path(common_paths["projects_folder"]) /self.project_title
+        self.cold_datasets_folder = Path(common_paths['cold_storage_folder'])/"datasets"
+        self.fixed_dimensions_folder = Path(common_paths["rapid_access_folder"]) / self.project_title
+        self.predictions_folder = Path(common_paths[
+            "cold_storage_folder"
+        ] )/ ("predictions/" + self.project_title)
+        self.raw_data_folder = self.cold_datasets_folder / (
+                    "raw_data/" + self.project_title
+                )
+        self.checkpoints_parent_folder = Path(common_paths['cold_storage_folder'])/("checkpoints/" + self.project_title)
+        self.configuration_filename = self.project_folder/ ("experiment_configs.xlsx")
+
+        self.fixed_spacings_folder = (
+            self.cold_datasets_folder
+            / ("preprocessed/fixed_spacings")
+            / self.project_title
+        )
+        self.global_properties_filename = (
+            self.project_folder / "global_properties"
+        )
+        self.patches_folder = self.fixed_dimensions_folder / ("patches")
+        self.raw_dataset_properties_filename = (
+            self.project_folder / "raw_dataset_properties"
+        )
+        self.validation_folds_filename = self.project_folder/("validation_folds.json")
+        self.whole_images_folder = self.fixed_dimensions_folder / ("whole_images")
+        self.raw_dataset_info_filename = self.project_folder/("raw_dataset_srcs.pkl")
+        self.log_folder = self.project_folder / ("logs")
+        self.label_dict_filename =  self.project_folder/("mask_labels.json")
+
+
 
     def _raw_data_files(self, input):
         rdi = [list(a / (input).glob("*")) for a in self.raw_data_folder.glob("*")]
@@ -342,7 +361,7 @@ class Project(DictToAttr):
     @property
     def folds(self):
         if not hasattr(self,'_folds')   :
-            self._folds = load_dict(self.proj_summary.validation_folds_filename)
+            self._folds = load_dict(self.validation_folds_filename)
             
         return self._folds
 
@@ -354,10 +373,12 @@ class Project(DictToAttr):
     def __len__(self): 
         self._len = len(self.raw_data_imgs)
         assert (self._len == len(self.folds['all_cases'])), "Have you accounted for all files in creating train/valid folds?"
-        self._proj_summary.training_data_total = self._len
+        self._training_data_total = self._len
         return self._len
 
-    def __repr__(self): return "Project"
+    def __repr__(self): 
+        s = "Project {0}\n{1}".format(self.project_title, self.datasets)
+        return s
 
     @ask_proceed("Remove all project files and folders?")
     def delete(self):
@@ -396,22 +417,19 @@ def create_folds(train_val_ids,test_ids=[], pct_valid=0.2,shuffle=False):
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="litsxas")
+    P = Project(project_title="litsxassssa")
     P.create_project()
     P.raw_data_imgs
-    P.set_raw_data_sources(['/s/datasets_bkp/drli_short/'])
+    P.add_raw_data_sources(['/s/datasets_bkp/drli_short/'])
     P.populate_raw_data_folder()
     # P.update_fold_indices()
-    pj = P.proj_summary
-    pp(pj)
-    P.save_summary()
 # %%
     P.raw_data_imgs
     P.create_train_valid_folds()
 
 # %%
 
-    P.set_raw_data_sources(['/s/datasets_bkp/litsmall/'])
+    P.add_raw_data_sources(['/s/datasets_bkp/litsmall/'])
     P.populate_raw_data_folder()
 # %%
 # %%
