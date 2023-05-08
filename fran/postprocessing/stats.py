@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
     P = Project(project_title="lits"); proj_defaults= P
 # %%
-    label_defaults = proj_defaults.mask_labels
+    label_defaults = load_dict(proj_defaults.label_dict_filename)
     label=2
 
 # %%

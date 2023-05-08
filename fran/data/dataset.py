@@ -158,7 +158,7 @@ class ImageMaskBBoxDataset():
     @property
     def num_classes(self):
         if not hasattr(self,'_num_classes'):
-          self._num_classes =len(self.proj_defaults.mask_labels )+1 # +1 for the bg class
+          self._num_classes =len(self.load_dict(proj_defaults.label_dict_filename) )+1 # +1 for the bg class
         return self._num_classes
         
     @property

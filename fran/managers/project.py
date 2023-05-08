@@ -185,63 +185,6 @@ class Project(DictToAttr):
         datasets =  list(il.compress(datasets,new_dsets))
         return datasets
 
-    # def save_summary(self):
-    #             save_pickle(self.proj_summary,self.summary_filename)
-    #
-    # def load_summary(self):
-    #     self._proj_summary = load_pickle(self.summary_filename)
-    #
-    # def create_summary_dict(self):
-    #             proj_summary = {"project_title": self.project_title}
-    #             proj_summary["raw_data_folder"] = self.cold_datasets_folder / (
-    #                 "raw_data/" + proj_summary["project_title"]
-    #             )
-    #             proj_summary["project_folder"] = self.project_folder
-    #             
-    #             proj_summary["bboxes_voxels_info_filename"] = (
-    #                 proj_summary["raw_data_folder"] / "bboxes_voxels_info"
-    #             )
-    #             proj_summary["checkpoints_parent_folder"] = self.common_paths[
-    #                 "cold_storage_folder"
-    #             ] / ("checkpoints/" + proj_summary["project_title"])
-    #             proj_summary["configuration_filename"] = proj_summary[
-    #                 "project_folder"
-    #             ] / ("experiment_configs.xlsx")
-    #             proj_summary["fixed_dimensions_folder"] = (
-    #                 self.common_paths["rapid_access_folder"]
-    #                 / proj_summary["project_title"]
-    #             )
-    #             proj_summary["fixed_spacings_folder"] = (
-    #                 self.cold_datasets_folder
-    #                 / ("preprocessed/fixed_spacings")
-    #                 / proj_summary["project_title"]
-    #             )
-    #             proj_summary["global_properties_filename"] = (
-    #                 proj_summary["project_folder"] / "global_properties"
-    #             )
-    #             proj_summary["patches_folder"] = proj_summary[
-    #                 "fixed_dimensions_folder"
-    #             ] / ("patches")
-    #             proj_summary["predictions_folder"] = self.common_paths[
-    #                 "cold_storage_folder"
-    #             ] / ("predictions/" + proj_summary["project_title"])
-    #             proj_summary["raw_dataset_properties_filename"] = (
-    #                 proj_summary["project_folder"] / "raw_dataset_properties"
-    #             )
-    #             proj_summary["validation_folds_filename"] = proj_summary[
-    #                 "project_folder"
-    #             ] / ("validation_folds.json")
-    #             proj_summary["whole_images_folder"] = proj_summary[
-    #                 "fixed_dimensions_folder"
-    #             ] / ("whole_images")
-    #             proj_summary['raw_dataset_info_filename'] = proj_summary['project_folder']/("raw_dataset_srcs.pkl")
-    #             proj_summary["log_folder"] = proj_summary["project_folder"] / ("logs")
-    #
-    #             proj_summary['mask_labels'] =self.label_dict
-    #
-    #
-    #             return SimpleNamespace(**proj_summary)
-    #
     def fold_update_needed(self)->bool:
         n_new = len(self.new_case_ids)
         if n_new>0:
@@ -283,22 +226,6 @@ class Project(DictToAttr):
             tr()
         self._new_case_ids = list(added)
         return self._new_case_ids
-
-    #
-    # @property
-    # def summary_filename(self): return self.project_folder/("pkl")
-    # 
-    #
-    #
-    # @property
-    # def proj_summary(self):
-    #     if not hasattr(self, "_proj_summary"):
-    #         try: 
-    #             self.load_summary()
-    #
-    #         except FileNotFoundError:
-    #             self._proj_summary = self.create_summary_dict()
-    #     return self._proj_summary
 
 
     def get_dataset_name(self,folder):
@@ -342,7 +269,6 @@ class Project(DictToAttr):
         self.raw_dataset_info_filename = self.project_folder/("raw_dataset_srcs.pkl")
         self.log_folder = self.project_folder / ("logs")
         self.label_dict_filename =  self.project_folder/("mask_labels.json")
-        self.mask_labels= load_dict(self.label_dict_filename)
 
 
     def _raw_data_files(self, input):

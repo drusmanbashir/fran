@@ -342,7 +342,7 @@ class _Predictor():
             PredFlToInt,
             Stencil(self.out_channels, self.merge_labels),
             ToNumpy,
-            DustKLargest(self.proj_defaults.mask_labels, self.sitk_props[1]),
+            DustKLargest(self.load_dict(proj_defaults.label_dict_filename), self.sitk_props[1]),
             ToTensorT,
             MergeStencils(self.img_np_orgres.shape),
         )

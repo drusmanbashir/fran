@@ -78,7 +78,7 @@ if __name__ == "__main__":
     bboxes = train_ds.bboxes_per_id[0]
 
 # %%
-    mask_labs = proj_defaults.mask_labels
+    mask_labs = load_dict(proj_defaults.label_dict_filename)
     tissue_label_dict = {entry['name']:entry['label'] for entry in mask_labs  }
 # %%
     bboxes = train_ds.bboxes_per_id

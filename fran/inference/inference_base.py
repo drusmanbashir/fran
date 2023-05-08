@@ -182,7 +182,7 @@ class _Predictor():
         self.grid_mode = grid_mode
         global_properties_fname = proj_defaults.global_properties_filename
         self.global_properties = load_dict(global_properties_fname)
-        mask_label  = proj_defaults.mask_labels[str(postprocess_label)]
+        mask_label  = load_dict(proj_defaults.label_dict_filename)[str(postprocess_label)]
         self.k_largest = mask_label['k_largest']
         self.dusting_threshold=mask_label['dusting_threshold']
         self.inferer = SlidingWindowInferer(roi_size = patch_size,sw_batch_size =bs,overlap=patch_overlap,device=device,

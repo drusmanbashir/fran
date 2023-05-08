@@ -1,4 +1,4 @@
-# %%
+# %%prepro
 from fastai.vision.augment import store_attr
 import numpy as np
 import ast
@@ -119,7 +119,7 @@ class BBoxesFromMask(object):
         self.mask = mask
         self.label_settings = label_settings
         if not self.label_settings:
-            self.label_settings = proj_defaults.mask_labels
+            self.label_settings = load_dict(proj_defaults.label_dict_filename)
         self.dusting_threshold_factor = dusting_threshold_factor  # a multiplier when processing subsampled datasets having proportionately fewer voxels for dusting
 
         case_id = get_case_id_from_filename(None, filename)
