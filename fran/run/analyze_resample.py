@@ -4,13 +4,13 @@ import ast
 from fastai.vision.augment import shutil
 from fran.preprocessing.stage1_preprocessors import *
 from fran.preprocessing.datasetanalyzers import *
-from fran.preprocessing.stage0_preprocessors import ResampleDatasetNiftyToTorch, generate_bboxes_from_masks_folder, verify_dataset_integrity
+from fran.preprocessing.stage0_preprocessors import ResampleDatasetniftiToTorch, generate_bboxes_from_masks_folder, verify_dataset_integrity
 from fran.utils.helpers import *
 from fran.utils.fileio import *
 
 
 # %%
-common_paths_filename = os.environ["FRAN_COMMON_PATHS"]
+common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
 def user_input(inp: str, out=int):
     tmp = input(inp)
@@ -27,7 +27,7 @@ class InteractiveAnalyserResampler:
         self.assimilate_args(args)
 
         P = Project(project_title=args.project_title); 
-        self.proj_defaults= P.proj_summary
+        self.proj_defaults= P
         self.MultiAnalyser = MultiCaseAnalyzer(self.proj_defaults, outside_value=0, clip_range=self.clip_range)
 
         print("Project: {0}".format(self.project_title))
@@ -65,7 +65,7 @@ class InteractiveAnalyserResampler:
     def resample_dataset(self):
         @ask_proceed("Resample dataset?")
         def _inner():
-            self.Resampler = ResampleDatasetNiftyToTorch(
+            self.Resampler = ResampleDatasetniftiToTorch(
                 self.proj_defaults,
                 minimum_final_spacing=0.5,
                 enforce_isotropy=self.enforce_entropy,
@@ -299,15 +299,6 @@ def do_low_res(proj_defaults):
     args = [[fn, stage1_subfolder, low_res_shape, False] for fn in stage0_files]
     multiprocess_multiarg(resample_img_mask_tensors, args, debug=False)
 
-def testing():
-    generate_bboxes_from_masks_folder(
-            patches_output_folder / ("masks"),
-            I.proj_defaults,
-            1,
-            I.debug,
-            I.num_processes,
-        )
-
 
 
 # %%
@@ -337,7 +328,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "lits"
+    # args.project_title = "litstmp"
     # args.num_processes = 16
     # args.debug = False
     # args.overwrite=True
@@ -352,7 +343,5 @@ if __name__ == "__main__":
     I.generate_hires_patches_dataset()
 
 # %%
-    I.debug=False
-    patches_output_folder= Path("/home/ub/datasets/preprocessed/lits/patches/spc_100_100_200/dim_220_220_110")
 
 # %%

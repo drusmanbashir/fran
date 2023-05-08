@@ -1,5 +1,5 @@
 from fran.utils.common import *
-P = Project(project_title="lits"); proj_defaults= P.proj_summary
+P = Project(project_title="lits"); proj_defaults= P
 configs_excel = ConfigMaker(proj_defaults.configuration_filename,raytune=False).config
 
 train_list, valid_list, test_list = get_fold_case_ids(

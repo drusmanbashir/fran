@@ -886,9 +886,9 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
 
-    common_paths_filename = os.environ["FRAN_COMMON_PATHS"]
+    common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
     P = Project(project_title="lits")
-    proj_defaults = P.proj_summary
+    proj_defaults = P
 
     import pandas as pd
 

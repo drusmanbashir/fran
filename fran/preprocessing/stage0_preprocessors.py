@@ -167,7 +167,7 @@ def get_sitk_target_size_from_spacings(sitk_array, spacing_dest):
     return sz_dest
 
 
-class ResampleDatasetNiftyToTorch:
+class ResampleDatasetniftiToTorch:
     def __init__(
         self,
         proj_defaults,
@@ -570,7 +570,7 @@ if __name__ == "__main__":
 # %%
     ###################kl###################################################################
 # %% [markdown]
-    ## Creating stage0 dataset from Nifty
+    ## Creating stage0 dataset from nifti
 # %%
     folder = "/s/datasets/preprocessed/fixed_spacings/lits/spc_100_100_200"
     folder_ni = "/s/fran_storage/datasets/raw_data/lits/"
@@ -593,8 +593,8 @@ if __name__ == "__main__":
     from fran.preprocessing.stage0_preprocessors import *
     from fran.preprocessing.stage1_preprocessors import *
 
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
-    R = ResampleDatasetNiftyToTorch(
+    P = Project(project_title="lits"); proj_defaults= P
+    R = ResampleDatasetniftiToTorch(
         proj_defaults,
         minimum_final_spacing=0.5,
         mask_resize_func=resize_multilabel_mask_torch,

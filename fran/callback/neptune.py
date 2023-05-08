@@ -52,11 +52,11 @@ def get_neptune_config(proj_defaults):
     Returns particular project workspace
     '''
     project_title =proj_defaults.project_title
-    commons= load_yaml(common_paths_filename)
-    config_json= Path(commons['neptune_folder'])/("config.json")
+    commons= load_yaml(common_vars_filename)
+    config_json= Path(commons['neptune_folder'])/("neptune-config.json")
     neptune_project_info = load_json(config_json)
-    project_name = f"{neptune_project_info['workspace-name']}/{project_title}"
-    api_token = neptune_project_info['api_token']
+    project_name = f"{neptune_project_info['neptune_workspace_name']}/{project_title}"
+    api_token = neptune_project_info['neptune_api_token']
     return project_name, api_token
 
 
@@ -639,7 +639,7 @@ class NeptuneImageGridCallback(Callback):
 #
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
     config = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
 # %%
     def process_html(fname= 'case_id_dices_valid.html'):

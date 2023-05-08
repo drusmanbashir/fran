@@ -230,8 +230,8 @@ if __name__ == "__main__":
                                  ])
 
 # %%
-    common_paths_filename=os.environ['FRAN_COMMON_PATHS']
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    common_vars_filename=os.environ['FRAN_COMMON_PATHS']
+    P = Project(project_title="lits"); proj_defaults= P
     
     dim0,dim1=64,160
     dataset_folder = proj_defaults.stage2_folder / "{0}_{1}_{1}".format(dim0, dim1)

@@ -26,8 +26,8 @@ class PermuteImageMask(ItemTransform):
 
 # %%
 if __name__ == "__main__":
-    common_paths_filename=os.environ['FRAN_COMMON_PATHS']
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    common_vars_filename=os.environ['FRAN_COMMON_PATHS']
+    P = Project(project_title="lits"); proj_defaults= P
     spacings = [1,1,1]
     src_patch_size = [192,192,128]
     images_folder = proj_defaults.patches_folder/("spc_080_080_150")/("dim_{0}_{0}_{2}".format(*src_patch_size))/("images")

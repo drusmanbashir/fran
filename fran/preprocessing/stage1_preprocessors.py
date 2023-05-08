@@ -140,7 +140,7 @@ class CropToPatientTorchToTorch(object):
         return organ_z_center,organ_length_voxels
 
 
-class CropToPatientTorchToNifty(CropToPatientTorchToTorch):
+class CropToPatientTorchTonifti(CropToPatientTorchToTorch):
     def __init__(self,*args,**kwargs) -> None:
         super().__init__(*args,**kwargs)
 
@@ -206,8 +206,8 @@ def resize_and_save_tensors(input_filename,output_size, mode,output_filename):
         input_tensor = torch.load(input_filename)
         resized_tensor = resize_tensor_3d(input_tensor,output_size,mode)
         torch.save(resized_tensor.to(torch.float32 if mode=='trilinear' else torch.uint8),output_filename)
-def cropper_wrapper_nifty(filename,args):
-        C = CropToPatientTorchToNifty(*args)
+def cropper_wrapper_nifti(filename,args):
+        C = CropToPatientTorchTonifti(*args)
 
         return C.process_case(filename)
 
@@ -365,7 +365,7 @@ if __name__ == "__main__":
 # %%
     
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
     output_shape=[128,128,96]
     overs = .25
     fixed_folder = proj_defaults.fixed_spacings_folder/("spc_077_077_100/images")

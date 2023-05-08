@@ -17,7 +17,7 @@ if __name__ == "__main__":
     plt.ion()
     patch_size = [128,128,128]
 
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
     folder = proj_defaults.stage2_folder/"64_160_160"
     # fake_tumours = list((project_title=proj_defaults.project_title,folder/"tumour_only").glob("*.pt"))
     json_fname=proj_defaults.validation_folds_filename

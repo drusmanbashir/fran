@@ -387,7 +387,7 @@ if __name__=="__main__":
     dd = load_dict("/home/ub/datasets/preprocessed/lits/patches/spc_100_100_200/dim_256_256_128/bboxes_info.pkl")
     dd[0]
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
     image_folder = proj_defaults.stage0_folder/("images")
     files_list = get_fileslist_from_path(proj_defaults.stage0_folder/"images")
     json_fname=proj_defaults.validation_folds_filename

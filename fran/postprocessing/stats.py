@@ -14,7 +14,7 @@ if __name__ == "__main__":
     mask_sitk = sitk.ReadImage(mask_fn)
     pred_sitk = sitk.ReadImage(pred_fn)
 
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
 # %%
     label_defaults = proj_defaults.mask_labels
     label=2

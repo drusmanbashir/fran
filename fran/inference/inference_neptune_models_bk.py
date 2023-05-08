@@ -32,8 +32,8 @@ if __name__ == "__main__":
 
 
 # %%
-    common_paths_filename=os.environ['FRAN_COMMON_PATHS']
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    common_vars_filename=os.environ['FRAN_COMMON_PATHS']
+    P = Project(project_title="lits"); proj_defaults= P
 
     configs_excel = ConfigMaker(proj_defaults.configuration_filename,raytune=False).config
 # %%

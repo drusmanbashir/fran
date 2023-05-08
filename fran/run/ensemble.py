@@ -46,7 +46,7 @@ def main(args):
     half = args.half
     debug = args.debug
     # ensemble = args.ensemble
-    P = Project(project_title=args.t); proj_defaults= P.proj_summary
+    P = Project(project_title=args.t); proj_defaults= P
     ensemble=["LITS-451","LITS-452","LITS-453","LITS-454","LITS-456"]
     # ensemble=["LITS-451"]
     # if not input_folder:
@@ -67,7 +67,7 @@ def main(args):
 
 if __name__ == "__main__":
         
-    common_paths_filename=os.environ['FRAN_COMMON_PATHS']
+    common_vars_filename=os.environ['FRAN_COMMON_PATHS']
     # runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436","LITS-445"]
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
 

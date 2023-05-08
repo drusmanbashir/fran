@@ -44,7 +44,7 @@ def run_prediction(E,proj_defaults,run_name_l,run_name_p,use_neptune,img_fn,gt_f
 def main (args):
 
     project_title = args.t
-    P = Project(project_title=project_title); proj_defaults= P.proj_summary
+    P = Project(project_title=project_title); proj_defaults= P
     print("Project: {0}".format(project_title))
 
     run_name_l= args.l

@@ -87,7 +87,7 @@ def initialize_run(proj_defaults ,args):
 def main(args):
 
     project_title = args.t
-    P = Project(project_title=project_title); proj_defaults= P.proj_summary
+    P = Project(project_title=project_title); proj_defaults= P
     print("Project: {0}".format(project_title))
 
     n_epoch = args.epochs

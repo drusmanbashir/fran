@@ -168,7 +168,7 @@ class BBoxesFromMask(object):
 
 class SingleCaseAnalyzer:
     """
-    Loads nifty -> nifty properties (spacings bbox)
+    Loads nifti -> nifti properties (spacings bbox)
     returns numpy array containing bbox voxels only
     """
 
@@ -315,7 +315,7 @@ class MultiCaseAnalyzer(object):
         img_fnames = [case_[0] for case_ in self.list_of_raw_cases]
         args = [[fname, self.clip_range] for fname in img_fnames]
 
-        print("Computing means from all nifty files (clipped to {})".format(self.clip_range))
+        print("Computing means from all nifti files (clipped to {})".format(self.clip_range))
         means_sizes = multiprocess_multiarg(
             get_means_voxelcounts,
             args,
@@ -335,7 +335,7 @@ class MultiCaseAnalyzer(object):
         img_fnames = [case_[0] for case_ in self.list_of_raw_cases]
         args = [[fname, self.dataset_mean, self.clip_range] for fname in img_fnames]
         print(
-            "Computing std from all nifty files, using global mean computed above (clipped to {})".format(
+            "Computing std from all nifti files, using global mean computed above (clipped to {})".format(
                 self.clip_range
             )
         )
@@ -462,7 +462,7 @@ def bboxes_function_version(
 if __name__ == "__main__":
     
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
 
 # %% [markdown]
 # %%
@@ -493,19 +493,19 @@ if __name__ == "__main__":
 # %%
     args = [[fname, M.dataset_mean, M.clip_range] for fname in img_fnames]
     print(
-        "Computing std from all nifty files, using global mean computed above (clipped to {})".format(
+        "Computing std from all nifti files, using global mean computed above (clipped to {})".format(
             M.clip_range
         )
     )
 
     M.compute_std_mean_dataset(debug=True)
 # %% [markdown]
-    # # Resample Nifty to Torch
+    # # Resample nifti to Torch
 # %% [markdown]
     # ### KITS19
 
 # %%
-    R = ResampleDatasetNiftyToTorch(
+    R = ResampleDatasetniftiToTorch(
         proj_defaults, minimum_final_spacing=0.0, enforce_isotropy=False
     )
 # %%
@@ -529,11 +529,11 @@ if __name__ == "__main__":
 
 # %%
     # # Getting bbox properties from preprocessed images
-    # ### KITS21 cropped nifty files bboxes
+    # ### KITS21 cropped nifti files bboxes
     M.std = torch.sqrt(std_num.sum() / M.total_voxels)
 
 # %%
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
     masks_folder_nii = proj_defaults.stage1_folder / ("cropped/images_nii/masks")
     masks_filenames = get_fileslist_from_path(masks_folder_nii, ext=".nii.gz")
     arguments = [[x, proj_defaults] for x in masks_filenames]

@@ -45,8 +45,8 @@ from fran.utils.fileio import maybe_makedirs
 #     # make folders if needed
 #     return SimpleNamespace(**proj_defaults)
 
-def load_proj_defaults(common_paths_filename:str, project_title: str):
-    with open(common_paths_filename,'r') as file:
+def load_proj_defaults(common_vars_filename:str, project_title: str):
+    with open(common_vars_filename,'r') as file:
         common_paths_ = yaml.safe_load(file)
         common_paths={}
         for ke,val in common_paths_.items():
@@ -97,8 +97,8 @@ def create_project_folder_tree(proj_defaults):
 if __name__ == "__main__":
     import yaml
     project_title="kits21"
-    common_paths_filename= "nbs/config.yaml"
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    common_vars_filename= "nbs/config.yaml"
+    P = Project(project_title="lits"); proj_defaults= P
 
 # %%
     di = load_dict(proj_defaults.raw_dataset_properties_filename)

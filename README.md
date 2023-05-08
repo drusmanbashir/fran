@@ -13,25 +13,19 @@ Make sure you have installed and set up:
  - downloaded a dataset (e.g., LITS).
 
 \
-To quickly install pre-requisites, you can run
-```
-pip install nnunet
-conda install -c conda-forge ipython ipywidgets pandas matplotlib medpy numpy openpyxl pillow pygments jupyterlab pyyaml scikit-image scipy SimpleITK connected-components-3d timm torchio tqdm einops monai ipdb gputil ray-tune neptune-client ipympl lxml
-#note some of these will downgrade your pytorch copy
-```
+To quickly install all pre-requisites in a new environment, I run the commands in file `conda_oneliners.txt` ***(make sure to create a new environment beforehand!)***
 
 
-## 1. Setting up Neptune
-Once you have installed neptune client, and created a new empty project, open the project and you will find instructions to initiate like so:
+## 1. Setting common variables
+Once you have installed neptune client, and created a new empty project, open the project and you will find instructions to initialize a project like so:
 ```
 run = neptune.init_run(
     project="{workspacename}/{projectname}",
     api_token="abc ......")  # your credentials
 ```
-You need to store both the api token and project workspacename (NOT project name) inside experiements/config.json provided. Make sure every project you create under neptune has a projectname which matches the name you give it when you initialise it inside fran. For example, in neptune my lits project looks like this: project = 'drusmanbashir/lits' where drusmanbashir is the workspace-name and lits is the project_title
-## 2. Setting paths
+Note the workspace name and api token. Then open `nbs/config-test.yaml`. The file provided here has my directory structure which you may emulate if you like. Among other paths, you will need to assign a `{fast_storage}` (used by the library for DL) and a `{slow_storage}`folder (where you download your dataset nifty files). After setting folder paths, you need to store both the api token and project workspacename (NOT project name) inside `config.yaml` provided.
 
-See the file `nbs/config-test.yaml` to set paths. The file provided here has my directory structure which you may emulate if you like. Among other paths, you will need to assign a `{fast_storage}` (used by the library for DL) and a `{slow_storage}`folder (where you download your dataset nifty files). After setting folder paths, add path to your config file in ~/.bashrc as:
+Finally, add path to your `config.yaml` file in `~/.bashrc` as:
 
 ```
 
@@ -40,7 +34,7 @@ export FRAN_COMMON_PATHS={PATH-TO-config.yaml}
 ```
 *Note: In this instruction, names inside curly-braces are variable names. You can set them as any word you like.* Names without curly braces are fixed and must be the same in your schema.
 
-## 3. Dataset organization
+## 2. Dataset organization
 In each input path, data (nifti or nrrd format) must be organised in sub-folders 'images' and 'masks'
 
 
@@ -64,29 +58,39 @@ As shown above, mask and image files of a given case will have identical names, 
 - Each case file name has the following parts: `{project_title}_{case_id}.ext`
 - project_title should be in small letters. 
 - case_id should be unique digits +/- alphabets only, e.g., '00000','00021' or 'b0000', 'b0021'.
-- Do **NOT** use dash inside folder names for now, e.g.,  `~/fran-test/`*(incorrect)*, `~/fran_test/`*(correct)*
+- Do **NOT** use dash inside folder names for now, hyphens are acceptable. For example,\
+`~/fran-test/`*(incorrect)* \
+`~/fran_test/`*(correct)*
 
 
 *Note: There is no validation data folder. The library will create splits by itself keeps track of them.*
 
 *Note: Having separate `{slow_storage}` and `{fast_storage}` is not a requirement. Both folders can be on the same drive. I recommend using SSD for `{fast_storage}` to speed up learning.*
-## 4. Project
-The script `fran/runs/project_init.py` should be run first to initialize a project. It requires two arguments: -t (project title) and -i input folders containing datasets.\
-For example, in the fran/runs folder, enter:
+## 3. Project
+Run script `fran/runs/project_init.py` to initialize a project. It requires two arguments: -t (project title) and -i (input folders: 1 or more, containing datasets).\
 
-``
+```
+python project_init.py -t {project_title} -i {dataset folder 1} {dataset_folder 2} {dataset_folder 3} ...
+```
+
+For example, in the fran/runs folder, you may initialise a project called 'lits' and enter:
+```
 python project_init.py -t lits -i /s/datasets_bkp/drli /s/datasets_bkp/lits_segs_improved/ 
-``
+```
 
-I have provided 2 folders as datasets for  this project in the example above. Typically, most projects will be based on a single datafolder but this provides flexibility to add more data to a project as it becomes available.
+I have provided 2 folders as datasets for  this project in the example above. Typically, most projects will be based on a single datafolder but this provides flexibility to add more data to a project as it becomes available. After the project is initialised, look inside the project folder. You will find a mask_labels.json file. This file sets rules for postprocessing each label after running predictions. 
 
-### Essential files:
-Have a look at 
-#### Step 2: Create mask_labels.json
-Create a `mask_labels.json` file inside the `{slow_storage}/raw_data/{project_title}` folder (`kits21` in the figure above). This file provides label priorites when segmenting and post-processing dusting thresholds.\
-I have provided a sample `mask_labels.json` file inside the `experiments/kits21` folder of this repository. Simply place it inside your `raw_data/{project_title}`folder.
-
-
+## 4.Analyze resample
+This interactive program will talk you through necessary dataset preprocessing and suggest reasonable defaults. It only requires project title as an argument:
+```
+python analyze_resample.py -t {project_title}
+```
+## 5.Train
+As above, enter at the minimum:
+```
+python train.py -t {project_title}
+```
+However, you will likely run into problems if your data structure does not meet values stored in training config spreadsheet 
 
 # Glossary of terms
 
@@ -101,4 +105,4 @@ I have provided a sample `mask_labels.json` file inside the `experiments/kits21`
 Sources of inspiration and code snippets:\
 Fastai programming paradigm is at the core of this library.\
 I have also drawn lots of inspiration from [nnUNet](https://github.com/MIC-DKFZ/nnUNet) in structuring the pipeline.\
-[Torchio](https://torchio.readthedocs.io/) code is written very well for creating patches, and I have used it.
+

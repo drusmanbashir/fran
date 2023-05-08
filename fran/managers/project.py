@@ -17,7 +17,7 @@ sys.path += ["/home/ub/Dropbox/code"]
 from types import SimpleNamespace
 from fran.utils.fileio import *
 
-common_paths_filename = os.environ["FRAN_COMMON_PATHS"]
+common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 from fran.utils.templates import mask_labels_template
 
 
@@ -50,7 +50,6 @@ class Project(DictToAttr):
             print("Using a template mask_labels.json file. Amend {} later to match your target config.".format(self.label_dict_filename))
         else:
             shutil.copy(label_dict_filename,self.label_dict_filename)
-        self.label_dict= load_dict(self.label_dict_filename)
 
     def _create_folder_tree(self):
         maybe_makedirs(self.project_folder)
@@ -311,7 +310,7 @@ class Project(DictToAttr):
 
     def set_folder_file_names(self):
 
-        common_paths= load_yaml(common_paths_filename)
+        common_paths= load_yaml(common_vars_filename)
         self.project_folder = Path(common_paths["projects_folder"]) /self.project_title
         self.cold_datasets_folder = Path(common_paths['cold_storage_folder'])/"datasets"
         self.fixed_dimensions_folder = Path(common_paths["rapid_access_folder"]) / self.project_title
@@ -336,12 +335,14 @@ class Project(DictToAttr):
         self.raw_dataset_properties_filename = (
             self.project_folder / "raw_dataset_properties"
         )
+
+        self.bboxes_voxels_info_filename = self.raw_data_folder / ("bboxes_voxels_info")
         self.validation_folds_filename = self.project_folder/("validation_folds.json")
         self.whole_images_folder = self.fixed_dimensions_folder / ("whole_images")
         self.raw_dataset_info_filename = self.project_folder/("raw_dataset_srcs.pkl")
         self.log_folder = self.project_folder / ("logs")
         self.label_dict_filename =  self.project_folder/("mask_labels.json")
-
+        self.mask_labels= load_dict(self.label_dict_filename)
 
 
     def _raw_data_files(self, input):
@@ -434,7 +435,7 @@ if __name__ == "__main__":
 # %%
 # %%
     P.load_summary()
-    pj = P.proj_summary
+    pj = P
     pp(pj)
     len(P)
     P.save_summary()

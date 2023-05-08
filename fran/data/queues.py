@@ -72,8 +72,8 @@ if __name__ == "__main__":
     a = next(iteri)
     
     from fran.utils.fileio import *
-    common_paths_filename=os.environ['FRAN_COMMON_PATHS']
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    common_vars_filename=os.environ['FRAN_COMMON_PATHS']
+    P = Project(project_title="lits"); proj_defaults= P
     images_folder = proj_defaults.stage2_folder/("60_164_164")
     bboxes_fn =images_folder/"bboxes_info"  
     bboxes = load_dict(bboxes_fn)

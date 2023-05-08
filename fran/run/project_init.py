@@ -15,8 +15,6 @@ def main(args):
         P.add_raw_data_sources(input_folders)
         P.populate_raw_data_folder()
         P.create_train_valid_folds()
-        pp(P.proj_summary)
-        P.save_summary()
         P.raw_data_imgs
     else:
         P.delete()
@@ -33,9 +31,9 @@ if __name__ == "__main__":
 
 # %%
     args = parser.parse_known_args()[0]
-    args.t = "litsssass"
-    args.delete=True
-    args.i = "/s/datasets/drli_short/"
+    # args.t = "litsssass"
+    # args.delete=True
+    # args.i = "/s/datasets/drli_short/"
     main(args)
 # %%
 

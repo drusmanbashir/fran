@@ -424,7 +424,7 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
     project_title = "lits"
-    P = Project(project_title=project_title); proj_defaults= P.proj_summary
+    P = Project(project_title=project_title); proj_defaults= P
     from fran.managers.tune import get_raytune_folder_from_trialname
 
     # trial_name = "kits_675_080"

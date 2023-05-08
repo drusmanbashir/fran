@@ -29,7 +29,7 @@ def generate_patches(proj_defaults):
 
 if __name__ == "__main__":
 
-    common_paths_filename=os.environ['FRAN_COMMON_PATHS']
+    common_vars_filename=os.environ['FRAN_COMMON_PATHS']
 
     parser = argparse.ArgumentParser(description="Resampler")
     parser.add_argument('t',help='project title')
@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
     output_folder = proj_defaults.stage2_folder
     spacings= load_dict( proj_defaults.resampled_dataset_properties_filename)['preprocessed_dataset_spacings']
     global_props =  load_dict(proj_defaults.raw_dataset_properties_filename)[-1]

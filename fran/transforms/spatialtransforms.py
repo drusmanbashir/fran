@@ -1132,7 +1132,7 @@ if __name__ == "__main__":
     from fran.data.dataset import ImageMaskBBoxDataset
     from fran.transforms.misc_transforms import create_augmentations
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
     spacings = [1,1,1]
     src_patch_size = [220,220,110]
     patch_size = [160,160,128]
@@ -1168,7 +1168,7 @@ if __name__ == "__main__":
 # %%
     from fran.data.dataset import ImageMaskBBoxDataset
     from fran.utils.imageviewers import *
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
     # %%
     bboxes_pt_fn = proj_defaults.stage1_folder / ("cropped/images_pt/bboxes_info")
     bboxes_nii_fn = proj_defaults.stage1_folder / ("cropped/images_nii/bboxes_info")

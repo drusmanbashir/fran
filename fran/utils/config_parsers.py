@@ -229,7 +229,7 @@ def parse_neptune_dict(dic: dict):
 if __name__ == "__main__":
 
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P.proj_summary
+    P = Project(project_title="lits"); proj_defaults= P
     settingsfilename = proj_defaults.configuration_filename
     wb = load_workbook(settingsfilename)
     sheets = wb.sheetnames
