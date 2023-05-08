@@ -23,6 +23,5 @@ tmp*
 vim-debug-configuration.json
 *inference_ub.py
 nnunetub/
-config.yaml
 experiments/.neptune/config.json
 .Rproj.user
