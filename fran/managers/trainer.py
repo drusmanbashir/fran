@@ -34,41 +34,37 @@ from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.callback.case_recorder import CaseIDRecorder
 
-def compute_bs(proj_defaults,distributed,min_bs=2):
+def compute_bs(proj_defaults,bs=2,distributed=False,step=1):
+        '''
+        bs = starting bs
+        
+        '''
+    
     
         print("Computing optimal batch-size for available vram")
-        bs = min_bs
-
-        buffer =2 if distributed==True else 1
+        if distributed==True:
+            step =step*2 
         while True:
+            La = Trainer.fromExcel(
+                proj_defaults,
+                bs=bs,
+                dummy_ds=bs*2,
+
+            )
+            learn = La.create_learner(cbs=[], compile=False,distributed=distributed)
             try:
                 print("Trial bs: {}".format(bs))
-                cbs =[]
-                La = Trainer.fromExcel(
-                    proj_defaults,
-                    bs=bs,
-                    dummy_ds=bs*2,
-
-                )
-                learn = La.create_learner(cbs=cbs, compile=False,distributed=distributed)
                 learn.fit(1)
-                del learn
-                del La
-                gc.collect()
-                torch.cuda.empty_cache()
-                prev_bs = bs
-                bs+=2
             except RuntimeError:
                 print("Final broken bs: {}\n-----------------".format(bs))
-                try:
-                    bs  = prev_bs-buffer
-                except: print("Lower your min_bs value!")
-                del learn
-                del La
-                gc.collect()
-                torch.cuda.empty_cache()
+                bs  = bs-step*2
                 print("\n----- Accepted bs: {}".format(bs))
                 break
+            bs+=step
+            del learn
+            del La
+            gc.collect()
+            torch.cuda.empty_cache()
         return bs
 
 

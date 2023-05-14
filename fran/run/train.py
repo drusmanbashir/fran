@@ -45,7 +45,7 @@ def maybe_compute_bs(proj_defaults,args):
     if any([s is not None for s in [args.bs,args.resume]]):
         args.bs =args.bs
     else:
-        args.bs = compute_bs(proj_defaults,args.distributed,min_bs=12)
+        args.bs = compute_bs(proj_defaults=proj_defaults,distributed=args.distributed,bs=12)
     return  args.bs
 
 
