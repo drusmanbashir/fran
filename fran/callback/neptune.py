@@ -53,10 +53,8 @@ def get_neptune_config(proj_defaults):
     '''
     project_title =proj_defaults.project_title
     commons= load_yaml(common_vars_filename)
-    config_json= Path(commons['neptune_folder'])/("neptune-config.json")
-    neptune_project_info = load_json(config_json)
-    project_name = f"{neptune_project_info['neptune_workspace_name']}/{project_title}"
-    api_token = neptune_project_info['neptune_api_token']
+    project_name = "/".join([commons['neptune_workspace_name'],project_title])
+    api_token = commons['neptune_api_token']
     return project_name, api_token
 
 

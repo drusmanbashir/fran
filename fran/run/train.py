@@ -40,19 +40,30 @@ def override_configs(args , configs:dict):
         return configs
     else : return None
 
-
-def load_and_update_configs(proj_defaults, args):
-    args.bs = compute_bs(proj_defaults,args.distributed,12)
-    if args.resume is None or args.update == True:
-        configs = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+def maybe_compute_bs(proj_defaults,args):
+    if args.bs or args.resume:
+        args.bs =args.bs
     else:
-        configs = {}
+        args.bs = compute_bs(proj_defaults,args.distributed,min_bs=12)
+    return  args.bs
+
+
+    pass
+def load_and_update_configs(proj_defaults, args,recompute_bs=True):
+    # if recompute_bs==True:
+    # if args.resume is None or args.update == True:
+    args.bs = maybe_compute_bs(proj_defaults,args)
+    configs = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+    # else:
+    #     configs = {}
     updated_configs =override_configs(args, configs)
     return updated_configs
 
 
-def load_existing_run(proj_defaults,run_name,args):
-    updated_configs = load_and_update_configs(proj_defaults, args )
+def load_run(proj_defaults,run_name,args):
+    if args.update==True:
+        updated_configs = load_and_update_configs(proj_defaults, args )
+    else: updated_configs = None
     La = Trainer.fromNeptuneRun(
         proj_defaults,
         run_name=run_name,
@@ -97,12 +108,16 @@ def main(args):
     if not run_name:
         La = initialize_run(proj_defaults, args)
     else:
-        La = load_existing_run(proj_defaults, run_name,args)
+        La = load_run(proj_defaults, run_name,args)
 
     learn = La.create_learner(compile=args.compile,distributed=args.distributed)
 
 #     # learn.model = model
-    learn.fit(n_epoch=n_epoch, lr=La.model_params["lr"])
+    if args.lr :
+        lr = args.lr 
+    else:
+        lr = La.model_params['lr']
+    learn.fit(n_epoch=n_epoch, lr=lr)
 # %%
 
 if __name__ == "__main__":
@@ -112,7 +127,6 @@ if __name__ == "__main__":
     parser.add_argument("-t", help="project title")#, required=True)
     # parser.add_argument("t", help="project title")
     parser.add_argument("-e","--epochs", help="num epochs", default=500,type=int)
-    parser.add_argument("-n", help="No Neptune",action='store_true')
     parser.add_argument(
         "-r","--resume",
         const="",
@@ -136,13 +150,15 @@ if __name__ == "__main__":
         required=False
     )
     parser.add_argument("--labels", help="list of mappings source to dest label values, e.e.,g [[0,0],[1,1],[2,1]] will map all foreground to 1")
+    parser.add_argument("-n", help="No Neptune",action='store_true')
 # %%
     args = parser.parse_known_args()[0]
-    args.t = 'lits'
+    # args.t = 'lits'
     # args.distributed = True
+    # args.lr = 1e-4
+    # args.resume='LITS-456'
     # args.compiled= True
     # args.bs = 4
-    # args.resume='LITS-408'
     # args.update = True
     #
     # %%

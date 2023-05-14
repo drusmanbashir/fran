@@ -40,14 +40,14 @@ class EnsembleActor(object):
 # %%
 
 def main(args):
-    run_name_w= "LITS-276" # best trial
+    run_name_w= "LITS-464" # best trial
     input_folder = args.input_folder
     overwrite=args.overwrite
     half = args.half
     debug = args.debug
-    # ensemble = args.ensemble
+    ensemble = args.ensemble
     P = Project(project_title=args.t); proj_defaults= P
-    ensemble=["LITS-451","LITS-452","LITS-453","LITS-454","LITS-456"]
+    # ensemble=["LITS-451","LITS-452","LITS-453","LITS-454","LITS-456"]
     # ensemble=["LITS-451"]
     # if not input_folder:
     #     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))

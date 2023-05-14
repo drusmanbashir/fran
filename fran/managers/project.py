@@ -61,7 +61,6 @@ class Project(DictToAttr):
             maybe_makedirs(folder)
 
     def populate_raw_data_folder(self):
-
         for ds in self.raw_data_sources:
             dataset_name = ds['dataset_name']
             test = ds['test']
@@ -344,11 +343,11 @@ def create_folds(train_val_ids,test_ids=[], pct_valid=0.2,shuffle=False):
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="litsxassssa")
-    P.create_project()
+    P = Project(project_title="litsxassssaz")
+    P.create_project(['/s/datasets_bkp/drli_short/', '/s/datasets_bkp/lits_segs_improved/', '/s/datasets_bkp/litqsmall/sitk'])
+    P.populate_raw_data_folder()
     P.raw_data_imgs
     P.add_raw_data_sources(['/s/datasets_bkp/drli_short/'])
-    P.populate_raw_data_folder()
     # P.update_fold_indices()
 # %%
     P.raw_data_imgs

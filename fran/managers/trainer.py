@@ -35,11 +35,12 @@ from fran.callback.tune import *
 from fran.callback.case_recorder import CaseIDRecorder
 
 def compute_bs(proj_defaults,distributed,min_bs=2):
+        print("Computing optimal batch-size for available vram")
         bs = min_bs
         buffer =2 if distributed==True else 1
         while True:
             try:
-                print(bs)
+                print("Trial bs: {}".format(bs))
                 cbs =[]
                 La = Trainer.fromExcel(
                     proj_defaults,
@@ -62,7 +63,7 @@ def compute_bs(proj_defaults,distributed,min_bs=2):
                 del La
                 gc.collect()
                 torch.cuda.empty_cache()
-                print("\n----- accepted bs: {}".format(bs))
+                print("\n----- Accepted bs: {}".format(bs))
                 break
         return bs
 
@@ -90,7 +91,6 @@ class Trainer:
         store_attr('device,proj_defaults,dummy_ds')
         self.assimilate_config(config_dict)
 
-        self.patch_based = bool(self.metadata["patch_based"])
 
         
         self.train_list, self.valid_list, _ = get_fold_case_ids(
@@ -104,6 +104,7 @@ class Trainer:
             CaseIDRecorder,
         ]  # 12.0 following nnUNet
 
+        self.set_dataset_folders()
         self.create_datasets()
         self.create_transforms()
         self.create_dataloaders( max_workers=max_workers, bs=bs, pin_memory=pin_memory,device=self.device)
@@ -111,6 +112,11 @@ class Trainer:
     def assimilate_config(self, config_dict):
         for key, value in config_dict.items():
             setattr(self, key, value)
+
+        global_properties = load_dict(self.proj_defaults.global_properties_filename)
+        self.dataset_params['clip_range']=global_properties["intensity_clip_range"]
+        self.dataset_params['mean_fg']=global_properties["mean_fg"]
+        self.dataset_params['std_fg']=global_properties["std_fg"]
 
     def generate_config(self):
         config_dict = {}
@@ -148,12 +154,11 @@ class Trainer:
             self.probabilities_spatial.append(value)
 
     def set_dataset_folders(self):
-
         prefixes, value_lists = ["spc", "dim"], [
             self.dataset_params["spacings"],
             self.dataset_params["src_dims"],
         ]
-        if self.patch_based == True:
+        if bool(self.metadata['patch_based']) == True:
             parent_folder = self.proj_defaults.patches_folder
         else:
             parent_folder = self.proj_defaults.whole_images_folder
@@ -214,7 +219,6 @@ class Trainer:
     def create_datasets(
         self,
     ):
-        self.set_dataset_folders()
         bboxes_fname = self.dataset_folder / "bboxes_info"
         if self.dummy_ds> 0:
             self.train_list = self.train_list[:self.dummy_ds]
@@ -331,7 +335,7 @@ class Trainer:
         else:
             print("Training will be done on cuda: {}".format(self.device))
             # learn.dls = learn.dls.to(torch.device(self.device))
-            torch.cuda.set_device(self.device)
+            # torch.cuda.set_device(self.device)
         if compile==True:
             print("Compiling model")
             learn.model = torch.compile(learn.model)
@@ -375,8 +379,8 @@ class Trainer:
 
         Nep.load_run(run_name=run_name, param_names='default', update_nep_run_from_config=update_nep_run_from_config)
         config_dict = Nep.download_run_params()
-        dest_labels = config_dict["metadata"]["src_dest_labels"]
-        out_channels = out_channels_from_dict_or_cell(dest_labels)
+        # dest_labels = config_dict["metadata"]["src_dest_labels"]
+        # out_channels = out_channels_from_dict_or_cell(dest_labels)
         run_name = Nep.run_name
         # Nep.stop()
         cbs += [
@@ -387,11 +391,8 @@ class Trainer:
                 resume_epoch=resume_epoch,
             ),
             NeptuneImageGridCallback(
-                classes=out_channels,
-                patch_size=make_patch_size(
-                    config_dict["dataset_params"]["patch_dim0"],
-                    config_dict["dataset_params"]["patch_dim1"],
-                ),
+                classes=config_dict['model_params']['out_channels'],
+                patch_size= config_dict['dataset_params']['patch_size'],
             ),
         ]
 
@@ -439,6 +440,7 @@ if __name__ == "__main__":
     
 
 # %%
+    La = Trainer.fromExcel(proj_defaults)
 # # %%
 #     #     run_name = None
 #     run_name = "KITS-2490"
@@ -482,25 +484,4 @@ if __name__ == "__main__":
 # %%
 
 
-
-# %%
-# %%
-
-# %%
-# %%debu%
-#     ds = La.valid_ds
-#     bb = [b for b in ds.bboxes_per_id if b[0]['case_id']=='lits-9']
-# # %%
-#     for x , bb in enumerate(La.dls.valid):
-#         a,b,c = bb
-#         ids  = [get_case_id_from_filename(None,Path(cc)) for cc in c]
-#         if any([i == 'lits-9' for i in ids]):
-#               inx = np.where(np.array(ids)=='lits-9')
-#               img = a[inx]
-#               mask = b[inx]
-#               
-# # %%
-#     ImageMaskViewer([img[0,0].detach().cpu(), mask[0,0].detach().cpu()])
-# %%
-# %%
 

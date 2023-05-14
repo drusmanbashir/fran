@@ -747,7 +747,7 @@ class EnsemblePredictor(EndToEndPredictor):
         self.patch_overlap = 0.25
         self.model_id = "ensemble_" + "_".join(self.runs_p)
 
-    def load_localiser_model(self, run_name_w):
+    def load_localiser_model(self, run_name_w:str):
         (
             model_w,
             patch_size_w,
@@ -930,4 +930,3 @@ if __name__ == "__main__":
     fname = fnames[0]
     En.run(fname)
 # %%
-

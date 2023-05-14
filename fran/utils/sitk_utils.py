@@ -1,4 +1,6 @@
 from pathlib import Path
+
+from fastcore.test import is_close, test_close
 import ast
 from fastai.callback.tracker import Union
 from fastcore.basics import store_attr
@@ -95,7 +97,12 @@ class SITKImageMaskFixer():
             self.pairs.insert(1,str(self.dicom_orientation)*2)
 
     def verify_img_mask_match(self ):
-            matches = [a==b for a,b in self.pairs]
+            matches =[] 
+            for l in self.pairs:
+                l = [ast.literal_eval(la) for la in l]
+                match = is_close(*l,eps=1e-5)
+                matches.append(match)
+
             if all(matches):         self.match_string = 'Match' 
             elif not matches[0]: raise Exception("Irreconciable difference in sizes. Check img/mask pair {}".format(self.mask_fn))
             else:
