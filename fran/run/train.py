@@ -160,7 +160,7 @@ if __name__ == "__main__":
     # args.resume='LITS-456'
     # args.compiled= True
     # args.bs = 4
-    args.update = True
+    # args.update = True
     #
     # %%
     main(args)
