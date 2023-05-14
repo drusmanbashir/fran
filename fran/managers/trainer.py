@@ -405,7 +405,7 @@ class Trainer:
     @classmethod
     def fromExcel(self, proj_defaults, **kwargs):
 
-        config_dict= ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+        config_dict= ConfigMaker(proj_defaults,raytune=False).config
         self = self(proj_defaults=proj_defaults, config_dict=config_dict, **kwargs)
         return self
 
@@ -436,7 +436,7 @@ if __name__ == "__main__":
     # chkpoint_filename = list((folder_name/("model_checkpoints")).glob("model*"))[0]
     #
 
-    configs_excel= ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+    configs_excel= ConfigMaker(proj_defaults, raytune=False).config
     
 
 # %%

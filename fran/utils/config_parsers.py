@@ -139,9 +139,11 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
 
 
 class ConfigMaker:
-    def __init__(self, settingsfilename, raytune):
+    def __init__(self, proj_defaults, raytune):
+
         store_attr()
-        self.config = load_config_from_workbook(settingsfilename, raytune)
+
+        self.config = load_config_from_workbook(proj_defaults.configuration_filename, raytune)
         if not "mom_low" in self.config["model_params"].keys() and raytune==True:
 
             config = {
@@ -164,6 +166,14 @@ class ConfigMaker:
     def add_further_keys(self):
         self.add_out_channels()
         self.add_patch_size()
+        self.add_dataset_props()
+
+
+    def add_dataset_props(self):
+        global_properties = load_dict(self.proj_defaults.global_properties_filename)
+        self.config['dataset_params']['clip_range']=global_properties["intensity_clip_range"]
+        self.config['dataset_params']['mean_fg']=global_properties["mean_fg"]
+        self.config['dataset_params']['std_fg']=global_properties["std_fg"]
 
     def add_out_channels(self):
         if not 'out_channels' in self.config["model_params"]:
@@ -230,19 +240,19 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
     P = Project(project_title="lits"); proj_defaults= P
-    settingsfilename = proj_defaults.configuration_filename
-    wb = load_workbook(settingsfilename)
+    proj_defaults = proj_defaults.configuration_filename
+    wb = load_workbook(proj_defaults)
     sheets = wb.sheetnames
     mode = "manual"
-    meta = load_metadata(settingsfilename)
+    meta = load_metadata(proj_defaults)
     sheet_name = "after_item_intensity"
     trans = load_config_from_worksheet(
-        settingsfilename, "after_item_intensity", raytune=True
+        proj_defaults, "after_item_intensity", raytune=True
     )
     spat = load_config_from_worksheet(
-        settingsfilename, "after_item_spatial", raytune=True
+        proj_defaults, "after_item_spatial", raytune=True
     )
-    met = load_config_from_worksheet(settingsfilename, "metadata", raytune=True)
+    met = load_config_from_worksheet(proj_defaults, "metadata", raytune=True)
 
 
 
@@ -252,7 +262,7 @@ if __name__ == "__main__":
 
     config = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
 # %%
-    wb = load_workbook(settingsfilename)
+    wb = load_workbook(proj_defaults)
     sheets = wb.sheetnames
     metadata = wb["metadata"]
     dat = metadata[2 : metadata.max_row]
@@ -262,11 +272,11 @@ if __name__ == "__main__":
     raytune = False
 
     configs_dict = {
-        sheet: load_config_from_worksheet(settingsfilename, sheet, raytune)
+        sheet: load_config_from_worksheet(proj_defaults, sheet, raytune)
         for sheet in sheets
     }
 
-    df = pd.read_excel(settingsfilename, sheet_name="metadata", dtype=str)
+    df = pd.read_excel(proj_defaults, sheet_name="metadata", dtype=str)
     df
     # %%
 
@@ -282,7 +292,7 @@ if __name__ == "__main__":
     # %%
     tune.sample_from(lambda _: np.random.uniform(100) ** 2).sample()
     # %%
-    config = load_config_from_workbook(settingsfilename, raytune=True)
+    config = load_config_from_workbook(proj_defaults, raytune=True)
     if not "mom_low" in config["model_params"].keys():
         conds = {
             "mom_low": tune.sample_from(

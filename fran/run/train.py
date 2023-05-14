@@ -41,7 +41,7 @@ def override_configs(args , configs:dict):
     else : return None
 
 def maybe_compute_bs(proj_defaults,args):
-    if args.bs or args.resume:
+    if hasattr(args, "bs") or hasattr(args,"resume"):
         args.bs =args.bs
     else:
         args.bs = compute_bs(proj_defaults,args.distributed,min_bs=12)
@@ -53,7 +53,7 @@ def load_and_update_configs(proj_defaults, args,recompute_bs=True):
     # if recompute_bs==True:
     # if args.resume is None or args.update == True:
     args.bs = maybe_compute_bs(proj_defaults,args)
-    configs = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+    configs = ConfigMaker(proj_defaults, raytune=False).config
     # else:
     #     configs = {}
     updated_configs =override_configs(args, configs)
@@ -154,12 +154,13 @@ if __name__ == "__main__":
 # %%
     args = parser.parse_known_args()[0]
     # args.t = 'lits'
-    # args.distributed = True
     # args.lr = 1e-4
+    # args.distributed = True
+    # args.resume=''
     # args.resume='LITS-456'
     # args.compiled= True
     # args.bs = 4
-    # args.update = True
+    args.update = True
     #
     # %%
     main(args)
