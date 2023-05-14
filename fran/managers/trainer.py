@@ -35,8 +35,10 @@ from fran.callback.tune import *
 from fran.callback.case_recorder import CaseIDRecorder
 
 def compute_bs(proj_defaults,distributed,min_bs=2):
+    
         print("Computing optimal batch-size for available vram")
         bs = min_bs
+
         buffer =2 if distributed==True else 1
         while True:
             try:
@@ -58,7 +60,9 @@ def compute_bs(proj_defaults,distributed,min_bs=2):
                 bs+=2
             except RuntimeError:
                 print("Final broken bs: {}\n-----------------".format(bs))
-                bs  = prev_bs-buffer
+                try:
+                    bs  = prev_bs-buffer
+                except: print("Lower your min_bs value!")
                 del learn
                 del La
                 gc.collect()

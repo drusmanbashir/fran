@@ -41,7 +41,8 @@ def override_configs(args , configs:dict):
     else : return None
 
 def maybe_compute_bs(proj_defaults,args):
-    if hasattr(args, "bs") or hasattr(args,"resume"):
+    # if hasattr(args, "bs") or hasattr(args,"resume"):
+    if any([s is not None for s in [args.bs,args.resume]]):
         args.bs =args.bs
     else:
         args.bs = compute_bs(proj_defaults,args.distributed,min_bs=12)
@@ -49,7 +50,7 @@ def maybe_compute_bs(proj_defaults,args):
 
 
     pass
-def load_and_update_configs(proj_defaults, args,recompute_bs=True):
+def load_and_update_configs(proj_defaults, args,compute_bs=True):
     # if recompute_bs==True:
     # if args.resume is None or args.update == True:
     args.bs = maybe_compute_bs(proj_defaults,args)
