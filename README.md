@@ -92,8 +92,28 @@ python train.py -t {project_title}
 ```
 However, you will likely run into problems if your data structure does not meet values stored in training config spreadsheet 
 
-# Glossary of terms
+## 6.Inference
+In the fran/run folder, ensemble.sh is a shell script. Please edit it with following flags:\
+```
+-e {run_names of your preferred ensemble, each name separated by a space}.
+-i {input folder of test images}
+```
+(Experimental Note): If you have multi-gpu, replace `ensemble_singlegpu.py` with `ensemble.py` inside ensemble.sh. I have developed it for 2-GPUs.
 
+
+## 8.Scoring
+Once you have predictions and masks ready, examine the contents of file `inference/scoring.py`. The function `compute_dice_fran` wraps dice function from the monai library. It accepts groundtruth mask and prediction in SimpleITK Image format.
+
+## 7.Training on HPC Cluster
+See the file hpc.yaml inside templates folder and alter it to your configuration. You will need to create an environment variable HPC_SETTINGS which points to the location of the hpc.yaml file on your system, e.g.:
+
+
+```
+export HPC_SETTINGS="/s/fran_storage/hpc.yaml"
+```
+This is because inference functions will not natively have the rights to download models stored on the HPC cluster. This file will store the user access settings to allow inference to retrieve  data stored on the cluster.
+
+# Glossary of terms
 
 |Name      |Abbreviation |Info|
 |----------|-------------|----|
@@ -104,5 +124,5 @@ However, you will likely run into problems if your data structure does not meet 
 # Acknowledegments:
 Sources of inspiration and code snippets:\
 Fastai programming paradigm is at the core of this library.\
-I have also drawn lots of inspiration from [nnUNet](https://github.com/MIC-DKFZ/nnUNet) in structuring the pipeline.\
+I have also drawn lots of inspiration from [nnUNet](https://github.com/MIC-DKFZ/nnUNet) in structuring the pipeline.
 

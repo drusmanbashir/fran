@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastcore.test import is_close, test_close
+from fastcore.test import test_close
 import ast
 from fastai.callback.tracker import Union
 from fastcore.basics import store_attr

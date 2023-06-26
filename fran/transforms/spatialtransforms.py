@@ -2,7 +2,6 @@
 from fastai.vision.augment import partial
 from fastcore.transform import Pipeline
 import math
-from fran.transforms.misc_transforms import Squeeze
 from fran.utils.image_utils import get_bbox_from_mask
 from fran.utils.helpers import *
 from fran.utils.fileio import *
@@ -1132,6 +1131,9 @@ if __name__ == "__main__":
     from fran.data.dataset import ImageMaskBBoxDataset
     from fran.transforms.misc_transforms import create_augmentations
     from fran.utils.common import *
+# %%
+    
+# %%
     P = Project(project_title="lits"); proj_defaults= P
     spacings = [1,1,1]
     src_patch_size = [220,220,110]
@@ -1670,4 +1672,5 @@ if __name__ == "__main__":
     x = C.encodes([xa,ya,za])
     ImageMaskViewer(x)
 
-# %
+# %%
+

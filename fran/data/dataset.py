@@ -15,6 +15,7 @@ from functools import partial
 
 from fastai.data.transforms import *
 from fran.utils.helpers import *
+from fran.utils.imageviewers import ImageMaskViewer
 
 
 from fastai.data.transforms import FileGetter
@@ -205,7 +206,7 @@ class ImageMaskBBoxDataset():
 if __name__ == "__main__":
     from fran.utils.common import *
     P = Project(project_title="lits"); proj_defaults= P
-    configs_excel = ConfigMaker(proj_defaults.configuration_filename,raytune=False).config
+    configs_excel = ConfigMaker(proj_defaults,raytune=False).config
 
     train_list, valid_list, test_list = get_fold_case_ids(
             fold=configs_excel['metadata']["fold"],
@@ -230,16 +231,45 @@ if __name__ == "__main__":
         )
 # %%
     axes = 2,0,1
-    a,b,c = train_ds[0]
-    a = a.permute(*axes)
+    a,b,c = train_ds[150]
+    # a = a.permute(*axes)
 # %%
     import pywt
     wavelet = pywt.Wavelet('haar')
-    d = pywt.wavedec2(a, wavelet, mode='zero', level=2)
+    d = pywt.wavedec(a, wavelet, mode='zero', level=2)
     dd = torch.tensor(d[0])
-
-    ImageMaskViewer([dd,a],data_types=['img','img'])
+    dd = dd.permute(*axes)
+    a2 = a.permute(*axes)
+    org_shape = a.shape
+    a2 = resize_tensor(a,dd.shape,mode='trilinear')
+    a3 = resize_tensor(a2,org_shape,mode='trilinear')
+    a = a.permute(*axes)
+    a3 = a3.permute(*axes)
+    a=a.permute(*axes)
+    ImageMaskViewer([a,b],data_types=['img','img'])
 
      
+# %%
+    from time import time
+    start = time()
+
+    a2 = [resize_tensor(a,dd.shape,mode='trilinear') for x in range(100)]
+    end = time()
+    print(end-start)
+
+# %% [markdown]
+    start = time()
+    d = [pywt.wavedec(a, wavelet, mode='zero', level=1) for x in range(100)]
+    end = time()
+    print(end-start)
+## Versus torch resize
+# %%
+    resize_tensor
+
+
 # Create geometries and projector.
 # %%
+    a = a.numpy()
+    b = b.numpy()
+    np.save("/home/ub/code/aug/im_liver.npy",a)
+    np.save("/home/ub/code/aug/ma_liver.npy",b)

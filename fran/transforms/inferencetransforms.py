@@ -226,10 +226,10 @@ class ResampleToStage0(PredictorTransform):
             bbox = rescale_bbox(self.scale_factor,bbox)
             bboxes_out.append(bbox)
 
-        img = _resize_tensor(img,self.sz_dest,self.mode)
+        img = resize_tensor(img,self.sz_dest,self.mode)
         return img,bboxes_out
     def decodes(self,x):
-        return _resize_tensor(x,self.sz_source,mode='trilinear')
+        return resize_tensor(x,self.sz_source,mode='trilinear')
 
 class Resize(KeepBBoxTransform):
     '''
@@ -240,7 +240,7 @@ class Resize(KeepBBoxTransform):
         store_attr()
     def func(self,img:Tensor)->Tensor:
         self.org_size = img.shape
-        img = _resize_tensor(img,self.dest_size,self.mode)
+        img = resize_tensor(img,self.dest_size,self.mode)
         return img
     def decodes(self,img:Tensor):
         if isinstance(img,Union[list,tuple]):
@@ -250,14 +250,14 @@ class Resize(KeepBBoxTransform):
             else: 
                 img = img[0]
         mode = 'nearest' if 'int' in str(img.dtype) else 'trilinear'
-        img = _resize_tensor(img,self.org_size,mode)
+        img = resize_tensor(img,self.org_size,mode)
 
         try :
             has_bbox==True
             return img, bboxes
         except: return img
 # %%
-def _resize_tensor(img,target_size,mode):
+def resize_tensor(img,target_size,mode):
         unsqueeze_times = 5-img.dim()
         for times in range(unsqueeze_times):img= img.unsqueeze(0)
         img = F.interpolate(img,target_size,mode=mode)

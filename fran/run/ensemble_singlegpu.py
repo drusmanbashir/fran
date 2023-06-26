@@ -14,12 +14,8 @@ import itertools as il
     # ImageMaskViewer([img_np,mask_np])
 
 
-tot_gpus=2
-n_lists = 2
 
 import os
-import ray
-ray.init(num_gpus=tot_gpus)
 
 # %%
 
@@ -27,7 +23,6 @@ def slice_list(listi,start_end:list):
     # print(listi)
     return listi[start_end[0]:start_end[1]]
 
-@ray.remote(num_cpus=8, num_gpus=tot_gpus/n_lists)
 class EnsembleActor(object):
     def __init__(self):
         self.value = 0
@@ -54,13 +49,8 @@ def main(args):
     #     fnames = list(mo_df.image_filenames)
     fnames = list(Path(input_folder).glob("*"))
 
-    fpl= int(len(fnames)/n_lists)
-    inds = [[fpl*x,fpl*(x+1)] for x in range(n_lists-1)]
-    inds.append([fpl*(n_lists-1),None])
-
-    chunks = list(il.starmap(slice_list,zip([fnames]*n_lists,inds)))
-    actors = [EnsembleActor.remote() for _ in range(n_lists)]
-    results = ray.get([c.process.remote(proj_defaults,run_name_w,ensemble, fnames ,half, debug,overwrite) for c,fnames in zip(actors,chunks)])
+    actor = EnsembleActor()
+    results = [actor.process(proj_defaults,run_name_w,ensemble, fnames ,half, debug,overwrite) for fname in fnames]
     print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 # gpu_actor = GPUActor.remote()
 # %%

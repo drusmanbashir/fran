@@ -1,0 +1,4 @@
+host: "andrena.hpc.qmul.ac.uk"
+username: "mpx---"
+password: "abcdefgc"
+hpc_storage: "/data/scratch/mpx---/anyname/"

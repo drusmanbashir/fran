@@ -1,5 +1,6 @@
 import collections
 
+from bs4 import BeautifulSoup as BS
 from fastai.vision.augment import listify
 import tqdm,yaml
 import pickle, os,json
@@ -96,6 +97,17 @@ def load_text(filename):
         contents = f.readlines()
         contents = [a.strip() for a in contents]
         return contents
+
+
+@load_file('r')
+def load_xml(filename):
+        return BS(filename,'xml')
+
+
+def save_xml(itm, filename):
+    with open(filename,'w') as f:
+        f.write(itm)
+
 
 
 def save_json(dictionary, filename):
