@@ -95,7 +95,7 @@ def initialize_run(proj_defaults ,args):
         ]
     La = Trainer(proj_defaults, configs,cbs, device =args.gpu)
     return La
-# %%
+
 def main(args):
 
     project_title = args.t
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     parser.add_argument("-d","--distributed", action='store_true')
     parser.add_argument("-c","--compile", action='store_true')
     parser.add_argument("--lr", help="learning rate",type=float)
-    parser.add_argument("--gpu", help="gpu id",type=int, default=None)
+    parser.add_argument("--gpu", help="gpu id",type=int, default=0)
 
     parser.add_argument("-a", "--arch", help="Architecture. Supports: nnUNet, SwinUNETR, DynUNet")
     parser.add_argument("-u", "--update", help="Update existing run from configs excel spreadsheet.",action='store_true')
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     parser.add_argument("-n", help="No Neptune",action='store_true')
 # %%
     args = parser.parse_known_args()[0]
-    # args.t = 'lits'
+    # args.t = 'lits2'
     # args.lr = 1e-4
     # args.distributed = True
     # args.resume=''

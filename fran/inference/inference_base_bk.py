@@ -308,7 +308,7 @@ class _Predictor():
             print("Files exists {}. Skipping. ".format(self.pred_fn_i))
             self.already_processed = True
         else:
-            self.case_id = get_case_id_from_filename(None, self.img_filename)
+            self.case_id = get_case_id_from_fname(self.img_filename)
             self.img_sitk = sitk.ReadImage(str(self.img_filename))
             self.set_sitk_props()
             self.img_np_orgres = sitk.GetArrayFromImage(self.img_sitk)
@@ -600,7 +600,7 @@ class PatchPredictor(_Predictor):
             print("Files exists {}. Skipping. ".format(self.pred_fn_i))
             self.already_processed = True
         else:
-            self.case_id = get_case_id_from_filename(None, self.img_filename)
+            self.case_id = get_case_id_from_fname(self.img_filename)
             self.img_sitk = sitk.ReadImage(str(self.img_filename))
             self.set_sitk_props()
             self.img_np_orgres = sitk.GetArrayFromImage(self.img_sitk)

@@ -1,6 +1,8 @@
 # %%
 import math
 import ipdb
+
+from fran.utils.string import cleanup_fname, drop_digit_suffix, info_from_filename, strip_extension
 tr = ipdb.set_trace
 
 from pathlib import Path
@@ -17,8 +19,11 @@ sys.path += ["/home/ub/Dropbox/code"]
 from types import SimpleNamespace
 from fran.utils.fileio import *
 
+if "XNAT_CONFIG_PATH" in os.environ:
+    from xnat.object_oriented import *
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 from fran.utils.templates import mask_labels_template
+from fran.utils.helpers import pat_full,pat_nodesc, pat_idonly
 
 
 class Project(DictToAttr):
@@ -43,7 +48,7 @@ class Project(DictToAttr):
         else:
             self._create_folder_tree()
         if datasets:
-            self.add_raw_data_sources(datasets, test)
+            self.add_datasources(datasets, test)
 
         if not label_dict_filename:
             save_dict(mask_labels_template, self.label_dict_filename)
@@ -64,24 +69,41 @@ class Project(DictToAttr):
         for ds in self.raw_data_sources:
             dataset_name = ds['dataset_name']
             test = ds['test']
-            filenames = (ds['source_path'] / ("images")).glob("*")
             source_path = ds['source_path']
-            pairs = [[img_fn, img_fn.str_replace("images", "masks")] for img_fn in filenames]
-            images,masks=[],[]
-            if self.paths_exist(pairs) == True:
-                print("self.populating raw data folder (with symlinks)")
-                for org_names in pairs:
-                    case_filename = org_names[0].name
-                    new_names= [
-                        self.raw_data_folder / subfolder / case_filename
-                        for subfolder in ["images", "masks"]
-                    ]
-                    images.append(new_names[0])
-                    masks.append(new_names[1])
-
-                    self._create_img_mask_symlinks(org_names, new_names)
+            images,masks=  self.extract_img_mask_fnames(ds)
             ds_new = {'dataset_name':dataset_name,'source_path':source_path, 'test':test, 'images':images,'masks':masks}
             self._add_dataset(ds_new)
+
+    def extract_img_mask_fnames(self,ds):
+            img_fnames = list((ds['source_path'] / ("images")).glob("*"))
+            mask_fnames = list((ds['source_path'] / ("masks")).glob("*"))
+            img_symlinks,mask_symlinks= [],[]
+        
+            verified_pairs=[]
+            for img_fn in img_fnames:
+                verified_pairs.append([img_fn, find_matching_fn(img_fn, mask_fnames)])
+            assert (self.paths_exist(verified_pairs)), "(Some) paths do not exist. Fix paths and try again."
+            print("self.populating raw data folder (with symlinks)")
+            for pair in verified_pairs:
+                img_symlink,mask_symlink = self.filepair_symlink(pair)
+                img_symlinks.append(img_symlink)
+                mask_symlinks.append(mask_symlink)
+
+            return img_symlinks,mask_symlinks
+
+
+    def filepair_symlink(self,pair:list):
+        symlink_fnames= []
+        for fn in pair:
+            prnt = self.raw_data_folder/fn.parent.name
+            fn_out = prnt/fn.name
+            try:
+                fn_out.symlink_to(fn)
+            except FileExistsError as e:
+                print(f"SYMLINK {str(e)}. Skipping...")
+            symlink_fnames.append(fn_out)
+        return symlink_fnames
+        
 
 
     def _add_dataset(self,dic):
@@ -146,7 +168,7 @@ class Project(DictToAttr):
             dd = {'dataset_name':self.get_dataset_name(folder),   'source_path':folder,'test':test}
             return dd
 
-    def add_raw_data_sources(self, datasets: Union[list, str, Path], test=None) -> None:
+    def add_datasources(self, datasets: Union[list, str, Path], test=None) -> None:
 
         if not test:
             test = [
@@ -159,6 +181,16 @@ class Project(DictToAttr):
         datasets = [self.path_to_dataset(ds,ts) for ds,ts in zip(listify(datasets), listify(test))]
         datasets = self.filter_existing_datasets(datasets)
         self.raw_data_sources.extend(datasets)
+
+    
+
+    def add_datasources_xnat(self,xnat_proj:str):
+        xnat_shadow_fldr="/s/xnat_shadow/"
+        proj = Proj(xnat_proj)
+        rc = proj.resource("IMAGE_MASK_FPATHS")
+        csv_fn = rc.get("/tmp", extract=True)[0]
+        df = pd.read_csv(csv_fn)
+
 
     def fold_update_needed(self):
         names = [a.name.split('.')[0] for a in self.raw_data_imgs]
@@ -309,13 +341,13 @@ class Project(DictToAttr):
     @ask_proceed("Remove all project files and folders?")
     def delete(self):
         for folder in self.folders:
-            if folder.exists():
+            if folder.exists() and self.project_title in str(folder) :
                 shutil.rmtree(folder)
         print("Done")
 
 def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_valid , json_filename, shuffle=False):
-    train_val_ids = [get_case_id_from_filename(None,fn) for fn in train_val_list]
-    test_ids = [get_case_id_from_filename(None,fn) for fn in test_list]
+    train_val_ids = [strip_extension(fn.name) for fn in train_val_list]
+    test_ids = [strip_extension(fn.name) for fn in test_list]
     folds_dict = create_folds(train_val_ids,test_ids,pct_valid,shuffle=shuffle)
     print("Saving folds to {}  ..".format(json_filename))
     save_dict(folds_dict,json_filename)
@@ -343,12 +375,11 @@ def create_folds(train_val_ids,test_ids=[], pct_valid=0.2,shuffle=False):
 
 # %%
 if __name__ == "__main__":
-    fldr = Path("/s/xnat/archive/bosniak/arc001/11_CT_1/SCANS")
-    P = Project(project_title="litsxassssaz")
-    P.create_project(['/s/datasets_bkp/drli_short/', '/s/datasets_bkp/lits_segs_improved/', '/s/datasets_bkp/litqsmall/sitk'])
+    P = Project(project_title="lits")
+    P.create_project(['/s/datasets_bkp/drli/', '/s/datasets_bkp/lits_segs_improved/', '/s/datasets_bkp/litqsmall/litqsmall', '/s/xnat_shadow/litq'])
+    # P.create_project([ '/s/xnat_shadow/litq'])
     P.populate_raw_data_folder()
     P.raw_data_imgs
-    P.add_raw_data_sources(['/s/datasets_bkp/drli_short/'])
     # P.update_fold_indices()
 # %%
     P.raw_data_imgs
@@ -356,7 +387,7 @@ if __name__ == "__main__":
 
 # %%
 
-    P.add_raw_data_sources(['/s/datasets_bkp/litsmall/'])
+    P.add_datasources(['/s/datasets_bkp/litsmall/'])
     P.populate_raw_data_folder()
 # %%
 # %%
@@ -367,6 +398,4 @@ if __name__ == "__main__":
     P.save_summary()
 
 # %%
-# %%
-# %%
-        
+       

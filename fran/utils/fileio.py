@@ -148,7 +148,7 @@ def is_filename(x:str):
         return False
 
 
-def maybe_makedirs(x:Union[list, str,Path]):
+def maybe_makedirs(x:Union[list,tuple, str,Path]):
     def _inner(x):
         try:
             if not isinstance(x,Path):

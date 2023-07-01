@@ -779,10 +779,10 @@ if __name__ == "__main__":
     ).unique()
     # %%
     file_cols = [c for c in df.columns if "case_file" in c]
-    case_ids = list(set([get_case_id_from_filename("lits", Path(f)) for f in uniques]))
+    case_ids = list(set([get_case_id_from_filename( Path(f)) for f in uniques]))
     case_id = case_ids[0]
     case_files = [
-        fn for fn in uniques if get_case_id_from_filename("lits", Path(fn)) == case_id
+        fn for fn in uniques if get_case_id_from_filename( Path(fn)) == case_id
     ]
     fn = case_files[0]
     # %%

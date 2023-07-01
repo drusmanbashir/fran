@@ -13,6 +13,7 @@ import cc3d
 
 from fran.utils.image_utils import get_img_mask_from_nii
 from fran.utils.sitk_utils import SITKImageMaskFixer
+from fran.utils.string import drop_digit_suffix
 
 
 def get_intensity_range(global_properties: dict) -> list:
@@ -34,7 +35,7 @@ def get_img_mask_filepairs(parent_folder: Union[str,Path]):
     assert (len(imgs_all)==len(masks_all)), "{0} and {1} folders have unequal number of files!".format(imgs_folder,masks_folder)
     img_mask_filepairs= []
     for img_fn in imgs_all:
-            mask_fn = masks_folder/img_fn.name
+            mask_fn = find_matching_fn(img_fn,masks_all)
             assert mask_fn.exists(), f"{mask_fn} doest not exist, corresponding tto {img_fn}"
             img_mask_filepairs.append([img_fn,mask_fn])
     return img_mask_filepairs
@@ -70,7 +71,10 @@ def verify_datasets_integrity(folders:list, debug=False,fix=False)->list:
     
 
 def verify_img_mask_match(mask_fn:Path,fix=False):
-    img_fn = mask_fn.str_replace('masks','images')
+    imgs_foldr = mask_fn.parent.str_replace("masks","images")
+    img_fnames = list(imgs_foldr.glob("*"))
+    assert (imgs_foldr.exists()),"{0} corresponding to {1} parent folder does not exis".format(imgs_foldr,mask_fn)
+    img_fn = find_matching_fn (mask_fn,img_fnames)
     if '.pt' in mask_fn.name:
         return verify_img_mask_torch(mask_fn)
     else:
@@ -122,7 +126,7 @@ class BBoxesFromMask(object):
             self.label_settings = load_dict(proj_defaults.label_dict_filename)
         self.dusting_threshold_factor = dusting_threshold_factor  # a multiplier when processing subsampled datasets having proportionately fewer voxels for dusting
 
-        case_id = get_case_id_from_filename(None, filename)
+        case_id = cleanup_fname(filename.name)
         self._bboxes_info = {
             "case_id": case_id,
             "filename": filename,
@@ -181,7 +185,7 @@ class SingleCaseAnalyzer:
         assert isinstance(case_files_tuple, list) or isinstance(
             case_files_tuple, tuple
         ), "case_files_tuple must be either a list or a tuple"
-        self.case_id = get_case_id_from_filename(None, case_files_tuple[0])
+        self.case_id = cleanup_fname(case_files_tuple[0].name)
         store_attr("case_files_tuple,outside_value,percentile_range")
 
     def load_case(self):
@@ -463,7 +467,12 @@ if __name__ == "__main__":
     
     from fran.utils.common import *
     P = Project(project_title="lits"); proj_defaults= P
+    fn = Path("/s/fran_storage/datasets/raw_data/lits/masks/litq_76_20210528.nii.gz")
+    fn2 = Path("/home/ub/Desktop/tmp.nii.gz")
+    import shutil
+    shutil.copy(fn,fn2)
 
+    im = sitk.ReadImage(fn2)
 # %% [markdown]
 # %%
     M = MultiCaseAnalyzer(proj_defaults, outside_value=0)

@@ -1,12 +1,14 @@
 from pathlib import Path
+from fastcore.all import is_close
 
 from fastcore.test import test_close
 import ast
-from fastai.callback.tracker import Union
+from fastai.callback.tracker import Union, shutil
 from fastcore.basics import store_attr
 import numpy as np
 from fastai.vision.augment import test_eq
 from torch.functional import Tensor
+from fran.utils.imageviewers import ImageMaskViewer
 from fran.utils.fileio import str_to_path
 
 import SimpleITK as sitk
@@ -145,10 +147,52 @@ def create_sitk_as(img:sitk.Image,arr:Union[np.array,Tensor]=None)->sitk.Image:
 def get_meta(img:sitk.Image)->list   :
     res = img.GetSize(), img.GetSpacing(), img.GetDirection()
     return  res
+
+def fix_slicer_labelmap(mask_fn,img_fn):
+    '''
+    slicer output labelmaps are not full sized but just a bbox of the labels
+    this function zero-fills outside the bbox to match imge size
+    
+    '''
+    img = sitk.ReadImage(img_fn)
+    mask = sitk.ReadImage(mask_fn)
+    m = sitk.GetArrayFromImage(mask)
+    i_shape = sitk.GetArrayFromImage(img).shape
+    m_shape = m.shape
+    if i_shape==m_shape:
+        print("Identical shaped image and mask. Nothing done")
+    else:
+        print("Image shape is {0}. Mask shape is {1}. Creating mask backup in /tmp folder and fixing..".format(i_shape,m_shape))
+        mask_bk_fn = Path("/tmp")/mask_fn.name
+        shutil.copy(mask_fn,mask_bk_fn)
+
+        distance =[a-b for a,b in zip(mask.GetOrigin(),img.GetOrigin())]
+        ad = [int(d/s) for d,s in zip(distance,img.GetSpacing())]
+        ad.reverse()
+        shp = list(img.GetSize())
+        shp.reverse()
+        zers = np.zeros(shp)
+        zers[ad[0]:ad[0]+m_shape[0],ad[1]:ad[1]+m_shape[1],ad[2]:ad[2]+m_shape[2]] = m
+        mask_neo = create_sitk_as(img,zers)
+        sitk.WriteImage(mask_neo,mask_fn)
+
 # %%
 if __name__ == "__main__":
+
     img_fn =  Path('/media/ub/datasets_bkp/litq/complete_cases/images/litq_0014389_20190925.nii')
-    mask_fn = "/media/ub/UB11/datasets/lits_short/segmentation-51.nii"
+    mask_fn = Path("/media/ub/UB11/datasets/lits_short/segmentation-51.nii")
 # %%
-    F = SITKImageMaskFixer(img_fn,mask_fn)
-    F.process(fix=True,outname="jackson")
+
+
+    img_fn = Path("/s/fran_storage/datasets/raw_data/lits2/images/litq_77_20210306.nii.gz")
+    mask_fn = "/s/fran_storage/datasets/raw_data/lits2/masks/litq_77_20210306.nrrd"
+    mask_outfn = "/s/fran_storage/datasets/raw_data/lits2/masks/litq_77_20210306_fixed.nrrd"
+    img = sitk.ReadImage(img_fn)
+    np_a = sitk.GetArrayFromImage(img)
+    np_a = np_a.transpose(2,1,0)
+    
+    np2 = np.mean(np_a,1)
+    np2 = np2.transpose(0,1)
+    plt.imshow(np2)
+    ImageMaskViewer([a,a])
+

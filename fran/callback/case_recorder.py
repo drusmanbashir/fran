@@ -6,11 +6,12 @@ import pandas as pd
 import seaborn as sns
 from fran.callback.base import *
 from fastai.callback.tracker import Callback
-from fran.utils.helpers import get_case_id_from_filename
 import itertools as il
 
 from neptune.types import File
 from pathlib import Path
+
+from fran.utils.string import cleanup_fname
 # %%
 
 class CaseIDRecorder(Callback):
@@ -118,7 +119,7 @@ class CaseIDRecorder(Callback):
 
 
 def case_id_from_series(series):
-    output = [get_case_id_from_filename(None , Path(y)) for y in series]
+    output = [cleanup_fname(Path(y).name) for y in series]
     return output
 
 # %%

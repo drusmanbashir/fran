@@ -12,12 +12,16 @@ import tqdm
 
 from fran.utils.dictopts import *
 from fran.utils.fileio import load_dict, save_dict
+from fran.utils.string import cleanup_fname
 
 tr = ipdb.set_trace
 import gc
 # from fran.utils.fileio import *
 import random
 
+pat_full = r"(?P<pt_id>[a-z]*_[a-z0-9]+)_(?P<date>\d+)_(?P<desc>.*)_(?P<tag>thick)_?.*(?=(?P<ext>\.(nii|nrrd)(\.gz)?)$)"
+pat_nodesc ="(?P<pt_id>[a-z]*_[a-z0-9]*)_(?P<date>\d*)"
+pat_idonly = "(?P<pt_id>[a-z]*_[a-z0-9]*)"
 def range_inclusive(start, end):
      return range(start, end+1)
 def multiply_lists(a,b):
@@ -232,19 +236,6 @@ def regex_matcher(indx=0):
                 return answer[indx] if answer else None
         return _inner
     return _outer
-
-@regex_matcher(0)
-def infer_dataset_name(filename):
-    pat ="^([^-_]*)"
-    return pat, filename.name
-
-
-@regex_matcher()
-def get_case_id_from_filename(dataset_name, filename:Path):
-               if dataset_name is None: dataset_name = infer_dataset_name(filename)
-               pat = "{}[-_][a-z\d]*".format(dataset_name)
-               return pat, filename.name
-
 @path_to_str
 @regex_matcher()
 def match_filename_with_case_id(project_title, case_id,filename):
@@ -340,6 +331,18 @@ def get_fold_case_ids(fold:int,json_fname):
         all_folds= load_dict(json_fname)
         train_case_ids, validation_case_ids, test_case_ids,= all_folds['fold_'+str(int(fold))]['train'], all_folds['fold_'+str(int(fold))]['valid'],all_folds['test_cases']  # fold ->int -> str because sometimes fold = 0 is read by pandas as bool False!
         return train_case_ids,validation_case_ids,test_case_ids
+
+
+
+def find_matching_fn(src_fn:Path,mask_fnames:list):
+        src_fn = cleanup_fname(src_fn.name)
+        matching_mask_fns=[]
+        for mask_fn in mask_fnames:
+            mask_fn_clean = cleanup_fname(mask_fn.name)
+            if mask_fn_clean==src_fn:
+                matching_mask_fns.append(mask_fn)
+        if len(matching_mask_fns)>1: tr()
+        else: return matching_mask_fns[0]
 
 
 def get_fileslist_from_path(path:Path, ext:str = ".pt"):

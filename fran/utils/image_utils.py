@@ -3,9 +3,11 @@ from numpy.core.fromnumeric import resize
 import torch
 import SimpleITK as sitk
 from fran.utils.fileio import save_np
-from fran.utils.helpers import abs_list, get_case_id_from_filename
+from fran.utils.helpers import abs_list
 import torch.nn.functional as F
 import ipdb
+
+from fran.utils.string import cleanup_fname
 
 tr = ipdb.set_trace
 
@@ -159,27 +161,10 @@ def get_img_mask_from_nii(case_files_tuple, outside_value=0):
     # properties["bbox"] = get_bbox_from_mask(mask, outside_value=outside_value)
     return img, mask, properties
 
-
-#
-# def get_img_mask_from_nii(case):
-#         assert isinstance(case, list) or isinstance(case, tuple), "case must be either a list or a tuple"
-#         properties = dict()
-#         properties["case_id"] = get_case_id_from_filename(case[0])
-#         properties["img_file"] = case[0]
-#         properties["mask_file"] = case[1]
-#         data_itk = [sitk.ReadImage(f) for f in case]
-#         properties["original_size_of_raw_data"] = np.array(data_itk[0].GetSize())[[2, 1, 0]]
-#         properties["original_spacing"] = np.array(data_itk[0].GetSpacing())[[2, 1, 0]]
-#
-#         properties["itk_origin"] = data_itk[0].GetOrigin()
-#         properties["itk_spacing"] = data_itk[0].GetSpacing()
-#         properties["itk_direction"] = data_itk[0].GetDirection()
-#         img,mask= [sitk.GetArrayFromImage(d)[None].astype(np.float32) for d in data_itk] # returns channel x width x height x depth
-
 #
 def retrieve_properties_from_nii(case):
     properties = dict()
-    properties["case_id"] = get_case_id_from_filename(case[0])
+    properties["case_id"] = cleanup_fname(case[0])
     properties["img_file"] = case[0]
     properties["mask_file"] = case[1]
     data_itk = [sitk.ReadImage(f) for f in case]

@@ -82,7 +82,7 @@ def load_model_from_raytune_trial(folder_name,out_channels):
     return  model
 class Trainer:
     def __init__(
-            self, proj_defaults, config_dict, cbs=[], bs=None, max_workers=0, pin_memory=True, device='cuda', dummy_ds:int=0
+            self, proj_defaults, config_dict, cbs=[], bs=2, max_workers=0, pin_memory=True, device='cuda', dummy_ds:int=0
     ):
         '''
         dummy_ds if >0, creates a short ds=dummy_ds. Used to run quick fits (to estimate vram needs)
@@ -235,11 +235,9 @@ class Trainer:
             bboxes_fname,
         )
 
-    def create_dataloaders(self, bs=None, max_workers=4,device=None, **kwargs):
+    def create_dataloaders(self, bs, max_workers=4,device=None, **kwargs):
         if not device:
             device= 'cuda'
-        if bs == None:
-            bs = self.dataset_params["bs"]
         train_dl = TfmdDLKeepBBox(
             self.train_ds,
             shuffle=True,
@@ -424,7 +422,7 @@ def update_nep_run_from_config(nep_run, config):
 if __name__ == "__main__":
 
     from fran.utils.common import *
-    project_title = "lits"
+    project_title = "lits2"
     P = Project(project_title=project_title); proj_defaults= P
     from fran.managers.tune import get_raytune_folder_from_trialname
 
@@ -451,9 +449,9 @@ if __name__ == "__main__":
 #     )
 #     #
 # # %%
-#     learn = La.create_learner(gbs=[], device=device)
-# #     # learn.model = model
-#     learn.fit(n_epoch=500, lr=1e-6)
+    learn = La.create_learner(cbs=[])
+#     # learn.model = model
+    learn.fit(n_epoch=500, lr=1e-6)
 # # # %%
 
     #     La.dataset_params['fake_tumours']=True

@@ -328,13 +328,13 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "litstmp"
+    # args.project_title = "lits"
     # args.num_processes = 16
     # args.debug = False
     # args.overwrite=True
     I = InteractiveAnalyserResampler(args)
+    # I.verify_dataset_integrity()
 # %%
-    I.verify_dataset_integrity()
 
     I.analyse_dataset()
     I.resample_dataset()

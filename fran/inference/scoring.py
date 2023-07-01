@@ -7,7 +7,7 @@ from monai.losses import DiceLoss
 # %%
 
 from fran.utils.common import *
-from fran.utils.helpers import get_case_id_from_filename, get_fold_case_ids
+from fran.utils.helpers import  get_fold_case_ids
 from fran.utils.imageviewers import ImageMaskViewer
 from fastai.vision.augment import typedispatch
 from fran.utils.common import *
@@ -53,17 +53,17 @@ if __name__ == "__main__":
     # %%
     mask_files = list((proj_defaults.raw_data_folder/("masks")).glob("*nii*"))
     img_files= list((proj_defaults.raw_data_folder/("images")).glob("*nii*"))
-    masks_valid = [filename for filename in mask_files if  get_case_id_from_filename(None, filename) in valid_list]
-    masks_train = [filename for filename in mask_files if  get_case_id_from_filename(None, filename) in train_list]
+    masks_valid = [filename for filename in mask_files if  cleanup_fname(filename.name) in valid_list]
+    masks_train = [filename for filename in mask_files if  cleanup_fname(filename.name) in train_list]
     imgs_valid =  [proj_defaults.raw_data_folder/"images"/mask_file.name for mask_file in masks_valid]
-    imgs_test =  [filename for filename in img_files if  get_case_id_from_filename(None, filename) in test_list]
-    imgs_train =  [filename for filename in img_files if  get_case_id_from_filename(None, filename) in train_list]
+    imgs_test =  [filename for filename in img_files if  cleanup_fname(filename.name) in test_list]
+    imgs_train =  [filename for filename in img_files if  cleanup_fname(filename.name) in train_list]
     # %%
     run_name = "LITS-122"
     preds_folder = list(proj_defaults.predictions_folder.glob(f"*{run_name}"))[0]
     pred_fns = list(preds_folder.glob("*"))
     pred_fn = pred_fns[0]
-    case_id = get_case_id_from_filename(None,pred_fn)
+    case_id = cleanup_fname(pred_fn.name)
 # %%
     
     mask_fn = [fn for fn in masks_train if 'lits-128' in str(fn)][0]

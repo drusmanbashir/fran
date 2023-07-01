@@ -46,9 +46,9 @@ if __name__ == "__main__":
 
     mask_files = list((proj_defaults.raw_data_folder/("masks")).glob("*"))
     img_files= list((proj_defaults.raw_data_folder/("images")).glob("*"))
-    masks_valid = [filename for filename in mask_files if  get_case_id_from_filename(None, filename) in valid_list]
+    masks_valid = [filename for filename in mask_files if  cleanup_fname(filename.name) in valid_list]
     imgs_valid =  [proj_defaults.raw_data_folder/"images"/mask_file.name for mask_file in masks_valid]
-    imgs_test =  [filename for filename in img_files if  get_case_id_from_filename(None, filename) in test_list]
+    imgs_test =  [filename for filename in img_files if  cleanup_fname(filename.name) in test_list]
 
 # %%
 

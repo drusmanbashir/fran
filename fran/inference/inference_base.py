@@ -27,9 +27,9 @@ import SimpleITK as sitk
 from pathlib import Path
 from fran.utils.helpers import (
     get_available_device,
-    get_case_id_from_filename,
     get_extension,
 )
+from fran.utils.string import drop_digit_suffix
 sys.path+=["/home/ub/code"]
 from mask_analysis.helpers import to_int, to_label, to_cc
 
@@ -218,7 +218,7 @@ class _Predictor():
             print("Files exists {}. Skipping. ".format(self.pred_fn_i))
             self.already_processed = True
         else:
-            self.case_id = get_case_id_from_filename(None, self.img_filename)
+            self.case_id = drop_digit_suffix(self.img_filename.name)
             self.img_sitk = sitk.ReadImage(str(self.img_filename))
             self.set_sitk_props()
             self.img_np_orgres = sitk.GetArrayFromImage(self.img_sitk)
