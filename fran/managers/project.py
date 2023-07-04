@@ -42,6 +42,7 @@ class Project(DictToAttr):
         """
 
         if self.label_dict_filename.exists():
+            tr()
             ask_proceed("Project already exists. Proceed and make folders again (e.g., if some were deleted)?")(
                 self._create_folder_tree
             )()
@@ -377,9 +378,9 @@ def create_folds(train_val_ids,test_ids=[], pct_valid=0.2,shuffle=False):
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="l2")
-    P.create_project(['/s/datasets_bkp/drli/', '/s/datasets_bkp/lits_segs_improved/', '/s/datasets_bkp/litqsmall/litqsmall', '/s/xnat_shadow/litq'])
-    P.add_datasources("/s/datasets_bkp/litsmall")
+    P = Project(project_title="l245")
+    P.create_project(['/s/datasets_bkp/drli/', '/s/datasets_bkp/lits_segs_improved/', '/s/datasets_bkp/litqsmall/', '/s/xnat_shadow/litq'])
+    # P.add_datasources("/s/datasets_bkp/litsmall")
     # P.create_project([ '/s/xnat_shadow/litq'])
     P.populate_raw_data_folder()
     P.raw_data_imgs
