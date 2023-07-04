@@ -98,7 +98,7 @@ class Project(DictToAttr):
             prnt = self.raw_data_folder/fn.parent.name
             fn_out = prnt/fn.name
             try:
-                print("SYMLINK created: {0 -> {1}".format(fn,fn_out))
+                print("SYMLINK created: {0} -> {1}".format(fn,fn_out))
                 fn_out.symlink_to(fn)
             except FileExistsError as e:
                 print(f"SYMLINK {str(e)}. Skipping...")
