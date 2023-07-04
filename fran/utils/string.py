@@ -13,8 +13,6 @@ def append_time(input_str, now=True):
 def infer_dataset_name(filename):
     pat ="^([^-_]*)"
     return pat, filename.name
-
-
 def strip_extension(fname:str):
     exts = (".npy .nii.gz .nii .nrrd .pt".split(" "))
     for e in exts:

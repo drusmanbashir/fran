@@ -1,3 +1,5 @@
+
+# %%
 from pathlib import Path
 from fastcore.all import is_close
 
@@ -9,11 +11,13 @@ import numpy as np
 from fastai.vision.augment import test_eq
 from torch.functional import Tensor
 from fran.utils.imageviewers import ImageMaskViewer
-from fran.utils.fileio import str_to_path
+from fran.utils.fileio import maybe_makedirs, str_to_path
 
 import SimpleITK as sitk
-from fran.utils.helpers import abs_list
+from fran.utils.helpers import abs_list, get_extension
 import ipdb
+
+from fran.utils.string import cleanup_fname
 tr = ipdb.set_trace
 from fastcore.transform import Transform, ItemTransform
 import itertools
@@ -154,6 +158,7 @@ def fix_slicer_labelmap(mask_fn,img_fn):
     this function zero-fills outside the bbox to match imge size
     
     '''
+    print("Processing {}".format(mask_fn))
     img = sitk.ReadImage(img_fn)
     mask = sitk.ReadImage(mask_fn)
     m = sitk.GetArrayFromImage(mask)
@@ -167,6 +172,7 @@ def fix_slicer_labelmap(mask_fn,img_fn):
         shutil.copy(mask_fn,mask_bk_fn)
 
         distance =[a-b for a,b in zip(mask.GetOrigin(),img.GetOrigin())]
+        tr()
         ad = [int(d/s) for d,s in zip(distance,img.GetSpacing())]
         ad.reverse()
         shp = list(img.GetSize())
@@ -176,11 +182,75 @@ def fix_slicer_labelmap(mask_fn,img_fn):
         mask_neo = create_sitk_as(img,zers)
         sitk.WriteImage(mask_neo,mask_fn)
 
+@str_to_path(0)
+def compress_img(img_fn):
+    '''
+    if img_fn is a symlink. This will alter the target file
+    '''
+    img_fn = img_fn.resolve()
+    
+    e = get_extension(img_fn)
+    fn_neo = img_fn.str_replace(e,"nii.gz")
+    fn_old_bkp = img_fn.str_replace("/s","/s/tmp")
+    fn = Path("/s/xnat_shadow/litq/images/litq_48_20200107.nii.gz")
+    
+    for parent in fn_old_bkp.parents:
+        maybe_makedirs(parent)
+    if e!="nii.gz":
+        print("Converting {0}  -----> {1}".format(img_fn,fn_neo))
+        img = sitk.ReadImage(img_fn)
+        sitk.WriteImage(img,fn_neo)
+        shutil.move(img_fn,fn_old_bkp)
+
+        
+    else:
+        print("File {} already nii.gz format. Nothing to do.".format(img_fn))
+    
+@str_to_path(0)
+def compress_fldr(fldr:Path, recursive=True):
+    if recursive==True:
+        files = fldr.rglob("*")
+    else:
+        files = fldr.glob("*")
+    for fn in files:
+        if fn.is_file():
+            compress_img(fn)
+
 # %%
 if __name__ == "__main__":
+# %%
+    fldr =Path("/home/ub/Desktop/capestart/liver/masks")
+    compress_fldr(fldr)
+# %%
+
+
+    imgs
+# %%
+    masks_fldr = Path("/home/ub/Desktop/capestart/liver/masks")
+    images_fldr = Path("/s/datasets_bkp/litq/sitk/images/")
+    masks = list(masks_fldr.glob("*"))
+    imgs = list(images_fldr.glob("*"))
+    for mask_fn in masks:
+        mt = cleanup_fname(mask_fn.name)
+        img_fn =[fn for fn in imgs if cleanup_fname(fn.name)==mt]
+        if len(img_fn)>1 or len(img_fn)==0:
+            tr()
+        else:
+            fix_slicer_labelmap(mask_fn,img_fn[0])
+# %%
+     
+
+
+    fldr = Path("/s/datasets_bkp/drli/masks/")
+    for fn in fldr.glob("*"):
+        imgfn = fn.str_replace("masks","images")
+        if not imgfn.exists():
+            tr()
+# %%
 
     img_fn =  Path('/media/ub/datasets_bkp/litq/complete_cases/images/litq_0014389_20190925.nii')
     mask_fn = Path("/media/ub/UB11/datasets/lits_short/segmentation-51.nii")
+    compress_img(img_fn)
 # %%
 
 

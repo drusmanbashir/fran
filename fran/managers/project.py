@@ -98,6 +98,7 @@ class Project(DictToAttr):
             prnt = self.raw_data_folder/fn.parent.name
             fn_out = prnt/fn.name
             try:
+                print("SYMLINK created: {0 -> {1}".format(fn,fn_out))
                 fn_out.symlink_to(fn)
             except FileExistsError as e:
                 print(f"SYMLINK {str(e)}. Skipping...")
@@ -225,6 +226,7 @@ class Project(DictToAttr):
         else: return False
 
     def update_folds(self)->None:
+        print("New cases: {0}\n{1}".format(str(len(self.new_case_ids)),self.new_case_ids))
         folds_new = create_folds(self.new_case_ids)
         self.folds = merge_dicts(self.folds,folds_new)
         save_dict(self.folds, self.validation_folds_filename)
@@ -375,12 +377,13 @@ def create_folds(train_val_ids,test_ids=[], pct_valid=0.2,shuffle=False):
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="lits")
+    P = Project(project_title="l2")
     P.create_project(['/s/datasets_bkp/drli/', '/s/datasets_bkp/lits_segs_improved/', '/s/datasets_bkp/litqsmall/litqsmall', '/s/xnat_shadow/litq'])
+    P.add_datasources("/s/datasets_bkp/litsmall")
     # P.create_project([ '/s/xnat_shadow/litq'])
     P.populate_raw_data_folder()
     P.raw_data_imgs
-    # P.update_fold_indices()
+    P.update_folds()
 # %%
     P.raw_data_imgs
     P.create_train_valid_folds()

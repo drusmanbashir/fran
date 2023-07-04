@@ -12,10 +12,14 @@ def main(args):
     print("Project: {0}".format(project_title))
     if not args.delete==True:
         P.create_project(args.input_folders)
-        P.add_raw_data_sources(input_folders)
-        P.populate_raw_data_folder()
-        P.create_train_valid_folds()
+        if args.input_folders:
+            P.add_datasources(input_folders)
+            P.populate_raw_data_folder()
         P.raw_data_imgs
+        if args.update_folds==True:
+            P.update_folds()
+        else:
+            P.create_train_valid_folds()
     else:
         P.delete()
 
@@ -28,10 +32,11 @@ if __name__ == "__main__":
     parser.add_argument("-t", help="project title")
     parser.add_argument("-i","--input-folders" , help="Dataset parent folder containing subfolders 'images' and 'masks'",nargs='+')
     parser.add_argument("-d" ,"--delete" ,action='store_true')
+    parser.add_argument("-u" ,"--update-folds" ,action='store_true')
 
 # %%
     args = parser.parse_known_args()[0]
-    # args.t = "litsssass"
+    # args.t = "l2"
     # args.delete=True
     # args.i = "/s/datasets/drli_short/"
     main(args)
