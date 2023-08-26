@@ -3,7 +3,6 @@
 from typing import Union
 import numpy as np
 from torch.functional import Tensor
-import torchio as tio
 import ipdb
 
 from fran.transforms.basetransforms import KeepBBoxTransform
@@ -243,7 +242,7 @@ class Resize(KeepBBoxTransform):
         img = resize_tensor(img,self.dest_size,self.mode)
         return img
     def decodes(self,img:Tensor):
-        if isinstance(img,Union[list,tuple]):
+        if isinstance(img,list) or isinstance(img,tuple) :
             if len(img)>=2:
                 img, bboxes=img
                 has_bbox=True

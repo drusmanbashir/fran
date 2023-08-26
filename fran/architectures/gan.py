@@ -73,7 +73,7 @@ class GANLoss_ub(gan.GANModule):
         input # Input noise vector to pass into generator
     ):
         "Create some `fake_pred` with the generator from `input` and compare them to `real_pred` in `self.crit_loss_func`."
-        fake = self.gan_model.generator(input)
+        fake = self.gan_model.generator
         for f in fake:
           f.requires_grad_(False)
         fake_pred = self.gan_model.critic(fake)

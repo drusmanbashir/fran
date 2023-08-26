@@ -13,6 +13,7 @@
 # ---
 
 # %%
+from fran.utils.common import *
 import sys
 import gc
 from fran.callback.neptune import NeptuneManager
@@ -51,12 +52,10 @@ from fastcore.transform import Transform
 from fran.utils.imageviewers import ImageMaskViewer, view_sitk
 import functools as fl
 
-import torchio as tio
 from fastcore.basics import store_attr
 
 from fran.utils.imageviewers import ImageMaskViewer
 import torch.nn.functional as F
-import cc3d
 
 
 def sitk_bbox_readable(bboxes:list):# input list of bboxes in sitk format as [starts*3, sizes*3 ]. Outputs lists of [starts*3,stops*3]
@@ -88,15 +87,15 @@ def sitk_to_slices(bboxes:list)-> list  :#of slices of bboxes
 # }
 #
 
-
-def get_bbox_from_tnsr(pred_int):
-        pred_int_np = np.array(pred_int)
-        stats = cc3d.statistics(pred_int_np)
-        bboxes = stats["bounding_boxes"][1:]  # bbox 0 is the whole image
-        bboxes
-        if len(bboxes) < 1:
-            tr()
-        return bboxes
+#
+# def get_bbox_from_tnsr(pred_int):
+#         pred_int_np = np.array(pred_int)
+#         stats = cc3d.statistics(pred_int_np)
+#         bboxes = stats["bounding_boxes"][1:]  # bbox 0 is the whole image
+#         bboxes
+#         if len(bboxes) < 1:
+#             tr()
+#         return bboxes
 
 def pred_mean(preds):
     """
@@ -210,19 +209,18 @@ class _Predictor():
             slc.append(slice(0, s))
         return [tuple(slc)]
 
-    def load_case(
-        self, img_filename, bboxes=None
-    ):  # tip put this inside a transform which saves these attrs to parent like callbacks do in learner
-        self.img_filename = img_filename
-        if all([self.overwrite == False, self.files_exist()]):
-            print("Files exists {}. Skipping. ".format(self.pred_fn_i))
-            self.already_processed = True
-        else:
-            self.case_id = drop_digit_suffix(self.img_filename.name)
-            self.img_sitk = sitk.ReadImage(str(self.img_filename))
+    def sitk_process(self):
             self.set_sitk_props()
             self.img_np_orgres = sitk.GetArrayFromImage(self.img_sitk)
+
+
+    def load_case(
+        self, img_sitk, bboxes=None
+    ):  # tip put this inside a transform which saves these attrs to parent like callbacks do in learner
+            self.img_sitk = img_sitk
+            self.sitk_process()  # flips image if needed
             self.bboxes = bboxes if bboxes else self.img_sized_bbox()
+            # self.sitk_process()
             self.already_processed = False
 
 
@@ -256,20 +254,21 @@ class _Predictor():
         origin = self.img_sitk.GetOrigin()
         spacing = self.img_sitk.GetSpacing()
         direction = self.img_sitk.GetDirection()
-        if direction != (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+        direction_std = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+        if direction != direction_std:
             self.img_sitk = sitk.DICOMOrient(self.img_sitk, "LPS")
         self.sz_dest, self.scale_factor = get_scale_factor_from_spacings(
             self.img_sitk.GetSize(), spacing, self.resample_spacings
         )
         self.sitk_props = origin, spacing, direction
 
-    def run(self, img_filename, bboxes=None, save=True):
+
+    def run(self, img_sitk, bboxes=None, save=True):
         """
         Runs predictions. Then backsamples predictions to img size (DxHxW). Keeps num_channels
         """
 
-        self.set_pred_fns(img_filename)
-        self.load_case(img_filename, bboxes)
+        self.load_case(img_sitk, bboxes)
         if self.already_processed == False:
             self.create_encode_pipeline()
             self.create_decode_pipeline()
@@ -322,7 +321,6 @@ class _Predictor():
         print("Saving prediction. File name : {}".format(fn))
         if img.GetPixelID() == 22:
                 img = to_int(img)
-
         sitk.WriteImage(img, fn)
 
     def save_prediction(self, ext=None):
@@ -409,7 +407,7 @@ class _Predictor():
         return self._pred_sitk_f[1:]  #' first channel is only bg'
     #
     # @property
-    # def pred_sitk_i(self):  # list of sitk images len =  out_channels
+    # def Pred_sitk_i(self):  # list of sitk images len =  out_channels
     #     self._pred_sitk_i = ArrayToSITKI(sitk_props=self.sitk_props).encodes(
     #         self.pred_int
     #     )
@@ -646,30 +644,23 @@ class EndToEndPredictor(_Predictor):
     #     self.run_patch_prediction(img_fn)
     #
 
-    def localizer_pred_fn(self,run_name_w,img_fn):
+    def localizer_pred_fn(self,img_fn):
         prefix = img_fn.name.split(".")[0]
         pred_w_fns =list((self.proj_defaults.predictions_folder/run_name_w).glob("*"))
         fn = [fn for fn in pred_w_fns if prefix in fn.name ]
         if len(fn) >0: return fn[0]
-    def localiser_bbox(self, run_name_w, img_fn):
-        pred_fn =  self.localizer_pred_fn(run_name_w,img_fn)
-        if pred_fn and self.overwrite==False: 
-           pred_localiser = sitk.ReadImage(pred_fn)
-           pred_localiser = sitk.DICOMOrient(pred_localiser, "LPS")
-           # self.bboxes = get_bbox_from_tnsr(pred_int)
-
-        else:
-            
-           self.load_localiser_model(run_name_w)
+    def localiser_bbox(self, img_sitk):
+           self.load_localiser_model()
            print(
                 "Running predictions. Whole image predictor is on device {0}".format(
                     self.w.device
                 )
             )
-           self.w.run(img_filename=img_fn, bboxes=None, save=self.save_localiser)
+           self.w.run(img_sitk=img_sitk, bboxes=None, save=False)
            pred_localiser = self.w.pred_sitk_i
-        self.create_bboxes_from_localiser(pred_localiser)
-        self.unload_localizer_model()
+           pred_localiser =  sitk.DICOMOrient(pred_localiser, "LPS") # patch to erect the localiser before bbox derivation.
+           self.create_bboxes_from_localiser(pred_localiser)
+           self.unload_localizer_model()
 
     def create_bboxes_from_localiser(self,pred_localiser: sitk.Image):
         fil = sitk.LabelShapeStatisticsImageFilter()
@@ -725,7 +716,7 @@ class EndToEndPredictor(_Predictor):
         self._save_localiser = value
 
 
-class EnsemblePredictor(EndToEndPredictor):
+class EnsemblePredictor2(EndToEndPredictor):
     def __init__(
         self,
         proj_defaults,
@@ -747,13 +738,13 @@ class EnsemblePredictor(EndToEndPredictor):
         self.patch_overlap = 0.25
         self.model_id = "ensemble_" + "_".join(self.runs_p)
 
-    def load_localiser_model(self, run_name_w:str):
+    def load_localiser_model(self):
         (
             model_w,
             patch_size_w,
             resample_spacings_w,
             out_channels_w,
-        ) = self.load_model_neptune(run_name_w, device="cpu")
+        ) = self.load_model_neptune(self.run_name_w, device="cpu")
         self.w = WholeImagePredictor(
             
             proj_defaults=self.proj_defaults,
@@ -765,8 +756,7 @@ class EnsemblePredictor(EndToEndPredictor):
             device=self.device,
             overwrite=self.overwrite,
         )
-        self.w.load_model(model_w, model_id=run_name_w)
-        self.save_localiser = True
+        self.w.load_model(model_w, model_id=self.run_name_w)
 
 
     
@@ -795,10 +785,9 @@ class EnsemblePredictor(EndToEndPredictor):
 
         self.p.load_model(model_p, model_id=run_name_p)
 
-    def patch_prediction(self, img_fn, n):
-        self.p.set_pred_fns(img_fn)
+    def patch_prediction(self, img_sitk, n):
         if n == 0:
-            self.p.load_case(img_fn, self.bboxes)
+            self.p.load_case(img_sitk, self.bboxes)
             self.p.create_encode_pipeline()
             self.p.create_decode_pipeline()
             self.p.create_postprocess_pipeline()
@@ -827,47 +816,21 @@ class EnsemblePredictor(EndToEndPredictor):
             [self.pred_patches, self.p.bboxes_transformed]
         )
 
-    # def postprocess(self, cc3d: bool):
-    #     if cc3d == True:
-    #         self.pred_sitk_i = self.postprocess_pipeline(self.pred)
-    #     else:
-    #         pred_int = torch.argmax(self.pred, 0, keepdim=False)
-    #         self.pred_int = pred_int.to(torch.uint8)
-    #         ArrayToSITKI = [Tf for Tf in self.postprocess_pipeline if Tf.name=='ArrayToSITKI'][0]
-    #         self.pred_sitk_i = ArrayToSITKI.encodes(self.pred_int)
-    #
-    #
-    #
-    # def postprocess(self, cc3d: bool):  # starts : pred->dust->k-largest->pred_int
-    #     if cc3d == True:
-    #         self.pred_sitk_i= self.postprocess_pipeline(self.pred)
-    #     else:
-    #         pred_int = torch.argmax(self.pred, 0, keepdim=False)
-    #         self.pred_int = pred_int.to(torch.uint8)
-    #         ArrayToSITKI = [Tf for Tf in self.postprocess_pipeline if Tf.name=='ArrayToSITKI'][0]
-    #         self.pred_sitk_i = ArrayToSITKI.encodes(self.pred_int)
-    #
-
-
     @property
     def sitk_props(self): return self.p.sitk_props
     def save_prediction(self):
         super().save_prediction()
 
-    def run(self, img_fn):
+    def set_filenames(self,img_fn):
         self.set_pred_fns(img_fn)
-        if all([self.files_exist(), self.overwrite == False]):
-            print(
-                "{} already been processed with this ensemble. Skipping.".format(img_fn)
-            )
-        else:
-            self.img_filename = img_fn
-            self.localiser_bbox(self.run_name_w, img_fn)
+        self.localizer_pred_fn(self.run_name_w,img_fn)
 
+    def run(self, img_sitk):
+            self.localiser_bbox(img_sitk)
             self.pred_patches = []
             for n in range(len(self.runs_p)):
                 self.load_patch_model(n)
-                self.patch_prediction(img_fn, n)
+                self.patch_prediction(img_sitk, n)
                 self.p.pred_patches= Unlist().encodes(self.p.pred_patches)
                 self.pred_patches.append(self.p.pred_patches)
             self.pred_patches = pred_mean(self.pred_patches)
@@ -875,8 +838,8 @@ class EnsemblePredictor(EndToEndPredictor):
             del self.pred_patches
             gc.collect()
             self.postprocess(self.cc3d)
-            self.save_prediction()
-            self.unload_case()
+            # self.save_prediction()
+            # self.unload_case()
 
 
 # %%
@@ -884,7 +847,6 @@ if __name__ == "__main__":
     # ... run your application ...
 
 
-    from fran.utils.common import *
 
     common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
     P = Project(project_title="lits")
@@ -893,29 +855,28 @@ if __name__ == "__main__":
     import pandas as pd
 
     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
-    patch_size = [160, 160, 160]
-    resample_spacings = [1, 1, 2]
-    run_name_w = "LITS-276"  # best trial
-# %%
+    # patch_size = [160, 160, 160]
+    # resample_spacings = [1, 1, 2]
+    run_name_w = "LITS-490"  # best trial
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
     # runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357","LITS-413"]
-    runs_ensemble = ["LITS-444", "LITS-443", "LITS-439", "LITS-436", "LITS-445"]
-    runs_ensemble = ["LITS-451", "LITS-452", "LITS-453", "LITS-454", "LITS-456"]
     # runs_ensemble = ["LITS-451", "LITS-452"]
-    ensemble = ["LITS-451"]
+    runs_ensemble = ["LITS-484", "LITS-485", "LITS-486", "LITS-487", "LITS-488"]
+    runs_ensemble = "LITS-484,LITS-485,LITS-492,LITS-487,LITS-488".split(",")
+    runs_ensemble = ["LITS-484"]
     fldr = Path("/s/datasets_bkp/normal/sitk/images")
+    fldr =  Path("/s/datasets_bkp/litq/complete_cases/images")
     device ='cuda'
 # %%
-    En = EnsemblePredictor(
+    En = EnsemblePredictor2(
         proj_defaults,
         3,
         run_name_w,
         runs_ensemble,
         bs=3,
-
         half=True,
         device=device,
-        debug=False,
+        debug=True,
         overwrite=True,
     )
 
@@ -923,10 +884,21 @@ if __name__ == "__main__":
     # fnames = list(mo_df.image_filenames)
     # fname = "/media/ub2/datasets/drli/sitktmp/images/drli_048.nrrd"
     fnames = list(fldr.glob("*"))
-# %%
     # for fname in fnames[1:]:
     #     fname = Path(fname)
-    fname = [fn for fn in fnames if "normal_00023" in fn.name][0]
-    fname = fnames[0]
-    En.run(fname)
+    fname = Path("/home/ub/code/slicer_utils/files/images/litq_76_20210528.nii.gz")
+    fname = [fn for fn in fnames if "litq_0014389_20190925" in fn.name][0]
+    # fname = fnames[0]
+    img_sitk = sitk.ReadImage(fname)
+# %%
+    En.set_pred_fns(fname)
+    En.run(img_sitk)
+# %%
+    ImageMaskViewer([En.p.img_np_orgres,En.pred[1]])
+# %%
+    En.save_prediction()
+# %%
+    En.unload_case()
+# %%j
+    En.sitk_props
 # %%

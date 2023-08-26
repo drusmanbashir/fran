@@ -78,19 +78,6 @@ def to_cuda(data, non_blocking=True, gpu_id=0):
     return data
 
 
-
-def dec_to_str(val:float,trailing_zeros=3):
-    val2 = str(round(val,2))
-    val2 = val2.replace(".","")
-    trailing_zeros = np.maximum(trailing_zeros-len(val2),0) if trailing_zeros>0 else 0
-    val2 = val2+'0'*trailing_zeros # ensure 3 digits
-    return val2
-
-def int_to_str(val:int, total_length=5):
-    val = str(val)
-    precending_zeros = total_length-len(val)
-    return '0'*precending_zeros+val
-
 def folder_name_from_list(prefix:str,parent_folder:Path,values_list=None):
         assert prefix in ("spc","dim"), "Choose a valid prefix between spc(for spacings) and dim(for patch size)"
         add_zeros=3 if prefix=='spc' else 0

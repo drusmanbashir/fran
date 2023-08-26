@@ -1,4 +1,5 @@
 # %%
+import sqlite3
 import math
 import ipdb
 
@@ -89,7 +90,6 @@ class Project(DictToAttr):
                 img_symlink,mask_symlink = self.filepair_symlink(pair)
                 img_symlinks.append(img_symlink)
                 mask_symlinks.append(mask_symlink)
-
             return img_symlinks,mask_symlinks
 
 
@@ -375,22 +375,123 @@ def create_folds(train_val_ids,test_ids=[], pct_valid=0.2,shuffle=False):
         final_dict.update(fold)
     return final_dict
 
+# %%
+class Datasources():
+    pass
 
+class Datasource(GetAttr):
+    
+    _default = 'proj'
+    def __init__(self, proj, src_folder: Union[str,Path]) -> None:
+        '''
+        src_folder: has subfolders 'images' and 'masks'. Files in each are identically named
+        '''
+        src_folder = Path(src_folder)
+        self.dataset_name = src_folder.name
+        self.images = list((src_folder/("images")).glob("*.*"))
+        self.masks = list((src_folder/("masks")).glob("*.*"))
+        
+        store_attr()
+
+    def integrity_check(self):
+        '''
+        verify name pairs
+        any other verifications
+        '''
+        verified_pairs=[]
+        for img_fn in self.images:
+                verified_pairs.append([img_fn, find_matching_fn(img_fn,self.masks)])
+        
+
+    def extract_img_mask_fnames(self,ds):
+            img_fnames = list((ds['source_path'] / ("images")).glob("*"))
+            mask_fnames = list((ds['source_path'] / ("masks")).glob("*"))
+            img_symlinks,mask_symlinks= [],[]
+        
+            verified_pairs=[]
+            for img_fn in img_fnames:
+                verified_pairs.append([img_fn, find_matching_fn(img_fn, mask_fnames)])
+            assert (self.paths_exist(verified_pairs)), "(Some) paths do not exist. Fix paths and try again."
+            print("self.populating raw data folder (with symlinks)")
+            for pair in verified_pairs:
+                img_symlink,mask_symlink = self.filepair_symlink(pair)
+                img_symlinks.append(img_symlink)
+                mask_symlinks.append(mask_symlink)
+            return img_symlinks,mask_symlinks
+
+
+    def filepair_symlink(self,pair:list):
+        symlink_fnames= []
+        for fn in pair:
+            prnt = self.raw_data_folder/fn.parent.name
+            fn_out = prnt/fn.name
+            try:
+                print("SYMLINK created: {0} -> {1}".format(fn,fn_out))
+                fn_out.symlink_to(fn)
+            except FileExistsError as e:
+                print(f"SYMLINK {str(e)}. Skipping...")
+            symlink_fnames.append(fn_out)
+        return symlink_fnames
+ 
+    def __len__(self):
+        pass
+
+    def create_symlinks(self):
+        pass
+        
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="l245")
-    P.create_project(['/s/datasets_bkp/drli/', '/s/datasets_bkp/lits_segs_improved/', '/s/datasets_bkp/litqsmall/', '/s/xnat_shadow/litq'])
+    P = Project(project_title="lits")
+    D = Datasource(P,'/s/datasets_bkp/litsmall/')
+    D.integrity_check()
+    P.create_project(['/s/xnat_shadow/nodes'])
     # P.add_datasources("/s/datasets_bkp/litsmall")
     # P.create_project([ '/s/xnat_shadow/litq'])
     P.populate_raw_data_folder()
     P.raw_data_imgs
     P.update_folds()
+
+# %%
+    P.db = P.project_folder/("cases.db")
+    con = sqlite3.connect(P.db)
+    cur = con.cursor()
+
+    cur.execute("DROP TABLE litsmall")
+    cur.execute("CREATE TABLE {} (case_id, image,mask,img_symlink,mask_symlink,fold,train)".format(D.dataset_name))
+    res = cur.execute("SELECT name FROM SQLITE_MASTER")
+    res.fetchone()
+# %%
+    img = D.images[0]
+    mask = D.masks[0]
+
+    prnt = D.raw_data_folder/img.parent.name
+    fn_out = prnt/img.name
+    fn_out2 = prnt/img.name
+    fold = 0
+
+    mask = D.masks[0]
+# %%
+    input_str = "INSERT INTO {0} VALUES ('{1}', '{2}', '{3}', '{4}', '{5}',{6},{7})".format(D.dataset_name,img.name,img,mask,fn_out,fn_out2,0,True)
+    cur.execute(input_str)
+    con.commit()
+    res = cur.execute("SELECT image FROM {0}".format(D.dataset_name))
+    res = cur.execute("SELECT * FROM {0}".format(D.dataset_name))
+    res = cur.execute("PRAGMA table_info(litsmall)")
+
+    res.fetchall()
+
+
+
+# %%
+    dd = P.datasets
+    d = dd[1]
+    imgs = d['images']
 # %%
     P.raw_data_imgs
     P.create_train_valid_folds()
 
-# %%
 
+# %%
     P.add_datasources(['/s/datasets_bkp/litsmall/'])
     P.populate_raw_data_folder()
 # %%
