@@ -2,7 +2,7 @@
 import sqlite3
 import math
 import ipdb
-
+from fastcore.basics import GetAttr
 from fran.utils.string import cleanup_fname, drop_digit_suffix, info_from_filename, strip_extension
 tr = ipdb.set_trace
 
