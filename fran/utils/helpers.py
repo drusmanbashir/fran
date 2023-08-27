@@ -12,7 +12,7 @@ import tqdm
 
 from fran.utils.dictopts import *
 from fran.utils.fileio import load_dict, save_dict
-from fran.utils.string import cleanup_fname
+from fran.utils.string import cleanup_fname, dec_to_str
 
 tr = ipdb.set_trace
 import gc
