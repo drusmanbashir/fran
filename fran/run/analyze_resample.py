@@ -12,7 +12,7 @@ from fran.utils.fileio import *
 # %%
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
-def user_input(inp: str, out=int):
+def user_input(inp:str, out=int):
     tmp = input(inp)
     try:
         tmp = ast.literal_eval(tmp)

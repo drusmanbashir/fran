@@ -2,7 +2,6 @@
 # %%
 from pathlib import Path
 from fastcore.all import is_close, listify
-from litq.lesion_stats import get_labels
 import torch
 from torch import nn
 
@@ -312,10 +311,6 @@ if __name__ == "__main__":
 # %%
 
 # %%
-    has_target_labels(mask,1)
-    labs = get_labels(mask)
-    mask_np = sitk.GetArrayFromImage(mask)
-    0 in labs
 
 
 # %%
