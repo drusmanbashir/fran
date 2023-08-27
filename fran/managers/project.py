@@ -281,7 +281,7 @@ class Project(DictToAttr):
         self.raw_data_folder = self.cold_datasets_folder / (
                     "raw_data/" + self.project_title
                 )
-        self.checkpoints_parent_folder = Path(common_paths['cold_storage_folder'])/("checkpoints/" + self.project_title)
+        self.checkpoints_parent_folder = Path(common_paths['checkpoints_parent_folder'])/self.project_title
         self.configuration_filename = self.project_folder/ ("experiment_configs.xlsx")
 
         self.fixed_spacings_folder = (
