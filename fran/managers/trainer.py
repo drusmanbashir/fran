@@ -2,8 +2,9 @@
 import time
 from SimpleITK import ImageViewer_SetProcessDelay
 from fastai.data.core import DataLoaders
-# from fastai.distributed import *
+from fastai.distributed import DistributedTrainer
 from fastai.torch_core import delegates
+
 import torch
 import operator
 from fran.preprocessing.stage0_preprocessors import folder_name_from_list
@@ -307,10 +308,13 @@ class Trainer:
             loss_func = DeepSupervisionLoss(
                 levels=num_pool, bs=self.dls.bs,fg_classes=self.model_params['out_channels']-1,device=self.device
             )
-            cbs += [DownsampleMaskForDS(self.deep_supervision_scales)]
+            if not any([c.name=='downsample_mask_for_ds' for c in self.cbs]):
+                cbs += [DownsampleMaskForDS(self.deep_supervision_scales)]
 
         else:
             loss_func = CombinedLoss(**self.loss_params,bs=self.dls.bs,fg_classes=self.model_params['out_channels']-1)
+        if distributed==True:
+            cbs+=[DistributedTrainer]
       
         self.cbs += cbs
         learn = Learner(
@@ -322,15 +326,16 @@ class Trainer:
             **kwargs
         )
         # learn.to(device)
-        if distributed==True:
-             learn.model  = torch.nn.DataParallel(learn.model)
+        if compile==True:
+            print("Compiling model")
+            learn.model = torch.compile(learn.model)
+             # learn.model  = torch.nn.DataParallel(learn.model)
+
         else:
             print("Training will be done on cuda: {}".format(self.device))
             # learn.dls = learn.dls.to(torch.device(self.device))
             # torch.cuda.set_device(self.device)
-        if compile==True:
-            print("Compiling model")
-            learn.model = torch.compile(learn.model)
+
        
         learn.dls.cuda()
         learn.to_non_native_fp16()
@@ -462,8 +467,10 @@ if __name__ == "__main__":
 
 
 # %%
-    learn = La.create_learner(distributed=False)
+# %%
+    learn = La.create_learner(distributed=True)
 #     # learn.model = model
+# %%
     learn.fit(n_epoch=1, lr=1e-6)
 # # # %%
 
