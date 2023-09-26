@@ -151,6 +151,7 @@ class FillBBoxPatches(ItemTransform):
 
 class _Predictor():
     def __init__(self,
+        dataset_params,
         proj_defaults,
         out_channels,
         resample_spacings,
@@ -179,14 +180,12 @@ class _Predictor():
             "gaussian",
         ], "grid_mode should be either 'constant' or 'gaussian' "
         self.grid_mode = grid_mode
-        global_properties_fname = proj_defaults.global_properties_filename
-        self.global_properties = load_dict(global_properties_fname)
-        mask_label  = load_dict(proj_defaults.label_dict_filename)[str(postprocess_label)]
-        self.k_largest = mask_label['k_largest']
-        self.dusting_threshold=mask_label['dusting_threshold']
         self.inferer = SlidingWindowInferer(roi_size = patch_size,sw_batch_size =bs,overlap=patch_overlap,device=device,
                                                      mode=grid_mode,progress=True)
 
+        mask_label  = load_dict(proj_defaults.label_dict_filename)[str(postprocess_label)]
+        self.k_largest = mask_label['k_largest']
+        self.dusting_threshold=mask_label['dusting_threshold']
         store_attr(but='bs,patch_overlap,grid_mode')
 
     def load_model(self, model, model_id):
@@ -434,6 +433,7 @@ class PatchPredictor(_Predictor):
     def __init__(
 
         self,
+        dataset_params,
         proj_defaults,
         out_channels,
         resample_spacings,
@@ -451,7 +451,7 @@ class PatchPredictor(_Predictor):
     ):
         store_attr('expand_bbox')
         super().__init__(
-
+            dataset_params=dataset_params,
             proj_defaults=proj_defaults,
             out_channels=out_channels,
             resample_spacings=resample_spacings,
@@ -470,6 +470,7 @@ class PatchPredictor(_Predictor):
 
  
     def create_encode_pipeline(self):
+        intensity_clip_range,mean_fg,std_fg = ast.literal_eval(self.dataset_params['clip_range']), self.dataset_params['mean_fg'], self.dataset_params['std_fg']
         self.encode_tfms = L(
             ToTensorI(),
             ChangeDType(torch.float32),
@@ -477,9 +478,9 @@ class PatchPredictor(_Predictor):
             ResampleToStage0(self.img_sitk, self.resample_spacings),
             BBoxesToPatchSize(self.patch_size, self.sz_dest, self.expand_bbox),
             ClipCenter(
-                clip_range=self.global_properties["intensity_clip_range"],
-                mean=self.global_properties["mean_fg"],
-                std=self.global_properties["std_fg"],
+                clip_range=intensity_clip_range,
+                mean=mean_fg,
+                std=std_fg
             ),
         )
         self.encode_tfms.map(self.add_tfm)
@@ -522,7 +523,7 @@ class Unlist(Transform):
 class WholeImagePredictor(_Predictor):
     def __init__(
         self,
-        proj_defaults,
+        dataset_params,
         out_channels,
         resample_spacings,
         patch_size: list = [128, 128, 128],
@@ -534,8 +535,7 @@ class WholeImagePredictor(_Predictor):
         **kwargs
     ):
         super().__init__(
-
-            proj_defaults=proj_defaults,
+            dataset_params=dataset_params,
             out_channels=out_channels,
             resample_spacings=resample_spacings,
             patch_size=patch_size,
@@ -556,9 +556,9 @@ class WholeImagePredictor(_Predictor):
         # P  = PadDeficitImgMask(patch_size=self.patch_size,input_dims=3)
         W = WholeImageBBoxes(self.patch_size)
         C = ClipCenter(
-            clip_range=self.global_properties["intensity_clip_range"],
-            mean=self.global_properties["mean_fg"],
-            std=self.global_properties["std_fg"],
+            clip_range=ast.literal_eval(self.dataset_params["clip_range"]),
+            mean=self.dataset_params["mean_fg"],
+            std=self.dataset_params["std_fg"],
         )
         self.encode_pipeline = Pipeline([To, Ch, T, Rz, W, C])
 
@@ -590,6 +590,7 @@ class EndToEndPredictor(_Predictor):
         if not device:
             device = get_available_device()
         self.NepMan = NeptuneManager(proj_defaults)
+
         (
             model_w,
             patch_size_w,
@@ -716,7 +717,7 @@ class EndToEndPredictor(_Predictor):
         self._save_localiser = value
 
 
-class EnsemblePredictor2(EndToEndPredictor):
+class EnsemblePredictor(EndToEndPredictor):
     def __init__(
         self,
         proj_defaults,
@@ -733,6 +734,7 @@ class EnsemblePredictor2(EndToEndPredictor):
         """
         param  debug: When true, prediction heatmaps are stored as numbered sitk files, each number representing the prob of that label versus all others
         """
+        runs_p = listify(runs_p)
         store_attr()
         self.NepMan = NeptuneManager(proj_defaults)
         self.patch_overlap = 0.25
@@ -745,9 +747,10 @@ class EnsemblePredictor2(EndToEndPredictor):
             resample_spacings_w,
             out_channels_w,
         ) = self.load_model_neptune(self.run_name_w, device="cpu")
+        dataset_params = self.NepMan.run_dict['dataset_params']
         self.w = WholeImagePredictor(
-            
-            proj_defaults=self.proj_defaults,
+            dataset_params = dataset_params,
+            proj_defaults = self.proj_defaults,
             out_channels=out_channels_w,
             resample_spacings=resample_spacings_w,
             patch_size=patch_size_w,
@@ -768,9 +771,12 @@ class EnsemblePredictor2(EndToEndPredictor):
             resample_spacings_p,
             out_channels_p,
         ) = self.load_model_neptune(run_name_p, device="cpu")
+
+        dataset_params = self.NepMan.run_dict['dataset_params']
         if n == 0:
             self.p = PatchPredictor(
-                proj_defaults=self.proj_defaults,
+                dataset_params = dataset_params,
+                proj_defaults = self.proj_defaults,
                 out_channels=out_channels_p,
                 resample_spacings=resample_spacings_p,
                 patch_size=patch_size_p,
@@ -779,7 +785,7 @@ class EnsemblePredictor2(EndToEndPredictor):
                 half = self.half,
                 device=self.device,
                 debug=self.debug,
-                overwrite=True,
+                overwrite=self.overwrite,
             )
             # self.n_classes=out_channels_p
 
@@ -861,14 +867,14 @@ if __name__ == "__main__":
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
     # runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357","LITS-413"]
     # runs_ensemble = ["LITS-451", "LITS-452"]
-    runs_ensemble = ["LITS-484", "LITS-485", "LITS-486", "LITS-487", "LITS-488"]
     runs_ensemble = "LITS-484,LITS-485,LITS-492,LITS-487,LITS-488".split(",")
-    runs_ensemble = ["LITS-484"]
+    runs_ensemble = "LITS-505"
+    runs_ensemble = "LITS-499,LITS-500,LITS-501,LITS-502,LITS-503".split(",")
     fldr = Path("/s/datasets_bkp/normal/sitk/images")
     fldr =  Path("/s/datasets_bkp/litq/complete_cases/images")
     device ='cuda'
 # %%
-    En = EnsemblePredictor2(
+    En = EnsemblePredictor(
         proj_defaults,
         3,
         run_name_w,
@@ -880,6 +886,7 @@ if __name__ == "__main__":
         overwrite=True,
     )
 
+# %%
     # fldr  = Path("/media/ub2/datasets/drli/sitktmp/images/")
     # fnames = list(mo_df.image_filenames)
     # fname = "/media/ub2/datasets/drli/sitktmp/images/drli_048.nrrd"

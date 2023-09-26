@@ -23,6 +23,23 @@ def make_patch_size(patch_dim0, patch_dim1):
     ] * 2
     return patch_size
 
+def reconcile_keys(local_model_state,chkpt_model_state,conflicting_string='module.'):
+        chkpt_model_keys = list(chkpt_model_state.keys())
+        local_model_keys = list(local_model_state.keys())
+        conflicting_string in chkpt_model_keys[0]
+        mod_keys_flag = conflicting_string in local_model_keys[0] 
+        chk_keys_flag =  conflicting_string in chkpt_model_keys[0]
+        if not mod_keys_flag == chk_keys_flag:
+                    chkpt_model_state_fixed = {}
+                    for key in chkpt_model_state.keys():
+                        neo_key = key.replace(conflicting_string,'')
+                        chkpt_model_state_fixed[neo_key] = chkpt_model_state[key]
+                      
+                    return chkpt_model_state_fixed
+        else:
+            return chkpt_model_state
+
+
 @str_to_path(0)
 def load_checkpoint(checkpoints_folder, model,device='cuda',strict = True, **torch_load_kwargs):
     try:
@@ -31,13 +48,29 @@ def load_checkpoint(checkpoints_folder, model,device='cuda',strict = True, **tor
         file = max(list_of_files, key=get_epoch)
 
         print("Loading last checkpoint {}".format(file))
-
         if isinstance(device, int): device = torch.device('cuda', device)
         elif device is None: device = 'cpu'
         state = torch.load(file, map_location=device, **torch_load_kwargs)
         hasopt = set(state)=={'model', 'opt'}
-        model_state = state['model'] if hasopt else state
-        get_model(model).load_state_dict(model_state, strict=strict)
+        chkpt_model_state = state['model'] if hasopt else state
+        chkpt_model_state = reconcile_keys(model.state_dict(),chkpt_model_state)
+        #
+        # chkpt_model_keys = list(chkpt_model_state.keys())
+        # conflicting_string = 'module.'
+        # conflicting_string in chkpt_model_keys[0]
+        # local_model_keys = list(model.state_dict().keys())
+        #
+        # mod_keys = conflicting_string in local_model_keys[0] 
+        # chk_keys =  conflicting_string in chkpt_model_keys[0]
+        # if not mod_keys == chk_keys:
+        #     chkpt_model_state_fixed = {}
+        #     for key in chkpt_model_state.keys():
+        #         print(key)
+        #         neo_key = key.replace(conflicting_string,'')
+        #         chkpt_model_state_fixed[neo_key] = chkpt_model_state[key]
+        #     get_model(model).load_state_dict(chkpt_model_state_fixed, strict=strict)
+        # else:
+        get_model(model).load_state_dict(chkpt_model_state, strict=strict)
         print("\n --- Successfully loaded model from checkpoint.")
 
         with_opt=False   # see fastai to add opt option

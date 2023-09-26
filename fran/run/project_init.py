@@ -28,6 +28,7 @@ def main(args):
 if __name__ == "__main__":
 
     from fran.utils.common import *
+
     parser = argparse.ArgumentParser(description="Create new project or manage existing ones")
     parser.add_argument("-t", help="project title")
     parser.add_argument("-i","--input-folders" , help="Dataset parent folder containing subfolders 'images' and 'masks'",nargs='+')

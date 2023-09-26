@@ -72,6 +72,9 @@ def create_model_from_conf(model_params, dataset_params,metadata=None,deep_super
         model = create_model_from_conf_dynunet(model_params, dataset_params)
     else:
         raise NotImplementedError
+
+    if model_params['compiled']==True:
+        model = torch.compile(model)
     return model
 
 

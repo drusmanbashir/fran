@@ -34,7 +34,7 @@ from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.callback.case_recorder import CaseIDRecorder
 
-def compute_bs(proj_defaults,bs=2,distributed=False,step=1):
+def compute_bs(project,bs=2,distributed=False,step=1):
         '''
         bs = starting bs
         
@@ -46,7 +46,7 @@ def compute_bs(proj_defaults,bs=2,distributed=False,step=1):
             step =step*2 
         while True:
             La = Trainer.fromExcel(
-                proj_defaults,
+                project,
                 bs=bs,
                 dummy_ds=bs*2,
 
@@ -82,21 +82,17 @@ def load_model_from_raytune_trial(folder_name,out_channels):
     return  model
 class Trainer:
     def __init__(
-            self, proj_defaults, config_dict, cbs=[], bs=2, max_workers=0, pin_memory=True, device='cuda', dummy_ds:int=0
+            self, project, config_dict, cbs=[], bs=2, max_workers=0, pin_memory=True, device='cuda', dummy_ds:int=0
     ):
         '''
         dummy_ds if >0, creates a short ds=dummy_ds. Used to run quick fits (to estimate vram needs)
 
         '''
-        store_attr('device,proj_defaults,dummy_ds')
+        store_attr('device,project,dummy_ds')
         self.assimilate_config(config_dict)
 
+        self.train_list, self.valid_list =project.get_train_val_files(config_dict['metadata']['fold'])
 
-        
-        self.train_list, self.valid_list, _ = get_fold_case_ids(
-            fold=self.metadata["fold"],
-            json_fname=self.proj_defaults.validation_folds_filename,
-        )
         self.cbs = cbs + [
             TerminateOnNaNCallback_ub,
             # GradientClip(max_norm=12.0),
@@ -113,7 +109,7 @@ class Trainer:
         for key, value in config_dict.items():
             setattr(self, key, value)
 
-        global_properties = load_dict(self.proj_defaults.global_properties_filename)
+        global_properties = load_dict(self.project.global_properties_filename)
         self.dataset_params['clip_range']=global_properties["intensity_clip_range"]
         self.dataset_params['mean_fg']=global_properties["mean_fg"]
         self.dataset_params['std_fg']=global_properties["std_fg"]
@@ -135,7 +131,7 @@ class Trainer:
     @delegates(__init__)
     def from_tune_trial(self, trial_name, **kwargs):
         super().__init__(**kwargs)
-        folder_name = get_raytune_folder_from_trialname(proj_defaults, trial_name)
+        folder_name = get_raytune_folder_from_trialname(project, trial_name)
         self.model = load_model_from_raytune_trial(folder_name)
 
     def _create_augmentations(self):
@@ -159,9 +155,9 @@ class Trainer:
             self.dataset_params["src_dims"],
         ]
         if bool(self.metadata['patch_based']) == True:
-            parent_folder = self.proj_defaults.patches_folder
+            parent_folder = self.project.patches_folder
         else:
-            parent_folder = self.proj_defaults.whole_images_folder
+            parent_folder = self.project.whole_images_folder
             for listi in prefixes, value_lists:
                 del listi[0]
 
@@ -224,13 +220,11 @@ class Trainer:
             self.train_list = self.train_list[:self.dummy_ds]
             self.valid_list= self.train_list[:1]
         self.train_ds = ImageMaskBBoxDataset(
-            self.proj_defaults,
             self.train_list,
             bboxes_fname,
             self.dataset_params["class_ratios"],
         )
         self.valid_ds = ImageMaskBBoxDataset(
-            self.proj_defaults,
             self.valid_list,
             bboxes_fname,
         )
@@ -358,7 +352,7 @@ class Trainer:
     @classmethod
     def fromNeptuneRun(
         self,
-        proj_defaults,
+        project,
         resume_epoch=None,
         run_name=None,
         cbs=[],
@@ -373,7 +367,7 @@ class Trainer:
         '''
         
         # this takes run_name from NeptuneManager and passes it to NeptuneCallback.  I think the callback can itself do all this at init
-        Nep = NeptuneManager(proj_defaults)
+        Nep = NeptuneManager(project)
 
         Nep.load_run(run_name=run_name, param_names='default', update_nep_run_from_config=update_nep_run_from_config)
         config_dict = Nep.download_run_params()
@@ -383,9 +377,9 @@ class Trainer:
         # Nep.stop()
         cbs += [
             ReduceLROnPlateau(patience=50),
-            NeptuneCallback.from_existing_run(proj_defaults=proj_defaults, config_dict  = config_dict, run_name = run_name, nep_run= Nep.nep_run),
+            NeptuneCallback.from_existing_run(project=project, config_dict  = config_dict, run_name = run_name, nep_run= Nep.nep_run),
             NeptuneCheckpointCallback(
-                checkpoints_parent_folder=proj_defaults.checkpoints_parent_folder,
+                checkpoints_parent_folder=project.checkpoints_parent_folder,
                 resume_epoch=resume_epoch,
             ),
             NeptuneImageGridCallback(
@@ -395,16 +389,16 @@ class Trainer:
         ]
 
         self = self(
-            proj_defaults=proj_defaults, config_dict=config_dict, cbs=cbs, **kwargs
+            project=project, config_dict=config_dict, cbs=cbs, **kwargs
         )
         # Nep.nep_run.stop()
         return self
 
     @classmethod
-    def fromExcel(self, proj_defaults, **kwargs):
+    def fromExcel(self, project, **kwargs):
 
-        config_dict= ConfigMaker(proj_defaults,raytune=False).config
-        self = self(proj_defaults=proj_defaults, config_dict=config_dict, **kwargs)
+        config_dict= ConfigMaker(project,raytune=False).config
+        self = self(project=project, config_dict=config_dict, **kwargs)
         return self
 
 
@@ -422,36 +416,55 @@ def update_nep_run_from_config(nep_run, config):
 if __name__ == "__main__":
 
     from fran.utils.common import *
-    project_title = "lits2"
-    P = Project(project_title=project_title); proj_defaults= P
+    project_title = "lits"
+    project = Project(project_title=project_title)
     from fran.managers.tune import get_raytune_folder_from_trialname
 
     # trial_name = "kits_675_080"
-    # folder_name = get_raytune_folder_from_trialname(proj_defaults, trial_name)
+    # folder_name = get_raytune_folder_from_trialname(project, trial_name)
     # checkpoints_folder = folder_name / ("model_checkpoints")
     # ray_conf_fn = folder_name / "params.json"
     # config_dict_ray_trial = load_dict(ray_conf_fn)
     # chkpoint_filename = list((folder_name/("model_checkpoints")).glob("model*"))[0]
     #
 
-    configs_excel= ConfigMaker(proj_defaults, raytune=False).config
+    configs= ConfigMaker(project, raytune=False).config
     
 
 # %%
-    La = Trainer.fromExcel(proj_defaults)
-# # %%
+    cbs = [
+            ReduceLROnPlateau(patience=50),
+            NeptuneCallback(project, configs, run_name=None),
+            NeptuneCheckpointCallback(project.checkpoints_parent_folder),
+            NeptuneImageGridCallback(
+                classes=out_channels_from_dict_or_cell(
+                    configs["metadata"]["src_dest_labels"]
+                ),
+                patch_size=make_patch_size(
+                    configs["dataset_params"]["patch_dim0"],
+                    configs["dataset_params"]["patch_dim1"],
+                ),
+            ),
+            #
+        ]
+# %%
+    La = Trainer.fromExcel(project,cbs=cbs)
+# %%
 #     #     run_name = None
 #     run_name = "KITS-2490"
 #     La = Trainer.fromNeptuneRun(
-#         proj_defaults,
+#         project,
 #         run_name=run_name,
 #         update_nep_run_from_config=False,
 #     )
 #     #
-# # %%
-    learn = La.create_learner(cbs=[])
+
+
+
+# %%
+    learn = La.create_learner(distributed=False)
 #     # learn.model = model
-    learn.fit(n_epoch=500, lr=1e-6)
+    learn.fit(n_epoch=1, lr=1e-6)
 # # # %%
 
     #     La.dataset_params['fake_tumours']=True
@@ -466,8 +479,8 @@ if __name__ == "__main__":
     #
     # cbs = [
     #     ReduceLROnPlateau(patience=50),
-    #     NeptuneCallback(proj_defaults, configs_excel, run_name=None),
-    #     NeptuneCheckpointCallback(proj_defaults.checkpoints_parent_folder),
+    #     NeptuneCallback(project, configs_excel, run_name=None),
+    #     NeptuneCheckpointCallback(project.checkpoints_parent_folder),
     #     NeptuneImageGridCallback(
     #         classes=out_channels_from_dict_or_cell(
     #             configs_excel["metadata"]["src_dest_labels"]

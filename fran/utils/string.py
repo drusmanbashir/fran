@@ -1,10 +1,22 @@
 from datetime import datetime
 import re
 from pathlib import Path
+from fastai.vision.augment import listify
 import ipdb
 import numpy as np
 
 tr = ipdb.set_trace
+
+def regex_matcher(indx=0):
+    def _outer(func):
+
+        def _inner(*args,**kwargs):
+                pat, string= func(*args,**kwargs)
+                pat = re.compile(pat,re.IGNORECASE)
+                answer = re.search(pat,string)
+                return answer[indx] if answer else None
+        return _inner
+    return _outer
 
 def dec_to_str(val:float,trailing_zeros=3):
     val2 = str(round(val,2))
@@ -46,12 +58,54 @@ def strip_slicer_strings(fname: str):
     """
     # pt = re.compile("(-?label(_\d)?)|_.*(_\d$)",re.IGNORECASE)
     pt = re.compile("(_\d)?$", re.IGNORECASE)
-    fname_cl1 = fname.replace("-label", "")
+    pt2 = re.compile("(_\d)?-segment.*$",re.IGNORECASE)
+    fname = fname.replace("-label", "")
+    fname = fname.replace("-test", "")
+    fname_cl1 = fname.replace("-tissue", "")
     fname_cl2 = re.sub(pt, "", fname_cl1)
-    return fname_cl2
+    fname_cl3 = re.sub(pt2, "", fname_cl2)
+
+    return fname_cl3
+
+
+def str_to_path(arg_inds=None):
+    arg_inds=listify(arg_inds)
+    def wrapper(func):
+        def inner (*args,**kwargs):
+            if arg_inds is None:
+                args = [Path(arg) for arg in args]
+                kwargs = {key:Path(val) for key,val in kwargs.items()}
+            else:
+                args = list(args)
+                all_inds = range(len(args))
+                args = [Path(arg) if ind in arg_inds else arg for ind, arg in zip(all_inds,args) ]
+            return func(*args,**kwargs)
+        return inner
+    return wrapper
+
+def path_to_str(fnc):
+        def inner(*args,**kwargs):
+            args = map(str,args)
+            for k,v in kwargs.items():
+                kwargs[k] = str(v) if isinstance(v,Path) else v
+            output = fnc(*args,** kwargs)
+            return output
+        return inner
+
+
+
+@str_to_path(0)
+@regex_matcher(1)
+def get_extension(fn):
+    pat = r"[^\.]*\.(.*)"
+    return pat, fn.name
 
 
 def cleanup_fname(fname: str):
+    '''
+    If this is a slicer labelmap/segmentation, make sure you strip_slicer_strings first
+    '''
+    
     fname = strip_extension(fname)
 
     pt_token = "(_[a-z0-9]*)"
@@ -73,23 +127,23 @@ def drop_digit_suffix(fname: str):
     return fname_cl
 
 
-def info_from_filename(fname: str, tag="pt_id"):
+def info_from_filename(fname: str, tag="case_id"):
     """
-    returns [proj_title,pt_id,desc, ?all-else]
+    returns [proj_title,case_id,desc, ?all-else]
     """
-    valid_tags = ["pt_id", "date", "desc", "proj_title"]
+    valid_tags = ["case_id", "date", "desc", "proj_title"]
     assert tag in valid_tags, "Please select tag as one of {}".format(valid_tags)
     name = cleanup_fname(fname)
 
     parts = name.split("_")
     proj_title = parts[0]
-    pt_id = "_".join(parts[:2])
-    outputs=[proj_title,pt_id]
+    case_id = "_".join(parts[:2])
+    outputs=[proj_title,case_id]
 
     if tag=="proj_title":
         return outputs[0]
 
-    elif tag=="pt_id":
+    elif tag=="case_id":
         return outputs[1]
     #
     #

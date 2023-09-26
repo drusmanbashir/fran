@@ -1,5 +1,6 @@
-# %%prepro
-from fastai.vision.augment import store_attr
+
+# %%
+from fastai.vision.augment import load_image, store_attr
 import numpy as np
 import ast
 from fran.transforms.totensor import ToTensorT
@@ -12,6 +13,7 @@ from fran.utils.fileio import *
 import cc3d
 
 from fran.utils.image_utils import get_img_mask_from_nii
+from fran.utils.imageviewers import ImageMaskViewer
 from fran.utils.sitk_utils import SITKImageMaskFixer
 from fran.utils.string import drop_digit_suffix
 
@@ -91,20 +93,21 @@ def verify_img_mask_torch(mask_fn:Path):
         print(f"Image mask mismatch {mask_fn}")
         return '\nMismatch',img_fn,mask_fn,str(img.shape),str(mask.shape)
 
-# %%
-def get_cc3d_stats(mask, label, k_largest, dusting_threshold: int = 0):
+def get_label_stats(mask, label, separate_islands=True, dusting_threshold: int = None):
     if torch.is_tensor(mask):
         mask = mask.numpy()
     mask_tmp = np.copy(mask.astype(np.uint8))
     mask_tmp[mask != label] = 0
-    if dusting_threshold > 0:
+    if dusting_threshold :
         mask_tmp = cc3d.dust(
             mask_tmp, threshold=dusting_threshold, connectivity=26, in_place=True
         )
-    mask_cc, N = cc3d.largest_k(
-        mask_tmp, k=k_largest, return_N=True
-    )  # up to 5 largest cysts or tumours max
-    stats = cc3d.statistics(mask_cc)
+
+    if separate_islands:
+        mask_tmp, N = cc3d.largest_k(
+            mask_tmp, k=1e3, return_N=True
+        ) 
+    stats = cc3d.statistics(mask_tmp)
     return stats
 
 
@@ -114,60 +117,44 @@ class BBoxesFromMask(object):
     def __init__(
         self,
         filename,
-        mask,
-        proj_defaults,
-        label_settings=None,
-        dusting_threshold_factor=1,
+        bg_label=0, # so far unused in this code
     ):
-        self.proj_defaults = proj_defaults
-        self.mask = mask
-        self.label_settings = label_settings
-        if not self.label_settings:
-            self.label_settings = load_dict(proj_defaults.label_dict_filename)
-        self.dusting_threshold_factor = dusting_threshold_factor  # a multiplier when processing subsampled datasets having proportionately fewer voxels for dusting
-
+        self.mask =load_image(filename)
+        if isinstance(self.mask,torch.Tensor): self.mask = np.array(self.mask)
+        if isinstance(self.mask,sitk.Image): self.mask = sitk.GetArrayFromImage(self.mask)
         case_id = cleanup_fname(filename.name)
-        self._bboxes_info = {
+        self.bboxes_info = {
             "case_id": case_id,
             "filename": filename,
         }
+        self.bg_label=bg_label
 
     def __call__(self):
         bboxes_all = []
         mask_all_fg = self.mask.copy()
         mask_all_fg[mask_all_fg > 1] = 1
-        for label,label_info in self.label_settings.items():
-            label = int(label)
-            if label in self.mask:
+        labels = np.unique(self.mask)
+        labels = np.delete(labels,self.bg_label)
+        for label in labels:
                 stats = {"label": label}
                 stats.update(
-                    get_cc3d_stats(
+                    get_label_stats(
                         self.mask,
                         label,
-                        k_largest=label_info["k_largest"],
-                        dusting_threshold=int(
-                            label_info["dusting_threshold"]
-                            * self.dusting_threshold_factor
-                        ),
-                    )
-                )
+                        True
+                        )
+        )
                 bboxes_all.append(stats)
+
         stats = {"label": "all_fg"}
         stats.update(
-            get_cc3d_stats(
-                mask_all_fg,
-                1,
-                1,
-                dusting_threshold=3000 * self.dusting_threshold_factor,
-            )
+            get_label_stats(
+                mask_all_fg,1,False)
         )
         bboxes_all.append(stats)
-        self._bboxes_info["bbox_stats"] = bboxes_all
-        return self._bboxes_info
+        self.bboxes_info["bbox_stats"] = bboxes_all
+        return self.bboxes_info
 
-    @property
-    def bboxes_info(self):
-        return self._bboxes_info
 
 
 class SingleCaseAnalyzer:
@@ -444,20 +431,11 @@ def get_means_voxelcounts(img_fname, clip_range=None):
 
 
 def bboxes_function_version(
-    filename, proj_defaults, dusting_threshold_factor=1, label_settings=None
+    filename,bg_label
 ):
 
-    if "nii.gz" in str(filename):
-        mask_sitk = sitk.ReadImage(str(filename))
-        mask = sitk.GetArrayFromImage(mask_sitk)
-    elif ".pt" in str(filename):
-        mask = torch.load(filename)
-        if isinstance(mask, dict):
-            mask = mask["mask"]
-        mask = mask.numpy()
-
     A = BBoxesFromMask(
-        filename, mask, proj_defaults, label_settings, dusting_threshold_factor
+        filename, bg_label=bg_label
     )
     return A()
 
@@ -466,15 +444,65 @@ def bboxes_function_version(
 if __name__ == "__main__":
     
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P
-    fn = Path("/s/fran_storage/datasets/raw_data/lits/masks/litq_76_20210528.nii.gz")
-    fn2 = Path("/home/ub/Desktop/tmp.nii.gz")
-    import shutil
-    shutil.copy(fn,fn2)
-
-    im = sitk.ReadImage(fn2)
+    P = Project(project_title="nodes"); proj_defaults= P
+    fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/nodes/spc_078_078_375/masks/nodes_1_20180805_AXIAL3MMiDose4_thick.pt")
+    aa = bboxes_function_version(fn, 0)
+    fn2 = fn.str_replace("masks","images")
+    img = torch.load(fn2)
+    mask=torch.load(fn)
+    # ImageMaskViewer([img,mask])
 # %% [markdown]
+    b = bboxes_function_version(fn,proj_defaults)
 # %%
+    A = BBoxesFromMask(
+            fn,0
+        )
+    aa = A()
+# %%
+        # return self.bboxes_info
+
+
+
+# %%
+    bb = aa['bbox_stats'][1]
+    bbox = bb['bounding_boxes'][1]
+    img2 , mask2  = img[bbox],mask[bbox]
+
+    img2,mask2 = img2.permute(2,1,0), mask2.permute(2,1,0)
+    ImageMaskViewer([img2,mask2])
+# %%
+    bboxes_all = []
+    mask_all_fg = A.mask.copy()
+    mask_all_fg[mask_all_fg > 1] = 1
+    for label,label_info in A.label_settings.items():
+            label = int(label)
+            if label in A.mask:
+                stats = {"label": label}
+                stats.update(
+                    get_label_stats(
+                        A.mask,
+                        label,
+                        k_largest=label_info["k_largest"],
+                        dusting_threshold=int(
+                            label_info["dusting_threshold"]
+                            * A.dusting_threshold_factor
+                        ),
+                    )
+                )
+                bboxes_all.append(stats)
+    stats = {"label": "all_fg"}
+    stats.update(
+            get_label_stats(
+                mask_all_fg,
+                1,
+                1,
+                dusting_threshold=3000 * A.dusting_threshold_factor,
+            )
+        )
+    bboxes_all.append(stats)
+    A._bboxes_info["bbox_stats"] = bboxes_all
+# %%
+
     M = MultiCaseAnalyzer(proj_defaults, outside_value=0)
 
 # %%
@@ -556,6 +584,12 @@ if __name__ == "__main__":
     od = collections.OrderedDict(sorted(gp.items()))
 # %%
 
+# %%
+    fn = "hhm_jack.nii.gz"
+    load_image(fn)
+    get_extension(fn)
+
+# %%
     stats_outfilename_kits21 = (
         proj_defaults.stage1_folder / ("cropped/images_nii/masks")
     ).parent / ("bboxes_info")

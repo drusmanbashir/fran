@@ -17,7 +17,8 @@ from fran.utils.imageviewers import ImageMaskViewer
 from fran.utils.fileio import maybe_makedirs, str_to_path
 
 import SimpleITK as sitk
-from fran.utils.helpers import abs_list, get_extension
+from fran.utils.helpers import abs_list
+from fran.utils.string import get_extension
 import ipdb
 
 from fran.utils.string import cleanup_fname

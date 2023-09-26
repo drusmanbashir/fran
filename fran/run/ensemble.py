@@ -33,9 +33,8 @@ class EnsembleActor(object):
         self.value = 0
 
     def process(self,proj_defaults,run_name_w,runs_ensemble ,fnames,half,debug,overwrite=False):
-        self.En = EnsemblePredictor2(proj_defaults,3,run_name_w,runs_ensemble,bs=3,half=half,device='cuda',debug=debug,overwrite=overwrite)
+        self.En = EnsemblePredictor(proj_defaults,3,run_name_w,runs_ensemble,bs=3,half=half,device='cuda',debug=debug,overwrite=overwrite)
         for img_fn in fnames:
-
             fname= Path(img_fn)
             img_sitk =sitk.ReadImage(fname)
             self.En.set_pred_fns(fname)

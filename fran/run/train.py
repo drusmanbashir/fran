@@ -1,7 +1,6 @@
 # %%
 from fran.utils.common import *
 from fran.managers.trainer import *
-# %%
 _translations =     {'mode' :{'config_name':'metadata,patch_based', 'hi':True,'lo':False},
     'bs': 'dataset_params,bs',
     'fold':'metadata,fold',
@@ -40,33 +39,34 @@ def override_configs(args , configs:dict):
         return configs
     else : return None
 
-def maybe_compute_bs(proj_defaults,args):
+def maybe_compute_bs(project,args):
     # if hasattr(args, "bs") or hasattr(args,"resume"):
     if any([s is not None for s in [args.bs,args.resume]]):
         args.bs =args.bs
     else:
-        args.bs = compute_bs(proj_defaults=proj_defaults,distributed=args.distributed,bs=12)
+        args.bs = compute_bs(project=project,distributed=args.distributed,bs=12)
     return  args.bs
 
 
     pass
-def load_and_update_configs(proj_defaults, args,compute_bs=True):
+def load_and_update_configs(project, args,compute_bs=True):
     # if recompute_bs==True:
     # if args.resume is None or args.update == True:
-    args.bs = maybe_compute_bs(proj_defaults,args)
-    configs = ConfigMaker(proj_defaults, raytune=False).config
+    args.bs = maybe_compute_bs(project,args)
+    configs = ConfigMaker(project, raytune=False).config
+
     # else:
     #     configs = {}
     updated_configs =override_configs(args, configs)
     return updated_configs
 
 
-def load_run(proj_defaults,run_name,args):
+def load_run(project,run_name,args):
     if args.update==True:
-        updated_configs = load_and_update_configs(proj_defaults, args )
+        updated_configs = load_and_update_configs(project, args )
     else: updated_configs = None
     La = Trainer.fromNeptuneRun(
-        proj_defaults,
+        project,
         run_name=run_name,
         update_nep_run_from_config=updated_configs,
         device= args.gpu
@@ -74,14 +74,16 @@ def load_run(proj_defaults,run_name,args):
     return La
 
 
-def initialize_run(proj_defaults ,args):
+def initialize_run(project ,args):
 
-    configs = load_and_update_configs(proj_defaults,args)
+    configs = load_and_update_configs(project,args)
+    configs['model_params/compiled'] = args.compile
+
 
     cbs = [
             ReduceLROnPlateau(patience=50),
-            NeptuneCallback(proj_defaults, configs, run_name=None),
-            NeptuneCheckpointCallback(proj_defaults.checkpoints_parent_folder),
+            NeptuneCallback(project, configs, run_name=None),
+            NeptuneCheckpointCallback(project.checkpoints_parent_folder),
             NeptuneImageGridCallback(
                 classes=out_channels_from_dict_or_cell(
                     configs["metadata"]["src_dest_labels"]
@@ -93,13 +95,13 @@ def initialize_run(proj_defaults ,args):
             ),
             #
         ]
-    La = Trainer(proj_defaults, configs,cbs, device =args.gpu)
+    La = Trainer(project, configs,cbs, device =args.gpu)
     return La
 
 def main(args):
 
     project_title = args.t
-    P = Project(project_title=project_title); proj_defaults= P
+    project = Project(project_title=project_title);
     print("Project: {0}".format(project_title))
 
     n_epoch = args.epochs
@@ -107,9 +109,9 @@ def main(args):
 
     run_name = process_run_name(args.resume)
     if not run_name:
-        La = initialize_run(proj_defaults, args)
+        La = initialize_run(project, args)
     else:
-        La = load_run(proj_defaults, run_name,args)
+        La = load_run(project, run_name,args)
 
     learn = La.create_learner(compile=args.compile,distributed=args.distributed)
 
@@ -154,15 +156,15 @@ if __name__ == "__main__":
     parser.add_argument("-n", help="No Neptune",action='store_true')
 # %%
     args = parser.parse_known_args()[0]
-    # args.t = 'lits2'
-    # args.lr = 1e-4
-    # args.distributed = True
+    args.t = 'lits'
+    args.lr = 1e-4
+    args.distributed = False
     # args.resume=''
     # args.resume='LITS-456'
-    # args.compiled= True
-    # args.bs = 4
+    args.compiled= False
+    args.bs = 4
     # args.update = True
-    #
-    # %%
+
+# %%
     main(args)
 # %%

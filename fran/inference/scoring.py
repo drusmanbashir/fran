@@ -1,20 +1,25 @@
+
+# %%
 # %matplotlib inline
 # %matplotlib widget
 from monai.utils.enums import LossReduction
 from fastai.callback.tracker import torch
 
 from monai.losses import DiceLoss
+from mask_analysis.labels import labels_overlap
 # %%
 
 from fran.utils.common import *
 from fran.utils.helpers import  get_fold_case_ids
-from fran.utils.imageviewers import ImageMaskViewer
+from fran.utils.imageviewers import ImageMaskViewer, view_sitk
 from fastai.vision.augment import typedispatch
 from fran.utils.common import *
 from fran.transforms.totensor import ToTensorT
 from fran.transforms.spatialtransforms import one_hot
 import SimpleITK as sitk
 from monai.metrics import *
+
+from fran.utils.string import strip_slicer_strings
 
 # %%
 
@@ -36,6 +41,10 @@ def compute_dice_fran(pred,mask,n_classes):
     aa = compute_dice(pred_onehot,mask_onehot,include_background=False)
     return aa
 
+def compute_dice_sitk(pred_fn, gt_fn, labels = [1,2]):
+    gt = sitk.ReadImage(gt_fn)
+    pred = sitk.ReadImage(pred_fn)
+
 
 # %%
 if __name__ == "__main__":
@@ -50,6 +59,27 @@ if __name__ == "__main__":
 
 
 
+
+# %%
+    gt_fldr = Path("/s/insync/datasets/crc_project/masks_ub")
+    imgs_fldr = Path("/s/datasets_bkp/litq/complete_cases/images")
+    pred_fldr = Path("/s/fran_storage/predictions/lits/ensemble_LITS-499_LITS-500_LITS-501_LITS-502_LITS-503/")
+    pred_fns = list(pred_fldr.glob("*"))
+    gt_fns = list(gt_fldr.glob("*"))
+
+    gt_fn = gt_fns[12]
+    gt_fn_clean= cleanup_fname(gt_fn.name)
+    pred_fn = [fn for fn in pred_fns if cleanup_fname(fn.name) == gt_fn_clean][0]
+# %%
+
+    gt = sitk.ReadImage(gt_fn)
+    pred = sitk.ReadImage(pred_fn)
+
+    labels_overlap(gt,pred, 1,2)
+# %%
+    view_sitk(gt,pred, data_types = ['mask','mask'])
+
+# %%
     # %%
     mask_files = list((proj_defaults.raw_data_folder/("masks")).glob("*nii*"))
     img_files= list((proj_defaults.raw_data_folder/("images")).glob("*nii*"))

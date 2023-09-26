@@ -9,7 +9,6 @@ from fran.utils.helpers import *
 from fran.utils.fileio import *
 
 
-# %%
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
 def user_input(inp:str, out=int):
@@ -68,7 +67,7 @@ class InteractiveAnalyserResampler:
             self.Resampler = ResampleDatasetniftiToTorch(
                 self.proj_defaults,
                 minimum_final_spacing=0.5,
-                enforce_isotropy=self.enforce_entropy,
+                enforce_isotropy=self.enforce_isotropy,
                 half_precision=self.half_precision
             )
 
@@ -83,7 +82,7 @@ class InteractiveAnalyserResampler:
                 debug=self.debug,
             )
             self.Resampler.generate_bboxes_from_masks_folder(
-                debug=self.debug, num_processes=self.num_processes
+                debug=self.debug, bg_label=0,num_processes=self.num_processes
             )
 
         self.get_resampling_configs()
@@ -111,7 +110,7 @@ class InteractiveAnalyserResampler:
         for arglist in [arglist_imgs,arglist_masks]: 
             res= multiprocess_multiarg(func=resize_and_save_tensors,arguments=arglist,num_processes=self.num_processes,debug=self.debug)
         print("Now call bboxes_from_masks_folder")
-        generate_bboxes_from_masks_folder(self.WholeImageTM.output_folder_masks,self.proj_defaults,0.2,self.debug,self.num_processes)
+        generate_bboxes_from_masks_folder(self.WholeImageTM.output_folder_masks,0,self.debug,self.num_processes)
 
     @ask_proceed("Generating hi-res patches. I recommend adding extra size to generated patches. The extra voxels will benefit affine transformation and will be cropped out before feeding the data to the NN")
     def generate_hires_patches_dataset(self):
@@ -157,8 +156,7 @@ class InteractiveAnalyserResampler:
         print("Generating boundingbox data")
         generate_bboxes_from_masks_folder(
             patches_output_folder / ("masks"),
-            self.proj_defaults,
-            0, # dust nothing
+            0, 
             self.debug,
             self.num_processes,
         )
@@ -314,7 +312,7 @@ if __name__ == "__main__":
         help="number of parallel processes",
         default=8,
     )
-    parser.add_argument("-e", "--enforce-entropy", action="store_true")
+    parser.add_argument("-e", "--enforce-isotropy", action="store_true")
     parser.add_argument("-o", "--overwrite", action="store_true")
     parser.add_argument("-c", "--clip-range", nargs=2, help="Give two values - lower and upper limit of clip-range. By default, percentiles will be used")
     parser.add_argument("-po", "--patch-overlap" ,help="Generating patches will overlying by this fraction range [0,.9). Default is 0.25 ", default=0.25, type=float)
@@ -328,9 +326,9 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "lits"
-    # args.num_processes = 16
-    # args.debug = False
+    args.project_title = "lits"
+    args.num_processes = 16
+    args.debug = False
     # args.overwrite=True
     I = InteractiveAnalyserResampler(args)
     # I.verify_dataset_integrity()
@@ -344,4 +342,3 @@ if __name__ == "__main__":
 
 # %%
 
-# %%

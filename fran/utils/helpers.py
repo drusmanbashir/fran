@@ -1,3 +1,5 @@
+
+# %%
 import collections
 import pprint
 import re
@@ -6,13 +8,15 @@ from pathlib import Path
 from typing import Union
 
 import ipdb
+from ipdb.__main__ import get_ipython
 import numpy as np
 import torch
-import tqdm
+from tqdm import tqdm as tqdm_ip
+from tqdm.notebook import tqdm as tqdm_nb
 
 from fran.utils.dictopts import *
-from fran.utils.fileio import load_dict, save_dict
-from fran.utils.string import cleanup_fname, dec_to_str
+from fran.utils.fileio import load_dict, save_dict, str_to_path
+from fran.utils.string import cleanup_fname, dec_to_str, path_to_str, regex_matcher
 
 tr = ipdb.set_trace
 import gc
@@ -22,6 +26,16 @@ import random
 pat_full = r"(?P<pt_id>[a-z]*_[a-z0-9]+)_(?P<date>\d+)_(?P<desc>.*)_(?P<tag>thick)_?.*(?=(?P<ext>\.(nii|nrrd)(\.gz)?)$)"
 pat_nodesc ="(?P<pt_id>[a-z]*_[a-z0-9]*)_(?P<date>\d*)"
 pat_idonly = "(?P<pt_id>[a-z]*_[a-z0-9]*)"
+
+def get_pbar():
+    if 'get_ipython' in globals():
+        if get_ipython().__class__.__name__ == 'TerminalInteractiveShell' :
+            return tqdm_ip
+        else:
+            return  tqdm_nb
+
+
+pbar=get_pbar()
 def range_inclusive(start, end):
      return range(start, end+1)
 def multiply_lists(a,b):
@@ -85,15 +99,6 @@ def folder_name_from_list(prefix:str,parent_folder:Path,values_list=None):
         subfolder =  "_".join([prefix]+output)
         return parent_folder/subfolder
 # ========================== wrapper functions ====================
-def path_to_str(fnc):
-        def inner(*args,**kwargs):
-            args = map(str,args)
-            for k,v in kwargs.items():
-                kwargs[k] = str(v) if isinstance(v,Path) else v
-            output = fnc(*args,** kwargs)
-            return output
-        return inner
-
 
 
 def pp(obj, *args,**kwargs):
@@ -212,43 +217,18 @@ def convert_sigmoid_to_label(y,threshold = 0.5):
     y[y<threshold]=0
     return y.int()
 
-
-def regex_matcher(indx=0):
-    def _outer(func):
-
-        def _inner(*args,**kwargs):
-                pat, string= func(*args,**kwargs)
-                pat = re.compile(pat,re.IGNORECASE)
-                answer = re.search(pat,string)
-                return answer[indx] if answer else None
-        return _inner
-    return _outer
 @path_to_str
 @regex_matcher()
 def match_filename_with_case_id(project_title, case_id,filename):
                 pat = project_title+"_"+case_id+"_?\."
                 return pat,filename
 
-
-@regex_matcher(1)
-def get_extension(fn):
-    pat = r"[^\.]*\.(.*)"
-    return pat, fn.name
-
-def get_pbar():
-    if 'get_ipython' in globals():
-        if get_ipython().__class__.__name__ == 'TerminalInteractiveShell' :
-            return tqdm.tqdm
-        else:
-            return  tqdm.notebook.tqdm
-    return tqdm.tqdm
-
-
 def project_title_from_folder(folder_name: Union[str,Path]):
     if isinstance(folder_name,Path): folder_name = folder_name.name
     pat = re.compile("(Task\d{0,5}_)?(\w*)",re.IGNORECASE)
     result= re.search(pat,folder_name)
     return result.groups()[-1]
+
 
 
 #
@@ -314,13 +294,10 @@ def get_train_valid_test_lists_from_json(project_title, fold, json_fname, image_
                     output_list.append(matched_files)
         return train_files,valid_files,test_files
 
-def get_fold_case_ids(fold:int,json_fname):
-        all_folds= load_dict(json_fname)
-        train_case_ids, validation_case_ids, test_case_ids,= all_folds['fold_'+str(int(fold))]['train'], all_folds['fold_'+str(int(fold))]['valid'],all_folds['test_cases']  # fold ->int -> str because sometimes fold = 0 is read by pandas as bool False!
-        return train_case_ids,validation_case_ids,test_case_ids
 
 
 
+@str_to_path(0)
 def find_matching_fn(src_fn:Path,mask_fnames:list):
         src_fn = cleanup_fname(src_fn.name)
         matching_mask_fns=[]
@@ -362,7 +339,6 @@ def write_file_or_not(output_filename, overwrite=True):
 def write_files_or_not(output_filenames, overwrite=True):
     return list(map(write_file_or_not,output_filenames,[overwrite,]*len(output_filenames)))
 
-pbar=get_pbar()
 # %%
 if __name__=="__main__":
     dd = load_dict("/home/ub/datasets/preprocessed/lits/patches/spc_100_100_200/dim_256_256_128/bboxes_info.pkl")
@@ -372,15 +348,4 @@ if __name__=="__main__":
     image_folder = proj_defaults.stage0_folder/("images")
     files_list = get_fileslist_from_path(proj_defaults.stage0_folder/"images")
     json_fname=proj_defaults.validation_folds_filename
-
-    create_train_valid_test_lists_from_filenames(proj_defaults.project_title,files_list,json_fname)
-    train_files_w_64_192, valid_files_w_64_192= get_train_valid_test_lists_from_json(0,json_fname, proj_defaults.stage1_folder/"64_192_192/images")
-# %%
-    st1= '/home/ub/datasets/raw_database/raw_data/kits19/images/KiTS19_00194_0000.nii.gz'
-    st2= '/home/ub/datasets/raw_database/raw_data/kits19/images/KiTS19_00194.nii.gz'
-    pat = re.compile("kits19_(\d*)",re.IGNORECASE)
-    aa = re.search(pat,st1)
-    aa.groups()
-
-
 

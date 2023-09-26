@@ -3,14 +3,20 @@ import sqlite3
 import math
 import ipdb
 from fastcore.basics import GetAttr
-from fran.utils.string import cleanup_fname, drop_digit_suffix, info_from_filename, strip_extension
+from fran.utils.string import (
+    cleanup_fname,
+    drop_digit_suffix,
+    info_from_filename,
+    strip_extension,
+)
+
 tr = ipdb.set_trace
 
 from pathlib import Path
 import os, sys
 import itertools as il
 import functools as fl
-from fastai.vision.augment import store_attr
+from fastai.vision.augment import detuplify, store_attr
 from fran.utils.dictopts import dic_in_list
 from fran.utils.helpers import *
 import shutil
@@ -24,135 +30,162 @@ if "XNAT_CONFIG_PATH" in os.environ:
     from xnat.object_oriented import *
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 from fran.utils.templates import mask_labels_template
-from fran.utils.helpers import pat_full,pat_nodesc, pat_idonly
+from fran.utils.helpers import pat_full, pat_nodesc, pat_idonly
+from contextlib import contextmanager
+
+
+def val_indices(a, n):
+    a = a - 1
+    k, m = divmod(a, n)
+    return [slice(i * k + min(i, m), (i + 1) * k + min(i + 1, m)) for i in range(n)]
+
+
+@contextmanager
+def db_ops(db_name):
+    conn = sqlite3.connect(db_name)
+    try:
+        cur = conn.cursor()
+        yield cur
+    except Exception as e:
+        # do something with exception
+        conn.rollback()
+        raise e
+    else:
+        conn.commit()
+    finally:
+        conn.close()
 
 
 class Project(DictToAttr):
     def __init__(self, project_title):
         store_attr()
         self.set_folder_file_names()
-        if  self.raw_dataset_info_filename.exists():
-            self.raw_data_sources = load_dict(self.raw_dataset_info_filename)
-        else:
-            self.raw_data_sources=[]
+        self.db = self.project_folder / ("cases.db")
 
-    def create_project(self, datasets: list = None,label_dict_filename=None, test: bool = None):
+    def create_project(self, data_folders: list = None, test: list = None):
         """
         param datasets: list of datasets to add to raw_data_folder
         param test: list of bool assigning some (or none) as test set(s)
         """
 
-        if self.label_dict_filename.exists():
-            tr()
-            ask_proceed("Project already exists. Proceed and make folders again (e.g., if some were deleted)?")(
-                self._create_folder_tree
-            )()
+        if self.db.exists():
+            ask_proceed(
+                "Project already exists. Proceed and make folders again (e.g., if some were deleted)?"
+            )(self._create_folder_tree)()
         else:
             self._create_folder_tree()
-        if datasets:
-            self.add_datasources(datasets, test)
 
-        if not label_dict_filename:
-            save_dict(mask_labels_template, self.label_dict_filename)
-            print("Using a template mask_labels.json file. Amend {} later to match your target config.".format(self.label_dict_filename))
-        else:
-            shutil.copy(label_dict_filename,self.label_dict_filename)
+        self.create_table()
+        if data_folders:
+            datasources = self.add_data(data_folders, test)
+
+    def sql_alter(self, sql_str):
+        with db_ops(self.db) as cur:
+            res = cur.execute(sql_str)
+
+    def sql_query(self, sql_str,chain_output=False):
+        with db_ops(self.db) as cur:
+            res = cur.execute(sql_str)
+            output = res.fetchall()
+            if chain_output==True:
+                output= list(il.chain.from_iterable(output))
+        return output
+
+    def vars_to_sql(self, dataset_name, img_fn, mask_fn, test):
+        case_id = info_from_filename(img_fn.name, "case_id")
+        fold = "NULL"
+        img_sym = self.symlink_fname(img_fn)
+        mask_sym = self.symlink_fname(mask_fn)
+        cols = (
+            dataset_name,
+            case_id,
+            str(img_fn),
+            str(mask_fn),
+            str(img_sym),
+            str(mask_sym),
+            fold,
+            test,
+        )
+        return cols
+
+    def create_table(self):
+        tbl_name = "datasources"
+        if not self.table_exists(tbl_name):
+            self.sql_alter(
+                "CREATE TABLE {} (ds, case_id, image,mask,img_symlink,mask_symlink,fold INTEGER,test)".format(
+                    tbl_name
+                )
+            )
+
+    def table_exists(self, tbl_name):
+        ss = "SELECT name FROM sqlite_schema WHERE type='table' AND name ='{}'".format(
+            tbl_name
+        )
+        aa = self.sql_query(ss)
+        return True if len(aa) > 0 else False
+
+    def add_data(self, data_folders, test=False):
+        data_folders = listify(data_folders)
+        test = [False] * len(data_folders) if not test else listify(test)
+        assert len(data_folders) == len(
+            test
+        ), "Unequal lengths of datafolders and (bool) test status"
+        for fldr, test in zip(data_folders, test):
+            ds = Datasource(fldr, test)
+            ds = self.filter_existing_images(ds)
+            self.populate_tbl(ds)
+        self.populate_raw_data_folder()
 
     def _create_folder_tree(self):
         maybe_makedirs(self.project_folder)
-        additional_folders=[
+        additional_folders = [
             self.raw_data_folder / ("images"),
             self.raw_data_folder / ("masks"),
         ]
-        for folder in il.chain(self.folders,additional_folders):
+        for folder in il.chain(self.folders, additional_folders):
             maybe_makedirs(folder)
 
     def populate_raw_data_folder(self):
-        for ds in self.raw_data_sources:
-            dataset_name = ds['dataset_name']
-            test = ds['test']
-            source_path = ds['source_path']
-            images,masks=  self.extract_img_mask_fnames(ds)
-            ds_new = {'dataset_name':dataset_name,'source_path':source_path, 'test':test, 'images':images,'masks':masks}
-            self._add_dataset(ds_new)
+        query_imgs = "SELECT image, img_symlink FROM datasources"
+        query_masks = "SELECT mask, mask_symlink FROM datasources"
+        pairs = self.sql_query(query_imgs)
+        pairs.extend(self.sql_query(query_masks))
+        for pair in pairs:
+            self.filepair_symlink(*pair)
 
-    def extract_img_mask_fnames(self,ds):
-            img_fnames = list((ds['source_path'] / ("images")).glob("*"))
-            mask_fnames = list((ds['source_path'] / ("masks")).glob("*"))
-            img_symlinks,mask_symlinks= [],[]
-        
-            verified_pairs=[]
-            for img_fn in img_fnames:
-                verified_pairs.append([img_fn, find_matching_fn(img_fn, mask_fnames)])
-            assert (self.paths_exist(verified_pairs)), "(Some) paths do not exist. Fix paths and try again."
-            print("self.populating raw data folder (with symlinks)")
-            for pair in verified_pairs:
-                img_symlink,mask_symlink = self.filepair_symlink(pair)
-                img_symlinks.append(img_symlink)
-                mask_symlinks.append(mask_symlink)
-            return img_symlinks,mask_symlinks
+    def symlink_fname(self, fn):
+        prnt = self.raw_data_folder / fn.parent.name
+        fn_out = prnt / fn.name
+        return fn_out
+
+    def filepair_symlink(self,fn,fn_out):
+        fn , fn_out = Path(fn), Path(fn_out)
+        try:
+            fn_out.symlink_to(fn)
+            print("SYMLINK created: {0} -> {1}".format(fn, fn_out))
+        except FileExistsError as e:
+            print(f"SYMLINK {str(e)}. Skipping...")
 
 
-    def filepair_symlink(self,pair:list):
-        symlink_fnames= []
-        for fn in pair:
-            prnt = self.raw_data_folder/fn.parent.name
-            fn_out = prnt/fn.name
-            try:
-                print("SYMLINK created: {0} -> {1}".format(fn,fn_out))
-                fn_out.symlink_to(fn)
-            except FileExistsError as e:
-                print(f"SYMLINK {str(e)}. Skipping...")
-            symlink_fnames.append(fn_out)
-        return symlink_fnames
-        
+    def delete_duplicates(self):
+        ss = """DELETE FROM datasources WHERE rowid NOT IN (SELECT MIN(rowid) FROM datasources GROUP BY image)
+        """
+        self.sql_alter(ss)
 
-
-    def _add_dataset(self,dic):
-        if dic_in_list(dic,self.datasets)==False:
-            self.datasets.append(dic)
-            save_dict(self.datasets,self.raw_dataset_info_filename)
-        else: print("Dataset {} already registered with same fileset in project. Will not add".format(dic['dataset_name']))
-
-
-
-    @property
-    def folders(self):
-        self._folders = []
-        for key, value in self.__dict__.items():
-            if isinstance(value, Path) and "folder" in key:
-                self._folders.append(value)
-        return self._folders
-
-
-    @property
-    def datasets(self):
-        if not hasattr(self,'_datasets'): 
-            try: 
-                self._datasets = load_dict(self.raw_dataset_info_filename)
-            except:  self._datasets = []
-        return self._datasets
-        
-
-    def purge(self): 
+    def purge(self):
         self.purge_raw_data_folder()
         files_to_del = [self.raw_dataset_info_filename]
         for fn in files_to_del:
-            try: 
+            try:
                 print("Deleting {} (if it exists)".format(fn))
                 fn.unlink()
-            except: pass
+            except:
+                pass
+
     def purge_raw_data_folder(self):
         for f in il.chain.from_iterable([self.raw_data_imgs, self.raw_data_masks]):
             f.unlink()
 
-    def _create_img_mask_symlinks(self, org_names, new_names):
-        try:
-            a = list(
-                il.starmap(lambda x, y: y.symlink_to(x), zip(org_names, new_names))
-            )
-        except FileExistsError as e:
-            print(f"SYMLINK {str(e)}. Skipping...")
 
     def paths_exist(self, paths: list):
         paths = il.chain.from_iterable(paths)
@@ -165,149 +198,173 @@ class Project(DictToAttr):
             print("Matching image / mask file pairs found in all raw_data sources")
             return True
 
-    def path_to_dataset(self,folder,test):
-            folder = Path(folder)
-            dd = {'dataset_name':self.get_dataset_name(folder),   'source_path':folder,'test':test}
-            return dd
+    def populate_tbl(self, ds):
+        strs = [self.vars_to_sql(ds.name, *pair, ds.test) for pair in ds.verified_pairs]
+        with db_ops(self.db) as cur:
+            cur.executemany("INSERT INTO datasources VALUES (?,?,?,?,?,?,?,?)", strs)
 
-    def add_datasources(self, datasets: Union[list, str, Path], test=None) -> None:
-
-        if not test:
-            test = [
-                False,
-            ] * len(datasets)
-        assert len(datasets) == len(
-            test
-        ), "datasets and test-status bool lists should have same length"
-
-        datasets = [self.path_to_dataset(ds,ts) for ds,ts in zip(listify(datasets), listify(test))]
-        datasets = self.filter_existing_datasets(datasets)
-        self.raw_data_sources.extend(datasets)
-
-    
-
-    def add_datasources_xnat(self,xnat_proj:str):
-        xnat_shadow_fldr="/s/xnat_shadow/"
+    def add_datasources_xnat(self, xnat_proj: str):
+        xnat_shadow_fldr = "/s/xnat_shadow/"
         proj = Proj(xnat_proj)
         rc = proj.resource("IMAGE_MASK_FPATHS")
         csv_fn = rc.get("/tmp", extract=True)[0]
         df = pd.read_csv(csv_fn)
 
-
-    def fold_update_needed(self):
-        names = [a.name.split('.')[0] for a in self.raw_data_imgs]
-        af= set(names)
-        old= set(self.folds['all_cases'])
-        dif = af.difference(old)
-        old.difference(af)
-        d = list(dif)
-        n_new = len(d)
-        print("New cases have been added (n={0})".format(n_new))
-        print("Train valid indices need to be updated")
-
-
-
-    def filter_existing_datasets(self,datasets:list):
-        # removes duplicates
-        names = [ll['dataset_name'] for ll in datasets]
-        new_dsets=[]
-        for name in names:
-            is_new_dset = any([name == dset['dataset_name'] for dset in self.datasets])
-            new_dsets.append(not is_new_dset)
-
-        datasets =  list(il.compress(datasets,new_dsets))
-        return datasets
-
-    def fold_update_needed(self)->bool:
-        n_new = len(self.new_case_ids)
-        if n_new>0:
-            print("New cases have been added (n={0})".format(n_new))
-            print("Train valid indices need to be updated")
-            return True
-        else: return False
-
-    def update_folds(self)->None:
-        print("New cases: {0}\n{1}".format(str(len(self.new_case_ids)),self.new_case_ids))
-        folds_new = create_folds(self.new_case_ids)
-        self.folds = merge_dicts(self.folds,folds_new)
-        save_dict(self.folds, self.validation_folds_filename)
-
-
-    @ask_proceed("Create train/valid folds (80:20) ")
-    def create_train_valid_folds(self):
-        print("Existing datasets are :{}".format([[ds['dataset_name'],ds['test']] for ds in self.datasets]))
-        print("A fresh train/valid split should be created everytime a new training dataset is added")
-        train_val_list =  list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==False ]))
-        test_list =list(il.chain.from_iterable([ds['images'] for ds in self.datasets if ds['test']==True]))
-        json_fname = self.validation_folds_filename
-        create_train_valid_test_lists_from_filenames(
-             train_val_list,  test_list,0.2,  json_fname, shuffle=False
-        )
-
-    @property
-    def new_case_ids(self):
-        '''
-        case ids which have been added to raw data but are not the validation folds
-        '''
-        names = il.chain.from_iterable([d['images'] for d in self.datasets  if d['test']==False])
-        names = [a.name.split('.')[0] for a in names]
-        files= set(names)
-        folds_old= set(self.folds['all_cases'])
-        added = files.difference(folds_old)
-        removed = folds_old.difference(files)
-        if len(removed)>0: 
-            print("Some cases have been removed. The logic to remove them from folds is not implemeneted")
-            tr()
-        self._new_case_ids = list(added)
-        return self._new_case_ids
-
-
-    def get_dataset_name(self,folder):
-        fnames = (folder/ ("images")).glob("*")
-        fname = next(fnames)
-        pat = r"([a-z]*[\d]*)[-_]"
-        res=   re.match(pat, fname.name)[1] 
-        return res
+    def filter_existing_images(self, ds):
+        ss = "SELECT image FROM datasources WHERE ds='{}'".format(ds.name)
+        with db_ops(self.db) as cur:
+            res = cur.execute(ss)
+            pa = res.fetchall()
+        existing_images = list(il.chain.from_iterable(pa))
+        if len(existing_images) > 0:
+            print(
+                "Datasource {} exists already. Checking for new files in added folder".format(
+                    ds.name
+                )
+            )
+            existing_images = [x in existing_images for x in ds.images]
+            ds.verified_pairs = list(il.compress(ds.verified_pairs, existing_images))
+            if ln := len(ds) > 0:
+                print("{} new files found. Adding to db.".format(ln))
+            else:
+                print("No new files to add from datasource {}".format(ds.name))
+        return ds
 
     def set_folder_file_names(self):
-
-        common_paths= load_yaml(common_vars_filename)
-        self.project_folder = Path(common_paths["projects_folder"]) /self.project_title
-        self.cold_datasets_folder = Path(common_paths['cold_storage_folder'])/"datasets"
-        self.fixed_dimensions_folder = Path(common_paths["rapid_access_folder"]) / self.project_title
-        self.predictions_folder = Path(common_paths[
-            "cold_storage_folder"
-        ] )/ ("predictions/" + self.project_title)
+        common_paths = load_yaml(common_vars_filename)
+        self.project_folder = Path(common_paths["projects_folder"]) / self.project_title
+        self.cold_datasets_folder = (
+            Path(common_paths["cold_storage_folder"]) / "datasets"
+        )
+        self.fixed_dimensions_folder = (
+            Path(common_paths["rapid_access_folder"]) / self.project_title
+        )
+        self.predictions_folder = Path(common_paths["cold_storage_folder"]) / (
+            "predictions/" + self.project_title
+        )
         self.raw_data_folder = self.cold_datasets_folder / (
-                    "raw_data/" + self.project_title
-                )
-        self.checkpoints_parent_folder = Path(common_paths['checkpoints_parent_folder'])/self.project_title
-        self.configuration_filename = self.project_folder/ ("experiment_configs.xlsx")
+            "raw_data/" + self.project_title
+        )
+        self.checkpoints_parent_folder = (
+            Path(common_paths["checkpoints_parent_folder"]) / self.project_title
+        )
+        self.configuration_filename = self.project_folder / ("experiment_configs.xlsx")
 
         self.fixed_spacings_folder = (
             self.cold_datasets_folder
             / ("preprocessed/fixed_spacings")
             / self.project_title
         )
-        self.global_properties_filename = (
-            self.project_folder / "global_properties"
-        )
+        self.global_properties_filename = self.project_folder / "global_properties"
         self.patches_folder = self.fixed_dimensions_folder / ("patches")
         self.raw_dataset_properties_filename = (
             self.project_folder / "raw_dataset_properties"
         )
 
         self.bboxes_voxels_info_filename = self.raw_data_folder / ("bboxes_voxels_info")
-        self.validation_folds_filename = self.project_folder/("validation_folds.json")
+        self.validation_folds_filename = self.project_folder / ("validation_folds.json")
         self.whole_images_folder = self.fixed_dimensions_folder / ("whole_images")
-        self.raw_dataset_info_filename = self.project_folder/("raw_dataset_srcs.pkl")
+        self.raw_dataset_info_filename = self.project_folder / ("raw_dataset_srcs.pkl")
         self.log_folder = self.project_folder / ("logs")
-        self.label_dict_filename =  self.project_folder/("mask_labels.json")
 
 
-    def _raw_data_files(self, input):
-        rdi = [list(a / (input).glob("*")) for a in self.raw_data_folder.glob("*")]
-        return list(il.chain.from_iterable(rdi))
+
+    def get_unassigned_cases(self):
+        ss = "SELECT case_id,image FROM datasources WHERE test=0 AND fold='NULL'"  # only training cases
+        qr = self.sql_query(ss)
+        qr = list(il.chain(qr))
+        print("Cases not assigned to any training fold: {}".format(len(qr)))
+        return qr
+
+    def create_df(self, cases):
+        self.df = pd.DataFrame(cases, columns=["case_id", "image"])
+        self.df["index"] = 0
+        self.df["fold"] = np.nan
+        case_ids = self.df["case_id"]
+        case_ids = case_ids.sort_values()
+        case_ids = case_ids.drop_duplicates()
+
+        for ind, case_id in enumerate(case_ids):
+            self.df.loc[self.df["case_id"] == case_id, "index"] = ind
+
+    def update_tbl_folds(self):
+        dds = []
+        for n in range(len(self.df)):
+            dd = list(self.df.loc[n, ["fold", "image"]])
+            dd[0] = str(dd[0])
+            dds.append(dd)
+        ss = "UPDATE datasources SET fold= ? WHERE image=?"
+        with db_ops(self.db) as cur:
+            cur.executemany(ss, dds)
+
+    @ask_proceed("Create train/valid folds (80:20) ")
+    def create_folds(self, pct_valid=0.2, shuffle=False):
+        self.delete_duplicates()
+        cases_unassigned = self.get_unassigned_cases()
+        if len(cases_unassigned) > 0:
+            self.create_df(cases_unassigned)
+            pct_valid = 0.2
+            folds = int(1 / pct_valid)
+            sl = val_indices(len(self.df), folds)
+            print(
+                "Given proportion {0} of validation files yield {1} folds".format(
+                    pct_valid, folds
+                )
+            )
+            if shuffle == True:
+                self.df = self.df.sample(frac=1).reset_index(drop=True)
+            else:
+                self.df = self.df.sort_values("index")
+                self.df = self.df.reset_index(drop=True)
+
+            for n in range(folds):
+                self.df.loc[sl[n], "fold"] = n
+
+            self.update_tbl_folds()
+
+    def get_train_val_files(self,fold):
+        ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{}".format(fold)
+        ss_val = "SELECT img_symlink FROM datasources WHERE fold={}".format(fold)
+
+        train_files,val_files = self.sql_query(ss_train,True),self.sql_query(ss_val,True)
+        train_files =[Path(fn).name for fn in train_files]
+        val_files =[Path(fn).name for fn in val_files]
+        return train_files,val_files
+
+
+    @ask_proceed("Remove all project files and folders?")
+    def delete(self):
+        for folder in self.folders:
+            if folder.exists() and self.project_title in str(folder):
+                shutil.rmtree(folder)
+        print("Done")
+
+
+
+    def __len__(self):
+        ss = "SELECT COUNT (image )from datasources"
+        qr = self.sql_query(ss)[0][0]
+        return qr
+
+    def __repr__(self):
+        s = "Project {0}\n{1}".format(self.project_title, self.dataset_names)
+        return s
+
+
+    @property
+    def folders(self):
+        self._folders = []
+        for key, value in self.__dict__.items():
+            if isinstance(value, Path) and "folder" in key:
+                self._folders.append(value)
+        return self._folders
+
+    @property
+    def dataset_names(self):
+        ss = "SELECT DISTINCT ds FROM datasources ORDER BY ds"
+        qr = self.sql_query(ss,True)
+        return qr
+
 
     @property
     def raw_data_imgs(self):
@@ -319,188 +376,84 @@ class Project(DictToAttr):
         self._raw_data_masks = (self.raw_data_folder / ("masks")).glob("*")
         return list(self._raw_data_masks)
 
-    @property
-    def folds(self):
-        if not hasattr(self,'_folds')   :
-            self._folds = load_dict(self.validation_folds_filename)
-            
-        return self._folds
-
-    @folds.setter
-    def folds(self,value):
-        self._folds = value
-
-
-    def __len__(self): 
-        self._len = len(self.raw_data_imgs)
-        assert (self._len == len(self.folds['all_cases'])), "Have you accounted for all files in creating train/valid folds?"
-        self._training_data_total = self._len
-        return self._len
-
-    def __repr__(self): 
-        s = "Project {0}\n{1}".format(self.project_title, self.datasets)
-        return s
-
-    @ask_proceed("Remove all project files and folders?")
-    def delete(self):
-        for folder in self.folders:
-            if folder.exists() and self.project_title in str(folder) :
-                shutil.rmtree(folder)
-        print("Done")
-
-def create_train_valid_test_lists_from_filenames(train_val_list, test_list, pct_valid , json_filename, shuffle=False):
-    train_val_ids = [strip_extension(fn.name) for fn in train_val_list]
-    test_ids = [strip_extension(fn.name) for fn in test_list]
-    folds_dict = create_folds(train_val_ids,test_ids,pct_valid,shuffle=shuffle)
-    print("Saving folds to {}  ..".format(json_filename))
-    save_dict(folds_dict,json_filename)
-
-def create_folds(train_val_ids,test_ids=[], pct_valid=0.2,shuffle=False):
-    if shuffle==True: 
-        print("Shuffling all cases")
-        random.shuffle(train_val_ids)
-    else:    
-        print("Putting cases in sorted order")
-        train_val_ids.sort()
-    final_dict= {"all_cases":train_val_ids+test_ids} 
-    n_valid = int(pct_valid*len(train_val_ids))
-    final_dict.update({"test_cases": test_ids})
-    folds = int(1/pct_valid)
-    print("Given proportion {0} of validation files yield {1} folds".format(pct_valid,folds))
-    slices = [slice(fold*n_valid,(fold+1)*n_valid) for fold in range(folds)]
-    val_cases_per_fold = [train_val_ids[slice] for slice in slices]
-    for n in range(folds):
-        train_cases_fold = list(set(train_val_ids)-set(val_cases_per_fold[n]))
-        fold = {'fold_{}'.format(n):{'train':train_cases_fold, 'valid':val_cases_per_fold[n]}}
-        final_dict.update(fold)
-    return final_dict
-
-# %%
-class Datasources():
-    pass
-
 class Datasource(GetAttr):
-    
-    _default = 'proj'
-    def __init__(self, proj, src_folder: Union[str,Path]) -> None:
-        '''
+    def __init__(self, folder: Union[str, Path], test=False) -> None:
+        """
         src_folder: has subfolders 'images' and 'masks'. Files in each are identically named
-        '''
-        src_folder = Path(src_folder)
-        self.dataset_name = src_folder.name
-        self.images = list((src_folder/("images")).glob("*.*"))
-        self.masks = list((src_folder/("masks")).glob("*.*"))
-        
-        store_attr()
+        """
+        self.folder = Path(folder)
+        self.name = self.folder.name
+        self.integrity_check()
+        store_attr(but="folder")
 
     def integrity_check(self):
-        '''
+        """
         verify name pairs
         any other verifications
-        '''
-        verified_pairs=[]
-        for img_fn in self.images:
-                verified_pairs.append([img_fn, find_matching_fn(img_fn,self.masks)])
-        
+        """
 
-    def extract_img_mask_fnames(self,ds):
-            img_fnames = list((ds['source_path'] / ("images")).glob("*"))
-            mask_fnames = list((ds['source_path'] / ("masks")).glob("*"))
-            img_symlinks,mask_symlinks= [],[]
-        
-            verified_pairs=[]
-            for img_fn in img_fnames:
-                verified_pairs.append([img_fn, find_matching_fn(img_fn, mask_fnames)])
-            assert (self.paths_exist(verified_pairs)), "(Some) paths do not exist. Fix paths and try again."
-            print("self.populating raw data folder (with symlinks)")
-            for pair in verified_pairs:
-                img_symlink,mask_symlink = self.filepair_symlink(pair)
-                img_symlinks.append(img_symlink)
-                mask_symlinks.append(mask_symlink)
-            return img_symlinks,mask_symlinks
+        images = list((self.folder / ("images")).glob("*.*"))
+        masks = list((self.folder / ("masks")).glob("*.*"))
+        assert (
+            a := len(images) == (b := len(masks))
+        ), "Different lengths of images {0}, and masks {1}.\nCheck your data folder".format(
+            a, b
+        )
+        self.verified_pairs = []
+        for img_fn in images:
+            self.verified_pairs.append([img_fn, find_matching_fn(img_fn, masks)])
+        pp(self.verified_pairs)
 
+    def extract_img_mask_fnames(self, ds):
+        img_fnames = list((ds["source_path"] / ("images")).glob("*"))
+        mask_fnames = list((ds["source_path"] / ("masks")).glob("*"))
+        img_symlinks, mask_symlinks = [], []
 
-    def filepair_symlink(self,pair:list):
-        symlink_fnames= []
-        for fn in pair:
-            prnt = self.raw_data_folder/fn.parent.name
-            fn_out = prnt/fn.name
-            try:
-                print("SYMLINK created: {0} -> {1}".format(fn,fn_out))
-                fn_out.symlink_to(fn)
-            except FileExistsError as e:
-                print(f"SYMLINK {str(e)}. Skipping...")
-            symlink_fnames.append(fn_out)
-        return symlink_fnames
- 
+        verified_pairs = []
+        for img_fn in img_fnames:
+            verified_pairs.append([img_fn, find_matching_fn(img_fn, mask_fnames)])
+        assert self.paths_exist(
+            verified_pairs
+        ), "(Some) paths do not exist. Fix paths and try again."
+        print("self.populating raw data folder (with symlinks)")
+        for pair in verified_pairs:
+            img_symlink, mask_symlink = self.filepair_symlink(pair)
+            img_symlinks.append(img_symlink)
+            mask_symlinks.append(mask_symlink)
+        return img_symlinks, mask_symlinks
+
+    @property
+    def images(self):
+        images = [x[0] for x in self.verified_pairs]
+        return images
+
+    @property
+    def masks(self):
+        masks = [x[1] for x in self.verified_pairs]
+        return masks
+
     def __len__(self):
-        pass
+        return len(self.verified_pairs)
+
+    def __repr__(self):
+        s = "Dataset: {0}".format(self.name)
+        return s
 
     def create_symlinks(self):
         pass
-        
+
+
 # %%
 if __name__ == "__main__":
+    P.delete()
     P = Project(project_title="lits")
-    D = Datasource(P,'/s/datasets_bkp/litsmall/')
-    D.integrity_check()
-    P.create_project(['/s/xnat_shadow/nodes'])
-    # P.add_datasources("/s/datasets_bkp/litsmall")
-    # P.create_project([ '/s/xnat_shadow/litq'])
-    P.populate_raw_data_folder()
-    P.raw_data_imgs
-    P.update_folds()
-
-# %%
-    P.db = P.project_folder/("cases.db")
-    con = sqlite3.connect(P.db)
-    cur = con.cursor()
-
-    cur.execute("DROP TABLE litsmall")
-    cur.execute("CREATE TABLE {} (case_id, image,mask,img_symlink,mask_symlink,fold,train)".format(D.dataset_name))
-    res = cur.execute("SELECT name FROM SQLITE_MASTER")
-    res.fetchone()
-# %%
-    img = D.images[0]
-    mask = D.masks[0]
-
-    prnt = D.raw_data_folder/img.parent.name
-    fn_out = prnt/img.name
-    fn_out2 = prnt/img.name
-    fold = 0
-
-    mask = D.masks[0]
-# %%
-    input_str = "INSERT INTO {0} VALUES ('{1}', '{2}', '{3}', '{4}', '{5}',{6},{7})".format(D.dataset_name,img.name,img,mask,fn_out,fn_out2,0,True)
-    cur.execute(input_str)
-    con.commit()
-    res = cur.execute("SELECT image FROM {0}".format(D.dataset_name))
-    res = cur.execute("SELECT * FROM {0}".format(D.dataset_name))
-    res = cur.execute("PRAGMA table_info(litsmall)")
-
-    res.fetchall()
-
-
-
-# %%
-    dd = P.datasets
-    d = dd[1]
-    imgs = d['images']
-# %%
-    P.raw_data_imgs
-    P.create_train_valid_folds()
-
-
-# %%
-    P.add_datasources(['/s/datasets_bkp/litsmall/'])
-    P.populate_raw_data_folder()
-# %%
-# %%
-    P.load_summary()
-    pj = P
-    pp(pj)
+    ds = "/s/xnat_shadow/litq"
+    ds2="/s/datasets_bkp/litqmall"
+    ds3="/s/datasets_bkp/drli"
+    ds4="/s/datasets_bkp/lits_segs_improved/"
+    P.create_project([ds,ds2,ds3,ds4])
+    P.create_folds()
+    len(P.raw_data_imgs)
     len(P)
-    P.save_summary()
-
 # %%
-       
+

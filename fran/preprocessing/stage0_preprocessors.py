@@ -26,11 +26,11 @@ tr = ipdb.set_trace
 
 
 def generate_bboxes_from_masks_folder(
-    masks_folder, proj_defaults, dusting_threshold_factor, debug=False, num_processes=16
+    masks_folder, bg_label=0,  debug=False, num_processes=16
 ):
     mask_files = masks_folder.glob("*pt")
     arguments = [
-        [x, proj_defaults, dusting_threshold_factor] for x in mask_files
+        [x,  bg_label] for x in mask_files
     ]  # 0.2 factor for thresholding as kidneys are small on low-res imaging and will be wiped out by default threshold 3000
     bboxes = multiprocess_multiarg(
         func=bboxes_function_version,
@@ -260,13 +260,12 @@ class ResampleDatasetniftiToTorch:
         )
         save_dict(resampled_dataset_properties, resampled_dataset_properties_fname)
 
-    def generate_bboxes_from_masks_folder(self, debug=False, num_processes=8):
+    def generate_bboxes_from_masks_folder(self, bg_label=0,debug=False, num_processes=8):
         masks_folder = self.resampling_output_folder / ("masks")
         print("Generating bbox info from {}".format(masks_folder))
         generate_bboxes_from_masks_folder(
             masks_folder,
-            self.proj_defaults,
-            1,
+            bg_label,
             debug,
             num_processes,
         )
@@ -541,7 +540,7 @@ class NiipairToTorch(DictToAttr):
 
 # %%
 if __name__ == "__main__":
-    globalp = load_dict("/s/fran_storage/datasets/raw_data/lits/global_properties.json")
+    globalp = load_dict(Path("/s/fran_storage/datasets/raw_data/lits/global_properties"))
     case_props = load_dict(
         "/s/fran_storage/datasets/raw_data/lits/raw_dataset_properties.pkl"
     )
@@ -611,7 +610,31 @@ if __name__ == "__main__":
 # %%
     debug = False
     multiprocess = True
-    R.resample_cases(debug=debug, overwrite=True, multiprocess=multiprocess)
+    num_processes=16
+    I.Resampler.resample_cases(debug=debug, overwrite=True, multiprocess=multiprocess)
+    fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/nodes/spc_078_078_375/masks/")
+    generate_bboxes_from_masks_folder(fldr)
+# %%
+    masks_folder = I.Resampler.resampling_output_folder / ("masks")
+    print("Generating bbox info from {}".format(masks_folder))
+    generate_bboxes_from_masks_folder(
+        masks_folder,
+        debug,
+        num_processes,
+    )
+
+    bg_label=0
+    mask_files = masks_folder.glob("*pt")
+    arguments = [
+        [x,  bg_label] for x in mask_files
+    ]  # 0.2 factor for thresholding as kidneys are small on low-res imaging and will be wiped out by default threshold 3000
+    bboxes = multiprocess_multiarg(
+        func=bboxes_function_version,
+        arguments=arguments,
+        num_processes=num_processes,
+        debug=debug,
+    )
+
 # %%
 #     aa = pipeline2[0]([img,mask])
 #     aa = pipeline2[1](aa)

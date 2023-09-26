@@ -13,6 +13,8 @@ import SimpleITK as sitk
 from fastcore.basics import patch_to
 import pandas as pd
 
+from fran.utils.string import get_extension, str_to_path
+
 tr = ipdb.set_trace
 
 # %%
@@ -42,22 +44,6 @@ def save_file_wrapper(fnc):
         return fnc(object, filename)
     return _inner
 
-
-
-def str_to_path(arg_inds=None):
-    arg_inds=listify(arg_inds)
-    def wrapper(func):
-        def inner (*args,**kwargs):
-            if arg_inds is None:
-                args = [Path(arg) for arg in args]
-                kwargs = {key:Path(val) for key,val in kwargs.items()}
-            else:
-                args = list(args)
-                all_inds = range(len(args))
-                args = [Path(arg) if ind in arg_inds else arg for ind, arg in zip(all_inds,args) ]
-            return func(*args,**kwargs)
-        return inner
-    return wrapper
 
 @save_file_wrapper
 def save_np(object,filename):
@@ -208,6 +194,21 @@ def sitk_filename_to_numpy(fname):
             arr = sitk.ReadImage(str(fname))
             arr= sitk.GetArrayFromImage(arr)
             return arr
+
+
+
+@str_to_path(0)
+def load_image(fn):
+        val_extensions={
+            'np': np.load,
+            'pt': torch.load,
+            'nii.gz':sitk.ReadImage,
+            'nii':sitk.ReadImage
+        }
+        for key,fnc in val_extensions.items():
+            if (ext:=get_extension(fn))==key:
+                return fnc(fn)
+        print("Extension invalid: ".format(ext))
 
 
 def rename_and_move_images_and_masks(project_title,img_files,mask_files=None,counter_start=0,dataset_subid:str="",ext=None,overwrite=False,log=True):

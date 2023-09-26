@@ -22,6 +22,8 @@ from fastai.data.transforms import FileGetter
 from fran.transforms.spatialtransforms import *
 import ipdb
 
+from fran.utils.string import strip_extension
+
 tr = ipdb.set_trace
 # path=  proj_default_folders.preprocessing_output_folder
 # imgs_folder =  proj_default_folders.preprocessing_output_folder/("images")
@@ -56,31 +58,39 @@ class ImageMaskBBoxDataset():
     takes a list of case_ids and returns bboxes image and mask
     """
 
-    def __init__(self,proj_defaults, case_ids, bbox_fn , class_ratios:list=None):
-        store_attr('proj_defaults')
+    def __init__(self,fnames, bbox_fn , class_ratios:list=None):
 
         """
         class_ratios decide the proportionate guarantee of each class in the output including background. While that class is guaranteed to be present at that frequency, others may still be present if they coexist
         """
         if not class_ratios: 
-
             self.enforce_ratios = False
         else: 
-            assert len(class_ratios) == self.num_classes, "All classes must be represented"
             self.class_ratios = class_ratios
             self.enforce_ratios = True
 
         print("Loading dataset from BBox file {}".format(bbox_fn))
         bboxes_unsorted = load_dict(bbox_fn)
         self.bboxes_per_id = []
-
-        for cid in case_ids:
-            bboxes = [bb for bb in bboxes_unsorted if bb["case_id"] == cid]
-            if len(bboxes) == 0:
-                print("Missing case id {0} from bboxfile".format(cid))
-
+        for fn in fnames:
+            bboxes = self.match_raw_filename(bboxes_unsorted, fn)
             bboxes.append(self.get_label_info(bboxes))
             self.bboxes_per_id.append(bboxes)
+
+    def match_raw_filename(self,bboxes,fname:str):
+        bboxes_out=[]
+        fname = strip_extension(fname)
+        for bb in bboxes:
+            fn = bb['filename']
+            fn_no_suffix=cleanup_fname(fn.name)
+            if fn_no_suffix==fname:
+                bboxes_out.append(bb)
+        if len(bboxes_out) == 0:
+                print("Missing filename {0} from bboxfile".format(fn))
+                tr()
+        return bboxes_out
+
+
 
     def __len__(self):
         return len(self.bboxes_per_id)
@@ -156,11 +166,7 @@ class ImageMaskBBoxDataset():
             labels_this_case = list(set(reduce(operator.add,labels_per_file)))
             return {'file_indices':indices,'labels_per_file':labels_per_file, 'labels_this_case': labels_this_case}
 
-    @property
-    def num_classes(self):
-        if not hasattr(self,'_num_classes'):
-          self._num_classes =len(load_dict(self.proj_defaults.label_dict_filename) )+1 # +1 for the bg class
-        return self._num_classes
+
         
     @property
     def class_ratios(self):
@@ -205,13 +211,10 @@ class ImageMaskBBoxDataset():
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P
-    configs_excel = ConfigMaker(proj_defaults,raytune=False).config
+    P = Project(project_title="lits");
+    configs_excel = ConfigMaker(P,raytune=False).config
 
-    train_list, valid_list, test_list = get_fold_case_ids(
-            fold=configs_excel['metadata']["fold"],
-            json_fname=proj_defaults.validation_folds_filename,
-        )
+    train_list, valid_list = P.get_train_val_files(0)
     fldr =Path("/home/ub/datasets/preprocessed/lits/patches/spc_080_080_150/dim_192_192_128") 
 
 
@@ -221,10 +224,7 @@ if __name__ == "__main__":
 
    
 # %%
-    
-# %%
     train_ds = ImageMaskBBoxDataset(
-            proj_defaults,
             train_list,
             bboxes_fname,
             [0,0,1]
