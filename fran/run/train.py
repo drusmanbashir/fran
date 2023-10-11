@@ -141,7 +141,7 @@ if __name__ == "__main__":
     parser.add_argument("-f","--fold", type=int, default=0)
     parser.add_argument("-d","--distributed", action='store_true')
     parser.add_argument("-c","--compile", action='store_true')
-    parser.add_argument("--lr", help="learning rate",type=float)
+    parser.add_argument("--lr", help="learning rate",type=float, default=1e-3)
     parser.add_argument("--gpu", help="gpu id",type=int, default=0)
 
     parser.add_argument("-a", "--arch", help="Architecture. Supports: nnUNet, SwinUNETR, DynUNet")
@@ -156,13 +156,13 @@ if __name__ == "__main__":
     parser.add_argument("-n", help="No Neptune",action='store_true')
 # %%
     args = parser.parse_known_args()[0]
-    args.t = 'lits'
-    args.lr = 1e-4
-    args.distributed = False
-    # args.resume=''
-    # args.resume='LITS-456'
-    args.compiled= False
-    args.bs = 4
+    # args.t = 'lits'
+    # args.lr = 1e-4
+    # args.distributed = False
+    # # args.resume=''
+    # # args.resume='LITS-456'
+    # args.compiled= False
+    # args.bs = 4
     # args.update = True
 
 # %%

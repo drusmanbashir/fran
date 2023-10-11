@@ -58,3 +58,9 @@ class ResizeBatch(ItemTransform):
         return img,mask
 
 
+# %%
+if __name__ == "__main__":
+    imgn = single_case_properties['properties']['img_file']
+
+    
+# %%

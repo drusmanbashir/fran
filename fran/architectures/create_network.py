@@ -1,7 +1,8 @@
 
 # %%
+import lightning.pytorch as pl
 import torch
-from fran.architectures.unet3d.model import UNet3D
+# from fran.architectures.unet3d.model import UNet3D
 from nnunet.network_architecture.generic_UNet import Generic_UNet
 from nnunet.network_architecture.generic_UNet import ConvDropoutNormNonlin
 from nnunet.network_architecture.initialization import InitWeights_He
@@ -169,6 +170,44 @@ def create_model_from_conf_unet(model_params, dataset_params):
         self_attention=model_params["self_attention"],
     )
     return model
+
+class nnUNet(pl.LightningModule):
+    def __init__(self,in_channels,out_channels,deep_supervision,pool_op_kernel_sizes=None):
+        super().__init__()
+        self.model = Generic_UNet(
+                in_channels,
+                base_num_features=32,
+                num_classes=out_channels,
+                num_pool=5,
+                num_conv_per_stage=2,
+                feat_map_mul_on_downscale=2,
+                conv_op=nn.Conv3d,
+                norm_op=nn.InstanceNorm3d,
+                norm_op_kwargs={"eps": 1e-5, "affine": True},
+                dropout_op=nn.Dropout3d,
+                dropout_op_kwargs={"p": 0, "inplace": True},
+                nonlin=nn.LeakyReLU,
+                nonlin_kwargs={"negative_slope": 0.01, "inplace": True},
+                deep_supervision=deep_supervision,
+                dropout_in_localization=False,
+                final_nonlin=lambda x: x,
+                weightInitializer=InitWeights_He(1e-2),
+                pool_op_kernel_sizes=[[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]] if pool_op_kernel_sizes is None else pool_op_kernel_sizes,
+                conv_kernel_sizes=[
+                    [3, 3, 3],
+                    [3, 3, 3],
+                    [3, 3, 3],
+                    [3, 3, 3],
+                    [3, 3, 3],
+                    [3, 3, 3],
+                ],
+                upscale_logits=False,
+                convolutional_pooling=True,
+                convolutional_upsampling=True,
+                max_num_features=None,
+                basic_block=ConvDropoutNormNonlin,
+                seg_output_use_bias=False,
+            )
 
 # %%
 if __name__ == "__main__":

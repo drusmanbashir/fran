@@ -1,18 +1,19 @@
 
 # %%
+from collections.abc import ItemsView
 from pathlib import Path
 from fastcore.all import is_close, listify
+from neptune.types.atoms.file import Union
 import torch
 from torch import nn
 
 import itertools as il
 from fastcore.test import test_close
 import ast
-from fastai.callback.tracker import Union, shutil
 from fastcore.basics import store_attr
 import numpy as np
-from fastai.vision.augment import test_eq
 from torch.functional import Tensor
+from fran.inference.helpers import get_sitk_target_size_from_spacings
 from fran.utils.imageviewers import ImageMaskViewer
 from fran.utils.fileio import maybe_makedirs, str_to_path
 
@@ -289,7 +290,39 @@ def has_target_labels(mask_fn,labels=[1,2]):
     else:
         print("All labels are present")
         return 1
-   
+  
+class SITKImgMaskResize(ItemTransform):
+    def __init__(self,out_spacing):
+        self.resizer = SITKResize(out_spacing)
+    def encodes(self,x):
+        img,mask = x
+        img_out = self.resizer(img,is_label=False)
+        mask_out = self.resizer(mask,is_label=True)
+        return img_out,mask_out
+
+class SITKResize(Transform):
+    def __init__(self,out_spacing):
+        store_attr()
+    def encodes(self,img_sitk,is_label):
+        out_size = get_sitk_target_size_from_spacings(img_sitk,self.out_spacing)
+        _ ,out_origin,  _ ,out_direction= get_metadata(img_sitk)
+        resample = sitk.ResampleImageFilter()
+        resample.SetOutputSpacing(self.out_spacing)
+        resample.SetSize(out_size)
+        resample.SetOutputDirection(out_direction)
+        resample.SetOutputOrigin(out_origin)
+        resample.SetTransform(sitk.Transform())
+        resample.SetDefaultPixelValue(img_sitk.GetPixelIDValue())
+        if is_label==True:
+            resample.SetInterpolator(sitk.sitkNearestNeighbor)
+        else:
+            resample.SetInterpolator(sitk.sitkLinear)
+
+        img_out= resample.Execute(img_sitk)
+        return img_out
+
+
+
 
 # %%
 if __name__ == "__main__":
@@ -319,29 +352,37 @@ if __name__ == "__main__":
     ref_img = sitk.ReadImage(fn)
     labelmap_thick =sitk.ReadImage(f_in)
 # %%
-    is_label=True
-    out_size,out_origin, out_spacing,out_direction= get_metadata(ref_img)
+    img_fn= "/s/fran_storage/datasets/raw_data/lax/images/lits_5.nii"
+    ref_img = sitk.ReadImage(img_fn)
+# %%
+    is_label=False
+    out_size,out_origin, spacing,out_direction= get_metadata(ref_img)
+    o_size,o_origin, o_spacing,o_direction= get_metadata(img_out)
+    out_spacing = (0.8,0.8,1.5)
+    out_size = get_sitk_target_size_from_spacings(ref_img,out_spacing)
     resample = sitk.ResampleImageFilter()
     resample.SetOutputSpacing(out_spacing)
     resample.SetSize(out_size)
     resample.SetOutputDirection(out_direction)
     resample.SetOutputOrigin(out_origin)
     resample.SetTransform(sitk.Transform())
-    resample.SetDefaultPixelValue(labelmap_thick.GetPixelIDValue())
+    resample.SetDefaultPixelValue(ref_img.GetPixelIDValue())
 
 # %%
     if is_label:
         resample.SetInterpolator(sitk.sitkNearestNeighbor)
     else:
-        resample.SetInterpolator(sitk.sitkBSpline)
+        resample.SetInterpolator(sitk.sitkLinear)
 
-    label_thin = resample.Execute(labelmap_thick)
+    img_out= resample.Execute(ref_img)
 
     mask_fn_out="/s/insync/datasets/crc_project/masks_ub/crc_CRC003_20181026_CAP1p5_thin.nii.gz"
     sitk.WriteImage(label_thin,mask_fn_out
 
                     )
 
+    tt = ToTensorT()
+    aa = tt.encodes(img_out)
 # %%
     masks_fldr = Path("/home/ub/Desktop/capestart/nodes/Capestart_Nodes-Output/")
     images_fldr = Path("/home/ub/Desktop/capestart/nodes/batch2/images")

@@ -16,7 +16,7 @@ from pathlib import Path
 import os, sys
 import itertools as il
 import functools as fl
-from fastai.vision.augment import detuplify, store_attr
+from fastcore.basics import detuplify, store_attr
 from fran.utils.dictopts import dic_in_list
 from fran.utils.helpers import *
 import shutil

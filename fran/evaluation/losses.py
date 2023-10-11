@@ -1,5 +1,9 @@
 # %o%
+
+from fastcore.basics import  store_attr
+
 from monai.utils.enums import DiceCEReduction, LossReduction
+import lightning.pytorch as pl
 from monai.utils.module import look_up_option
 from typing import Callable, Optional
 import torch.nn as nn
@@ -128,18 +132,11 @@ class CombinedLoss(_DiceCELossMultiOutput):
 
 
 
-class DeepSupervisionLoss(nn.Module):
-    def __init__(self, levels: int, bs:int, fg_classes: int,device=None):
+class DeepSupervisionLoss(pl.LightningModule):
+    def __init__(self, levels: int, bs:int, fg_classes: int):
         super().__init__()
-        weights = torch.tensor([1 / (2**i) for i in range(levels)],device=device)
-
-        # we don't use the lowest 2 outputs. Normalize weights so that they sum to 1
-        mask = torch.tensor(
-            [True] + [True if i < levels - 1 else False for i in range(1, levels)]
-        )
-        weights[~mask] = 0
+        store_attr()
         self.create_labels(bs,fg_classes)
-        self.weights = weights / weights.sum()
         self.LossFunc = _DiceCELossMultiOutput(include_background=False,softmax=True)
 
     def create_labels(self,bs,fg_classes):
@@ -155,7 +152,21 @@ class DeepSupervisionLoss(nn.Module):
        self.labels =list(il.chain(self.neptune_labels,self.case_recorder_labels))
 
 
+    def create_weights(self,device):
+        weights = torch.tensor([1 / (2**i) for i in range(self.levels)],requires_grad=False,device=device)
+
+        # we don't use the lowest 2 outputs. Normalize weights so that they sum to 1
+        mask = torch.tensor(
+            [True] + [True if i < self.levels - 1 else False for i in range(1, self.levels)]
+        )
+        weights[~mask] = 0
+        self.create_labels(self.bs,self.fg_classes)
+        self.weights = weights / weights.sum()
+
+
     def forward(self, x, y):
+        if not hasattr(self,'weights'):
+            self.create_weights(x[0].device)
         assert isinstance(x, (tuple, list)), "x must be either tuple or list"
         assert isinstance(y, (tuple, list)), "y must be either tuple or list"
         # loss at full res

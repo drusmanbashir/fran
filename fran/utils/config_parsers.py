@@ -77,7 +77,7 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
         rr = check_bool(rr)
         var_type = rr["tune_type"]
         key = rr["var_name"]
-        if sheet_name == "after_item_intensity":
+        if sheet_name == "transform_factors":
             if raytune == False or rr["tune"] == False:
                 val = parse_excel_cell(rr["manual_value"])
                 prob = rr["manual_p"]
@@ -91,13 +91,6 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
                     prob = parse_excel_cell(rr["tune_p"])
                     prob = tune.uniform(lower=prob[0], upper=prob[1])
             config.update({key: [val, prob]})
-        elif sheet_name == "after_item_spatial":
-            if raytune == False or rr["tune"] == False:
-                prob = rr["manual_p"]
-            else:
-                prob = parse_excel_cell(rr["tune_p"])
-                prob = tune.uniform(lower=prob[0], upper=prob[1])
-            config.update({key: prob})
         else:
             if raytune == False or rr["tune"] == False:
                 val = parse_excel_cell(rr["manual_value"])
@@ -107,7 +100,6 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
                     pass
                 else:
                     val = parse_excel_cell(rr["tune_value"])
-
                     if "_" in var_type:
                         tr()
                         vals = parse_excel_cell(rr["tune_value"])
@@ -139,13 +131,13 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
 
 
 class ConfigMaker:
-    def __init__(self, proj_defaults, raytune):
+    def __init__(self, proj_defaults, configuration_filename=None,raytune=False):
 
+
+        if not configuration_filename: configuration_filename = proj_defaults.configuration_filename
         store_attr()
-
-        self.config = load_config_from_workbook(proj_defaults.configuration_filename, raytune)
+        self.config = load_config_from_workbook(configuration_filename, raytune)
         if not "mom_low" in self.config["model_params"].keys() and raytune==True:
-
             config = {
                 "mom_low": tune.sample_from(
                     lambda spec: np.random.uniform(0.6, 0.9100)
@@ -179,7 +171,7 @@ class ConfigMaker:
         if not 'out_channels' in self.config["model_params"]:
 
             self.config['model_params']["out_channels"] = out_channels_from_dict_or_cell(
-                self.config['metadata']["src_dest_labels"]
+                self.config['dataset_params']["src_dest_labels"]
             )
 
     def add_patch_size(self):

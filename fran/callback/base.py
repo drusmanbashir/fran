@@ -1,9 +1,8 @@
 # %%
 
-from fastai.callback.core import Callback, CancelFitException
 from fastai.callback.fp16 import MixedPrecision
+from lightning.pytorch.callbacks import Callback
 import torch.nn.functional as F
-from fastai.callback.core import Callback
 from fastcore.basics import listify, store_attr
 import torch.nn as nn
 import torchvision
@@ -23,10 +22,11 @@ class PredAsList(Callback):
         self.learn.pred = self.learn.pred[0]
 
 class DownsampleMaskForDS(Callback):
+    order =3 #after DropBBox
     def __init__(self, ds_scales):
         self.ds_scales = ds_scales
 
-    def before_batch(self):
+    def on_train_batch_start(self,trainer,pl_module,batch,batch_idx):
         mask = self.learn.y
         output = []
         for s in self.ds_scales:

@@ -27,7 +27,7 @@ class InteractiveAnalyserResampler:
 
         P = Project(project_title=args.project_title); 
         self.proj_defaults= P
-        self.MultiAnalyser = MultiCaseAnalyzer(self.proj_defaults, outside_value=0, clip_range=self.clip_range)
+        self.MultiAnalyser = MultiCaseAnalyzer(self.proj_defaults, outside_value=0)
 
         print("Project: {0}".format(self.project_title))
 
@@ -68,7 +68,8 @@ class InteractiveAnalyserResampler:
                 self.proj_defaults,
                 minimum_final_spacing=0.5,
                 enforce_isotropy=self.enforce_isotropy,
-                half_precision=self.half_precision
+                half_precision=self.half_precision,
+                clip_centre=self.clip_centre
             )
 
 
@@ -237,6 +238,9 @@ class InteractiveAnalyserResampler:
 
     def assimilate_args(self, args):
         for key, value in vars(args).items():
+            # if key =='full_precision':
+            #     key='half_precision'
+            #     value= not value
             setattr(self, key, value)
 
     # def translate_key(self, key, value):
@@ -314,7 +318,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("-e", "--enforce-isotropy", action="store_true")
     parser.add_argument("-o", "--overwrite", action="store_true")
-    parser.add_argument("-c", "--clip-range", nargs=2, help="Give two values - lower and upper limit of clip-range. By default, percentiles will be used")
+    parser.add_argument("-c", "--clip-centre", action='store_true', help="Clip and centre data now or during training?")
     parser.add_argument("-po", "--patch-overlap" ,help="Generating patches will overlying by this fraction range [0,.9). Default is 0.25 ", default=0.25, type=float)
     parser.add_argument("-hp", "--half_precision" ,action="store_true")
     parser.add_argument("-nf", "--no-fix", action="store_false",help="By default if img/mask sitk arrays mismatch in direction, orientation or spacings, FRAN tries to align them. Set this flag to disable")
@@ -326,12 +330,12 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "lits"
-    args.num_processes = 16
-    args.debug = False
-    # args.overwrite=True
+    args.project_title = "lits32"
+    # args.num_processes = 16
+    args.debug =False
+    # args.overwrite=False
     I = InteractiveAnalyserResampler(args)
-    # I.verify_dataset_integrity()
+    I.verify_dataset_integrity()
 # %%
 
     I.analyse_dataset()
@@ -341,4 +345,6 @@ if __name__ == "__main__":
     I.generate_hires_patches_dataset()
 
 # %%
-
+# ii = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lax/spc_080_080_150/images/lits_5.pt"
+# torch.load(ii).dtype
+# %%

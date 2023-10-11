@@ -105,7 +105,7 @@ def get_label_stats(mask, label, separate_islands=True, dusting_threshold: int =
 
     if separate_islands:
         mask_tmp, N = cc3d.largest_k(
-            mask_tmp, k=1e3, return_N=True
+            mask_tmp, k=1000, return_N=True
         ) 
     stats = cc3d.statistics(mask_tmp)
     return stats
@@ -207,7 +207,7 @@ class MultiCaseAnalyzer(object):
     ):
         assert all(
             [isinstance(x, float) for x in percentile_range]
-        ), "Provide float values for clip percentile_range"
+        ), "Provide float values for clip percentile_range. Corresponding HUs will be stored in file for future processing."
         store_attr("outside_value,percentile_range,clip_range")
         self.project_title = proj_defaults.project_title
         self.properties_outfilename = proj_defaults.raw_dataset_properties_filename

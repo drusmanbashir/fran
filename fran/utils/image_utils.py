@@ -37,10 +37,12 @@ def convert_np_to_tensor(img_fn):  # for torchfloat32
 
 def resize_tensor_3d(x: torch.Tensor, output_size, mode=None):
     def _inner(x, output_size, mode):
+        if (dt:=x.dtype) == torch.float16:
+            x=x.to(torch.float32)
         x = x.unsqueeze(0).unsqueeze(0)
         x = F.interpolate(x, output_size, mode=mode)
         x = x.squeeze(0).squeeze(0)
-        return x
+        return x.to(dt)
 
     if mode == None:
         mode = "nearest" if "int" in str(x.dtype) else "trilinear"

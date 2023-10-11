@@ -1,4 +1,4 @@
-from fastai.torch_core import get_model
+# from fastai.torch_core import get_model
 import torch
 import ipdb
 from pathlib import Path
@@ -42,6 +42,7 @@ def reconcile_keys(local_model_state,chkpt_model_state,conflicting_string='modul
 
 @str_to_path(0)
 def load_checkpoint(checkpoints_folder, model,device='cuda',strict = True, **torch_load_kwargs):
+    tr()
     try:
         list_of_files = checkpoints_folder.glob('*')
         # file = max(list_of_files, key=lambda p: p.stat().st_ctime)
@@ -70,7 +71,7 @@ def load_checkpoint(checkpoints_folder, model,device='cuda',strict = True, **tor
         #         chkpt_model_state_fixed[neo_key] = chkpt_model_state[key]
         #     get_model(model).load_state_dict(chkpt_model_state_fixed, strict=strict)
         # else:
-        get_model(model).load_state_dict(chkpt_model_state, strict=strict)
+        # get_model(model).load_state_dict(chkpt_model_state, strict=strict)
         print("\n --- Successfully loaded model from checkpoint.")
 
         with_opt=False   # see fastai to add opt option

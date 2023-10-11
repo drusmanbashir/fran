@@ -368,8 +368,16 @@ if __name__ == "__main__":
     P = Project(project_title="lits"); proj_defaults= P
     output_shape=[128,128,96]
     overs = .25
-    fixed_folder = proj_defaults.fixed_spacings_folder/("spc_077_077_100/images")
+    fixed_folder = proj_defaults.fixed_spacings_folder/("spc_080_080_150/images")
     fixed_files = list(fixed_folder.glob("*.pt"))
+    dataset_properties=load_dict(Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/lits/spc_080_080_150/resampled_dataset_properties.json"))
+    output_patch_size=[192,192,196]
+    output_folder=Path("/home/ub/tmp")
+    dici_fn=Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/lits/spc_080_080_150/bboxes_info.pkl")
+    inf=load_dict(dici_fn)
+
+    info=inf[0]
+    P= PatchGenerator(dataset_properties,output_folder,output_patch_size, info)
 # %%
     n=0
     img_fn = fixed_files[n]

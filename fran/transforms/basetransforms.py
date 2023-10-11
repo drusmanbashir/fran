@@ -17,8 +17,10 @@ class KeepBBoxTransform(ItemTransform):
         if not isinstance(x[-1],(Tensor,np.ndarray)): # may be dict / list or str
             if len(x)==2:
                 y = [self.func(x[0])]
-            else:
+            elif len(x)>2:
                 y = self.func(x[:-1])
+            else:
+                y = self.func(x)
             y = listify(y)
             y.append(x[-1])
             return y

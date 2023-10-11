@@ -1,7 +1,6 @@
 import collections
 
 from bs4 import BeautifulSoup as BS
-from fastai.vision.augment import listify
 import tqdm,yaml
 import pickle, os,json
 from pathlib import Path

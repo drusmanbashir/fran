@@ -14,6 +14,12 @@ from pathlib import Path
 from fran.utils.string import cleanup_fname
 # %%
 
+class DropBBox(Callback):
+    order = 2
+    def before_batch(self):
+        self.learn.yb =  [self.learn.xb[1]]
+        self.learn.xb =  [self.learn.xb[0]]
+
 class CaseIDRecorder(Callback):
     def __init__(self,freq=50, local_folder='/tmp',dpi=300):
         '''
@@ -36,8 +42,6 @@ class CaseIDRecorder(Callback):
         self.files_this_batch=[]
         for i, fn in enumerate (self.learn.yb[0]):
             self.files_this_batch.append(fn)
-        self.learn.yb =  [self.learn.xb[1]]
-        self.learn.xb =  [self.learn.xb[0]]
     def after_batch(self):
         dict_this_batch={}
         full_dicts=[]
@@ -124,6 +128,7 @@ def case_id_from_series(series):
 
 # %%
 if __name__ == "__main__":
+    D =DropBBox()
     # dfd = pd.read_html('~/Downloads/valid.html')
     # rn = 45000
     # df1 = dfd[0]

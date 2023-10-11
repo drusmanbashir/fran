@@ -2,7 +2,7 @@
 from functools import wraps
 from pathlib import Path
 from typing import Union
-from fastai.vision.augment import GetAttr
+from fastai.vision.augment import GetAttr, ItemTransform
 
 import numpy as np
 import SimpleITK as sitk
@@ -76,6 +76,12 @@ def encodes(self,x:Union[Path,str]):
         x_np = x_np.astype(np.uint8)
    x_pt = torch.tensor(x_np,dtype=self.encode_dtype)
    return x_pt
+
+class ToTensorImgMask(ItemTransform):
+    def encodes(self,x):
+        x = [ToTensorT()(xx) for xx in x]
+        return x
+
 
 class ToTensorI(KeepBBoxTransform,GetAttr):
     '''

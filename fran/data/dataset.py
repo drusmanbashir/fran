@@ -6,6 +6,15 @@
 
 # from torch.utils.data import DataLoader
 # from fastai.data.transforms import DataLoader as DL2
+from collections.abc import Hashable, Mapping
+from fastcore.basics import Dict
+from monai.data.dataset import PersistentDataset
+from monai.transforms.croppad.dictionary import CenterSpatialCropd, ResizeWithPadOrCropD, ResizeWithPadOrCropd
+from monai.transforms.intensity.dictionary import NormalizeIntensityd, RandAdjustContrastd, RandScaleIntensityd, RandShiftIntensityd, ScaleIntensityRanged, ThresholdIntensityd,RandGaussianNoised
+from monai.transforms.spatial.dictionary import RandFlipd
+from monai.transforms.utility.dictionary import AddChanneld, EnsureChannelFirstd
+from monai.transforms import Compose, MapTransform
+from monai.utils.enums import TransformBackends
 import numpy as np
 import operator 
 from functools import reduce
@@ -13,12 +22,12 @@ from functools import reduce
 import itertools
 from functools import partial
 
-from fastai.data.transforms import *
+from fran.transforms.intensitytransforms import standardize
+from torch.utils.data import Dataset
 from fran.utils.helpers import *
 from fran.utils.imageviewers import ImageMaskViewer
+from monai.transforms import CropForegroundd
 
-
-from fastai.data.transforms import FileGetter
 from fran.transforms.spatialtransforms import *
 import ipdb
 
@@ -29,8 +38,6 @@ tr = ipdb.set_trace
 # imgs_folder =  proj_default_folders.preprocessing_output_folder/("images")
 # masks_folder=  proj_default_folders.preprocessing_output_folder/("masks")
 #
-get_img_files = partial(FileGetter(extensions=".npy", folders=["images"]))
-get_msk_files = partial(FileGetter(extensions=".npy", folders=["masks"]))
 from fran.utils.fileio import *
 
 # %%
@@ -53,16 +60,17 @@ def maybe_set_property(func):
         return inner
             
 
-class ImageMaskBBoxDataset():
+class ImageMaskBBoxDataset(Dataset):
     """
-    takes a list of case_ids and returns bboxes image and mask
+    takes a list of case_ids and returns bboxes image and label
     """
 
-    def __init__(self,fnames, bbox_fn , class_ratios:list=None):
+    def __init__(self,fnames, bbox_fn , class_ratios:list=None,transform=None):
 
         """
         class_ratios decide the proportionate guarantee of each class in the output including background. While that class is guaranteed to be present at that frequency, others may still be present if they coexist
         """
+        self.transform=transform
         if not class_ratios: 
             self.enforce_ratios = False
         else: 
@@ -76,6 +84,7 @@ class ImageMaskBBoxDataset():
             bboxes = self.match_raw_filename(bboxes_unsorted, fn)
             bboxes.append(self.get_label_info(bboxes))
             self.bboxes_per_id.append(bboxes)
+
 
     def match_raw_filename(self,bboxes,fname:str):
         bboxes_out=[]
@@ -102,18 +111,21 @@ class ImageMaskBBoxDataset():
              self.maybe_randomize_idx()
 
         filename, bbox = self.get_filename_bbox()
-        img,mask = self.load_tensors(filename)
-        return img, mask, bbox
+        img,label = self.load_tensors(filename)
+        if self.transform is not None:
+            img,label,bbox= self.transform([img,label,bbox])
+      
+        return img,label,bbox
 
     def load_tensors(self,filename:Path):
-        mask = torch.load(filename)
-        if isinstance(mask, dict):
-            img, mask = mask["img"], mask["mask"]
+        label = torch.load(filename)
+        if isinstance(label, dict):
+            img, label = label["img"], label["label"]
         else:
             img_folder = filename.parent.parent / ("images")
             img_fn = img_folder / filename.name
             img = torch.load(img_fn)
-        return img,mask
+        return img,label
 
     def set_bboxes_labels(self,idx):
          self.bboxes = self.bboxes_per_id[idx][:-1]
@@ -208,6 +220,136 @@ class ImageMaskBBoxDataset():
         if bboxes[0]!=bboxes[1]: return True
             
 
+class ImageMaskBBoxDatasetd(ImageMaskBBoxDataset):
+        def __getitem__(self, idx):
+            self.set_bboxes_labels(idx)
+            if self.enforce_ratios == True:
+                 self.mandatory_label = self.randomize_label() 
+                 self.maybe_randomize_idx()
+
+            filename, bbox = self.get_filename_bbox()
+            img,label = self.load_tensors(filename)
+            dici={'image':img,'label':label,'bbox':bbox}
+            if self.transform is not None:
+                dici= self.transform(dici)
+          
+            return dici
+
+class CropImgMaskd(MapTransform):
+
+    def __init__(self, patch_size,input_dims):
+        self.dim = len(patch_size)
+        self.patch_halved = [int(x / 2) for x in patch_size]
+        self.input_dims=input_dims
+
+    def func(self, x):
+        img, label = x
+        center = [x / 2 for x in img.shape[-self.dim:]]
+        slices = [
+            slice(None),
+        ] * (self.input_dims-3 ) # batch and channel dims if its a batch otherwise empty
+        for ind in range(self.dim):
+            source_sz = center[ind]
+            target_sz = self.patch_halved[ind]
+            if source_sz > target_sz:
+                slc = slice(int(source_sz - target_sz), int(source_sz + target_sz))
+            else:
+                slc = slice(None)
+            slices.append(slc)
+        img, label = img[slices], label[slices]
+        return img, label
+
+
+# %%
+class Affine3D(MapTransform):
+    '''
+    to-do: verify if nearestneighbour method preserves multiple mask labels
+    '''
+
+    def __init__(self,
+                 keys,
+                 p=0.5,
+                 rotate_max=pi / 6,
+                 translate_factor=0.0,
+                 scale_ranges=[0.75, 1.25],
+                 shear: bool = True,
+                 allow_missing_keys=False):
+        '''
+        params:
+        scale_ranges: [min,max]
+        '''
+        super().__init__(keys, allow_missing_keys)
+        store_attr('p,rotate_max,translate_factor,scale_ranges,shear')
+
+    def __call__(self, data: Mapping[Hashable, torch.Tensor]) -> Dict[Hashable, torch.Tensor]:
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = self.func(d[key])
+        return d
+
+    def get_mode(self,x):
+        dt = x.dtype
+        if dt == torch.uint8:
+            mode='nearest'
+        elif dt==torch.float32 or x.dtype==torch.float16:
+            mode ='bilinear'
+        return mode,dt
+
+    def func(self, x):
+        mode,dt = self.get_mode(x)
+
+        if np.random.rand() < self.p:
+            grid = get_affine_grid(x.shape,
+                                   shear=self.shear,
+                                   scale_ranges=self.scale_ranges,
+                                   rotate_max=self.rotate_max,
+                                   translate_factor=self.translate_factor,
+                                   device=x.device).type(torch.float32)
+            x = F.grid_sample(x.type(x.dtype), grid,mode=mode)
+        return x.to(dt)
+#
+class NormaliseClipd(MapTransform):
+    def __init__(self,keys,clip_range,mean,std,allow_missing_keys=False):
+        super().__init__(keys, allow_missing_keys)
+
+        store_attr('clip_range,mean,std')
+
+    def __call__(self, data: Mapping[Hashable, torch.Tensor]) -> Dict[Hashable, torch.Tensor]:
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = self.clipper(d[key])
+        return d
+
+    def clipper(self, img):
+        img = torch.clip(img,self.clip_range[0],self.clip_range[1])
+        img = standardize(img,self.mean,self.std)
+        return img
+
+class MaskLabelRemap2(MapTransform):
+    def __init__(self,keys,src_dest_labels:tuple,allow_missing_keys=False):
+        super().__init__(keys, allow_missing_keys)
+        if isinstance(src_dest_labels,str): src_dest_labels = ast.literal_eval(src_dest_labels)
+        self.src_dest_labels=src_dest_labels
+
+    def __call__(self, data: Mapping[Hashable, torch.Tensor]) -> Dict[Hashable, torch.Tensor]:
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = self.remapper(d[key])
+        return d
+
+    def remapper(self,mask):
+            n_classes=len(self.src_dest_labels)
+            mask_out = torch.zeros(mask.shape,dtype=mask.dtype)
+            mask_tmp = one_hot(mask,n_classes,0)
+            mask_reassigned = torch.zeros(mask_tmp.shape,device=mask.device)
+            for src_des in self.src_dest_labels:
+                src,dest = src_des[0],src_des[1]
+                mask_reassigned[dest]+=mask_tmp[src]
+
+            for x in range(n_classes):
+                mask_out[torch.isin(mask_reassigned[x],1.0)]=x
+            return mask_out
+
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
@@ -215,24 +357,65 @@ if __name__ == "__main__":
     configs_excel = ConfigMaker(P,raytune=False).config
 
     train_list, valid_list = P.get_train_val_files(0)
-    fldr =Path("/home/ub/datasets/preprocessed/lits/patches/spc_080_080_150/dim_192_192_128") 
+    fldr =Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/lax/spc_080_080_150/") 
 
 
     bboxes_fname = fldr/ ("bboxes_info")
-    dd = load_dict(bboxes_fname)
+    glob_props=load_dict(P.global_properties_filename)
 
 
+    pp(glob_props)
    
 # %%
-    train_ds = ImageMaskBBoxDataset(
+    train_ds = ImageMaskBBoxDatasetd(
             train_list,
             bboxes_fname,
-            [0,0,1]
+            [0,0,1],transform=None
+
         )
+    a= train_ds[1]
+    a['label'].dtype
+    bb ="/home/ub/datasets/preprocessed/lax/patches/spc_080_080_150/dim_192_192_96/images/lits_0ub_2.pt"
+    img = torch.load(bb)
+    img.dtype
 # %%
-    axes = 2,0,1
-    a,b,c = train_ds[150]
+    scale_ranges=[.75,1.25]
+    contrast_ranges=[.7,1.3]
+    shift=[-1.0,1.0]
+    noise=.1
+    src_dest_labels=[[0,2],[1,1],[2,1]]
+    tfm_keys=['image','label']
+    tfms=Compose([
+            MaskLabelRemap2(keys=['label'],src_dest_labels=src_dest_labels),
+            EnsureChannelFirstd(keys=tfm_keys,channel_dim='no_channel'),
+            NormaliseClipd(keys=['image'],clip_range= glob_props['intensity_clip_range'],mean=glob_props['mean_fg'],std=glob_props['std_fg']),
+            RandFlipd(keys=["image", "label"], prob=0.99, spatial_axis=0),
+            RandFlipd(keys=["image", "label"], prob=1.0, spatial_axis=1),
+            RandScaleIntensityd(keys="image", factors=scale_ranges, prob=1.0),
+            RandGaussianNoised(keys=['image'],prob=0.9,std=noise),
+            RandShiftIntensityd(keys="image", offsets=shift, prob=1.0),
+            RandAdjustContrastd(['image'],prob=1.0,gamma=contrast_ranges),
+            ResizeWithPadOrCropd(keys=['image','label'],source_key='image',spatial_size=[160,160,96]),
+    ])
+# %%
+    Af=Affine3D(tfm_keys)
+    A = EnsureChannelFirstd(keys=tfm_keys,channel_dim='no_channel')
+
+# %%
+    tfms.insert(1,A)
+    Ra=RandFlipd(keys=["image", "label"], prob=1.0, spatial_axis=0)
+
+    E = EnsureChannelFirstd(keys=tfm_keys,channel_dim='no_channel')
+
+    aaa = tfms(a)
+    a4 = E(aaa)
+# %%
+    a5 = Af(a4)
+# %%
+# %%
     # a = a.permute(*axes)
+    ImageMaskViewer([a4['image'][0,0],a4['label'][0,0]])
+    ImageMaskViewer([a5['image'][0,0],a5['label'][0,0]])
 # %%
     import pywt
     wavelet = pywt.Wavelet('haar')

@@ -675,6 +675,7 @@ class NeptuneImageGridCallback(Callback):
 #
 #
 #     def after_create(self):
+
 #         if self.run_name is not None:
 #                 self.run_id = self.get_run_id_from_name()
 #                 self.nep_run = self.load_run()
@@ -771,7 +772,44 @@ if __name__ == "__main__":
         df.dropna(inplace=True)
         return df
 
-    # %%
+    from fran.utils.common import *
+    project_title = "lits"
+    project = Project(project_title=project_title)
+    from fran.managers.tune import get_raytune_folder_from_trialname
+
+    # trial_name = "kits_675_080"
+    # folder_name = get_raytune_folder_from_trialname(project, trial_name)
+    # checkpoints_folder = folder_name / ("model_checkpoints")
+    # ray_conf_fn = folder_name / "params.json"
+    # config_dict_ray_trial = load_dict(ray_conf_fn)
+    # chkpoint_filename = list((folder_name/("model_checkpoints")).glob("model*"))[0]
+    #
+
+    configs= ConfigMaker(project, raytune=False).config
+    
+# %%
+    global_props = load_dict(project.global_properties_filename)
+    run_name = 'LITS-546'
+    Nep = NeptuneManager(project)
+
+    Nep.load_run(run_name=run_name, param_names='default', update_nep_run_from_config=update_nep_run_from_config)
+    config_dict = Nep.download_run_params()
+    # dest_labels = config_dict["metadata"]["src_dest_labels"]
+    # out_channels = out_channels_from_dict_or_cell(dest_labels)
+    run_name = Nep.run_name
+    # Nep.stop()
+#
+# %%
+    D = DM(project,dataset_params=configs['dataset_params'],transform_factors=configs['transform_factors'],affine3d=configs['affine3d'])
+    D.prepare_data()
+
+    D.setup(0)
+
+    ds = D.train_ds
+# %%
+    N = nnUNetTrainer(project,configs['dataset_params'],configs['model_params'],configs['loss_params'])
+
+# %%
     df = process_html()
     df.to_csv("dice_loss2.csv", index=False)
     uniques = (

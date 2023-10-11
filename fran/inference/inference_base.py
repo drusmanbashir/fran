@@ -13,22 +13,48 @@
 # ---
 
 # %%
+from monai.transforms import (
+    AsDiscrete,
+    AsDiscreted,
+    EnsureChannelFirstd,
+    Compose,
+    CropForegroundd,
+    LoadImaged,
+    Orientationd,
+    RandCropByPosNegLabeld,
+    SaveImaged,
+    ScaleIntensityRanged,
+    Spacingd,
+    Invertd,
+)
+from monai.transforms.io.dictionary import LoadImaged
+from fran.data.dataset import NormaliseClipd
+from fran.managers.trainer import nnUNetTrainer
 from fran.utils.common import *
 import sys
 import gc
-from fran.callback.neptune import NeptuneManager
-from fran.transforms.inferencetransforms import *
 from monai.inferers.utils import sliding_window_inference
 from monai.inferers import SlidingWindowInferer
 from torch.functional import Tensor
 import numpy as np
+import SimpleITK as  sitk
+
+from fran.utils.imageviewers import ImageMaskViewer, view_sitk
+# %%
+img_fn="/s/xnat_shadow/litq/test/images_few/litq_35_20200728.nii.gz"
+data = {'image':img_fn}
+
+sa= sitk.ReadImage(img_fn)
+print(sa.GetSpacing())
+print(sa.GetSize())
+
+# %%
 from fran.inference.helpers import get_scale_factor_from_spacings
 from fran.utils.fileio import load_dict, maybe_makedirs
 import SimpleITK as sitk
 from pathlib import Path
 from fran.utils.helpers import (
     get_available_device,
-    get_extension,
 )
 from fran.utils.string import drop_digit_suffix
 sys.path+=["/home/ub/code"]
@@ -39,7 +65,7 @@ ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]
 from fastcore.foundation import L, Union, listify, operator
 from fastcore.all import GetAttr, ItemTransform, Pipeline
 from fran.inference.scoring import compute_dice_fran
-from fran.transforms.intensitytransforms import ClipCenter
+from fran.transforms.intensitytransforms import ClipCenterI
 from monai.transforms.post.array import VoteEnsemble
 import os
 
@@ -49,7 +75,6 @@ import sys
 
 sys.path += ["/home/ub/Dropbox/code/fran/"]
 from fastcore.transform import Transform
-from fran.utils.imageviewers import ImageMaskViewer, view_sitk
 import functools as fl
 
 from fastcore.basics import store_attr
@@ -183,9 +208,8 @@ class _Predictor():
         self.inferer = SlidingWindowInferer(roi_size = patch_size,sw_batch_size =bs,overlap=patch_overlap,device=device,
                                                      mode=grid_mode,progress=True)
 
-        mask_label  = load_dict(proj_defaults.label_dict_filename)[str(postprocess_label)]
-        self.k_largest = mask_label['k_largest']
-        self.dusting_threshold=mask_label['dusting_threshold']
+        self.k_largest=1000
+        # self.dusting_threshold=.2
         store_attr(but='bs,patch_overlap,grid_mode')
 
     def load_model(self, model, model_id):
@@ -309,7 +333,7 @@ class _Predictor():
         fil_cc.SetSortByObjectSize(True)
         pred_cc_sorted = fil_cc.Execute(pred_binary_cc)
         n_labels_pred = fil_cc.GetNumberOfObjects()
-        if n_labels_pred>self.k_largest:
+        if n_labels_pred>self.k_largest: 
             dust_labels = np.arange(self.k_largest,n_labels_pred)+1
             dici = {int(label):0 for label in dust_labels}
             pred_cc_sorted = sitk.ChangeLabelLabelMap(to_label(pred_cc_sorted), dici)
@@ -477,7 +501,7 @@ class PatchPredictor(_Predictor):
             TransposeSITK(),
             ResampleToStage0(self.img_sitk, self.resample_spacings),
             BBoxesToPatchSize(self.patch_size, self.sz_dest, self.expand_bbox),
-            ClipCenter(
+            ClipCenterI(
                 clip_range=intensity_clip_range,
                 mean=mean_fg,
                 std=std_fg
@@ -555,7 +579,7 @@ class WholeImagePredictor(_Predictor):
         Rz = Resize(self.patch_size)
         # P  = PadDeficitImgMask(patch_size=self.patch_size,input_dims=3)
         W = WholeImageBBoxes(self.patch_size)
-        C = ClipCenter(
+        C = ClipCenterI(
             clip_range=ast.literal_eval(self.dataset_params["clip_range"]),
             mean=self.dataset_params["mean_fg"],
             std=self.dataset_params["std_fg"],
@@ -855,9 +879,28 @@ if __name__ == "__main__":
 
 
     common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
-    P = Project(project_title="lits")
-    proj_defaults = P
+    project= Project(project_title="lits32")
+    
+    dataset_params= load_dict(project.global_properties_filename)
+    configs= ConfigMaker(project, raytune=False).config
+# %%
+    L = LoadImaged(image_only=True,simple_keys=True,keys=['image'],ensure_channel_first=True)
+    S = Spacingd(keys = ['image'],pixdim=[0.8,0.8,1.5])
 
+    N = NormaliseClipd(keys=['image'],clip_range= dataset_params['intensity_clip_range'],mean=dataset_params['mean_fg'],std=dataset_params['std_fg'])
+    d= L(data)
+    d['image'].shape
+    s = S(d)
+
+    n = N(s)
+
+    ImageMaskViewer([n['image'][0],n['image'][0]])
+
+# %%
+    whole_image_ckpt= "/home/ub/code/fran/fran/.neptune/Untitled/LITS-585/checkpoints/epoch=249-step=11500.ckpt"
+    WP = nnUNetTrainer.load_from_checkpoint(whole_image_ckpt,project=project,dataset_params=configs['dataset_params'],
+                                            model_params=configs['model_params'],loss_params=configs['loss_params'])
+# %%
     import pandas as pd
 
     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
@@ -909,3 +952,4 @@ if __name__ == "__main__":
 # %%j
     En.sitk_props
 # %%
+

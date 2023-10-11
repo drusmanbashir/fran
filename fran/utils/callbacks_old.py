@@ -30,15 +30,6 @@ from fran.utils.helpers import  make_patch_size
 tr = ipdb.set_trace
 
 # %%
-
-class FixPredNan(Callback):
-    "A `Callback` that terminates training if loss is NaN."
-    order = -9
-
-    def after_pred(self):
-        self.learn.pred = torch.nan_to_num(self.learn.pred, nan=0.5)
-        "Test if `last_loss` is NaN and interrupts training."
-
 def one_hot(x, classes, axis=1):
         "Creates one binay mask per class"
         return torch.stack([torch.where(x==c, 1, 0) for c in range(classes)], axis=axis)
@@ -62,6 +53,15 @@ def make_grid_5d_input_numpy_version(a:torch.Tensor,batch_size_to_plot=16):
     img_grid = make_grid_5d_input(a)
     img_grid_np = img_grid.cpu().detach().permute(1,2,0).numpy()
     plt.imshow(img_grid_np)
+
+class FixPredNan(Callback):
+    "A `Callback` that terminates training if loss is NaN."
+    order = -9
+
+    def after_pred(self):
+        self.learn.pred = torch.nan_to_num(self.learn.pred, nan=0.5)
+        "Test if `last_loss` is NaN and interrupts training."
+
 
 class TensorboardCallback(Callback):
     #     def __init__(self,config, logdir,frequency,metrics=None):
@@ -652,44 +652,6 @@ class TuneTrackerCallback(Callback):
         mean_loss =torch.tensor(self.running_losses_valid).mean(0)
         reporting = {key:val for key,val in zip(self.loss_dict.keys(),mean_loss)}
         tune.report(**reporting)
-class TuneCheckpointCallback_old(TrackerCallback):
-    order = TrackerCallback.order+1
-    def __init__(self, monitor='valid_loss', comp=None, min_delta=0., fname='model', freq= 6, at_end=True,
-                 with_opt=True, reset_on_fit=False):
-        super().__init__(monitor=monitor, comp=comp, min_delta=min_delta, reset_on_fit=reset_on_fit)
-        store_attr('fname,freq,at_end,with_opt')
-        # keep track of file path for loggers
-        self.last_saved_path = None
-
-    def after_create(self):
-        self.learn.model_dir = Path(tune.get_trial_dir()) / "checkpoints"
-        self.fname_prefix = self.learn.model_dir/self.fname
-        self._load_latest_checkpoint()
-
-    def before_epoch(self):
-        pass
-    def _save(self, name): self.last_saved_path = self.learn.save(name, with_opt=self.with_opt)
-
-    def _load_latest_checkpoint(self):
-        checkpoints= list(self.learn.model_dir.glob("*"))
-        if len(checkpoints)>0:
-            checkpoints.sort(key=os.path.getmtime,reverse=True)
-            latest_chckpnt_file =checkpoints[0].name[:-4]
-            print("Loading checkpoint from {}".format(latest_chckpnt_file))
-            self.learn.load(latest_chckpnt_file,device='cuda',with_opt=self.with_opt)
-        else:
-            print("No checkpoints on Tune. Initializing..")
-
-    def after_epoch(self):
-        "Compare the value monitored to its best score and save if best."
-        if (self.epoch%self.freq) == 0:
-            # self._save(f'{self.fname_prefix}_{self.epoch}')
-            self._save(f'{self.fname_prefix}')
-    def after_fit(self, **kwargs):
-        "Load the best model."
-        if self.at_end: self._save(f'{self.fname_prefix}')
-        # elif not self.every_epoch: self.learn.load_model(f'{self.fname_prefix}', with_opt=self.with_opt)
-
 
 class TerminateOnNaNCallback_ub(Callback):
     "A `Callback` that terminates training if loss is NaN."
