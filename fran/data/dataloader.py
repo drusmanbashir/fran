@@ -25,6 +25,16 @@ def img_mask_bbox_collated( batch):
         output = {'image':torch.stack(imgs,0),'label':torch.stack(labels,0),'bbox':bboxes}
         return output
 
+def img_metadata_collated(batch):
+        imgs=[]
+        org_sizes=[]
+        for i , item in enumerate(batch):
+            imgs.append(item['image'])
+            org_sizes.append(item['org_size'])
+        output = {'image':torch.stack(imgs,0),'org_size':org_sizes}
+        return output
+
+
 
 
 

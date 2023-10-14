@@ -106,13 +106,7 @@ class CombinedLoss(_DiceCELossMultiOutput):
         return losses[0]
 
     def set_loss_dict(self,l):
-        dice_unreduced = l[-1].clone().detach()
-        dice_labels = dice_unreduced.mean(0)
-        inferred_classes = range(len(dice_labels))
-        self.labels = ['loss','loss_ce','loss_dice'] + ['loss_dice_label{}'.format(x) for x in inferred_classes]
-        self.loss_dict = {x: y.item() for x, y in zip(self.labels,il.chain(l[:3],dice_labels))}
-
-    def set_loss_dict(self,l):
+        l[1:] = [ll.detach() for ll in l[1:]] # only l[0] needs gradient. rest are for logging
         class_losses = l[-1].mean(0)
         separate_case_losses = list(l[-1].view(-1))
         self.loss_dict = {x: y.item() for x, y in zip(self.labels, il.chain(l[:3],class_losses,separate_case_losses))}

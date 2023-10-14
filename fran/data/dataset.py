@@ -9,6 +9,7 @@
 from collections.abc import Hashable, Mapping
 from fastcore.basics import Dict
 from monai.data.dataset import PersistentDataset
+from monai.transforms.transform import Transform
 from monai.transforms.croppad.dictionary import CenterSpatialCropd, ResizeWithPadOrCropD, ResizeWithPadOrCropd
 from monai.transforms.intensity.dictionary import NormalizeIntensityd, RandAdjustContrastd, RandScaleIntensityd, RandShiftIntensityd, ScaleIntensityRanged, ThresholdIntensityd,RandGaussianNoised
 from monai.transforms.spatial.dictionary import RandFlipd
@@ -308,22 +309,31 @@ class Affine3D(MapTransform):
             x = F.grid_sample(x.type(x.dtype), grid,mode=mode)
         return x.to(dt)
 #
-class NormaliseClipd(MapTransform):
-    def __init__(self,keys,clip_range,mean,std,allow_missing_keys=False):
-        super().__init__(keys, allow_missing_keys)
+class NormaliseClip(Transform):
+    def __init__(self,clip_range,mean,std):
+        # super().__init__(keys, allow_missing_keys)
 
         store_attr('clip_range,mean,std')
 
-    def __call__(self, data: Mapping[Hashable, torch.Tensor]) -> Dict[Hashable, torch.Tensor]:
-        d = dict(data)
-        for key in self.key_iterator(d):
-            d[key] = self.clipper(d[key])
-        return d
+    def __call__(self, data: Mapping[Hashable, torch.Tensor]) :
+            d = self.clipper(data)
+            return d
 
     def clipper(self, img):
         img = torch.clip(img,self.clip_range[0],self.clip_range[1])
         img = standardize(img,self.mean,self.std)
         return img
+
+class NormaliseClipd(MapTransform):
+    def __init__(self,keys,clip_range,mean,std,allow_missing_keys=False):
+        MapTransform.__init__(self,keys, allow_missing_keys)
+        self.N = NormaliseClip(clip_range=clip_range,mean=mean,std=std)
+
+    def __call__(self,d):
+        for key in self.key_iterator(d):
+            d[key] = self.N(d[key])
+        return d
+
 
 class MaskLabelRemap2(MapTransform):
     def __init__(self,keys,src_dest_labels:tuple,allow_missing_keys=False):

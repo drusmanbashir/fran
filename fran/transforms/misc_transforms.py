@@ -9,7 +9,7 @@ from fastcore.transform import ItemTransform
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
 
-from fastai.vision.augment import ItemTransform, store_attr
+from fastcore.transform import ItemTransform, store_attr
 
 
 

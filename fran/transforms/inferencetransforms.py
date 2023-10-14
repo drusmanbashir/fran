@@ -230,7 +230,7 @@ class ResampleToStage0(PredictorTransform):
     def decodes(self,x):
         return resize_tensor(x,self.sz_source,mode='trilinear')
 
-class Resize(KeepBBoxTransform):
+class ResizeFran(KeepBBoxTransform):
     '''
     Strictly an inference transform. Requires img and bbox
     '''

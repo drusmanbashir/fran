@@ -1,6 +1,7 @@
 # %%
-from fastai.vision.augment import ItemTransform, Pipeline, test_eq
+from fastcore.all import test_eq
 from fastcore.basics import store_attr
+from fastcore.transform import Pipeline
 from fran.transforms.intensitytransforms import ClipCenter
 
 from fran.preprocessing.datasetanalyzers import (
@@ -509,7 +510,7 @@ class NiipairToTorch(DictToAttr):
             pipeline2 = [
                     SITKToNumpy,
                     NumpyToTorch(),
-                    TransposeSITKImageMask,  # ALWAYS DO THIS BEFORE RESIZING !!
+                    # TransposeSITKImageMask,  # ALWAYS DO THIS BEFORE RESIZING !!
                     Unsqueeze,
                     Unsqueeze,
                     ResizeBatch(target_size=sz_dest),

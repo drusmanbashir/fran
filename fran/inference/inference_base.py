@@ -1,4 +1,4 @@
-#sjupyter: ---
+# sjupyter: ---
 #   jupytext:
 #     formats: ipynb,py:percent
 #     text_representation:
@@ -13,6 +13,13 @@
 # ---
 
 # %%
+import lightning.pytorch as pl
+from collections.abc import Callable
+from monai.config.type_definitions import KeysCollection
+from monai.inferers.merger import *
+from monai.data.dataloader import DataLoader
+from monai.data.dataset import Dataset
+from monai.data.grid_dataset import GridPatchDataset, PatchDataset, PatchIter
 from monai.transforms import (
     AsDiscrete,
     AsDiscreted,
@@ -28,8 +35,18 @@ from monai.transforms import (
     Invertd,
 )
 from monai.transforms.io.dictionary import LoadImaged
-from fran.data.dataset import NormaliseClipd
-from fran.managers.trainer import nnUNetTrainer
+from monai.transforms.post.dictionary import KeepLargestConnectedComponentd
+from monai.data.box_utils import *
+from monai.transforms.spatial.array import Resize
+from monai.transforms.transform import MapTransform, Transform
+from monai.transforms.utils import generate_spatial_bounding_box
+from monai.transforms.spatial.dictionary import Resized
+from monai.transforms.utility.array import EnsureChannelFirst, ToTensor, Transpose
+from fran.data.dataloader import img_metadata_collated
+from fran.data.dataset import NormaliseClipd, NormaliseClip
+from fran.managers.training import DataManager, nnUNetTrainer
+from fran.preprocessing.stage0_preprocessors import generate_bboxes_from_masks_folder
+from fran.transforms.inferencetransforms import ApplyBBox
 from fran.utils.common import *
 import sys
 import gc
@@ -37,36 +54,28 @@ from monai.inferers.utils import sliding_window_inference
 from monai.inferers import SlidingWindowInferer
 from torch.functional import Tensor
 import numpy as np
-import SimpleITK as  sitk
+import SimpleITK as sitk
+from torchvision.transforms.functional import resize
 
 from fran.utils.imageviewers import ImageMaskViewer, view_sitk
-# %%
-img_fn="/s/xnat_shadow/litq/test/images_few/litq_35_20200728.nii.gz"
-data = {'image':img_fn}
-
-sa= sitk.ReadImage(img_fn)
-print(sa.GetSpacing())
-print(sa.GetSize())
-
-# %%
 from fran.inference.helpers import get_scale_factor_from_spacings
-from fran.utils.fileio import load_dict, maybe_makedirs
+from fran.utils.fileio import load_dict, load_yaml, maybe_makedirs
 import SimpleITK as sitk
 from pathlib import Path
 from fran.utils.helpers import (
     get_available_device,
 )
 from fran.utils.string import drop_digit_suffix
-sys.path+=["/home/ub/code"]
+
+sys.path += ["/home/ub/code"]
 from mask_analysis.helpers import to_int, to_label, to_cc
 
 # These are the usual ipython objects, including this one you are creating
 ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]
 from fastcore.foundation import L, Union, listify, operator
-from fastcore.all import GetAttr, ItemTransform, Pipeline
-from fran.inference.scoring import compute_dice_fran
+from fastcore.all import GetAttr, ItemTransform, Pipeline, Sequence
 from fran.transforms.intensitytransforms import ClipCenterI
-from monai.transforms.post.array import VoteEnsemble
+from monai.transforms.post.array import KeepLargestConnectedComponent, VoteEnsemble
 import os
 
 from fran.transforms.totensor import ToTensorI, ToTensorT
@@ -74,7 +83,7 @@ from fran.transforms.totensor import ToTensorI, ToTensorT
 import sys
 
 sys.path += ["/home/ub/Dropbox/code/fran/"]
-from fastcore.transform import Transform
+from fastcore.transform import Transform as TFC
 import functools as fl
 
 from fastcore.basics import store_attr
@@ -83,26 +92,45 @@ from fran.utils.imageviewers import ImageMaskViewer
 import torch.nn.functional as F
 
 
-def sitk_bbox_readable(bboxes:list):# input list of bboxes in sitk format as [starts*3, sizes*3 ]. Outputs lists of [starts*3,stops*3]
-     bboxes_out = []
-     for bb in bboxes:
-         starts = bb[:3]
-         sizes = bb[3:]
-         stops = [a+b for a,b in zip(starts, sizes)]
-         bb_final= [*bb[:3],*stops]
-         bboxes_out.append(bb_final)
-     return bboxes_out
+def checkpoint_from_model_id(model_id):
+    common_paths = load_yaml(common_vars_filename)
+    fldr = Path(common_paths["checkpoints_parent_folder"])
+    all_fldrs = [
+        f for f in fldr.rglob("*{}/checkpoints".format(model_id)) if f.is_dir()
+    ]
+    if len(all_fldrs) == 1:
+        fldr = all_fldrs[0]
+    else:
+        tr()
 
-def sitk_to_slices(bboxes:list)-> list  :#of slices of bboxes
+    list_of_files = list(fldr.glob("*"))
+    ckpt = max(list_of_files, key=lambda p: p.stat().st_ctime)
+    return ckpt
 
+
+def sitk_bbox_readable(
+    bboxes: list,
+):  # input list of bboxes in sitk format as [starts*3, sizes*3 ]. Outputs lists of [starts*3,stops*3]
+    bboxes_out = []
+    for bb in bboxes:
+        starts = bb[:3]
+        sizes = bb[3:]
+        stops = [a + b for a, b in zip(starts, sizes)]
+        bb_final = [*bb[:3], *stops]
+        bboxes_out.append(bb_final)
+    return bboxes_out
+
+
+def sitk_to_slices(bboxes: list) -> list:  # of slices of bboxes
     a = 0
     b = 3
-    sls =[]
+    sls = []
     for bb in bboxes:
-        sl = [slice(bb[a+x],bb[b+x]) for x in range(3)]
-        sl = tuple([sl[2],sl[1],sl[0]])
+        sl = [slice(bb[a + x], bb[b + x]) for x in range(3)]
+        sl = tuple([sl[2], sl[1], sl[0]])
         sls.append(sl)
     return sls
+
 
 # from experiments.kits21.kits21_repo.evaluation.metrics import *
 # HEC_SD_TOLERANCES_MM = {
@@ -122,6 +150,7 @@ def sitk_to_slices(bboxes:list)-> list  :#of slices of bboxes
 #             tr()
 #         return bboxes
 
+
 def pred_mean(preds):
     """
     preds are supplied as raw model output
@@ -140,14 +169,85 @@ def pred_voted(preds_int: list):
     return out
 
 
-class PredFlToInt(Transform):
+def transpose_bboxes(bbox):
+    bbox = bbox[2], bbox[1], bbox[0]
+    return bbox
+
+
+class TransposeSITK(TFC):
+    """
+    typedispatched class which handles arrays +/- bboxes. Bboxes, if present, MUST be in a list even if len-1
+    """
+
+    def inverse(self, x):
+        return self.__call__(x)
+
+
+@TransposeSITK
+def encodes(self, x: Union[list, tuple]):
+    img, bboxes = x
+    func = torch.permute if isinstance(img, Tensor) else np.transpose
+    img = func(
+        img, [2, 1, 0]
+    )  # not training is done on images facing up, and inference has to do the same.
+    bboxes_out = transpose_bboxes(bboxes)
+    return img, bboxes_out
+
+
+@TransposeSITK
+def encodes(self, img: Union[Tensor, np.ndarray]):
+    func = torch.permute if isinstance(img, Tensor) else np.transpose
+    if img.ndim == 3:
+        tp_list = [2, 1, 0]
+    elif img.ndim == 4:
+        tp_list = [0, 3, 2, 1]
+    else:
+        raise NotImplementedError
+    img = func(img, tp_list)
+    return img
+
+
+@TransposeSITK
+def encodes(self, x: dict):
+    x = list(x.values())
+    y = [torch.permute(x[0], [2, 1, 0]), transpose_bboxes(x[1])]
+
+    for key in self.key_iterator(d):
+        d[key] = self.N(d[key])
+
+
+#
+class TransposeSITKd(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, allow_missing_keys)
+
+    def func(self, x):
+        if isinstance(x, torch.Tensor):
+            x = torch.permute(x, [2, 1, 0])
+        elif isinstance(x, Union[tuple, list]):
+            x = transpose_bboxes(x)
+        else:
+            raise NotImplemented
+        return x
+
+    def __call__(self, d: dict):
+        for key in self.key_iterator(d):
+            d[key] = self.func(d[key])
+        return d
+
+
+class PredFlToInt(TFC):
     def encodes(self, pred_fl: Tensor):
         pred_int = torch.argmax(pred_fl, 0, keepdim=False)
         pred_int = pred_int.to(torch.uint8)
         return pred_int
 
 
-class ToNumpy(Transform):
+class ToNumpy(TFC):
     def __init__(self, encode_dtype=np.uint8):
         if encode_dtype == np.uint8:
             self.decode_dtype = torch.uint8
@@ -162,36 +262,37 @@ class FillBBoxPatches(ItemTransform):
     Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
     """
 
-    def __init__(self, img_size, out_channels,device='cuda'):
-        self.output_img = torch.zeros(out_channels, *img_size,device=device)
+    def __init__(self, img_size, out_channels, device="cuda"):
+        self.output_img = torch.zeros(out_channels, *img_size, device=device)
 
     def decodes(self, x):
-        patches, bboxes = map(listify,x)
-        
+        patches, bboxes = map(listify, x)
+
         for bbox, pred_patch in zip(bboxes, patches):
             for n in range(self.output_img.shape[0]):
                 self.output_img[n][bbox] = pred_patch[n]
         return self.output_img
 
 
-class _Predictor():
-    def __init__(self,
+class _Predictor:
+    def __init__(
+        self,
         dataset_params,
         proj_defaults,
         out_channels,
         resample_spacings,
-        patch_size: list ,
-        patch_overlap:  float = 0.25,
+        patch_size: list,
+        patch_overlap: float = 0.25,
         grid_mode="constant",  # constant or gaussian
         bs=8,
-        device='cuda',
+        device="cuda",
         half=False,
-        merge_labels:list=[[]], #list of lists used by stencil transform. 
-        postprocess_label:int=1,
+        merge_labels: list = [[]],  # list of lists used by stencil transform.
+        postprocess_label: int = 1,
         cc3d=True,
         debug=False,
-        overwrite=False):
-
+        overwrite=False,
+    ):
         """
         params:
         cc3d: If True, dusting and k-largest components are extracted based on mask-labels.json (corrected from mm^3 to voxels)
@@ -199,24 +300,29 @@ class _Predictor():
 
         """
 
-
         assert grid_mode in [
             "constant",
             "gaussian",
         ], "grid_mode should be either 'constant' or 'gaussian' "
         self.grid_mode = grid_mode
-        self.inferer = SlidingWindowInferer(roi_size = patch_size,sw_batch_size =bs,overlap=patch_overlap,device=device,
-                                                     mode=grid_mode,progress=True)
+        self.inferer = SlidingWindowInferer(
+            roi_size=patch_size,
+            sw_batch_size=bs,
+            overlap=patch_overlap,
+            device=device,
+            mode=grid_mode,
+            progress=True,
+        )
 
-        self.k_largest=1000
+        self.k_largest = 1000
         # self.dusting_threshold=.2
-        store_attr(but='bs,patch_overlap,grid_mode')
+        store_attr(but="bs,patch_overlap,grid_mode")
 
     def load_model(self, model, model_id):
         self.model = model
         self.model.eval()
         self.model.to(self.device)
-        if self.half==True:
+        if self.half == True:
             self.model.half()
         self.model_id = model_id
         print(
@@ -233,19 +339,17 @@ class _Predictor():
         return [tuple(slc)]
 
     def sitk_process(self):
-            self.set_sitk_props()
-            self.img_np_orgres = sitk.GetArrayFromImage(self.img_sitk)
-
+        self.set_sitk_props()
+        self.img_np_orgres = sitk.GetArrayFromImage(self.img_sitk)
 
     def load_case(
         self, img_sitk, bboxes=None
     ):  # tip put this inside a transform which saves these attrs to parent like callbacks do in learner
-            self.img_sitk = img_sitk
-            self.sitk_process()  # flips image if needed
-            self.bboxes = bboxes if bboxes else self.img_sized_bbox()
-            # self.sitk_process()
-            self.already_processed = False
-
+        self.img_sitk = img_sitk
+        self.sitk_process()  # flips image if needed
+        self.bboxes = bboxes if bboxes else self.img_sized_bbox()
+        # self.sitk_process()
+        self.already_processed = False
 
     def create_postprocess_pipeline(self):
         self.postprocess_tfms = L(
@@ -263,15 +367,12 @@ class _Predictor():
         setattr(self, tfm.name, tfm)
         return self
 
-
     def img_sized_bbox(self):
         shape = self.img_np_orgres.shape
         slc = []
         for s in shape:
             slc.append(slice(0, s))
         return [tuple(slc)]
-
-
 
     def set_sitk_props(self):
         origin = self.img_sitk.GetOrigin()
@@ -285,7 +386,6 @@ class _Predictor():
         )
         self.sitk_props = origin, spacing, direction
 
-
     def run(self, img_sitk, bboxes=None, save=True):
         """
         Runs predictions. Then backsamples predictions to img size (DxHxW). Keeps num_channels
@@ -298,8 +398,8 @@ class _Predictor():
             self.create_postprocess_pipeline()
 
             self.img_transformed, self.bboxes_transformed = self.encode_pipeline(
-                        [self.img_np_orgres, self.bboxes]
-                    )
+                [self.img_np_orgres, self.bboxes]
+            )
             self.make_prediction()
 
             self.backsample()
@@ -333,17 +433,16 @@ class _Predictor():
         fil_cc.SetSortByObjectSize(True)
         pred_cc_sorted = fil_cc.Execute(pred_binary_cc)
         n_labels_pred = fil_cc.GetNumberOfObjects()
-        if n_labels_pred>self.k_largest: 
-            dust_labels = np.arange(self.k_largest,n_labels_pred)+1
-            dici = {int(label):0 for label in dust_labels}
+        if n_labels_pred > self.k_largest:
+            dust_labels = np.arange(self.k_largest, n_labels_pred) + 1
+            dici = {int(label): 0 for label in dust_labels}
             pred_cc_sorted = sitk.ChangeLabelLabelMap(to_label(pred_cc_sorted), dici)
-        self.pred_sitk_i  = sitk.Cast(pred_cc_sorted,sitk.sitkUInt32)
-
+        self.pred_sitk_i = sitk.Cast(pred_cc_sorted, sitk.sitkUInt32)
 
     def save_sitk(self, img, fn):
         print("Saving prediction. File name : {}".format(fn))
         if img.GetPixelID() == 22:
-                img = to_int(img)
+            img = to_int(img)
         sitk.WriteImage(img, fn)
 
     def save_prediction(self, ext=None):
@@ -358,33 +457,34 @@ class _Predictor():
 
     def make_prediction(self):
         self.pred_patches = []
-        img_input= self.img_transformed[self.bboxes_transformed[0]]
+        img_input = self.img_transformed[self.bboxes_transformed[0]]
         img_input = img_input.unsqueeze(0).unsqueeze(0).to(self.device)
-        if self.half==True:
+        if self.half == True:
             img_input = img_input.half()
         with torch.no_grad():
-            output_tensor = self.inferer(inputs = img_input,network=self.model)        
-        output_tensor= output_tensor.squeeze(0)
+            output_tensor = self.inferer(inputs=img_input, network=self.model)
+        output_tensor = output_tensor.squeeze(0)
 
-        output_tensor = torch.nan_to_num(output_tensor, 0,)
+        output_tensor = torch.nan_to_num(
+            output_tensor,
+            0,
+        )
         # output_tensor = output_tensor.float().cpu()
         output_tensor = F.softmax(output_tensor, dim=0)
         self.pred_patches.append(output_tensor)
 
-   
- 
-
     def postprocess(self, cc3d: bool):  # starts : pred->dust->k-largest->pred_int
         if cc3d == True:
-            self.pred_sitk_i= self.postprocess_pipeline(self.pred)
+            self.pred_sitk_i = self.postprocess_pipeline(self.pred)
             self.dust()
         else:
             pred_int = torch.argmax(self.pred, 0, keepdim=False)
             pred_int = pred_int.to(torch.uint8)
-            ArrayToSITKI = [Tf for Tf in self.postprocess_pipeline if Tf.name=='ArrayToSITKI'][0]
+            ArrayToSITKI = [
+                Tf for Tf in self.postprocess_pipeline if Tf.name == "ArrayToSITKI"
+            ][0]
             self.pred_sitk_i = ArrayToSITKI.encodes(pred_int)
         self.pred = self.pred.float().cpu()
-
 
     def unload_case(self):
         to_delete = ["pred_int", "_pred_sitk_f", "pred_sitk_i"]
@@ -399,18 +499,19 @@ class _Predictor():
         self.scores = compute_dice_fran(self.pred_int, mask_sitk, n_classes)
         return self.scores
 
-
     @classmethod
-    def from_neptune(cls,proj_defaults, run_name, device="cuda"):
+    def from_neptune(cls, proj_defaults, run_name, device="cuda"):
         NepMan = NeptuneManager(proj_defaults)
-        NepMan.load_run(
-            run_name=run_name, param_names="default", nep_mode="read-only"
-        )
-        model,        patch_size,        resample_spacings,        out_channels,        = NepMan.load_model_neptune(run_name, device="cpu")
-        cls = cls(proj_defaults,out_channels,resample_spacings,patch_size)
-        cls.load_model(model,run_name)
+        NepMan.load_run(run_name=run_name, param_names="default", nep_mode="read-only")
+        (
+            model,
+            patch_size,
+            resample_spacings,
+            out_channels,
+        ) = NepMan.load_model_neptune(run_name, device="cpu")
+        cls = cls(proj_defaults, out_channels, resample_spacings, patch_size)
+        cls.load_model(model, run_name)
         return cls
-
 
     # @property
     # def pred_fns(self):
@@ -428,6 +529,7 @@ class _Predictor():
     def pred_sitk_f(self):  # list of sitk images len =  out_channels
         self._pred_sitk_f = ArrayToSITKF(sitk_props=self.sitk_props).encodes(self.pred)
         return self._pred_sitk_f[1:]  #' first channel is only bg'
+
     #
     # @property
     # def Pred_sitk_i(self):  # list of sitk images len =  out_channels
@@ -455,25 +557,24 @@ class _Predictor():
 
 class PatchPredictor(_Predictor):
     def __init__(
-
         self,
         dataset_params,
         proj_defaults,
         out_channels,
         resample_spacings,
-        patch_size: list ,
+        patch_size: list,
         patch_overlap=0.2,
-        bs = 8,
+        bs=8,
         device=None,
-        half = False,
-        merge_labels=[[2],[]],
+        half=False,
+        merge_labels=[[2], []],
         postprocess_label=2,
         cc3d=True,
         debug=False,
         overwrite=False,
-        expand_bbox=0.1
+        expand_bbox=0.1,
     ):
-        store_attr('expand_bbox')
+        store_attr("expand_bbox")
         super().__init__(
             dataset_params=dataset_params,
             proj_defaults=proj_defaults,
@@ -483,29 +584,27 @@ class PatchPredictor(_Predictor):
             patch_overlap=patch_overlap,
             bs=bs,
             device=device,
-            half = half,
+            half=half,
             merge_labels=merge_labels,
             postprocess_label=postprocess_label,
             cc3d=cc3d,
             debug=debug,
-            overwrite=overwrite
+            overwrite=overwrite,
         )
 
-
- 
     def create_encode_pipeline(self):
-        intensity_clip_range,mean_fg,std_fg = ast.literal_eval(self.dataset_params['clip_range']), self.dataset_params['mean_fg'], self.dataset_params['std_fg']
+        intensity_clip_range, mean_fg, std_fg = (
+            ast.literal_eval(self.dataset_params["clip_range"]),
+            self.dataset_params["mean_fg"],
+            self.dataset_params["std_fg"],
+        )
         self.encode_tfms = L(
             ToTensorI(),
             ChangeDType(torch.float32),
             TransposeSITK(),
             ResampleToStage0(self.img_sitk, self.resample_spacings),
             BBoxesToPatchSize(self.patch_size, self.sz_dest, self.expand_bbox),
-            ClipCenterI(
-                clip_range=intensity_clip_range,
-                mean=mean_fg,
-                std=std_fg
-            ),
+            ClipCenterI(clip_range=intensity_clip_range, mean=mean_fg, std=std_fg),
         )
         self.encode_tfms.map(self.add_tfm)
         self.encode_pipeline = Pipeline(self.encode_tfms)
@@ -523,7 +622,6 @@ class PatchPredictor(_Predictor):
         # self.pred = self.pred.float().cpu()
 
 
-
 class WholeImageBBoxes(ApplyBBox):
     def __init__(self, patch_size):
         bboxes = [tuple([slice(0, p) for p in patch_size])]
@@ -537,64 +635,13 @@ class WholeImageBBoxes(ApplyBBox):
         return x  # no processing to do
 
 
-class Unlist(Transform):
+class Unlist(TFC):
     def decodes(self, x: list):
         assert len(x) == 1, "Only for lists len=1"
         return x[0]
-    def encodes(self,x): return self.decodes(x)
 
-
-class WholeImagePredictor(_Predictor):
-    def __init__(
-        self,
-        dataset_params,
-        out_channels,
-        resample_spacings,
-        patch_size: list = [128, 128, 128],
-        bs = 8,
-        device=None,
-        half = False,
-        merge_labels=[[]],
-        postprocess_label=1,
-        **kwargs
-    ):
-        super().__init__(
-            dataset_params=dataset_params,
-            out_channels=out_channels,
-            resample_spacings=resample_spacings,
-            patch_size=patch_size,
-            patch_overlap=0.2,
-            bs=bs,
-            device=device,
-            half = half,
-            merge_labels=merge_labels,
-            postprocess_label=postprocess_label,
-            **kwargs
-        )
-
-    def create_encode_pipeline(self):
-        To = ToTensorI()
-        Ch = ChangeDType(torch.float32)
-        T = TransposeSITK()
-        Rz = Resize(self.patch_size)
-        # P  = PadDeficitImgMask(patch_size=self.patch_size,input_dims=3)
-        W = WholeImageBBoxes(self.patch_size)
-        C = ClipCenterI(
-            clip_range=ast.literal_eval(self.dataset_params["clip_range"]),
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
-        )
-        self.encode_pipeline = Pipeline([To, Ch, T, Rz, W, C])
-
-    def create_decode_pipeline(self):
-        U = Unlist()
-        self.decode_pipeline = Pipeline(
-            [*self.encode_pipeline[2:4], U]
-        )  # Transpose, Resize
-
-    def backsample(self):
-        self.pred = self.decode_pipeline.decode(self.pred_patches)
-        # self.pred = self.pred.float().cpu()
+    def encodes(self, x):
+        return self.decodes(x)
 
 
 class EndToEndPredictor(_Predictor):
@@ -669,36 +716,42 @@ class EndToEndPredictor(_Predictor):
     #     self.run_patch_prediction(img_fn)
     #
 
-    def localizer_pred_fn(self,img_fn):
+    def localizer_pred_fn(self, img_fn):
         prefix = img_fn.name.split(".")[0]
-        pred_w_fns =list((self.proj_defaults.predictions_folder/run_name_w).glob("*"))
-        fn = [fn for fn in pred_w_fns if prefix in fn.name ]
-        if len(fn) >0: return fn[0]
-    def localiser_bbox(self, img_sitk):
-           self.load_localiser_model()
-           print(
-                "Running predictions. Whole image predictor is on device {0}".format(
-                    self.w.device
-                )
-            )
-           self.w.run(img_sitk=img_sitk, bboxes=None, save=False)
-           pred_localiser = self.w.pred_sitk_i
-           pred_localiser =  sitk.DICOMOrient(pred_localiser, "LPS") # patch to erect the localiser before bbox derivation.
-           self.create_bboxes_from_localiser(pred_localiser)
-           self.unload_localizer_model()
+        pred_w_fns = list(
+            (self.proj_defaults.predictions_folder / run_name_w).glob("*")
+        )
+        fn = [fn for fn in pred_w_fns if prefix in fn.name]
+        if len(fn) > 0:
+            return fn[0]
 
-    def create_bboxes_from_localiser(self,pred_localiser: sitk.Image):
+    def localiser_bbox(self, img_sitk):
+        self.load_localiser_model()
+        print(
+            "Running predictions. Whole image predictor is on device {0}".format(
+                self.w.device
+            )
+        )
+        self.w.run(img_sitk=img_sitk, bboxes=None, save=False)
+        pred_localiser = self.w.pred_sitk_i
+        pred_localiser = sitk.DICOMOrient(
+            pred_localiser, "LPS"
+        )  # patch to erect the localiser before bbox derivation.
+        self.create_bboxes_from_localiser(pred_localiser)
+        self.unload_localizer_model()
+
+    def create_bboxes_from_localiser(self, pred_localiser: sitk.Image):
         fil = sitk.LabelShapeStatisticsImageFilter()
         fil.Execute(pred_localiser)
-        bboxes =[]
-        for label in np.arange(self.w.k_largest)+1:
+        bboxes = []
+        for label in np.arange(self.w.k_largest) + 1:
             bbox = fil.GetBoundingBox(int(label))
             bboxes.append(bbox)
         bboxes = sitk_bbox_readable(bboxes)
-        self.bboxes = sitk_to_slices(bboxes) # only implmeneted for a single organ
+        self.bboxes = sitk_to_slices(bboxes)  # only implmeneted for a single organ
 
     def unload_localizer_model(self):
-        if hasattr(self,"w"):
+        if hasattr(self, "w"):
             delattr(self, "w")
             gc.collect()
             print("BBoxes obtained. Deleting localiser and freeing ram")
@@ -741,7 +794,7 @@ class EndToEndPredictor(_Predictor):
         self._save_localiser = value
 
 
-class EnsemblePredictor(EndToEndPredictor):
+class EnsemblePredictor2(EndToEndPredictor):
     def __init__(
         self,
         proj_defaults,
@@ -750,7 +803,7 @@ class EnsemblePredictor(EndToEndPredictor):
         runs_p,
         half=False,
         bs=6,
-        device='cuda',
+        device="cuda",
         debug=False,
         cc3d=False,
         overwrite=False,
@@ -760,33 +813,28 @@ class EnsemblePredictor(EndToEndPredictor):
         """
         runs_p = listify(runs_p)
         store_attr()
-        self.NepMan = NeptuneManager(proj_defaults)
         self.patch_overlap = 0.25
         self.model_id = "ensemble_" + "_".join(self.runs_p)
 
     def load_localiser_model(self):
-        (
-            model_w,
-            patch_size_w,
-            resample_spacings_w,
-            out_channels_w,
-        ) = self.load_model_neptune(self.run_name_w, device="cpu")
-        dataset_params = self.NepMan.run_dict['dataset_params']
-        self.w = WholeImagePredictor(
-            dataset_params = dataset_params,
-            proj_defaults = self.proj_defaults,
-            out_channels=out_channels_w,
-            resample_spacings=resample_spacings_w,
-            patch_size=patch_size_w,
-            bs = self.bs,
-            half = self.half,
-            device=self.device,
-            overwrite=self.overwrite,
+        self.ckpt_w_fn = checkpoint_from_model_id(self.run_name_w)
+        P = WholeImageDM.load_from_checkpoint(ckpt)
+        model_w = nnUNetTrainer.load_from_checkpoint(
+            ckpt, project=project, dataset_params=P.dataset_params
         )
-        self.w.load_model(model_w, model_id=self.run_name_w)
+        trn = pl.Trainer(accelerator="gpu", devices=1, precision="16-mixed")
+        out = trn.predict(model=nn, dataloaders=P.pred_dl)
+        preds = out[0]
+        K = KeepLargestConnectedComponent()
 
+        sls = []
+        for pred in preds:
+            pred_int = P(pred).unsqueeze(0)
+            pred_largest = K(pred_int)
+            bbox = generate_spatial_bounding_box(pred_int)
+            sl = list(slice(a, b, None) for a, b in zip(*bbox))
+            sls.append(sl)
 
-    
     def load_patch_model(self, n):
         run_name_p = self.runs_p[n]
         (
@@ -796,17 +844,17 @@ class EnsemblePredictor(EndToEndPredictor):
             out_channels_p,
         ) = self.load_model_neptune(run_name_p, device="cpu")
 
-        dataset_params = self.NepMan.run_dict['dataset_params']
+        dataset_params = self.NepMan.run_dict["dataset_params"]
         if n == 0:
             self.p = PatchPredictor(
-                dataset_params = dataset_params,
-                proj_defaults = self.proj_defaults,
+                dataset_params=dataset_params,
+                proj_defaults=self.proj_defaults,
                 out_channels=out_channels_p,
                 resample_spacings=resample_spacings_p,
                 patch_size=patch_size_p,
                 patch_overlap=self.patch_overlap,
                 bs=self.bs,
-                half = self.half,
+                half=self.half,
                 device=self.device,
                 debug=self.debug,
                 overwrite=self.overwrite,
@@ -823,8 +871,8 @@ class EnsemblePredictor(EndToEndPredictor):
             self.p.create_postprocess_pipeline()
 
             self.p.img_transformed, self.p.bboxes_transformed = self.p.encode_pipeline(
-                        [self.p.img_np_orgres, self.p.bboxes]
-                    )
+                [self.p.img_np_orgres, self.p.bboxes]
+            )
         self.p.make_prediction()
 
         # self.p.backsample()
@@ -847,60 +895,329 @@ class EnsemblePredictor(EndToEndPredictor):
         )
 
     @property
-    def sitk_props(self): return self.p.sitk_props
+    def sitk_props(self):
+        return self.p.sitk_props
+
     def save_prediction(self):
         super().save_prediction()
 
-    def set_filenames(self,img_fn):
+    def set_filenames(self, img_fn):
         self.set_pred_fns(img_fn)
-        self.localizer_pred_fn(self.run_name_w,img_fn)
+        self.localizer_pred_fn(self.run_name_w, img_fn)
+
+    def process_images(img_list):
+        self.set_localisers(img_list)
 
     def run(self, img_sitk):
-            self.localiser_bbox(img_sitk)
-            self.pred_patches = []
-            for n in range(len(self.runs_p)):
-                self.load_patch_model(n)
-                self.patch_prediction(img_sitk, n)
-                self.p.pred_patches= Unlist().encodes(self.p.pred_patches)
-                self.pred_patches.append(self.p.pred_patches)
-            self.pred_patches = pred_mean(self.pred_patches)
-            self.backsample()
-            del self.pred_patches
-            gc.collect()
-            self.postprocess(self.cc3d)
-            # self.save_prediction()
-            # self.unload_case()
+        self.localiser_bbox(img_sitk)
+        self.pred_patches = []
+        for n in range(len(self.runs_p)):
+            self.load_patch_model(n)
+            self.patch_prediction(img_sitk, n)
+            self.p.pred_patches = Unlist().encodes(self.p.pred_patches)
+            self.pred_patches.append(self.p.pred_patches)
+        self.pred_patches = pred_mean(self.pred_patches)
+        self.backsample()
+        del self.pred_patches
+        gc.collect()
+        self.postprocess(self.cc3d)
+        # self.save_prediction()
+        # self.unload_case()
+
+
+class SimpleDataset(Dataset):
+    def __init__(
+        self, data: Union[str, Path, Sequence], transform: Callable | None = None
+    ) -> None:
+        """
+        data is either a folder with sitk format files or a list of files
+        """
+        store_attr("data,transform")
+
+    def __getitem__(self, idx):
+        im = self.data[idx]
+        dici = {"image": im, "org_size": list(im.shape)}
+        output = self.transform(dici)
+        return output
+
+
+class WholeImageDM(DataManager):
+    def prepare_data(self, data):
+        self.create_transforms()
+        self.pred_ds = SimpleDataset(data, transform=self.transforms)
+        self.create_dataloader()
+
+    def create_transforms(self):
+        T = TransposeSITKd(keys=["image", "org_size"])
+
+        E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
+        N = NormaliseClipd(
+            keys=["image"],
+            clip_range=self.dataset_params["intensity_clip_range"],
+            mean=self.dataset_params["mean_fg"],
+            std=self.dataset_params["std_fg"],
+        )
+        R = Resized(
+            keys=["image"],
+            spatial_size=self.dataset_params["patch_size"],
+        )
+
+        C = Compose([T, E, N, R], lazy=True)
+        self.transforms = C
+
+    def create_dataloader(self):
+        self.pred_dl = DataLoader(
+            self.pred_ds, num_workers=4, batch_size=8, collate_fn=img_metadata_collated
+        )
+
+
+class PatchDM(DataManager):
+    def create_transforms(self):
+        T = TransposeSITKd(keys=["image", "org_size"])
+        E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
+        N = NormaliseClipd(
+            keys=["image"],
+            clip_range=self.dataset_params["intensity_clip_range"],
+            mean=self.dataset_params["mean_fg"],
+            std=self.dataset_params["std_fg"],
+        )
+        S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacings"])
+        C = Compose([T, E, N, S], lazy=True)
+        self.transforms = C
+
+    def create_dataloader(self):
+        pass
+
+
+class WholeImagePredictor(GetAttr):
+    _default = "datamodule"
+
+    def __init__(self, run_name,  devices=1):
+        self.ckpt = checkpoint_from_model_id(run_name)
+        # self.prepare_data(imgs)
+        self.prepare_model()
+        self.prepare_trainer(devices=devices)
+
+    def prepare_data(self, imgs):
+        self.datamodule = WholeImageDM.load_from_checkpoint(self.ckpt)
+        self.datamodule.prepare_data(imgs)
+
+    def prepare_model(self):
+        self.model = nnUNetTrainer.load_from_checkpoint(
+            self.ckpt, project=self.project, dataset_params=self.dataset_params
+        )
+
+    def prepare_trainer(self, devices):
+        self.trainer = pl.Trainer(
+            accelerator="gpu", devices=devices, precision="16-mixed"
+        )
+
+    def predict(self):
+        out = self.trainer.predict(model=self.model, dataloaders=self.pred_dl)
+        self.preds = out[0]
+
+    def postprocess(self):
+        tfms = Compose([PredFlToInt(), KeepLargestConnectedComponent()])
+
+        self.preds = tfms(self.preds)
+
+    def get_bboxes(self):
+        sls = []
+        for pred in self.preds:
+            pred2 = pred.unsqueeze(0)
+            bbox = generate_spatial_bounding_box(pred2)
+            sl = list(slice(a, b, None) for a, b in zip(*bbox))
+            sls.append(sl)
+        return sls
+
+
+class PatchPredictor(WholeImagePredictor):
+    def __init__(self, run_name, imgs, grid_mode="gaussian", devices=1):
+        super().__init__(run_name, imgs, devices)
+        self.grid_mode = grid_mode
+        self.patch_size = self.dataset_params["patch_size"]
+        self.inferer = SlidingWindowInferer(
+            roi_size=patch_size,
+            sw_batch_size=bs,
+            overlap=patch_overlap,
+            device=device,
+            mode=grid_mode,
+            progress=True,
+        )
+
+    def prepare_trainer(self, devices):
+        pass
+
+    def prepare_data(self, img_fns):
+        self.datamodule = PatchDM.load_from_checkpoint(self.ckpt)
+        self.datamodule.prepare_data(img_fns)
+
+    def predict(self):
+        self.preds = []
+        for img in self.pred_ds:
+            pred_patches = []
+            img_input = img.unsqueeze(0).unsqueeze(0)
+            img_input = img_input.half()
+            with torch.no_grad():
+                output_tensor = self.inferer(inputs=img_input, network=self.model)
+            output_tensor = output_tensor.squeeze(0)
+            output_tensor = torch.nan_to_num(
+                output_tensor,
+                0,
+            )
+            # output_tensor = output_tensor.float().cpu()
+            output_tensor = F.softmax(output_tensor, dim=0)
+            pred_patches.append(output_tensor)
+
+
+class EnsemblePredictor():
+    def __init__(
+        self,
+        proj_defaults,
+        out_channels,
+        run_name_w,
+        runs_p,
+        bs=6,
+        device="cuda",
+        debug=False,
+        cc3d=False,
+        overwrite=False,
+    ):
+        
+
+
+        self.w=WholeImagePredictor(run_name_w)
+
+    def run(self,imgs_sitk):
+        imgs_sitk=listify(imgs_sitk)
+        self.extract_fg_bboxes(imgs_sitk)
 
 
 # %%
 if __name__ == "__main__":
     # ... run your application ...
 
-
-
     common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
-    project= Project(project_title="lits32")
-    
-    dataset_params= load_dict(project.global_properties_filename)
-    configs= ConfigMaker(project, raytune=False).config
-# %%
-    L = LoadImaged(image_only=True,simple_keys=True,keys=['image'],ensure_channel_first=True)
-    S = Spacingd(keys = ['image'],pixdim=[0.8,0.8,1.5])
+    project = Project(project_title="lits32")
 
-    N = NormaliseClipd(keys=['image'],clip_range= dataset_params['intensity_clip_range'],mean=dataset_params['mean_fg'],std=dataset_params['std_fg'])
-    d= L(data)
-    d['image'].shape
-    s = S(d)
+    dataset_params = load_dict(project.global_properties_filename)
+    configs = ConfigMaker(project, raytune=False).config
+    # %%
+    img_fn = "/s/xnat_shadow/litq/test/images_few/litq_35_20200728.nii.gz"
+    img_fn2 = "/s/xnat_shadow/litq/images/litq_31_20220826.nii.gz"
+    paths = [img_fn, img_fn2]
+    img_fns = listify(paths)
+    img_fns_out = []
+    for d in img_fns:
+        if isinstance(d, str):
+            d = Path(d)
+        if d.is_dir():
+            d = list(d.glob("*"))
+        img_fns_out.append(d)
 
-    n = N(s)
+    data = [ToTensorT()(f) for f in img_fns]
 
-    ImageMaskViewer([n['image'][0],n['image'][0]])
 
-# %%
-    whole_image_ckpt= "/home/ub/code/fran/fran/.neptune/Untitled/LITS-585/checkpoints/epoch=249-step=11500.ckpt"
-    WP = nnUNetTrainer.load_from_checkpoint(whole_image_ckpt,project=project,dataset_params=configs['dataset_params'],
-                                            model_params=configs['model_params'],loss_params=configs['loss_params'])
-# %%
+    WP = WholeImagePredictor("LIT-41", data)
+    WP.predict()
+    WP.postprocess()
+    # %%
+    bbs = WP.get_bboxes()
+    imgs = WP.imgs
+
+    # %%
+    P = WholeImageDM.load_from_checkpoint(ckpt)
+    fn_list = [img_fn, img_fn2]
+    P.prepare_data(fn_list)
+
+    a = P.pred_ds[0]
+    a = a["image"][0]
+    # %%
+    nn = nnUNetTrainer.load_from_checkpoint(
+        ckpt, project=project, dataset_params=P.dataset_params
+    )
+    trn = pl.Trainer(accelerator="gpu", devices=1, precision="16-mixed")
+    out = trn.predict(model=nn, dataloaders=P.pred_dl)
+    # %%
+    preds = out[0]
+
+    # %%
+    K = KeepLargestConnectedComponent()
+
+    sls = []
+    for pred in preds:
+        pred_int = P(pred).unsqueeze(0)
+        pred_largest = K(pred_int)
+        bbox = generate_spatial_bounding_box(pred_int)
+        sl = list(slice(a, b, None) for a, b in zip(*bbox))
+        sls.append(sl)
+
+    # %%
+    # %%
+    imgs = []
+    for i in range(len(fn_list)):
+        img_f = fn_list[i]
+        img = ToTensorT()(img_f)
+        img = torch.permute(img, [2, 1, 0])
+        img_boxed = img[sls[i]]
+        img_unsq = img_boxed.unsqueeze(0)
+        imgs.append(img_unsq)
+    # %%
+
+    # %%
+    patch_size = patch_nn.dataset_params["patch_size"]
+    patch_sampler = PatchIter(patch_size=patch_size)
+    P = GridPatchDataset(data=[img_unsq], patch_iter=patch_sampler)
+    dl = DataLoader(P, batch_size=8, num_workers=24)
+    org_size = img_unsq.shape[1:]
+    # %%
+    for item in dl:
+        print("patch size:", item[0].shape)
+        print("coordinates:", item[1])
+    # %%
+    M = Merger(merged_shape=org_size, device="cuda")
+
+    # %%
+    model_id = "LIT-44"
+    ckpt_0 = checkpoint_from_model_id(model_id)
+    D = DataManager.load_from_checkpoint(ckpt_0)
+
+    # %%``
+    bs = 8
+    patch_overlap = 0.25
+    device = "cuda"
+    grid_mode = "gaussian"
+    patch_nn = nnUNetTrainer.load_from_checkpoint(
+        ckpt_0, project=D.project, dataset_params=D.dataset_params
+    )
+
+    inferer = SlidingWindowInferer(
+        roi_size=patch_size,
+        sw_batch_size=bs,
+        overlap=patch_overlap,
+        device=device,
+        mode=grid_mode,
+        progress=True,
+    )
+
+    # %%
+    pred_int2 = K(pred_orgsize)
+    print(pred_int["image"].max())
+    print(pred_int["image"].dtype)
+    # %%
+    ImageMaskViewer([imgs[1], pred_int[0][sl]])
+    # %%
+    pred_largest = K(bbb)
+    bbox = generate_spatial_bounding_box(pred_int2["image"])
+    print(sl)
+    # %%
+
+    aa = a["image"][0][sl]
+    bb = pred_int2["image"][0][sl]
+    ImageMaskViewer([aa, bb.detach().cpu()])
+    ImageMaskViewer([a["image"][0], pred_largest["image"][0].detach().cpu()])
+
+    # %%
     import pandas as pd
 
     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
@@ -914,10 +1231,10 @@ if __name__ == "__main__":
     runs_ensemble = "LITS-505"
     runs_ensemble = "LITS-499,LITS-500,LITS-501,LITS-502,LITS-503".split(",")
     fldr = Path("/s/datasets_bkp/normal/sitk/images")
-    fldr =  Path("/s/datasets_bkp/litq/complete_cases/images")
-    device ='cuda'
-# %%
-    En = EnsemblePredictor(
+    fldr = Path("/s/datasets_bkp/litq/complete_cases/images")
+    device = "cuda"
+    # %%
+    En = EnsemblePredictor2(
         proj_defaults,
         3,
         run_name_w,
@@ -929,7 +1246,7 @@ if __name__ == "__main__":
         overwrite=True,
     )
 
-# %%
+    # %%
     # fldr  = Path("/media/ub2/datasets/drli/sitktmp/images/")
     # fnames = list(mo_df.image_filenames)
     # fname = "/media/ub2/datasets/drli/sitktmp/images/drli_048.nrrd"
@@ -940,16 +1257,26 @@ if __name__ == "__main__":
     fname = [fn for fn in fnames if "litq_0014389_20190925" in fn.name][0]
     # fname = fnames[0]
     img_sitk = sitk.ReadImage(fname)
-# %%
+    # %%
     En.set_pred_fns(fname)
     En.run(img_sitk)
-# %%
-    ImageMaskViewer([En.p.img_np_orgres,En.pred[1]])
-# %%
+    # %%
+    ImageMaskViewer([En.p.img_np_orgres, En.pred[1]])
+    # %%
     En.save_prediction()
-# %%
+    # %%
     En.unload_case()
-# %%j
+    # %%j
     En.sitk_props
-# %%
+    # %%
 
+    model_id = "LIT-58"
+    cc = load_yaml(common_vars_filename)
+    fldr = Path(cc["checkpoints_parent_folder"])
+    # %%
+
+    dat = {"image": data[0], "org_size": [1, 2, 3]}
+    # %%
+    T = TransposeSITKd(keys=["image", "org_size"])
+    d = T(dat)
+# %%

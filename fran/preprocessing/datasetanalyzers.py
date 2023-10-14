@@ -1,6 +1,6 @@
 
 # %%
-from fastai.vision.augment import load_image, store_attr
+from fastcore.basics import  listify, store_attr
 import numpy as np
 import ast
 from fran.transforms.totensor import ToTensorT
