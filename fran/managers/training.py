@@ -543,10 +543,12 @@ class nnUNetTrainer(LightningModule):
     def predict_step(self,batch,batch_idx,dataloader_idx=0):
         img = batch['image']
         outputs=self.forward(img)
-        output=outputs[0]
-        outputs = {'pred':output,'org_size':batch['org_size']}
-        outputs_backsampled=self.post_process(outputs)
-        return outputs_backsampled
+        outputs2=outputs[0]
+        batch['pred']=outputs2
+        # output=outputs[0]
+        # outputs = {'pred':output,'org_size':batch['org_size']}
+        # outputs_backsampled=self.post_process(outputs)
+        return batch
 
     def post_process(self,pred_output):
             preds_bs=[]
@@ -734,7 +736,7 @@ if __name__ == "__main__":
 # %%
     nl = NeptuneManager(
         project=project,
-        run_id=None,#"LIT-46",
+        run_id=None,#"LIT-62",
         log_model_checkpoints=True,  # Update to True to log model checkpoints
     )
 
@@ -769,20 +771,17 @@ if __name__ == "__main__":
         # strategy="ddp_notebook",
     )
 # %%
-    tm = time.time()
-    trainer.fit(model=N, datamodule=D)
+    model_checkpoint=None
+    trainer.fit(model=N, datamodule=D,ckpt_path=model_checkpoint)
     # trainer.fit(model = N,datamodule=D,ckpt_path=cpk)
     # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader(),ckpt_path='/home/ub/code/fran/fran/.neptune/Untitled/LITS-567/checkpoints/epoch=53-step=2484.ckpt')
-    tm_end = time.time()
-    diff = tm_end - tm
-    print(diff)
 # %%
 # prediction
 # %%
 # %%
-    ckpt = '/home/ub/code/fran/fran/managers/.neptune/Untitled/LIT-41/checkpoints/epoch=249-step=3500.ckpt'
-    D = DataManager.load_from_checkpoint(ckpt)
-    N = nnUNetTrainer.load_from_checkpoint(ckpt, project=project,dataset_params = D.dataset_params)
+    # ckpt = '/home/ub/code/fran/fran/managers/.neptune/Untitled/LIT-41/checkpoints/epoch=249-step=3500.ckpt'
+    # D = DataManager.load_from_checkpoint(ckpt)
+    # N = nnUNetTrainer.load_from_checkpoint(ckpt, project=project,dataset_params = D.dataset_params)
      
 
 

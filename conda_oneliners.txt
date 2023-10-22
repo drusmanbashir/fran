@@ -13,3 +13,17 @@ mamba install -c conda-forge black
 # build from source: 
 # surface-distance
 #pytorch, torchvision, confirm version remains intact AFTER running above installs and esp after fastai installation 
+
+# note: h5py installation is incompatible with monai inside slicer
+Inside slicer:
+import pip
+mods= "monai","lightning"
+modules= "ipython","ipywidgets","pandas","matplotlib","openpyxl","pillow","pygments","jupyterlab","pyyaml","scikit-image","scipy","timm","einops","ipdb","gputil","ipympl","lxml","seaborn","nnunet","h5py"
+for mod in modules:   pip.main(['install',])
+mods="lightning","monai", "torchvision","ipdb" "lxml","seaborn","nnunet","h5py","fastcore","bs4", "ipywidgets","neptune","itk"
+def install(modules):
+    modules = listify(modules)
+    import pip
+    for mod in modules:
+    pip.main(['install',mod])
+

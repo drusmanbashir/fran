@@ -1,8 +1,13 @@
 # %%
 from fastcore.basics import store_attr
 import pandas as pd
-import ast
-from ray import tune
+import ast,sys
+import ipdb
+tr = ipdb.set_trace
+
+if not sys.executable=="": # workaround for slicer as it does not load ray tune
+    from ray import tune
+# %%
 from openpyxl import load_workbook
 
 from fran.utils.helpers import *

@@ -9,11 +9,12 @@
 from collections.abc import Hashable, Mapping
 from fastcore.basics import Dict
 from monai.data.dataset import PersistentDataset
+from monai.data.image_writer import ITKWriter
 from monai.transforms.transform import Transform
-from monai.transforms.croppad.dictionary import CenterSpatialCropd, ResizeWithPadOrCropD, ResizeWithPadOrCropd
+from monai.transforms.croppad.dictionary import   ResizeWithPadOrCropd
 from monai.transforms.intensity.dictionary import NormalizeIntensityd, RandAdjustContrastd, RandScaleIntensityd, RandShiftIntensityd, ScaleIntensityRanged, ThresholdIntensityd,RandGaussianNoised
 from monai.transforms.spatial.dictionary import RandFlipd
-from monai.transforms.utility.dictionary import AddChanneld, EnsureChannelFirstd
+from monai.transforms.utility.dictionary import  EnsureChannelFirstd
 from monai.transforms import Compose, MapTransform
 from monai.utils.enums import TransformBackends
 import numpy as np
@@ -334,6 +335,24 @@ class NormaliseClipd(MapTransform):
             d[key] = self.N(d[key])
         return d
 
+
+
+class FillBBoxPatches(Transform):
+    """
+    Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
+    """
+
+
+    def __call__(self,d):
+        '''
+        d is a dict with keys: 'image','pred','bbox'
+        '''
+
+        full= torch.zeros(d['image'].shape)
+        bbox = d['bbox']
+        full[bbox]=d['pred']
+        d['pred']=full
+        return d
 
 class MaskLabelRemap2(MapTransform):
     def __init__(self,keys,src_dest_labels:tuple,allow_missing_keys=False):

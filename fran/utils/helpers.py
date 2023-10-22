@@ -17,11 +17,23 @@ from tqdm.notebook import tqdm as tqdm_nb
 from fran.utils.dictopts import *
 from fran.utils.fileio import load_dict, save_dict, str_to_path
 from fran.utils.string import cleanup_fname, dec_to_str, path_to_str, regex_matcher
-
+from functools import wraps
+from time import time
 tr = ipdb.set_trace
 import gc
 # from fran.utils.fileio import *
 import random
+
+def timing(f):
+    @wraps(f)
+    def wrap(*args, **kw):
+        ts = time()
+        result = f(*args, **kw)
+        te = time()
+        print('func:%r args:[%r, %r] took: %2.4f sec' % \
+          (f.__name__, args, kw, te-ts))
+        return result
+    return wrap
 
 pat_full = r"(?P<pt_id>[a-z]*_[a-z0-9]+)_(?P<date>\d+)_(?P<desc>.*)_(?P<tag>thick)_?.*(?=(?P<ext>\.(nii|nrrd)(\.gz)?)$)"
 pat_nodesc ="(?P<pt_id>[a-z]*_[a-z0-9]*)_(?P<date>\d*)"
