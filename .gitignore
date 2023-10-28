@@ -24,5 +24,5 @@ vim-debug-configuration.json
 *inference_ub.py
 nnunetub/
 experiments/.neptune/config.json
-fran/lightning_logs
+*lightning_logs*
 .Rproj.user
