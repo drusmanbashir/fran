@@ -5,7 +5,7 @@ from fran.utils.config_parsers import *
 import torch.nn as nn
 from ray import tune
 from ray.air import session
-from fran.managers.trainer import *
+# from fran.managers.trainer import *
 from datetime import datetime
 import pandas as pd
 import ast,re

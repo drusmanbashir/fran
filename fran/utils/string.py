@@ -127,38 +127,18 @@ def drop_digit_suffix(fname: str):
     return fname_cl
 
 
-def info_from_filename(fname: str, tag="case_id"):
+def info_from_filename(fname: str):
     """
     returns [proj_title,case_id,desc, ?all-else]
     """
-    valid_tags = ["case_id", "date", "desc", "proj_title"]
-    assert tag in valid_tags, "Please select tag as one of {}".format(valid_tags)
+    tags = ["proj_title","case_id", "date", "desc"]
     name = cleanup_fname(fname)
 
     parts = name.split("_")
-    proj_title = parts[0]
-    case_id = "_".join(parts[:2])
-    outputs=[proj_title,case_id]
-
-    if tag=="proj_title":
-        return outputs[0]
-
-    elif tag=="case_id":
-        return outputs[1]
-    #
-    #
-    #
-    # output = {
-    #     "proj_title": proj_title,
-    #     "pt_id": pt_id,
-    # }
-    #
-    # if len(parts) > 2:
-    #     extra = {"date": parts[2], "desc": parts[3], "all_else": "_".join(parts[3:])}
-    #     output.update(extra)
-    #
-    # return output
-
+    output_dic={}
+    for key,val in zip(tags,parts):
+        output_dic[key]=val
+    return output_dic
 
 # %%
 if __name__ == "__main__":

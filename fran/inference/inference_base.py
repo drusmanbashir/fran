@@ -1,5 +1,7 @@
 # %%
 from time import time
+from monai.data import MetaTensor
+
 from lightning.fabric import Fabric
 import lightning.pytorch as pl
 from collections.abc import Callable
@@ -10,7 +12,7 @@ from monai.data.box_utils import *
 from monai.inferers.merger import *
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
-from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
+from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm, metatensor_to_itk_image
 from monai.transforms import (
     LoadImage,
     AsDiscreted,
@@ -19,6 +21,7 @@ from monai.transforms import (
     Spacingd,
     Invertd,
 )
+from monai.transforms.io.dictionary import LoadImaged
 from fran.utils.itk_sitk import *
 from monai.transforms.croppad.dictionary import BoundingRectd
 from monai.apps.detection.transforms.array import *
@@ -77,7 +80,10 @@ class Saved(Transform):
              
 
             maybe_makedirs(self.output_folder)
-            fl=Path(patch_bundle['image'].meta['filename_or_obj']).name
+            try:
+                fl=Path(patch_bundle['image'].meta['filename_or_obj']).name
+            except:
+                fl="_tmp.nii.gz"
             outname = self.output_folder/fl
 
             meta = {'original_affine': patch_bundle['image'].meta['original_affine'],
@@ -157,23 +163,6 @@ class SlicesFromBBox(MapTransform):
             d[key] = self.func(d[key])
         return d
 
-class PredFlToInt(TFC):
-    def encodes(self, pred_fl: Tensor):
-        pred_int = torch.argmax(pred_fl, 0, keepdim=False)
-        pred_int = pred_int.to(torch.uint8)
-        return pred_int
-
-
-class ToNumpy(TFC):
-    def __init__(self, encode_dtype=np.uint8):
-        if encode_dtype == np.uint8:
-            self.decode_dtype = torch.uint8
-        self.encode_dtype = encode_dtype
-
-    def encodes(self, tnsrs):
-        return [np.array(tnsr, dtype=self.encode_dtype) for tnsr in tnsrs]
-
-
 
 class SimpleDataset(Dataset):
     def __init__(
@@ -200,6 +189,8 @@ class WholeImageDM(DataManager):
         # E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
 
         # E = EnsureType( device="cuda", track_meta=True)
+    
+        L=LoadImaged(keys=['image'],image_only=True,ensure_channel_first=True,simple_keys=True)
         N = NormaliseClipd(
             keys=["image"],
             clip_range=self.dataset_params["intensity_clip_range"],
@@ -211,7 +202,7 @@ class WholeImageDM(DataManager):
             spatial_size=self.dataset_params["patch_size"],
         )
 
-        C = Compose([ N, R], lazy=True)
+        C = Compose([L, N, R], lazy=True)
         self.transforms = C
 
     def create_dataloader(self):
@@ -251,9 +242,6 @@ class WholeImagePredictor(GetAttr,DictToAttr):
             dic2[key]=dic1[key]
             self.assimilate_dict(dic2[key])
     
-
-
-
         self.predictions_folder=project.predictions_folder
 
         self.prepare_model()
@@ -265,13 +253,14 @@ class WholeImagePredictor(GetAttr,DictToAttr):
 
     def prepare_model(self):
         self.model = nnUNetTrainer.load_from_checkpoint(
-            self.ckpt, project=self.project, dataset_params=self.dataset_params
+            self.ckpt, project=self.project, dataset_params=self.dataset_params, strict=False
         )
 
 
     def prepare_trainer(self, devices):
         self.trainer = pl.Trainer(
             accelerator="gpu", devices=devices, precision="16-mixed"
+
         )
 
     def predict(self):
@@ -329,8 +318,6 @@ class PatchPredictor(WholeImagePredictor):
             std=self.dataset_params["std_fg"],
         )
         imgs_c =[N(img) for img in imgs_c]
-        # imgs_c = [img.unsqueeze(0) for img in imgs_c] # add batch dim since Dataloader will not be used
-        # imgs_c=[i.to('cuda') for i in imgs_c]
         self.imgs_c=[i.half() for i in imgs_c]
         
 
@@ -369,7 +356,6 @@ class EnsemblePredictor():
         store_attr()
 
 
-
     def run(self,imgs):
         img_tnsrs, num_cases=self.parse_input(imgs)
         bboxes= self.extract_fg_bboxes(img_tnsrs)
@@ -387,28 +373,33 @@ class EnsemblePredictor():
         return output
 
     def parse_input(self,imgs_inp):
-        imgs_inp=listify(imgs_inp)
-        loader=LoadImage(image_only=True,ensure_channel_first=True,simple_keys=True)
+        '''
+        input types:
+            folder of img_fns
+            nifti img_fns 
+            itk imgs (slicer)
+
+        returns list of img_fns if folder. Otherwise just the imgs
+        '''
+
+        if not isinstance(imgs_inp,list): imgs_inp=[imgs_inp]
         imgs_out = []
         for dat in imgs_inp:
             if any([isinstance(dat,str),isinstance(dat,Path)]):
+                self.input_type= 'files'
                 dat = Path(dat)
                 if dat.is_dir():
                     dat = list(dat.glob("*"))
                 else:
                     dat=[dat]
-                imgs=[loader(dd) for dd in dat]
             else:
+                self.input_type= 'itk'
                 if isinstance(dat,sitk.Image):
                     dat= ConvertSimpleItkImageToItkImage(dat, itk.F)
-                if isinstance(dat,itk.Image):
-                    img=itm(dat) 
-                else: 
-                    print("Not implemented")
-                    tr()
-                imgs=[img]
-            imgs_out.extend(imgs)
-        return imgs_out,len(imgs_out)
+                # if isinstance(dat,itk.Image):
+                dat=itm(dat) 
+            imgs_out.extend(dat)
+        return imgs_out
 
     def get_mini_bundle(self,patch_bundles,indx):
             patch_bundle={}
@@ -448,7 +439,7 @@ class EnsemblePredictor():
         imgs_c = [tnsr[bbo] for tnsr,bbo in zip(img_tnsrs,bboxes)]
         preds_all_runs={}
         for run in self.runs_p:
-            p=PatchPredictor(project,run)
+            p=PatchPredictor(self.project,run)
             p.prepare_data(imgs_c)
             preds=p.predict()
             preds_all_runs[run] =preds
@@ -472,24 +463,23 @@ class EnsemblePredictor():
         output= C(patch_bundle)
         return output
 
+
 # %%
+
 if __name__ == "__main__":
     # ... run your application ...
 
-    common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
-    project = Project(project_title="lits32")
+    proj= Project(project_title="lits32")
 
-    dataset_params = load_dict(project.global_properties_filename)
-    configs = ConfigMaker(project, raytune=False).config
 # %%
     run_w='LIT-41'
-    run_ps=['LIT-62', 'LIT-44','LIT-59']
+    run_ps=['LIT-62','LIT-63','LIT-64' ,'LIT-44','LIT-59']
 # %%
     img_fn = "/s/xnat_shadow/litq/test/images_few/litq_35_20200728.nii.gz"
-    img_fn2 = "/s/xnat_shadow/litq/images/litq_31_20220826.nii.gz"
+    img_fn2 = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
     img_fn3 = "/s/xnat_shadow/litq/test/images_few/"
     paths = [img_fn, img_fn2]
-    img_fns = listify(img_fn)
+    img_fns = listify(img_fn3)
 
 
     
@@ -497,11 +487,37 @@ if __name__ == "__main__":
 
 # %%
 
-    En=EnsemblePredictor(project,run_w,run_ps)
-    out = En.run(img_fns)
+    img = sitk.ReadImage(img_fn)
 # %%
-    En.parse_input(img_fns)
-    
+    En=EnsemblePredictor(proj,run_w,run_ps)
+    im = En.parse_input(img_fns)
+# %%
+
+    img = {'image':img_fn}
+    loader=LoadImaged(keys=['image'],image_only=True,ensure_channel_first=True,simple_keys=True)
+
+    im2=loader(img)
+
+# %%
+    out = En.run(img_fn2)
+# %% converting to sitk
+    out0= out[0]
+
+
+    img_meta  = out0['image'].meta
+
+    pred = out0['pred']
+# %%
+    import itertools as il
+    pred= MetaTensor(pred,meta=img_meta)
+    pred_itk = metatensor_to_itk_image(pred)
+    dirc= pred_itk.GetDirection()
+    aa = il.chain.from_iterable(dirc)
+    pred_sitk = ConvertItkImageToSimpleItkImage(pred_itk,_pixel_id_value=sitk.sitkUInt8,_direction=[ -1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, +1.0])
+    fn = "/s/xnat_shadow/litq/test/images_few/litq_35_20200728_tmp2.nii.gz"
+    sitk.WriteImage(pred_sitk,fn)
+
 
 # %%
 
+    loader=LoadImaged(image_only=True,ensure_channel_first=True,simple_keys=True)

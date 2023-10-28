@@ -5,6 +5,7 @@ from pathlib import Path
 from fastcore.all import is_close, listify
 from neptune.types.atoms.file import Union
 import torch
+import shutil
 from torch import nn
 
 import itertools as il
@@ -413,9 +414,10 @@ if __name__ == "__main__":
 
     img_fn =  Path('/media/ub/datasets_bkp/litq/complete_cases/images/litq_0014389_20190925.nii')
     mask_fn = Path("/media/ub/UB11/datasets/lits_short/segmentation-51.nii")
-    compress_img(img_fn)
-# %%
+    fldr = "/s/datasets_bkp/crc_project/nifti/masks_ub/finalised/"
+    compress_fldr(fldr)
 
+# %%
 
     img_fn = Path("/s/fran_storage/datasets/raw_data/lits2/images/litq_77_20210306.nii.gz")
     mask_fn = "/s/fran_storage/datasets/raw_data/lits2/masks/litq_77_20210306.nrrd"

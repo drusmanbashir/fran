@@ -5,7 +5,7 @@ import argparse
 # from fran.inference.transforms import *
 from fran.utils.common import *
 from fran.transforms.spatialtransforms import *
-from fran.managers.trainer import *
+from fran.managers.training import *
 from fran.managers.tune import *
 from fran.inference.inference_base import *
 from fran.utils.imageviewers import *
@@ -32,25 +32,21 @@ class EnsembleActor(object):
     def __init__(self):
         self.value = 0
 
-    def process(self,proj_defaults,run_name_w,runs_ensemble ,fnames,half,debug,overwrite=False):
-        self.En = EnsemblePredictor(proj_defaults,3,run_name_w,runs_ensemble,bs=3,half=half,device='cuda',debug=debug,overwrite=overwrite)
-        for img_fn in fnames:
-            fname= Path(img_fn)
-            img_sitk =sitk.ReadImage(fname)
-            self.En.set_pred_fns(fname)
-            self.En.run(img_sitk)
-            self.En.save_prediction()
-            self.En.unload_case()
+    def process(self,project,run_name_w,runs_ensemble ,fnames,half,debug,overwrite=False):
+        self.En =EnsemblePredictor(project,run_name_w,runs_ensemble)
+        out = self.En.run(fnames)
 # %%
 
 def main(args):
-    run_name_w= "LITS-490" # best trial
+
+    run_name_w= 'LIT-41'
     input_folder = args.input_folder
+    proj= Project(project_title=args.t)
     overwrite=args.overwrite
     half = args.half
     debug = args.debug
     ensemble = args.ensemble
-    P = Project(project_title=args.t); proj_defaults= P
+    # run_ps=['LIT-62','LIT-63','LIT-64' 'LIT-44','LIT-59']
     # ensemble=["LITS-451","LITS-452","LITS-453","LITS-454","LITS-456"]
     # ensemble=["LITS-451"]
     # if not input_folder:
@@ -64,7 +60,7 @@ def main(args):
 
     chunks = list(il.starmap(slice_list,zip([fnames]*n_lists,inds)))
     actors = [EnsembleActor.remote() for _ in range(n_lists)]
-    results = ray.get([c.process.remote(proj_defaults,run_name_w,ensemble, fnames ,half, debug,overwrite) for c,fnames in zip(actors,chunks)])
+    results = ray.get([c.process.remote(proj,run_name_w,ensemble, fnames ,half, debug,overwrite) for c,fnames in zip(actors,chunks)])
     print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 # gpu_actor = GPUActor.remote()
 # %%

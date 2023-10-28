@@ -1,0 +1,24 @@
+loss_params:
+  ce_weight: .nan
+  lambda_ce: 1
+  lambda_dice: 1
+  reduction: mean
+  softmax: 1
+model_params:
+  arch: nnUNet
+  base_ch_opts: rrr
+  compiled: 0
+  deep_supervision: true
+  depth_opts: 5
+  heavy: false
+  in_channels: 1
+  layer_order: clb
+  lr: 0.001
+  mom_added: 0.1
+  mom_low: 0.85
+  n_bottlenecks: 2
+  one_cycle: 0
+  optimizer: Adam
+  out_channels: 2
+  self_attention: true
+  tune_region_id: 1
