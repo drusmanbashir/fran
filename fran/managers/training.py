@@ -569,6 +569,8 @@ class nnUNetTrainer(LightningModule):
         return self.model(inputs)
 
 
+    def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:
+        pass
 
     def create_model(self):
         # self.device = device
