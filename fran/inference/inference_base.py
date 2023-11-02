@@ -1,11 +1,12 @@
 # %%
 from time import time
-from monai.data import MetaTensor
+import monai
+from monai.data import MetaTensor, image_writer
 
 from lightning.fabric import Fabric
 import lightning.pytorch as pl
 from collections.abc import Callable
-from monai.config.type_definitions import KeysCollection
+from monai.config.type_definitions import DtypeLike, KeysCollection
 from monai.data.image_writer import ITKWriter
 from monai.data.utils import decollate_batch
 from monai.data.box_utils import *
@@ -21,8 +22,10 @@ from monai.transforms import (
     Spacingd,
     Invertd,
 )
-from monai.transforms.io.dictionary import LoadImaged
+from monai.transforms.io.array import SaveImage
+from monai.transforms.io.dictionary import LoadImaged, SaveImaged
 from monai.transforms.utility.dictionary import EnsureTyped
+from monai.utils.enums import GridSamplePadMode
 from fran.data.dataloader import img_metadata_collated
 from fran.utils.dictopts import DictToAttr
 from fran.utils.itk_sitk import *
@@ -33,7 +36,7 @@ from monai.data.box_utils import *
 from monai.transforms.transform import MapTransform, Transform
 from monai.transforms.spatial.dictionary import Orientationd, Resized
 from monai.transforms.utility.array import EnsureType
-from fran.data.dataset import FillBBoxPatches, NormaliseClipd, NormaliseClip
+from fran.data.dataset import FillBBoxPatches, NormaliseClipd, NormaliseClip, SaveMultiChanneld
 from fran.managers.training import DataManager, nnUNetTrainer
 from fran.utils.common import *
 import sys
@@ -77,10 +80,25 @@ from fran.utils.imageviewers import ImageMaskViewer
 import torch.nn.functional as F
 
 
+class SaveListd(SaveImaged):
+
+    def __init__(self, keys: KeysCollection, meta_keys: KeysCollection | None = None, meta_key_postfix: str = ..., output_dir: Path | str = "./", output_postfix: str = "trans", output_ext: str = ".nii.gz", resample: bool = True, mode: str = "nearest", padding_mode: str = GridSamplePadMode.BORDER, scale: int | None = None, dtype: DtypeLike = np.float64, output_dtype: DtypeLike | None = np.float32, allow_missing_keys: bool = False, squeeze_end_dims: bool = True, data_root_dir: str = "", separate_folder: bool = True, print_log: bool = True, output_format: str = "", writer: type[image_writer.ImageWriter] | str | None = None, output_name_formatter: Callable[[dict, Transform], dict] | None = None, folder_layout: monai.data.FolderLayoutBase | None = None, savepath_in_metadict: bool = False) -> None:
+        super().__init__(keys, meta_keys, meta_key_postfix, output_dir, output_postfix, output_ext, resample, mode, padding_mode, scale, dtype, output_dtype, allow_missing_keys, squeeze_end_dims, data_root_dir, separate_folder, print_log, output_format, writer, output_name_formatter, folder_layout, savepath_in_metadict)
+
+    def __call__(self, data):
+        dat_out =[]
+        for datum in data:
+            dat = super().__call__(datum) 
+            dat_out.append(dat)
+        return dat_out
+
+
+
 class Saved(Transform):
         def __init__(self,output_folder):self.output_folder = output_folder
         def __call__(self,patch_bundle):
              
+            key='pred'
 
             maybe_makedirs(self.output_folder)
             try:
@@ -94,9 +112,15 @@ class Saved(Transform):
 
             writer = ITKWriter()
 
-            writer.set_data_array(patch_bundle['pred'])
+            array_full = patch_bundle[key].detach().cpu()
+            array_full.meta = patch_bundle['image'].meta
+            channels = array.shape[0]
+                # ch=0
+                # array = array_full[ch:ch+1,:]
+            writer.set_data_array(array)
+            writer.set_data_array(patch_bundle['image'])
             writer.set_metadata(meta)
-            assert(di:=patch_bundle['pred'].dim())==4,"Dimension should be 4. Got {}".format(di)
+            assert(di:=patch_bundle[key].dim())==4,"Dimension should be 4. Got {}".format(di)
             writer.write(outname)
 
 
@@ -141,6 +165,12 @@ class TransposeSITKd(MapTransform):
         for key in self.key_iterator(d):
             d[key] = self.func(d[key])
         return d
+
+class ToCPUd(MapTransform):
+    def __call__(self, d: dict):
+            for key in self.key_iterator(d):
+                d[key] = d[key].cpu()
+            return d
 
 
 class SlicesFromBBox(MapTransform):
@@ -274,12 +304,12 @@ class PatchDM(DataManager):
 class WholeImagePredictor(GetAttr,DictToAttr):
     _default = "datamodule"
 
-    def __init__(self, project,run_name, data,devices=1,save_preds=True):
+    def __init__(self, project,run_name, data,devices=1,debug=True):
         '''
         data is a dataset from Ensemble in this base class
         '''
 
-        store_attr('project,run_name,devices,save_preds')
+        store_attr('project,run_name,devices,debug')
         self.ckpt = checkpoint_from_model_id(run_name)
         dic1=torch.load(self.ckpt)
         dic2={}
@@ -290,17 +320,19 @@ class WholeImagePredictor(GetAttr,DictToAttr):
     
         self.prepare_model()
         self.prepare_data(data)
+        self.create_postprocess_transforms()
 
-    def create_postprocess_transforms(self,ds_transform):
-        I = Invertd(keys=['pred'],transform=ds_transform,orig_keys=['image'])
+    def create_postprocess_transforms(self):
+        I = Invertd(keys=['pred'],transform=self.ds2.transform,orig_keys=['image'])
         D = AsDiscreted(keys=['pred'],argmax=True,threshold=0.5)
         K= KeepLargestConnectedComponentd(keys=['pred'])
+        C = ToCPUd(keys=['image','pred'])
         B=BoundingRectd(keys=['pred'])
         S = SlicesFromBBox(keys=['pred_bbox'])
-        tfms = [I,D,K,B,S]
-        if self.save_pred==True:
-            S = Saved(self.output_folder)
-            tfms.insert(1,S)
+        tfms = [I,D,K,C,B,S]
+        if self.debug==True:
+            Sa = SaveMultiChanneld(keys=['pred'],output_folder=self.output_folder,postfix_channel=True)
+            tfms.insert(1,Sa)
         C = Compose(tfms)
         self.postprocess_transforms=C
 
@@ -346,15 +378,16 @@ class WholeImagePredictor(GetAttr,DictToAttr):
 
     @property
     def output_folder(self):
-        fldr='_'.join(self.run_name)
+        run_name = listify(self.run_name)
+        fldr='_'.join(run_name)
         fldr = self.project.predictions_folder/fldr
         return fldr
 
 
 
 class PatchPredictor(WholeImagePredictor):
-    def __init__(self,project, run_name,  data,patch_overlap=0.25,bs=8,grid_mode="gaussian",devices=1 ):
-        super().__init__(project,run_name,  data,devices)
+    def __init__(self,project, run_name,  data,patch_overlap=0.25,bs=8,grid_mode="gaussian",devices=1,debug=True ):
+        super().__init__(project,run_name,  data,devices,debug)
         '''
         data is a list containing a dataset from ensemble and bboxes
         '''
@@ -401,13 +434,16 @@ class PatchPredictor(WholeImagePredictor):
 
     def postprocess(self, outputs):
         I = Invertd(keys=['pred'],transform=self.ds2.transform,orig_keys=['image_cropped'])
+        C =  ToCPUd(keys=['image','pred'])
+        tfms = [I,C]
+        if self.debug==True:
+                        S = SaveMultiChanneld(['pred'],self.output_folder,postfix_channel=True)
+                        tfms+=[S]
+        C = Compose(tfms)
         out_final=[]
         for batch in outputs: # batch_length is 1
             batch['pred']=batch['pred'].squeeze(0).detach()
-            batch=I(batch)
-            if self.save_pred==True:
-                        S = Saved(self.output_folder)
-                        batch=S(batch)
+            batch=C(batch)
             out_final.append(batch)
         return out_final
 
@@ -428,6 +464,7 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
         device="cuda",
         debug=False,
         overwrite=False,
+        save=True
     ):
         
         self.predictions_folder = project.predictions_folder
@@ -456,15 +493,9 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
         pred_patches = self.patch_prediction(self.ds,self.bboxes)
         pred_patches = self.decollate_patches(pred_patches,self.bboxes)
         output= self.postprocess(pred_patches)
+        if self.save==True: self.save_pred(output)
         return output
-        # output=[]
-        # for i in range(num_cases):
-        #     patch_bundle = self.get_mini_bundle(patch_bundles,i)
-        #     preds = self.postprocess(patch_bundle)
-        #     output.append(preds)
-        #     self.save_pred(preds)
-        # return output
-        #
+
     def parse_input(self,imgs_inp):
         '''
         input types:
@@ -495,6 +526,13 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
         imgs_out = [{'image':img} for img in imgs_out]
         return imgs_out
 
+    def save_pred(self,preds):
+        S = SaveImaged(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
+        for pp in preds:
+            S(pp)
+
+
+
     def get_mini_bundle(self,patch_bundles,indx):
             patch_bundle={}
             for key,val in patch_bundles.items():
@@ -518,14 +556,10 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
         return output
 
 
-    def save_pred(self,pred):
-            S=Saved(self.output_folder)
-            S(pred)
 
     def extract_fg_bboxes(self):
-        w=WholeImagePredictor(self.project,self.run_name_w,self.ds)
+        w=WholeImagePredictor(self.project,self.run_name_w,self.ds,debug=self.debug)
         print("Preparing data")
-        w.create_postprocess_transforms(w.ds2.transform)
         p = w.predict()
         preds= w.postprocess(p)
         bboxes = [pred['pred_bbox'] for pred in preds]
@@ -535,7 +569,7 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
         data = [ds,bboxes]
         preds_all_runs={}
         for run in self.runs_p:
-            p=PatchPredictor(self.project,run,data=data)
+            p=PatchPredictor(self.project,run,data=data,debug=self.debug)
             preds=p.predict()
             preds = p.postprocess(preds)
             preds_all_runs[run] =preds
@@ -555,8 +589,8 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
         D = AsDiscreted(keys=['pred'],argmax=True)
         K = KeepLargestConnectedComponentd(keys=['pred'],independent=False)
         F = FillBBoxPatches()
-        S = Saved(self.output_folder)
-        C  = Compose([M,A,D,K,F,S])
+        # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
+        C  = Compose([M,A,D,K,F])
         output= C(patch_bundle)
         return output
 
@@ -583,13 +617,66 @@ if __name__ == "__main__":
 
 
 # %%
-    En=EnsemblePredictor(proj,run_w,run_ps)
+    En=EnsemblePredictor(proj,run_w,run_ps,debug=False)
     # im = [{'image':im} for im in [img_fn,img_fn2]]
     
     preds=En.run(img_fns)
+# %%
+    p=preds[0]['pred']
 
+# %%
+    C = ToCPUd(keys=['image'])
+    pp = C(p[0])
+# %%
+        w=WholeImagePredictor(En.project,En.run_name_w,En.ds,debug=False)
+        print("Preparing data")
+        w.create_postprocess_transforms()
+# %%
+
+
+    p = w.predict()
+# %%
+    pa = p[0]
+
+    pa2= decollate_batch(pa,detach=True)
+    pa = preds[0]
+    pa['image'].shape
+    pa['image'].meta
+    pa['pred'].shape
+    pad = pa['pred']
+# %%
+    pred_patches = En.patch_prediction(En.ds,En.bboxes)
+    pred_patches = En.decollate_patches(pred_patches,En.bboxes)
+    output= En.postprocess(pred_patches)
+
+# %%
+    pa = output[0]
+    meta = {'original_affine': pa['image'].meta['original_affine'],
+                    'affine':pa['image'].meta['affine']}
+
+
+
+    m2 = pa['image'].meta
+    pa['pred'].meta = m2
 # %%
     a = En.ds[0]
     im = a['image']
+    im.shape
+# %%
+        I = Invertd(keys=['pred'],transform=En.ds.transform,orig_keys=['image'])
+        D = AsDiscreted(keys=['pred'],argmax=True,threshold=0.5)
+        K= KeepLargestConnectedComponentd(keys=['pred'])
+        B=BoundingRectd(keys=['pred'])
+        S = SlicesFromBBox(keys=['pred_bbox'])
+        tfms = [I,D,K,B,S]
+        if self.save_pred==True:
+            Sa = Saved(self.output_folder)
+            tfms.insert(1,Sa)
+
+# %%
+    S = SaveImaged(keys = ['pred'],output_dir=En.output_folder,output_postfix='',separate_folder=False)
+    for pp in preds:
+        S(pp)
+
 # %%
     a= [1,2,3]

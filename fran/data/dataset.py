@@ -10,6 +10,8 @@ from collections.abc import Hashable, Mapping
 from fastcore.basics import Dict
 from monai.data.dataset import PersistentDataset
 from monai.data.image_writer import ITKWriter
+from monai.data.meta_tensor import MetaTensor
+from monai.transforms.io.array import SaveImage
 from monai.transforms.transform import Transform
 from monai.transforms.croppad.dictionary import   ResizeWithPadOrCropd
 from monai.transforms.intensity.dictionary import NormalizeIntensityd, RandAdjustContrastd, RandScaleIntensityd, RandShiftIntensityd, ScaleIntensityRanged, ThresholdIntensityd,RandGaussianNoised
@@ -237,6 +239,30 @@ class ImageMaskBBoxDatasetd(ImageMaskBBoxDataset):
           
             return dici
 
+
+class SaveMultiChanneld(MapTransform):
+    
+    def __init__(self,keys,output_folder,postfix_channel=False):
+        super().__init__(keys,False)
+        store_attr('output_folder,postfix_channel')
+
+    def func(self, data):
+        chs= data.shape[0]
+        tr()
+        for ch in range(1,chs): 
+            postfix=str(ch) if self.postfix_channel==True else None
+            img_save = data[ch:ch+1]
+            S = SaveImage(output_dir= self.output_folder,output_postfix=postfix,separate_folder=False)
+            S(img_save)
+
+    def __call__(self, data: Mapping[Hashable, torch.Tensor]) -> Dict[Hashable, torch.Tensor]:
+        d = dict(data)
+        for key in self.key_iterator(d):
+            self.func(d[key])
+        return d
+
+
+
 class CropImgMaskd(MapTransform):
 
     def __init__(self, patch_size,input_dims):
@@ -351,7 +377,10 @@ class FillBBoxPatches(Transform):
         full= torch.zeros(d['image'].shape)
         bbox = d['bbox']
         full[bbox]=d['pred']
-        d['pred']=full
+
+        pred = MetaTensor(full)
+        pred.copy_meta_from(d['image'])
+        d['pred']=pred
         return d
 
 class MaskLabelRemap2(MapTransform):

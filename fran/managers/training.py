@@ -1,6 +1,11 @@
 # %%
 import time
+from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
+from monai.data.meta_obj import get_track_meta
+from monai.transforms.intensity.array import RandGaussianNoise
 from monai.transforms.spatial.array import Resize
+from monai.transforms.transform import MapTransform, RandomizableTransform
+from monai.utils.type_conversion import convert_to_tensor
 
 import neptune
 from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
@@ -16,7 +21,7 @@ from neptune.types import File
 from torchvision.utils import make_grid
 from lightning.pytorch.profilers import AdvancedProfiler
 import warnings
-from typing import Any
+from typing import Any, Hashable, Mapping
 
 # from fastcore.basics import GetAttr
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint, TQDMProgressBar
@@ -45,6 +50,39 @@ from fran.architectures.create_network import (
     nnUNet,
     pool_op_kernels_nnunet,
 )
+class RandRandGaussianNoised(RandomizableTransform,MapTransform):
+    def __init__(self,keys,std_limits, prob: float = 1, do_transform: bool = True, dtype: DtypeLike = np.float32):
+        
+        MapTransform.__init__(self, keys, False)
+        RandomizableTransform.__init__(self, prob)
+        store_attr('std_limits,dtype')
+        
+    def randomize(self):
+            super().randomize(None)
+            rand_std = self.R.uniform(low=self.std_limits[0],high=self.std_limits[1])
+            self.rand_gaussian_noise = RandGaussianNoise(mean=0, std=rand_std, prob=1.0, dtype=self.dtype)
+                                                         
+
+    def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> dict[Hashable, NdarrayOrTensor]:
+        d = dict(data)
+        self.randomize()
+        if not self._do_transform:
+            for key in self.key_iterator(d):
+                d[key] = convert_to_tensor(d[key], track_meta=get_track_meta())
+            return d
+
+        # all the keys share the same random noise
+        first_key: Hashable = self.first_key(d)
+        if first_key == ():
+            for key in self.key_iterator(d):
+                d[key] = convert_to_tensor(d[key], track_meta=get_track_meta())
+            return d
+
+        self.rand_gaussian_noise.randomize(d[first_key])
+        for key in self.key_iterator(d):
+            d[key] = self.rand_gaussian_noise(img=d[key], randomize=False)
+        return d
+
 
 # from fran.managers.base import *
 from fran.utils.helpers import *
@@ -438,9 +476,13 @@ class DataManager(LightningDataModule):
             RandScaleIntensityd(
                 keys="image", factors=self.scale["value"], prob=self.scale["prob"]
             ),
-            RandGaussianNoised(
-                keys=["image"], std=self.noise["value"], prob=self.noise["prob"]
+            RandRandGaussianNoised(
+                keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
             ),
+
+            # RandGaussianNoised(
+            #     keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
+            # ),
             RandShiftIntensityd(
                 keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
             ),
@@ -569,8 +611,6 @@ class nnUNetTrainer(LightningModule):
         return self.model(inputs)
 
 
-    def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:
-        pass
 
     def create_model(self):
         # self.device = device
@@ -720,6 +760,7 @@ if __name__ == "__main__":
     project_title = "lits32"
     project = Project(project_title=project_title)
 
+    # configs = ConfigMaker(project, raytune=False,configuration_filename="/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx").config
     configs = ConfigMaker(project, raytune=False).config
 
     global_props = load_dict(project.global_properties_filename)
@@ -734,7 +775,7 @@ if __name__ == "__main__":
     # D = DataManager.load_from_checkpoint(cpk)
     D.prepare_data()
 # %%
-
+    D.setup()
 # %%
     nl = NeptuneManager(
         project=project,
@@ -758,7 +799,8 @@ if __name__ == "__main__":
     )
 # %%
     # strategy=DDPStrategy(find_unused_parameters=True)
-    cbs = [TQDMProgressBar(refresh_rate=3), mcp, NepImg]
+    cbs = [TQDMProgressBar(refresh_rate=3), mcp ]
+    cbs = []
     trainer = Trainer(
         callbacks=cbs,
         accelerator="gpu",
@@ -777,7 +819,11 @@ if __name__ == "__main__":
     trainer.fit(model=N, datamodule=D,ckpt_path=model_checkpoint)
     # trainer.fit(model = N,datamodule=D,ckpt_path=cpk)
     # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader(),ckpt_path='/home/ub/code/fran/fran/.neptune/Untitled/LITS-567/checkpoints/epoch=53-step=2484.ckpt')
+    # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader())
 # %%
+    dl = D.val_dataloader()
+    for i,batch in enumerate(dl):
+        print(batch['image'].shape)
 # prediction
 # %%
 # %%
@@ -785,6 +831,30 @@ if __name__ == "__main__":
     # D = DataManager.load_from_checkpoint(ckpt)
     # N = nnUNetTrainer.load_from_checkpoint(ckpt, project=project,dataset_params = D.dataset_params)
      
+# %%
+# %%
 
 
+
+# %%
+R = RandGaussianNoised(
+        keys=["image"], std=0.5, prob=0.99
+    )
+
+
+# %%
+ds = D.train_ds
+data = ds[0]
+print(data['image'].std())
+# %%
+d2 = R(data)
+
+print(d2['image'].std())
+# %%
+d3 = R(data)
+print(d3['image'].std())
+# %%
+ImageMaskViewer([d2['image'][0],d2['image'][0]],data_types=['image','image'])
+ImageMaskViewer([d3['image'][0],d3['image'][0]],data_types=['image','image'])
+# %%
 
