@@ -547,7 +547,7 @@ class DataManager(LightningDataModule):
         return affine
 
     def setup(self, stage: str = None):
-        self.train_list, self.valid_list = project.get_train_val_files(
+        self.train_list, self.valid_list = self.project.get_train_val_files(
             self.dataset_params["fold"]
         )
         self.create_transforms()
@@ -786,16 +786,16 @@ class TrainingManager:
         else:
             self.N = nnUNetTrainer(
                 self.project,
-                configs["dataset_params"],
-                configs["model_params"],
-                configs["loss_params"],
-                lr=configs["model_params"]["lr"],
+                self.configs["dataset_params"],
+                self.configs["model_params"],
+                self.configs["loss_params"],
+                lr=self.configs["model_params"]["lr"],
             )
             self.D = DataManager(
                 self.project,
-                dataset_params=configs["dataset_params"],
-                transform_factors=configs["transform_factors"],
-                affine3d=configs["affine3d"],
+                dataset_params=self.configs["dataset_params"],
+                transform_factors=self.configs["transform_factors"],
+                affine3d=self.configs["affine3d"],
             )
 
         self.D.prepare_data()
@@ -838,18 +838,18 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
     project_title = "lits32"
-    project = Project(project_title=project_title)
+    proj = Project(project_title=project_title)
 
-    configs = ConfigMaker(
-        project,
+    conf = ConfigMaker(
+        proj,
         raytune=False,
         configuration_filename="/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx",
     ).config
     # configs = ConfigMaker(project, raytune=False).config
 
-    global_props = load_dict(project.global_properties_filename)
+    global_props = load_dict(proj.global_properties_filename)
 # %%
-    Tm = TrainingManager(project,configs)
+    Tm = TrainingManager(proj,conf)
     Tm.setup(epochs=1)
     Tm.fit()
 # %%
