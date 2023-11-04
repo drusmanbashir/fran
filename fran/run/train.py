@@ -53,7 +53,12 @@ def load_and_update_configs(project, args,compute_bs=True):
     # if recompute_bs==True:
     # if args.resume is None or args.update == True:
     # args.bs = maybe_compute_bs(project,args)
-    configs = ConfigMaker(project, raytune=False).config
+
+    configs = ConfigMaker(
+        project,
+        raytune=False,
+        configuration_filename=args.conf_fn
+    ).config
 
     # else:
     #     configs = {}
@@ -98,12 +103,6 @@ def main(args):
     project_title = args.t
     project = Project(project_title=project_title);
     print("Project: {0}".format(project_title))
-
-    configs = ConfigMaker(
-        project,
-        raytune=False,
-        configuration_filename=args.conf_fn
-    ).config
     Tm = initialize_run(project, args)
     Tm.fit()
 # %%
@@ -122,7 +121,7 @@ if __name__ == "__main__":
         help="Leave empty to resume last training session or enter a run name.",
     )  # neptune manager saves last session's name in excel spreadsheet
 
-    parser.add_argument("--bs", help="batch size",type=int)
+    parser.add_argument("--bs", help="batch size",type=int,default =8)
     parser.add_argument("-f","--fold", type=int, default=0)
     parser.add_argument("-d","--devices", type=int, default=1)
     parser.add_argument("-c","--compile", action='store_true')
@@ -142,7 +141,7 @@ if __name__ == "__main__":
 
     args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     args.t = 'lits32'
-    args.bs = 8
+    # args.bs = 8
     # args.lr = 1e-4
     # args.devices = False
     # # args.resume=''

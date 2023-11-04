@@ -93,7 +93,7 @@ class Project(DictToAttr):
         return output
 
     def vars_to_sql(self, dataset_name, img_fn, mask_fn, test):
-        case_id = info_from_filename(img_fn.name, "case_id")
+        case_id = info_from_filename(img_fn.name)['case_id']
         fold = "NULL"
         img_sym = self.symlink_fname(img_fn)
         mask_sym = self.symlink_fname(mask_fn)
@@ -446,13 +446,14 @@ class Datasource(GetAttr):
 
 # %%
 if __name__ == "__main__":
-    P.delete()
-    P = Project(project_title="lits")
+    P = Project(project_title="litsg")
     ds = "/s/xnat_shadow/litq"
     ds2="/s/datasets_bkp/litqmall"
     ds3="/s/datasets_bkp/drli"
     ds4="/s/datasets_bkp/lits_segs_improved/"
-    P.create_project([ds,ds2,ds3,ds4])
+    ds5="/s/datasets_bkp/drli_short/"
+    # P.create_project([ds,ds2,ds3,ds4])
+    P.create_project([ds5])
     P.create_folds()
     len(P.raw_data_imgs)
     len(P)

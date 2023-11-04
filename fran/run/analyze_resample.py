@@ -1,7 +1,7 @@
 # %%
 import argparse
 import ast
-from fastai.vision.augment import shutil
+import shutil
 from fran.preprocessing.stage1_preprocessors import *
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.stage0_preprocessors import ResampleDatasetniftiToTorch, generate_bboxes_from_masks_folder, verify_dataset_integrity
@@ -330,7 +330,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "lits32"
+    # args.project_title = "lits32"
     # args.num_processes = 16
     args.debug =False
     # args.overwrite=False

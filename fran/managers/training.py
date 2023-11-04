@@ -437,7 +437,6 @@ class DataManager(LightningDataModule):
         dataset_params: dict,
         transform_factors: dict,
         affine3d: dict,
-        batch_size=8,
     ):
         """ """
         super().__init__()
@@ -449,6 +448,7 @@ class DataManager(LightningDataModule):
         ]
         self.dataset_params["mean_fg"] = global_properties["mean_fg"]
         self.dataset_params["std_fg"] = global_properties["std_fg"]
+        self.batch_size = 8
         self.assimilate_tfm_factors(transform_factors)
 
     #
@@ -595,11 +595,13 @@ class nnUNetTrainer(LightningModule):
         dataset_params,
         model_params,
         loss_params,
-        lr=1e-3,
+        lr=None,
         compiled=False,
+        batch_size=8,
     ):
         super().__init__()
-        store_attr("project,dataset_params,model_params,loss_params,compiled,lr")
+        self.lr = lr if lr else model_params['lr']
+        store_attr()
         self.save_hyperparameters("model_params", "loss_params")
         self.model, self.loss_fnc = self.create_model()
 
@@ -690,8 +692,6 @@ class nnUNetTrainer(LightningModule):
         model = create_model_from_conf(self.model_params, self.dataset_params)
         # if self.checkpoints_folder:
         #     load_checkpoint(self.checkpoints_folder, model)
-        self.batch_size = 8
-
         if (
             self.model_params["arch"] == "DynUNet"
             or self.model_params["arch"] == "nnUNet"
