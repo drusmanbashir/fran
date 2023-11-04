@@ -1,9 +1,12 @@
 # %%
 import time
+from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.strategies import DDPStrategy
+import torch.multiprocessing as mp
 from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
 from monai.data.meta_obj import get_track_meta
 from monai.transforms.intensity.array import RandGaussianNoise
-from monai.transforms.spatial.array import Resize
+from monai.transforms.spatial.array import RandFlip, Resize
 from monai.transforms.transform import MapTransform, RandomizableTransform
 from monai.utils.type_conversion import convert_to_tensor
 
@@ -16,6 +19,7 @@ from monai.transforms.intensity.dictionary import (
     RandShiftIntensityd,
 )
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, EnsureTyped
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.profiler import profile, record_function, ProfilerActivity
 from neptune.types import File
 from torchvision.utils import make_grid
@@ -43,6 +47,8 @@ from fran.utils.helpers import *
 from fran.utils.fileio import *
 from fran.utils.imageviewers import *
 
+from fran.utils.common import *
+
 # from fastai.learner import *
 from fran.evaluation.losses import *
 from fran.architectures.create_network import (
@@ -50,20 +56,47 @@ from fran.architectures.create_network import (
     nnUNet,
     pool_op_kernels_nnunet,
 )
-class RandRandGaussianNoised(RandomizableTransform,MapTransform):
-    def __init__(self,keys,std_limits, prob: float = 1, do_transform: bool = True, dtype: DtypeLike = np.float32):
-        
+
+
+def checkpoint_from_model_id(model_id):
+    common_paths = load_yaml(common_vars_filename)
+    fldr = Path(common_paths["checkpoints_parent_folder"])
+    all_fldrs = [
+        f for f in fldr.rglob("*{}/checkpoints".format(model_id)) if f.is_dir()
+    ]
+    if len(all_fldrs) == 1:
+        fldr = all_fldrs[0]
+    else:
+        tr()
+
+    list_of_files = list(fldr.glob("*"))
+    ckpt = max(list_of_files, key=lambda p: p.stat().st_ctime)
+    return ckpt
+
+
+class RandRandGaussianNoised(RandomizableTransform, MapTransform):
+    def __init__(
+        self,
+        keys,
+        std_limits,
+        prob: float = 1,
+        do_transform: bool = True,
+        dtype: DtypeLike = np.float32,
+    ):
         MapTransform.__init__(self, keys, False)
         RandomizableTransform.__init__(self, prob)
-        store_attr('std_limits,dtype')
-        
-    def randomize(self):
-            super().randomize(None)
-            rand_std = self.R.uniform(low=self.std_limits[0],high=self.std_limits[1])
-            self.rand_gaussian_noise = RandGaussianNoise(mean=0, std=rand_std, prob=1.0, dtype=self.dtype)
-                                                         
+        store_attr("std_limits,dtype")
 
-    def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> dict[Hashable, NdarrayOrTensor]:
+    def randomize(self):
+        super().randomize(None)
+        rand_std = self.R.uniform(low=self.std_limits[0], high=self.std_limits[1])
+        self.rand_gaussian_noise = RandGaussianNoise(
+            mean=0, std=rand_std, prob=1.0, dtype=self.dtype
+        )
+
+    def __call__(
+        self, data: Mapping[Hashable, NdarrayOrTensor]
+    ) -> dict[Hashable, NdarrayOrTensor]:
         d = dict(data)
         self.randomize()
         if not self._do_transform:
@@ -88,16 +121,17 @@ class RandRandGaussianNoised(RandomizableTransform,MapTransform):
 from fran.utils.helpers import *
 
 
-def get_neptune_checkpoint(project,run_id):
+def get_neptune_checkpoint(project, run_id):
     nl = NeptuneManager(
         project=project,
-        run_id=run_id,#"LIT-46",
-        nep_mode='read-only',
+        run_id=run_id,  # "LIT-46",
+        nep_mode="read-only",
         log_model_checkpoints=True,  # Update to True to log model checkpoints
     )
-    ckpt=nl.model_checkpoint
+    ckpt = nl.model_checkpoint
     nl.experiment.stop()
     return ckpt
+
 
 def get_neptune_project(project, mode):
     """
@@ -130,11 +164,13 @@ def normalize(tensr, intensity_percentiles=[0.0, 1.0]):
     tensr[tensr > vmax] = vmax
     return tensr
 
-class NeptuneCallback(Callback):
-    def on_train_epoch_start(self,trainer,pl_module):
-        trainer.logger.experiment['training/epoch']=trainer.current_epoch
 
-class NeptuneImageGridCallback(NeptuneCallback):
+# class NeptuneCallback(Callback):
+# def on_train_epoch_start(self, trainer, pl_module):
+#     trainer.logger.experiment["training/epoch"] = trainer.current_epoch
+
+
+class NeptuneImageGridCallback(Callback):
     def __init__(
         self,
         classes,
@@ -155,7 +191,7 @@ class NeptuneImageGridCallback(NeptuneCallback):
         self.freq = int(len_dl / self.grid_rows)
 
     def on_train_epoch_start(self, trainer, pl_module):
-        super().on_train_epoch_start(trainer,pl_module)
+        super().on_train_epoch_start(trainer, pl_module)
         self.grid_imgs = []
         self.grid_preds = []
         self.grid_labels = []
@@ -249,17 +285,16 @@ class NeptuneManager(NeptuneLogger, Callback):
         prefix: str = "training",
         **neptune_run_kwargs: Any
     ):
-
-        store_attr('project')
-        project_nep, api_token= get_neptune_config(project)
+        store_attr("project")
+        project_nep, api_token = get_neptune_config(project)
         os.environ["NEPTUNE_API_TOKEN"] = api_token
         os.environ["NEPTUNE_PROJECT"] = project_nep
         self.df = self.fetch_project_df()
         if run_id:
-            nep_run = self.load_run(run_id,nep_mode)
-            project_nep,api_token=None,None
+            nep_run = self.load_run(run_id, nep_mode)
+            project_nep, api_token = None, None
         else:
-            nep_run=None
+            nep_run = None
 
         NeptuneLogger.__init__(
             self,
@@ -271,11 +306,10 @@ class NeptuneManager(NeptuneLogger, Callback):
             **neptune_run_kwargs
         )
 
-
     @property
     def model_checkpoint(self):
         try:
-            ckpt = self.experiment['training/model/best_model_path'].fetch()
+            ckpt = self.experiment["training/model/best_model_path"].fetch()
             return ckpt
         except:
             print("No checkpoints in this run")
@@ -305,10 +339,9 @@ class NeptuneManager(NeptuneLogger, Callback):
         nep_run = neptune.init_run(with_id=run_id, mode=nep_mode)
         return nep_run
 
-
     def get_run_id(self, run_id):
         if run_id == "most_recent":
-            run_id= self.id_most_recent()
+            run_id = self.id_most_recent()
             msg = "Most recent run"
         elif run_id is any(["", None]):
             raise Exception(
@@ -319,7 +352,6 @@ class NeptuneManager(NeptuneLogger, Callback):
             self.id_exists(run_id)
             msg = "Run id matching {}".format(run_id)
         return run_id, msg
-
 
     def id_exists(self, run_id):
         row = self.df.loc[self.df["sys/id"] == run_id]
@@ -337,7 +369,6 @@ class NeptuneManager(NeptuneLogger, Callback):
                 print("Loading most recent run. Run id {}".format(row["sys/id"]))
                 return row["sys/id"], row["metadata/run_name"]
 
-
     def on_train_start(self, trainer, pl_module):
         print("Training is starting")
 
@@ -346,12 +377,16 @@ class NeptuneManager(NeptuneLogger, Callback):
         plm.logger.log_metrics(ld)
 
     @property
-    def run_id(self): return self.experiment['sys/id'].fetch()
+    def run_id(self):
+        return self.experiment["sys/id"].fetch()
+
     #
     @property
     def save_dir(self) -> Optional[str]:
-               sd = self.project.checkpoints_parent_folder
-               return str(sd)
+        sd = self.project.checkpoints_parent_folder
+        return str(sd)
+
+
 #
 #
 #
@@ -462,15 +497,15 @@ class DataManager(LightningDataModule):
                 mean=self.dataset_params["mean_fg"],
                 std=self.dataset_params["std_fg"],
             ),
-            ResizeWithPadOrCropd(
-                keys=["image", "label"],
-                source_key="image",
-                spatial_size=self.dataset_params["src_dims"],
-            ),
+            # ResizeWithPadOrCropd(
+            #     keys=["image", "label"],
+            #     source_key="image",
+            #     spatial_size=self.dataset_params["src_dims"],
+            # ),
         ]
 
         t2 = [
-            EnsureTyped(keys=["image", "label"], device="cuda", track_meta=False),
+            # EnsureTyped(keys=["image", "label"], device="cuda", track_meta=False),
             RandFlipd(keys=["image", "label"], prob=self.flip["prob"], spatial_axis=0),
             RandFlipd(keys=["image", "label"], prob=self.flip["prob"], spatial_axis=1),
             RandScaleIntensityd(
@@ -479,16 +514,15 @@ class DataManager(LightningDataModule):
             RandRandGaussianNoised(
                 keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
             ),
-
             # RandGaussianNoised(
-            #     keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
+            #     keys=["image"], std=self.noise["value"], prob=self.noise["prob"]
             # ),
             RandShiftIntensityd(
                 keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
             ),
-            RandAdjustContrastd(
-                ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
-            ),
+            # RandAdjustContrastd(
+            #     ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
+            # ),
             self.create_affine_tfm(),
         ]
         t3 = [
@@ -498,7 +532,7 @@ class DataManager(LightningDataModule):
                 spatial_size=self.dataset_params["patch_size"],
             )
         ]
-        self.tfms_train = Compose(all_after_item + t3)
+        self.tfms_train = Compose(all_after_item + t2 + t3)
         self.tfms_valid = Compose(all_after_item + t3)
 
     def create_affine_tfm(self):
@@ -550,21 +584,26 @@ class DataManager(LightningDataModule):
         )
         return valid_dl
 
-
     def forward(self, inputs, target):
         return self.model(inputs)
 
 
 class nnUNetTrainer(LightningModule):
     def __init__(
-        self, project, dataset_params, model_params, loss_params, compiled=False
+        self,
+        project,
+        dataset_params,
+        model_params,
+        loss_params,
+        lr=1e-3,
+        compiled=False,
     ):
         super().__init__()
-        store_attr("project,dataset_params,model_params,loss_params,compiled") 
+        store_attr("project,dataset_params,model_params,loss_params,compiled,lr")
         self.save_hyperparameters("model_params", "loss_params")
         self.model, self.loss_fnc = self.create_model()
 
-    def training_step(self, batch, batch_idx):
+    def _calc_loss(self, batch):
         inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]
         self.pred = self.forward(inputs)
         target_listed = []
@@ -576,41 +615,73 @@ class nnUNetTrainer(LightningModule):
                 target_downsampled = F.interpolate(target, size=size, mode="nearest")
                 target_listed.append(target_downsampled)
         loss = self.loss_fnc(self.pred, target_listed)
-        self.logger.log_metrics(self.loss_fnc.loss_dict)
+        loss_dict = self.loss_fnc.loss_dict
+        return loss, loss_dict
+
+    def training_step(self, batch, batch_idx):
+        loss, loss_dict = self._calc_loss(batch)
+        self.log_metrics(loss_dict, prefix="train")
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        return self.training_step(batch, batch_idx)
+    def log_metrics(self, loss_dict, prefix):
+        metrics = [
+            "loss",
+            "loss_ce",
+            "loss_dice",
+            "loss_dice_label1",
+            "loss_dice_label2",
+        ]
+        metrics = [me for me in metrics if me in loss_dict.keys()]
+        renamed = [prefix + "_" + nm for nm in metrics]
+        logger_dict = {
+            neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
+        }
+        self.logger.log_metrics(logger_dict)
+        self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
-    def predict_step(self,batch,batch_idx,dataloader_idx=0):
-        img = batch['image']
-        outputs=self.forward(img)
-        outputs2=outputs[0]
-        batch['pred']=outputs2
+    def validation_step(self, batch, batch_idx):
+        loss, loss_dict = self._calc_loss(batch)
+        self.log_metrics(loss_dict, prefix="val")
+        return loss
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        img = batch["image"]
+        outputs = self.forward(img)
+        outputs2 = outputs[0]
+        batch["pred"] = outputs2
         # output=outputs[0]
         # outputs = {'pred':output,'org_size':batch['org_size']}
         # outputs_backsampled=self.post_process(outputs)
         return batch
 
-    def post_process(self,pred_output):
-            preds_bs=[]
-            pred = pred_output['pred']
-            sizes= pred_output['org_size']
-            for p,s in zip(pred,sizes):
-                R = Resize(s)
-                pred_bs = R(p)
-                # maxed = torch.argmax(pred_bs, 1, keepdim=False)
-                preds_bs.append(pred_bs)
-            return preds_bs
-
+    def post_process(self, pred_output):
+        preds_bs = []
+        pred = pred_output["pred"]
+        sizes = pred_output["org_size"]
+        for p, s in zip(pred, sizes):
+            R = Resize(s)
+            pred_bs = R(p)
+            # maxed = torch.argmax(pred_bs, 1, keepdim=False)
+            preds_bs.append(pred_bs)
+        return preds_bs
 
     def configure_optimizers(self):
-        return torch.optim.SGD(self.model.parameters(), lr=0.1)
+        optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
+        scheduler = ReduceLROnPlateau(optimizer, "min", patience=30)
+        output = {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "train_loss_dice",
+                "frequency": 2
+                # If "monitor" references validation metrics, then "frequency" should be set to a
+                # multiple of "trainer.check_val_every_n_epoch".
+            },
+        }
+        return output
 
     def forward(self, inputs):
         return self.model(inputs)
-
-
 
     def create_model(self):
         # self.device = device
@@ -641,7 +712,7 @@ class nnUNetTrainer(LightningModule):
                 self.deep_supervision_scales = list(
                     map(
                         lambda list1, y: [x * y for x in list1],
-                       [
+                        [
                             ds,
                         ]
                         * num_pool,
@@ -683,69 +754,78 @@ class nnUNetTrainer(LightningModule):
             model = torch.compile(model)
         return model, loss_func
 
-    @classmethod
-    def fromNeptuneRun(
-        self,
-        project,
-        resume_epoch=None,
-        run_name=None,
-        cbs=[],
-        update_nep_run_from_config: dict = None,
-        **kwargs
-    ):
-        """
-        params: resume. If resume is True, load the run by run_name, if run_name is None,'', or most_recent, then the last run is loaded
-        params: resume_epoch loads the checkpoint at the given epoch (if on disc) or the the one immediately before.
-        params: update_nep_run_from_config. Allows you to tweak existing run, e.g., change batch-size or arch etc..
-
-        """
-
-        # this takes run_name from NeptuneManager and passes it to NeptuneCallback.  I think the callback can itself do all this at init
-        Nep = NeptuneManager(project)
-
-        Nep.load_run(
-            run_name=run_name,
-            param_names="default",
-            update_nep_run_from_config=update_nep_run_from_config,
-        )
-        config_dict = Nep.download_run_params()
-        # dest_labels = config_dict["metadata"]["src_dest_labels"]
-        # out_channels = out_channels_from_dict_or_cell(dest_labels)
-        run_name = Nep.run_name
-        # Nep.stop()
-        cbs += [
-            ReduceLROnPlateau(patience=50),
-            NeptuneCallback.from_existing_run(
-                project=project,
-                config_dict=config_dict,
-                run_name=run_name,
-                nep_run=Nep.nep_run,
-            ),
-            NeptuneCheckpointCallback(
-                checkpoints_parent_folder=project.checkpoints_parent_folder,
-                resume_epoch=resume_epoch,
-            ),
-            NeptuneImageGridCallback(
-                classes=config_dict["model_params"]["out_channels"],
-                patch_size=config_dict["dataset_params"]["patch_size"],
-            ),
-        ]
-
-        self = self(project=project, config_dict=config_dict, cbs=cbs, **kwargs)
-        # Nep.nep_run.stop()
-        return self
-
-    @classmethod
-    def fromExcel(self, project, **kwargs):
-        config_dict = ConfigMaker(project, raytune=False).config
-        self = self(project=project, config_dict=config_dict, **kwargs)
-        return self
-
 
 def update_nep_run_from_config(nep_run, config):
     for key, value in config.items():
         nep_run[key] = value
     return nep_run
+
+def maybe_ddp(devices):
+    if devices == 1:
+        return 'auto'
+    if 'get_ipython' in globals():
+        return 'ddp_notebook'
+    else:
+        return 'ddp'
+
+
+
+class TrainingManager:
+    def __init__(self, project, configs):
+        store_attr()
+
+    def setup(self, run_name=None, cbs=None, devices=1, neptune=True,epochs=500):
+        self.ckp = None if run_name is None else checkpoint_from_model_id(run_name)
+        strategy= maybe_ddp(devices)
+
+        if self.ckp:
+            self.D = DataManager.load_from_checkpoint(self.ckp)
+            self.N = nnUNetTrainer.load_from_checkpoint(
+                self.ckp, project=self.project, dataset_params=self.D.dataset_params
+            )
+        else:
+            self.N = nnUNetTrainer(
+                self.project,
+                configs["dataset_params"],
+                configs["model_params"],
+                configs["loss_params"],
+                lr=configs["model_params"]["lr"],
+            )
+            self.D = DataManager(
+                self.project,
+                dataset_params=configs["dataset_params"],
+                transform_factors=configs["transform_factors"],
+                affine3d=configs["affine3d"],
+            )
+
+        self.D.prepare_data()
+        if neptune == True:
+            logger = NeptuneManager(
+                project=self.project,
+                run_id=run_name,
+                log_model_checkpoints=True,  # Update to True to log model checkpoints
+            )
+
+        else:
+            logger = None
+
+        self.trainer = Trainer(
+            callbacks=cbs,
+            accelerator="gpu",
+            devices=devices,
+            precision="16-mixed",
+            logger=logger,
+            max_epochs=epochs,
+            log_every_n_steps=1,
+            num_sanity_val_steps=0,
+            enable_checkpointing=True,
+            default_root_dir=self.project.checkpoints_parent_folder,
+            strategy=strategy
+            # strategy='ddp_find_unused_parameters_true'
+        )
+
+    def fit(self):
+        self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckp)
 
 
 # %%
@@ -760,101 +840,33 @@ if __name__ == "__main__":
     project_title = "lits32"
     project = Project(project_title=project_title)
 
-    # configs = ConfigMaker(project, raytune=False,configuration_filename="/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx").config
-    configs = ConfigMaker(project, raytune=False).config
+    configs = ConfigMaker(
+        project,
+        raytune=False,
+        configuration_filename="/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx",
+    ).config
+    # configs = ConfigMaker(project, raytune=False).config
 
     global_props = load_dict(project.global_properties_filename)
 # %%
-    cpk = "/home/ub/code/fran/fran/managers/.neptune/Untitled/LIT-42/checkpoints/epoch=249-step=3500.ckpt"
-    D = DataManager(
-        project,
-        dataset_params=configs["dataset_params"],
-        transform_factors=configs["transform_factors"],
-        affine3d=configs["affine3d"],
-    )
-    # D = DataManager.load_from_checkpoint(cpk)
-    D.prepare_data()
-# %%
-    D.setup()
-# %%
-    nl = NeptuneManager(
-        project=project,
-        run_id=None,#"LIT-62",
-        log_model_checkpoints=True,  # Update to True to log model checkpoints
-    )
-
-# %%
-    N = nnUNetTrainer(
-        project,
-        configs["dataset_params"],
-        configs["model_params"],
-        configs["loss_params"],
-    )
-    # N = nnUNetTrainer.load_from_checkpoint(cpk,project=project,dataset_params=D.dataset_params)
-
-# %%
-    mcp = ModelCheckpoint()
-    NepImg = NeptuneImageGridCallback(
-        3, patch_size=configs["dataset_params"]["patch_size"]
-    )
-# %%
-    # strategy=DDPStrategy(find_unused_parameters=True)
-    cbs = [TQDMProgressBar(refresh_rate=3), mcp ]
-    cbs = []
-    trainer = Trainer(
-        callbacks=cbs,
-        accelerator="gpu",
-        devices=1,
-        precision="16-mixed",
-        logger=nl,
-        max_epochs=500,
-        log_every_n_steps=1,
-        num_sanity_val_steps=0,
-        enable_checkpointing=True,
-        default_root_dir=project.checkpoints_parent_folder,
-        # strategy="ddp_notebook",
-    )
-# %%
-    model_checkpoint=None
-    trainer.fit(model=N, datamodule=D,ckpt_path=model_checkpoint)
-    # trainer.fit(model = N,datamodule=D,ckpt_path=cpk)
-    # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader(),ckpt_path='/home/ub/code/fran/fran/.neptune/Untitled/LITS-567/checkpoints/epoch=53-step=2484.ckpt')
-    # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader())
-# %%
-    dl = D.val_dataloader()
-    for i,batch in enumerate(dl):
-        print(batch['image'].shape)
-# prediction
-# %%
-# %%
-    # ckpt = '/home/ub/code/fran/fran/managers/.neptune/Untitled/LIT-41/checkpoints/epoch=249-step=3500.ckpt'
-    # D = DataManager.load_from_checkpoint(ckpt)
-    # N = nnUNetTrainer.load_from_checkpoint(ckpt, project=project,dataset_params = D.dataset_params)
-     
-# %%
+    Tm = TrainingManager(project,configs)
+    Tm.setup(epochs=1)
+    Tm.fit()
 # %%
 
+    # %%
 
-
-# %%
-R = RandGaussianNoised(
-        keys=["image"], std=0.5, prob=0.99
-    )
-
-
-# %%
-ds = D.train_ds
-data = ds[0]
-print(data['image'].std())
-# %%
-d2 = R(data)
-
-print(d2['image'].std())
-# %%
-d3 = R(data)
-print(d3['image'].std())
-# %%
-ImageMaskViewer([d2['image'][0],d2['image'][0]],data_types=['image','image'])
-ImageMaskViewer([d3['image'][0],d3['image'][0]],data_types=['image','image'])
+    ds = D.train_ds
+    a = ds[0]
+    im = a["image"]
+    im2 = RandFlip(prob=1, spatial_axis=0)(im)
+    im3 = RandFlip(prob=1, spatial_axis=1)(im)
+    im4 = RandFlip(prob=1, spatial_axis=0)(im3)
+    ImageMaskViewer([im[0], im2[0]])
+    # %%
+    trainer.fit(model=N, datamodule=D, ckpt_path=ckp)
+#     # trainer.fit(model = N,datamodule=D,ckpt_path=cpk)
+#     # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader(),ckpt_path='/home/ub/code/fran/fran/.neptune/Untitled/LITS-567/checkpoints/epoch=53-step=2484.ckpt')
+#     # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader())
 # %%
 

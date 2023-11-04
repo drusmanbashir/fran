@@ -1,11 +1,11 @@
 # %%
 from fran.utils.common import *
-from fran.managers.trainer import *
-_translations =     {'mode' :{'config_name':'metadata,patch_based', 'hi':True,'lo':False},
+from fran.managers.training import *
+_translations =     {
     'bs': 'dataset_params,bs',
     'fold':'metadata,fold',
     'lr': 'model_params,lr',
-    'labels':  'metadata,src_dest_labels',
+    'labels':  'dataset_params,src_dest_labels',
     'arch': 'model_params,arch',
 
     }
@@ -44,7 +44,7 @@ def maybe_compute_bs(project,args):
     if any([s is not None for s in [args.bs,args.resume]]):
         args.bs =args.bs
     else:
-        args.bs = compute_bs(project=project,distributed=args.distributed,bs=12)
+        args.bs = compute_bs(project=project,devices=args.devices,bs=12)
     return  args.bs
 
 
@@ -52,7 +52,7 @@ def maybe_compute_bs(project,args):
 def load_and_update_configs(project, args,compute_bs=True):
     # if recompute_bs==True:
     # if args.resume is None or args.update == True:
-    args.bs = maybe_compute_bs(project,args)
+    # args.bs = maybe_compute_bs(project,args)
     configs = ConfigMaker(project, raytune=False).config
 
     # else:
@@ -78,25 +78,20 @@ def initialize_run(project ,args):
 
     configs = load_and_update_configs(project,args)
     configs['model_params/compiled'] = args.compile
-
-
     cbs = [
-            ReduceLROnPlateau(patience=50),
-            NeptuneCallback(project, configs, run_name=None),
-            NeptuneCheckpointCallback(project.checkpoints_parent_folder),
-            NeptuneImageGridCallback(
-                classes=out_channels_from_dict_or_cell(
-                    configs["metadata"]["src_dest_labels"]
-                ),
-                patch_size=make_patch_size(
-                    configs["dataset_params"]["patch_dim0"],
-                    configs["dataset_params"]["patch_dim1"],
-                ),
-            ),
-            #
-        ]
-    La = Trainer(project, configs,cbs, device =args.gpu)
-    return La
+    TQDMProgressBar(refresh_rate=3),
+    ModelCheckpoint(),
+     LearningRateMonitor(logging_interval='epoch')
+    ]
+    if args.neptune==True: 
+        cbs+=[NeptuneImageGridCallback(
+                3, patch_size=configs["dataset_params"]["patch_size"]
+            ),]
+
+    run_name = process_run_name(args.resume)
+    Tm = TrainingManager(project, configs)
+    Tm.setup(run_name= run_name,cbs=cbs,devices=args.devices,neptune=args.neptune,epochs=args.epochs)
+    return Tm
 
 def main(args):
 
@@ -104,23 +99,13 @@ def main(args):
     project = Project(project_title=project_title);
     print("Project: {0}".format(project_title))
 
-    n_epoch = args.epochs
-    if args.distributed:   args.gpu  = 0
-
-    run_name = process_run_name(args.resume)
-    if not run_name:
-        La = initialize_run(project, args)
-    else:
-        La = load_run(project, run_name,args)
-
-    learn = La.create_learner(compile=args.compile,distributed=args.distributed)
-
-#     # learn.model = model
-    if args.lr :
-        lr = args.lr 
-    else:
-        lr = La.model_params['lr']
-    learn.fit(n_epoch=n_epoch, lr=lr)
+    configs = ConfigMaker(
+        project,
+        raytune=False,
+        configuration_filename=args.conf_fn
+    ).config
+    Tm = initialize_run(project, args)
+    Tm.fit()
 # %%
 
 if __name__ == "__main__":
@@ -139,30 +124,30 @@ if __name__ == "__main__":
 
     parser.add_argument("--bs", help="batch size",type=int)
     parser.add_argument("-f","--fold", type=int, default=0)
-    parser.add_argument("-d","--distributed", action='store_true')
+    parser.add_argument("-d","--devices", type=int, default=1)
     parser.add_argument("-c","--compile", action='store_true')
+    parser.add_argument("-cf","--conf-fn", default = None)
     parser.add_argument("--lr", help="learning rate",type=float, default=1e-3)
     parser.add_argument("--gpu", help="gpu id",type=int, default=0)
 
     parser.add_argument("-a", "--arch", help="Architecture. Supports: nnUNet, SwinUNETR, DynUNet")
     parser.add_argument("-u", "--update", help="Update existing run from configs excel spreadsheet.",action='store_true')
     parser.add_argument(
-        "--mode",
-        choices=["hi", "lo"],
-        help="To train low-res organ localizer select 'l'. To train high-res patches selectively on the target organ, select 'h",
-        required=False
-    )
+        "-p", "--patch", default=None)
     parser.add_argument("--labels", help="list of mappings source to dest label values, e.e.,g [[0,0],[1,1],[2,1]] will map all foreground to 1")
     parser.add_argument("-n", help="No Neptune",action='store_true')
 # %%
     args = parser.parse_known_args()[0]
-    # args.t = 'lits'
+    args.neptune = True if args.n ==False else False
+
+    args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
+    args.t = 'lits32'
+    args.bs = 8
     # args.lr = 1e-4
-    # args.distributed = False
+    # args.devices = False
     # # args.resume=''
     # # args.resume='LITS-456'
     # args.compiled= False
-    # args.bs = 4
     # args.update = True
 
 # %%

@@ -3,6 +3,7 @@ from time import time
 import monai
 from monai.data import MetaTensor, image_writer
 
+from fran.managers.training import checkpoint_from_model_id
 from lightning.fabric import Fabric
 import lightning.pytorch as pl
 from collections.abc import Callable
@@ -29,7 +30,7 @@ from monai.utils.enums import GridSamplePadMode
 from fran.data.dataloader import img_metadata_collated
 from fran.utils.dictopts import DictToAttr
 from fran.utils.itk_sitk import *
-from monai.transforms.croppad.dictionary import BoundingRectd
+from monai.transforms.croppad.dictionary import BoundingRectd, ResizeWithPadOrCropd
 from monai.apps.detection.transforms.array import *
 from monai.transforms.post.dictionary import Activationsd, KeepLargestConnectedComponentd, MeanEnsembled
 from monai.data.box_utils import *
@@ -123,21 +124,6 @@ class Saved(Transform):
             assert(di:=patch_bundle[key].dim())==4,"Dimension should be 4. Got {}".format(di)
             writer.write(outname)
 
-
-def checkpoint_from_model_id(model_id):
-    common_paths = load_yaml(common_vars_filename)
-    fldr = Path(common_paths["checkpoints_parent_folder"])
-    all_fldrs = [
-        f for f in fldr.rglob("*{}/checkpoints".format(model_id)) if f.is_dir()
-    ]
-    if len(all_fldrs) == 1:
-        fldr = all_fldrs[0]
-    else:
-        tr()
-
-    list_of_files = list(fldr.glob("*"))
-    ckpt = max(list_of_files, key=lambda p: p.stat().st_ctime)
-    return ckpt
 
 def transpose_bboxes(bbox):
     bbox = bbox[2], bbox[1], bbox[0]
@@ -339,10 +325,16 @@ class WholeImagePredictor(GetAttr,DictToAttr):
     def prepare_data(self,ds ):
         R = Resized(
             keys=["image"],
-            spatial_size=self.dataset_params['patch_size']
+            spatial_size=self.dataset_params['src_dims']
         )
+
+        R2 = ResizeWithPadOrCropd(
+                keys=["image"],
+                source_key="image",
+                spatial_size=self.dataset_params["patch_size"],
+            )
         N= NormaliseClipd(keys=['image'],clip_range= self.dataset_params['intensity_clip_range'],mean=self.dataset_params['mean_fg'],std=self.dataset_params['std_fg'])
-        tfm = Compose([R,N])
+        tfm = Compose([R,N,R2])
         self.ds2=Dataset(data=ds,transform=tfm)
         self.pred_dl = DataLoader(
                 self.ds2, num_workers=12, batch_size=12
@@ -472,9 +464,11 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
 
 
     def create_ds(self,im):
+        spacings = self.get_patch_spacings(self.run_name_w)
         L=LoadImaged(keys=['image'],image_only=True,ensure_channel_first=True,simple_keys=True)
-        O = Orientationd(keys=['image'], axcodes="RAS")
-        tfms = Compose([L,O])
+        O = Orientationd(keys=['image'], axcodes="RPS") # nOTE RPS
+        S = Spacingd(keys=["image"], pixdim=spacings)
+        tfms = Compose([L,O,S])
 
         cache_dir = self.project.cold_datasets_folder/("cache")
         maybe_makedirs(cache_dir)
@@ -558,7 +552,7 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
 
 
     def extract_fg_bboxes(self):
-        w=WholeImagePredictor(self.project,self.run_name_w,self.ds,debug=self.debug)
+        w=WholeImagePredictor(self.project,self.run_name_w,self.ds,debug=True)
         print("Preparing data")
         p = w.predict()
         preds= w.postprocess(p)
@@ -603,80 +597,65 @@ if __name__ == "__main__":
     proj= Project(project_title="lits32")
 
 # %%
-    run_w='LIT-41'
-    run_ps=['LIT-62','LIT-63','LIT-64' ,'LIT-44','LIT-59']
+    run_w='LIT-99'
+    run_ps=['LIT-101', 'LIT-102','LIT-105','LIT-107']
 # %%
-    img_fn = "/s/xnat_shadow/litq/test/images_few/litq_35_20200728.nii.gz"
+    img_fn = "/s/datasets_bkp/drli_short/images/drli_005.nrrd"
     img_fn3 = "/s/xnat_shadow/litq/test/images_few/"
     img_fn2 = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
+    img_np="drli_005.npy"
+    img_pt= "/home/ub/datasets/preprocessed/lits32/whole_images/dim_128_128_96/images/drli_005.pt"
+    fns="/s/datasets_bkp/drli_short/images/"
     paths = [img_fn, img_fn2]
     img_fns = listify(img_fn3)
 
 
 
 
-
 # %%
-    En=EnsemblePredictor(proj,run_w,run_ps,debug=False)
     # im = [{'image':im} for im in [img_fn,img_fn2]]
+    En=EnsemblePredictor(proj,run_w,run_ps,debug=False)
     
-    preds=En.run(img_fns)
+    preds=En.run(img_fn3)
 # %%
-    p=preds[0]['pred']
+    imgs =En.parse_input(img_np)
+    En.create_ds(imgs)
 
-# %%
-    C = ToCPUd(keys=['image'])
-    pp = C(p[0])
-# %%
-        w=WholeImagePredictor(En.project,En.run_name_w,En.ds,debug=False)
-        print("Preparing data")
-        w.create_postprocess_transforms()
-# %%
-
+    bb= En.extract_fg_bboxes()
+    w=WholeImagePredictor(En.project,En.run_name_w,En.ds,debug=True)
 
     p = w.predict()
+    p=preds
 # %%
-    pa = p[0]
-
-    pa2= decollate_batch(pa,detach=True)
-    pa = preds[0]
-    pa['image'].shape
-    pa['image'].meta
-    pa['pred'].shape
-    pad = pa['pred']
+    # p = torch.load("bad.pt")
+    im = p[0]['image'][0,0].detach().cpu()
+    pred= p[0]['pred'][0,0].detach().cpu()
+    ImageMaskViewer([im,pred])
 # %%
-    pred_patches = En.patch_prediction(En.ds,En.bboxes)
-    pred_patches = En.decollate_patches(pred_patches,En.bboxes)
-    output= En.postprocess(pred_patches)
 
+    torch.save(p,"bad.pt")
 # %%
-    pa = output[0]
-    meta = {'original_affine': pa['image'].meta['original_affine'],
-                    'affine':pa['image'].meta['affine']}
-
-
-
-    m2 = pa['image'].meta
-    pa['pred'].meta = m2
+    preds= w.postprocess(p)
+    bboxes = [pred['pred_bbox'] for pred in preds]
+    ds = w.ds2
+    casei = ds[0]
+    im = casei['image']
+    ImageMaskViewer([im[0],im[0]])
 # %%
-    a = En.ds[0]
-    im = a['image']
-    im.shape
-# %%
-        I = Invertd(keys=['pred'],transform=En.ds.transform,orig_keys=['image'])
-        D = AsDiscreted(keys=['pred'],argmax=True,threshold=0.5)
-        K= KeepLargestConnectedComponentd(keys=['pred'])
-        B=BoundingRectd(keys=['pred'])
-        S = SlicesFromBBox(keys=['pred_bbox'])
-        tfms = [I,D,K,B,S]
-        if self.save_pred==True:
-            Sa = Saved(self.output_folder)
-            tfms.insert(1,Sa)
+    En.bboxes= En.extract_fg_bboxes()
 
 # %%
-    S = SaveImaged(keys = ['pred'],output_dir=En.output_folder,output_postfix='',separate_folder=False)
-    for pp in preds:
-        S(pp)
-
+    img_fn = "/home/ub/datasets/preprocessed/lits32/whole_images/dim_128_128_96/images/drli_005.pt"
+    img = torch.load(img_fn)
 # %%
-    a= [1,2,3]
+    batch = {'image':img.unsqueeze(0)}
+    R = ResizeWithPadOrCropd(
+        keys=["image" ],
+        source_key="image",
+        spatial_size=w.dataset_params["src_dims"],
+    )
+    b = R(batch)
+# %%
+    im = b['image'][0]
+    ImageMaskViewer([im,img])
+# %%

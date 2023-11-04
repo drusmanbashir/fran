@@ -248,7 +248,6 @@ class SaveMultiChanneld(MapTransform):
 
     def func(self, data):
         chs= data.shape[0]
-        tr()
         for ch in range(1,chs): 
             postfix=str(ch) if self.postfix_channel==True else None
             img_save = data[ch:ch+1]
