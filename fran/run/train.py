@@ -44,7 +44,7 @@ def maybe_compute_bs(project,configs ,args):
     if any([s is not None for s in [args.bs,args.resume]]):
         args.bs =args.bs
     else:
-        args.bs = compute_bs(project=project,config=configs, devices=args.devices,bs=6)
+        args.bs = compute_bs(project=project,config=configs, bs=6)
     return  args.bs
 
 
