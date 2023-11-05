@@ -140,8 +140,6 @@ if __name__ == "__main__":
 # %%
     args = parser.parse_known_args()[0]
     args.neptune = True if args.n ==False else False
-    args.t = 'lits32'
-    args.fold = 4
 
     # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     # args.bs = 8

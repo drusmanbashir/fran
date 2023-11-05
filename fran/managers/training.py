@@ -57,7 +57,7 @@ from fran.architectures.create_network import (
     pool_op_kernels_nnunet,
 )
 
-def compute_bs(project,config,bs=6,step=1):
+def compute_bs(project,config,bs=7,step=1):
         '''
         bs = starting bs
         
