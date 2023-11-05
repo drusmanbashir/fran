@@ -100,6 +100,7 @@ def initialize_run(project ,args):
 
 def main(args):
 
+    assert( args.t), "No project title given. Restart and set the -t flag"
     project_title = args.t
     project = Project(project_title=project_title);
     print("Project: {0}".format(project_title))
@@ -126,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument("-d","--devices", type=int, default=1)
     parser.add_argument("-c","--compile", action='store_true')
     parser.add_argument("-cf","--conf-fn", default = None)
-    parser.add_argument("--lr", help="learning rate",type=float, default=1e-3)
+    parser.add_argument("--lr", help="learning rate",type=float )
     parser.add_argument("--gpu", help="gpu id",type=int, default=0)
 
     parser.add_argument("-a", "--arch", help="Architecture. Supports: nnUNet, SwinUNETR, DynUNet")
@@ -138,12 +139,12 @@ if __name__ == "__main__":
 # %%
     args = parser.parse_known_args()[0]
     args.neptune = True if args.n ==False else False
+    # args.t = 'lits32'
 
-    args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
-    args.t = 'lits32'
+    # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     # args.bs = 8
     # args.lr = 1e-4
-    # args.devices = False
+    # args.devices = 2
     # # args.resume=''
     # # args.resume='LITS-456'
     # args.compiled= False

@@ -73,6 +73,27 @@ def checkpoint_from_model_id(model_id):
     ckpt = max(list_of_files, key=lambda p: p.stat().st_ctime)
     return ckpt
 
+class PermuteImageMask(RandomizableTransform, MapTransform):
+    def __init__(
+        self,
+        keys,
+        prob: float = 1,
+        do_transform: bool = True,
+    ):
+        MapTransform.__init__(self, keys, False)
+        RandomizableTransform.__init__(self, prob)
+        store_attr()
+
+    def func(self,x):
+        if np.random.rand() < self.p:
+            img,mask=x
+            sequence =(0,)+ tuple(np.random.choice([1,2],size=2,replace=False)   ) #if dim0 is different, this will make pblms
+            img_permuted,mask_permuted = torch.permute(img,dims=sequence),torch.permute(mask,dims=sequence)
+            return img_permuted,mask_permuted
+        else: return x
+
+
+
 
 class RandRandGaussianNoised(RandomizableTransform, MapTransform):
     def __init__(
@@ -497,11 +518,6 @@ class DataManager(LightningDataModule):
                 mean=self.dataset_params["mean_fg"],
                 std=self.dataset_params["std_fg"],
             ),
-            # ResizeWithPadOrCropd(
-            #     keys=["image", "label"],
-            #     source_key="image",
-            #     spatial_size=self.dataset_params["src_dims"],
-            # ),
         ]
 
         t2 = [
@@ -520,9 +536,9 @@ class DataManager(LightningDataModule):
             RandShiftIntensityd(
                 keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
             ),
-            # RandAdjustContrastd(
-            #     ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
-            # ),
+            RandAdjustContrastd(
+                ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
+            ),
             self.create_affine_tfm(),
         ]
         t3 = [
@@ -668,7 +684,8 @@ class nnUNetTrainer(LightningModule):
         return preds_bs
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
+        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         scheduler = ReduceLROnPlateau(optimizer, "min", patience=30)
         output = {
             "optimizer": optimizer,
@@ -816,7 +833,7 @@ class TrainingManager:
             precision="16-mixed",
             logger=logger,
             max_epochs=epochs,
-            log_every_n_steps=1,
+            log_every_n_steps=10,
             num_sanity_val_steps=0,
             enable_checkpointing=True,
             default_root_dir=self.project.checkpoints_parent_folder,
@@ -850,7 +867,8 @@ if __name__ == "__main__":
     global_props = load_dict(proj.global_properties_filename)
 # %%
     Tm = TrainingManager(proj,conf)
-    Tm.setup(epochs=1)
+    Tm.setup(epochs=200)
+# %%
     Tm.fit()
 # %%
 
