@@ -95,7 +95,7 @@ def initialize_run(project ,args):
 
     run_name = process_run_name(args.resume)
     Tm = TrainingManager(project, configs)
-    Tm.setup(run_name= run_name,cbs=cbs,devices=args.devices,neptune=args.neptune,epochs=args.epochs)
+    Tm.setup(batch_size = args.bs , run_name= run_name,cbs=cbs,devices=args.devices,neptune=args.neptune,epochs=args.epochs)
     return Tm
 
 def main(args):
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     args.neptune = True if args.n ==False else False
 
     # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
-    # args.bs = 8
+    # args.bs = 
     # args.lr = 1e-4
     # args.devices = 2
     # # args.resume=''
