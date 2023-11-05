@@ -1,6 +1,6 @@
 # %%
 import time
-from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.callbacks import BatchSizeFinder, LearningRateMonitor
 from lightning.pytorch.strategies import DDPStrategy
 import torch.multiprocessing as mp
 from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
@@ -57,6 +57,33 @@ from fran.architectures.create_network import (
     pool_op_kernels_nnunet,
 )
 
+def compute_bs(project,config,bs=6,step=1):
+        '''
+        bs = starting bs
+        
+        '''
+    
+    
+        print("Computing optimal batch-size for available vram")
+
+        while True:
+
+            Tm = TrainingManager(project,config)
+            Tm.setup(batch_size = bs, epochs=1,neptune=False)
+
+            try:
+                print("Trial bs: {}".format(bs))
+                Tm.fit()
+            except RuntimeError:
+                print("Final broken bs: {}\n-----------------".format(bs))
+                bs  = bs-step*2
+                print("\n----- Accepted bs: {}".format(bs))
+                break
+            bs+=step
+            del Tm
+            gc.collect()
+            torch.cuda.empty_cache()
+        return bs
 
 def checkpoint_from_model_id(model_id):
     common_paths = load_yaml(common_vars_filename)
@@ -456,8 +483,10 @@ class DataManager(LightningDataModule):
         self,
         project,
         dataset_params: dict,
+
         transform_factors: dict,
         affine3d: dict,
+        batch_size=8,
     ):
         """ """
         super().__init__()
@@ -469,7 +498,7 @@ class DataManager(LightningDataModule):
         ]
         self.dataset_params["mean_fg"] = global_properties["mean_fg"]
         self.dataset_params["std_fg"] = global_properties["std_fg"]
-        self.batch_size = 8
+        self.batch_size = batch_size
         self.assimilate_tfm_factors(transform_factors)
 
     #
@@ -613,7 +642,6 @@ class nnUNetTrainer(LightningModule):
         loss_params,
         lr=None,
         compiled=False,
-        batch_size=8,
     ):
         super().__init__()
         self.lr = lr if lr else model_params['lr']
@@ -754,7 +782,6 @@ class nnUNetTrainer(LightningModule):
 
             loss_func = DeepSupervisionLoss(
                 levels=num_pool,
-                bs=self.batch_size,
                 fg_classes=self.model_params["out_channels"] - 1,
             )
             # cbs += [DownsampleMaskForDS(self.deep_supervision_scales)]
@@ -762,7 +789,6 @@ class nnUNetTrainer(LightningModule):
         else:
             loss_func = CombinedLoss(
                 **self.loss_params,
-                bs=self.batch_size,
                 fg_classes=self.model_params["out_channels"] - 1
             )
         # if distributed==True:
@@ -791,7 +817,7 @@ class TrainingManager:
     def __init__(self, project, configs):
         store_attr()
 
-    def setup(self, run_name=None, cbs=None, devices=1, neptune=True,epochs=500):
+    def setup(self,batch_size, run_name=None, cbs=None, devices=1, neptune=True,epochs=500):
         self.ckp = None if run_name is None else checkpoint_from_model_id(run_name)
         strategy= maybe_ddp(devices)
 
@@ -813,6 +839,7 @@ class TrainingManager:
                 dataset_params=self.configs["dataset_params"],
                 transform_factors=self.configs["transform_factors"],
                 affine3d=self.configs["affine3d"],
+                batch_size=batch_size
             )
 
         self.D.prepare_data()
@@ -867,8 +894,7 @@ if __name__ == "__main__":
     global_props = load_dict(proj.global_properties_filename)
 # %%
     Tm = TrainingManager(proj,conf)
-    Tm.setup(epochs=200)
-# %%
+    Tm.setup(epochs=1)
     Tm.fit()
 # %%
 
@@ -886,5 +912,7 @@ if __name__ == "__main__":
 #     # trainer.fit(model = N,datamodule=D,ckpt_path=cpk)
 #     # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader(),ckpt_path='/home/ub/code/fran/fran/.neptune/Untitled/LITS-567/checkpoints/epoch=53-step=2484.ckpt')
 #     # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader())
+# %%
+    bs  =compute_bs(proj,conf,1,bs=6,step=1)
 # %%
 

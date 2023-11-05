@@ -96,12 +96,14 @@ class _DiceCELossMultiOutput(DiceCELoss):
 
 
 class CombinedLoss(_DiceCELossMultiOutput):
-    def __init__(self,bs,fg_classes,*args,**kwargs):
+    def __init__(self,fg_classes,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.create_labels(bs,fg_classes)
 
     def forward(self,input,target):
         losses = super().forward(input,target)
+        if not hasattr(self,'labels'):
+            bs = target.shape[0]
+            self.create_labels(bs,self.fg_classes)
         self.set_loss_dict(losses)
         return losses[0]
 
@@ -127,21 +129,19 @@ class CombinedLoss(_DiceCELossMultiOutput):
 
 
 class DeepSupervisionLoss(pl.LightningModule):
-    def __init__(self, levels: int, bs:int, fg_classes: int):
+    def __init__(self, levels: int,  fg_classes: int):
         super().__init__()
         store_attr()
-        self.create_labels(bs,fg_classes)
         self.LossFunc = _DiceCELossMultiOutput(include_background=False,softmax=True)
 
-    def create_labels(self,bs,fg_classes):
+    def create_labels(self,bs, fg_classes):
        label_maker = lambda x: "loss_dice_batch{0}_label{1}".format(*x)
-       batches = list(range(bs))
        classes = range_inclusive(1,fg_classes)
 
+       batches = list(range(bs))
        self.neptune_labels =  ["loss", "loss_ce","loss_dice"] + ["loss_dice_label{}".format(x) for x in classes]
 
        self.case_recorder_labels = list(il.product(batches,classes) )
-
        self.case_recorder_labels= map(label_maker,self.case_recorder_labels)
        self.labels =list(il.chain(self.neptune_labels,self.case_recorder_labels))
 
@@ -154,7 +154,6 @@ class DeepSupervisionLoss(pl.LightningModule):
             [True] + [True if i < self.levels - 1 else False for i in range(1, self.levels)]
         )
         weights[~mask] = 0
-        self.create_labels(self.bs,self.fg_classes)
         self.weights = weights / weights.sum()
 
 
@@ -164,6 +163,10 @@ class DeepSupervisionLoss(pl.LightningModule):
         assert isinstance(x, (tuple, list)), "x must be either tuple or list"
         assert isinstance(y, (tuple, list)), "y must be either tuple or list"
         # loss at full res
+
+        if not hasattr(self,'labels'):
+            bs = y[0].shape[0]
+            self.create_labels(bs,self.fg_classes)
 
         losses = [self.LossFunc(xx, yy) for xx, yy in zip(x, y)]
         self.set_loss_dict(losses[0])
@@ -181,13 +184,10 @@ class DeepSupervisionLoss(pl.LightningModule):
 # %%
 if __name__ == "__main__":
     softmax_helper = lambda x: F.softmax(x, 1)
-    targ = torch.load("fran/tmp/ed.pt")
-    pred = torch.load("fran/tmp/pred.pt")
+    # targ = torch.load("fran/tmp/ed.pt")
+    # pred = torch.load("fran/tmp/pred.pt")
 # %%
-    DS = DeepSupervisionLoss(levels=3,bs=4, fg_classes=2)
 
-    x = [pred.cuda()]*3
-    y = [targ.cuda()]*3
 
 
 # %%

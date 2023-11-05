@@ -3,7 +3,7 @@ from fran.utils.common import *
 from fran.managers.training import *
 _translations =     {
     'bs': 'dataset_params,bs',
-    'fold':'metadata,fold',
+    'fold':'dataset_params,fold',
     'lr': 'model_params,lr',
     'labels':  'dataset_params,src_dest_labels',
     'arch': 'model_params,arch',
@@ -39,12 +39,12 @@ def override_configs(args , configs:dict):
         return configs
     else : return None
 
-def maybe_compute_bs(project,args):
+def maybe_compute_bs(project,configs ,args):
     # if hasattr(args, "bs") or hasattr(args,"resume"):
     if any([s is not None for s in [args.bs,args.resume]]):
         args.bs =args.bs
     else:
-        args.bs = compute_bs(project=project,devices=args.devices,bs=12)
+        args.bs = compute_bs(project=project,config=configs, devices=args.devices,bs=6)
     return  args.bs
 
 
@@ -52,7 +52,6 @@ def maybe_compute_bs(project,args):
 def load_and_update_configs(project, args,compute_bs=True):
     # if recompute_bs==True:
     # if args.resume is None or args.update == True:
-    # args.bs = maybe_compute_bs(project,args)
 
     configs = ConfigMaker(
         project,
@@ -60,6 +59,7 @@ def load_and_update_configs(project, args,compute_bs=True):
         configuration_filename=args.conf_fn
     ).config
 
+    args.bs = maybe_compute_bs(project,configs, args)
     # else:
     #     configs = {}
     updated_configs =override_configs(args, configs)
@@ -100,6 +100,7 @@ def initialize_run(project ,args):
 
 def main(args):
 
+    torch.set_float32_matmul_precision('medium')
     assert( args.t), "No project title given. Restart and set the -t flag"
     project_title = args.t
     project = Project(project_title=project_title);
@@ -122,7 +123,7 @@ if __name__ == "__main__":
         help="Leave empty to resume last training session or enter a run name.",
     )  # neptune manager saves last session's name in excel spreadsheet
 
-    parser.add_argument("--bs", help="batch size",type=int,default =8)
+    parser.add_argument("--bs", help="batch size",type=int)
     parser.add_argument("-f","--fold", type=int, default=0)
     parser.add_argument("-d","--devices", type=int, default=1)
     parser.add_argument("-c","--compile", action='store_true')
@@ -139,7 +140,8 @@ if __name__ == "__main__":
 # %%
     args = parser.parse_known_args()[0]
     args.neptune = True if args.n ==False else False
-    # args.t = 'lits32'
+    args.t = 'lits32'
+    args.fold = 4
 
     # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     # args.bs = 8
