@@ -123,7 +123,7 @@ if __name__ == "__main__":
         help="Leave empty to resume last training session or enter a run name.",
     )  # neptune manager saves last session's name in excel spreadsheet
 
-    parser.add_argument("--bs", help="batch size",type=int)
+    parser.add_argument("-b", "--bs", help="batch size",type=int)
     parser.add_argument("-f","--fold", type=int, default=0)
     parser.add_argument("-d","--devices", type=int, default=1)
     parser.add_argument("-c","--compile", action='store_true')

@@ -92,7 +92,9 @@ class _DiceCELossMultiOutput(DiceCELoss):
             self.lambda_dice * dice_loss_reduced + self.lambda_ce * ce_loss
         )
         # return total_loss, ce_loss, dice_loss_reduced , dice_loss_unreduced.squeeze((2,3,4))
-        return total_loss, ce_loss, dice_loss_reduced , dice_loss_unreduced.squeeze(2).squeeze(2).squeeze(2)
+        losses_for_logging_only = [ ce_loss.detach(), dice_loss_reduced.detach() , dice_loss_unreduced.squeeze(2).squeeze(2).squeeze(2).detach()]
+
+        return total_loss,*losses_for_logging_only
 
 
 class CombinedLoss(_DiceCELossMultiOutput):

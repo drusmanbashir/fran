@@ -69,7 +69,7 @@ def compute_bs(project,config,bs=7,step=1):
         while True:
 
             Tm = TrainingManager(project,config)
-            Tm.setup(batch_size = bs, epochs=1,neptune=False)
+            Tm.setup(batch_size = bs, epochs=1,neptune=False,batch_finder=True)
 
             try:
                 print("Trial bs: {}".format(bs))
@@ -78,11 +78,15 @@ def compute_bs(project,config,bs=7,step=1):
                 print("Final broken bs: {}\n-----------------".format(bs))
                 bs  = bs-step*2
                 print("\n----- Accepted bs: {}".format(bs))
+                Tm.teardown("fit")
                 break
             bs+=step
+            # Tm.N.teardown("fit")
+            # Tm.D.teardown("fit")
+            Tm.teardown("fit")
             del Tm
-            gc.collect()
-            torch.cuda.empty_cache()
+            # gc.collect()
+            # torch.cuda.empty_cache()
         return bs
 
 def checkpoint_from_model_id(model_id):
@@ -478,6 +482,7 @@ class NepImages(Callback):
             grd.append(imgs)
 
 
+
 class DataManager(LightningDataModule):
     def __init__(
         self,
@@ -488,7 +493,6 @@ class DataManager(LightningDataModule):
         affine3d: dict,
         batch_size=8,
     ):
-        """ """
         super().__init__()
         self.save_hyperparameters()
         store_attr(but="transform_factors")
@@ -517,6 +521,9 @@ class DataManager(LightningDataModule):
 
     def prepare_data(self):
         # getting the right folders
+        self.train_list, self.valid_list = self.project.get_train_val_files(
+            self.dataset_params["fold"]
+        )
         prefixes, value_lists = ["spc", "dim"], [
             self.dataset_params["spacings"],
             self.dataset_params["src_dims"],
@@ -592,9 +599,7 @@ class DataManager(LightningDataModule):
         return affine
 
     def setup(self, stage: str = None):
-        self.train_list, self.valid_list = self.project.get_train_val_files(
-            self.dataset_params["fold"]
-        )
+
         self.create_transforms()
         bboxes_fname = self.dataset_folder / "bboxes_info"
         self.train_ds = ImageMaskBBoxDatasetd(
@@ -632,6 +637,12 @@ class DataManager(LightningDataModule):
     def forward(self, inputs, target):
         return self.model(inputs)
 
+class DataManagerShort(DataManager):
+    def prepare_data(self):
+        super().prepare_data()
+        self.train_list= self.train_list[:32]
+
+    def train_dataloader(self, num_workers=4, **kwargs): return super().train_dataloader(num_workers,**kwargs)
 
 class nnUNetTrainer(LightningModule):
     def __init__(
@@ -693,6 +704,7 @@ class nnUNetTrainer(LightningModule):
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         img = batch["image"]
         outputs = self.forward(img)
+        tr()
         outputs2 = outputs[0]
         batch["pred"] = outputs2
         # output=outputs[0]
@@ -806,18 +818,22 @@ def update_nep_run_from_config(nep_run, config):
 def maybe_ddp(devices):
     if devices == 1:
         return 'auto'
-    if 'get_ipython' in globals():
+    ip = get_ipython()
+    if ip:
+        print ("Using interactive-shell ddp strategy")
         return 'ddp_notebook'
     else:
+        print ("Using non-interactive shell ddp strategy")
         return 'ddp'
 
 
 
-class TrainingManager:
+class TrainingManager():
     def __init__(self, project, configs):
+        super().__init__()
         store_attr()
 
-    def setup(self,batch_size, run_name=None, cbs=None, devices=1, neptune=True,epochs=500):
+    def setup(self,batch_size, run_name=None, cbs=None, devices=1, neptune=True,epochs=500,batch_finder=False):
         self.ckp = None if run_name is None else checkpoint_from_model_id(run_name)
         strategy= maybe_ddp(devices)
 
@@ -827,6 +843,16 @@ class TrainingManager:
                 self.ckp, project=self.project, dataset_params=self.D.dataset_params
             )
         else:
+            if batch_finder==True:
+                DMclass = DataManagerShort
+            else: DMclass = DataManager
+            self.D = DMclass(
+                self.project,
+                dataset_params=self.configs["dataset_params"],
+                transform_factors=self.configs["transform_factors"],
+                affine3d=self.configs["affine3d"],
+                batch_size=batch_size
+            )
             self.N = nnUNetTrainer(
                 self.project,
                 self.configs["dataset_params"],
@@ -834,15 +860,6 @@ class TrainingManager:
                 self.configs["loss_params"],
                 lr=self.configs["model_params"]["lr"],
             )
-            self.D = DataManager(
-                self.project,
-                dataset_params=self.configs["dataset_params"],
-                transform_factors=self.configs["transform_factors"],
-                affine3d=self.configs["affine3d"],
-                batch_size=batch_size
-            )
-
-        self.D.prepare_data()
         if neptune == True:
             logger = NeptuneManager(
                 project=self.project,
@@ -853,6 +870,7 @@ class TrainingManager:
         else:
             logger = None
 
+        self.D.prepare_data()
         self.trainer = Trainer(
             callbacks=cbs,
             accelerator="gpu",
@@ -893,26 +911,13 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
+    # bs = compute_bs(proj,conf,bs=20,step=2)
+    # torch.cuda.empty_cache()
+    # gc.collect()
+
+    bs = 20
     Tm = TrainingManager(proj,conf)
-    Tm.setup(epochs=1)
+    Tm.setup(batch_size=bs,devices = 2, epochs=2,batch_finder=False,neptune=False)
     Tm.fit()
-# %%
-
-    # %%
-
-    ds = D.train_ds
-    a = ds[0]
-    im = a["image"]
-    im2 = RandFlip(prob=1, spatial_axis=0)(im)
-    im3 = RandFlip(prob=1, spatial_axis=1)(im)
-    im4 = RandFlip(prob=1, spatial_axis=0)(im3)
-    ImageMaskViewer([im[0], im2[0]])
-    # %%
-    trainer.fit(model=N, datamodule=D, ckpt_path=ckp)
-#     # trainer.fit(model = N,datamodule=D,ckpt_path=cpk)
-#     # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader(),ckpt_path='/home/ub/code/fran/fran/.neptune/Untitled/LITS-567/checkpoints/epoch=53-step=2484.ckpt')
-#     # trainer.fit(model = N,train_dataloaders=D.train_dataloader(),val_dataloaders=D.val_dataloader())
-# %%
-    bs  =compute_bs(proj,conf,1,bs=6,step=1)
 # %%
 
