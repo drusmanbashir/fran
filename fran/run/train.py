@@ -32,7 +32,7 @@ def override_configs(args , configs:dict):
         else: configs[keys[0]] =inner_dict
     str_to_key = lambda  x: x.split(",")
     for key,val in  vars(args).items():
-        if key in _translations.keys() and val:
+        if key in _translations.keys() and val is not None:
             ans = _translations[key]
             _alter_config_key(ans,val)
     if len(configs)>0:
@@ -140,6 +140,9 @@ if __name__ == "__main__":
 # %%
     args = parser.parse_known_args()[0]
     args.neptune = True if args.n ==False else False
+    args.bs=8
+    args.t = 'lits32'
+    args.fold=0
 
     # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     # args.bs = 

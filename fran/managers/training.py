@@ -878,7 +878,7 @@ class TrainingManager():
             precision="16-mixed",
             logger=logger,
             max_epochs=epochs,
-            log_every_n_steps=10,
+            log_every_n_steps=5,
             num_sanity_val_steps=0,
             enable_checkpointing=True,
             default_root_dir=self.project.checkpoints_parent_folder,
