@@ -131,7 +131,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-p", "--patch", default=None)
     parser.add_argument("--labels", help="list of mappings source to dest label values, e.e.,g [[0,0],[1,1],[2,1]] will map all foreground to 1")
-    parser.add_argument("-n","--neptune", help="No Neptune",action='store_true')
+    parser.add_argument("-n","--neptune", help="No Neptune",action='store_false')
 # %%
     args = parser.parse_known_args()[0]
     # args.neptune = True if args.n ==False else False
