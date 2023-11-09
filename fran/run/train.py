@@ -84,15 +84,10 @@ def initialize_run(project ,args):
     configs = load_and_update_configs(project,args)
     configs['model_params/compiled'] = args.compile
     cbs = [
-    TQDMProgressBar(refresh_rate=3),
     ModelCheckpoint(),
      LearningRateMonitor(logging_interval='epoch')
     ]
-    if args.neptune==True: 
-        cbs+=[NeptuneImageGridCallback(
-                3, patch_size=configs["dataset_params"]["patch_size"]
-            ),]
-
+    
     run_name = process_run_name(args.resume)
     Tm = TrainingManager(project, configs)
     Tm.setup(batch_size = args.bs , run_name= run_name,cbs=cbs,devices=args.devices,neptune=args.neptune,epochs=args.epochs)

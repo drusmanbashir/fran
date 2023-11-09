@@ -1,5 +1,7 @@
 # %%
 import time
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 from lightning.pytorch.callbacks import BatchSizeFinder, LearningRateMonitor
 from lightning.pytorch.strategies import DDPStrategy
 import torch.multiprocessing as mp
@@ -834,9 +836,10 @@ class TrainingManager():
         super().__init__()
         store_attr()
 
-    def setup(self,batch_size, run_name=None, cbs=None, devices=1, neptune=True,epochs=500,batch_finder=False):
+    def setup(self,batch_size, run_name=None, cbs=[], devices=1,compiled=False, neptune=True,epochs=500,batch_finder=False):
         self.ckp = None if run_name is None else checkpoint_from_model_id(run_name)
         strategy= maybe_ddp(devices)
+        cbs += [TQDMProgressBar(refresh_rate=3)]
 
         if self.ckp:
             self.D = DataManager.load_from_checkpoint(self.ckp)
@@ -863,6 +866,7 @@ class TrainingManager():
                 self.configs["model_params"],
                 self.configs["loss_params"],
                 lr=self.configs["model_params"]["lr"],
+                compiled=compiled
             )
         if neptune == True:
             logger = NeptuneManager(
@@ -870,6 +874,9 @@ class TrainingManager():
                 run_id=run_name,
                 log_model_checkpoints=True,  # Update to True to log model checkpoints
             )
+            cbs+=[NeptuneImageGridCallback(
+                        classes=self.configs['model_params']['out_channels'], patch_size=self.configs["dataset_params"]["patch_size"]
+                ),]
 
         else:
             logger = None
@@ -919,10 +926,12 @@ if __name__ == "__main__":
     # torch.cuda.empty_cache()
     # gc.collect()
 
-    bs = 20
     Tm = TrainingManager(proj,conf)
 # %%
-    Tm.setup(run_name="LIT-149",batch_size=bs,devices = 1, epochs=500,batch_finder=False,neptune=True)
+    bs = 20
+    run_name =None
+    compiled=False
+    Tm.setup(run_name=run_name,compiled=compiled,batch_size=bs,devices = 1, epochs=500,batch_finder=False,neptune=True)
     Tm.fit()
 # %%
     st=torch.load(Tm.ckp)
