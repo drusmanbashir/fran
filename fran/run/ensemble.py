@@ -22,11 +22,6 @@ import ray
 ray.init(num_gpus=tot_gpus)
 
 # %%
-
-def slice_list(listi,start_end:list):
-    # print(listi)
-    return listi[start_end[0]:start_end[1]]
-
 @ray.remote(num_cpus=8, num_gpus=tot_gpus/n_lists)
 class EnsembleActor(object):
     def __init__(self):

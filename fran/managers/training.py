@@ -27,7 +27,7 @@ from lightning.pytorch.profilers import AdvancedProfiler
 import warnings
 from typing import Any, Hashable, Mapping
 
-# from fastcore.basics import GetAttr
+# from fastcore.basics import GenttAttr
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint, TQDMProgressBar
 from lightning.pytorch.loggers.neptune import NeptuneLogger
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
@@ -40,6 +40,7 @@ import torch
 import operator
 from fran.data.dataset import ImageMaskBBoxDatasetd, MaskLabelRemap2, NormaliseClipd
 from fran.transforms.spatialtransforms import one_hot
+from fran.transforms.totensor import ToTensorT
 from fran.utils.helpers import folder_name_from_list
 from fran.data.dataloader import img_mask_bbox_collated
 import itertools as il
@@ -839,8 +840,11 @@ class TrainingManager():
 
         if self.ckp:
             self.D = DataManager.load_from_checkpoint(self.ckp)
+            stdict=torch.load(self.ckp)
+            lr=stdict['lr_schedulers'][0]['_last_lr'][0]
+
             self.N = nnUNetTrainer.load_from_checkpoint(
-                self.ckp, project=self.project, dataset_params=self.D.dataset_params
+                self.ckp, project=self.project, dataset_params=self.D.dataset_params,lr=lr
             )
         else:
             if batch_finder==True:
@@ -878,7 +882,7 @@ class TrainingManager():
             precision="16-mixed",
             logger=logger,
             max_epochs=epochs,
-            log_every_n_steps=5,
+            log_every_n_steps=25,
             num_sanity_val_steps=0,
             enable_checkpointing=True,
             default_root_dir=self.project.checkpoints_parent_folder,
@@ -917,7 +921,16 @@ if __name__ == "__main__":
 
     bs = 20
     Tm = TrainingManager(proj,conf)
-    Tm.setup(batch_size=bs,devices = 2, epochs=2,batch_finder=False,neptune=False)
+# %%
+    Tm.setup(run_name="LIT-149",batch_size=bs,devices = 1, epochs=500,batch_finder=False,neptune=True)
     Tm.fit()
 # %%
+    st=torch.load(Tm.ckp)
+# %%
 
+    scheduler = ReduceLROnPlateau.load_from_checkpoint(Tm.ckp)
+# %%
+    pred_fn = "/s/EECS-LITQ/nnUNet_results/Dataset003_litq/nnUNetTrainer__nnUNetPlans__2d/fold_0/validation/rot_litq49.npz"
+    pred = np.load(pred_fn)
+
+# %%

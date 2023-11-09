@@ -2,6 +2,7 @@
 from time import time
 import monai
 from monai.data import MetaTensor, image_writer
+from monai.transforms.utils import generate_spatial_bounding_box
 
 from fran.managers.training import checkpoint_from_model_id
 from lightning.fabric import Fabric
@@ -79,6 +80,21 @@ from fastcore.basics import store_attr
 
 from fran.utils.imageviewers import ImageMaskViewer
 import torch.nn.functional as F
+
+def slice_list(listi,start_end:list):
+    return listi[start_end[0]:start_end[1]]
+
+def list_to_chunks(input_list:list,chunksize:int):
+
+    n_lists = int(np.ceil(len(input_list)/chunksize))
+
+    fpl= int(len(input_list)/n_lists)
+    inds = [[fpl*x,fpl*(x+1)] for x in range(n_lists-1)]
+    inds.append([fpl*(n_lists-1),None])
+
+    chunks = list(il.starmap(slice_list,zip([input_list]*n_lists,inds)))
+    return chunks
+
 
 
 class SaveListd(SaveImaged):
@@ -158,6 +174,29 @@ class ToCPUd(MapTransform):
                 d[key] = d[key].cpu()
             return d
 
+
+class BBoxFromPred(MapTransform):
+    def __init__(
+        self,
+        spacings,
+        expand_by:int,  # in millimeters
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, allow_missing_keys)
+        store_attr('spacings,expand_by')
+
+    def __call__(self,d:dict):
+        for key in self.key_iterator(d):
+            d[key] = self.func(d[key])
+        return d
+
+    def func(self,pred):
+        add_to_bbox=  [ int(self.expand_by/sp) for sp in self.spacings]
+        bb = generate_spatial_bounding_box(pred,channel_indices=0,margin=add_to_bbox)
+        sls = [slice(0,100,None)]+[slice(a,b,None) for a,b in zip(*bb)]
+        pred.meta['bounding_box']=sls
+        return pred
 
 class SlicesFromBBox(MapTransform):
     def __init__(
@@ -313,9 +352,8 @@ class WholeImagePredictor(GetAttr,DictToAttr):
         D = AsDiscreted(keys=['pred'],argmax=True,threshold=0.5)
         K= KeepLargestConnectedComponentd(keys=['pred'])
         C = ToCPUd(keys=['image','pred'])
-        B=BoundingRectd(keys=['pred'])
-        S = SlicesFromBBox(keys=['pred_bbox'])
-        tfms = [I,D,K,C,B,S]
+        B=BBoxFromPred(keys=['pred'],expand_by=20,spacings=self.dataset_params['spacings'])
+        tfms = [I,D,K,C,B]
         if self.debug==True:
             Sa = SaveMultiChanneld(keys=['pred'],output_folder=self.output_folder,postfix_channel=True)
             tfms.insert(1,Sa)
@@ -323,18 +361,19 @@ class WholeImagePredictor(GetAttr,DictToAttr):
         self.postprocess_transforms=C
 
     def prepare_data(self,ds ):
+        
         R = Resized(
             keys=["image"],
-            spatial_size=self.dataset_params['src_dims']
+            spatial_size=self.dataset_params['patch_size']
         )
 
-        R2 = ResizeWithPadOrCropd(
-                keys=["image"],
-                source_key="image",
-                spatial_size=self.dataset_params["patch_size"],
-            )
+        # R2 = ResizeWithPadOrCropd(
+        #         keys=["image"],
+        #         source_key="image",
+        #         spatial_size=self.dataset_params["patch_size"],
+        #     )
         N= NormaliseClipd(keys=['image'],clip_range= self.dataset_params['intensity_clip_range'],mean=self.dataset_params['mean_fg'],std=self.dataset_params['std_fg'])
-        tfm = Compose([R,N,R2])
+        tfm = Compose([R,N])
         self.ds2=Dataset(data=ds,transform=tfm)
         self.pred_dl = DataLoader(
                 self.ds2, num_workers=12, batch_size=12
@@ -409,7 +448,7 @@ class PatchPredictor(WholeImagePredictor):
         tfm = Compose([N,S])
         self.ds2=ImageBBoxDataset(data,transform=tfm)
         self.pred_dl = DataLoader(
-                self.ds2, num_workers=1, batch_size=1, collate_fn = img_bbox_collated # essential to avoid size mismatch
+                self.ds2, num_workers=0, batch_size=1, collate_fn = img_bbox_collated # essential to avoid size mismatch
             )
         
     def predict(self):
@@ -464,11 +503,9 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
 
 
     def create_ds(self,im):
-        spacings = self.get_patch_spacings(self.run_name_w)
         L=LoadImaged(keys=['image'],image_only=True,ensure_channel_first=True,simple_keys=True)
         O = Orientationd(keys=['image'], axcodes="RPS") # nOTE RPS
-        S = Spacingd(keys=["image"], pixdim=spacings)
-        tfms = Compose([L,O,S])
+        tfms = Compose([L,O])
 
         cache_dir = self.project.cold_datasets_folder/("cache")
         maybe_makedirs(cache_dir)
@@ -480,14 +517,20 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
             spacings = dic1['datamodule_hyper_parameters']['dataset_params']['spacings']
             return spacings
 
-    def run(self,imgs):
+    def run(self,imgs,chunksize=12):
+        '''
+        chunksize is necessary in large lists to manage system ram
+        '''
+        
         imgs =self.parse_input(imgs)
-        self.create_ds(imgs)
-        self.bboxes= self.extract_fg_bboxes()
-        pred_patches = self.patch_prediction(self.ds,self.bboxes)
-        pred_patches = self.decollate_patches(pred_patches,self.bboxes)
-        output= self.postprocess(pred_patches)
-        if self.save==True: self.save_pred(output)
+        imgs  = list_to_chunks(imgs,chunksize)
+        for imgs_sublist in imgs:
+            self.create_ds(imgs_sublist)
+            self.bboxes= self.extract_fg_bboxes()
+            pred_patches = self.patch_prediction(self.ds,self.bboxes)
+            pred_patches = self.decollate_patches(pred_patches,self.bboxes)
+            output= self.postprocess(pred_patches)
+            if self.save==True: self.save_pred(output)
         return output
 
     def parse_input(self,imgs_inp):
@@ -556,7 +599,7 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
         print("Preparing data")
         p = w.predict()
         preds= w.postprocess(p)
-        bboxes = [pred['pred_bbox'] for pred in preds]
+        bboxes = [pred['pred'].meta['bounding_box'] for pred in preds]
         return bboxes
     
     def patch_prediction(self,ds,bboxes):
@@ -597,14 +640,12 @@ if __name__ == "__main__":
     proj= Project(project_title="lits32")
 
 # %%
-    run_w='LIT-99'
-    run_ps=['LIT-101', 'LIT-102','LIT-105','LIT-107']
+    run_w='LIT-145'
+    run_ps=['LIT-143','LIT-150', 'LIT-149','LIT-153']
 # %%
     img_fn = "/s/datasets_bkp/drli_short/images/drli_005.nrrd"
-    img_fn3 = "/s/xnat_shadow/litq/test/images_few/"
     img_fn2 = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
-    img_np="drli_005.npy"
-    img_pt= "/home/ub/datasets/preprocessed/lits32/whole_images/dim_128_128_96/images/drli_005.pt"
+    img_fn3 = "/s/xnat_shadow/litq/test/images_ub/"
     fns="/s/datasets_bkp/drli_short/images/"
     paths = [img_fn, img_fn2]
     img_fns = listify(img_fn3)
@@ -617,45 +658,4 @@ if __name__ == "__main__":
     En=EnsemblePredictor(proj,run_w,run_ps,debug=False)
     
     preds=En.run(img_fn3)
-# %%
-    imgs =En.parse_input(img_np)
-    En.create_ds(imgs)
-
-    bb= En.extract_fg_bboxes()
-    w=WholeImagePredictor(En.project,En.run_name_w,En.ds,debug=True)
-
-    p = w.predict()
-    p=preds
-# %%
-    # p = torch.load("bad.pt")
-    im = p[0]['image'][0,0].detach().cpu()
-    pred= p[0]['pred'][0,0].detach().cpu()
-    ImageMaskViewer([im,pred])
-# %%
-
-    torch.save(p,"bad.pt")
-# %%
-    preds= w.postprocess(p)
-    bboxes = [pred['pred_bbox'] for pred in preds]
-    ds = w.ds2
-    casei = ds[0]
-    im = casei['image']
-    ImageMaskViewer([im[0],im[0]])
-# %%
-    En.bboxes= En.extract_fg_bboxes()
-
-# %%
-    img_fn = "/home/ub/datasets/preprocessed/lits32/whole_images/dim_128_128_96/images/drli_005.pt"
-    img = torch.load(img_fn)
-# %%
-    batch = {'image':img.unsqueeze(0)}
-    R = ResizeWithPadOrCropd(
-        keys=["image" ],
-        source_key="image",
-        spatial_size=w.dataset_params["src_dims"],
-    )
-    b = R(batch)
-# %%
-    im = b['image'][0]
-    ImageMaskViewer([im,img])
 # %%

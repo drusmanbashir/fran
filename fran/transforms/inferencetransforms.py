@@ -423,20 +423,4 @@ class LabelMapToBinary(Transform):
         return mask
 
 
-#
-# # # %%
-# # #
-#                 pred_ = sitk.GetImageFromArray(pred)
-# # #                 dd = self.sitk_props[-1]
-# # #                 pred_ = reorient_sitk(pred_,self.sitk_props[-1])
-# # #                 pred_ = set_sitk_props(pred_,self.sitk_props)
-# # # # %%
-# #                 pred2 = sitk.DICOMOrient(pred_,'LAS')
-# # #                 pred2 = sitk.DICOMOrient(pred_,'PLS')
-# # #                 pred2 = sitk.DICOMOrient(pred_,'PRS')
-#                  pred2 = sitk.DICOMOrient(pred_,'PrS')
-#                  pred2 = set_sitk_props(pred2,self.sitk_props)
-# # # # %%
-#                  sitk.WriteImage(pred2,"/home/ub/temp_prs.nrrd")
-# # #                 preds_out.append(pred_)
-# # # %%
+# %%
