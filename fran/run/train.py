@@ -82,7 +82,7 @@ def load_run(project,run_name,args):
 def initialize_run(project ,args):
 
     configs = load_and_update_configs(project,args)
-    configs['model_params/compiled'] = args.compile
+    configs['model_params/compiled'] = args.compiled
     cbs = [
     ModelCheckpoint(),
      LearningRateMonitor(logging_interval='epoch')
@@ -90,7 +90,7 @@ def initialize_run(project ,args):
     
     run_name = process_run_name(args.resume)
     Tm = TrainingManager(project, configs)
-    Tm.setup(batch_size = args.bs , run_name= run_name,cbs=cbs,devices=args.devices,neptune=args.neptune,epochs=args.epochs)
+    Tm.setup(batch_size = args.bs , run_name= run_name,cbs=cbs,devices=args.devices,neptune=args.neptune,epochs=args.epochs,compiled=args.compiled)
     return Tm
 
 def main(args):
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--bs", help="batch size",type=int)
     parser.add_argument("-f","--fold", type=int, default=0)
     parser.add_argument("-d","--devices", type=int, default=1)
-    parser.add_argument("-c","--compile", action='store_true')
+    parser.add_argument("-c","--compiled", action='store_true')
     parser.add_argument("-cf","--conf-fn", default = None)
     parser.add_argument("--lr", help="learning rate",type=float )
     parser.add_argument("--gpu", help="gpu id",type=int, default=0)
@@ -131,10 +131,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "-p", "--patch", default=None)
     parser.add_argument("--labels", help="list of mappings source to dest label values, e.e.,g [[0,0],[1,1],[2,1]] will map all foreground to 1")
-    parser.add_argument("-n", help="No Neptune",action='store_true')
+    parser.add_argument("-n","--neptune", help="No Neptune",action='store_true')
 # %%
     args = parser.parse_known_args()[0]
-    args.neptune = True if args.n ==False else False
+    # args.neptune = True if args.n ==False else False
     # args.bs=8
     # args.t = 'lits32'
 
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     # args.devices = 2
     # # args.resume=''
     # # args.resume='LITS-456'
-    # args.compiled= False
+    # args.compiled= True
     # args.update = True
 
 # %%
