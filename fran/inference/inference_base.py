@@ -643,12 +643,17 @@ if __name__ == "__main__":
 
 
 
-    crc_imgs = "/s/xnat_shadow/crc/test/images/finalised/"
+    crc_fldr= "/s/xnat_shadow/crc/test/images/finalised/"
+    crc_imgs = list(Path(crc_fldr).glob("*"))
+    chunk = 10
+# %%
+    n= 3
+    imgs = crc_imgs[n*chunk:(n+1)*chunk]
 
 # %%
     # im = [{'image':im} for im in [img_fn,img_fn2]]
     En=EnsemblePredictor(proj,run_w,run_ps,debug=False)
     
-    preds=En.run(crc_imgs)
+    preds=En.run(imgs)
 # %%
 # %%

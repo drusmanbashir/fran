@@ -430,6 +430,7 @@ class NeptuneManager(NeptuneLogger, Callback):
 
 
     def download_checkpoints(self):
+        remote_dir = "/data/home/mpx588/checkpoints/lits32/Untitled/LIT-150/checkpoints"
         remote_dir =str(Path(self.model_checkpoint).parent)
         latest_ckpt = self.shadow_remote_ckpts(remote_dir)
         if latest_ckpt:
@@ -438,7 +439,7 @@ class NeptuneManager(NeptuneLogger, Callback):
 
     def shadow_remote_ckpts(self, remote_dir):
         hpc_settings = load_yaml(hpc_settings_fn)
-        local_dir = self.project.checkpoints_parent_folder / self.run_id
+        local_dir = self.project.checkpoints_parent_folder ("Untitled")/ self.run_id/("checkpoints")
         print("\nSSH to remote folder {}".format(remote_dir))
         client = SSHClient()
         client.load_system_host_keys()
@@ -896,17 +897,17 @@ class TrainingManager():
         store_attr()
 
     def setup(self,batch_size, run_name=None, cbs=[], devices=1,compiled=False, neptune=True,epochs=500,batch_finder=False):
-        self.ckp = None if run_name is None else checkpoint_from_model_id(run_name)
+        self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         strategy= maybe_ddp(devices)
         cbs += [TQDMProgressBar(refresh_rate=3)]
 
-        if self.ckp:
-            self.D = DataManager.load_from_checkpoint(self.ckp)
-            stdict=torch.load(self.ckp)
+        if self.ckpt:
+            self.D = DataManager.load_from_checkpoint(self.ckpt,project=self.project)
+            stdict=torch.load(self.ckpt)
             lr=stdict['lr_schedulers'][0]['_last_lr'][0]
 
             self.N = nnUNetTrainer.load_from_checkpoint(
-                self.ckp, project=self.project, dataset_params=self.D.dataset_params,lr=lr
+                self.ckpt, project=self.project, dataset_params=self.D.dataset_params,lr=lr
             )
         else:
             if batch_finder==True:
@@ -957,7 +958,7 @@ class TrainingManager():
         )
 
     def fit(self):
-        self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckp)
+        self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
 
 
 # %%
@@ -989,15 +990,17 @@ if __name__ == "__main__":
 # %%
     bs = 12
     run_name =None
-    compiled=False
+    run_name ='LIT-161'
+    compiled=True
     batch_finder=True
     neptune=False
     Tm.setup(run_name=run_name,compiled=compiled,batch_size=bs,devices = 1, epochs=500,batch_finder=batch_finder,neptune=neptune)
+# %%
     Tm.fit()
 # %%
 # %%
 
-    scheduler = ReduceLROnPlateau.load_from_checkpoint(Tm.ckp)
+    scheduler = ReduceLROnPlateau.load_from_checkpoint(Tm.ckpt)
 # %%
     pred_fn = "/s/EECS-LITQ/nnUNet_results/Dataset003_litq/nnUNetTrainer__nnUNetPlans__2d/fold_0/validation/rot_litq49.npz"
     pred = np.load(pred_fn)
@@ -1010,3 +1013,30 @@ if __name__ == "__main__":
     )
 # %%
     N.download_checkpoints()
+# %%
+    state_dict = torch.load(Tm.ckpt)
+
+    state_dict['datamodule_hyper_parameters'].keys()
+    type(state_dict['datamodule_hyper_parameters']['project'])
+# %%
+#         Tm.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
+#         strategy= maybe_ddp(devices)
+#         cbs += [TQDMProgressBar(refresh_rate=3)]
+#
+#         if Tm.ckpt:
+#             Tm.D = DataManager.load_from_checkpoint(Tm.ckpt,project=proj)
+#             stdict=torch.load(Tm.ckpt)
+#             lr=stdict['lr_schedulers'][0]['_last_lr'][0]
+#
+# # %%
+#         lr= 1e-3
+#         Tm.N = nnUNetTrainer.load_from_checkpoint(
+#             Tm.ckpt, project=Tm.project, dataset_params=Tm.D.dataset_params,lr=lr,compiled=True
+#         )
+#
+#
+# # %%
+#     pp(state_dict.keys())
+#     state_dict['state_dict'].keys()
+#
+# # %%

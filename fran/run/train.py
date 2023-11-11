@@ -82,7 +82,7 @@ def load_run(project,run_name,args):
 def initialize_run(project ,args):
 
     configs = load_and_update_configs(project,args)
-    configs['model_params/compiled'] = args.compiled
+    configs['model_params']['compiled'] = args.compiled
     cbs = [
     ModelCheckpoint(),
      LearningRateMonitor(logging_interval='epoch')
@@ -135,11 +135,11 @@ if __name__ == "__main__":
 # %%
     args = parser.parse_known_args()[0]
     # args.neptune = True if args.n ==False else False
-    # args.bs=8
+    args.bs=8
     # args.t = 'lits32'
 
     # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
-    # args.bs = 
+    # args.bs = 8
     # args.lr = 1e-4
     # args.devices = 2
     # # args.resume=''
@@ -147,6 +147,8 @@ if __name__ == "__main__":
     # args.compiled= True
     # args.update = True
 
+
 # %%
     main(args)
 # %%
+
