@@ -1,5 +1,10 @@
 # %%
+from neptune.exceptions import FileNotFound
+from fran.utils.batch_size_scaling import _scale_batch_size2, _reset_dataloaders
+from paramiko import SSHClient
+from copy import deepcopy
 import time
+from lightning.pytorch.utilities.exceptions import MisconfigurationException, _TunerExitException
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 from lightning.pytorch.callbacks import BatchSizeFinder, LearningRateMonitor
@@ -27,7 +32,7 @@ from neptune.types import File
 from torchvision.utils import make_grid
 from lightning.pytorch.profilers import AdvancedProfiler
 import warnings
-from typing import Any, Hashable, Mapping
+from typing import Any, Dict, Hashable, Mapping
 
 # from fastcore.basics import GenttAttr
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint, TQDMProgressBar
@@ -60,37 +65,13 @@ from fran.architectures.create_network import (
     pool_op_kernels_nnunet,
 )
 
-def compute_bs(project,config,bs=7,step=1):
-        '''
-        bs = starting bs
-        
-        '''
-    
-    
-        print("Computing optimal batch-size for available vram")
 
-        while True:
 
-            Tm = TrainingManager(project,config)
-            Tm.setup(batch_size = bs, epochs=1,neptune=False,batch_finder=True)
+try:
+    hpc_settings_fn = os.environ["HPC_SETTINGS"]
+except:
+    pass
 
-            try:
-                print("Trial bs: {}".format(bs))
-                Tm.fit()
-            except RuntimeError:
-                print("Final broken bs: {}\n-----------------".format(bs))
-                bs  = bs-step*2
-                print("\n----- Accepted bs: {}".format(bs))
-                Tm.teardown("fit")
-                break
-            bs+=step
-            # Tm.N.teardown("fit")
-            # Tm.D.teardown("fit")
-            Tm.teardown("fit")
-            del Tm
-            # gc.collect()
-            # torch.cuda.empty_cache()
-        return bs
 
 def checkpoint_from_model_id(model_id):
     common_paths = load_yaml(common_vars_filename)
@@ -101,6 +82,7 @@ def checkpoint_from_model_id(model_id):
     if len(all_fldrs) == 1:
         fldr = all_fldrs[0]
     else:
+        print("no local files. Model may be on remote path. use download_neptune_checkpoint() ")
         tr()
 
     list_of_files = list(fldr.glob("*"))
@@ -183,6 +165,18 @@ def get_neptune_checkpoint(project, run_id):
         nep_mode="read-only",
         log_model_checkpoints=True,  # Update to True to log model checkpoints
     )
+    ckpt = nl.model_checkpoint
+    nl.experiment.stop()
+    return ckpt
+
+
+def download_neptune_checkpoint(project, run_id):
+    nl = NeptuneManager(
+        project=project,
+        run_id=run_id,  # "LIT-46",
+        log_model_checkpoints=True,  # Update to True to log model checkpoints
+    )
+    nl.download_checkpoints()
     ckpt = nl.model_checkpoint
     nl.experiment.stop()
     return ckpt
@@ -362,6 +356,9 @@ class NeptuneManager(NeptuneLogger, Callback):
         )
 
     @property
+    def nep_run(self): return self.experiment
+
+    @property
     def model_checkpoint(self):
         try:
             ckpt = self.experiment["training/model/best_model_path"].fetch()
@@ -431,11 +428,55 @@ class NeptuneManager(NeptuneLogger, Callback):
         ld = plm.loss_fnc.loss_dict
         plm.logger.log_metrics(ld)
 
+
+    def download_checkpoints(self):
+        remote_dir =str(Path(self.model_checkpoint).parent)
+        latest_ckpt = self.shadow_remote_ckpts(remote_dir)
+        if latest_ckpt:
+            self.nep_run['training']['model']['best_model_path'] = latest_ckpt
+            self.nep_run.wait() 
+
+    def shadow_remote_ckpts(self, remote_dir):
+        hpc_settings = load_yaml(hpc_settings_fn)
+        local_dir = self.project.checkpoints_parent_folder / self.run_id
+        print("\nSSH to remote folder {}".format(remote_dir))
+        client = SSHClient()
+        client.load_system_host_keys()
+        client.connect(
+            hpc_settings["host"],
+            username=hpc_settings["username"],
+            password=hpc_settings["password"],
+        )
+        ftp_client = client.open_sftp()
+        try:
+            fnames = []
+            for f in sorted(ftp_client.listdir_attr(remote_dir), key=lambda k: k.st_mtime, reverse=True):
+                fnames.append(f.filename)
+        except FileNotFoundError as e:
+            print("\n------------------------------------------------------------------")
+            print("Error:Could not find {}.\nIs this a remote folder and exists?\n".format(remote_dir))
+            return
+        remote_fnames = [os.path.join(remote_dir, f) for f in fnames]
+        local_fnames = [os.path.join(local_dir, f) for f in fnames]
+        maybe_makedirs(local_dir)
+        for rem, loc in zip(remote_fnames, local_fnames):
+            if Path(loc).exists():
+                print("Local file {} exists already.".format(loc))
+            else:
+                print("Copying file {0} to local folder {1}".format(rem, local_dir))
+                ftp_client.get(rem, loc)
+        latest_ckpt = local_fnames[0]
+        return latest_ckpt
+
+    def stop(self): self.experiment.stop()
+
+
+
+
     @property
     def run_id(self):
         return self.experiment["sys/id"].fetch()
 
-    #
     @property
     def save_dir(self) -> Optional[str]:
         sd = self.project.checkpoints_parent_folder
@@ -829,7 +870,25 @@ def maybe_ddp(devices):
         print ("Using non-interactive shell ddp strategy")
         return 'ddp'
 
+class BSFinder(BatchSizeFinder):
+    def __init__(self, mode: str = "power", steps_per_trial: int = 3, init_val: int = 2, max_trials: int = 25, batch_arg_name: str = "batch_size") -> None:
+        super().__init__(mode, steps_per_trial, init_val, max_trials, batch_arg_name)
 
+    def scale_batch_size(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        new_size = _scale_batch_size2(
+            trainer,
+            self._mode,
+            self._steps_per_trial,
+            self._init_val,
+            self._max_trials,
+            self._batch_arg_name,
+        )
+
+        self.optimal_batch_size = new_size-2
+        if self._early_exit:
+            raise _TunerExitException()
+    def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+            self.scale_batch_size(trainer, pl_module)
 
 class TrainingManager():
     def __init__(self, project, configs):
@@ -928,18 +987,26 @@ if __name__ == "__main__":
 
     Tm = TrainingManager(proj,conf)
 # %%
-    bs = 20
+    bs = 12
     run_name =None
     compiled=False
-    Tm.setup(run_name=run_name,compiled=compiled,batch_size=bs,devices = 1, epochs=500,batch_finder=False,neptune=True)
+    batch_finder=True
+    neptune=False
+    Tm.setup(run_name=run_name,compiled=compiled,batch_size=bs,devices = 1, epochs=500,batch_finder=batch_finder,neptune=neptune)
     Tm.fit()
 # %%
-    st=torch.load(Tm.ckp)
 # %%
 
     scheduler = ReduceLROnPlateau.load_from_checkpoint(Tm.ckp)
 # %%
     pred_fn = "/s/EECS-LITQ/nnUNet_results/Dataset003_litq/nnUNetTrainer__nnUNetPlans__2d/fold_0/validation/rot_litq49.npz"
     pred = np.load(pred_fn)
-
+    run_name ="LIT-161"
 # %%
+    N= NeptuneManager(
+        project=proj,
+        run_id=run_name,
+        log_model_checkpoints=True,  # Update to True to log model checkpoints
+    )
+# %%
+    N.download_checkpoints()

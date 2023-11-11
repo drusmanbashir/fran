@@ -1,3 +1,4 @@
+
 # %%
 from time import time
 import monai
@@ -97,17 +98,6 @@ def list_to_chunks(input_list:list,chunksize:int):
 
 
 
-class SaveListd(SaveImaged):
-
-    def __init__(self, keys: KeysCollection, meta_keys: KeysCollection | None = None, meta_key_postfix: str = ..., output_dir: Path | str = "./", output_postfix: str = "trans", output_ext: str = ".nii.gz", resample: bool = True, mode: str = "nearest", padding_mode: str = GridSamplePadMode.BORDER, scale: int | None = None, dtype: DtypeLike = np.float64, output_dtype: DtypeLike | None = np.float32, allow_missing_keys: bool = False, squeeze_end_dims: bool = True, data_root_dir: str = "", separate_folder: bool = True, print_log: bool = True, output_format: str = "", writer: type[image_writer.ImageWriter] | str | None = None, output_name_formatter: Callable[[dict, Transform], dict] | None = None, folder_layout: monai.data.FolderLayoutBase | None = None, savepath_in_metadict: bool = False) -> None:
-        super().__init__(keys, meta_keys, meta_key_postfix, output_dir, output_postfix, output_ext, resample, mode, padding_mode, scale, dtype, output_dtype, allow_missing_keys, squeeze_end_dims, data_root_dir, separate_folder, print_log, output_format, writer, output_name_formatter, folder_layout, savepath_in_metadict)
-
-    def __call__(self, data):
-        dat_out =[]
-        for datum in data:
-            dat = super().__call__(datum) 
-            dat_out.append(dat)
-        return dat_out
 
 
 
@@ -641,7 +631,8 @@ if __name__ == "__main__":
 
 # %%
     run_w='LIT-145'
-    run_ps=['LIT-143','LIT-150', 'LIT-149','LIT-153']
+    run_ps=['LIT-143','LIT-150', 'LIT-149','LIT-153','LIT-161']
+
 # %%
     img_fn = "/s/datasets_bkp/drli_short/images/drli_005.nrrd"
     img_fn2 = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
@@ -652,10 +643,12 @@ if __name__ == "__main__":
 
 
 
+    crc_imgs = "/s/xnat_shadow/crc/test/images/finalised/"
 
 # %%
     # im = [{'image':im} for im in [img_fn,img_fn2]]
     En=EnsemblePredictor(proj,run_w,run_ps,debug=False)
     
-    preds=En.run(img_fn3)
+    preds=En.run(crc_imgs)
+# %%
 # %%

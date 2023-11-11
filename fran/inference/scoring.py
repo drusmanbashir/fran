@@ -2,8 +2,8 @@
 # %%
 # %matplotlib inline
 # %matplotlib widget
+from fastcore.transform import typedispatch
 from monai.utils.enums import LossReduction
-from fastai.callback.tracker import torch
 
 from monai.losses import DiceLoss
 from mask_analysis.labels import labels_overlap
@@ -11,7 +11,6 @@ from mask_analysis.labels import labels_overlap
 
 from fran.utils.common import *
 from fran.utils.imageviewers import ImageMaskViewer, view_sitk
-from fastai.vision.augment import typedispatch
 from fran.utils.common import *
 from fran.transforms.totensor import ToTensorT
 from fran.transforms.spatialtransforms import one_hot
