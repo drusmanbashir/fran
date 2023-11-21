@@ -56,13 +56,12 @@ def is_remote(model_dir):
         return False
 
 
-def get_neptune_config(proj_defaults):
+def get_neptune_config():
     """
     Returns particular project workspace
     """
-    project_title = proj_defaults.project_title
     commons = load_yaml(common_vars_filename)
-    project_name = "/".join([commons["neptune_workspace_name"], project_title])
+    project_name = commons['neptune_project']
     api_token = commons["neptune_api_token"]
     return project_name, api_token
 

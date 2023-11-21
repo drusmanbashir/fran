@@ -240,24 +240,30 @@ class ImageMaskBBoxDatasetd(ImageMaskBBoxDataset):
             return dici
 
 
-class SaveMultiChanneld(MapTransform):
+class SavePatchd(MapTransform):
+    
+    '''
+    input data must be a dictionary, Must contain a bbox key to create a full-sized image from
+    '''
     
     def __init__(self,keys,output_folder,postfix_channel=False):
         super().__init__(keys,False)
         store_attr('output_folder,postfix_channel')
 
-    def func(self, data):
-        chs= data.shape[0]
+    def func(self, cropped_tnsr,bbox):
+        chs= cropped_tnsr.shape[0]
         for ch in range(1,chs): 
             postfix=str(ch) if self.postfix_channel==True else None
-            img_save = data[ch:ch+1]
+            img_full = fill_bbox(bbox,cropped_tnsr)
+            img_save = img_full[ch:ch+1]
+
             S = SaveImage(output_dir= self.output_folder,output_postfix=postfix,separate_folder=False)
             S(img_save)
 
     def __call__(self, data: Mapping[Hashable, torch.Tensor]) -> Dict[Hashable, torch.Tensor]:
         d = dict(data)
         for key in self.key_iterator(d):
-            self.func(d[key])
+            self.func(d[key],d['bbox'])
         return d
 
 
@@ -362,7 +368,21 @@ class NormaliseClipd(MapTransform):
 
 
 
-class FillBBoxPatches(Transform):
+def fill_bbox(bbox,cropped_tensor):
+    '''
+    bbox : 3-tuple of slices
+    cropped_tensor: 4d CxWxHxD. It has metadata with spatial_shape key defining full tensor shape
+    '''
+
+    n_ch=cropped_tensor.shape[0]
+    shape = [n_ch]+list(cropped_tensor.meta['spatial_shape'])
+    full= torch.zeros(shape)
+    full[bbox]=cropped_tensor
+    out_tensor = MetaTensor(full)
+    out_tensor.copy_meta_from(cropped_tensor)
+    return out_tensor
+
+class FillBBoxPatchesd(Transform):
     """
     Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
     """
@@ -372,14 +392,10 @@ class FillBBoxPatches(Transform):
         '''
         d is a dict with keys: 'image','pred','bbox'
         '''
-
-        full= torch.zeros(d['image'].shape)
+        pred = d['pred']
         bbox = d['bbox']
-        full[bbox]=d['pred']
-
-        pred = MetaTensor(full)
-        pred.copy_meta_from(d['image'])
-        d['pred']=pred
+        pred_out = fill_bbox(bbox,pred)
+        d['pred']=pred_out
         return d
 
 class MaskLabelRemap2(MapTransform):

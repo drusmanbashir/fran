@@ -1,10 +1,8 @@
-
 # %%
 from time import time
 import monai
 from monai.data import MetaTensor, image_writer
 from monai.transforms.utils import generate_spatial_bounding_box
-
 from fran.managers.training import checkpoint_from_model_id
 from lightning.fabric import Fabric
 import lightning.pytorch as pl
@@ -37,10 +35,10 @@ from monai.apps.detection.transforms.array import *
 from monai.transforms.post.dictionary import Activationsd, KeepLargestConnectedComponentd, MeanEnsembled
 from monai.data.box_utils import *
 from monai.transforms.transform import MapTransform, Transform
-from monai.transforms.spatial.dictionary import Orientationd, Resized
+from monai.transforms.spatial.dictionary import Flipd, Orientationd, Resized
 from monai.transforms.utility.array import EnsureType
-from fran.data.dataset import FillBBoxPatches, NormaliseClipd, NormaliseClip, SaveMultiChanneld
-from fran.managers.training import DataManager, nnUNetTrainer
+from fran.data.dataset import FillBBoxPatchesd, NormaliseClipd, NormaliseClip, SavePatchd
+from fran.managers.training import DataManager, UNetTrainer
 from fran.utils.common import *
 import sys
 import gc
@@ -212,7 +210,7 @@ class SlicesFromBBox(MapTransform):
         return d
 
 
-class SimpleTrainer(nnUNetTrainer):
+class SimpleTrainer(UNetTrainer):
     def test_step(self,batch,batch_idx):
 
         img = batch['image']
@@ -345,7 +343,10 @@ class WholeImagePredictor(GetAttr,DictToAttr):
         B=BBoxFromPred(keys=['pred'],expand_by=20,spacings=self.dataset_params['spacings'])
         tfms = [I,D,K,C,B]
         if self.debug==True:
-            Sa = SaveMultiChanneld(keys=['pred'],output_folder=self.output_folder,postfix_channel=True)
+
+            Sa = SaveImaged(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
+            #
+            # Sa = SavePatchd(keys=['pred'],output_folder=self.output_folder,postfix_channel=True)
             tfms.insert(1,Sa)
         C = Compose(tfms)
         self.postprocess_transforms=C
@@ -371,7 +372,7 @@ class WholeImagePredictor(GetAttr,DictToAttr):
 
 
     def prepare_model(self):
-        self.model = nnUNetTrainer.load_from_checkpoint(
+        self.model = UNetTrainer.load_from_checkpoint(
             self.ckpt, project=self.project, dataset_params=self.dataset_params, strict=False
         )
 
@@ -385,6 +386,7 @@ class WholeImagePredictor(GetAttr,DictToAttr):
                 output = self.model(img)
                 output=output[0]
                 batch['pred']= output
+                batch['pred'].meta=batch['image'].meta
                 outputs.append(batch)
         return outputs
 
@@ -442,6 +444,7 @@ class PatchPredictor(WholeImagePredictor):
             )
         
     def predict(self):
+        #outputs a list of prediction batches
         outputs = []
         for i ,batch in enumerate(self.pred_dl):
                 with torch.no_grad():
@@ -450,6 +453,7 @@ class PatchPredictor(WholeImagePredictor):
                     output_tensor = self.inferer(inputs=img_input, network=self.model)
                     output_tensor = output_tensor[0]
                     batch['pred']=output_tensor
+                    batch['pred'].meta = batch['image'].meta
                     outputs.append(batch)
         return outputs
 
@@ -458,13 +462,15 @@ class PatchPredictor(WholeImagePredictor):
         C =  ToCPUd(keys=['image','pred'])
         tfms = [I,C]
         if self.debug==True:
-                        S = SaveMultiChanneld(['pred'],self.output_folder,postfix_channel=True)
+                        S = SavePatchd(['pred'],self.output_folder,postfix_channel=True)
                         tfms+=[S]
-        C = Compose(tfms)
+        Co = Compose(tfms)
         out_final=[]
         for batch in outputs: # batch_length is 1
             batch['pred']=batch['pred'].squeeze(0).detach()
-            batch=C(batch)
+            batch['image']=batch['image'].squeeze(0).detach()
+            batch['bbox']=batch['bbox'][0]
+            batch=Co(batch)
             out_final.append(batch)
         return out_final
 
@@ -494,8 +500,9 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
 
     def create_ds(self,im):
         L=LoadImaged(keys=['image'],image_only=True,ensure_channel_first=True,simple_keys=True)
-        O = Orientationd(keys=['image'], axcodes="RPS") # nOTE RPS
-        tfms = Compose([L,O])
+        O = Orientationd(keys=['image'], axcodes="RSI") # nOTE RPS
+        FF = Flipd(keys=['image_cropped'],spatial_axis=0)
+        tfms = Compose([L,O,FF])
 
         cache_dir = self.project.cold_datasets_folder/("cache")
         maybe_makedirs(cache_dir)
@@ -615,7 +622,7 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
         A = Activationsd(keys="pred", softmax=True)
         D = AsDiscreted(keys=['pred'],argmax=True)
         K = KeepLargestConnectedComponentd(keys=['pred'],independent=False)
-        F = FillBBoxPatches()
+        F = FillBBoxPatchesd()
         # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
         C  = Compose([M,A,D,K,F])
         output= C(patch_bundle)
@@ -626,34 +633,130 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
 
 if __name__ == "__main__":
     # ... run your application ...
-
     proj= Project(project_title="lits32")
 
-# %%
     run_w='LIT-145'
     run_ps=['LIT-143','LIT-150', 'LIT-149','LIT-153','LIT-161']
+    run_ps=['LIT-150']
 
 # %%
-    img_fn = "/s/datasets_bkp/drli_short/images/drli_005.nrrd"
     img_fn2 = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
     img_fn3 = "/s/xnat_shadow/litq/test/images_ub/"
     fns="/s/datasets_bkp/drli_short/images/"
-    paths = [img_fn, img_fn2]
+    imgs= "/s/xnat_shadow/crc/test/images/finalised/crc_CRC014_20190923_CAP1p5.nii.gz"
+    img_fn="/s/datasets_bkp/lits_segs_improved/images/lits_6ub.nii"
     img_fns = listify(img_fn3)
 
 
 
     crc_fldr= "/s/xnat_shadow/crc/test/images/finalised/"
     crc_imgs = list(Path(crc_fldr).glob("*"))
-    chunk = 10
 # %%
-    n= 3
+    chunk = 10
+    import math
+    n_imgs = len(crc_imgs)
+# chunks  = math.ceil(n_imgs/chunk)
+# for n in range(1,chunks):
+# %%
+    n=2
     imgs = crc_imgs[n*chunk:(n+1)*chunk]
+# im = [{'image':im} for im in [img_fn,img_fn2]]
+    En=EnsemblePredictor(proj,run_w,run_ps,debug=True,device=[1])
+
+    preds=En.run(img_fn)
+# %%
+    ds=En.ds
+    bboxes=En.bboxes
+    data = [ds,bboxes]
+    preds_all_runs={}
+
+    run=En.runs_p[0]
+    p=PatchPredictor(En.project,run,data=data,debug=En.debug)
+    preds=p.predict()
+    preds_patch = p.postprocess(preds)
+    preds_all_runs[run] =preds_patch
+
+    n=0
+    ds2=p.ds2
+    batch =ds2[0]
+    im=batch['image_cropped']
+    im_c = preds_patch[n]['image_cropped']
+
+    FF = Flipd(keys=['image_cropped'],spatial_axis=0)
+    batch2= FF(batch)
+    im_c2=batch2['image_cropped']
+    ImageMaskViewer([im_c[0].permute(2,1,0),im_c2[0]],data_types=['image','mask'])
+# %%
+    ckpt="/s/fran_storage/checkpoints/lits32/Untitled/LIT-161/checkpoints/epoch=451-step=3164.ckpt"
+    std=torch.load(ckpt)
+    print(std.keys())
+    std['hyper_parameters']
+    a=std['datamodule_hyper_parameters']
+
+    proj=a['project']
+    proj.predictions_folder
+    S = SavePatchd(['pred'],p.output_folder,postfix_channel=True)
+# %%
+# %%
+    pred = preds_patch[1]
+    pred['image'].shape
+    pred['pred'].shape
+    pred['bbox']
+
+    F(pred)
+    pred['pred']
+# %%
 
 # %%
-    # im = [{'image':im} for im in [img_fn,img_fn2]]
-    En=EnsemblePredictor(proj,run_w,run_ps,debug=False)
-    
-    preds=En.run(imgs)
+    outputs = preds
+    I = Invertd(keys=['pred'],transform=p.ds2.transform,orig_keys=['image_cropped'])
+    C =  ToCPUd(keys=['image','pred'])
+    tfms = [I,C,F]
+    if p.debug==True:
+                    S = SavePatchd(['pred'],p.output_folder,postfix_channel=True)
+                    tfms+=[S]
+    C = Compose(tfms)
 # %%
+    out_final=[]
+    for batch in outputs: # batch_length is 1
+        batch['pred']=batch['pred'].squeeze(0).detach()
+        batch['image']=batch['image'].squeeze(0).detach()
+        # batch['bbox']=batch['bbox']
+        batch = I(batch)
+        batch = S(batch)
+        batch=C(batch)
+        out_final.append(batch)
+
+# %%
+    ImageMaskViewer([image[0],full[2]])
+# %%
+    cropped_tnsr = batch['pred']
+    bbox = batch['bbox']
+    chs= cropped_tnsr.shape[0]
+    for ch in range(1,chs): 
+        postfix=str(ch) if S.postfix_channel==True else None
+        img_full = fill_bbox(bbox,cropped_tnsr)
+        img_save = img_full[ch:ch+1]
+
+        S = SaveImage(output_dir= self.output_folder,output_postfix=postfix,separate_folder=False)
+        S(img_save)
+
+    I = Invertd(keys=['pred'],transform=p.ds2.transform,orig_keys=['image_cropped'])
+    C =  ToCPUd(keys=['image','pred'])
+    tfms = [I,C]
+    if p.debug==True:
+                    S = SavePatchd(['pred'],p.output_folder,postfix_channel=True)
+                    tfms+=[S]
+    Co = Compose(tfms)
+    outputs=preds
+    out_final=[]
+    for batch in outputs: # batch_length is 1
+        batch['pred']=batch['pred'].squeeze(0).detach()
+        batch['image']=batch['image'].squeeze(0).detach()
+        batch['bbox']=batch['bbox'][0]
+        batch=Co(batch)
+        out_final.append(batch)
+
+# %%
+
 # %%

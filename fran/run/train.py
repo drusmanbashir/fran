@@ -1,5 +1,6 @@
 # %%
 from fran.utils.common import *
+import ast
 from fran.managers.training import *
 _translations =     {
     'bs': 'dataset_params,bs',
@@ -90,10 +91,11 @@ def initialize_run(project ,args):
     
     run_name = process_run_name(args.resume)
     Tm = TrainingManager(project, configs)
-    Tm.setup(batch_size = args.bs , run_name= run_name,cbs=cbs,devices=args.devices,neptune=args.neptune,epochs=args.epochs,compiled=args.compiled)
+    Tm.setup(batch_size = args.bs , run_name= run_name,cbs=cbs,devices=args.devices,neptune=args.neptune,epochs=args.epochs,compiled=args.compiled,description=args.desc)
     return Tm
 
 def main(args):
+# %%
 
     torch.set_float32_matmul_precision('medium')
     assert( args.t), "No project title given. Restart and set the -t flag"
@@ -110,7 +112,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Trainer")
     parser.add_argument("-t", help="project title")#, required=True)
     # parser.add_argument("t", help="project title")
-    parser.add_argument("-e","--epochs", help="num epochs", default=500,type=int)
+    parser.add_argument("-e","--epochs", help="num epochs", default=1000,type=int)
     parser.add_argument(
         "-r","--resume",
         const="",
@@ -119,8 +121,9 @@ if __name__ == "__main__":
     )  # neptune manager saves last session's name in excel spreadsheet
 
     parser.add_argument("-b", "--bs", help="batch size",type=int)
+    parser.add_argument("--desc")
     parser.add_argument("-f","--fold", type=int, default=0)
-    parser.add_argument("-d","--devices", type=int, default=1)
+    parser.add_argument("-d","--devices", type=str, default='1')
     parser.add_argument("-c","--compiled", action='store_true')
     parser.add_argument("-cf","--conf-fn", default = None)
     parser.add_argument("--lr", help="learning rate",type=float )
@@ -134,9 +137,11 @@ if __name__ == "__main__":
     parser.add_argument("-n","--neptune", help="No Neptune",action='store_false')
 # %%
     args = parser.parse_known_args()[0]
-    # args.neptune = True if args.n ==False else False
-    args.bs=8
-    # args.t = 'lits32'
+    args.devices=ast.literal_eval(args.devices)
+    # args.neptune = True 
+    # args.bs=8
+    # args.resume="LIT-184"
+    # args.t = 'short'
 
     # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     # args.bs = 8
@@ -147,8 +152,6 @@ if __name__ == "__main__":
     # args.compiled= True
     # args.update = True
 
-
 # %%
     main(args)
-# %%
-
+# %% 

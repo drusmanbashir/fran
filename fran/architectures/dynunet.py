@@ -32,7 +32,7 @@ class DynUNet(DynUNet):
     def forward(self, x):
         out = self.skip_layers(x)
         out = self.output_block(out)
-        if self.training and self.deep_supervision:
+        if self.deep_supervision:
             out_all = [out]
             for feature_map in self.heads:
                 out_all.append(feature_map)

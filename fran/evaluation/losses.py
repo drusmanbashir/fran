@@ -162,7 +162,11 @@ class DeepSupervisionLoss(pl.LightningModule):
     def forward(self, x, y):
         if not hasattr(self,'weights'):
             self.create_weights(x[0].device)
-        assert isinstance(x, (tuple, list)), "x must be either tuple or list"
+        # assert isinstance(x, (tuple, list)), "x must be either tuple or list"
+        if not isinstance(x, (tuple, list)):
+            print(type(x))
+            print(x.shape)
+
         assert isinstance(y, (tuple, list)), "y must be either tuple or list"
         # loss at full res
 

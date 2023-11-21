@@ -140,6 +140,12 @@ def info_from_filename(fname: str):
         output_dic[key]=val
     return output_dic
 
+def match_filenames(fname1:str,fname2:str):
+    info1=info_from_filename(fname1)
+    info2=info_from_filename(fname2)
+    matched=all([val1==val2 for val1,val2 in zip(info1.values(),info2.values())])
+    return matched
+
 # %%
 if __name__ == "__main__":
     name = "lits_11_20111509.nii"

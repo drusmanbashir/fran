@@ -510,7 +510,7 @@ class NiipairToTorch(DictToAttr):
             pipeline2 = [
                     SITKToNumpy,
                     NumpyToTorch(),
-                    # TransposeSITKImageMask,  
+                    TransposeSITKImageMask,  
                     Unsqueeze,
                     Unsqueeze,
                     ResizeBatch(target_size=sz_dest),

@@ -348,7 +348,10 @@ class Project(DictToAttr):
         return qr
 
     def __repr__(self):
-        s = "Project {0}\n{1}".format(self.project_title, self.dataset_names)
+        try:
+            s = "Project {0}\n{1}".format(self.project_title, self.dataset_names)
+        except:
+            s= "Project {0}\n{1}".format(self.project_title,"Datasets Unknown")
         return s
 
 
