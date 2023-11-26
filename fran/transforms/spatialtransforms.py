@@ -1,4 +1,5 @@
 # %%
+from functools import partial
 from fastcore.transform import Pipeline
 import math
 from fran.utils.image_utils import get_bbox_from_mask

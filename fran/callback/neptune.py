@@ -7,7 +7,7 @@ from paramiko import SSHClient
 import torch.nn.functional as F
 import os
 from pathlib import Path
-from fastai.callback.core import Callback
+from fastai.callback.core import Callback as CBF
 from fastcore.basics import store_attr
 from neptune.types import File
 from torchvision.utils import make_grid
@@ -23,7 +23,6 @@ from fran.utils.config_parsers import *
 
 # from fran.managers.learner_plus import *
 from fran.utils.helpers import *
-from fran.callback.neptune import *
 from fran.callback.tune import *
 from fran.utils.config_parsers import *
 from torchinfo import summary
@@ -71,7 +70,7 @@ def get_neptune_project(proj_defaults, mode):
     Returns project instance based on project title
     """
 
-    project_name, api_token = get_neptune_config(proj_defaults)
+    project_name, api_token = get_neptune_config()
     return neptune.init_project(project=project_name, api_token=api_token, mode=mode)
 
 
@@ -81,7 +80,7 @@ class NeptuneManager(GetAttr):
     def __init__(self, proj_defaults):
         """ """
         store_attr()
-        project_name, api_token = get_neptune_config(proj_defaults)
+        project_name, api_token = get_neptune_config()
         os.environ["NEPTUNE_API_TOKEN"] = api_token
         os.environ["NEPTUNE_PROJECT"] = project_name
         self.df = self.fetch_project_df()
@@ -325,7 +324,7 @@ def normalize(tensr, intensity_percentiles=[0.0, 1.0]):
     return tensr
 
 
-class NeptuneCallback(NeptuneManager, Callback):
+class NeptuneCallback(NeptuneManager, CBF):
     _default = "learn"
 
     order = TrackerCallback.order + 1
@@ -555,7 +554,7 @@ class NeptuneCheckpointCallback(TrackerCallback, NeptuneManager):
         [fn.unlink() for fn in discard]
 
 
-class NeptuneImageGridCallback(Callback):
+class NeptuneImageGridCallback(CBF):
     order = NeptuneCallback.order + 1
 
     def __init__(

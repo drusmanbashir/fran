@@ -1,6 +1,10 @@
 
 # %%
+from collections.abc import Hashable, Mapping
 from typing import Union
+from fastai.data.core import Sequence
+from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
+from monai.transforms.post.dictionary import KeepLargestConnectedComponentd
 import numpy as np
 from torch.functional import Tensor
 import ipdb
@@ -421,6 +425,19 @@ class LabelMapToBinary(Transform):
         _,mask = self.remapper([None,x])
         if self.return_type=='numpy': mask = np.array(mask)
         return mask
+
+
+class KeepLargestConnectedComponentWithMetad(KeepLargestConnectedComponentd):
+    def __init__(self, keys: KeysCollection, applied_labels: Sequence[int] | int | None = None, is_onehot: bool | None = None, independent: bool = True, connectivity: int | None = None, num_components: int = 1, allow_missing_keys: bool = False) -> None:
+         super().__init__(keys, applied_labels, is_onehot, independent, connectivity, num_components, allow_missing_keys)
+
+    def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> dict[Hashable, NdarrayOrTensor]:
+            d = dict(data)
+            for key in self.key_iterator(d):
+                meta=d[key].meta
+                d[key] = self.converter(d[key])
+                d[key].meta = meta
+            return d
 
 
 # %%

@@ -1,3 +1,4 @@
+from fastai.data.core import TfmdDL
 import torch
 from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter, _SingleProcessDataLoaderIter
 _loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
@@ -34,6 +35,18 @@ def img_metadata_collated(batch):
         output = {'image':torch.stack(imgs,0),'org_size':org_sizes}
         return output
 
+
+class TfmdDLKeepBBox(TfmdDL):
+
+    def create_batch(self, batch):
+        imgs=[]
+        masks= []
+        bboxes=[]
+        for i , item in enumerate(batch):
+            imgs.append(item[0])
+            masks.append(item[1])
+            bboxes.append(item[2])
+        return torch.stack(imgs,0),torch.stack(masks,0),bboxes
 
 
 

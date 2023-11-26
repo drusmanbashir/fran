@@ -41,7 +41,6 @@ class IntensityNorm(Transform):
             img = img*self.range+self.min
         return img
             
-
 # %%
 def zero_center(func):
     @wraps(func)
@@ -75,14 +74,15 @@ class ClipCenter(KeepBBoxTransform):
         img = standardize(img,self.mean,self.std)
         return img,mask
 
-class ClipCenterI(Transform):
+class ClipCenterI(ItemTransform):
     def __init__(self,clip_range,mean,std):
         store_attr()
-    def func(self,img):
+    def encodes(self,x):
+        img,mask= x
         clip_func = torch.clip if isinstance(img,Tensor) else np.clip # inference uses numpy
         img = clip_func(img,self.clip_range[0],self.clip_range[1])
         img = standardize(img,self.mean,self.std)
-        return img
+        return img,mask
 
 
 

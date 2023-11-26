@@ -1,7 +1,9 @@
 # %%
 
 from fastai.callback.fp16 import MixedPrecision
+from fastai.callback.schedule import CancelFitException
 from lightning.pytorch.callbacks import Callback
+from fastai.callback.core import Callback as CBF
 import torch.nn.functional as F
 from fastcore.basics import listify, store_attr
 import torch.nn as nn
@@ -33,7 +35,23 @@ class DownsampleMaskForDS(Callback):
             if all([i == 1 for i in s]):
                 output.append(mask)
             else:
-                size = [np.round(ss*aa).astype(int) for ss,aa in zip(s,mask.shape[2:])]
+                size = [round(ss*aa) for ss,aa in zip(s,mask.shape[2:])]
+                mask_downsampled = F.interpolate(mask,size=size,mode="nearest")
+                output.append(mask_downsampled)
+        self.learn.yb = [output]
+        
+class DownsampleMaskForDS_Fastai(CBF):
+    def __init__(self, ds_scales):
+        self.ds_scales = ds_scales
+
+    def before_batch(self):
+        mask = self.learn.y
+        output = []
+        for s in self.ds_scales:
+            if all([i == 1 for i in s]):
+                output.append(mask)
+            else:
+                size = [round(ss*aa) for ss,aa in zip(s,mask.shape[2:])]
                 mask_downsampled = F.interpolate(mask,size=size,mode="nearest")
                 output.append(mask_downsampled)
         self.learn.yb = [output]
@@ -70,7 +88,7 @@ def make_grid_5d_input_numpy_version(a:torch.Tensor,batch_size_to_plot=16):
    
 
     
-class TerminateOnNaNCallback_ub(Callback):
+class TerminateOnNaNCallback_ub(CBF):
     "A `Callback` that terminates training if loss is NaN."
 
     order = -9
@@ -81,7 +99,7 @@ class TerminateOnNaNCallback_ub(Callback):
             raise CancelFitException
 
 # Cell
-class GradientClip(Callback):
+class GradientClip(CBF):
     "Clip norm of gradients"
     order = MixedPrecision.order + 1
 

@@ -234,21 +234,21 @@ class NeptuneImageGridCallback(Callback):
         self,
         classes,
         patch_size,
-        freq=10,
         grid_rows=6,
         imgs_per_batch=4,
         publish_deep_preds=False,
         apply_activation=True,
+        epoch_freq=2 # skip how many epochs.
     ):
         if not isinstance(patch_size, torch.Size):
             patch_size = torch.Size(patch_size)
         self.stride = int(patch_size[0] / imgs_per_batch)
         store_attr()
     #
-    # def on_train_start(self, trainer, pl_module):
-    #     len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
-    #     self.freq = int(len_dl / self.grid_rows)
-    #
+    def on_train_start(self, trainer, pl_module):
+        len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
+        self.freq = int(len_dl / self.grid_rows)
+
     def on_train_epoch_start(self, trainer, pl_module):
         super().on_train_epoch_start(trainer, pl_module)
         self.grid_imgs = []
@@ -269,7 +269,7 @@ class NeptuneImageGridCallback(Callback):
 
     #
     def on_train_epoch_end(self, trainer, pl_module):
-        if trainer.current_epoch % self.freq == 0:
+        if trainer.current_epoch % self.epoch_freq == 0:
             grd_final = []
             for grd, category in zip(
                 [self.grid_imgs, self.grid_preds, self.grid_labels],
@@ -279,6 +279,7 @@ class NeptuneImageGridCallback(Callback):
                 if category == "imgs":
                     grd = normalize(grd)
                 grd_final.append(grd)
+            tr()
             grd = torch.stack(grd_final)
             grd2 = (
                 grd.permute(1, 0, 2, 3, 4)
@@ -291,9 +292,11 @@ class NeptuneImageGridCallback(Callback):
             trainer.logger.experiment["images"].append(File.as_image(grd4))
 
     def img_to_grd(self, batch):
-        imgs = batch[0, :, :: self.stride, :, :].clone()
-        imgs = imgs[:, : self.imgs_per_batch]
-        imgs = imgs.permute(1, 0, 2, 3)  # BxCxHxW
+        # imgs = batch[0, :, :: self.stride, :, :].clone()
+        # imgs = imgs[:, : self.imgs_per_batch]
+        imgs = batch[self.batches, :, :,:, self.slices].clone()
+        # imgs = imgs.permute(1, 0, 2, 3)  # BxCxHxW
+        # tr()
         return imgs
 
     def fix_channels(self, tnsr):
@@ -304,6 +307,14 @@ class NeptuneImageGridCallback(Callback):
         return tnsr
 
     def populate_grid(self, pl_module, batch):
+        def _randomize():
+            n_slices= img.shape[-1]
+            batch_size=img.shape[0]
+            self.slices = [random.randrange(0,n_slices) for i in range(self.imgs_per_batch)]
+            self.batches=[random.randrange(0,batch_size) for i in range(self.imgs_per_batch)]
+
+
+
         img = batch["image"].cpu()
 
         label = batch["label"].cpu()
@@ -317,6 +328,7 @@ class NeptuneImageGridCallback(Callback):
         if self.apply_activation == True:
             pred = F.softmax(pred.to(torch.float32), dim=1)
 
+        _randomize()
         img, label, pred = (
             self.img_to_grd(img),
             self.img_to_grd(label),
@@ -1042,19 +1054,20 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
-    conf['model_params']['arch']='DynUNet'
+    conf['model_params']['arch']='nnUNet'
+    conf['model_params']['lr']=1e-3
 
     Tm = TrainingManager(proj,conf)
 # %%
     bs = 8
-    run_name =None
     run_name ='LIT-153'
+    run_name =None
     compiled=False
     batch_finder=False
     neptune=True
     tags=[]
     description="Baseline all transforms as in previous full data runs"
-    Tm.setup(run_name=run_name,compiled=False,batch_size=bs,devices = [1], epochs=2,batch_finder=batch_finder,neptune=neptune,tags=tags,description=description)
+    Tm.setup(run_name=run_name,compiled=False,batch_size=bs,devices = [1], epochs=400,batch_finder=batch_finder,neptune=neptune,tags=tags,description=description)
     # Tm.D.batch_size=8
     # Tm.N.compiled=compiled
 # %%
@@ -1102,4 +1115,6 @@ if __name__ == "__main__":
 # %%
 
     ImageMaskViewer([img,mask])
+# %%
+
 # %%

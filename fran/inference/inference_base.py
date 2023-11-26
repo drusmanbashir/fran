@@ -25,14 +25,15 @@ from monai.transforms import (
 )
 from monai.transforms.io.array import SaveImage
 from monai.transforms.io.dictionary import LoadImaged, SaveImaged
-from monai.transforms.utility.dictionary import EnsureTyped
+from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
 from monai.utils.enums import GridSamplePadMode
 from fran.data.dataloader import img_metadata_collated
+from fran.transforms.inferencetransforms import KeepLargestConnectedComponentWithMetad
 from fran.utils.dictopts import DictToAttr
 from fran.utils.itk_sitk import *
 from monai.transforms.croppad.dictionary import BoundingRectd, ResizeWithPadOrCropd
 from monai.apps.detection.transforms.array import *
-from monai.transforms.post.dictionary import Activationsd, KeepLargestConnectedComponentd, MeanEnsembled
+from monai.transforms.post.dictionary import Activationsd, KeepLargestConnectedComponentD, KeepLargestConnectedComponentd, MeanEnsembled
 from monai.data.box_utils import *
 from monai.transforms.transform import MapTransform, Transform
 from monai.transforms.spatial.dictionary import Flipd, Orientationd, Resized
@@ -93,7 +94,6 @@ def list_to_chunks(input_list:list,chunksize:int):
 
     chunks = list(il.starmap(slice_list,zip([input_list]*n_lists,inds)))
     return chunks
-
 
 
 
@@ -621,10 +621,15 @@ class EnsemblePredictor():  # SPACING HAS TO BE SAME IN PATCHES
         M = MeanEnsembled(keys=keys,output_key="pred")
         A = Activationsd(keys="pred", softmax=True)
         D = AsDiscreted(keys=['pred'],argmax=True)
-        K = KeepLargestConnectedComponentd(keys=['pred'],independent=False)
+        K = KeepLargestConnectedComponentWithMetad(keys=['pred'],independent=False)
         F = FillBBoxPatchesd()
+        tfms = [M,A,D,K,F]
+
+        if len(self.runs_p)==1:
+            E= EnsureChannelFirstd(keys = 'pred')
+            tfms.insert(1,E)
         # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
-        C  = Compose([M,A,D,K,F])
+        C  = Compose(tfms)
         output= C(patch_bundle)
         return output
 
@@ -637,16 +642,18 @@ if __name__ == "__main__":
 
     run_w='LIT-145'
     run_ps=['LIT-143','LIT-150', 'LIT-149','LIT-153','LIT-161']
-    run_ps=['LIT-150']
+    run_ps=['LITS-630','LITS-633','LITS-632']
 
 # %%
     img_fn2 = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
-    img_fn3 = "/s/xnat_shadow/litq/test/images_ub/"
+    img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns="/s/datasets_bkp/drli_short/images/"
-    imgs= "/s/xnat_shadow/crc/test/images/finalised/crc_CRC014_20190923_CAP1p5.nii.gz"
     img_fn="/s/datasets_bkp/lits_segs_improved/images/lits_6ub.nii"
+    img_fn2 = "/s/xnat_shadow/crc/test/images/finalised/crc_CRC83b_20130726_Abdomen.nii.gz"
+    img_fn3= "/s/xnat_shadow/crc/test/images/finalised/crc_CRC014_20190923_CAP1p5.nii.gz"
     img_fns = listify(img_fn3)
 
+    img_fns=[img_fn,img_fn2,img_fn3]
 
 
     crc_fldr= "/s/xnat_shadow/crc/test/images/finalised/"
@@ -661,9 +668,10 @@ if __name__ == "__main__":
     n=2
     imgs = crc_imgs[n*chunk:(n+1)*chunk]
 # im = [{'image':im} for im in [img_fn,img_fn2]]
+# %%
     En=EnsemblePredictor(proj,run_w,run_ps,debug=True,device=[1])
 
-    preds=En.run(img_fn)
+    preds=En.run(img_fns)
 # %%
     ds=En.ds
     bboxes=En.bboxes
@@ -686,16 +694,6 @@ if __name__ == "__main__":
     batch2= FF(batch)
     im_c2=batch2['image_cropped']
     ImageMaskViewer([im_c[0].permute(2,1,0),im_c2[0]],data_types=['image','mask'])
-# %%
-    ckpt="/s/fran_storage/checkpoints/lits32/Untitled/LIT-161/checkpoints/epoch=451-step=3164.ckpt"
-    std=torch.load(ckpt)
-    print(std.keys())
-    std['hyper_parameters']
-    a=std['datamodule_hyper_parameters']
-
-    proj=a['project']
-    proj.predictions_folder
-    S = SavePatchd(['pred'],p.output_folder,postfix_channel=True)
 # %%
 # %%
     pred = preds_patch[1]
@@ -759,4 +757,101 @@ if __name__ == "__main__":
 
 # %%
 
+    pred_patches = En.patch_prediction(En.ds,En.bboxes)
+    pred_patches.keys()
+    pred_patches2 = En.decollate_patches(pred_patches,En.bboxes)
+    pred_patches2[0]['LITS-630'].shape
+    output= En.postprocess(pred_patches2)
+# %%
+    patch_bundle=pred_patches2
+    keys= En.runs_p
+    E= EnsureChannelFirstd(keys = keys)
+    M = MeanEnsembled(keys=keys,output_key="pred")
+    A = Activationsd(keys="pred", softmax=True)
+    D = AsDiscreted(keys=['pred'],argmax=True)
+    F = FillBBoxPatchesd()
+    K = KeepLargestConnectedComponentWithMetad(keys=['pred'],independent=False)
+    # S = SaveListd(keys = ['pred'],output_dir=En.output_folder,output_postfix='',separate_folder=False)
+    tfms= [E,M,A,D,F,K]
+    C = Compose(tfms)
+    patch_bundle2=C(patch_bundle)
+    pred = patch_bundle2[0]['pred']
+    pred = pred[0]
+# %%
+# %%
+    pb = patch_bundle[0]
+    pb2 = E(pb)
+    pb3 = M(pb2)
+    pb4 = A(pb3)
+    pb5 = D(pb4)
+    pb6 = F(pb5)
+    pb7 = K(pb6)
+    p2 = pb2[keys[0]][0,1]
+    p3 = pb3['pred'][1]
+    p4 = pb4['pred'][1]
+    p5 = pb5['pred'][0]
+    p6 = pb6['pred'][0]
+    p7 = pb7['pred'][0]
+    pred_patches2[0][keys[0]].shape
+
+    pred = pa2[0]['pred']
+    pa3 = Ec(pa2)
+    pa3['pred'].shape
+# %%
+    ImageMaskViewer([p7,pred],data_types=['mask','mask'])
+# %%
+    C = Compose(tfms)
+    pb = patch_bundle[0]
+    pb2 = M(pb)
+
+    p= pb['LITS-630']
+    p2 = pb2['pred']
+    # AC = AddChanneld(keys = 'pred')
+    A = Activationsd(keys="pred", softmax=True)
+    D = AsDiscreted(keys=['pred'],argmax=True)
+    K = KeepLargestConnectedComponentWithMetad(keys=['pred'],independent=False)
+    F = FillBBoxPatchesd()
+    tfms = [MorA,A,D,K,F]
+    # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
+    C  = Compose(tfms)
+# %%
+
+    patch_bundle2=C(patch_bundle)
+
+    patch_bundle2[0]['pred'].shape
+# %%
+    n=0
+    pa  = patch_bundle[n]['LITS-630']
+    pa.shape
+    img = patch_bundle2[n]['image']
+    pred = patch_bundle2[n]['pred']
+    pb = patch_bundle2[n]
+# %%
+
+    pb3 = D(pb)
+    pred2 = pb3['pred']
+# %%
+    ImageMaskViewer([pred,pred2])
+# %%
+    casei = output[0]
+    img = casei['img']
+    pred = casei['pred']
+# %%
+        pa= pred_patches
+        bboxes = En.bboxes
+        num_cases = len(En.ds)
+        keys = En.runs_p
+        keys = En.runs_p
+        output=[]
+        for case_idx in range(num_cases):
+            img_bbox_preds={}
+            for i,run_name in enumerate(keys):
+                pred =  pa[run_name][case_idx]['pred']
+                img_bbox_preds[run_name]= pred
+            img_bbox_preds.update(En.ds[case_idx])
+            img_bbox_preds['bbox']=bboxes[case_idx]
+            output.append( img_bbox_preds)
+
+# %%
+ En.save_pred(patch_bundle2)
 # %%
