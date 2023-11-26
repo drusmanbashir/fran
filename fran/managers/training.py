@@ -250,22 +250,25 @@ class NeptuneImageGridCallback(Callback):
         self.freq = int(len_dl / self.grid_rows)
 
     def on_train_epoch_start(self, trainer, pl_module):
-        super().on_train_epoch_start(trainer, pl_module)
-        self.grid_imgs = []
-        self.grid_preds = []
-        self.grid_labels = []
+        if trainer.current_epoch % self.epoch_freq == 0:
+            super().on_train_epoch_start(trainer, pl_module)
+            self.grid_imgs = []
+            self.grid_preds = []
+            self.grid_labels = []
 
     def on_validation_epoch_start(self, trainer, pl_module):
         self.validation_grid_created = False
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if trainer.global_step % self.freq == 0:
-            self.populate_grid(pl_module, batch)
+        if trainer.current_epoch % self.epoch_freq == 0:
+            if trainer.global_step % self.freq == 0:
+                self.populate_grid(pl_module, batch)
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if self.validation_grid_created == False:
-            self.populate_grid(pl_module, batch)
-            self.validation_grid_created = True
+        if trainer.current_epoch % self.epoch_freq == 0:
+            if self.validation_grid_created == False:
+                self.populate_grid(pl_module, batch)
+                self.validation_grid_created = True
 
     #
     def on_train_epoch_end(self, trainer, pl_module):
@@ -279,7 +282,6 @@ class NeptuneImageGridCallback(Callback):
                 if category == "imgs":
                     grd = normalize(grd)
                 grd_final.append(grd)
-            tr()
             grd = torch.stack(grd_final)
             grd2 = (
                 grd.permute(1, 0, 2, 3, 4)
