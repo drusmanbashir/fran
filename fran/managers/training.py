@@ -786,7 +786,7 @@ class UNetTrainer(LightningModule):
             neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
         }
         self.logger.log_metrics(logger_dict)
-        self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
+        # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
 
     # def predict_step(self, batch, batch_idx, dataloader_idx=0):
