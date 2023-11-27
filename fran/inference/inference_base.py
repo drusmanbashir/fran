@@ -642,7 +642,7 @@ if __name__ == "__main__":
 
     run_w='LIT-145'
     run_ps=['LIT-143','LIT-150', 'LIT-149','LIT-153','LIT-161']
-    run_ps=['LITS-630','LITS-633','LITS-632']
+    run_ps=['LITS-630','LITS-633','LITS-632','LITS-647', 'LITS-650']
 
 # %%
     img_fn2 = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
@@ -662,16 +662,12 @@ if __name__ == "__main__":
     chunk = 10
     import math
     n_imgs = len(crc_imgs)
-# chunks  = math.ceil(n_imgs/chunk)
-# for n in range(1,chunks):
-# %%
-    n=2
-    imgs = crc_imgs[n*chunk:(n+1)*chunk]
+    chunks  = math.ceil(n_imgs/chunk)
+    for n in range(0,chunks):
+        imgs = crc_imgs[n*chunk:(n+1)*chunk]
 # im = [{'image':im} for im in [img_fn,img_fn2]]
-# %%
-    En=EnsemblePredictor(proj,run_w,run_ps,debug=True,device=[1])
-
-    preds=En.run(img_fns)
+        En=EnsemblePredictor(proj,run_w,run_ps,debug=True,device=[1])
+        preds=En.run(imgs)
 # %%
     ds=En.ds
     bboxes=En.bboxes
