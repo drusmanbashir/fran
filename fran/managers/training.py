@@ -736,7 +736,6 @@ class UNetTrainer(LightningModule):
         loss_params,
         max_epochs=1000,
         lr=None,
-        compiled=False,
     ):
         super().__init__()
         self.lr = lr if lr else model_params['lr']
@@ -901,8 +900,6 @@ class UNetTrainer(LightningModule):
                 **self.loss_params,
                 fg_classes=self.model_params["out_channels"] - 1
             )
-        if self.compiled == True:
-            model = torch.compile(model)
         return model, loss_func
 
 
@@ -926,10 +923,11 @@ class TrainingManager():
     def __init__(self, project, configs):
         super().__init__()
         store_attr()
-
     def setup(self,batch_size, run_name=None, cbs=[], devices=1,compiled=False, neptune=True,tags=[],description="",epochs=1000,batch_finder=False):
+
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         strategy= maybe_ddp(devices)
+        self.configs['model_params']['compiled']=compiled
 
         if self.ckpt: self.load_ckpts()
         else:
@@ -949,7 +947,6 @@ class TrainingManager():
                 self.configs["model_params"],
                 self.configs["loss_params"],
                 lr=self.configs["model_params"]["lr"],
-                compiled=compiled,
                 max_epochs=epochs
             )
         if neptune == True:
@@ -971,6 +968,10 @@ class TrainingManager():
             logger = None
 
         self.D.prepare_data()
+
+        if self.configs['model_params']['compiled']==True:
+            self.N = torch.compile(self.N)
+
         self.trainer = Trainer(
             callbacks=cbs,
             accelerator="gpu",
@@ -1015,6 +1016,8 @@ class TrainingManager():
 
 
     def fit(self):
+        # if self.configs['model_params']['compiled']==True:
+        #     self.N = torch.compile(self.)
         self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
 
 

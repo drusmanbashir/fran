@@ -140,16 +140,16 @@ if __name__ == "__main__":
     args.devices=ast.literal_eval(args.devices)
     # args.neptune = True 
     # args.bs=8
-    # args.resume="LIT-184"
-    # args.t = 'short'
-
+    # # args.resume="LIT-184"
+    # args.compiled= True
+    # args.t = 'lits32'
+    #
     # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     # args.bs = 8
     # args.lr = 1e-4
     # args.devices = 2
     # # args.resume=''
     # # args.resume='LITS-456'
-    # args.compiled= True
     # args.update = True
 
 # %%
