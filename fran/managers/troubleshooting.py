@@ -876,7 +876,7 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
-    ckpt=download_neptune_checkpoint(proj,'LIT-161')
+    ckpt=None
 
     Tm = TrainingManager(proj,conf)
 # %%

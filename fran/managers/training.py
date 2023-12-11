@@ -694,6 +694,7 @@ class UNetTrainer(LightningModule):
         return loss, loss_dict
 
     def training_step(self, batch, batch_idx):
+        if not hasattr(self,'batch_size'): self.batch_size=batch['image'].shape[0]
         loss, loss_dict = self._calc_loss(batch)
         self.log_losses(loss_dict, prefix="train")
         return loss
@@ -720,7 +721,7 @@ class UNetTrainer(LightningModule):
         logger_dict = {
             neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
         }
-        self.log_dict(logger_dict,logger=True)
+        self.log_dict(logger_dict,logger=True,batch_size=self.batch_size)
         # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
 
@@ -867,6 +868,7 @@ class TrainingManager():
         if self.ckpt: self.load_ckpts()
         else:
             if batch_finder==True:
+                cbs+=[BatchSizeFinder(mode='binsearch',init_val=8)]
                 DMclass = DataManagerShort
             else: DMclass = DataManager
             self.D = DMclass(
@@ -1002,7 +1004,7 @@ if __name__ == "__main__":
     bs = 8
     run_name ='LIT-153'
     run_name =None
-    compiled=True
+    compiled=False
     batch_finder=False
     neptune=True
     tags=[]
