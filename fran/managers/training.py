@@ -671,6 +671,7 @@ class UNetTrainer(LightningModule):
         loss_params,
         max_epochs=1000,
         lr=None,
+        sync_dist=False
     ):
         super().__init__()
         self.lr = lr if lr else model_params['lr']
@@ -721,7 +722,7 @@ class UNetTrainer(LightningModule):
         logger_dict = {
             neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
         }
-        self.log_dict(logger_dict,logger=True,batch_size=self.batch_size)
+        self.log_dict(logger_dict,logger=True,batch_size=self.batch_size,sync_dist=self.sync_dist)
         # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
 
@@ -864,6 +865,10 @@ class TrainingManager():
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         strategy= maybe_ddp(devices)
         self.configs['model_params']['compiled']=compiled
+        if type(devices)==int and devices>1:
+            sync_dist=True
+        else:
+            sync_dist=False
 
         if self.ckpt: self.load_ckpts()
         else:
@@ -884,7 +889,8 @@ class TrainingManager():
                 self.configs["model_params"],
                 self.configs["loss_params"],
                 lr=self.configs["model_params"]["lr"],
-                max_epochs=epochs
+                max_epochs=epochs,
+                sync_dist=sync_dist
             )
         if neptune == True:
             logger = NeptuneManager(
