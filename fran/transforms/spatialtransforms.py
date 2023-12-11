@@ -18,6 +18,27 @@ tr = ipdb.set_trace
 # %%
 from fran.transforms.basetransforms import *
     
+class PermuteImageMask(RandomizableTransform, MapTransform):
+    def __init__(
+        self,
+        keys,
+        prob: float = 1,
+        do_transform: bool = True,
+    ):
+        MapTransform.__init__(self, keys, False)
+        RandomizableTransform.__init__(self, prob)
+        store_attr()
+
+    def func(self,x):
+        if np.random.rand() < self.p:
+            img,mask=x
+            sequence =(0,)+ tuple(np.random.choice([1,2],size=2,replace=False)   ) #if dim0 is different, this will make pblms
+            img_permuted,mask_permuted = torch.permute(img,dims=sequence),torch.permute(mask,dims=sequence)
+            return img_permuted,mask_permuted
+        else: return x
+
+
+
 
 def one_hot(tnsr,classes, axis, fnc=torch.stack):
         '''

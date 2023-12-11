@@ -25,7 +25,7 @@ from monai.transforms import (
 )
 from monai.transforms.io.array import SaveImage
 from monai.transforms.io.dictionary import LoadImaged, SaveImaged
-from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
+# from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
 from monai.utils.enums import GridSamplePadMode
 from fran.data.dataloader import img_metadata_collated
 from fran.transforms.inferencetransforms import KeepLargestConnectedComponentWithMetad
@@ -33,7 +33,7 @@ from fran.utils.dictopts import DictToAttr
 from fran.utils.itk_sitk import *
 from monai.transforms.croppad.dictionary import BoundingRectd, ResizeWithPadOrCropd
 from monai.apps.detection.transforms.array import *
-from monai.transforms.post.dictionary import Activationsd, KeepLargestConnectedComponentD, KeepLargestConnectedComponentd, MeanEnsembled
+from monai.transforms.post.dictionary import Activationsd, KeepLargestConnectedComponentd, MeanEnsembled
 from monai.data.box_utils import *
 from monai.transforms.transform import MapTransform, Transform
 from monai.transforms.spatial.dictionary import Flipd, Orientationd, Resized
@@ -645,7 +645,7 @@ if __name__ == "__main__":
     run_ps=['LITS-630','LITS-633','LITS-632','LITS-647', 'LITS-650']
 
 # %%
-    img_fn2 = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
+    img_fnq = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns="/s/datasets_bkp/drli_short/images/"
     img_fn="/s/datasets_bkp/lits_segs_improved/images/lits_6ub.nii"
@@ -667,7 +667,7 @@ if __name__ == "__main__":
         imgs = crc_imgs[n*chunk:(n+1)*chunk]
 # im = [{'image':im} for im in [img_fn,img_fn2]]
         En=EnsemblePredictor(proj,run_w,run_ps,debug=True,device=[1])
-        preds=En.run(imgs)
+        preds=En.run(img_fnq)
 # %%
     ds=En.ds
     bboxes=En.bboxes
@@ -833,21 +833,5 @@ if __name__ == "__main__":
     img = casei['img']
     pred = casei['pred']
 # %%
-        pa= pred_patches
-        bboxes = En.bboxes
-        num_cases = len(En.ds)
-        keys = En.runs_p
-        keys = En.runs_p
-        output=[]
-        for case_idx in range(num_cases):
-            img_bbox_preds={}
-            for i,run_name in enumerate(keys):
-                pred =  pa[run_name][case_idx]['pred']
-                img_bbox_preds[run_name]= pred
-            img_bbox_preds.update(En.ds[case_idx])
-            img_bbox_preds['bbox']=bboxes[case_idx]
-            output.append( img_bbox_preds)
-
 # %%
- En.save_pred(patch_bundle2)
 # %%

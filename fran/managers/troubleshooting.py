@@ -670,7 +670,7 @@ class UNetTrainer(LightningModule):
         return loss
 
 
-    def log_metrics(self, loss_dict, prefix):
+    def log_loss(self, loss_dict, prefix):
         metrics = [
             "loss",
             "loss_ce",
@@ -684,7 +684,7 @@ class UNetTrainer(LightningModule):
             neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
         }
         # self.logger.log_metrics(logger_dict)
-        # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
+        self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
     def validation_step(self, batch, batch_idx):
             inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]

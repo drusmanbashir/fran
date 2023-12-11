@@ -1,6 +1,6 @@
 # %%
-from neptune.exceptions import FileNotFound
 import shutil
+from fran.managers.troubleshooting import RandRandGaussianNoised
 from fran.utils.batch_size_scaling import _scale_batch_size2, _reset_dataloaders
 from paramiko import SSHClient
 from copy import deepcopy
@@ -99,71 +99,6 @@ def checkpoint_from_model_id(model_id):
     list_of_files = list(fldr.glob("*"))
     ckpt = max(list_of_files, key=lambda p: p.stat().st_ctime)
     return ckpt
-
-class PermuteImageMask(RandomizableTransform, MapTransform):
-    def __init__(
-        self,
-        keys,
-        prob: float = 1,
-        do_transform: bool = True,
-    ):
-        MapTransform.__init__(self, keys, False)
-        RandomizableTransform.__init__(self, prob)
-        store_attr()
-
-    def func(self,x):
-        if np.random.rand() < self.p:
-            img,mask=x
-            sequence =(0,)+ tuple(np.random.choice([1,2],size=2,replace=False)   ) #if dim0 is different, this will make pblms
-            img_permuted,mask_permuted = torch.permute(img,dims=sequence),torch.permute(mask,dims=sequence)
-            return img_permuted,mask_permuted
-        else: return x
-
-
-
-
-class RandRandGaussianNoised(RandomizableTransform, MapTransform):
-    def __init__(
-        self,
-        keys,
-        std_limits,
-        prob: float = 1,
-        do_transform: bool = True,
-        dtype: DtypeLike = np.float32,
-    ):
-        MapTransform.__init__(self, keys, False)
-        RandomizableTransform.__init__(self, prob)
-        store_attr("std_limits,dtype")
-
-    def randomize(self):
-        super().randomize(None)
-        rand_std = self.R.uniform(low=self.std_limits[0], high=self.std_limits[1])
-        self.rand_gaussian_noise = RandGaussianNoise(
-            mean=0, std=rand_std, prob=1.0, dtype=self.dtype
-        )
-
-    def __call__(
-        self, data: Mapping[Hashable, NdarrayOrTensor]
-    ) -> dict[Hashable, NdarrayOrTensor]:
-        d = dict(data)
-        self.randomize()
-        if not self._do_transform:
-            for key in self.key_iterator(d):
-                d[key] = convert_to_tensor(d[key], track_meta=get_track_meta())
-            return d
-
-        # all the keys share the same random noise
-        first_key: Hashable = self.first_key(d)
-        if first_key == ():
-            for key in self.key_iterator(d):
-                d[key] = convert_to_tensor(d[key], track_meta=get_track_meta())
-            return d
-
-        self.rand_gaussian_noise.randomize(d[first_key])
-        for key in self.key_iterator(d):
-            d[key] = self.rand_gaussian_noise(img=d[key], randomize=False)
-        return d
-
 
 # from fran.managers.base import *
 from fran.utils.helpers import *
@@ -760,19 +695,19 @@ class UNetTrainer(LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, loss_dict = self._calc_loss(batch)
-        self.log_metrics(loss_dict, prefix="train")
+        self.log_losses(loss_dict, prefix="train")
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss, loss_dict = self._calc_loss(batch)
-        self.log_metrics(loss_dict, prefix="val")
+        self.log_losses(loss_dict, prefix="val")
         return loss
 
     def on_fit_start(self):
         self.logger.experiment["sys/name"]=self.project.project_title
         self.logger.experiment.wait()
 
-    def log_metrics(self, loss_dict, prefix):
+    def log_losses(self, loss_dict, prefix):
         metrics = [
             "loss",
             "loss_ce",
@@ -785,7 +720,7 @@ class UNetTrainer(LightningModule):
         logger_dict = {
             neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
         }
-        self.logger.log_metrics(logger_dict)
+        self.log_dict(logger_dict,logger=True)
         # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
 
@@ -1059,7 +994,7 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
-    conf['model_params']['arch']='nnUNet'
+    conf['model_params']['arch']='DynUNet'
     conf['model_params']['lr']=1e-3
 
     Tm = TrainingManager(proj,conf)
@@ -1067,14 +1002,14 @@ if __name__ == "__main__":
     bs = 8
     run_name ='LIT-153'
     run_name =None
-    compiled=False
+    compiled=True
     batch_finder=False
     neptune=True
     tags=[]
     description="Baseline all transforms as in previous full data runs"
-    Tm.setup(run_name=run_name,compiled=False,batch_size=bs,devices = [1], epochs=400,batch_finder=batch_finder,neptune=neptune,tags=tags,description=description)
+    Tm.setup(run_name=run_name,compiled=compiled,batch_size=bs,devices = [1], epochs=400,batch_finder=batch_finder,neptune=neptune,tags=tags,description=description)
     # Tm.D.batch_size=8
-    # Tm.N.compiled=compiled
+    Tm.N.compiled=compiled
 # %%
     Tm.fit()
 # %%
@@ -1122,4 +1057,5 @@ if __name__ == "__main__":
     ImageMaskViewer([img,mask])
 # %%
 
+    Tm.trainer.callback_metrics
 # %%

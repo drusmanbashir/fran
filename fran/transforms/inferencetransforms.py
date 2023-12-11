@@ -428,7 +428,7 @@ class LabelMapToBinary(Transform):
 
 
 class KeepLargestConnectedComponentWithMetad(KeepLargestConnectedComponentd):
-    def __init__(self, keys: KeysCollection, applied_labels: Sequence[int] | int | None = None, is_onehot: bool | None = None, independent: bool = True, connectivity: int | None = None, num_components: int = 1, allow_missing_keys: bool = False) -> None:
+    def __init__(self, keys, applied_labels, is_onehot= None, independent: bool = True, connectivity = None, num_components: int = 1, allow_missing_keys: bool = False) -> None:
          super().__init__(keys, applied_labels, is_onehot, independent, connectivity, num_components, allow_missing_keys)
 
     def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> dict[Hashable, NdarrayOrTensor]:

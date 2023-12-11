@@ -5,6 +5,52 @@ from scipy.ndimage.filters import gaussian_filter
 from fastcore.transform import Transform
 from fran.transforms.basetransforms import *
 
+
+class RandRandGaussianNoised(RandomizableTransform, MapTransform):
+    def __init__(
+        self,
+        keys,
+        std_limits,
+        prob: float = 1,
+        do_transform: bool = True,
+        dtype: DtypeLike = np.float32,
+    ):
+        MapTransform.__init__(self, keys, False)
+        RandomizableTransform.__init__(self, prob)
+        store_attr("std_limits,dtype")
+
+    def randomize(self):
+        super().randomize(None)
+        rand_std = self.R.uniform(low=self.std_limits[0], high=self.std_limits[1])
+        self.rand_gaussian_noise = RandGaussianNoise(
+            mean=0, std=rand_std, prob=1.0, dtype=self.dtype
+        )
+
+    def __call__(
+        self, data: Mapping[Hashable, NdarrayOrTensor]
+    ) -> dict[Hashable, NdarrayOrTensor]:
+        d = dict(data)
+        self.randomize()
+        if not self._do_transform:
+            for key in self.key_iterator(d):
+                d[key] = convert_to_tensor(d[key], track_meta=get_track_meta())
+            return d
+
+        # all the keys share the same random noise
+        first_key: Hashable = self.first_key(d)
+        if first_key == ():
+            for key in self.key_iterator(d):
+                d[key] = convert_to_tensor(d[key], track_meta=get_track_meta())
+            return d
+
+        self.rand_gaussian_noise.randomize(d[first_key])
+        for key in self.key_iterator(d):
+            d[key] = self.rand_gaussian_noise(img=d[key], randomize=False)
+        return d
+
+
+
+
 class _IntensityAugmentation():
 
     def __init__(self, aug_func):
