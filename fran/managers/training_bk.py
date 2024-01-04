@@ -1,6 +1,5 @@
 # %%
 import shutil
-from fran.managers.data import DataManager, DataManagerPatch, DataManagerShort, DataManagerWhole
 from fran.managers.troubleshooting import RandRandGaussianNoised
 from fran.utils.batch_size_scaling import _scale_batch_size2, _reset_dataloaders
 from paramiko import SSHClient
@@ -183,7 +182,7 @@ class NeptuneImageGridCallback(Callback):
     #
     def on_train_start(self, trainer, pl_module):
         len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
-        self.freq = np.minimum(2,int(len_dl / self.grid_rows))
+        self.freq = int(len_dl / self.grid_rows)
 
     def on_train_epoch_start(self, trainer, pl_module):
         if trainer.current_epoch % self.epoch_freq == 0:
@@ -237,18 +236,11 @@ class NeptuneImageGridCallback(Callback):
         # tr()
         return imgs
 
-
     def fix_channels(self, tnsr):
+        if tnsr.shape[1] == 2:
+            tnsr = tnsr[:, 1:, :, :]
         if tnsr.shape[1] == 1:
             tnsr = tnsr.repeat(1, 3, 1, 1)
-        elif tnsr.shape[1] == 2:
-            tnsr = tnsr[:, 1:, :, :]
-        elif tnsr.shape[1]>3:
-            chs = tnsr.shape[1]
-            tnsr = tnsr[:,chs-3::,:]
-        else:
-            #tnsr already in 3d
-            pass
         return tnsr
 
     def populate_grid(self, pl_module, batch):
@@ -526,7 +518,7 @@ class UNetTrainer(LightningModule):
         self.model, self.loss_fnc = self.create_model()
 
     def _calc_loss(self, batch):
-        inputs, target = batch["image"], batch["label"]
+        inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]
         self.pred = self.forward(inputs)
         target_listed = []
         for s in self.deep_supervision_scales:
@@ -552,8 +544,6 @@ class UNetTrainer(LightningModule):
         self.log_losses(loss_dict, prefix="val")
         return loss
 
-    def on_train_epoch_start(self) -> None:
-        return super().on_train_epoch_start()
     def on_fit_start(self):
         self.logger.experiment["sys/name"]=self.project.project_title
         self.logger.experiment.wait()
@@ -721,8 +711,11 @@ class TrainingManager():
 
         if self.ckpt: self.load_ckpts()
         else:
-            DMClass = self.resolve_datamanager(batch_finder,self.configs['dataset_params']['mode'])
-            self.D = DMClass(
+            if batch_finder==True:
+                cbs+=[BatchSizeFinder(mode='binsearch',init_val=8)]
+                DMclass = DataManagerShort
+            else: DMclass = DataManager
+            self.D = DMclass(
                 self.project,
                 dataset_params=self.configs["dataset_params"],
                 transform_factors=self.configs["transform_factors"],
@@ -750,7 +743,6 @@ class TrainingManager():
                     classes=self.configs['model_params']['out_channels'], patch_size=self.configs["dataset_params"]["patch_size"])
 
             cbs+=[N,
-            LearningRateMonitor(logging_interval='epoch'),
             TQDMProgressBar(refresh_rate=3)
               ]
 
@@ -777,26 +769,10 @@ class TrainingManager():
             # strategy='ddp_find_unused_parameters_true'
         )
 
-    def resolve_datamanager(self, batch_finder, mode: str):
-        assert mode in ['patch', 'whole', 'lowres'], "mode must be 'patch', 'whole' or 'lowres'"
-        cbs = []
-        if batch_finder:
-            cbs.append(BatchSizeFinder(mode='binsearch', init_val=8))
-            DMClass = DataManagerShort
-        else:
-            if mode == 'patch':
-                DMClass = DataManagerPatch
-            elif mode == 'whole':
-                DMClass = DataManagerWhole
-            else:
-                raise NotImplementedError("Invalid mode")
-        return DMClass
-
 
     def load_ckpts(self):
+            self.D = DataManager.load_from_checkpoint(self.ckpt,project=self.project)
             state_dict=torch.load(self.ckpt)
-            DMClass = self.resolve_datamanager(False,state_dict['datamodule_hyper_parameters']['dataset_params']['mode'])
-            self.D = DMClass.load_from_checkpoint(self.ckpt,project=self.project)
             lr=state_dict['lr_schedulers'][0]['_last_lr'][0]
 
             try:
@@ -851,11 +827,10 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "litsmc"
+    project_title = "lits32"
     proj = Project(project_title=project_title)
 
     configuration_filename="/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
-    configuration_filename="/s/fran_storage/projects/litsmc/experiment_configs.xlsx"
     configuration_filename=None
 
     conf = ConfigMaker(
@@ -866,20 +841,20 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
-    # conf['model_params']['arch']='DynUNet'
-    # conf['model_params']['lr']=1e-3
+    conf['model_params']['arch']='DynUNet'
+    conf['model_params']['lr']=1e-3
 
     Tm = TrainingManager(proj,conf)
 # %%
     bs = 8
+    run_name ='LIT-153'
     run_name =None
-    run_name ='LITS-709'
     compiled=False
-    batch_finder=False
+    batch_finder=True
     neptune=True
     tags=[]
     description="Baseline all transforms as in previous full data runs"
-    Tm.setup(run_name=run_name,compiled=compiled,batch_size=bs,devices = [0], epochs=500,batch_finder=batch_finder,neptune=neptune,tags=tags,description=description)
+    Tm.setup(run_name=run_name,compiled=compiled,batch_size=bs,devices = [1], epochs=400,batch_finder=batch_finder,neptune=neptune,tags=tags,description=description)
     # Tm.D.batch_size=8
     Tm.N.compiled=compiled
 # %%
@@ -918,6 +893,8 @@ if __name__ == "__main__":
 # %%
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litsmall/spc_080_080_150/images/lits_4.pt"
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litstp/spc_080_080_150/images/lits_4.pt"
+    fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lits32/spc_080_080_150/images/lits_4.pt"
+    fn="/home/ub/datasets/preprocessed/lits32/patches/spc_080_080_150/dim_192_192_128/images/lits_4_1.pt"
     fn2="/home/ub/datasets/preprocessed/lits32/patches/spc_080_080_150/dim_192_192_128/masks/lits_4_1.pt"
     img=torch.load(fn)
     mask=torch.load(fn2)
@@ -928,9 +905,4 @@ if __name__ == "__main__":
 # %%
 
     Tm.trainer.callback_metrics
-# %%
-    ckpt = Path('/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt')
-    kk = torch.load(ckpt)
-    kk.keys()
-    kk['datamodule_hyper_parameters']
 # %%

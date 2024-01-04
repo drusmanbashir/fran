@@ -1,5 +1,6 @@
 
 # %%
+import logging
 from fastcore.basics import  listify, store_attr
 import numpy as np
 import ast
@@ -14,7 +15,7 @@ import cc3d
 
 from fran.utils.image_utils import get_img_mask_from_nii
 from fran.utils.imageviewers import ImageMaskViewer
-from fran.utils.sitk_utils import SITKImageMaskFixer
+from mask_analysis.utils import SITKImageMaskFixer
 from fran.utils.string import drop_digit_suffix
 
 
@@ -382,6 +383,7 @@ def case_analyzer_wrapper(
         outside_value=outside_value,
         percentile_range=percentile_range,
     )
+
     S.load_case()
     case_ = dict()
     case_["case_id"] = S.case_id
@@ -444,7 +446,8 @@ def bboxes_function_version(
 if __name__ == "__main__":
     
     from fran.utils.common import *
-    P = Project(project_title="nodes"); proj_defaults= P
+    P = Project(project_title="litsmc"); proj_defaults= P
+# %%
     fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/nodes/spc_078_078_375/masks/nodes_1_20180805_AXIAL3MMiDose4_thick.pt")
     aa = bboxes_function_version(fn, 0)
     fn2 = fn.str_replace("masks","images")
@@ -503,17 +506,20 @@ if __name__ == "__main__":
     A._bboxes_info["bbox_stats"] = bboxes_all
 # %%
 
+    P = Project(project_title="litsmc"); proj_defaults= P
     M = MultiCaseAnalyzer(proj_defaults, outside_value=0)
 
 # %%
+    debug = True
     M.get_nii_bbox_properties(
-        num_processes=24, debug=False, overwrite=True, multiprocess=True
+        num_processes=1, debug=debug, overwrite=True, multiprocess=True
     )
 
 # %%
 
     M.store_projectwide_properties()
-    M.compute_std_mean_dataset()
+    debug=False
+    M.compute_std_mean_dataset(num_processes=1, debug=debug )
 # %%
     M.global_properties = load_dict(M.global_properties_outfilename)
     percentile_label, intensity_percentile_range=  get_intensity_range(M.global_properties)
@@ -594,3 +600,52 @@ if __name__ == "__main__":
         proj_defaults.stage1_folder / ("cropped/images_nii/masks")
     ).parent / ("bboxes_info")
     save_dict(res, stats_outfilename_kits21)
+
+# %%
+    overwrite = True
+    num_processes = 26
+    multiprocess = True
+    debug=True
+
+# %%
+
+    P = Project(project_title="litsmc"); proj_defaults= P
+    logname = proj_defaults.log_folder / ("log.txt")
+    logging.basicConfig(filename=logname,
+                        filemode='a',
+                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        level=logging.DEBUG)
+# %%
+    M.compute_std_mean_dataset(debug=False)
+    M.case_properties = []
+    if overwrite == True or not M.h5f_fname.exists():
+        get_voxels = True
+        print("Voxels inside bbox will be dumped into: {}".format(M.h5f_fname))
+    else:
+        get_voxels = False
+        print("Voxels file: {0} exists".format(M.h5f_fname))
+    args_list = [
+        [case_tuple, M.project_title, M.outside_value, get_voxels]
+        for case_tuple in M.list_of_raw_cases
+    ]
+# %%
+    M.outputs = multiprocess_multiarg(
+        func=case_analyzer_wrapper,
+        arguments=args_list,
+        num_processes=num_processes,
+        multiprocess=multiprocess,
+        debug=debug,
+        logname = logname
+    )
+# %%
+    h5f = h5py.File(M.h5f_fname, "w") if get_voxels == True else None
+    for output in M.outputs:
+        M.case_properties.append(output["case"])
+        if h5f:
+            h5f.create_dataset(output["case"]["case_id"], data=output["voxels"])
+    if h5f:
+        h5f.close()
+
+
+# %%

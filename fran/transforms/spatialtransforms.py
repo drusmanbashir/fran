@@ -1,4 +1,14 @@
 # %%
+from monai.data.meta_obj import get_track_meta
+from monai.data.meta_tensor import MetaTensor
+from monai.transforms.croppad.array import CenterSpatialCrop, SpatialPad
+from monai.transforms.inverse import InvertibleTransform
+from monai.transforms.transform import LazyTransform
+from typing import Sequence
+from monai.config.type_definitions import KeysCollection, PathLike, SequenceStr
+from monai.utils.enums import LazyAttr, MetaKeys, Method, PytorchPadMode, SpaceKeys, TraceKeys
+
+from monai.config.type_definitions import KeysCollection, PathLike, SequenceStr
 from functools import partial
 from fastcore.transform import Pipeline
 import math
@@ -15,9 +25,138 @@ from torch import sin, cos, pi
 
 tr = ipdb.set_trace
 
-# %%
+
+from monai.transforms.croppad.dictionary import  Padd
 from fran.transforms.basetransforms import *
-    
+ 
+class PadDeficitd(Padd):
+    """
+    Dictionary-based wrapper of :py:class:`monai.transforms.ResizeWithPadOrCrop`.
+
+    This transform is capable of lazy execution. See the :ref:`Lazy Resampling topic<lazy_resampling>`
+    for more information.
+
+    Args:
+        keys: keys of the corresponding items to be transformed.
+            See also: monai.transforms.MapTransform
+        spatial_size: the spatial size of output data after padding or crop.
+            If has non-positive values, the corresponding size of input image will be used (no padding).
+        mode: available modes for numpy array:{``"constant"``, ``"edge"``, ``"linear_ramp"``, ``"maximum"``,
+            ``"mean"``, ``"median"``, ``"minimum"``, ``"reflect"``, ``"symmetric"``, ``"wrap"``, ``"empty"``}
+            available modes for PyTorch Tensor: {``"constant"``, ``"reflect"``, ``"replicate"``, ``"circular"``}.
+            One of the listed string values or a user supplied function. Defaults to ``"constant"``.
+            See also: https://numpy.org/doc/1.18/reference/generated/numpy.pad.html
+            https://pytorch.org/docs/stable/generated/torch.nn.functional.pad.html
+            It also can be a sequence of string, each element corresponds to a key in ``keys``.
+        allow_missing_keys: don't raise exception if key is missing.
+        method: {``"symmetric"``, ``"end"``}
+            Pad image symmetrically on every side or only pad at the end sides. Defaults to ``"symmetric"``.
+        lazy: a flag to indicate whether this transform should execute lazily or not. Defaults to False.
+        pad_kwargs: other arguments for the `np.pad` or `torch.pad` function.
+            note that `np.pad` treats channel dimension as the first dimension.
+
+    """
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        spatial_size ,
+        mode: SequenceStr = PytorchPadMode.CONSTANT,
+        allow_missing_keys: bool = False,
+        method: str = Method.SYMMETRIC,
+        lazy: bool = False,
+        **pad_kwargs,
+    ) -> None:
+        padder=PadDeficit(spatial_size=spatial_size, method=method, **pad_kwargs, lazy=lazy)
+        super().__init__(
+            keys, padder=padder, mode=mode, allow_missing_keys=allow_missing_keys, lazy=lazy  # type: ignore
+        )
+
+
+
+class PadDeficit(InvertibleTransform, LazyTransform):
+    backend = SpatialPad.backend
+
+    def __init__(
+        self,
+        spatial_size,
+        method: str = Method.SYMMETRIC,
+        mode: str = PytorchPadMode.CONSTANT,
+        lazy: bool = False,
+        **pad_kwargs,
+    ):
+
+        LazyTransform.__init__(self, lazy)
+        self.spatial_size,self.method,self.mode = spatial_size,method,mode
+        self.pad_kwargs = pad_kwargs
+
+    @LazyTransform.lazy.setter  # type: ignore
+    def lazy(self, val: bool):
+        self.padder.lazy = val
+        self._lazy = val
+
+    def __call__(  # type: ignore[override]
+        self, img: torch.Tensor, mode = None, lazy  = None, **pad_kwargs
+    ) -> torch.Tensor:
+        """
+        Args:
+            img: data to pad or crop, assuming `img` is channel-first and
+                padding or cropping doesn't apply to the channel dim.
+            mode: available modes for numpy array:{``"constant"``, ``"edge"``, ``"linear_ramp"``, ``"maximum"``,
+                ``"mean"``, ``"median"``, ``"minimum"``, ``"reflect"``, ``"symmetric"``, ``"wrap"``, ``"empty"``}
+                available modes for Pytorch.Tensor: {``"constant"``, ``"reflect"``, ``"replicate"``, ``"circular"``}.
+                One of the listed string values or a user supplied function. Defaults to ``"constant"``.
+                See also: https://numpy.org/doc/1.18/reference/generated/numpy.pad.html
+                https://pytorch.org/docs/stable/generated/torch.nn.functional.pad.html
+            lazy: a flag to override the lazy behaviour for this call, if set. Defaults to None.
+            pad_kwargs: other arguments for the `np.pad` or `torch.pad` function.
+                note that `np.pad` treats channel dimension as the first dimension.
+
+        """
+        lazy_ = self.lazy if lazy is None else lazy
+        spatial_size = [np.maximum(a,b) for a,b in zip( img.meta['spatial_shape'], self.spatial_size)]
+        self.padder = SpatialPad(spatial_size=spatial_size, method=self.method, mode=mode, lazy=lazy, **pad_kwargs)
+        ret = self.padder(img, mode=mode, lazy=lazy_, **pad_kwargs)
+        # remove the individual info and combine
+        if get_track_meta():
+            ret_: MetaTensor = ret  # type: ignore
+            if not lazy_:
+                pad_info = ret_.applied_operations.pop()
+                orig_size = pad_info.get(TraceKeys.ORIG_SIZE)
+                self.push_transform(
+                    ret_, orig_size=orig_size, extra_info={"pad_info": pad_info}, lazy=lazy_
+                )
+            else:
+                pad_info = ret_.pending_operations.pop()
+                orig_size = pad_info.get(TraceKeys.ORIG_SIZE)
+                self.push_transform(
+                    ret_,
+                    orig_size=orig_size,
+                    sp_size=pad_info[LazyAttr.SHAPE],
+                    affine=pad_info[LazyAttr.AFFINE],
+                    extra_info={"pad_info": pad_info},
+                    lazy=lazy_,
+                )
+
+        return ret
+
+    def inverse(self, img: MetaTensor) -> MetaTensor:
+        transform = self.pop_transform(img)
+        return self.inverse_transform(img, transform)
+
+    def inverse_transform(self, img: MetaTensor, transform) -> MetaTensor:
+        # we joined the cropping and padding, so put them back before calling the inverse
+        crop_info = transform[TraceKeys.EXTRA_INFO].pop("crop_info")
+        pad_info = transform[TraceKeys.EXTRA_INFO].pop("pad_info")
+        img.applied_operations.append(crop_info)
+        img.applied_operations.append(pad_info)
+        # first inverse the padder
+        inv = self.padder.inverse(img)
+        # and then inverse the cropper (self)
+        return self.cropper.inverse(inv)
+
+
+   
 class PermuteImageMask(RandomizableTransform, MapTransform):
     def __init__(
         self,
@@ -1195,503 +1334,4 @@ if __name__ == "__main__":
     # %%
     bboxes_pt_fn = proj_defaults.stage1_folder / ("cropped/images_pt/bboxes_info")
     bboxes_nii_fn = proj_defaults.stage1_folder / ("cropped/images_nii/bboxes_info")
-
-# %%
-
-    print(len(train_ds))
-# %%
-    
-# %%
-    i=15
-    a,b,c = train_ds[i]
-
-# %%
-    src_dest_labels= [[0,0],[1,1],[2,2],[3,3]]
-    P = PermuteImageMask(p=0.99)
-    x = P([a,b,c])
-    M = MaskLabelRemap([[0,0],[1,1],[2,2],[3,3]])
-    C = CropImgMask(patch_size=[128,]*3,input_dims = 3)
-    d = C([a,b,c])
-# %%
-# %%
-    ImageMaskViewer([a,b])
-# %%
-    aa,bb = a.unsqueeze(0).unsqueeze(0), b.unsqueeze(0).unsqueeze(0)
-    A  = AffineTrainingTransform3D(p=1.0)
-    C  = CropImgMask(patch_size, 5)
-# %%
-    a2,b2 = A.encodes([aa,bb])
-    a3,b3 = C.encodes([a2,b2])
-
-# %%
-    ImageMaskViewer([a2[0,0], b2[0,0]])
-    ImageMaskViewer([a3[0,0], b3[0,0]])
-
-# %%
-    img,mask,bboxes = a,b,c
-    expand_factor = np.minimum(np.random.uniform(),G.grow_max)
-    print(expand_factor)
-    bbox_all = bboxes['bbox_stats']
-    tumour_bb = [a for a in bbox_all if a['tissue_type']=='tumour'][0]['bounding_boxes'][1]
-    lins=[]
-    for sh in img.shape:
-        lins.append(np.linspace(-1,1,sh))
-# %%
-
-
-# %%
-    lins_out = []
-    for slices,linss in zip(tumour_bb,lins):
-        lins_out.append (expand_lesion(slices.start,slices.stop,linss, expand_factor=expand_factor))
-# %%
-    plt.subplot(221)
-    for ind in range(3):
-       axx = plt.subplot(1,3,ind+1)
-       axx.plot(lins[0],lins[0],'k.')
-       axx.plot(lins[ind],lins_out[ind]) 
-# %%
-
-    ImageMaskViewer([a,x[0,0]])
-# %%
-
-    img,mask,bboxes= a,b,c
-# %%
-    # try:
-
-    bbox_all = bboxes['bbox_stats']
-    tumour_bb = [a for a in bbox_all if a['tissue_type']=='tumour'][0]['bounding_boxes'][1]
-    # except IndexError:
-    #     return img,mask,bboxes
-    lins=[]
-    for sh in img.shape:
-        lins.append(torch.linspace(-1,1,sh))
-# %%
-    lins_out = []
-    for slices,linss in zip(tumour_bb,lins):
-        slices, linss = tumour_bb[0],lins[0]
-# %%
-    # lins_out.append (expand_lesion(slices.start,slices.stop,linss, expand_factor=expand_factor))
-    all_locs = linss.numpy()
-    lesion_start_ind,lesion_end_ind = slices.start,slices.stop
-# %%
-
-    expand_factor= np.random.uniform(1,1.5)
-    expand_factor=1.5
-    num_inds = len(all_locs)
-    lesion_start_x = all_locs[lesion_start_ind]
-    lesion_end_x = all_locs[lesion_end_ind-1]
-    lesion_span = lesion_end_ind-lesion_start_ind
-    lesion_xy_len= lesion_end_x-lesion_start_x
-    lesion_center = (lesion_end_x+lesion_start_x)/2
-    lesion_to_total_frac = lesion_span/len(all_locs)
-    lesion_locs_shifted = [lesion_start_x-lesion_center, lesion_end_x-lesion_center]
-    lesion_start_y = expand_factor*lesion_locs_shifted[0]+lesion_center
-    lesion_end_y = expand_factor*lesion_locs_shifted[1]+lesion_center
-    smooth_before_ind= np.maximum(0,int(lesion_start_ind-lesion_span))
-    smooth_before_x = all_locs[smooth_before_ind]
-    smooth_after_ind = np.minimum(num_inds, int(lesion_end_ind+lesion_span))
-    smooth_after_x = all_locs[smooth_after_ind]
-    smooth_before_len = np.minimum(lesion_span,lesion_start_ind)
-    smooth_after_len = np.minimum(lesion_span,lesion_start_ind)
-
-
-
-
-
-# %%
-    # if lesion_to_total_frac>0.5:
-    #     return all_locs
-    # if lesion_to_total_frac> 0.4:
-    #     expand_factor = np.minimum(0.2,expand_factor)
-    # if lesion_to_total_frac> 0.3:
-    #     expand_factor = np.minimum(0.3,expand_factor)
-    # if lesion_to_total_frac> 0.2:
-    #     expand_factor = np.minimum(0.4,expand_factor)
-    knots = [-1.0,smooth_before_x,lesion_start_x,lesion_end_x,smooth_after_x,1.0]
-    seg_y_lims = [-1,smooth_before_x,lesion_start_y,lesion_end_y,smooth_after_x,1.0]
-    seg_lengths=[smooth_before_ind,lesion_start_ind-smooth_before_ind, lesion_end_ind-lesion_start_ind,smooth_after_ind-lesion_end_ind,num_inds-smooth_after_ind]
-    
-    y0 = torch.linspace(seg_y_lims[0],seg_y_lims[1],int(seg_lengths[0]+1))[:-1]
-    y1 =  torch.linspace(seg_y_lims[1],seg_y_lims[2],int(seg_lengths[1]+1))[:-1]
-    y2 =  torch.linspace(seg_y_lims[2],seg_y_lims[3],int(seg_lengths[2]+1))[:-1]
-    y3 =   torch.linspace(seg_y_lims[3],seg_y_lims[4],int(seg_lengths[3]+1))[:-1]
-    y4 =   torch.linspace(seg_y_lims[4],seg_y_lims[5],int(seg_lengths[4]))
-    y = torch.cat([y0,y1,y2,y3,y4])
-    plt.plot(np.linspace(-1,1,64),y)
-# %%
-    # k1 = mu_1*lesion_end_x
-    # k2 = smooth_out_after_loc
-    expand_by = int(expand_factor*lesion_span)
-    lesion_span_new= int(lesion_span+ np.minimum(expand_by,lesion_start_ind)+np.minimum(len(all_locs)-lesion_end_x,expand_by))
-    smooth_out_zone=expand_by
-    smooth_out_before_ind= int(lesion_start_ind-expand_by-smooth_out_zone)
-    truncate_before = int(np.minimum(lesion_start_ind-expand_by-smooth_out_zone,0))
-    truncate_after = np.minimum(0,len(all_locs)-5-(lesion_end_ind + expand_by+smooth_out_zone))# shorten the after_zone if it exceeds total image dim
-    smooth_out_after_ind = (int(lesion_end_ind + expand_by+smooth_out_zone+truncate_after))
-    smooth_out_before_loc = all_locs[smooth_out_before_ind]
-    smooth_out_after_loc = all_locs[smooth_out_after_ind-1]
-
-    smooth_out_before_zone = torch.linspace(smooth_out_before_loc,lesion_start_x,np.maximum(0,smooth_out_zone+1+truncate_before))
-    smooth_out_after_zone = torch.linspace(lesion_end_x,smooth_out_after_loc,smooth_out_zone+1+truncate_after)
-    lesion_new_locs = torch.linspace(lesion_start_x,lesion_end_x,lesion_span_new)
-    lesion_segment_new = torch.cat([smooth_out_before_zone[:-1],lesion_new_locs,smooth_out_after_zone[1:]])
-    all_locs_modified = all_locs.clone()
-    all_locs_modified[smooth_out_before_ind:smooth_out_after_ind]= lesion_segment_new
-
-# %%
-    x ,y, z= torch.meshgrid(*lins_out)
-    expanded_mesh = torch.stack([z,y,x],3)
-    expanded_mesh.unsqueeze_(0)
-    img_= img.unsqueeze(0).unsqueeze(0)
-    img_warped= F.grid_sample(img_,expanded_mesh)
-    mask_ = mask.unsqueeze(0).unsqueeze(0)
-
-    mask_warped= F.grid_sample(mask_.float(),expanded_mesh)
-    img,mask = img_warped.squeeze(0).squeeze(0),mask.squeeze(0).squeeze(0)
-
-# %%
-    img,mask,bboxes = a,b,c
-    expand_factor = np.minimum(np.random.uniform(),G.grow_max)
-    print(expand_factor)
-    bbox_all = bboxes['bbox_stats']
-# %%
-
-    lins=[]
-    for sh in img.shape:
-        lins.append(torch.linspace(-1,1,sh))
-    x,y,z = np.meshgrid(lins[2],lins[1],lins[0])
-
-# %%
-
-    ax = plt.figure().add_subplot(projection='3d')
-
-    ax.quiver(x, y, z, x, y, z, length=0.1, normalize=False)
-    plt.show()
-# %%
-#     try:
-#         tumour_bb = [a for a in bbox_all if a['tissue_type']=='tumour'][0]['bounding_boxes'][1]
-#     except IndexError:
-#         return img,mask,bboxes
-#     lins=[]
-#     for sh in img.shape:
-#         lins.append(torch.linspace(-1,1,sh))
-#     lins_out = []
-#     for slices,linss in zip(tumour_bb,lins):
-#     slices = tumour_bb[0]
-#     linss = lins[0]
-#
-# # %%
-#         lins_out.append (expand_lesion(slices.start,slices.stop,linss, expand_factor=0.8))
-#     x ,y, z= torch.meshgrid(*lins_out)
-#     expanded_mesh = torch.stack([z,y,x],3)
-#     expanded_mesh.unsqueeze_(0)
-#     img_= img.unsqueeze(0).unsqueeze(0)
-#     img_warped= F.grid_sample(img_,expanded_mesh)
-#
-# # %%
-#     lesion_start_ind = slices.start
-#     lesion_end_ind = slices.stop
-#     all_locs = linss
-# # %%
-#     lesion_start_loc = all_locs[lesion_start_ind]
-#     lesion_end_loc = all_locs[lesion_end_ind-1]
-#     lesion_span = lesion_end_ind-lesion_start_ind
-#     lesion_to_total_frac = lesion_span/all_locs.numel()
-# # %%
-#     if lesion_to_total_frac>0.5:
-#         return all_locs
-#     if lesion_to_total_frac> 0.4:
-#         expand_factor = np.minimum(0.2,expand_factor)
-#     if lesion_to_total_frac> 0.3:
-#         expand_factor = np.minimum(0.3,expand_factor)
-#     if lesion_to_total_frac> 0.2:
-#         expand_factor = np.minimum(0.4,expand_factor)
-# %%
-    expand_by = int(expand_factor*lesion_span)
-    lesion_span_new= int(lesion_span+ np.minimum(expand_by,lesion_start_ind)+np.minimum(all_locs.numel()-lesion_end_x,expand_by))
-    lesion_center = int((lesion_start_ind+lesion_end_ind)/2)
-    smooth_out_zone=expand_by
-    start_gap = 0 if lesion_start_ind-expand_by<7 else 5
-    smooth_out_before_ind= int(np.maximum(lesion_start_ind-expand_by-smooth_out_zone,start_gap))
-    truncate_before = int(np.minimum(lesion_start_ind-expand_by-smooth_out_zone-5,0))
-    truncate_after = np.minimum(0,all_locs.numel()-5-(lesion_end_ind + expand_by+smooth_out_zone))# shorten the after_zone if it exceeds total image dim
-    smooth_out_after_ind = (int(lesion_end_ind + expand_by+smooth_out_zone+truncate_after))
-    smooth_out_before_loc = all_locs[smooth_out_before_ind]
-    smooth_out_after_loc = all_locs[smooth_out_after_ind-1]
-
-    smooth_out_before_zone = torch.linspace(smooth_out_before_loc,lesion_start_x,np.maximum(0,smooth_out_zone+1+truncate_before))
-    smooth_out_after_zone = torch.linspace(lesion_end_x,smooth_out_after_loc,smooth_out_zone+1+truncate_after)
-    lesion_new_locs = torch.linspace(lesion_start_x,lesion_end_x,lesion_span_new)
-    lesion_segment_new = torch.cat([smooth_out_before_zone[:-1],lesion_new_locs,smooth_out_after_zone[1:]])
-    all_locs_modified = all_locs.clone()
-    all_locs_modified[smooth_out_before_ind:smooth_out_after_ind]= lesion_segment_new
-# %%
-    lesion_start_ind
-    lesion_end_ind
-    lesion_center = int((lesion_end_ind+lesion_start_ind)/2)
-# %%
-    lesion_start_x
-    lesion_end_x
-    smooth_out_before_loc
-    smooth_out_after_loc
-# %%
-    plt.plot(all_locs_modified)
-# %%
-    ImageMaskViewer([a,x[0,0]])
-# %%
-    FF = FakeTumourPaste.from_caseids(train_list, proj_defaults.stage0_folder/"tumour_only",p=0.99,scale_max=1.5)
-# %%
-    ind = 10
-    a, b, c = train_ds[ind]
-    # x,y,z = FF.encodes([a,b,c])
-# %%
-    b[b!=2]=0
-    bb=    get_bbox_from_mask(b)[0]
-    ImageMaskViewer([a[bb],a[bb]])
-# %%
-
-    
-# %%
-        # for a ,b in zip(tmr_center, tmr_final_size):
-        #     print()
-        #     tumour_slcs.append(slice(int(a-np.floor(b/2)),int(a+np.ceil(b/2))))
-        #
-        # mask_fullsize= tmr_fullsize= torch.zeros(img_shape)
-        # tmr_fullsize[tumour_slcs]=tmr_final
-        # tmr_backup = tmr_fullsize.clone()
-        # mask_fullsize[tumour_slcs]=mask_final
-        # inds_tmr = torch.where(mask_fullsize==self.label_index)
-        #
-# %%
-    ImageMaskViewer([x,y])
-# %%
-    img,mask,bbox = a,b,c
-    indx= np.random.randint(0,FF.len)
-    tumour_fn = FF.fake_tumour_fns[indx]
-# %%
-    im= torch.load(tumour_fn)
-    tmr0,msk0 = im['img'], im['mask']
-    tmr,msk = FF.AffineTransform([tmr0,msk0])
-    print(tmr0.shape,tmr.shape)
-# %%
-    ImageMaskViewer([tmr0,msk0])
-    ImageMaskViewer([a,b])
-# %%
-    bbox=c
-    tumour_size = tmr.shape
-    print(tumour_size)
-    bb = bbox['bbox_stats']
-    bb_k = [b for b in bb if b['tissue_type']=="kidney"][0]
-    kidneys = len(bb_k['voxel_counts'])-1
-    ind = 1
-    bbox = bb_k['bounding_boxes'][ind]
-    cent= bb_k['centroids'][ind]
-# %%
-
-    # folder = proj_defaults.stage1_folder/"patches_48_128_128"
-    # train_ds = ImageMaskBBoxDataset(proj_defaults,train_list,[0,1,2])
-    a, b, c = train_ds[203]
-    ImageMaskViewer([a,b])
-# %%
-    a2 = a[25,60:100,40:80]
-    a2.unsqueeze_(0).unsqueeze_(0)
-    plt.imshow(a2[0,0])
-    _,_,y_dim,x_dim= a2.shape
-# %%
-    def distance(p1,p2):
-        d = (p1-p2)**2
-        d = torch.sqrt(d.sum())
-        return d
-    def weight_curve(d,alpha):
-        return 1-d**alpha
-    def weight_fold(d,alpha):
-        return alpha/(d+alpha)
-
-# %%
-######################################################################################
-# %% [markdown]
-## Elastic deforms
-# %%
-    x_dim = a2.shape[-1]
-    aa = torch.linspace(-1,1,int(x_dim))
-    x,y = torch.meshgrid(aa,aa)
-    base_mesh = torch.stack([y,x],2)
-    base_mesh.unsqueeze_(0)
-
-# %%
-######################################################################################
-# %% [markdown]
-## Splines
-# %%
-    c=4
-    locs = torch.randint(0,x_dim,[c,2])
-    locs
-######################################################################################
-# %% [markdown]
-## Random elastic deformation
-# %%
-
-    def get_gaussian_kernel(kernel_size=3, sigma=2, channels=3):
-        # Create a x, y coordinate grid of shape (kernel_size, kernel_size, 2)
-        x_coord = torch.arange(kernel_size)
-        x_grid = x_coord.repeat(kernel_size).view(kernel_size, kernel_size)
-        y_grid = x_grid.t()
-        xy_grid = torch.stack([x_grid, y_grid], dim=-1).float()
-
-        mean = (kernel_size - 1)/2.
-        variance = sigma**2.
-
-        # Calculate the 2-dimensional gaussian kernel which is
-        # the product of two gaussian distributions for two different
-        # variables (in this case called x and y)
-        gaussian_kernel = (1./(2.*math.pi*variance)) *\
-                          torch.exp(
-                              -torch.sum((xy_grid - mean)**2., dim=-1) /\
-                              (2*variance)
-                          )
-        gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
-        return gaussian_kernel
-# %%
-    kern = get_gaussian_kernel(channels=1,sigma=18)
-    kern= kern.unsqueeze(0).unsqueeze(0)
-    conv = torch.nn.Conv2d(1,1,kernel_size=3,padding='same',bias=None)
-    conv.weight.data=kern
-
-
-# %%
-    scale=1
-    x_delta = torch.rand(1,1,128,128)*2-1
-    y_delta = torch.rand(1,1,128,128)*2-1
-    x_delta2 = conv(x_delta*scale)
-    y_delta2 = conv(y_delta*scale)
-    elast = torch.stack([x_delta2.squeeze(0),y_delta2.squeeze(0)],dim=-1)
-    elast.shape
-# %%
-    outp2 = F.grid_sample(a,base_mesh+elast).detach().cpu()
-    plt.imshow(outp2[0,0])
-# %%
-    ff_rand = torch.rand(base_mesh.shape)*2-1
-# %%
-# %%
-
-
-# %%
-    
-
-    alpha = 0.8
-    dists  = torch.zeros(y.shape)
-# %%
-    p_rand = base_mesh[0,20,30,:]
-    v = torch.tensor([0.12,0.73])
-    v_normed = v/v.norm()
-    line = p_rand-v
-    for i in range(base_mesh.shape[1]):
-        for j in range(base_mesh.shape[2]):
-              p_ij = base_mesh[0,i,j,:]
-              dists[i,j] =               ((p_ij-p_rand)-(torch.dot(p_ij-p_rand,v_normed))*v_normed).norm()
-
-# %%
-    weights = weight_curve(dists,alpha)
-    weights2 = weight_fold(dists,alpha)
-
-# %%
-    ff_def = base_mesh.clone()
-    for i in range(base_mesh.shape[1]):
-# %%
-        for j in range(base_mesh.shape[2]):
-            ff_def[0,i,j,:] = base_mesh[0,i,j,:]+v*weights[i,j]
-# %%
-# %%
-    outp = F.grid_sample(a,base_mesh)
-    plt.imshow(outp[0,0])
-# %%
-    ff_def = base_mesh.clone()
-    for i in range(base_mesh.shape[1]):
-        for j in range(base_mesh.shape[2]):
-            ff_def[0,i,j,:] = base_mesh[0,i,j,:]+v*weights2[i,j]
-# %%
-    outp2 = F.grid_sample(a,ff_def)
-    plt.imshow(outp2[0,0])
-# %%
-    plt.figure()
-# %%
-    img,mask = a.clone(), b.clone()
-
-    img.unsqueeze_(0).unsqueeze_(0)
-    mask.unsqueeze_(0).unsqueeze_(0)
-
-# %%
-    plt.quiver(base_mesh[0,:,:,0],base_mesh[0,:,:,1],ff_def[0,:,:,0],ff_def[0,:,:,1])
-# %%
-
-    sz = [56,56,56]
-    img = F.interpolate(img, size=sz, mode='trilinear')
-    mask = F.interpolate(mask, size=sz, mode='nearest')
-    ImageMaskViewer([img[0,0],mask[0,0]])
-# %%
-    
-# %%
-    ImageMaskViewer([x,y])
-# %%
-    CC = Contextual2DArrays(ch=1)
-    # %%
-    # %%
-    n = 10
-    stride=[1,1,1]
-    G = GetLabelCentroids(crop_center=['kidney'])
-    E = ExpandAndPadNpArray(patch_size)
-    # %%
-
-    # %%
-    T = TrainingAugmentations(augs=[flip_random], p=[0.99])
-# %%
-    stride=[1,1,1]
-    patch_size = [64, 128,128]
-    ET = ExpandPadAndCenterTorch(patch_size=patch_size, expand_by=0.3, stride=stride)
-    dest_labels = {"kidney": 1, "tumour": 1, "cyst": 1}
-    S =MaskLabelRemap(src_dest_labels)
-    G = GetLabelCentroids('kidney')
-
-# %%
-    E = ExpandAndPadTorch(patch_size=patch_size, expand_by=.3, stride=stride, mode='constant')
-    xx,yy,zz = train_ds[0]
-    x = G([xx,yy,zz])
-    x = E(x)
-
-# %%
-    C = CenteredPatch(patch_size=patch_size,
-                                   expand_by=0,
-                                   random_shift=0.9,
-                                   random_sample=0,
-                                   stride=stride)
-
-# %%
-    x = C(x)
-
-    ImageMaskViewer([x[0],x[1]])
-
-# %%
-
-
-    x = ET([xx,yy,zz])
-    P = Pipeline([G,ET])
-    x = P([xx,yy,zz])
-# %%
-    xa = x[0],x[1] 
-# %%
-# %%
-    stride = [5, 4, 4]
-    C = CenteredPatch2(patch_size=patch_size, expand_by=0.3, random_shift=0,stride_max=[2,2,2])
-    M = PermuteImageMaskBBox()
-# %%
-    i = 26
-    xx,yy,zz = train_ds[i]
-# %%
-# %%
-    x,y,z = P([xx,yy,zz])
-    xa,ya,za = M([x,y,z])
-    x = C.encodes([xa,ya,za])
-    ImageMaskViewer(x)
-
-# %%
 

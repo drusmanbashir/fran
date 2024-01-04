@@ -1,5 +1,5 @@
-
 # %%
+import logging
 import collections
 import pprint
 import re
@@ -44,7 +44,7 @@ def get_pbar():
         if get_ipython().__class__.__name__ == 'TerminalInteractiveShell' :
             return tqdm_ip
         else:
-            return  tqdm_nb
+            return  tqdm_ip
 
 
 pbar=get_pbar()
@@ -161,12 +161,20 @@ def get_list_input(text:str="",fnc=str_to_list_float):
     str_list = input (text)
     return fnc(str_list)
 
-def multiprocess_multiarg(func,arguments, num_processes=8,multiprocess=True,debug=False,progress_bar=True):
+def multiprocess_multiarg(func,arguments, num_processes=8,multiprocess=True,debug=False,progress_bar=True, logname = None):
     results=[]
     if multiprocess==False or debug==True:
         for res in pbar(arguments,total=len(arguments)):
             if debug==True:
-                tr()
+                if logname:
+
+                    logging.basicConfig(filename=logname,
+                                        filemode='w',
+                                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                                        datefmt='%H:%M:%S',
+                                        level=logging.DEBUG)
+                    logging.info(" Processing {} .".format(res))
+                # tr()
             results.append(func(*res,))
     else:
         p = Pool(num_processes)

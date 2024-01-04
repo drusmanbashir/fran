@@ -44,12 +44,15 @@ def infer_dataset_name(filename):
 
 
 def strip_extension(fname: str):
-    exts = ".npy .nii.gz .nii .nrrd .pt".split(" ")
+    exts = ".mrk.json .npy .nii.gz .nii .nrrd .pt".split(" ")
     for e in exts:
         pat = r"{}$".format(e)
         fname_stripped = re.sub(pat, "", fname)
         if fname_stripped != fname:
             return fname_stripped
+    fname_stripped = fname.split(".")[0]
+    return fname_stripped
+        
 
 
 def strip_slicer_strings(fname: str):

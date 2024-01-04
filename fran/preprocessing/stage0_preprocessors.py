@@ -15,7 +15,7 @@ from fran.transforms.totensor import ToTensorImgMask
 from fran.utils.image_utils import *
 from fran.utils.imageviewers import *
 from fran.utils.helpers import *
-from fran.utils.sitk_utils import *
+from mask_analysis.utils import *
 import numpy as np
 
 # from fastai.vision.all import *
@@ -242,7 +242,7 @@ class ResampleDatasetniftiToTorch:
             self._store_resampled_dataset_properties()
         else:
             print(
-                "Since some files skipped, dataset stats are not being stored. Run self.get_tensor_folder_stats separately"
+                "Since some files skipped, dataset stats are not being stored. Run ResampleDatasetniftiToTorch.get_tensor_folder_stats separately"
             )
         update_resampling_configs(self.spacings, self.resampling_output_folder)
 
@@ -424,7 +424,7 @@ class NumpyToTorch(ItemTransform):
     def encodes(self, x):
         img, mask = x
         img = torch.tensor(img,dtype = self.img_dtype)
-        if mask.dtype==np.uint16: # won't convert to tensor
+        if mask.dtype!=np.uint8 :
             mask =mask.astype(np.uint8)
         mask= torch.tensor(mask,dtype=self.mask_dtype)
         return img,mask

@@ -449,14 +449,15 @@ class Datasource(GetAttr):
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="litsg")
-    ds = "/s/xnat_shadow/litq"
+    P = Project(project_title="litsmc")
+    P.delete()
+    ds = "/s/xnat_shadow/nodes"
     ds2="/s/datasets_bkp/litqmall"
     ds3="/s/datasets_bkp/drli"
     ds4="/s/datasets_bkp/lits_segs_improved/"
     ds5="/s/datasets_bkp/drli_short/"
     # P.create_project([ds,ds2,ds3,ds4])
-    P.create_project([ds5])
+    P.create_project([ds])
     P.create_folds()
     len(P.raw_data_imgs)
     len(P)

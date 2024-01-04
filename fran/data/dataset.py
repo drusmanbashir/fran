@@ -64,6 +64,48 @@ def maybe_set_property(func):
         return inner
             
 
+class SimpleDatasetPT(Dataset):
+    def __init__(self, parent_folder, fnames,transform=None) -> None:
+        '''
+        takes files_list, converts to pt format, and creates img/mask pair dataset
+        fnames: files_list in nifti format
+        '''
+        
+        super().__init__()
+        fnames = [strip_extension(fn) for fn in fnames]
+        fnames = [fn+".pt" for fn in fnames]
+        fnames = fnames
+        images_fldr = parent_folder/("images")
+        masks_fldr = parent_folder/("masks")
+        imgs= list(images_fldr.glob("*"))
+        masks =  list(masks_fldr.glob("*"))
+        self.img_mask_pairs= []
+        for fn in fnames:
+            fn = Path(fn)
+            img_mask_pair = [find_matching_fn(fn,imgs), find_matching_fn(fn,masks)]
+            self.img_mask_pairs.append(img_mask_pair)
+
+        self.transform=transform
+    def __len__(self): return len(self.img_mask_pairs) 
+
+    #
+    # def create_metatensor(self,fn):
+    #     t = torch.load(fn)
+    #     meta = {'filename':fn}
+    #     tnsr = MetaTensor(t,meta=meta)
+    #     return tnsr
+    #
+
+    def __getitem__(self, ind) :
+         img_fn , label_fn = self.img_mask_pairs[ind]
+         # img = self.create_metatensor(img_fn)
+         # label = self.create_metatensor(label_fn)
+         dici = {'image':img_fn , 'label':label_fn}
+         if self.transform:
+            dici = self.transform(dici)
+         return dici
+
+
 class ImageMaskBBoxDataset(Dataset):
     """
     takes a list of case_ids and returns bboxes image and label
@@ -293,7 +335,6 @@ class CropImgMaskd(MapTransform):
         return img, label
 
 
-# %%
 class Affine3D(MapTransform):
     '''
     to-do: verify if nearestneighbour method preserves multiple mask labels
@@ -521,11 +562,9 @@ if __name__ == "__main__":
 ## Versus torch resize
 # %%
     resize_tensor
-
-
+# %%
+    fn = fnames[0]
+# %%
 # Create geometries and projector.
 # %%
-    a = a.numpy()
-    b = b.numpy()
-    np.save("/home/ub/code/aug/im_liver.npy",a)
-    np.save("/home/ub/code/aug/ma_liver.npy",b)
+# %%
