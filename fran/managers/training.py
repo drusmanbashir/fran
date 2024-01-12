@@ -195,9 +195,18 @@ class NeptuneImageGridCallback(Callback):
     def on_validation_epoch_start(self, trainer, pl_module):
         self.validation_grid_created = False
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+    def on_train_batch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", batch: Any, batch_idx: int) -> None:
         if trainer.current_epoch % self.epoch_freq == 0:
             if trainer.global_step % self.freq == 0:
+                trainer.store_preds=True
+            else:
+                trainer.store_preds=False
+        return super().on_train_batch_start(trainer, pl_module, batch, batch_idx)
+
+
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+            if trainer.store_preds==True:
                 self.populate_grid(pl_module, batch)
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
@@ -229,27 +238,6 @@ class NeptuneImageGridCallback(Callback):
             grd4 = np.array(grd4)
             trainer.logger.experiment["images"].append(File.as_image(grd4))
 
-    def img_to_grd(self, batch):
-        # imgs = batch[0, :, :: self.stride, :, :].clone()
-        # imgs = imgs[:, : self.imgs_per_batch]
-        imgs = batch[self.batches, :, :,:, self.slices].clone()
-        # imgs = imgs.permute(1, 0, 2, 3)  # BxCxHxW
-        # tr()
-        return imgs
-
-
-    def fix_channels(self, tnsr):
-        if tnsr.shape[1] == 1:
-            tnsr = tnsr.repeat(1, 3, 1, 1)
-        elif tnsr.shape[1] == 2:
-            tnsr = tnsr[:, 1:, :, :]
-        elif tnsr.shape[1]>3:
-            chs = tnsr.shape[1]
-            tnsr = tnsr[:,chs-3::,:]
-        else:
-            #tnsr already in 3d
-            pass
-        return tnsr
 
     def populate_grid(self, pl_module, batch):
         def _randomize():
@@ -265,13 +253,18 @@ class NeptuneImageGridCallback(Callback):
         label = batch["label"].cpu()
         label = label.squeeze(1)
         label = one_hot(label, self.classes, axis=1)
+        img = img.cpu()
+        # pred = torch.rand(img.shape,device='cuda')
+        # pred.unsqueeze_(0) # temporary hack)
+        # pred = pred.cpu()
         pred = pl_module.pred
         if isinstance(pred, Union[list,tuple]):
-            pred = pred[0]
-        pred = pred.cpu()
+            pred  = pred[0]
+        elif pred.dim()==img.dim()+1:  # deep supervision
+            pred = pred[:,0,:]# Bx1xCXHXWxD
 
-        if self.apply_activation == True:
-            pred = F.softmax(pred.to(torch.float32), dim=1)
+        # if self.apply_activation == True:
+        pred = F.softmax(pred.to(torch.float32), dim=1)
 
         _randomize()
         img, label, pred = (
@@ -288,6 +281,24 @@ class NeptuneImageGridCallback(Callback):
         self.grid_imgs.append(img)
         self.grid_preds.append(pred)
         self.grid_labels.append(label)
+
+    def img_to_grd(self, batch):
+        imgs = batch[self.batches, :, :,:, self.slices].clone()
+        return imgs
+
+    def fix_channels(self, tnsr):
+        if tnsr.shape[1] == 1:
+            tnsr = tnsr.repeat(1, 3, 1, 1)
+        elif tnsr.shape[1] == 2:
+            tnsr = tnsr[:, 1:, :, :]
+        elif tnsr.shape[1]>3:
+            chs = tnsr.shape[1]
+            tnsr = tnsr[:,chs-3::,:]
+        else:
+            #tnsr already in 3d
+            pass
+        return tnsr
+
 
 
 class NeptuneManager(NeptuneLogger):
@@ -452,48 +463,6 @@ class NeptuneManager(NeptuneLogger):
         return str(sd)
 
 
-#
-#
-#
-class NepImages(Callback):
-    def __init__(self, freq):
-        store_attr()
-
-    def on_train_start(self, trainer, pl_module):
-        pass
-
-    def populate_grid(self):
-        for batch, category, grd in zip(
-            [self.learn.x, self.learn.pred, self.learn.y],
-            ["imgs", "preds", "masks"],
-            [self.grid_imgs, self.grid_preds, self.grid_masks],
-        ):
-            if isinstance(batch, (list, tuple)) and self.publish_deep_preds == False:
-                batch = [x for x in batch if x.size()[2:] == self.patch_size][
-                    0
-                ]  # gets that pred which has same shape as imgs
-            elif isinstance(batch, (list, tuple)) and self.publish_deep_preds == True:
-                batch_tmp = [
-                    F.interpolate(b, size=batch[-1].shape[2:], mode="trilinear")
-                    for b in batch[:-1]
-                ]
-                batch = batch_tmp + batch[-1]
-            batch = batch.cpu()
-
-            if self.apply_activation == True and category == "preds":
-                batch = F.softmax(batch, dim=1)
-
-            imgs = self.img_to_grd(batch)
-            if category == "masks":
-                imgs = imgs.squeeze(1)
-                imgs = one_hot(imgs, self.classes, axis=1)
-            if category != "imgs" and imgs.shape[1] != 3:
-                imgs = imgs[:, 1:, :, :]
-            if imgs.shape[1] == 1:
-                imgs = imgs.repeat(1, 3, 1, 1)
-
-            grd.append(imgs)
-
 
 class UNetTrainer(LightningModule):
     def __init__(
@@ -501,7 +470,6 @@ class UNetTrainer(LightningModule):
         project,
         dataset_params,
         model_params,
-
         loss_params,
         max_epochs=1000,
         lr=None,
@@ -513,36 +481,53 @@ class UNetTrainer(LightningModule):
         self.save_hyperparameters("model_params", "loss_params")
         self.model, self.loss_fnc = self.create_model()
 
-    def _calc_loss(self, batch):
+
+    def _common_step(self, batch, batch_idx):
+        if not hasattr(self,'batch_size'): self.batch_size=batch['image'].shape[0]
         inputs, target = batch["image"], batch["label"]
-        pred = self.forward(inputs)
-        # target_listed = []
-        # for s in self.deep_supervision_scales:
-        #     if all([i == 1 for i in s]):
-        #         target_listed.append(target)
-        #     else:
-        #         size = [int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])]
-        #         target_downsampled = F.interpolate(target, size=size, mode="nearest")
-                # target_listed.append(target_downsampled)
+        pred = self.forward(inputs) # self.pred so that NeptuneImageGridCallback can use it
+
+        pred,target = self.maybe_apply_ds_scales(pred,target)
         loss = self.loss_fnc(pred, target)
         loss_dict = self.loss_fnc.loss_dict
+        self.maybe_store_preds(pred)
         return loss, loss_dict
 
+
+    def maybe_store_preds(self, pred):
+
+        if hasattr(self.trainer,"store_preds") and self.trainer.store_preds==True:
+            if isinstance(pred, list):
+                    self.pred = [p.detach().cpu() for p in pred]
+            else:
+                self.pred= pred.detach().cpu()
+
+    def maybe_apply_ds_scales(self, pred, target):
+        if isinstance(pred, list) and isinstance(target, torch.Tensor):
+            target_listed = []
+            for s in self.deep_supervision_scales:
+                if all([i == 1 for i in s]):
+                    target_listed.append(target)
+                else:
+                    size = [int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])]
+                    target_downsampled = F.interpolate(target, size=size, mode="nearest")
+                    target_listed.append(target_downsampled)
+            target = target_listed
+        return pred, target
+
+
+
+
     def training_step(self, batch, batch_idx):
-        if not hasattr(self,'batch_size'): self.batch_size=batch['image'].shape[0]
-        loss, loss_dict = self._calc_loss(batch)
+        loss,loss_dict = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="train")
         return loss
 
     def validation_step(self, batch, batch_idx):
-        if not hasattr(self,'batch_size'): self.batch_size=batch['image'].shape[0]
-        loss, loss_dict = self._calc_loss(batch)
+        loss,loss_dict = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="val")
         return loss
 
-    def on_train_epoch_start(self) -> None:
-
-        return super().on_train_epoch_start()
 
     def log_losses(self, loss_dict, prefix):
         metrics = [
@@ -561,41 +546,11 @@ class UNetTrainer(LightningModule):
         # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
 
-    # def predict_step(self, batch, batch_idx, dataloader_idx=0):
-    #     img = batch["image"]
-    #     outputs = self.forward(img)
-    #     tr()
-    #     outputs2 = outputs[0]
-    #     batch["pred"] = outputs2
-        # output=outputs[0]
-        # outputs = {'pred':output,'org_size':batch['org_size']}
-        # outputs_backsampled=self.post_process(outputs)
-        # return batch
-
-    def post_process(self, pred_output):
-        preds_bs = []
-        pred = pred_output["pred"]
-        sizes = pred_output["org_size"]
-        for p, s in zip(pred, sizes):
-            R = Resize(s)
-            pred_bs = R(p)
-            # maxed = torch.argmax(pred_bs, 1, keepdim=False)
-            preds_bs.append(pred_bs)
-        return preds_bs
 
     def configure_optimizers(self):
         # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         scheduler = ReduceLROnPlateau(optimizer, "min", patience=30)
-        # optimizer = torch.optim.SGD(
-        #         self.model.parameters(),
-        #         lr=self.lr,
-        #         momentum=0.99,
-        #         weight_decay=3e-5,
-        #         nesterov=True,
-        #     )
-        #
-        # scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: (1 - epoch / self.max_epochs) ** 0.9)
         output = {
             "optimizer": optimizer,
             "lr_scheduler": {
@@ -612,17 +567,14 @@ class UNetTrainer(LightningModule):
         return self.model(inputs)
 
     def create_model(self):
-        # self.device = device
-        # creates learner from configs. Loads checkpoint if any exists in self.checkpoints_folder
-
         model = create_model_from_conf(self.model_params, self.dataset_params)
         # if self.checkpoints_folder:
         #     load_checkpoint(self.checkpoints_folder, model)
         if (
-            self.model_params["arch"] == "DynUNet"
+            self.model_params["arch"] == "DynUNet" or self.model_params["arch"] == "DynUNet_UB"
             or self.model_params["arch"] == "nnUNet"
         ):
-            if self.model_params["arch"] == "DynUNet":
+            if self.model_params["arch"] == "DynUNet" or self.model_params["arch"] == "DynUNet_UB":
                 num_pool = 4  # this is a hack i am not sure if that's the number of pools . this is just to equalize len(mask) and len(pred)
                 ds_factors = list(
                     il.accumulate(
@@ -663,6 +615,7 @@ class UNetTrainer(LightningModule):
 
             loss_func = DeepSupervisionLoss(
                 levels=num_pool,
+                deep_supervision_scales=self.deep_supervision_scales,
                 fg_classes=self.model_params["out_channels"] - 1,
             )
             # cbs += [DownsampleMaskForDS(self.deep_supervision_scales)]
@@ -674,6 +627,58 @@ class UNetTrainer(LightningModule):
             )
         return model, loss_func
 
+
+    def populate_grid(self, img,label,pred):
+        def _randomize():
+            n_slices= img.shape[-1]
+            batch_size=img.shape[0]
+            self.slices = [random.randrange(0,n_slices) for i in range(self.imgs_per_batch)]
+            self.batches=[random.randrange(0,batch_size) for i in range(self.imgs_per_batch)]
+
+
+        img = img.cpu()
+        label = label.cpu()
+        label = label.squeeze(1)
+        label = one_hot(label, self.classes, axis=1)
+        pred = pred.cpu()
+        if pred.dim()==img.dim()+1:  # deep supervision
+            pred = pred[0]
+
+        # if self.apply_activation == True:
+        pred = F.softmax(pred.to(torch.float32), dim=1)
+
+        _randomize()
+        img, label, pred = (
+            self.img_to_grd(img),
+            self.img_to_grd(label),
+            self.img_to_grd(pred),
+        )
+        img, label, pred = (
+            self.fix_channels(img),
+            self.fix_channels(label),
+            self.fix_channels(pred),
+        )
+
+        self.grid_imgs.append(img)
+        self.grid_preds.append(pred)
+        self.grid_labels.append(label)
+
+    def img_to_grd(self, batch):
+        imgs = batch[self.batches, :, :,:, self.slices].clone()
+        return imgs
+
+    def fix_channels(self, tnsr):
+        if tnsr.shape[1] == 1:
+            tnsr = tnsr.repeat(1, 3, 1, 1)
+        elif tnsr.shape[1] == 2:
+            tnsr = tnsr[:, 1:, :, :]
+        elif tnsr.shape[1]>3:
+            chs = tnsr.shape[1]
+            tnsr = tnsr[:,chs-3::,:]
+        else:
+            #tnsr already in 3d
+            pass
+        return tnsr
 
 def update_nep_run_from_config(nep_run, config):
     for key, value in config.items():
@@ -695,7 +700,7 @@ class TrainingManager():
     def __init__(self, project, configs, run_name=None):
         store_attr()
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
-    def setup(self,batch_size=8,  cbs=[], lr=None,devices=1,compiled=False, neptune=True,tags=[],description="",epochs=1000,batchsize_finder=False):
+    def setup(self,batch_size=8,  cbs=[],logging_freq=25, lr=None,devices=1,compiled=False, neptune=True,tags=[],description="",epochs=1000,batchsize_finder=False):
         if lr: self.configs['model_params']['lr']=lr
         self.configs['model_params']['compiled']=compiled
         strategy= maybe_ddp(devices)
@@ -740,7 +745,7 @@ class TrainingManager():
             precision="16-mixed",
             logger=logger,
             max_epochs=epochs,
-            log_every_n_steps=25,
+            log_every_n_steps=logging_freq,
             num_sanity_val_steps=0,
             enable_checkpointing=True,
             default_root_dir=self.project.checkpoints_parent_folder,
@@ -862,16 +867,18 @@ if __name__ == "__main__":
     # conf['model_params']['lr']=1e-3
 
 # %%
-    bs = None
+    device_id =0
+# %%
+    bs = 8
     # run_name ='LITS-709'
     run_name =None
     compiled=False
-    batch_finder=False
-    neptune=False
+    batch_finder=True
+    neptune=True
     tags=[]
     description="Baseline all transforms as in previous full data runs"
     Tm = TrainingManager(proj,conf,run_name)
-    Tm.setup(compiled=compiled,batch_size=bs,devices = [0], epochs=5,batchsize_finder=batch_finder,neptune=neptune,tags=tags,description=description)
+    Tm.setup(compiled=compiled,batch_size=bs,devices = [device_id], epochs=500,batchsize_finder=batch_finder,neptune=neptune,tags=tags,description=description)
     # Tm.D.batch_size=8
     Tm.N.compiled=compiled
 # %%

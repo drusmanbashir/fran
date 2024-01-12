@@ -1,7 +1,7 @@
 # %o%
 
 from fastcore.basics import  store_attr
-
+import numpy as np
 from monai.utils.enums import DiceCEReduction, LossReduction
 import lightning.pytorch as pl
 from monai.utils.module import look_up_option
@@ -13,6 +13,7 @@ import torch
 import ipdb
 
 from nnunet.utilities.nd_softmax import softmax_helper
+from torchvision.utils import Union
 
 from fran.utils.helpers import range_inclusive
 
@@ -131,7 +132,7 @@ class CombinedLoss(_DiceCELossMultiOutput):
 
 
 class DeepSupervisionLoss(pl.LightningModule):
-    def __init__(self, levels: int,  fg_classes: int):
+    def __init__(self, levels: int,deep_supervision_scales,  fg_classes: int):
         super().__init__()
         store_attr()
         self.LossFunc = _DiceCELossMultiOutput(include_background=False,softmax=True)
@@ -159,22 +160,55 @@ class DeepSupervisionLoss(pl.LightningModule):
         self.weights = weights / weights.sum()
 
 
-    def forward(self, preds, target):
-        if not hasattr(self,'weights'):
-            self.create_weights(preds.device)
-        # assert isinstance(x, (tuple, list)), "x must be either tuple or list"
-        # loss at full res
-
+    def maybe_create_labels(self,target):
         if not hasattr(self,'labels'):
-            bs = target.shape[0]
+            if isinstance(target, list):
+                bs = target[0].shape[0]
+            else:
+                bs = target.shape[0]
             self.create_labels(bs,self.fg_classes)
 
-        
-        if preds.dim() == target.dim()+1:# i.e., training phase has deep supervision
+    def maybe_create_weights(self,preds):
+        if not hasattr(self,'weights'):
+            self.create_weights(preds[0].device)
+
+
+    def apply_ds_scales(self, preds, target):
+            target_listed = []
+            preds_listed = []
             preds = torch.unbind(preds, dim=1)
-            losses = [self.LossFunc(xx, target) for xx in preds]
+            for ind,sc in enumerate(self.deep_supervision_scales):
+                pred = preds[ind]
+                if all([i == 1 for i in sc]):
+                    target_listed.append(target)
+                    preds_listed.append(pred)
+                else:
+                    t_shape = list(target.shape[2:])
+                    size = [int(np.round(ss * aa)) for ss, aa in zip(sc, t_shape)]
+                    target_downsampled = F.interpolate(target, size=size, mode="nearest")
+                    pred_downsampled = F.interpolate(pred, size=size, mode="trilinear")
+                    target_listed.append(target_downsampled)
+                    preds_listed.append(pred_downsampled)
+            target = target_listed
+            preds = preds_listed
+            return preds,target
+    def forward(self, preds, target):
+
+        self.maybe_create_weights(preds)
+        self.maybe_create_labels(target)
+        
+        if isinstance(preds, Union[list,tuple]): # multires lists in training
+            losses = [self.LossFunc(xx, yy) for xx,yy in zip(preds,target)]
+
+        elif isinstance(preds, torch.Tensor):  #tensor
+            if preds.dim() == target.dim()+1:# i.e., training phase has deep supervision:
+                preds,  target = self.apply_ds_scales(preds,target)
+                losses = [self.LossFunc(xx, yy) for xx,yy in zip(preds,target)]
+            else:  #validation loss
+                losses = [self.LossFunc(preds, target)]
         else:
-            losses = [self.LossFunc(preds, target)]
+            raise NotImplementedError("preds must be either list or stacked tensor")
+
         self.set_loss_dict(losses[0])
         losses_weighted = torch.stack(
             [self.weights * loss[0] for loss in losses]

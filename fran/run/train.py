@@ -11,7 +11,6 @@ _translations =     {
     'compiled': 'model_params,compiled',
     }
 
-# %%
        
 def process_run_name(run_name):
         if run_name == None: return None
@@ -40,15 +39,6 @@ def override_configs(args , configs:dict):
         return configs
     else : return None
 
-def maybe_compute_bs(project,configs ,args):
-    # if hasattr(args, "bs") or hasattr(args,"resume"):
-    if any([s is not None for s in [args.bs,args.resume]]):
-        args.bs =args.bs
-    else:
-        args.bs = compute_bs(project=project,config=configs, bs=6)
-    return  args.bs
-
-
     pass
 def load_and_update_configs(project, args,compute_bs=True):
     # if recompute_bs==True:
@@ -60,7 +50,6 @@ def load_and_update_configs(project, args,compute_bs=True):
         configuration_filename=args.conf_fn
     ).config
 
-    args.bs = maybe_compute_bs(project,configs, args)
     # else:
     #     configs = {}
     updated_configs =override_configs(args, configs)
@@ -90,7 +79,7 @@ def initialize_run(project ,args):
     
     run_name = process_run_name(args.resume)
     Tm = TrainingManager(project, configs, run_name=run_name)
-    Tm.setup(batch_size = args.bs , cbs=cbs,lr=args.lr, devices=args.devices,neptune=args.neptune,epochs=args.epochs,compiled=args.compiled,description=args.desc)
+    Tm.setup(batch_size = args.bs , cbs=cbs,lr=args.lr, devices=args.devices,neptune=args.neptune,epochs=args.epochs,compiled=args.compiled,description=args.desc,batchsize_finder=args.batchsize_finder)
     return Tm
 
 def main(args):
@@ -121,6 +110,7 @@ if __name__ == "__main__":
     )  # neptune manager saves last session's name in excel spreadsheet
 
     parser.add_argument("-b", "--bs", help="batch size",type=int)
+    parser.add_argument("-bsf", "--batchsize_finder",action='store_true')
     parser.add_argument("--desc")
     parser.add_argument("-f","--fold", type=int, default=0)
     parser.add_argument("-d","--devices", type=str, default='1')
@@ -143,6 +133,7 @@ if __name__ == "__main__":
     # # args.resume="LIT-184"
     # args.compiled= True
     # args.t = 'litsmc'
+    # args.bsf=True
     #
     # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     # args.bs = 8

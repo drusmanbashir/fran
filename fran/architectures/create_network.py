@@ -8,7 +8,7 @@ from nnunet.network_architecture.generic_UNet import Generic_UNet
 from nnunet.network_architecture.generic_UNet import ConvDropoutNormNonlin
 from nnunet.network_architecture.initialization import InitWeights_He
 from monai.networks.nets import SwinUNETR
-from fran.architectures.dynunet import get_kernel_strides, DynUNet
+from fran.architectures.dynunet import DynUNet_UB, get_kernel_strides, DynUNet
 from torch import nn
 import ipdb
 tr = ipdb.set_trace
@@ -76,6 +76,9 @@ def create_model_from_conf(model_params, dataset_params,metadata=None,deep_super
         model = create_model_from_conf_swinunetr(model_params, dataset_params,deep_supervision)
     elif arch == "DynUNet":
         model = create_model_from_conf_dynunet(model_params, dataset_params)
+
+    elif arch == "DynUNet_UB":
+        model = create_model_from_conf_dynunet_ub(model_params, dataset_params)
     else:
         raise NotImplementedError
 
@@ -101,6 +104,26 @@ def create_model_from_conf_dynunet(model_params, dataset_params):
         deep_supr_num=3,
     )
     return model
+
+def create_model_from_conf_dynunet_ub(model_params, dataset_params):
+
+    kernels, strides = get_kernel_strides(
+        dataset_params["patch_size"], dataset_params["spacings"]
+    )
+    model = DynUNet_UB(
+        3,
+        model_params["in_channels"],
+        model_params["out_channels"],
+        kernel_size=kernels,
+        strides=strides,
+        upsample_kernel_size=strides[1:],
+        norm_name="instance",
+        deep_supervision=bool(model_params["deep_supervision"]),
+        deep_supr_num=3,
+    )
+    return model
+
+
 
 def pool_op_kernels_nnunet(patch_size):
     _ , pool_op_kernel_sizes = get_kernel_strides(patch_size,[1,1,1])
