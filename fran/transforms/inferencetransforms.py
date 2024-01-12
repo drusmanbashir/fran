@@ -5,6 +5,8 @@ from typing import Union
 from fastai.data.core import Sequence
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
 from monai.transforms.post.dictionary import KeepLargestConnectedComponentd
+from monai.transforms.transform import MapTransform, Transform
+from monai.transforms.utils import generate_spatial_bounding_box
 import numpy as np
 from torch.functional import Tensor
 import ipdb
@@ -19,7 +21,7 @@ tr = ipdb.set_trace
 import torch
 from torch.nn import functional as F
 from fastcore.basics import store_attr
-from fastcore.transform import ItemTransform, Transform
+from fastcore.transform import ItemTransform
 # from fran.inference.inference_base import get_scale_factor_from_spacings, rescale_bbox
 from fran.transforms.spatialtransforms import MaskLabelRemap, slices_from_lists
 
@@ -438,6 +440,158 @@ class KeepLargestConnectedComponentWithMetad(KeepLargestConnectedComponentd):
                 d[key] = self.converter(d[key])
                 d[key].meta = meta
             return d
+
+
+class RenameDictKeys(MapTransform):
+    def __init__(self, keys: KeysCollection, new_keys, allow_missing_keys: bool = False) -> None:
+        super().__init__(keys, allow_missing_keys)
+        self.new_keys = new_keys  
+
+    def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> dict[Hashable, NdarrayOrTensor]:
+        d = dict(data)
+        old_keys = list(set(self.key_iterator(d)))
+        new_keys = list(set((self.new_keys)))
+        for old,new in zip(old_keys,new_keys):
+            d[new] = d.pop(old)
+        return d
+
+def transpose_bboxes(bbox):
+    """
+    Transposes the coordinates of a bounding box.
+
+    Parameters:
+    bbox (tuple): A tuple representing the coordinates of a bounding box in the format (x1, y1, x2, y2).
+
+    Returns:
+    tuple: A tuple representing the transposed coordinates of the bounding box in the format (y1, x1, y2, x2).
+
+    Example:
+    >>> transpose_bboxes((10, 20, 30, 40))
+    (20, 10, 40, 30)
+    """
+
+    if not isinstance(bbox, tuple):
+        raise TypeError("bbox must be a tuple")
+
+    if len(bbox) != 4:
+        raise ValueError("bbox must have exactly 4 elements")
+
+    bbox = bbox[1], bbox[0], bbox[3], bbox[2]
+    return bbox
+
+
+
+#
+class TransposeSITKd(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, allow_missing_keys)
+
+    def func(self, x):
+        if isinstance(x, torch.Tensor):
+            x = torch.permute(x, [2, 1, 0])
+        elif isinstance(x, Union[tuple, list]):
+            x = transpose_bboxes(x)
+        else:
+            raise NotImplemented
+        return x
+
+    def __call__(self, d: dict):
+        for key in self.key_iterator(d):
+            d[key] = self.func(d[key])
+        return d
+
+
+class ToCPUd(MapTransform):
+    def __call__(self, d: dict):
+        for key in self.key_iterator(d):
+            d[key] = d[key].cpu()
+        return d
+
+
+class BBoxFromPred(MapTransform):
+    def __init__(
+        self,
+        spacings,
+        expand_by: int,  # in millimeters
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, allow_missing_keys)
+        store_attr("spacings,expand_by")
+
+    def __call__(self, d: dict):
+        for key in self.key_iterator(d):
+            d[key] = self.func(d[key])
+        return d
+
+    def func(self, pred):
+        add_to_bbox = [int(self.expand_by / sp) for sp in self.spacings]
+        bb = generate_spatial_bounding_box(pred, channel_indices=0, margin=add_to_bbox)
+        sls = [slice(0, 100, None)] + [slice(a, b, None) for a, b in zip(*bb)]
+        pred.meta["bounding_box"] = sls
+        return pred
+
+
+class SlicesFromBBox(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, allow_missing_keys)
+
+    def func(self, x):
+        b = x[0]  # get rid of channel
+        slices = [slice(0, 100)]  # 100 channels
+        for ind in [0, 2, 4]:
+            s = slice(b[ind], b[ind + 1])
+            slices.append(s)
+        return tuple(slices)
+
+    def __call__(self, d: dict):
+        for key in self.key_iterator(d):
+            d[key] = self.func(d[key])
+        return d
+
+
+class Saved(Transform):
+    def __init__(self, output_folder):
+        self.output_folder = output_folder
+
+    def __call__(self, patch_bundle):
+        key = "pred"
+
+        maybe_makedirs(self.output_folder)
+        try:
+            fl = Path(patch_bundle["image"].meta["filename_or_obj"]).name
+        except:
+            fl = "_tmp.nii.gz"
+        outname = self.output_folder / fl
+
+        meta = {
+            "original_affine": patch_bundle["image"].meta["original_affine"],
+            "affine": patch_bundle["image"].meta["affine"],
+        }
+
+        writer = ITKWriter()
+
+        array_full = patch_bundle[key].detach().cpu()
+        array_full.meta = patch_bundle["image"].meta
+        channels = array.shape[0]
+        # ch=0
+        # array = array_full[ch:ch+1,:]
+        writer.set_data_array(array)
+        writer.set_data_array(patch_bundle["image"])
+        writer.set_metadata(meta)
+        assert (
+            di := patch_bundle[key].dim()
+        ) == 4, "Dimension should be 4. Got {}".format(di)
+        writer.write(outname)
+
 
 
 # %%

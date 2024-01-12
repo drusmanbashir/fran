@@ -8,7 +8,7 @@ _translations =     {
     'lr': 'model_params,lr',
     'labels':  'dataset_params,src_dest_labels',
     'arch': 'model_params,arch',
-
+    'compiled': 'model_params,compiled',
     }
 
 # %%
@@ -83,15 +83,14 @@ def load_run(project,run_name,args):
 def initialize_run(project ,args):
 
     configs = load_and_update_configs(project,args)
-    configs['model_params']['compiled'] = args.compiled
     cbs = [
     ModelCheckpoint(),
      LearningRateMonitor(logging_interval='epoch')
     ]
     
     run_name = process_run_name(args.resume)
-    Tm = TrainingManager(project, configs)
-    Tm.setup(batch_size = args.bs , run_name= run_name,cbs=cbs,devices=args.devices,neptune=args.neptune,epochs=args.epochs,compiled=args.compiled,description=args.desc)
+    Tm = TrainingManager(project, configs, run_name=run_name)
+    Tm.setup(batch_size = args.bs , cbs=cbs,lr=args.lr, devices=args.devices,neptune=args.neptune,epochs=args.epochs,compiled=args.compiled,description=args.desc)
     return Tm
 
 def main(args):
@@ -103,6 +102,7 @@ def main(args):
     project = Project(project_title=project_title);
     print("Project: {0}".format(project_title))
     Tm = initialize_run(project, args)
+    print("================================================================\nStarting training...\nTraining LR: {0}\nTotal epochs {1}\n======================================================".format(Tm.N.lr,args.epochs))
     Tm.fit()
 # %%
 
@@ -142,14 +142,14 @@ if __name__ == "__main__":
     # args.bs=8
     # # args.resume="LIT-184"
     # args.compiled= True
-    # args.t = 'lits32'
+    # args.t = 'litsmc'
     #
     # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     # args.bs = 8
-    # args.lr = 1e-4
+    # args.lr = 1.1e-3
+    # args.resume='LITS-709'
     # args.devices = 2
     # # args.resume=''
-    # # args.resume='LITS-456'
     # args.update = True
 
 # %%

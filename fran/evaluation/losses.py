@@ -159,22 +159,22 @@ class DeepSupervisionLoss(pl.LightningModule):
         self.weights = weights / weights.sum()
 
 
-    def forward(self, x, y):
+    def forward(self, preds, target):
         if not hasattr(self,'weights'):
-            self.create_weights(x[0].device)
+            self.create_weights(preds.device)
         # assert isinstance(x, (tuple, list)), "x must be either tuple or list"
-        if not isinstance(x, (tuple, list)):
-            print(type(x))
-            print(x.shape)
-
-        assert isinstance(y, (tuple, list)), "y must be either tuple or list"
         # loss at full res
 
         if not hasattr(self,'labels'):
-            bs = y[0].shape[0]
+            bs = target.shape[0]
             self.create_labels(bs,self.fg_classes)
 
-        losses = [self.LossFunc(xx, yy) for xx, yy in zip(x, y)]
+        
+        if preds.dim() == target.dim()+1:# i.e., training phase has deep supervision
+            preds = torch.unbind(preds, dim=1)
+            losses = [self.LossFunc(xx, target) for xx in preds]
+        else:
+            losses = [self.LossFunc(preds, target)]
         self.set_loss_dict(losses[0])
         losses_weighted = torch.stack(
             [self.weights * loss[0] for loss in losses]

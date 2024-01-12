@@ -5,7 +5,7 @@ from fran.run.predict import case_processed_already
 from fran.utils.helpers import *
 import argparse
 
-from fran.inference.inference_base import EndToEndPredictor
+from fran.inference.cascade import EndToEndPredictor
 
 def run_prediction(proj_defaults,run_name_l,run_name_p,use_neptune,img_fn,gt_fn,overwrite):
     E = EndToEndPredictor(proj_defaults,run_name_l,run_name_p,use_neptune=use_neptune)

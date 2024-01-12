@@ -1,15 +1,63 @@
 # %%
-from monai.transforms.utility.dictionary import SqueezeDimd
+from collections.abc import Callable, Sequence
+import SimpleITK as sitk
+from fastcore.all import listify, store_attr
+from fastcore.foundation import GetAttr
+from lightning.fabric import Fabric
+from monai.data.dataloader import DataLoader    
+from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
+import itk
+from monai.data.dataset import Dataset, PersistentDataset
+from monai.inferers.inferer import SlidingWindowInferer
+from monai.transforms.compose import Compose
+from monai.transforms.io.dictionary import LoadImaged, SaveImaged
+from monai.transforms.post.dictionary import AsDiscreted, Invertd
+from monai.transforms.spatial.array import Resize
+from monai.transforms.spatial.dictionary import Orientationd, Spacingd
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, SqueezeDimd
 from prompt_toolkit.shortcuts import input_dialog
-from fran.inference.cascade import *
 from monai.data import ImageDataset
+from pathlib import Path
+import torch
+from fran.data.dataset import NormaliseClipd
+from fran.managers.training import UNetTrainer, checkpoint_from_model_id
+from fran.transforms.inferencetransforms import ToCPUd
+from fran.utils.dictopts import DictToAttr
+from fran.utils.fileio import maybe_makedirs
+from fran.utils.itk_sitk import ConvertSimpleItkImageToItkImage
+import numpy as np
+import itertools as il
+
+
+def slice_list(listi, start_end: list):
+    return listi[start_end[0] : start_end[1]]
+
+def list_to_chunks(input_list: list, chunksize: int):
+    n_lists = int(np.ceil(len(input_list) / chunksize))
+
+    fpl = int(len(input_list) / n_lists)
+    inds = [[fpl * x, fpl * (x + 1)] for x in range(n_lists - 1)]
+    inds.append([fpl * (n_lists - 1), None])
+
+    chunks = list(il.starmap(slice_list, zip([input_list] * n_lists, inds)))
+    return chunks
+
+def load_dataset_params(model_id):
+    ckpt = checkpoint_from_model_id(model_id)
+    dic_tmp=torch.load(ckpt)
+    dataset_params=dic_tmp['datamodule_hyper_parameters']['dataset_params']
+    return dataset_params
+
 
 class InferenceDatasetNii(Dataset):
-    def __init__(self, imgs,dataset_params):
+    def __init__(self,project, imgs,dataset_params):
 
         self.dataset_params= dataset_params
         self.imgs= self.parse_input(imgs)
         self.create_transforms()
+
+
+        self.project= project
 
 
 
@@ -47,44 +95,72 @@ class InferenceDatasetNii(Dataset):
         return imgs_out
 
     def create_transforms(self):
-        if self.input_type=='files':
-            L=LoadImaged(keys=['image'],image_only=True,ensure_channel_first=False,simple_keys=True)
-            tfms =[L]
-        else:
-            tfms = []
+        self.L=LoadImaged(keys=['image'],image_only=True,ensure_channel_first=False,simple_keys=True)
 
-        E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
-        S = Spacingd(keys=["image"], pixdim=self.dataset_params['spacings'])
-        N = NormaliseClipd(
+        self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
+        self.S = Spacingd(keys=["image"], pixdim=self.dataset_params['spacings'])
+        self.N = NormaliseClipd(
             keys=["image"],
             clip_range=self.dataset_params["intensity_clip_range"],
             mean=self.dataset_params["mean_fg"],
             std=self.dataset_params["std_fg"],
         )
-        tfms += [E,S,N]
-        self.transform=Compose(tfms)
+
+        self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+
+        # tfms += [E,S,N]
+
+        # self.transform=Compose(tfms)
+    def set_transforms(self,tfms:str=''):
+        tfms_final = []
+        for tfm in tfms:
+            tfms_final.append(getattr(self,tfm))
+        if self.input_type=='files':
+            tfms_final.insert(0,self.L)
+        self.transform=Compose(tfms_final)
 
 
     def __getitem__(self, index):
         dici = self.imgs[index]
-        dici=self.transform(dici)
+        if self.transform:
+            dici=self.transform(dici)
         return dici
 
+#
+# class InferenceDatasetCascade(InferenceDatasetNii):
+#     '''
+#     This creates two image formats, one low-res ,and one high-res
+#     '''
+#     def __init__(self,project, imgs,dataset_params_w, dataset_params_p):
+#         super().__init__(project, imgs,dataset_params_p)
+#         self.dataset_params_w= dataset_params_w
+#
+#     def set_transforms(self):
+#         super().set_transforms()
+#         self.transform_w = Resize(spatial_size=self.dataset_params_w["patch_size"])
+#
+#     def __getitem__(self, index):
+#         dici = super().__getitem__(index)
+#         dici['image_w'] = self.transform_w(dici['image'])
+#         return dici
+#     
 
-class SimpleInferer(GetAttr, DictToAttr):
+class InferenceDatasetPersistent(InferenceDatasetNii,PersistentDataset):
+    def __init__(self,project, data: Sequence,  dataset_params, cache_dir , hash_func: Callable[..., bytes] = ..., pickle_module: str = "pickle", pickle_protocol: int = ..., hash_transform = None, reset_ops_id: bool = True) -> None:
+        maybe_makedirs(cache_dir)
+        InferenceDatasetNii.__init__(self,project=project,imgs=data,dataset_params=dataset_params)
+        PersistentDataset().__init__(data, self.transform, cache_dir, hash_func, pickle_module, pickle_protocol, hash_transform, reset_ops_id)
+
+        # self.ds = PersistentDataset(data=im, transform=tfms, cache_dir=cache_dir)
+
+class BaseInferer(GetAttr, DictToAttr):
     def __init__(self, project,run_name,bs=8,patch_overlap=.25,mode='gaussian', devices=[1],debug=True):
         '''
         data is a dataset from Ensemble in this base class
         '''
 
         store_attr('project,run_name,devices,debug')
-        self.ckpt = checkpoint_from_model_id(run_name)
-        dic1=torch.load(self.ckpt)
-        dic2={}
-        relevant_keys=['datamodule_hyper_parameters']
-        for key in relevant_keys:
-            dic2[key]=dic1[key]
-            self.assimilate_dict(dic2[key])
+        self.dataset_params  = load_dataset_params(run_name)
     
         self.inferer = SlidingWindowInferer(
             roi_size=self.dataset_params['patch_size'],
@@ -111,13 +187,14 @@ class SimpleInferer(GetAttr, DictToAttr):
         return output
 
 
-
     def prepare_data(self,imgs):
         '''
         imgs: list
         '''
-
-        self.ds = InferenceDatasetNii(imgs,self.dataset_params)
+        if len(imgs)>3:
+            self.ds = InferenceDatasetPersistent(data=imgs,cache_dir = self.project.cold_datasets_folder/("cache"))
+        else:
+            self.ds = InferenceDatasetNii(imgs,self.dataset_params)
         self.pred_dl = DataLoader(
                 self.ds, num_workers=0, batch_size=1, collate_fn = None
             )
@@ -182,6 +259,7 @@ class SimpleInferer(GetAttr, DictToAttr):
 
 if __name__ == "__main__":
     # ... run your application ...
+    from fran.utils.common import *
     proj= Project(project_title="nodes")
 
 
@@ -198,7 +276,7 @@ if __name__ == "__main__":
 
 
 # %%
-    P=SimpleInferer(proj, run_ps[0], debug=debug)
+    P=BaseInferer(proj, run_ps[0], debug=debug)
 
     preds= P.run(img_fns)
 # %%

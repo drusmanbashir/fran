@@ -2,6 +2,7 @@
 import argparse
 import ast
 import shutil
+from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.stage1_preprocessors import *
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.stage0_preprocessors import ResampleDatasetniftiToTorch, generate_bboxes_from_masks_folder, verify_dataset_integrity
@@ -27,8 +28,7 @@ class InteractiveAnalyserResampler:
 
         P = Project(project_title=args.project_title); 
         self.proj_defaults= P
-        self.MultiAnalyser = MultiCaseAnalyzer(self.proj_defaults, outside_value=0)
-
+        self.GlobalP= GlobalProperties(self.proj_defaults, bg_label=0)
         print("Project: {0}".format(self.project_title))
 
 
@@ -38,21 +38,21 @@ class InteractiveAnalyserResampler:
 
 
     def analyse_dataset(self):
-        if self._analyse_dataset_questions() == True:
-            self.MultiAnalyser.get_nii_bbox_properties(
-                num_processes=self.num_processes,
-                debug=self.debug,
-                overwrite=True,
-                multiprocess=True,
-            )
-            self.MultiAnalyser.store_projectwide_properties()
-
-            self.MultiAnalyser.compute_std_mean_dataset()
+            self.MultiAnalyser = MultiCaseAnalyzer(self.proj_defaults,bg_label=0)
+            if len(self.MultiAnalyser.new_cases)>0:
+                self.MultiAnalyser.process_new_cases(
+                    num_processes=self.num_processes,
+                    debug=self.debug,
+                    multiprocess=True,
+                )
+                self.MultiAnalyser.dump_to_h5f()
+                self.MultiAnalyser.store_raw_dataset_properties()
+            if self._analyse_dataset_questions() == True:
+                self.GlobalP.store_projectwide_properties()
+                self.GlobalP.compute_std_mean_dataset()
 
     def _analyse_dataset_questions(self):
-        do_analysis = not Path(
-            str(self.proj_defaults.global_properties_filename) + (".json")
-        ).exists()
+        do_analysis = not self.proj_defaults.global_properties_filename.exists()
         if do_analysis==True: return True
         else:
             reanalyse = input(
@@ -114,55 +114,23 @@ class InteractiveAnalyserResampler:
         generate_bboxes_from_masks_folder(self.WholeImageTM.output_folder_masks,0,self.debug,self.num_processes)
 
     @ask_proceed("Generating hi-res patches. I recommend adding extra size to generated patches. The extra voxels will benefit affine transformation and will be cropped out before feeding the data to the NN")
-    def generate_hires_patches_dataset(self):
+    def generate_hires_patches_dataset(self,debug=False,overwrite=False):
         self.set_patch_size()
         self.set_spacings()
         patches_output_folder = self.create_patches_output_folder(
             self.fixed_sp_folder, self.patch_size
         )
 
-        stage0_bboxes_fn = self.fixed_sp_folder / ("bboxes_info")
-        stage0_bboxes = load_dict(stage0_bboxes_fn)
+        patches_config = self.get_patches_config(patches_output_folder / "patches_config.json")
+
+        PG = PatchGeneratorDataset(self.project,self.fixed_sp_folder, self.patch_size,**patches_config)
+        PG.create_patches(overwrite=overwrite,debug=debug)
+        print("Generating boundingbox data")
+        PG.generate_bboxes(debug=debug)
+
         resampled_dataset_properties_fn_org = self.fixed_sp_folder / (
             "resampled_dataset_properties.json"
         )
-        expand_by = user_input(
-            "Optionally add surrounding anatomy with target organ? Enter int (e.g., 10 for 10mm): "
-        )
-        patch_overlap = user_input(
-            "Select patch overlap factor: [0,0.9) (current default: {})".format(
-                self.patch_overlap
-            ),
-            float,
-        )
-        if patch_overlap is not None:
-            self.patch_overlap = patch_overlap
-        args = [
-            [
-                patches_output_folder,
-                self.patch_size,
-                inf,
-                self.patch_overlap,
-                expand_by,
-            ]
-            for inf in stage0_bboxes
-        ]
-
-        maybe_makedirs(
-            [patches_output_folder / ("images"), patches_output_folder / ("masks")]
-        )
-        res = multiprocess_multiarg(
-            patch_generator_wrapper, args, debug=self.debug, progress_bar=self.pbar
-        )
-        print("Generating boundingbox data")
-        generate_bboxes_from_masks_folder(
-            patches_output_folder / ("masks"),
-            0, 
-            self.debug,
-            self.num_processes,
-        )
-        dataset_properties = {"patch_overlap": self.patch_overlap}
-        save_dict(dataset_properties, patches_output_folder / ("dataset_properties"))
         resampled_dataset_properties_fn_dest = (
             patches_output_folder.parent / resampled_dataset_properties_fn_org.name
         )
@@ -173,19 +141,25 @@ class InteractiveAnalyserResampler:
             )
 
 
-    def generate_bboxes(self, masks_folder):
-        mask_filenames = list(masks_folder.glob("*pt"))
-        arguments = [[x, self.proj_defaults] for x in mask_filenames]
-        res_cropped = multiprocess_multiarg(
-            func=bboxes_function_version,
-            arguments=arguments,
-            num_processes=self.num_processes,
-            debug=self.debug,
-        )
-
-        stats_outfilename = (masks_folder.parent) / ("bboxes_info.json")
-        print("Saving bbox stats to {}".format(stats_outfilename))
-        save_dict(res_cropped, stats_outfilename)
+    def get_patches_config(self, patches_config_fn):
+        if patches_config_fn.exists()==True:
+            print("Patches configs already exist. Loading from file")
+            patches_config = load_dict(patches_config_fn)
+        else:
+            expand_by = user_input(
+                "Optionally add surrounding anatomy with target organ? Enter int (e.g., 10 for 10mm): "
+            )
+            patch_overlap = user_input(
+                "Select patch overlap factor: [0,0.9) (current default: {})".format(
+                    self.patch_overlap
+                ),
+                float,
+            )
+            patches_config = {
+                "patch_overlap": patch_overlap,
+                "expand_by": expand_by,
+            }
+        return patches_config
 
     def get_resampling_configs(self):
         try:
@@ -227,12 +201,6 @@ class InteractiveAnalyserResampler:
             ] * 3
         print("Patch size set to: {}".format(patch_size))
         self.patch_size = patch_size
-
-    def create_patches_output_folder(self, fixed_sp_folder, patch_size):
-        patches_fldr_name = "dim_{0}_{1}_{2}".format(*patch_size)
-        output_folder = (
-            self.proj_defaults.patches_folder / fixed_sp_folder.name / patches_fldr_name
-        )
 # maybe_makedirs(output_folder)
         return output_folder
 
@@ -335,8 +303,8 @@ if __name__ == "__main__":
     args.debug =True
     # args.overwrite=False
     I = InteractiveAnalyserResampler(args)
-    I.verify_dataset_integrity()
 # %%
+    I.verify_dataset_integrity()
 
     I.analyse_dataset()
     I.resample_dataset()
@@ -345,6 +313,16 @@ if __name__ == "__main__":
     I.generate_hires_patches_dataset()
 
 # %%
+    I.Resampler = ResampleDatasetniftiToTorch(
+        I.proj_defaults,
+        minimum_final_spacing=0.5,
+        enforce_isotropy=I.enforce_isotropy,
+        half_precision=I.half_precision,
+        clip_centre=I.clip_centre
+    )
+# %%
+
+
 # ii = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lax/spc_080_080_150/images/lits_5.pt"
 # torch.load(ii).dtype
 # %%

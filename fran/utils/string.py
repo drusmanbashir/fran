@@ -75,7 +75,7 @@ def str_to_path(arg_inds=None):
     arg_inds=listify(arg_inds)
     def wrapper(func):
         def inner (*args,**kwargs):
-            if arg_inds is None:
+            if len(arg_inds )==0:
                 args = [Path(arg) for arg in args]
                 kwargs = {key:Path(val) for key,val in kwargs.items()}
             else:
@@ -97,13 +97,6 @@ def path_to_str(fnc):
 
 
 
-@str_to_path(0)
-@regex_matcher(1)
-def get_extension(fn):
-    pat = r"[^\.]*\.(.*)"
-    return pat, fn.name
-
-
 def cleanup_fname(fname: str):
     '''
     If this is a slicer labelmap/segmentation, make sure you strip_slicer_strings first
@@ -118,6 +111,13 @@ def cleanup_fname(fname: str):
     ):  # this will by pass short filenames with single digit pt id confusing with slicer suffix _\d
         fname = strip_slicer_strings(fname)
     return fname
+
+
+@str_to_path(0)
+@regex_matcher(1)
+def get_extension(fn):
+    pat = r"[^\.]*\.(.*)"
+    return pat, fn.name
 
 
 def drop_digit_suffix(fname: str):

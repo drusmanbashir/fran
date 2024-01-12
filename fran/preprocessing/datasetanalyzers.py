@@ -1,7 +1,6 @@
-
 # %%
 import logging
-from fastcore.basics import  listify, store_attr
+from fastcore.basics import  GetAttr, listify, store_attr
 import numpy as np
 import ast
 from fran.transforms.totensor import ToTensorT
@@ -120,6 +119,7 @@ class BBoxesFromMask(object):
         filename,
         bg_label=0, # so far unused in this code
     ):
+        if not isinstance(filename,Path): filename = Path(filename)
         self.mask =load_image(filename)
         if isinstance(self.mask,torch.Tensor): self.mask = np.array(self.mask)
         if isinstance(self.mask,sitk.Image): self.mask = sitk.GetArrayFromImage(self.mask)
@@ -165,7 +165,7 @@ class SingleCaseAnalyzer:
     """
 
     def __init__(
-            self, project_title, case_files_tuple, percentile_range:list, outside_value=0
+            self, project_title, case_files_tuple, percentile_range:list, bg_label=0
     ):
         """
         param: case_files_tuple are two nii_gz files (img,mask)
@@ -173,16 +173,17 @@ class SingleCaseAnalyzer:
         assert isinstance(case_files_tuple, list) or isinstance(
             case_files_tuple, tuple
         ), "case_files_tuple must be either a list or a tuple"
+        case_files_tuple = [Path(fn) for fn in case_files_tuple]
         self.case_id = cleanup_fname(case_files_tuple[0].name)
-        store_attr("case_files_tuple,outside_value,percentile_range")
+        store_attr("case_files_tuple,bg_label,percentile_range")
 
     def load_case(self):
         self.img, self.mask, self._properties = get_img_mask_from_nii(
-            self.case_files_tuple, outside_value=self.outside_value
+            self.case_files_tuple, bg_label=self.bg_label
         )
 
     def get_bbox_only_voxels(self):
-        return self.img[self.mask != self.outside_value]
+        return self.img[self.mask != self.bg_label]
 
 
     @property
@@ -195,89 +196,56 @@ class SingleCaseAnalyzer:
     @case_id.setter
     def case_id(self,value): self._case_id = value
 
-class MultiCaseAnalyzer(object):
-    """
-    Input: raw_data_folder and project_title
-    Outputs: (after running process_cases()) :
-         1)bbox voxels stacked inside an h5py file,
-         2)Dataset global properties (including mean and std of voxels inside bboxes)
-    """
 
-    def __init__(
-        self, proj_defaults, outside_value=0, percentile_range: list = [0.5, 99.5],clip_range=None
-    ):
-        assert all(
-            [isinstance(x, float) for x in percentile_range]
-        ), "Provide float values for clip percentile_range. Corresponding HUs will be stored in file for future processing."
-        store_attr("outside_value,percentile_range,clip_range")
-        self.project_title = proj_defaults.project_title
-        self.properties_outfilename = proj_defaults.raw_dataset_properties_filename
-        self.global_properties_outfilename = proj_defaults.global_properties_filename
-        self.h5f_fname = proj_defaults.bboxes_voxels_info_filename
-        self.list_of_raw_cases = get_img_mask_filepairs(
-            parent_folder=proj_defaults.raw_data_folder
-        )
+class MultiCaseAnalyzer(GetAttr):
+    _default = "project"
+
+    def __init__(self, project,bg_label=0) -> None:
+        store_attr()
+        self.project_title = project.project_title
+        self.h5f_fname = project.bboxes_voxels_info_filename
+        self.filter_unprocessed_cases()
 
 
-    def store_projectwide_properties(self):
-        with h5py.File(self.h5f_fname, "r") as h5f_file:
-            cases = np.concatenate(
-                [h5f_file[case][:] for case in h5f_file.keys()]
-            )  # convert h5file cases into an array
-        intensity_range = np.percentile(cases, self.percentile_range)
-        global_properties = {}
-        dataset_size = len(self.list_of_raw_cases)
-        global_properties["project_title"] = self.project_title
-        global_properties["dataset_size"] = dataset_size
+    def filter_unprocessed_cases(self):
+        '''
+        Loads project.raw_dataset_properties_filename to get list of already completed cases.
+        Any new cases will be processed and added to project.raw_dataset_properties_filename
+        '''
+        
+        try:
+            self.raw_dataset_properties = load_dict(self.project.raw_dataset_properties_filename)
+            prev_processed_cases = set([b['case_id'] for b in self.raw_dataset_properties])
+        except FileNotFoundError:
+            print("First time preprocessing dataset. Will create new file: {}".format(self.project.raw_dataset_properties_filename))
+            self.raw_dataset_properties = []
+            prev_processed_cases = set()
+        ss = "SELECT ds, case_id, mask_symlink, img_symlink FROM datasources" 
+        res= self.project.sql_query(ss)
+        all_cases= []
+        for r in res:
+            case_ = {"case_id":r[0]+"_"+r[1], "mask_symlink":r[2] , "img_symlink":r[3]}
+            all_cases.append(case_)
+        all_case_ids = set([c['case_id'] for c  in all_cases])
+        new_cases = all_case_ids.difference(prev_processed_cases)
+        print("Found {0} new cases\nCases already processed in a previous session: {1}".format(len(new_cases), len(prev_processed_cases)))
+        assert (l:=len(new_cases)) == (l2:=(len(all_case_ids)-len(prev_processed_cases))), "Difference in number of new cases"
+        if len(new_cases) == 0: 
+            print("No new cases found.")
+            self.new_cases = []
+        else:
+            self.new_cases = [[c['img_symlink'],c['mask_symlink']] for c in all_cases if c['case_id'] in new_cases]
 
-        global_properties["mean_fg"] = np.double(
-            cases.mean()
-        )  # np.single is not JSON serializable
-        global_properties["std_fg"] = np.double(cases.std())
-        global_properties[
-            percentile_range_to_str(self.percentile_range) + "_fg"
-        ] = (
-            intensity_range
-        ).tolist()  # np.array is not JSON serializable
-        global_properties["max_fg"] = np.double(cases.max())
-        global_properties["min_fg"] = np.double(cases.min())
-
-        all_spacings = np.zeros((dataset_size, 3))
-        for ind, case_ in enumerate(self.case_properties):
-            # if "case_id" in case_:
-                spacing = case_["properties"]["itk_spacing"]
-                all_spacings[ind, :] = spacing
-
-        spacings_median = np.median(all_spacings, 0)
-        global_properties["spacings_median"] = spacings_median.tolist()
-
-        # global_properties collected. Now storing
-        # self.case_properties.append(dataset_globals)
-        print(
-            "\nWriting dataset global_properties to json file: {}".format(
-                self.properties_outfilename
-            )
-        )
-        save_dict(self.case_properties, self.properties_outfilename)
-        save_dict(global_properties, self.global_properties_outfilename)
-
-    def get_nii_bbox_properties(
-        self, num_processes=8, overwrite=False, multiprocess=True, debug=False
+    def process_new_cases(
+        self, return_voxels=True, num_processes=8, multiprocess=True, debug=False
     ):
         """
         Stage 1: derives datase properties especially intensity_fg
+        if return_voxels == True, returns voxels to be stored inside the h5f file
         """
-
-        self.case_properties = []
-        if overwrite == True or not self.h5f_fname.exists():
-            get_voxels = True
-            print("Voxels inside bbox will be dumped into: {}".format(self.h5f_fname))
-        else:
-            get_voxels = False
-            print("Voxels file: {0} exists".format(self.h5f_fname))
         args_list = [
-            [case_tuple, self.project_title, self.outside_value, get_voxels]
-            for case_tuple in self.list_of_raw_cases
+            [case_tuple, self.project_title, self.bg_label, return_voxels]
+            for case_tuple in self.new_cases
         ]
         self.outputs = multiprocess_multiarg(
             func=case_analyzer_wrapper,
@@ -286,107 +254,51 @@ class MultiCaseAnalyzer(object):
             multiprocess=multiprocess,
             debug=debug,
         )
-        h5f = h5py.File(self.h5f_fname, "w") if get_voxels == True else None
         for output in self.outputs:
-            self.case_properties.append(output["case"])
-            if h5f:
-                h5f.create_dataset(output["case"]["case_id"], data=output["voxels"])
-        if h5f:
-            h5f.close()
+            self.raw_dataset_properties.append(output["case"])
 
-    def user_query_clip_range(self,intensity_percentile_range):
-            try:
-                self.clip_range = input("A Clip range has not been given. Press enter to accept clip range based on intensity-percentiles (i.e.{}) or give a new range now: ".format(intensity_percentile_range))
-                if len(self.clip_range) == 0: self.clip_range = intensity_percentile_range
-                else: self.clip_range = ast.literal_eval(self.clip_range) 
-            except:
-                print("A valid clip_range is not entered. Using intensity-default")
-                self.clip_range = intensity_percentile_range
+    def dump_to_h5f(self):
+        if self.h5f_fname.exists():
+            mode= 'a'
+        else: mode = 'w'
+        with h5py.File(self.h5f_fname, mode) as h5f: 
+            for output in self.outputs:
+                try:
+                    h5f.create_dataset(output["case"]["case_id"], data=output["voxels"])
+                except ValueError:
+                    print("Case id {} already exists in h5f file. Skipping".format(output['case']['case_id']))
 
-    def compute_dataset_mean(self,num_processes,multiprocess,debug):
-        img_fnames = [case_[0] for case_ in self.list_of_raw_cases]
-        args = [[fname, self.clip_range] for fname in img_fnames]
+    def store_raw_dataset_properties(self):
+        processed_props = [output['case'] for output in self.outputs]
+        if self.raw_dataset_properties_filename.exists():
+            existing_props = load_dict(self.raw_dataset_properties_filename)
+            existing_total = len(existing_props)
+            assert existing_total + len(processed_props) == len(self.project), "There is an existing raw_dataset_properties file. New cases are processed also, but their sum does not match the size of this project"
+            raw_dataset_props = existing_props + processed_props
+        else:
+            raw_dataset_props = processed_props
+        save_dict(raw_dataset_props, self.raw_dataset_properties_filename)
 
-        print("Computing means from all nifti files (clipped to {})".format(self.clip_range))
-        means_sizes = multiprocess_multiarg(
-            get_means_voxelcounts,
-            args,
-            num_processes=num_processes,
-            multiprocess=multiprocess,
-            debug=debug,
-        )
-        means_sizes=  torch.tensor(means_sizes)
-        weighted_mn = torch.multiply(
-            means_sizes[:, 0], means_sizes[:, 1]
-        ) 
-
-        self.total_voxels = means_sizes[:, 1].sum()
-        self.dataset_mean = weighted_mn.sum() / self.total_voxels
-
-    def compute_dataset_std(self,num_processes,multiprocess,debug):
-        img_fnames = [case_[0] for case_ in self.list_of_raw_cases]
-        args = [[fname, self.dataset_mean, self.clip_range] for fname in img_fnames]
-        print(
-            "Computing std from all nifti files, using global mean computed above (clipped to {})".format(
-                self.clip_range
-            )
-        )
-        std_num = multiprocess_multiarg(get_std_numerator, args,num_processes=num_processes,multiprocess=multiprocess, debug=debug)
-        std_num = torch.tensor(std_num)
-        self.std = torch.sqrt(std_num.sum() / self.total_voxels)
-
-    def compute_std_mean_dataset(
-        self, num_processes=32, multiprocess=True, debug=False
-    ):
-
-        """
-        Stage 2:
-        Requires global_properties (intensity_percentile_fg range) for clipping ()
-        """
-
-        try:
-            self.global_properties = load_dict(self.global_properties_outfilename)
-        except:
-            print(
-                "Run process_cases first. Correct global_properties not found in file {}, or file does not exist".format(
-                    self.properties_outfilename
-                )
-            )
-
-        percentile_label, intensity_percentile_range=  get_intensity_range(self.global_properties)
-        if not self.clip_range: self.user_query_clip_range(intensity_percentile_range)
-        self.compute_dataset_mean(num_processes,multiprocess,debug)
-        self.compute_dataset_std(num_processes,multiprocess,debug)
-        self.global_properties['intensity_clip_range']= self.clip_range
-        self.global_properties[percentile_label]= intensity_percentile_range
-        self.global_properties["mean_dataset_clipped"] = self.dataset_mean.item()
-        self.global_properties["std_dataset_clipped"] = self.std.item()
-        self.global_properties["total_voxels"] = int(self.total_voxels)
-        print(
-            "Saving updated global_properties to file {}".format(
-                self.properties_outfilename
-            )
-        )
-        save_dict(self.global_properties, self.global_properties_outfilename,sort=True)
 
 
 def case_analyzer_wrapper(
     case_files_tuple,
     project_title,
-    outside_value,
+    bg_label,
     get_voxels=True,
     percentile_range=[0.5, 99.5],
 ):
     S = SingleCaseAnalyzer(
         project_title=project_title,
         case_files_tuple=case_files_tuple,
-        outside_value=outside_value,
+        bg_label=bg_label,
         percentile_range=percentile_range,
     )
 
     S.load_case()
     case_ = dict()
     case_["case_id"] = S.case_id
+    voxels=None
     if get_voxels == True:
         voxels = S.get_bbox_only_voxels()
         S.properties["mean_fg"] = int(voxels.mean())
@@ -446,9 +358,30 @@ def bboxes_function_version(
 if __name__ == "__main__":
     
     from fran.utils.common import *
-    P = Project(project_title="litsmc"); proj_defaults= P
+
+    P2 = Project(project_title="litsmc"); proj_defaults= P
+    fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litsmc/resampling_configs.pkl"
+    fn = Path(fn)
+    dd = load_dict(fn)
+    bboxes_info= load_dict("/s/fran_storage/datasets/preprocessed/fixed_spacings/litsmc/spc_080_080_150/bboxes_info_bk.pkl")
+
+    existing_cases = set([b['case_id'] for b in bboxes_info])
+
+    ss = "SELECT ds, case_id, mask_symlink FROM datasources" 
+    raw_info = load_dict(P2.raw_dataset_properties_filename)
 # %%
-    fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/nodes/spc_078_078_375/masks/nodes_1_20180805_AXIAL3MMiDose4_thick.pt")
+    cases = []
+    res= P.sql_query(ss)
+    for dad in res:
+        case_ = {"case_id":dad[0]+"_"+dad[1], "mask_symlink":dad[2]}
+        cases.append(case_)
+# %%
+    cases = set(cases)
+    new_cases = cases.difference(existing_cases)
+    assert (l:=len(new_cases)) == (l2:=(len(cases)-len(existing_cases))), "Difference in number of new cases"
+    mask_fns = [c['mask_symlink'] for c in cases if c['case_id'] in new_cases]
+# %%
+    fn = Path(mask_fns[0])
     aa = bboxes_function_version(fn, 0)
     fn2 = fn.str_replace("masks","images")
     img = torch.load(fn2)
@@ -462,9 +395,14 @@ if __name__ == "__main__":
         )
     aa = A()
 # %%
-        # return self.bboxes_info
+    P = Project("litsmallx")
+    P.add_data("/s/datasets_bkp/litsmall")
+    M = MultiCaseAnalyzer(P)
+    M.process_new_cases(debug=False)
+    M.dump_to_h5f()
+    M.store_raw_dataset_properties()
 
-
+    dd = load_dict(P.raw_dataset_properties_filename)
 
 # %%
     bb = aa['bbox_stats'][1]
@@ -507,7 +445,7 @@ if __name__ == "__main__":
 # %%
 
     P = Project(project_title="litsmc"); proj_defaults= P
-    M = MultiCaseAnalyzer(proj_defaults, outside_value=0)
+    M = GlobalProperties(proj_defaults, bg_label=0)
 
 # %%
     debug = True
@@ -626,7 +564,7 @@ if __name__ == "__main__":
         get_voxels = False
         print("Voxels file: {0} exists".format(M.h5f_fname))
     args_list = [
-        [case_tuple, M.project_title, M.outside_value, get_voxels]
+        [case_tuple, M.project_title, M.bg_label, get_voxels]
         for case_tuple in M.list_of_raw_cases
     ]
 # %%
@@ -647,5 +585,26 @@ if __name__ == "__main__":
     if h5f:
         h5f.close()
 
+    S = SingleCaseAnalyzer(
+        project_title=project_title,
+        case_files_tuple=case_files_tuple,
+        bg_label=bg_label,
+        percentile_range=percentile_range,
+    )
+
+    S.load_case()
+    case_ = dict()
+    case_["case_id"] = S.case_id
+    if get_voxels == True:
+        voxels = S.get_bbox_only_voxels()
+        S.properties["mean_fg"] = int(voxels.mean())
+        S.properties["min_fg"] = int(voxels.min())
+        S.properties["max_fg"] = int(voxels.max())
+        S.properties["std_fg"] = int(voxels.std())
+        S.properties[percentile_range_to_str(percentile_range)] = np.percentile(
+            voxels, percentile_range
+        )
+    case_["properties"] = S.properties
+    output = {"case": case_, "voxels": voxels}
 
 # %%

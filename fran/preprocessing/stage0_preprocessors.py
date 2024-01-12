@@ -592,7 +592,6 @@ if __name__ == "__main__":
     folder_ni = "/s/fran_storage/datasets/raw_data/lits/"
     res = verify_dataset_integrity(folder_ni, debug_mode=False, fix=True)
 # %%
-    spacings = [1.0, 1.0, 2.0]
     resampling_output_folder = Path(
         "/s/datasets/preprocessed/fixed_spacings/lits/spc_100_100_200/"
     )
@@ -609,11 +608,24 @@ if __name__ == "__main__":
     from fran.preprocessing.stage0_preprocessors import *
     from fran.preprocessing.stage1_preprocessors import *
 
-    P = Project(project_title="lits"); proj_defaults= P
+# %%
+    spacings = [.8,.8,1.5]
+    P = Project(project_title="litsmc"); proj_defaults= P
+# %%
+
+    Resampler = ResampleDatasetniftiToTorch(
+                    proj_defaults,
+                    minimum_final_spacing=0.5,
+                    enforce_isotropy=False,
+                    half_precision=True,
+                    clip_centre=False
+                )
+
+    Resampler.spacings = spacings
+# %%
     R = ResampleDatasetniftiToTorch(
         proj_defaults,
         minimum_final_spacing=0.5,
-        mask_resize_func=resize_multilabel_mask_torch,
         enforce_isotropy=False,
     )
 # %%

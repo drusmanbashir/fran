@@ -1,4 +1,3 @@
-
 # %%
 import torchio as tio
 import cc3d
@@ -6,13 +5,14 @@ import cc3d
 from fran.transforms.spatialtransforms import PadDeficitImgMask
 
 from fran.utils.image_utils import resize_tensor_3d
+from fran.utils.string import info_from_filename, strip_extension
 if 'get_ipython' in globals():
         print("setting autoreload")
         from IPython import get_ipython
         ipython = get_ipython()
         ipython.run_line_magic('load_ext', 'autoreload')
         ipython.run_line_magic('autoreload', '2')
-from fastcore.basics import listify, store_attr
+from fastcore.basics import GetAttr, listify, store_attr
 import nibabel as nib
 from pathlib import Path
 import os
@@ -28,7 +28,6 @@ import os
 # export
 import ipdb
 tr = ipdb.set_trace
-# %%
 
 def tensors_from_dict_file(filename):
         img_mask= torch.load(filename)
@@ -255,8 +254,90 @@ def pad_bbox(bbox,padding_torch_style): # padding is reverse order Torch style
     return tuple(out_slcs)
         
 
+class PatchGeneratorDataset(GetAttr):
+    _default = "project"
+    def __init__(self,project,fixed_sp_folder, patch_size, patch_overlap, expand_by=None):
+        store_attr()
+        fixed_sp_bboxes_fn= fixed_sp_folder/("bboxes_info")
+        self.fixed_sp_bboxes = load_dict(fixed_sp_bboxes_fn)
 
-class PatchGenerator(DictToAttr):
+        dataset_properties_fn = self.fixed_sp_folder/("resampled_dataset_properties.json")
+        assert(dataset_properties_fn.exists()), "Dataset properties file does not exist. Has the Resampling been run to create folder {}?".format(self.fixed_sp_folder)
+        self.dataset_properties=load_dict(dataset_properties_fn)
+        self.register_existing_files()
+
+        self.patches_config_fn = self.output_folder / ("patches_config.json")
+
+        if self.patches_config_fn.exists():
+            print("Patches configs already exist. Overriding given values with those from file")
+            patches_config = load_dict(self.patches_config_fn)
+            print(patches_config)
+            self.patch_overlap = patches_config['patch_overlap']
+            self.expand_by = patches_config['expand_by']
+
+    def register_existing_files(self):
+        self.existing_files = list((self.output_folder/("masks")).glob("*pt"))
+        infos = [info_from_filename(f.name) for f in self.existing_files]
+        self.existing_case_ids =[info['proj_title']+'_'+info['case_id'] for info in infos]
+        self.existing_case_ids = set(self.existing_case_ids)
+
+    def remove_completed_cases(self):
+        all_cases = set([bb['case_id'] for bb in self.fixed_sp_bboxes])
+        new_case_ids = all_cases.difference(self.existing_case_ids)
+        print("Total cases {0}.Found {1} new cases".format(len(all_cases),len(new_case_ids)))
+        self.fixed_sp_bboxes = [bb for bb in self.fixed_sp_bboxes if bb['case_id'] in new_case_ids]
+
+    def create_patches(self,overwrite=True,debug=False):
+        patch_overlap = [int(self.patch_overlap*ps) for ps in self.patch_size]
+        patch_overlap=[to_even(ol) for ol in patch_overlap]
+        maybe_makedirs(self.output_folder)
+        self.save_patches_config()
+        if overwrite==False:
+            self.remove_completed_cases()
+        args = [[self.dataset_properties, self.output_folder, self.patch_size,bb,patch_overlap,self.expand_by] for bb in self.fixed_sp_bboxes]
+
+        res = multiprocess_multiarg(
+            patch_generator_wrapper, args, debug=debug, progress_bar=True
+        )
+        # for bb in pbar(self.fixed_sp_bboxes):
+        #     P = PatchGeneratorSingle(self.dataset_properties, self.output_folder, self.patch_size,bb,patch_overlap=patch_overlap,expand_by=self.expand_by)
+        #     P.create_patches_from_all_bboxes()
+
+    def generate_bboxes(self, num_processes=24, debug=False):
+        masks_folder = self.output_folder/ "masks"
+        mask_filenames = list(masks_folder.glob("*pt"))
+        bg_label=0
+        arguments = [[x, bg_label] for x in mask_filenames]
+        res_cropped = multiprocess_multiarg(
+            func=bboxes_function_version,
+            arguments=arguments,
+            num_processes=num_processes,
+            debug=debug,
+        )
+
+        stats_outfilename = (masks_folder.parent) / ("bboxes_info.json")
+        print("Saving bbox stats to {}".format(stats_outfilename))
+        save_dict(res_cropped, stats_outfilename)
+
+    def save_patches_config(self):
+        patches_config = {
+            "patch_overlap": self.patch_overlap,
+            "expand_by": self.expand_by,
+        }
+        save_dict(patches_config, self.patches_config_fn)
+
+
+
+
+    @property
+    def output_folder(self):
+        patches_fldr_name = "dim_{0}_{1}_{2}".format(*self.patch_size)
+        output_folder_ = (
+            self.patches_folder / self.fixed_sp_folder.name / patches_fldr_name
+        )
+        return output_folder_
+
+class PatchGeneratorSingle(DictToAttr):
     def __init__(self,dataset_properties:dict, output_folder,output_patch_size,info, patch_overlap=(0,0,0) ,expand_by=None):
         '''
         generates function from 'all_fg' bbox associated wit the given case
@@ -328,7 +409,6 @@ class PatchGenerator(DictToAttr):
             torch.save(img,out_img_fname)
             torch.save(mask,out_mask_fname)
     def create_patches_from_all_bboxes(self):
-        print("Creating patches for case {}".format(self.info['case_id']))
         self.load_img_mask_padding()
         for bbx in self.bboxes:
             bbox_new=self.maybe_expand_bbox(bbx)
@@ -336,24 +416,30 @@ class PatchGenerator(DictToAttr):
             self.create_patches_from_grid_sampler()
 
 
-# %%
+
 def to_even(input_num, lower=True):
     np.fnc = np.subtract if lower==True else np.add
     output_num = np.fnc(input_num,input_num%2)
     return int(output_num)
 
-def patch_generator_wrapper(output_folder,output_patch_size, info,oversampling_factor=0,expand_by=None):
-    # make sure output_folder already has been created
-    if not oversampling_factor: oversampling_factor=0.
-    assert oversampling_factor<0.9 , "That will create a way too large data folder. Choose an oversampling_factor between [0, 0.9)"
-    patch_overlap = [int(oversampling_factor*ps) for ps in output_patch_size]
-    patch_overlap=map(to_even,patch_overlap)
 
-    dataset_properties_fn = info['filename'].parent.parent/("resampled_dataset_properties")
-    dataset_properties=load_dict(dataset_properties_fn)
-    P= PatchGenerator(dataset_properties,output_folder,output_patch_size, info,patch_overlap,expand_by)
-    P.create_patches_from_all_bboxes()
-    return 1,info['filename']
+def patch_generator_wrapper(dataset_properties, output_folder,patch_size, info,patch_overlap,expand_by=None):
+            P = PatchGeneratorSingle(dataset_properties, output_folder, patch_size,info,patch_overlap,expand_by)
+            P.create_patches_from_all_bboxes()
+            return 1,info['filename']
+#
+# def patch_generator_wrapper(output_folder,output_patch_size, info,oversampling_factor=0,expand_by=None):
+#     # make sure output_folder already has been created
+#     if not oversampling_factor: oversampling_factor=0.
+#     assert oversampling_factor<0.9 , "That will create a way too large data folder. Choose an oversampling_factor between [0, 0.9)"
+#     patch_overlap = [int(oversampling_factor*ps) for ps in output_patch_size]
+#     patch_overlap=[to_even(ol) for ol in patch_overlap]
+#
+#     dataset_properties_fn = info['filename'].parent.parent/("resampled_dataset_properties")
+#     dataset_properties=load_dict(dataset_properties_fn)
+#     P= PatchGeneratorSingle(dataset_properties,output_folder,output_patch_size, info,patch_overlap,expand_by)
+#     P.create_patches_from_all_bboxes()
+#     return 1,info['filename']
 # %%
 
 if __name__ == "__main__":
@@ -365,7 +451,40 @@ if __name__ == "__main__":
 # %%
     
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P
+    P = Project(project_title="litsmc"); proj_defaults= P
+    PG = PatchGeneratorDataset(P,Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/litsmc/spc_080_080_150"),[192,192,128],.25,20)
+    PG.create_patches(overwrite=False,debug=True)
+    PG.generate_bboxes(debug=False)
+# %%
+
+# %%
+    all_cases = set([bb['case_id'] for bb in PG.fixed_sp_bboxes])
+    new_case_ids = all_cases.difference(PG.existing_case_ids)
+    print("Total cases {0}.Found {1} new cases".format(len(all_cases),len(new_case_ids)))
+    PG.fixed_sp_bboxes = [bb for bb in PG.fixed_sp_bboxes if bb['case_id'] in new_case_ids]
+
+
+# %%
+    fixed_sp_folder = proj_defaults.fixed_spacings_folder/("spc_080_080_150")
+    stage0_bboxes_fn = fixed_sp_folder / ("bboxes_info")
+    output_folder =Path("/home/ub/datasets/preprocessed/litsmc/patches/spc_080_080_150/dim_192_192_128/")
+
+    stage0_bboxes = load_dict(stage0_bboxes_fn)
+
+    info = stage0_bboxes[0]
+    patch_config_fn = "/home/ub/datasets/preprocessed/litsmc/patches/spc_080_080_150/dim_192_192_128/patches_config.json"
+    patches_config = load_dict(patch_config_fn)
+    oversampling_factor, expand_by = patches_config.values()
+    output_patch_size = [192,192,128]
+    patch_overlap = [int(oversampling_factor*ps) for ps in output_patch_size]
+    patch_overlap=list(map(to_even,patch_overlap))
+    tr()
+
+    dataset_properties_fn = info['filename'].parent.parent/("resampled_dataset_properties")
+    dataset_properties=load_dict(dataset_properties_fn)
+
+    P= PatchGeneratorSingle(dataset_properties,output_folder,output_patch_size, info,patch_overlap,expand_by)
+    P.create_patches_from_all_bboxes()
     output_shape=[128,128,96]
     overs = .25
     fixed_folder = proj_defaults.fixed_spacings_folder/("spc_080_080_150/images")
@@ -377,7 +496,7 @@ if __name__ == "__main__":
     inf=load_dict(dici_fn)
 
     info=inf[0]
-    P= PatchGenerator(dataset_properties,output_folder,output_patch_size, info)
+    P= PatchGeneratorSingle(dataset_properties,output_folder,output_patch_size, info)
 # %%
     n=0
     img_fn = fixed_files[n]
@@ -415,7 +534,12 @@ if __name__ == "__main__":
     ImageMaskViewer([x[0],x[1]],intensity_slider_range_percentile=[0,100])
     # ImageMaskViewer([img[lims],mask[lims]])
 # %%
+    fn = "/home/ub/datasets/preprocessed/litsmc/patches/spc_080_080_150/dim_192_192_128/bboxes_info.pkl"
+    bboxes = load_dict(fn)
 ######################################################################################
+    tnsr_fn = bb['filename']
+    tnsr = torch.load(tnsr_fn)
+    print(tnsr.shape)
 # %% [markdown]
 ## Trialling torch to nibabel format for rapid loading 
 # 

@@ -29,7 +29,7 @@ def case_processed_already(img_fn,output_folder):
 
 import argparse
 
-from fran.inference.inference_base import EndToEndPredictor
+from fran.inference.cascade import EndToEndPredictor
 
 def run_prediction(E,proj_defaults,run_name_l,run_name_p,use_neptune,img_fn,gt_fn=None,overwrite=False,output_folder=None):
     # E = EndToEndPredictor(proj_defaults,run_name_l,run_name_p,use_neptune=use_neptune)

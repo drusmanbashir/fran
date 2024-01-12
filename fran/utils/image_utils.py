@@ -82,8 +82,8 @@ def resize_multilabel_mask_sitk(mask_np, sz_dest_np, label_priority):
 
 
 # %%
-def get_bbox_from_mask(mask, outside_value=0):
-    mask_voxel_coords = np.where(mask != outside_value)
+def get_bbox_from_mask(mask, bg_label=0):
+    mask_voxel_coords = np.where(mask != bg_label)
     minzidx = int(np.min(mask_voxel_coords[0]))
     maxzidx = int(np.max(mask_voxel_coords[0])) + 1
     minxidx = int(np.min(mask_voxel_coords[1]))
@@ -134,7 +134,7 @@ def is_standard_orientation(direction: tuple):
     return standard == direction
 
 
-def get_img_mask_from_nii(case_files_tuple, outside_value=0):
+def get_img_mask_from_nii(case_files_tuple, bg_label=0):
 
     properties = dict()
     data_itk = [sitk.ReadImage(f) for f in case_files_tuple]
@@ -160,7 +160,7 @@ def get_img_mask_from_nii(case_files_tuple, outside_value=0):
     properties["itk_origin"] = data_itk[0].GetOrigin()
     properties["itk_spacing"] = data_itk[0].GetSpacing()
     properties["itk_direction"] = data_itk[0].GetDirection()
-    # properties["bbox"] = get_bbox_from_mask(mask, outside_value=outside_value)
+    # properties["bbox"] = get_bbox_from_mask(mask, bg_label=bg_label)
     return img, mask, properties
 
 #

@@ -132,7 +132,7 @@ class Project(DictToAttr):
             test
         ), "Unequal lengths of datafolders and (bool) test status"
         for fldr, test in zip(data_folders, test):
-            ds = Datasource(fldr, test)
+            ds = Datasource(folder=fldr, test=test)
             ds = self.filter_existing_images(ds)
             self.populate_tbl(ds)
         self.populate_raw_data_folder()
@@ -256,10 +256,10 @@ class Project(DictToAttr):
             / ("preprocessed/fixed_spacings")
             / self.project_title
         )
-        self.global_properties_filename = self.project_folder / "global_properties"
+        self.global_properties_filename = self.project_folder / "global_properties.json"
         self.patches_folder = self.fixed_dimensions_folder / ("patches")
         self.raw_dataset_properties_filename = (
-            self.project_folder / "raw_dataset_properties"
+            self.project_folder / "raw_dataset_properties.pkl"
         )
 
         self.bboxes_voxels_info_filename = self.raw_data_folder / ("bboxes_voxels_info")
@@ -381,14 +381,23 @@ class Project(DictToAttr):
         return list(self._raw_data_masks)
 
 class Datasource(GetAttr):
-    def __init__(self, folder: Union[str, Path], test=False) -> None:
+    def __init__(self, folder: Union[str, Path],name:str=None, test=False) -> None:
         """
         src_folder: has subfolders 'images' and 'masks'. Files in each are identically named
         """
         self.folder = Path(folder)
-        self.name = self.folder.name
+        self.test=test
+        if name is None:
+            self.name = self.infer_dataset_name()
+        else:
+            self.name = name
+
         self.integrity_check()
-        store_attr(but="folder")
+
+    def infer_dataset_name(self):
+        fn = list((self.folder / ("images")).glob("*.*"))[0]
+        proj_title = info_from_filename(fn.name)["proj_title"]
+        return proj_title
 
     def integrity_check(self):
         """
@@ -406,7 +415,7 @@ class Datasource(GetAttr):
         self.verified_pairs = []
         for img_fn in images:
             self.verified_pairs.append([img_fn, find_matching_fn(img_fn, masks)])
-        pp(self.verified_pairs)
+        print("Verified filepairs are matched")
 
     def extract_img_mask_fnames(self, ds):
         img_fnames = list((ds["source_path"] / ("images")).glob("*"))
@@ -449,17 +458,18 @@ class Datasource(GetAttr):
 
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="litsmc")
-    P.delete()
+    P = Project(project_title="litsmallx")
     ds = "/s/xnat_shadow/nodes"
     ds2="/s/datasets_bkp/litqmall"
     ds3="/s/datasets_bkp/drli"
     ds4="/s/datasets_bkp/lits_segs_improved/"
     ds5="/s/datasets_bkp/drli_short/"
+    P.add_data(ds5)
     # P.create_project([ds,ds2,ds3,ds4])
-    P.create_project([ds])
+    P.create_project([ds5])
     P.create_folds()
     len(P.raw_data_imgs)
     len(P)
+    P.create_project(ds5)
 # %%
-
+    D = Datasource(ds5)

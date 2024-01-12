@@ -1,3 +1,5 @@
+# %%
+import torch
 from monai.networks.nets import DynUNet
 import ipdb
 tr = ipdb.set_trace
@@ -24,7 +26,7 @@ def get_kernel_strides(patch_size,spacings):
     kernels.append(len(spacings) * [3])
     return kernels, strides
 
-class DynUNet(DynUNet):
+class DynUNet_UB(DynUNet):
     # def __init__(self, spatial_dims: int, in_channels: int, out_channels: int, kernel_size: Sequence[Union[Sequence[int], int]], strides: Sequence[Union[Sequence[int], int]], upsample_kernel_size: Sequence[Union[Sequence[int], int]], filters: Optional[Sequence[int]] = None, dropout: Optional[Union[Tuple, str, float]] = None, norm_name: Union[Tuple, str] = ..., act_name: Union[Tuple, str] = ..., deep_supervision: bool = False, deep_supr_num: int = 1, res_block: bool = False, trans_bias: bool = False):
     #     super().__init__(spatial_dims, in_channels, out_channels, kernel_size, strides, upsample_kernel_size, filters, dropout, norm_name, act_name, deep_supervision, deep_supr_num, res_block, trans_bias)
 
@@ -59,14 +61,14 @@ if __name__ == "__main__":
         3,
         1,
         3,
-        kernel_size=kernels,
-        strides=strides,
+        kernel_size=k,
+        strides=s,
         upsample_kernel_size=strides[1:],
         norm_name="instance",
         deep_supervision=True,
         deep_supr_num=3,
     )
-    net2= DynUNet(
+    net2= DynUNet_UB(
         3,
         1,
         3,
@@ -78,6 +80,15 @@ if __name__ == "__main__":
         deep_supr_num=3,
     )
 # %%
+    x = torch.randn(2, 1, *patch_size, device="cpu")
+    y= net(x)
+    y2= net2(x)
+    print(y.shape)
+    [print(a.shape) for a in y2]
+
+    yy = torch.unbind(y,1)
+# %%
     summ = summary(net, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
     summ2 = summary(net2, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
     print(summ2)
+# %%

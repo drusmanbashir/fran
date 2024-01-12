@@ -183,7 +183,7 @@ class NeptuneImageGridCallback(Callback):
     #
     def on_train_start(self, trainer, pl_module):
         len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
-        self.freq = np.minimum(2,int(len_dl / self.grid_rows))
+        self.freq = np.maximum(2,int(len_dl / self.grid_rows))
 
     def on_train_epoch_start(self, trainer, pl_module):
         if trainer.current_epoch % self.epoch_freq == 0:
@@ -290,7 +290,7 @@ class NeptuneImageGridCallback(Callback):
         self.grid_labels.append(label)
 
 
-class NeptuneManager(NeptuneLogger, Callback):
+class NeptuneManager(NeptuneLogger):
     def __init__(
         self,
         *,
@@ -399,17 +399,6 @@ class NeptuneManager(NeptuneLogger, Callback):
                 print("Loading most recent run. Run id {}".format(row["sys/id"]))
                 return row["sys/id"], row["metadata/run_name"]
 
-
-
-    def on_train_start(self, trainer, pl_module):
-        print("Training is starting")
-
-    def on_train_batch_end(self, trn, plm, outputs, batch, batch_idx):
-        tr()
-        ld = plm.loss_fnc.loss_dict
-        plm.logger.log_metrics(ld)
-
-
     def download_checkpoints(self):
         remote_dir =str(Path(self.model_checkpoint).parent)
         latest_ckpt = self.shadow_remote_ckpts(remote_dir)
@@ -450,7 +439,6 @@ class NeptuneManager(NeptuneLogger, Callback):
         return latest_ckpt
 
     def stop(self): self.experiment.stop()
-
 
 
 
@@ -527,16 +515,16 @@ class UNetTrainer(LightningModule):
 
     def _calc_loss(self, batch):
         inputs, target = batch["image"], batch["label"]
-        self.pred = self.forward(inputs)
-        target_listed = []
-        for s in self.deep_supervision_scales:
-            if all([i == 1 for i in s]):
-                target_listed.append(target)
-            else:
-                size = [int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])]
-                target_downsampled = F.interpolate(target, size=size, mode="nearest")
-                target_listed.append(target_downsampled)
-        loss = self.loss_fnc(self.pred, target_listed)
+        pred = self.forward(inputs)
+        # target_listed = []
+        # for s in self.deep_supervision_scales:
+        #     if all([i == 1 for i in s]):
+        #         target_listed.append(target)
+        #     else:
+        #         size = [int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])]
+        #         target_downsampled = F.interpolate(target, size=size, mode="nearest")
+                # target_listed.append(target_downsampled)
+        loss = self.loss_fnc(pred, target)
         loss_dict = self.loss_fnc.loss_dict
         return loss, loss_dict
 
@@ -553,10 +541,8 @@ class UNetTrainer(LightningModule):
         return loss
 
     def on_train_epoch_start(self) -> None:
+
         return super().on_train_epoch_start()
-    def on_fit_start(self):
-        self.logger.experiment["sys/name"]=self.project.project_title
-        self.logger.experiment.wait()
 
     def log_losses(self, loss_dict, prefix):
         metrics = [
@@ -706,42 +692,26 @@ def maybe_ddp(devices):
         return 'ddp'
 
 class TrainingManager():
-    def __init__(self, project, configs):
-        super().__init__()
+    def __init__(self, project, configs, run_name=None):
         store_attr()
-    def setup(self,batch_size, run_name=None, cbs=[], devices=1,compiled=False, neptune=True,tags=[],description="",epochs=1000,batch_finder=False):
-
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
-        strategy= maybe_ddp(devices)
+    def setup(self,batch_size=8,  cbs=[], lr=None,devices=1,compiled=False, neptune=True,tags=[],description="",epochs=1000,batchsize_finder=False):
+        if lr: self.configs['model_params']['lr']=lr
         self.configs['model_params']['compiled']=compiled
+        strategy= maybe_ddp(devices)
         if type(devices)==int and devices>1:
             sync_dist=True
         else:
             sync_dist=False
 
-        if self.ckpt: self.load_ckpts()
+        if self.ckpt: 
+            self.D, self.N = self.load_ckpts(lr=lr)
         else:
-            DMClass = self.resolve_datamanager(batch_finder,self.configs['dataset_params']['mode'])
-            self.D = DMClass(
-                self.project,
-                dataset_params=self.configs["dataset_params"],
-                transform_factors=self.configs["transform_factors"],
-                affine3d=self.configs["affine3d"],
-                batch_size=batch_size
-            )
-            self.N = UNetTrainer(
-                self.project,
-                self.configs["dataset_params"],
-                self.configs["model_params"],
-                self.configs["loss_params"],
-                lr=self.configs["model_params"]["lr"],
-                max_epochs=epochs,
-                sync_dist=sync_dist
-            )
+            self.D,self.N = self.init_D_N(batch_size,epochs,sync_dist)
         if neptune == True:
             logger = NeptuneManager(
                 project=self.project,
-                run_id=run_name,
+                run_id=self.run_name,
                 log_model_checkpoints=False,  # Update to True to log model checkpoints
                 tags=tags,
                 description=description
@@ -757,6 +727,7 @@ class TrainingManager():
         else:
             logger = None
 
+        if batchsize_finder == True: cbs +=[BatchSizeFinder(mode='binsearch',init_val=batch_size),]
         self.D.prepare_data()
 
         if self.configs['model_params']['compiled']==True:
@@ -777,33 +748,41 @@ class TrainingManager():
             # strategy='ddp_find_unused_parameters_true'
         )
 
-    def resolve_datamanager(self, batch_finder, mode: str):
-        assert mode in ['patch', 'whole', 'lowres'], "mode must be 'patch', 'whole' or 'lowres'"
-        cbs = []
-        if batch_finder:
-            cbs.append(BatchSizeFinder(mode='binsearch', init_val=8))
-            DMClass = DataManagerShort
-        else:
-            if mode == 'patch':
-                DMClass = DataManagerPatch
-            elif mode == 'whole':
-                DMClass = DataManagerWhole
-            else:
-                raise NotImplementedError("Invalid mode")
-        return DMClass
+    def init_D_N(self,batch_size,epochs,sync_dist,batch_finder=False):
+            DMClass = self.resolve_datamanager(self.configs['dataset_params']['mode'])
+            D = DMClass(
+                self.project,
+                dataset_params=self.configs["dataset_params"],
+                transform_factors=self.configs["transform_factors"],
+                affine3d=self.configs["affine3d"],
+                batch_size=batch_size
+            )
+            N = UNetTrainer(
+                self.project,
+                self.configs["dataset_params"],
+                self.configs["model_params"],
+                self.configs["loss_params"],
+                lr=self.configs["model_params"]["lr"],
+                max_epochs=epochs,
+                sync_dist=sync_dist
+            )
+            return D,N
 
-
-    def load_ckpts(self):
+    def load_ckpts(self,lr=None):
             state_dict=torch.load(self.ckpt)
-            DMClass = self.resolve_datamanager(False,state_dict['datamodule_hyper_parameters']['dataset_params']['mode'])
-            self.D = DMClass.load_from_checkpoint(self.ckpt,project=self.project)
-            lr=state_dict['lr_schedulers'][0]['_last_lr'][0]
-
+            DMClass = self.resolve_datamanager(state_dict['datamodule_hyper_parameters']['dataset_params']['mode'])
+            D = DMClass.load_from_checkpoint(self.ckpt,project=self.project)
+            if lr is None:
+                lr=state_dict['lr_schedulers'][0]['_last_lr'][0]
+            else:
+                state_dict['lr_schedulers'][0]['_last_lr'][0]=lr
+                torch.save(state_dict,self.ckpt)
             try:
-                self.N = UNetTrainer.load_from_checkpoint(
-                    self.ckpt, project=self.project, dataset_params=self.D.dataset_params,lr=lr
+                N = UNetTrainer.load_from_checkpoint(
+                    self.ckpt, project=self.project, dataset_params=D.dataset_params,lr=lr
                 )
             except:
+                tr()
                 ckpt_state = state_dict['state_dict']
                 ckpt_state_updated = fix_dict_keys(ckpt_state,'model','model._orig_mod')
                 print(ckpt_state_updated.keys())
@@ -813,12 +792,25 @@ class TrainingManager():
                 ckpt_old = self.ckpt.str_replace('_bkp','')
                 ckpt_old = self.ckpt.str_replace('.ckpt','.ckpt_bkp')
                 torch.save(state_dict_neo,self.ckpt)
-
                 shutil.move(self.ckpt,ckpt_old)
 
-                self.N = UNetTrainer.load_from_checkpoint(
-                    self.ckpt, project=self.project, dataset_params=self.D.dataset_params,lr=lr
+                N = UNetTrainer.load_from_checkpoint(
+                    self.ckpt, project=self.project, dataset_params=D.dataset_params,lr=lr
                 )
+            return D,N
+
+
+    def resolve_datamanager(self,  mode: str):
+        assert mode in ['patch', 'whole', 'lowres'], "mode must be 'patch', 'whole' or 'lowres'"
+        if mode == 'patch':
+            DMClass = DataManagerPatch
+        elif mode == 'whole':
+            DMClass = DataManagerWhole
+        else:
+            raise NotImplementedError("Invalid mode")
+        return DMClass
+
+
 
 
     def fit(self):
@@ -866,20 +858,20 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
-    # conf['model_params']['arch']='DynUNet'
+    conf['model_params']['arch']='DynUNet'
     # conf['model_params']['lr']=1e-3
 
-    Tm = TrainingManager(proj,conf)
 # %%
-    bs = 8
+    bs = None
+    # run_name ='LITS-709'
     run_name =None
-    run_name ='LITS-709'
     compiled=False
     batch_finder=False
-    neptune=True
+    neptune=False
     tags=[]
     description="Baseline all transforms as in previous full data runs"
-    Tm.setup(run_name=run_name,compiled=compiled,batch_size=bs,devices = [0], epochs=500,batch_finder=batch_finder,neptune=neptune,tags=tags,description=description)
+    Tm = TrainingManager(proj,conf,run_name)
+    Tm.setup(compiled=compiled,batch_size=bs,devices = [0], epochs=5,batchsize_finder=batch_finder,neptune=neptune,tags=tags,description=description)
     # Tm.D.batch_size=8
     Tm.N.compiled=compiled
 # %%

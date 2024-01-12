@@ -161,7 +161,7 @@ save_json = dump(json,"w")
 # load_pickle = load(pickle)
 
 # %%
-@str_to_path()
+@str_to_path(0)
 def load_dict(filename):
     def _inner(filename,ext):
                 if ext == 'json': 

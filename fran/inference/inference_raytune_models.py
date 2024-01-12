@@ -1,6 +1,6 @@
 # %%
 from fran.managers.tune import *
-from fran.inference.inference_base import *
+from fran.inference.cascade import *
 
 
 

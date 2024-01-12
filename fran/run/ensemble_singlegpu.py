@@ -7,7 +7,7 @@ from fran.utils.common import *
 from fran.transforms.spatialtransforms import *
 from fran.managers.trainer import *
 from fran.managers.tune import *
-from fran.inference.inference_base import *
+from fran.inference.cascade import *
 from fran.utils.imageviewers import *
 import itertools as il
 
@@ -28,10 +28,10 @@ class EnsembleActor(object):
         self.value = 0
 
     def process(self,proj_defaults,run_name_w,runs_ensemble ,fnames,half,debug,overwrite=False):
-        self.En = EnsemblePredictor(proj_defaults,3,run_name_w,runs_ensemble,bs=3,half=half,device='cuda',debug=debug,overwrite=overwrite)
+        self.En = CascadeInferer(proj_defaults, 3, run_name_w, runs_ensemble, bs=3, half=half, device='cuda', debug=debug, overwrite=overwrite)
         for img_fn in fnames:
             img_fn = Path(img_fn)
-            self.En.run(img_fn)
+            self.En.predict(img_fn)
 # %%
 
 def main(args):
