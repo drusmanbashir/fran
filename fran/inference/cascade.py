@@ -46,8 +46,7 @@ from fran.data.dataset import (FillBBoxPatchesd, NormaliseClip, NormaliseClipd,
                                SavePatchd)
 from fran.managers.training import (DataManager, UNetTrainer,
                                     checkpoint_from_model_id)
-from fran.transforms.inferencetransforms import \
-    KeepLargestConnectedComponentWithMetad
+from fran.transforms.inferencetransforms import KeepLargestConnectedComponentWithMetad, RenameDictKeys
 from fran.utils.common import *
 from fran.utils.dictopts import DictToAttr
 from fran.utils.fileio import load_dict, load_yaml, maybe_makedirs
@@ -548,7 +547,7 @@ class EnsemblePredictor:  # SPACING HAS TO BE SAME IN PATCHES
         spacings = dic1["datamodule_hyper_parameters"]["dataset_params"]["spacings"]
         return spacings
 
-    def run(self, imgs, chunksize=12):
+    def predict(self, imgs, chunksize=12):
         """
         chunksize is necessary in large lists to manage system ram
         """
@@ -654,16 +653,16 @@ class EnsemblePredictor:  # SPACING HAS TO BE SAME IN PATCHES
 
     def postprocess(self, patch_bundle):
         keys = self.runs_p
-        M = MeanEnsembled(keys=keys, output_key="pred")
         A = Activationsd(keys="pred", softmax=True)
         D = AsDiscreted(keys=["pred"], argmax=True)
-        K = KeepLargestConnectedComponentWithMetad(keys=["pred"], independent=False)
+        K = KeepLargestConnectedComponentWithMetad(keys=["pred"], independent=False,applied_labels=1) # label=1 is the organ
         F = FillBBoxPatchesd()
-        tfms = [M, A, D, K, F]
+        if len(keys) == 1:
+            MR = RenameDictKeys(keys=keys, new_keys=["pred"])
+        else:
+            MR = MeanEnsembled(keys=keys, output_key="pred")
+        tfms = [MR, A, D, K, F]
 
-        if len(self.runs_p) == 1:
-            E = EnsureChannelFirstd(keys="pred")
-            tfms.insert(1, E)
         # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
         C = Compose(tfms)
         output = C(patch_bundle)
@@ -674,16 +673,17 @@ class EnsemblePredictor:  # SPACING HAS TO BE SAME IN PATCHES
 
 if __name__ == "__main__":
     # ... run your application ...
-    proj = Project(project_title="lits32")
+    proj = Project(project_title="litsmc")
 
     run_w = "LIT-145"
     run_ps = ["LIT-143", "LIT-150", "LIT-149", "LIT-153", "LIT-161"]
     run_ps = ["LITS-630", "LITS-633", "LITS-632", "LITS-647", "LITS-650"]
+    run_ps = ["LITS-709"]
 
     # %%
-    img_fnq = "/s/insync/datasets/crc_project/qiba/qiba0_0000.nii.gz"
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
+# %%
     img_fn = "/s/datasets_bkp/lits_segs_improved/images/lits_6ub.nii"
     img_fn2 = (
         "/s/xnat_shadow/crc/test/images/finalised/crc_CRC83b_20130726_Abdomen.nii.gz"
@@ -695,6 +695,7 @@ if __name__ == "__main__":
 
     img_fns = [img_fn, img_fn2, img_fn3]
 
+# %%
     crc_fldr = "/s/xnat_shadow/crc/test/images/finalised/"
     crc_imgs = list(Path(crc_fldr).glob("*"))
     # %%
@@ -707,8 +708,8 @@ if __name__ == "__main__":
         imgs = crc_imgs[n * chunk : (n + 1) * chunk]
         # im = [{'image':im} for im in [img_fn,img_fn2]]
         En = EnsemblePredictor(proj, run_w, run_ps, debug=True, device=[1])
-        preds = En.run(img_fnq)
-    # %%
+        preds = En.predict(img_fns)
+# %%
     ds = En.ds
     bboxes = En.bboxes
     data = [ds, bboxes]
@@ -730,18 +731,17 @@ if __name__ == "__main__":
     batch2 = FF(batch)
     im_c2 = batch2["image_cropped"]
     ImageMaskViewer([im_c[0].permute(2, 1, 0), im_c2[0]], data_types=["image", "mask"])
-    # %%
-    # %%
+# %%
+# %%
     pred = preds_patch[1]
     pred["image"].shape
     pred["pred"].shape
     pred["bbox"]
 
-    F(pred)
     pred["pred"]
-    # %%
+# %%
 
-    # %%
+# %%
     outputs = preds
     I = Invertd(keys=["pred"], transform=p.ds2.transform, orig_keys=["image_cropped"])
     C = ToCPUd(keys=["image", "pred"])
@@ -750,7 +750,7 @@ if __name__ == "__main__":
         S = SavePatchd(["pred"], p.output_folder, postfix_channel=True)
         tfms += [S]
     C = Compose(tfms)
-    # %%
+# %%
     out_final = []
     for batch in outputs:  # batch_length is 1
         batch["pred"] = batch["pred"].squeeze(0).detach()
@@ -761,9 +761,9 @@ if __name__ == "__main__":
         batch = C(batch)
         out_final.append(batch)
 
-    # %%
+# %%
     ImageMaskViewer([image[0], full[2]])
-    # %%
+# %%
     cropped_tnsr = batch["pred"]
     bbox = batch["bbox"]
     chs = cropped_tnsr.shape[0]
@@ -793,14 +793,14 @@ if __name__ == "__main__":
         batch = Co(batch)
         out_final.append(batch)
 
-    # %%
+# %%
 
     pred_patches = En.patch_prediction(En.ds, En.bboxes)
     pred_patches.keys()
     pred_patches2 = En.decollate_patches(pred_patches, En.bboxes)
     pred_patches2[0]["LITS-630"].shape
     output = En.postprocess(pred_patches2)
-    # %%
+# %%
     patch_bundle = pred_patches2
     keys = En.runs_p
     E = EnsureChannelFirstd(keys=keys)
@@ -815,8 +815,8 @@ if __name__ == "__main__":
     patch_bundle2 = C(patch_bundle)
     pred = patch_bundle2[0]["pred"]
     pred = pred[0]
-    # %%
-    # %%
+# %%
+# %%
     pb = patch_bundle[0]
     pb2 = E(pb)
     pb3 = M(pb2)
@@ -835,9 +835,9 @@ if __name__ == "__main__":
     pred = pa2[0]["pred"]
     pa3 = Ec(pa2)
     pa3["pred"].shape
-    # %%
+# %%
     ImageMaskViewer([p7, pred], data_types=["mask", "mask"])
-    # %%
+# %%
     C = Compose(tfms)
     pb = patch_bundle[0]
     pb2 = M(pb)
@@ -852,29 +852,74 @@ if __name__ == "__main__":
     tfms = [MorA, A, D, K, F]
     # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
     C = Compose(tfms)
-    # %%
+# %%
 
     patch_bundle2 = C(patch_bundle)
 
     patch_bundle2[0]["pred"].shape
-    # %%
+# %%
     n = 0
     pa = patch_bundle[n]["LITS-630"]
     pa.shape
     img = patch_bundle2[n]["image"]
     pred = patch_bundle2[n]["pred"]
     pb = patch_bundle2[n]
-    # %%
+# %%
 
     pb3 = D(pb)
     pred2 = pb3["pred"]
-    # %%
+# %%
     ImageMaskViewer([pred, pred2])
-    # %%
+# %%
 
     casei = output[0]
     img = casei["img"]
     pred = casei["pred"]
 # %%
+    pred_patches = En.patch_prediction(En.ds, En.bboxes)
+    pred_patches = En.decollate_patches(pred_patches, En.bboxes)
+    pb = patch_bundle = pred_patches
+    keys = En.runs_p
 # %%
+    C = Compose(tfms)
+    A = Activationsd(keys="pred", softmax=True)
+    D = AsDiscreted(keys=["pred"], argmax=True)
+    K = KeepLargestConnectedComponentWithMetad(keys=["pred"], independent=False,applied_labels=1) # label=1 is the organ
+    F = FillBBoxPatchesd()
+    if len(keys) == 1:
+        MR = RenameDictKeys(keys=keys, new_keys=["pred"])
+    else:
+        MR = MeanEnsembled(keys=keys, output_key="pred")
+    tfms = [MR, A, D, K, F]
+
+    # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
+    C = Compose(tfms)
+
+# %%
+
+    if len(En.runs_p) == 0:
+        E = EnsureChannelFirstd(keys="pred")
+        tfms.insert(1, E)
+    # S = SaveListd(keys = ['pred'],output_dir=En.output_folder,output_postfix='',separate_folder=False)
+    output = C(patch_bundle)
+
+# %%
+    R = RenameDictKeys(keys = keys, new_keys = ['pred'])
+# %%
+    pb = patch_bundle[0]
+    pb33 = C(pb)
+    pb ['pred']= pb['LITS-709']
+    pb2 = C(pb)
+    pb3 = E(pb2)
+
+    pb2 =  M(pb)
+    pb4 =  A(pb3)
+    pb3.keys()
+    pred = pb33['pred']
+    pred.shape
+    img = pb33['image']
+    img.shape
+    pred.shape
+    
+    ImageMaskViewer([img[0], pred[0]])
 # %%

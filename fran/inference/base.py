@@ -1,7 +1,7 @@
 # %%
 from monai.transforms.utility.dictionary import SqueezeDimd
 from prompt_toolkit.shortcuts import input_dialog
-from fran.inference.inference_base import *
+from fran.inference.cascade import *
 from monai.data import ImageDataset
 
 class InferenceDatasetNii(Dataset):
@@ -71,7 +71,7 @@ class InferenceDatasetNii(Dataset):
         return dici
 
 
-class Predictor(GetAttr, DictToAttr):
+class SimpleInferer(GetAttr, DictToAttr):
     def __init__(self, project,run_name,bs=8,patch_overlap=.25,mode='gaussian', devices=[1],debug=True):
         '''
         data is a dataset from Ensemble in this base class
@@ -198,7 +198,7 @@ if __name__ == "__main__":
 
 
 # %%
-    P=Predictor(proj,run_ps[0], debug=debug)
+    P=SimpleInferer(proj, run_ps[0], debug=debug)
 
     preds= P.run(img_fns)
 # %%
