@@ -28,7 +28,7 @@ class InteractiveAnalyserResampler:
 
         P = Project(project_title=args.project_title); 
         self.proj_defaults= P
-        self.GlobalP= GlobalProperties(self.proj_defaults, bg_label=0)
+        # 
         print("Project: {0}".format(self.project_title))
 
 
@@ -48,6 +48,7 @@ class InteractiveAnalyserResampler:
                 self.MultiAnalyser.dump_to_h5f()
                 self.MultiAnalyser.store_raw_dataset_properties()
             if self._analyse_dataset_questions() == True:
+                self.GlobalP= GlobalProperties(self.proj_defaults, bg_label=0)
                 self.GlobalP.store_projectwide_properties()
                 self.GlobalP.compute_std_mean_dataset()
 
@@ -298,9 +299,9 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "litsmc"
+    # args.project_title = "l2"
     # args.num_processes = 1
-    args.debug =True
+    # args.debug =False
     # args.overwrite=False
     I = InteractiveAnalyserResampler(args)
 # %%
@@ -312,14 +313,6 @@ if __name__ == "__main__":
     I.generate_whole_images_dataset()
     I.generate_hires_patches_dataset()
 
-# %%
-    I.Resampler = ResampleDatasetniftiToTorch(
-        I.proj_defaults,
-        minimum_final_spacing=0.5,
-        enforce_isotropy=I.enforce_isotropy,
-        half_precision=I.half_precision,
-        clip_centre=I.clip_centre
-    )
 # %%
 
 
