@@ -174,7 +174,8 @@ class SingleCaseAnalyzer:
             case_files_tuple, tuple
         ), "case_files_tuple must be either a list or a tuple"
         case_files_tuple = [Path(fn) for fn in case_files_tuple]
-        self.case_id = info_from_filename(case_files_tuple[0].name)['case_id']
+        case_props =  info_from_filename(case_files_tuple[0].name)
+        self.case_id = "_".join([case_props['proj_title'],case_props["case_id"]])
         store_attr("case_files_tuple,bg_label,percentile_range")
 
     def load_case(self):
@@ -607,4 +608,10 @@ if __name__ == "__main__":
     case_["properties"] = S.properties
     output = {"case": case_, "voxels": voxels}
 
+# %%
+    fn = Path("/s/xnat_shadow/litq/images/litq_41b_20221122.nii.gz")
+
+    case_props =  info_from_filename(fn.name)
+    case_id = "_".join([case_props['proj_title'],case_props["case_id"]])
+    print(case_id)
 # %%
