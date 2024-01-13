@@ -15,7 +15,7 @@ import cc3d
 from fran.utils.image_utils import get_img_mask_from_nii
 from fran.utils.imageviewers import ImageMaskViewer
 from mask_analysis.utils import SITKImageMaskFixer
-from fran.utils.string import drop_digit_suffix
+from fran.utils.string import drop_digit_suffix, info_from_filename
 
 
 def get_intensity_range(global_properties: dict) -> list:
@@ -174,7 +174,7 @@ class SingleCaseAnalyzer:
             case_files_tuple, tuple
         ), "case_files_tuple must be either a list or a tuple"
         case_files_tuple = [Path(fn) for fn in case_files_tuple]
-        self.case_id = cleanup_fname(case_files_tuple[0].name)
+        self.case_id = info_from_filename(case_files_tuple[0].name)['case_id']
         store_attr("case_files_tuple,bg_label,percentile_range")
 
     def load_case(self):
