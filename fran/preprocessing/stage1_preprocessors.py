@@ -256,8 +256,10 @@ def pad_bbox(bbox,padding_torch_style): # padding is reverse order Torch style
 
 class PatchGeneratorDataset(GetAttr):
     _default = "project"
-    def __init__(self,project,fixed_sp_folder, patch_size, patch_overlap, expand_by=None):
+    def __init__(self,project,fixed_sp_folder, patch_size, patch_overlap, expand_by):
         store_attr()
+        if patch_overlap is None: self.patch_overlap= 0.2
+        if expand_by is None: self.expand_by= 10
         fixed_sp_bboxes_fn= fixed_sp_folder/("bboxes_info")
         self.fixed_sp_bboxes = load_dict(fixed_sp_bboxes_fn)
 

@@ -124,7 +124,7 @@ class InteractiveAnalyserResampler:
 
         patches_config = self.get_patches_config(patches_output_folder / "patches_config.json")
 
-        PG = PatchGeneratorDataset(self.project,self.fixed_sp_folder, self.patch_size,**patches_config)
+        PG = PatchGeneratorDataset(self.proj_defaults,self.fixed_sp_folder, self.patch_size,**patches_config)
         PG.create_patches(overwrite=overwrite,debug=debug)
         print("Generating boundingbox data")
         PG.generate_bboxes(debug=debug)
@@ -202,28 +202,19 @@ class InteractiveAnalyserResampler:
             ] * 3
         print("Patch size set to: {}".format(patch_size))
         self.patch_size = patch_size
-# maybe_makedirs(output_folder)
+
+    def create_patches_output_folder(self, fixed_sp_folder, patch_size):
+        patches_fldr_name = "dim_{0}_{1}_{2}".format(*patch_size)
+        output_folder = (
+            self.proj_defaults.patches_folder / fixed_sp_folder.name / patches_fldr_name
+        )
+        maybe_makedirs(output_folder)
         return output_folder
 
     def assimilate_args(self, args):
         for key, value in vars(args).items():
-            # if key =='full_precision':
-            #     key='half_precision'
-            #     value= not value
             setattr(self, key, value)
 
-    # def translate_key(self, key, value):
-        # old_new = [
-            # {"old_key": "t", "new_key": "project_title"},
-# {"old_key": "d", "new_key": "debug"},
-# {'old_key':'no_pbar', 'new_key':'pbar', 'switch_val':'reverse'},
-        # ]
-        # for dict in old_new:
-        #     if dict["old_key"] == key:
-        #         key = dict["new_key"]
-        #         return key, value
-        # return key, value
-        #
     def maybe_change_default_spacings(self, vals):
         def _accept_defaults():
             print("Accepting defaults")
@@ -299,9 +290,8 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "l2"
-    # args.num_processes = 1
-    # args.debug =False
+    args.project_title = "l2"
+    args.num_processes = 1
     # args.overwrite=False
     I = InteractiveAnalyserResampler(args)
 # %%
@@ -314,7 +304,6 @@ if __name__ == "__main__":
     I.generate_hires_patches_dataset()
 
 # %%
-
 
 # ii = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lax/spc_080_080_150/images/lits_5.pt"
 # torch.load(ii).dtype

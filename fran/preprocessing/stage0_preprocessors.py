@@ -639,7 +639,7 @@ if __name__ == "__main__":
 # %%
     debug = False
     multiprocess = True
-    num_processes=16
+    num_processes=1
     I.Resampler.resample_cases(debug=debug, overwrite=True, multiprocess=multiprocess)
     fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/nodes/spc_078_078_375/masks/")
     generate_bboxes_from_masks_folder(fldr)
@@ -665,6 +665,9 @@ if __name__ == "__main__":
     )
 
 # %%
+    fn = Path("/s/fran_storage/projects/raw_dataset_properties.pkl")
+    dd = load_dict(fn)
+    pp(dd[1])
 #     aa = pipeline2[0]([img,mask])
 #     aa = pipeline2[1](aa)
 #     aa = pipeline2[2](aa)
