@@ -290,8 +290,9 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "l2"
+    # args.project_title = "l3"
     # args.num_processes = 1
+    # args.debug=False
     # args.overwrite=False
     I = InteractiveAnalyserResampler(args)
 # %%
@@ -301,7 +302,7 @@ if __name__ == "__main__":
     I.resample_dataset()
 
     I.generate_whole_images_dataset()
-    I.generate_hires_patches_dataset()
+    I.generate_hires_patches_dataset(debug=True)
 
 # %%
 

@@ -3,6 +3,7 @@ from fastcore.all import test_eq
 from fastcore.basics import store_attr
 from fastcore.transform import Pipeline
 from fran.transforms.intensitytransforms import ClipCenter
+from fran.utils.string import strip_extension
 
 from fran.preprocessing.datasetanalyzers import (
     bboxes_function_version,
@@ -540,9 +541,9 @@ class NiipairToTorch(DictToAttr):
             torch.save(arr,fn)
 
     def _create_output_filenames(self, single_case_properties):
-        case_id = single_case_properties["case_id"]
+        fn = strip_extension(single_case_properties["properties"]["img_file"].name)
         self.output_filenames = [
-            create_filename(output_folder, case_id, ext="pt")
+            output_folder /(fn + ".pt")
             for output_folder in [self.output_img_folder, self.output_mask_folder]
         ]
     def set_normalization_values(self,mean_std_mode):

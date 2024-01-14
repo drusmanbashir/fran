@@ -405,7 +405,8 @@ class PatchGeneratorSingle(DictToAttr):
 
     def create_patches_from_grid_sampler(self):
         for i, a in enumerate(self.grid_sampler):
-            out_fname = self.mask_fn.name.split(".")[0]+"_"+str(i)+".pt"
+            nm = strip_extension(self.mask_fn.name)
+            out_fname = nm+"_"+str(i)+".pt"
             out_mask_fname = self.output_masks_folder/out_fname
             out_img_fname = self.output_imgs_folder/out_fname
             print("Saving to files {0} and {1}".format(out_img_fname, out_mask_fname))
