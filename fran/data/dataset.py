@@ -44,7 +44,6 @@ tr = ipdb.set_trace
 #
 from fran.utils.fileio import *
 
-# %%
 # export
 def foldername_from_shape(parent_folder, shape):
     shape = str(shape).strip("[]").replace(",", "_").replace(" ", "")
@@ -141,7 +140,7 @@ class ImageMaskBBoxDataset(Dataset):
             if fn_no_suffix==fname:
                 bboxes_out.append(bb)
         if len(bboxes_out) == 0:
-                print("Missing filename {0} from bboxfile".format(fn))
+                print("Missing filename {0} from bboxfile".format(fname))
                 tr()
         return bboxes_out
 
@@ -467,11 +466,11 @@ class MaskLabelRemap2(MapTransform):
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
-    P = Project(project_title="lits");
+    P = Project(project_title="litsmc");
     configs_excel = ConfigMaker(P,raytune=False).config
 
     train_list, valid_list = P.get_train_val_files(0)
-    fldr =Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/lax/spc_080_080_150/") 
+    fldr =Path("/s/fran_storage/datasets/preprocessed/fixed_spacings/litsmc/spc_080_080_150/") 
 
 
     bboxes_fname = fldr/ ("bboxes_info")
@@ -488,6 +487,7 @@ if __name__ == "__main__":
 
         )
     a= train_ds[1]
+# %%
     a['label'].dtype
     bb ="/home/ub/datasets/preprocessed/lax/patches/spc_080_080_150/dim_192_192_96/images/lits_0ub_2.pt"
     img = torch.load(bb)

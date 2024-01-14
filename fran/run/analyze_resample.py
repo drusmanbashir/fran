@@ -290,7 +290,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "l2"
+    args.project_title = "l2"
     # args.num_processes = 1
     # args.overwrite=False
     I = InteractiveAnalyserResampler(args)
