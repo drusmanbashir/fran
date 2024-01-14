@@ -208,7 +208,7 @@ class InteractiveAnalyserResampler:
         output_folder = (
             self.proj_defaults.patches_folder / fixed_sp_folder.name / patches_fldr_name
         )
-        maybe_makedirs(output_folder)
+        # maybe_makedirs(output_folder)
         return output_folder
 
     def assimilate_args(self, args):
@@ -304,6 +304,7 @@ if __name__ == "__main__":
     I.generate_hires_patches_dataset()
 
 # %%
+    PG  = PatchGeneratorDataset(I.proj_defaults,I.proj_defaults.fixed_spacings_folder,[192,192,128],.25,20)
 
 # ii = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lax/spc_080_080_150/images/lits_5.pt"
 # torch.load(ii).dtype

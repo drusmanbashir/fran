@@ -266,6 +266,7 @@ class PatchGeneratorDataset(GetAttr):
         dataset_properties_fn = self.fixed_sp_folder/("resampled_dataset_properties.json")
         assert(dataset_properties_fn.exists()), "Dataset properties file does not exist. Has the Resampling been run to create folder {}?".format(self.fixed_sp_folder)
         self.dataset_properties=load_dict(dataset_properties_fn)
+        self.create_output_folders()
         self.register_existing_files()
 
         self.patches_config_fn = self.output_folder / ("patches_config.json")
@@ -330,6 +331,8 @@ class PatchGeneratorDataset(GetAttr):
 
 
 
+    def create_output_folders(self):
+        maybe_makedirs([self.output_folder/("masks"),self.output_folder/("images")])
 
     @property
     def output_folder(self):
