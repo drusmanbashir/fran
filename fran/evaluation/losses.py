@@ -172,37 +172,60 @@ class DeepSupervisionLoss(pl.LightningModule):
         if not hasattr(self,'weights'):
             self.create_weights(preds[0].device)
 
-
-    def apply_ds_scales(self, preds, target):
-            target_listed = []
-            preds_listed = []
-            preds = torch.unbind(preds, dim=1)
+    #
+    # def apply_ds_scales(self, preds, target):
+    #         target_listed = []
+    #         preds_listed = []
+    #         preds = torch.unbind(preds, dim=1)
+    #         for ind,sc in enumerate(self.deep_supervision_scales):
+    #             pred = preds[ind]
+    #             if all([i == 1 for i in sc]):
+    #                 target_listed.append(target)
+    #                 preds_listed.append(pred)
+    #             else:
+    #                 t_shape = list(target.shape[2:])
+    #                 size = [int(np.round(ss * aa)) for ss, aa in zip(sc, t_shape)]
+    #                 target_downsampled = F.interpolate(target, size=size, mode="nearest")
+    #                 pred_downsampled = F.interpolate(pred, size=size, mode="trilinear")
+    #                 target_listed.append(target_downsampled)
+    #                 preds_listed.append(pred_downsampled)
+    #         target = target_listed
+    #         preds = preds_listed
+    #         return preds,target
+    #
+    #
+    def apply_ds_scales(self,tnsr_inp:Union[list,torch.Tensor],mode):
+            tnsr_listed = []
             for ind,sc in enumerate(self.deep_supervision_scales):
-                pred = preds[ind]
-                if all([i == 1 for i in sc]):
-                    target_listed.append(target)
-                    preds_listed.append(pred)
+                if isinstance(tnsr_inp, Union[tuple,list]):
+                    tnsr = tnsr_inp[ind]
                 else:
-                    t_shape = list(target.shape[2:])
+                    tnsr = tnsr_inp
+                if all([i == 1 for i in sc]):
+                    tnsr_listed.append(tnsr)
+                else:
+                    t_shape = list(tnsr.shape[2:])
                     size = [int(np.round(ss * aa)) for ss, aa in zip(sc, t_shape)]
-                    target_downsampled = F.interpolate(target, size=size, mode="nearest")
-                    pred_downsampled = F.interpolate(pred, size=size, mode="trilinear")
-                    target_listed.append(target_downsampled)
-                    preds_listed.append(pred_downsampled)
-            target = target_listed
-            preds = preds_listed
-            return preds,target
+                    tnsr_downsampled = F.interpolate(tnsr, size=size, mode=mode)
+                    tnsr_listed.append(tnsr_downsampled)
+            return tnsr_listed
+
+
+
     def forward(self, preds, target):
 
         self.maybe_create_weights(preds)
         self.maybe_create_labels(target)
         
-        if isinstance(preds, Union[list,tuple]): # multires lists in training
+        if isinstance(preds, Union[list,tuple]) and isinstance(target, torch.Tensor): # multires lists in training
+            target = self.apply_ds_scales(target, "nearest")
             losses = [self.LossFunc(xx, yy) for xx,yy in zip(preds,target)]
 
         elif isinstance(preds, torch.Tensor):  #tensor
             if preds.dim() == target.dim()+1:# i.e., training phase has deep supervision:
-                preds,  target = self.apply_ds_scales(preds,target)
+                preds = torch.unbind(preds, dim=1)
+                preds = self.apply_ds_scales(preds,"trilinear")
+                target = self.apply_ds_scales(target, "nearest")
                 losses = [self.LossFunc(xx, yy) for xx,yy in zip(preds,target)]
             else:  #validation loss
                 losses = [self.LossFunc(preds, target)]

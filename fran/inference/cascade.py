@@ -252,7 +252,12 @@ class WholeImageInferer(GetAttr, DictToAttr):
         )
         tfm = Compose([R, N])
         self.ds2 = Dataset(data=ds, transform=tfm)
-        self.pred_dl = DataLoader(self.ds2, num_workers=12, batch_size=12)
+        if len(self.ds2)<4:
+            nw_bs = [0,1] # Slicer bugs out
+        else:
+            nw_bs = [12,12]
+        # bs=1
+        self.pred_dl = DataLoader(self.ds2, num_workers=nw_bs[0], batch_size= nw_bs[1])
 
     def prepare_model(self):
         self.model = UNetTrainer.load_from_checkpoint(
@@ -416,13 +421,17 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         spacings = dic1["datamodule_hyper_parameters"]["dataset_params"]["spacings"]
         return spacings
 
-    def predict(self, imgs, chunksize=12):
+    def predict(self, imgs:list, chunksize=12):
         """
+        imgs can be a list comprising any of filenames, folder, or images (sitk or itk)
         chunksize is necessary in large lists to manage system ram
         """
+        imgs=listify(imgs)
 
-        if self.overwrite==False:
+        if self.overwrite==False and (isinstance(imgs[0],str) or isinstance(imgs[0], Path)):
             imgs = self.filter_existing_preds(imgs)
+        else:
+            self.save = False  # don't save if input is pure images. Just output those.
         imgs = list_to_chunks(imgs, chunksize)
         for imgs_sublist in imgs:
             self.create_ds(imgs_sublist)
@@ -536,10 +545,10 @@ if __name__ == "__main__":
     run_w = "LIT-145"
     run_ps = ["LIT-143", "LIT-150", "LIT-149", "LIT-153", "LIT-161"]
     run_ps = ["LITS-630", "LITS-633", "LITS-632", "LITS-647", "LITS-650"]
-    run_ps = ["LITS-709"]
-    run_ps = ["LITS-773"]
     run_ps = ["LITS-720"]
 
+    run_ps = ["LITS-709"]
+    run_ps = ["LITS-773"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
@@ -554,7 +563,9 @@ if __name__ == "__main__":
     crc_imgs = list(Path(crc_fldr).glob("*"))
 # %%
     En = CascadeInferer(proj, run_w, run_ps, debug=True, devices=[1])
-    preds = En.predict(crc_imgs)
+
+    img_fn = Path("/s/xnat_shadow/litq/images/litq_31_20220826.nii.gz")
+    preds = En.predict([img_fn])
 # %%
     En = CascadeInferer(proj, run_w, run_ps, debug=True, devices=[1])
 # %%
@@ -648,24 +659,3 @@ if __name__ == "__main__":
     print("Preparing data")
     p = w.predict()
 
-# %%
-    ds = En.ds
-    filenames = [data['image'].meta['filename_or_obj'] for data in ds]
-
-# %%
-    imgs = crc_imgs
-    P = En.Ps[0]
-# %%
-    done2 = [fn.exists() for fn in out_fns]
-    done2 = np.array(done2)
-    done3 = np.array(done)
-    dones = np.logical_and(done, done2)
-
-
-        for img in imgs:
-            if (P.output_folder/ img).exists():
-                print("Skipping", img)
-            else:
-                preds.append(img)
-
-# %%

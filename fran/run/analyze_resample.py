@@ -290,7 +290,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "l3"
+    # args.project_title = "litsmc"
     # args.num_processes = 1
     # args.debug=False
     # args.overwrite=False

@@ -1,4 +1,5 @@
 # %%
+import psutil
 import shutil
 from fran.managers.data import DataManager, DataManagerPatch, DataManagerShort, DataManagerWhole
 from fran.managers.troubleshooting import RandRandGaussianNoised
@@ -497,7 +498,7 @@ class UNetTrainer(LightningModule):
     def maybe_store_preds(self, pred):
 
         if hasattr(self.trainer,"store_preds") and self.trainer.store_preds==True:
-            if isinstance(pred, list):
+            if isinstance(pred,Union[tuple,list]):
                     self.pred = [p.detach().cpu() for p in pred]
             else:
                 self.pred= pred.detach().cpu()
@@ -701,6 +702,7 @@ class TrainingManager():
         store_attr()
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
     def setup(self,batch_size=8,  cbs=[],logging_freq=25, lr=None,devices=1,compiled=False, neptune=True,tags=[],description="",epochs=1000,batchsize_finder=False):
+        if batchsize_finder == True: batch_size = self.heuristic_batch_size()
         if lr: self.configs['model_params']['lr']=lr
         self.configs['model_params']['compiled']=compiled
         strategy= maybe_ddp(devices)
@@ -732,7 +734,6 @@ class TrainingManager():
         else:
             logger = None
 
-        if batchsize_finder == True: cbs +=[BatchSizeFinder(mode='binsearch',init_val=batch_size),]
         self.D.prepare_data()
 
         if self.configs['model_params']['compiled']==True:
@@ -752,6 +753,16 @@ class TrainingManager():
             strategy=strategy
             # strategy='ddp_find_unused_parameters_true'
         )
+
+
+    def heuristic_batch_size(self):
+        ram =  psutil.virtual_memory()[3]/1e9
+        if ram < 18:
+            return 6
+        elif ram > 18 and ram <48:
+            return 8
+        elif ram >48 and ram <72:
+            return 20
 
     def init_D_N(self,batch_size,epochs,sync_dist,batch_finder=False):
             DMClass = self.resolve_datamanager(self.configs['dataset_params']['mode'])
@@ -863,7 +874,7 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
-    conf['model_params']['arch']='DynUNet'
+    conf['model_params']['arch']='nnUNet'
     # conf['model_params']['lr']=1e-3
 
 # %%
@@ -873,7 +884,7 @@ if __name__ == "__main__":
     # run_name ='LITS-709'
     run_name =None
     compiled=False
-    batch_finder=True
+    batch_finder=False
     neptune=True
     tags=[]
     description="Baseline all transforms as in previous full data runs"
@@ -924,6 +935,7 @@ if __name__ == "__main__":
 # %%
 
     ImageMaskViewer([img,mask])
+# %%
 # %%
 
     Tm.trainer.callback_metrics
