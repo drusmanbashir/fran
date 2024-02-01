@@ -14,8 +14,6 @@ def main(args):
         P.create_project()
         if args.input_folders:
             P.add_data(input_folders)
-            P.populate_raw_data_folder()
-        P.raw_data_imgs
         P.create_folds()
     else:
         P.delete()

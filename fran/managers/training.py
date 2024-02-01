@@ -1,74 +1,75 @@
 # %%
-import psutil
 import shutil
-from fran.managers.data import DataManager, DataManagerPatch, DataManagerShort, DataManagerWhole
-from fran.managers.troubleshooting import RandRandGaussianNoised
-from fran.utils.batch_size_scaling import _scale_batch_size2, _reset_dataloaders
-from paramiko import SSHClient
-from copy import deepcopy
 import time
-from lightning.pytorch.utilities.exceptions import MisconfigurationException, _TunerExitException
-import torch._dynamo
-torch._dynamo.config.suppress_errors = True
-from lightning.pytorch.callbacks import BatchSizeFinder, LearningRateMonitor
-from lightning.pytorch.strategies import DDPStrategy
-import torch.multiprocessing as mp
-from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
-from monai.data.meta_obj import get_track_meta
-from monai.transforms.intensity.array import RandGaussianNoise
-from monai.transforms.spatial.array import RandFlip, Resize
-from monai.transforms.transform import MapTransform, RandomizableTransform
-from monai.utils.type_conversion import convert_to_tensor
+from copy import deepcopy
 
-import neptune as nt
-from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
-from monai.transforms.intensity.dictionary import (
-    RandAdjustContrastd,
-    RandGaussianNoised,
-    RandScaleIntensityd,
-    RandShiftIntensityd,
-)
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, EnsureTyped
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.profiler import profile, record_function, ProfilerActivity
-from neptune.types import File
-from torchvision.utils import make_grid
-from lightning.pytorch.profilers import AdvancedProfiler
+import psutil
+import torch._dynamo
+from lightning.pytorch.utilities.exceptions import (MisconfigurationException,
+                                                    _TunerExitException)
+from paramiko import SSHClient
+
+from fran.managers.data import (DataManager, DataManagerPatch,
+                                DataManagerShort, DataManagerSource)
+from fran.managers.troubleshooting import RandRandGaussianNoised
+from fran.utils.batch_size_scaling import (_reset_dataloaders,
+                                           _scale_batch_size2)
+
+torch._dynamo.config.suppress_errors = True
+from fran.managers.neptune import NeptuneManager
+import itertools as il
+import operator
 import warnings
 from typing import Any, Dict, Hashable, Mapping
 
-# from fastcore.basics import GenttAttr
-from lightning.pytorch.callbacks import Callback, ModelCheckpoint, TQDMProgressBar
-from lightning.pytorch.loggers.neptune import NeptuneLogger
-from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
-from torchvision.transforms import Compose
-from monai.data import DataLoader
-from monai.transforms import RandAffined
-from lightning.pytorch import LightningDataModule, LightningModule, Trainer
-
+import neptune as nt
 import torch
-import operator
-from fran.data.dataset import ImageMaskBBoxDatasetd, MaskLabelRemap2, NormaliseClipd
-from fran.transforms.spatialtransforms import one_hot
-from fran.transforms.totensor import ToTensorT
-from fran.utils.helpers import folder_name_from_list
+import torch.multiprocessing as mp
+from lightning.pytorch import LightningDataModule, LightningModule, Trainer
+# from fastcore.basics import GenttAttr
+from lightning.pytorch.callbacks import (BatchSizeFinder, Callback,
+                                         LearningRateMonitor, ModelCheckpoint,
+                                         TQDMProgressBar)
+from lightning.pytorch.profilers import AdvancedProfiler
+from lightning.pytorch.loggers.neptune import NeptuneLogger
+from lightning.pytorch.strategies import DDPStrategy
+from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
+from monai.data import DataLoader
+from monai.data.meta_obj import get_track_meta
+from monai.transforms import RandAffined
+from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
+from monai.transforms.intensity.array import RandGaussianNoise
+from monai.transforms.intensity.dictionary import (RandAdjustContrastd,
+                                                   RandGaussianNoised,
+                                                   RandScaleIntensityd,
+                                                   RandShiftIntensityd)
+from monai.transforms.spatial.array import RandFlip, Resize
+from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
+from monai.transforms.transform import MapTransform, RandomizableTransform
+from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
+                                                 EnsureTyped)
+from monai.utils.type_conversion import convert_to_tensor
+from neptune.types import File
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.profiler import ProfilerActivity, profile, record_function
+from torchvision.transforms import Compose
+from torchvision.utils import make_grid
+
+from fran.architectures.create_network import (create_model_from_conf, nnUNet,
+                                               pool_op_kernels_nnunet)
 from fran.data.dataloader import img_mask_bbox_collated
-import itertools as il
-from fran.utils.helpers import *
-from fran.utils.fileio import *
-from fran.utils.imageviewers import *
-
-from fran.utils.common import *
-
+from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemap2,
+                               NormaliseClipd)
 # from fastai.learner import *
 from fran.evaluation.losses import *
-from fran.architectures.create_network import (
-    create_model_from_conf,
-    nnUNet,
-    pool_op_kernels_nnunet,
-)
-
-
+from fran.transforms.spatialtransforms import one_hot
+from fran.transforms.totensor import ToTensorT
+from fran.utils.common import *
+from fran.utils.fileio import *
+from fran.utils.helpers import *
+from fran.utils.helpers import folder_name_from_list
+from fran.utils.imageviewers import *
+from fran.utils.helpers import *
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
@@ -79,12 +80,14 @@ import torch
 from lightning.pytorch import LightningModule, Trainer
 from torch.utils.data import DataLoader, Dataset
 
-def fix_dict_keys(input_dict, old_string,new_string):
-            output_dict = {}
-            for key in input_dict.keys():
-                neo_key = key.replace(old_string,new_string)
-                output_dict[neo_key] = input_dict[key]
-            return output_dict
+
+def fix_dict_keys(input_dict, old_string, new_string):
+    output_dict = {}
+    for key in input_dict.keys():
+        neo_key = key.replace(old_string, new_string)
+        output_dict[neo_key] = input_dict[key]
+    return output_dict
+
 
 def checkpoint_from_model_id(model_id):
     common_paths = load_yaml(common_vars_filename)
@@ -95,60 +98,17 @@ def checkpoint_from_model_id(model_id):
     if len(all_fldrs) == 1:
         fldr = all_fldrs[0]
     else:
-        print("no local files. Model may be on remote path. use download_neptune_checkpoint() ")
+        print(
+            "no local files. Model may be on remote path. use download_neptune_checkpoint() "
+        )
         tr()
 
     list_of_files = list(fldr.glob("*"))
     ckpt = max(list_of_files, key=lambda p: p.stat().st_ctime)
     return ckpt
 
+
 # from fran.managers.base import *
-from fran.utils.helpers import *
-
-
-def get_neptune_checkpoint(project, run_id):
-    nl = NeptuneManager(
-        project=project,
-        run_id=run_id,  # "LIT-46",
-        nep_mode="read-only",
-        log_model_checkpoints=False,  # Update to True to log model checkpoints
-    )
-    ckpt = nl.model_checkpoint
-    nl.experiment.stop()
-    return ckpt
-
-
-def download_neptune_checkpoint(project, run_id):
-    nl = NeptuneManager(
-        project=project,
-        run_id=run_id,  # "LIT-46",
-        log_model_checkpoints=False,  # Update to True to log model checkpoints
-    )
-    nl.download_checkpoints()
-    ckpt = nl.model_checkpoint
-    nl.experiment.stop()
-    return ckpt
-
-
-def get_neptune_project(project, mode):
-    """
-    Returns project instance based on project title
-    """
-
-    project_name, api_token = get_neptune_config()
-    return nt.init_project(project=project_name, api_token=api_token, mode=mode)
-
-
-def get_neptune_config():
-    """
-    Returns particular project workspace
-    """
-    commons = load_yaml(common_vars_filename)
-    project_name = commons['neptune_project']
-    api_token = commons["neptune_api_token"]
-    return project_name, api_token
-
-
 def normalize(tensr, intensity_percentiles=[0.0, 1.0]):
     tensr = (tensr - tensr.min()) / (tensr.max() - tensr.min())
     tensr = tensr.to("cpu", dtype=torch.float32)
@@ -175,16 +135,18 @@ class NeptuneImageGridCallback(Callback):
         imgs_per_batch=4,
         publish_deep_preds=False,
         apply_activation=True,
-        epoch_freq=2 # skip how many epochs.
+        epoch_freq=2,  # skip how many epochs.
     ):
         if not isinstance(patch_size, torch.Size):
             patch_size = torch.Size(patch_size)
         self.stride = int(patch_size[0] / imgs_per_batch)
         store_attr()
+
     #
     def on_train_start(self, trainer, pl_module):
+        trainer.store_preds = False  # DO NOT SET THIS TO TRUE. IT WILL BUG
         len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
-        self.freq = np.maximum(2,int(len_dl / self.grid_rows))
+        self.freq = np.maximum(2, int(len_dl / self.grid_rows))
 
     def on_train_epoch_start(self, trainer, pl_module):
         if trainer.current_epoch % self.epoch_freq == 0:
@@ -196,19 +158,23 @@ class NeptuneImageGridCallback(Callback):
     def on_validation_epoch_start(self, trainer, pl_module):
         self.validation_grid_created = False
 
-    def on_train_batch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", batch: Any, batch_idx: int) -> None:
+    def on_train_batch_start(
+        self,
+        trainer: "pl.Trainer",
+        pl_module: "pl.LightningModule",
+        batch: Any,
+        batch_idx: int,
+    ) -> None:
         if trainer.current_epoch % self.epoch_freq == 0:
             if trainer.global_step % self.freq == 0:
-                trainer.store_preds=True
+                trainer.store_preds = True
             else:
-                trainer.store_preds=False
+                trainer.store_preds = False
         return super().on_train_batch_start(trainer, pl_module, batch, batch_idx)
 
-
-
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-            if trainer.store_preds==True:
-                self.populate_grid(pl_module, batch)
+        if trainer.store_preds == True:
+            self.populate_grid(pl_module, batch)
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if trainer.current_epoch % self.epoch_freq == 0:
@@ -239,15 +205,16 @@ class NeptuneImageGridCallback(Callback):
             grd4 = np.array(grd4)
             trainer.logger.experiment["images"].append(File.as_image(grd4))
 
-
     def populate_grid(self, pl_module, batch):
         def _randomize():
-            n_slices= img.shape[-1]
-            batch_size=img.shape[0]
-            self.slices = [random.randrange(0,n_slices) for i in range(self.imgs_per_batch)]
-            self.batches=[random.randrange(0,batch_size) for i in range(self.imgs_per_batch)]
-
-
+            n_slices = img.shape[-1]
+            batch_size = img.shape[0]
+            self.slices = [
+                random.randrange(0, n_slices) for i in range(self.imgs_per_batch)
+            ]
+            self.batches = [
+                random.randrange(0, batch_size) for i in range(self.imgs_per_batch)
+            ]
 
         img = batch["image"].cpu()
 
@@ -259,10 +226,10 @@ class NeptuneImageGridCallback(Callback):
         # pred.unsqueeze_(0) # temporary hack)
         # pred = pred.cpu()
         pred = pl_module.pred
-        if isinstance(pred, Union[list,tuple]):
-            pred  = pred[0]
-        elif pred.dim()==img.dim()+1:  # deep supervision
-            pred = pred[:,0,:]# Bx1xCXHXWxD
+        if isinstance(pred, Union[list, tuple]):
+            pred = pred[0]
+        elif pred.dim() == img.dim() + 1:  # deep supervision
+            pred = pred[:, 0, :]  # Bx1xCXHXWxD
 
         # if self.apply_activation == True:
         pred = F.softmax(pred.to(torch.float32), dim=1)
@@ -284,7 +251,7 @@ class NeptuneImageGridCallback(Callback):
         self.grid_labels.append(label)
 
     def img_to_grd(self, batch):
-        imgs = batch[self.batches, :, :,:, self.slices].clone()
+        imgs = batch[self.batches, :, :, :, self.slices].clone()
         return imgs
 
     def fix_channels(self, tnsr):
@@ -292,178 +259,14 @@ class NeptuneImageGridCallback(Callback):
             tnsr = tnsr.repeat(1, 3, 1, 1)
         elif tnsr.shape[1] == 2:
             tnsr = tnsr[:, 1:, :, :]
-        elif tnsr.shape[1]>3:
+            tnsr = tnsr.repeat(1, 3, 1, 1)
+        elif tnsr.shape[1] > 3:
             chs = tnsr.shape[1]
-            tnsr = tnsr[:,chs-3::,:]
+            tnsr = tnsr[:, chs - 3 : :, :]
         else:
-            #tnsr already in 3d
+            # tnsr already in 3d
             pass
         return tnsr
-
-
-
-class NeptuneManager(NeptuneLogger):
-    def __init__(
-        self,
-        *,
-        project,
-        nep_mode="async",
-        run_id: Optional[str] = None,
-        log_model_checkpoints: Optional[bool] = False,
-        prefix: str = "training",
-        **neptune_run_kwargs: Any
-    ):
-        store_attr("project")
-        project_nep, api_token = get_neptune_config()
-        os.environ["NEPTUNE_API_TOKEN"] = api_token
-        os.environ["NEPTUNE_PROJECT"] = project_nep
-        self.df = self.fetch_project_df()
-        if run_id:
-            nep_run = self.load_run(run_id, nep_mode)
-            project_nep, api_token = None, None
-            neptune_run_kwargs={}
-        else:
-            nep_run = None
-
-        NeptuneLogger.__init__(
-            self,
-            api_key=api_token,
-            project=project_nep,
-            run=nep_run,
-            log_model_checkpoints=log_model_checkpoints,
-            prefix=prefix,
-            **neptune_run_kwargs
-        )
-
-
-    @property
-    def nep_run(self): return self.experiment
-
-    @property
-    def model_checkpoint(self):
-        try:
-            ckpt = self.experiment["training/model/best_model_path"].fetch()
-            return ckpt
-        except:
-            print("No checkpoints in this run")
-
-    @model_checkpoint.setter
-    def model_checkpoint(self,value):
-        self.experiment["training/model/best_model_path"]= value
-        self.experiment.wait()
-
-    def fetch_project_df(self, columns=None):
-        print("Downloading runs history as dataframe")
-        project_tmp = get_neptune_project(self.project, "read-only")
-        df = project_tmp.fetch_runs_table(columns=columns).to_pandas()
-        return df
-
-    def on_fit_start(self):
-        self.experiment["sys/name"]=self.project.project_title
-        self.experiment.wait()
-
-    def load_run(
-        self,
-        run_name,
-        nep_mode="async",
-    ):
-        """
-
-        :param run_name:
-            If a legit name is passed it will be loaded.
-            If an illegal run-name is passed, throws an exception
-            If most_recent is passed, most recent run  is loaded.
-
-        :param update_nep_run_from_config: This is a dictionary which can be uploaded on Neptune to alter the parameters of the existing model and track new parameters
-        """
-        run_id, msg = self.get_run_id(run_name)
-        print("{}. Loading".format(msg))
-        nep_run = nt.init_run(with_id=run_id, mode=nep_mode)
-        return nep_run
-
-    def get_run_id(self, run_id):
-        if run_id == "most_recent":
-            run_id = self.id_most_recent()
-            msg = "Most recent run"
-        elif run_id is any(["", None]):
-            raise Exception(
-                "Illegal run name: {}. No ids exist with this name".format(run_id)
-            )
-
-        else:
-            self.id_exists(run_id)
-            msg = "Run id matching {}".format(run_id)
-        return run_id, msg
-
-    def id_exists(self, run_id):
-        row = self.df.loc[self.df["sys/id"] == run_id]
-        try:
-            print("Existing Run found. Run id {}".format(row["sys/id"].item()))
-            return row["sys/id"].item()
-        except Exception as e:
-            print("No run with that name exists .. {}".format(e))
-
-    def id_most_recent(self):
-        self.df = self.df.sort_values(by="sys/creation_time", ascending=False)
-        for i in range(len(self.df)):
-            row = self.df.iloc[i]
-            if self._has_checkpoints(row):
-                print("Loading most recent run. Run id {}".format(row["sys/id"]))
-                return row["sys/id"], row["metadata/run_name"]
-
-    def download_checkpoints(self):
-        remote_dir =str(Path(self.model_checkpoint).parent)
-        latest_ckpt = self.shadow_remote_ckpts(remote_dir)
-        if latest_ckpt:
-            self.nep_run['training']['model']['best_model_path'] = latest_ckpt
-            self.nep_run.wait() 
-
-    def shadow_remote_ckpts(self, remote_dir):
-        hpc_settings = load_yaml(hpc_settings_fn)
-        local_dir = self.project.checkpoints_parent_folder /("Untitled")/ self.run_id/("checkpoints")
-        print("\nSSH to remote folder {}".format(remote_dir))
-        client = SSHClient()
-        client.load_system_host_keys()
-        client.connect(
-            hpc_settings["host"],
-            username=hpc_settings["username"],
-            password=hpc_settings["password"],
-        )
-        ftp_client = client.open_sftp()
-        try:
-            fnames = []
-            for f in sorted(ftp_client.listdir_attr(remote_dir), key=lambda k: k.st_mtime, reverse=True):
-                fnames.append(f.filename)
-        except FileNotFoundError as e:
-            print("\n------------------------------------------------------------------")
-            print("Error:Could not find {}.\nIs this a remote folder and exists?\n".format(remote_dir))
-            return
-        remote_fnames = [os.path.join(remote_dir, f) for f in fnames]
-        local_fnames = [os.path.join(local_dir, f) for f in fnames]
-        maybe_makedirs(local_dir)
-        for rem, loc in zip(remote_fnames, local_fnames):
-            if Path(loc).exists():
-                print("Local file {} exists already.".format(loc))
-            else:
-                print("Copying file {0} to local folder {1}".format(rem, local_dir))
-                ftp_client.get(rem, loc)
-        latest_ckpt = local_fnames[0]
-        return latest_ckpt
-
-    def stop(self): self.experiment.stop()
-
-
-
-    @property
-    def run_id(self):
-        return self.experiment["sys/id"].fetch()
-
-    @property
-    def save_dir(self) -> Optional[str]:
-        sd = self.project.checkpoints_parent_folder
-        return str(sd)
-
-
 
 class UNetTrainer(LightningModule):
     def __init__(
@@ -474,34 +277,34 @@ class UNetTrainer(LightningModule):
         loss_params,
         max_epochs=1000,
         lr=None,
-        sync_dist=False
+        sync_dist=False,
     ):
         super().__init__()
-        self.lr = lr if lr else model_params['lr']
+        self.lr = lr if lr else model_params["lr"]
         store_attr()
         self.save_hyperparameters("model_params", "loss_params")
         self.model, self.loss_fnc = self.create_model()
 
-
     def _common_step(self, batch, batch_idx):
-        if not hasattr(self,'batch_size'): self.batch_size=batch['image'].shape[0]
+        if not hasattr(self, "batch_size"):
+            self.batch_size = batch["image"].shape[0]
         inputs, target = batch["image"], batch["label"]
-        pred = self.forward(inputs) # self.pred so that NeptuneImageGridCallback can use it
+        pred = self.forward(
+            inputs
+        )  # self.pred so that NeptuneImageGridCallback can use it
 
-        pred,target = self.maybe_apply_ds_scales(pred,target)
+        pred, target = self.maybe_apply_ds_scales(pred, target)
         loss = self.loss_fnc(pred, target)
         loss_dict = self.loss_fnc.loss_dict
         self.maybe_store_preds(pred)
         return loss, loss_dict
 
-
     def maybe_store_preds(self, pred):
-
-        if hasattr(self.trainer,"store_preds") and self.trainer.store_preds==True:
-            if isinstance(pred,Union[tuple,list]):
-                    self.pred = [p.detach().cpu() for p in pred]
+        if hasattr(self.trainer, "store_preds") and self.trainer.store_preds == True:
+            if isinstance(pred, Union[tuple, list]):
+                self.pred = [p.detach().cpu() for p in pred]
             else:
-                self.pred= pred.detach().cpu()
+                self.pred = pred.detach().cpu()
 
     def maybe_apply_ds_scales(self, pred, target):
         if isinstance(pred, list) and isinstance(target, torch.Tensor):
@@ -510,25 +313,25 @@ class UNetTrainer(LightningModule):
                 if all([i == 1 for i in s]):
                     target_listed.append(target)
                 else:
-                    size = [int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])]
-                    target_downsampled = F.interpolate(target, size=size, mode="nearest")
+                    size = [
+                        int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])
+                    ]
+                    target_downsampled = F.interpolate(
+                        target, size=size, mode="nearest"
+                    )
                     target_listed.append(target_downsampled)
             target = target_listed
         return pred, target
 
-
-
-
     def training_step(self, batch, batch_idx):
-        loss,loss_dict = self._common_step(batch, batch_idx)
+        loss, loss_dict = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="train")
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss,loss_dict = self._common_step(batch, batch_idx)
+        loss, loss_dict = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="val")
         return loss
-
 
     def log_losses(self, loss_dict, prefix):
         metrics = [
@@ -543,10 +346,13 @@ class UNetTrainer(LightningModule):
         logger_dict = {
             neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
         }
-        self.log_dict(logger_dict,logger=True,batch_size=self.batch_size,sync_dist=self.sync_dist)
+        self.log_dict(
+            logger_dict,
+            logger=True,
+            batch_size=self.batch_size,
+            sync_dist=self.sync_dist,
+        )
         # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
-
-
 
     def configure_optimizers(self):
         # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
@@ -572,10 +378,14 @@ class UNetTrainer(LightningModule):
         # if self.checkpoints_folder:
         #     load_checkpoint(self.checkpoints_folder, model)
         if (
-            self.model_params["arch"] == "DynUNet" or self.model_params["arch"] == "DynUNet_UB"
+            self.model_params["arch"] == "DynUNet"
+            or self.model_params["arch"] == "DynUNet_UB"
             or self.model_params["arch"] == "nnUNet"
         ):
-            if self.model_params["arch"] == "DynUNet" or self.model_params["arch"] == "DynUNet_UB":
+            if (
+                self.model_params["arch"] == "DynUNet"
+                or self.model_params["arch"] == "DynUNet_UB"
+            ):
                 num_pool = 4  # this is a hack i am not sure if that's the number of pools . this is just to equalize len(mask) and len(pred)
                 ds_factors = list(
                     il.accumulate(
@@ -623,26 +433,27 @@ class UNetTrainer(LightningModule):
 
         else:
             loss_func = CombinedLoss(
-                **self.loss_params,
-                fg_classes=self.model_params["out_channels"] - 1
+                **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
             )
         return model, loss_func
 
-
-    def populate_grid(self, img,label,pred):
+    def populate_grid(self, img, label, pred):
         def _randomize():
-            n_slices= img.shape[-1]
-            batch_size=img.shape[0]
-            self.slices = [random.randrange(0,n_slices) for i in range(self.imgs_per_batch)]
-            self.batches=[random.randrange(0,batch_size) for i in range(self.imgs_per_batch)]
-
+            n_slices = img.shape[-1]
+            batch_size = img.shape[0]
+            self.slices = [
+                random.randrange(0, n_slices) for i in range(self.imgs_per_batch)
+            ]
+            self.batches = [
+                random.randrange(0, batch_size) for i in range(self.imgs_per_batch)
+            ]
 
         img = img.cpu()
         label = label.cpu()
         label = label.squeeze(1)
         label = one_hot(label, self.classes, axis=1)
         pred = pred.cpu()
-        if pred.dim()==img.dim()+1:  # deep supervision
+        if pred.dim() == img.dim() + 1:  # deep supervision
             pred = pred[0]
 
         # if self.apply_activation == True:
@@ -665,7 +476,7 @@ class UNetTrainer(LightningModule):
         self.grid_labels.append(label)
 
     def img_to_grd(self, batch):
-        imgs = batch[self.batches, :, :,:, self.slices].clone()
+        imgs = batch[self.batches, :, :, :, self.slices].clone()
         return imgs
 
     def fix_channels(self, tnsr):
@@ -673,70 +484,96 @@ class UNetTrainer(LightningModule):
             tnsr = tnsr.repeat(1, 3, 1, 1)
         elif tnsr.shape[1] == 2:
             tnsr = tnsr[:, 1:, :, :]
-        elif tnsr.shape[1]>3:
+        elif tnsr.shape[1] > 3:
             chs = tnsr.shape[1]
-            tnsr = tnsr[:,chs-3::,:]
+            tnsr = tnsr[:, chs - 3 : :, :]
         else:
-            #tnsr already in 3d
+            # tnsr already in 3d
             pass
         return tnsr
+
 
 def update_nep_run_from_config(nep_run, config):
     for key, value in config.items():
         nep_run[key] = value
     return nep_run
 
+
 def maybe_ddp(devices):
-    if devices == 1 or isinstance(devices,Union[list,str,tuple]):
-        return 'auto'
+    if devices == 1 or isinstance(devices, Union[list, str, tuple]):
+        return "auto"
     ip = get_ipython()
     if ip:
-        print ("Using interactive-shell ddp strategy")
-        return 'ddp_notebook'
+        print("Using interactive-shell ddp strategy")
+        return "ddp_notebook"
     else:
-        print ("Using non-interactive shell ddp strategy")
-        return 'ddp'
+        print("Using non-interactive shell ddp strategy")
+        return "ddp"
 
-class TrainingManager():
+
+class TrainingManager:
     def __init__(self, project, configs, run_name=None):
         store_attr()
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
-    def setup(self,batch_size=8,  cbs=[],logging_freq=25, lr=None,devices=1,compiled=False, neptune=True,tags=[],description="",epochs=1000,batchsize_finder=False):
-        if batchsize_finder == True: batch_size = self.heuristic_batch_size()
-        if lr: self.configs['model_params']['lr']=lr
-        self.configs['model_params']['compiled']=compiled
-        strategy= maybe_ddp(devices)
-        if type(devices)==int and devices>1:
-            sync_dist=True
-        else:
-            sync_dist=False
 
-        if self.ckpt: 
+    def setup(
+        self,
+        batch_size=8,
+        cbs=[],
+        logging_freq=25,
+        lr=None,
+        devices=1,
+        compiled=False,
+        neptune=True,
+        tags=[],
+        description="",
+        epochs=1000,
+        batchsize_finder=False,
+    ):
+        if batchsize_finder == True:
+            batch_size = self.heuristic_batch_size()
+        if lr:
+            self.configs["model_params"]["lr"] = lr
+        self.configs["model_params"]["compiled"] = compiled
+        strategy = maybe_ddp(devices)
+        if type(devices) == int and devices > 1:
+            sync_dist = True
+        else:
+            sync_dist = False
+
+        if self.ckpt:
             self.D, self.N = self.load_ckpts(lr=lr)
         else:
-            self.D,self.N = self.init_D_N(batch_size,epochs,sync_dist)
+            self.D, self.N = self.init_D_N(batch_size, epochs, sync_dist)
         if neptune == True:
             logger = NeptuneManager(
                 project=self.project,
                 run_id=self.run_name,
                 log_model_checkpoints=False,  # Update to True to log model checkpoints
                 tags=tags,
-                description=description
+                description=description,
+                capture_stdout=True,
+                capture_stderr=True,
+                capture_traceback=True,
+                capture_hardware_metrics=True,
             )
-            N= NeptuneImageGridCallback(
-                    classes=self.configs['model_params']['out_channels'], patch_size=self.configs["dataset_params"]["patch_size"])
+            N = NeptuneImageGridCallback(
+                classes=self.configs["model_params"]["out_channels"],
+                patch_size=self.configs["dataset_params"]["patch_size"],
+            )
 
-            cbs+=[N,
-            LearningRateMonitor(logging_interval='epoch'),
-            TQDMProgressBar(refresh_rate=3)
-              ]
+            cbs += [
+                N,
+                LearningRateMonitor(logging_interval="epoch"),
+                TQDMProgressBar(refresh_rate=3),
+            ]
 
         else:
             logger = None
 
         self.D.prepare_data()
 
-        if self.configs['model_params']['compiled']==True:
+        if self.configs["model_params"]["compiled"] == True:
             self.N = torch.compile(self.N)
 
         self.trainer = Trainer(
@@ -754,100 +591,101 @@ class TrainingManager():
             # strategy='ddp_find_unused_parameters_true'
         )
 
-
     def heuristic_batch_size(self):
-        ram =  psutil.virtual_memory()[3]/1e9
+        ram = psutil.virtual_memory()[3] / 1e9
         if ram < 18:
             return 6
-        elif ram > 18 and ram <48:
+        elif ram > 18 and ram < 48:
             return 8
-        elif ram >48 and ram <72:
+        elif ram > 48 and ram < 72:
             return 20
 
-    def init_D_N(self,batch_size,epochs,sync_dist,batch_finder=False):
-            DMClass = self.resolve_datamanager(self.configs['dataset_params']['mode'])
-            D = DMClass(
-                self.project,
-                dataset_params=self.configs["dataset_params"],
-                transform_factors=self.configs["transform_factors"],
-                affine3d=self.configs["affine3d"],
-                batch_size=batch_size
-            )
-            N = UNetTrainer(
-                self.project,
-                self.configs["dataset_params"],
-                self.configs["model_params"],
-                self.configs["loss_params"],
-                lr=self.configs["model_params"]["lr"],
-                max_epochs=epochs,
-                sync_dist=sync_dist
-            )
-            return D,N
+    def init_D_N(self, batch_size, epochs, sync_dist, batch_finder=False):
+        DMClass = self.resolve_datamanager(self.configs["dataset_params"]["mode"])
+        D = DMClass(
+            self.project,
+            dataset_params=self.configs["dataset_params"],
+            transform_factors=self.configs["transform_factors"],
+            affine3d=self.configs["affine3d"],
+            batch_size=batch_size,
+        )
+        N = UNetTrainer(
+            self.project,
+            self.configs["dataset_params"],
+            self.configs["model_params"],
+            self.configs["loss_params"],
+            lr=self.configs["model_params"]["lr"],
+            max_epochs=epochs,
+            sync_dist=sync_dist,
+        )
+        return D, N
 
-    def load_ckpts(self,lr=None):
-            state_dict=torch.load(self.ckpt)
-            DMClass = self.resolve_datamanager(state_dict['datamodule_hyper_parameters']['dataset_params']['mode'])
-            D = DMClass.load_from_checkpoint(self.ckpt,project=self.project)
-            if lr is None:
-                lr=state_dict['lr_schedulers'][0]['_last_lr'][0]
-            else:
-                state_dict['lr_schedulers'][0]['_last_lr'][0]=lr
-                torch.save(state_dict,self.ckpt)
-            try:
-                N = UNetTrainer.load_from_checkpoint(
-                    self.ckpt, project=self.project, dataset_params=D.dataset_params,lr=lr
-                )
-            except:
-                tr()
-                ckpt_state = state_dict['state_dict']
-                ckpt_state_updated = fix_dict_keys(ckpt_state,'model','model._orig_mod')
-                print(ckpt_state_updated.keys())
-                state_dict_neo = state_dict.copy()
-                state_dict_neo['state_dict']=ckpt_state_updated
-
-                ckpt_old = self.ckpt.str_replace('_bkp','')
-                ckpt_old = self.ckpt.str_replace('.ckpt','.ckpt_bkp')
-                torch.save(state_dict_neo,self.ckpt)
-                shutil.move(self.ckpt,ckpt_old)
-
-                N = UNetTrainer.load_from_checkpoint(
-                    self.ckpt, project=self.project, dataset_params=D.dataset_params,lr=lr
-                )
-            return D,N
-
-
-    def resolve_datamanager(self,  mode: str):
-        assert mode in ['patch', 'whole', 'lowres'], "mode must be 'patch', 'whole' or 'lowres'"
-        if mode == 'patch':
-            DMClass = DataManagerPatch
-        elif mode == 'whole':
-            DMClass = DataManagerWhole
+    def load_ckpts(self, lr=None):
+        state_dict = torch.load(self.ckpt)
+        DMClass = self.resolve_datamanager(
+            state_dict["datamodule_hyper_parameters"]["dataset_params"]["mode"]
+        )
+        D = DMClass.load_from_checkpoint(self.ckpt, project=self.project)
+        if lr is None:
+            lr = state_dict["lr_schedulers"][0]["_last_lr"][0]
         else:
-            raise NotImplementedError("Invalid mode")
+            state_dict["lr_schedulers"][0]["_last_lr"][0] = lr
+            torch.save(state_dict, self.ckpt)
+        try:
+            N = UNetTrainer.load_from_checkpoint(
+                self.ckpt, project=self.project, dataset_params=D.dataset_params, lr=lr
+            )
+        except:
+            tr()
+            ckpt_state = state_dict["state_dict"]
+            ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
+            print(ckpt_state_updated.keys())
+            state_dict_neo = state_dict.copy()
+            state_dict_neo["state_dict"] = ckpt_state_updated
+
+            ckpt_old = self.ckpt.str_replace("_bkp", "")
+            ckpt_old = self.ckpt.str_replace(".ckpt", ".ckpt_bkp")
+            torch.save(state_dict_neo, self.ckpt)
+            shutil.move(self.ckpt, ckpt_old)
+
+            N = UNetTrainer.load_from_checkpoint(
+                self.ckpt, project=self.project, dataset_params=D.dataset_params, lr=lr
+            )
+        return D, N
+
+    def resolve_datamanager(self, mode: str):
+        assert mode in [
+            "patch",
+            "whole",
+            "source",
+        ], "mode must be 'patch', 'whole' or 'source'"
+        if mode == "patch":
+            DMClass = DataManagerPatch
+        elif mode == "source":
+            DMClass = DataManagerSource
+        else:
+            raise NotImplementedError(
+                "lowres whole image transforms not yet supported."
+            )
         return DMClass
-
-
-
 
     def fit(self):
         # if self.configs['model_params']['compiled']==True:
         #     self.N = torch.compile(self.)
         self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
 
-
-    def fix_state_dict_keys(self,bad_str="model",good_str="model._orig_mod"):
+    def fix_state_dict_keys(self, bad_str="model", good_str="model._orig_mod"):
         state_dict = torch.load(self.ckpt)
-        ckpt_state = state_dict['state_dict']
-        ckpt_state_updated = fix_dict_keys(ckpt_state,bad_str,good_str)
+        ckpt_state = state_dict["state_dict"]
+        ckpt_state_updated = fix_dict_keys(ckpt_state, bad_str, good_str)
         state_dict_neo = state_dict.copy()
-        state_dict_neo['state_dict']=ckpt_state_updated
+        state_dict_neo["state_dict"] = ckpt_state_updated
 
-        ckpt_old = self.ckpt.str_replace('.ckpt','.ckpt_bkp')
-        shutil.move(self.ckpt,ckpt_old)
+        ckpt_old = self.ckpt.str_replace(".ckpt", ".ckpt_bkp")
+        shutil.move(self.ckpt, ckpt_old)
 
-        torch.save(state_dict_neo,self.ckpt)
+        torch.save(state_dict_neo, self.ckpt)
         return ckpt_old
-
 
 
 # %%
@@ -859,89 +697,100 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "litsmc"
+    project_title = "lungs"
     proj = Project(project_title=project_title)
 
-    configuration_filename="/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
-    configuration_filename="/s/fran_storage/projects/litsmc/experiment_configs.xlsx"
-    configuration_filename=None
+    configuration_filename = (
+        "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
+    )
+    configuration_filename = "/s/fran_storage/projects/litsmc/experiment_configs.xlsx"
+    configuration_filename = None
 
     conf = ConfigMaker(
-        proj,
-        raytune=False,
-        configuration_filename=configuration_filename
+        proj, raytune=False, configuration_filename=configuration_filename
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
-    conf['model_params']['arch']='nnUNet'
+    conf["model_params"]["arch"] = "nnUNet"
     # conf['model_params']['lr']=1e-3
 
 # %%
-    device_id =0
+    device_id = 1
 # %%
-    bs = 8
+    bs = 2
     # run_name ='LITS-709'
-    run_name =None
-    compiled=False
-    batch_finder=False
-    neptune=True
-    tags=[]
-    description="Baseline all transforms as in previous full data runs"
-    Tm = TrainingManager(proj,conf,run_name)
-    Tm.setup(compiled=compiled,batch_size=bs,devices = [device_id], epochs=500,batchsize_finder=batch_finder,neptune=neptune,tags=tags,description=description)
+    compiled = False
+    run_name = None
+
+    batch_finder = False
+    neptune = True
+    tags = []
+    description = "Baseline all transforms as in previous full data runs"
+    Tm = TrainingManager(proj, conf, run_name)
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=[device_id],
+        epochs=500,
+        batchsize_finder=batch_finder,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+    )
     # Tm.D.batch_size=8
-    Tm.N.compiled=compiled
+    Tm.N.compiled = compiled
 # %%
     Tm.fit()
 # %%
 # %%
 
     Tm.D.setup()
-    dl=Tm.D.train_dataloader()
-    dl2=Tm.D.val_dataloader()
-    iteri=iter(dl)
+    dl = Tm.D.train_dataloader()
+    dl2 = Tm.D.val_dataloader()
+    iteri = iter(dl)
 # %%
     m = Tm.N.model
-    N=  Tm.N
+    N = Tm.N
 
-    
 # %%
-    b=next(iteri)
-    b2=next(iter(dl2))
-    batch= b2
+    b = next(iteri)
+    b2 = next(iter(dl2))
+    batch = b2
     inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]
-    
-    [pp(a['filename']) for a in bbox]
+
+    [pp(a["filename"]) for a in bbox]
 # %%
     preds = N.model(inputs.cuda())
     pred = preds[0]
-    pred=pred.detach().cpu()
+    pred = pred.detach().cpu()
     pp(pred.shape)
 # %%
-    n=4
-    img = inputs[n,0]
-    mask = target[n,0]
-    pre = pred[n,2]
+    n = 4
+    img = inputs[n, 0]
+    mask = target[n, 0]
+    pre = pred[n, 2]
 # %%
-    ImageMaskViewer([img.permute(2,1,0),mask.permute(2,1,0)])
+    ImageMaskViewer([img.permute(2, 1, 0), mask.permute(2, 1, 0)])
 # %%
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litsmall/spc_080_080_150/images/lits_4.pt"
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litstp/spc_080_080_150/images/lits_4.pt"
-    fn2="/home/ub/datasets/preprocessed/lits32/patches/spc_080_080_150/dim_192_192_128/masks/lits_4_1.pt"
-    img=torch.load(fn)
-    mask=torch.load(fn2)
+    fn2 = "/home/ub/datasets/preprocessed/lits32/patches/spc_080_080_150/dim_192_192_128/masks/lits_4_1.pt"
+    img = torch.load(fn)
+    mask = torch.load(fn2)
     pp(img.shape)
 # %%
 
-    ImageMaskViewer([img,mask])
+    ImageMaskViewer([img, mask])
 # %%
 # %%
 
     Tm.trainer.callback_metrics
 # %%
-    ckpt = Path('/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt')
+    ckpt = Path(
+        "/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt"
+    )
     kk = torch.load(ckpt)
     kk.keys()
-    kk['datamodule_hyper_parameters']
+    kk["datamodule_hyper_parameters"]
 # %%

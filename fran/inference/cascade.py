@@ -3,43 +3,25 @@ import gc
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from time import time
 
-import lightning.pytorch as pl
-import monai
 import numpy as np
 import SimpleITK as sitk
 from lightning.fabric import Fabric
 from monai.apps.detection.transforms.array import *
-from monai.config.type_definitions import DtypeLike, KeysCollection
-from monai.data import MetaTensor, image_writer
 from monai.data.box_utils import *
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset, PersistentDataset
-from monai.data.image_writer import ITKWriter
-from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
-from monai.data.itk_torch_bridge import metatensor_to_itk_image
 from monai.data.utils import decollate_batch
 from monai.inferers import SlidingWindowInferer
-from monai.inferers.inferer import SimpleInferer
 from monai.inferers.merger import *
-from monai.inferers.utils import sliding_window_inference
 from monai.transforms import (AsDiscreted, Compose, EnsureChannelFirstd,
-                              Invertd, LoadImage, Spacingd)
-from monai.transforms.croppad.dictionary import (BoundingRectd,
-                                                 ResizeWithPadOrCropd)
-from monai.transforms.io.array import SaveImage
+                              Invertd, Spacingd)
 from monai.transforms.io.dictionary import LoadImaged, SaveImaged
 from monai.transforms.post.dictionary import (Activationsd,
                                               KeepLargestConnectedComponentd,
                                               MeanEnsembled)
-from monai.transforms.spatial.dictionary import Flipd, Orientationd, Resized
-from monai.transforms.transform import MapTransform, Transform
-from monai.transforms.utility.array import EnsureType
-from monai.transforms.utils import generate_spatial_bounding_box
+from monai.transforms.spatial.dictionary import Orientationd, Resized
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
-from monai.utils.enums import GridSamplePadMode
-from torch.functional import Tensor
 from torchvision.transforms.functional import resize
 
 from fran.data.dataloader import img_metadata_collated
@@ -64,19 +46,14 @@ from mask_analysis.helpers import to_cc, to_int, to_label
 
 # These are the usual ipython objects, including this one you are creating
 ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]
-import os
 import sys
 
 from fastcore.all import GetAttr, ItemTransform, Pipeline, Sequence
 from fastcore.foundation import L, Union, listify, operator
-from monai.transforms.post.array import (Activations, AsDiscrete, Invert,
-                                         KeepLargestConnectedComponent,
-                                         VoteEnsemble)
 
 from fran.transforms.intensitytransforms import ClipCenterI
 
 sys.path += ["/home/ub/Dropbox/code/fran/"]
-import functools as fl
 
 import torch.nn.functional as F
 from fastcore.basics import store_attr
@@ -431,7 +408,8 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         if self.overwrite==False and (isinstance(imgs[0],str) or isinstance(imgs[0], Path)):
             imgs = self.filter_existing_preds(imgs)
         else:
-            self.save = False  # don't save if input is pure images. Just output those.
+            pass
+            # self.save = False  # don't save if input is pure images. Just output those.
         imgs = list_to_chunks(imgs, chunksize)
         for imgs_sublist in imgs:
             self.create_ds(imgs_sublist)
@@ -525,9 +503,9 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         )  # label=1 is the organ
         F = FillBBoxPatchesd()
         if len(keys) == 1:
-            MR = RenameDictKeys(keys=keys, new_keys=["pred"])
+            MR = RenameDictKeys(new_keys=["pred"], keys=keys)
         else:
-            MR = MeanEnsembled(keys=keys, output_key="pred")
+            MR = MeanEnsembled(output_key="pred", keys=keys)
         tfms = [MR, A, D, K, F]
 
         # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
@@ -548,7 +526,7 @@ if __name__ == "__main__":
     run_ps = ["LITS-720"]
 
     run_ps = ["LITS-709"]
-    run_ps = ["LITS-773"]
+    run_ps = ["LITS-787"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
@@ -565,7 +543,7 @@ if __name__ == "__main__":
     En = CascadeInferer(proj, run_w, run_ps, debug=True, devices=[1])
 
     img_fn = Path("/s/xnat_shadow/litq/images/litq_31_20220826.nii.gz")
-    preds = En.predict([img_fn])
+    preds = En.predict(crc_imgs)
 # %%
     En = CascadeInferer(proj, run_w, run_ps, debug=True, devices=[1])
 # %%

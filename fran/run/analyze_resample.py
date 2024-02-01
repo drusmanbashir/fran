@@ -268,6 +268,7 @@ def do_low_res(proj_defaults):
 if __name__ == "__main__":
     from fran.utils.common import *
     parser = argparse.ArgumentParser(description="Resampler")
+
     parser.add_argument("-t", help="project title", dest="project_title")
     parser.add_argument(
         "-n",
@@ -290,7 +291,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "litsmc"
+    # args.project_title = "lungs"
     # args.num_processes = 1
     # args.debug=False
     # args.overwrite=False

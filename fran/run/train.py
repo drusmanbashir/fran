@@ -73,7 +73,6 @@ def initialize_run(project ,args):
 
     configs = load_and_update_configs(project,args)
     cbs = [
-    ModelCheckpoint(),
      LearningRateMonitor(logging_interval='epoch')
     ]
     

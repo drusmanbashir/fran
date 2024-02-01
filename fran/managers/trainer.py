@@ -427,7 +427,7 @@ def update_nep_run_from_config(nep_run, config):
 if __name__ == "__main__":
 
     from fran.utils.common import *
-    project_title = "lits32"
+    project_title = "lungs"
     project = Project(project_title=project_title)
     from fran.managers.tune import get_raytune_folder_from_trialname
 

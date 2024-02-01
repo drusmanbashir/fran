@@ -82,6 +82,8 @@ class DataManager(LightningDataModule):
 
     def prepare_data(self):
         # getting the right folders
+        dataset_mode = self.dataset_params["mode"]
+        assert dataset_mode in ["whole", "patch", "source"], "Set a value for mode in 'whole', 'patch' or 'source' "
         self.train_list, self.valid_list = self.project.get_train_val_files(
             self.dataset_params["fold"]
         )
@@ -91,9 +93,9 @@ class DataManager(LightningDataModule):
             self.dataset_params["src_dims"],
         ]
 
-        if 'patch' in self.dataset_params["mode"]:
+        if dataset_mode == "patch":
             parent_folder = self.project.patches_folder
-        elif 'whole' in self.dataset_params["mode"]:
+        elif dataset_mode == "whole":
             parent_folder = self.project.whole_images_folder
             for listi in prefixes, value_lists:
                 del listi[0]
@@ -156,7 +158,7 @@ class DataManager(LightningDataModule):
 
 
 
-class DataManagerWhole(DataManager):
+class DataManagerSource(DataManager):
     def __init__(self, project, dataset_params: dict, transform_factors: dict, affine3d: dict, batch_size=8):
         super().__init__(project, dataset_params, transform_factors, affine3d, batch_size)
         self.collate_fn = simple_collated

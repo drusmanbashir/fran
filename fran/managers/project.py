@@ -95,8 +95,8 @@ class Project(DictToAttr):
     def vars_to_sql(self, dataset_name, img_fn, mask_fn, test):
         case_id = info_from_filename(img_fn.name)['case_id']
         fold = "NULL"
-        img_sym = self.symlink_fname(img_fn)
-        mask_sym = self.symlink_fname(mask_fn)
+        img_sym = self.create_raw_ds_fname(img_fn)
+        mask_sym = self.create_raw_ds_fname(mask_fn)
         cols = (
             dataset_name,
             case_id,
@@ -154,7 +154,7 @@ class Project(DictToAttr):
         for pair in pairs:
             self.filepair_symlink(*pair)
 
-    def symlink_fname(self, fn):
+    def create_raw_ds_fname(self, fn):
         prnt = self.raw_data_folder / fn.parent.name
         fn_out = prnt / fn.name
         return fn_out
@@ -271,7 +271,7 @@ class Project(DictToAttr):
 
 
     def get_unassigned_cases(self):
-        ss = "SELECT case_id,image FROM datasources WHERE test=0 AND fold='NULL'"  # only training cases
+        ss = "SELECT case_id, image FROM datasources WHERE test=0 AND fold='NULL'"  # only training cases
         qr = self.sql_query(ss)
         qr = list(il.chain(qr))
         print("Cases not assigned to any training fold: {}".format(len(qr)))
@@ -395,7 +395,7 @@ class Datasource(GetAttr):
         self.integrity_check()
 
     def infer_dataset_name(self):
-        fn = list((self.folder / ("images")).glob("*.*"))[0]
+        fn = list((self.folder / ("images")).glob("*"))[0]
         proj_title = info_from_filename(fn.name)["proj_title"]
         return proj_title
 
@@ -405,8 +405,8 @@ class Datasource(GetAttr):
         any other verifications
         """
 
-        images = list((self.folder / ("images")).glob("*.*"))
-        masks = list((self.folder / ("masks")).glob("*.*"))
+        images = list((self.folder / ("images")).glob("*"))
+        masks = list((self.folder / ("masks")).glob("*"))
         assert (
             a := len(images) == (b := len(masks))
         ), "Different lengths of images {0}, and masks {1}.\nCheck your data folder".format(
@@ -455,21 +455,23 @@ class Datasource(GetAttr):
     def create_symlinks(self):
         pass
 
-
 # %%
 if __name__ == "__main__":
-    P = Project(project_title="l2")
     ds = "/s/xnat_shadow/nodes"
     ds2="/s/datasets_bkp/litqmall"
     ds3="/s/datasets_bkp/drli"
     ds4="/s/datasets_bkp/lits_segs_improved/"
     ds5="/s/datasets_bkp/drli_short/"
-    P.create_project([ds5])
+    ds6="/s/datasets_bkp/Task06Lung/"
+    P = Project(project_title="lungs")
+    P.create_project([ds6])
+# %%
     # P.add_data(ds5)
     # P.create_project([ds,ds2,ds3,ds4])
     P.create_folds()
     len(P.raw_data_imgs)
     len(P)
-    P.create_project(ds5)
 # %%
-    D = Datasource(ds5)
+    D = Datasource(ds6)
+# %%
+# %%
