@@ -1,8 +1,13 @@
 # %%
 import gc
+import ipdb
+tr = ipdb.set_trace
+
+from monai.utils.misc import ensure_tuple
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from monai.data.image_reader import ITKReader
 
 import numpy as np
 import SimpleITK as sitk
@@ -31,6 +36,7 @@ from fran.inference.base import (BaseInferer, InferenceDatasetNii,
                                  list_to_chunks, load_dataset_params)
 from fran.managers.training import (DataManager, UNetTrainer,
                                     checkpoint_from_model_id)
+from fran.transforms.imageio import SITKReader
 from fran.transforms.inferencetransforms import (
     BBoxFromPred, KeepLargestConnectedComponentWithMetad, RenameDictKeys,
     ToCPUd, TransposeSITKd)
@@ -39,10 +45,10 @@ from fran.utils.dictopts import DictToAttr
 from fran.utils.fileio import load_dict, load_yaml, maybe_makedirs
 from fran.utils.helpers import get_available_device, timing
 from fran.utils.itk_sitk import *
-from fran.utils.string import drop_digit_suffix
+from fran.utils.string import drop_digit_suffix, find_file
 
 sys.path += ["/home/ub/code"]
-from mask_analysis.helpers import to_cc, to_int, to_label
+from label_analysis.helpers import to_cc, to_int, to_label
 
 # These are the usual ipython objects, including this one you are creating
 ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]
@@ -176,7 +182,7 @@ class WholeImageInferer(GetAttr, DictToAttr):
         data is a dataset from Ensemble in this base class
         """
 
-        store_attr("project,run_name,devices,debug")
+        store_attr("project,run_name,devices,debug,overwrite")
         self.ckpt = checkpoint_from_model_id(run_name)
         dic1 = torch.load(self.ckpt)
         dic2 = {}
@@ -365,19 +371,22 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         run_name_w,
         runs_p,
         devices=[0],
+        overwrite_w=False,
+        overwrite_p=True,
+        profile=None,
         debug=False,
-        overwrite=False,
         save=True,
     ):
         """
         Creates a single dataset (cascade dataset) which normalises images once for both patches and whole images. Hence, the model should be developed from the same dataset std, mean values.
         """
+        assert profile in [None, "dataloading", "prediction", "all"], "Choose one of None , 'dataloading', 'prediction', 'all'"
 
         self.predictions_folder = project.predictions_folder
         self.dataset_params = load_dataset_params(runs_p[0])
-        self.Ps = [PatchInferer(project=project,run_name=run, devices=devices, debug=debug, overwrite=overwrite) for run in runs_p]
+        self.Ps = [PatchInferer(project=project,run_name=run, devices=devices, debug=debug, overwrite=overwrite_p) for run in runs_p]
         self.W = WholeImageInferer(
-            project=project, run_name=run_name_w,  debug=True, devices=devices, overwrite=overwrite
+            project=project, run_name=run_name_w,  debug=True, devices=devices, overwrite=overwrite_w
         )
         store_attr()
 
@@ -388,7 +397,6 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
 
         cache_dir = self.project.cold_datasets_folder / ("cache")
         maybe_makedirs(cache_dir)
-        # self.ds = PersistentDataset(data=im, transform=tfms, cache_dir=cache_dir)
         self.ds = InferenceDatasetNii(self.project, data, self.dataset_params)
         self.ds.set_transforms("E")
 
@@ -398,6 +406,7 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         spacings = dic1["datamodule_hyper_parameters"]["dataset_params"]["spacings"]
         return spacings
 
+
     def predict(self, imgs:list, chunksize=12):
         """
         imgs can be a list comprising any of filenames, folder, or images (sitk or itk)
@@ -405,7 +414,7 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         """
         imgs=listify(imgs)
 
-        if self.overwrite==False and (isinstance(imgs[0],str) or isinstance(imgs[0], Path)):
+        if self.overwrite_p==False and (isinstance(imgs[0],str) or isinstance(imgs[0], Path)):
             imgs = self.filter_existing_preds(imgs)
         else:
             pass
@@ -438,6 +447,20 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         return imgs
 
 
+    def filter_existing_localisers(self, imgs):
+        print("Filtering existing localisers\nNumber of images provided: {}".format(len(imgs)))
+        new_W =[]
+        for P in self.Ps:
+            out_fns = [P.output_folder/img.name for img in imgs]
+            new_P = np.array([not fn.exists() for fn in out_fns])
+            new_Ps.append(new_P)
+        if len(P)>1:
+            new_Ps= np.logical_or(*new_Ps)
+        else:
+            new_Ps = new_Ps[0]
+        imgs = list(il.compress(imgs, new_Ps))
+        print("Number of images remaining to be predicted: {}".format(len(imgs)))
+        return imgs
 
     def save_pred(self, preds):
         S = SaveImaged(
@@ -471,7 +494,9 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         return output
 
     def extract_fg_bboxes(self):
-        print("Preparing data")
+        if self.overwrite_w==False:
+            print("Bbox overwrite not implemented yet")
+        print("Starting localiser data prep and prediction")
         self.W.setup(self.ds)
         p = self.W.predict()
         preds = self.W.postprocess(p)
@@ -481,6 +506,7 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
     def patch_prediction(self, ds, bboxes):
         data = [ds, bboxes]
         preds_all_runs = {}
+        print("Starting patch data prep and prediction")
         for P in self.Ps:
             P.setup(data)
             preds = P.predict()
@@ -513,6 +539,8 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         output = C(patch_bundle)
         return output
 
+class CascadeFew(CascadeInferer):
+    pass
 
 # %%
 
@@ -526,6 +554,7 @@ if __name__ == "__main__":
     run_ps = ["LITS-720"]
 
     run_ps = ["LITS-709"]
+    run_ps = ["LITS-787", "LITS-810", "LITS-811"]
     run_ps = ["LITS-787"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
@@ -536,104 +565,100 @@ if __name__ == "__main__":
 
     img_fns = [img_fn, img_fn2]
 
+    imgs_fldr = Path("/s/xnat_shadow/crc/images")
 # %%
-    crc_fldr = "/s/xnat_shadow/crc/completed/images"
-    crc_imgs = list(Path(crc_fldr).glob("*"))
+    srn_fldr = "/s/xnat_shadow/crc/srn/images/"
+    srn_imgs = list(Path(srn_fldr).glob("*"))
+    litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
+    litq_imgs = list(Path(litq_fldr).glob("*"))
+# %%
+    En = CascadeInferer(proj, run_w, run_ps, debug=False, devices=[0],overwrite_w=False,overwrite_p=False)
+
+    preds = En.predict(srn_imgs)
+
 # %%
     En = CascadeInferer(proj, run_w, run_ps, debug=True, devices=[1])
-
-    img_fn = Path("/s/xnat_shadow/litq/images/litq_31_20220826.nii.gz")
+# %%
     preds = En.predict(crc_imgs)
 # %%
-    En = CascadeInferer(proj, run_w, run_ps, debug=True, devices=[1])
-# %%
-    preds = En.predict(img_fns)
-# %%
 
-    imgs = img_fns
-    chunksize = 10
-    imgs = list_to_chunks(imgs, chunksize)
-    # for imgs_sublist in imgs:
-    imgs_sublist = imgs[0]
-    En.create_ds(imgs_sublist)
-    En.bboxes = En.extract_fg_bboxes()
-    pred_patches = En.patch_prediction(En.ds, En.bboxes)
-    pred_patches = En.decollate_patches(pred_patches, En.bboxes)
-    output = En.postprocess(pred_patches)
-    if En.save == True:
-        En.save_pred(output)
+    reader = ITKReader()
+    imgs = reader.read(img_fns)
+    dat = reader.get_data(imgs)
+
+    aff = reader._get_affine(img)
+
+    meta = img.GetMetaDataDictionary()
+    keys = meta.GetKeys()
 
 # %%
-        w = WholeImageInferer(En.project, En.run_name_w, En.ds, debug=True)
-        print("Preparing data")
-        p = w.predict()
-        preds = w.postprocess(p)
+    sr = img.GetDimension()
+    sr = max(min(sr, 3), 1)
+    _size = list(itk.size(img))
+    if isinstance(self.channel_dim, int):
+        _size.pop(self.channel_dim)
 # %%
-        out_final = []
-        for batch in preds:
-            batch = p[0]
-            out2 = decollate_batch(batch, detach=True)
-            ou = out2[0]
-            for ou in out2:
-                tmp = w.postprocess_transforms(ou)
-                out_final.append(tmp)
-# %%
-        bboxes = [pred["pred"].meta["bounding_box"] for pred in preds]
+
+
+    direction = itk.array_from_matrix(img.GetDirection())
+    spacing = np.asarray(img.GetSpacing())
+    origin = np.asarray(img.GetOrigin())
 
 # %%
-    pred_patches = En.patch_prediction(En.ds, En.bboxes)
-    pred_patches = En.decollate_patches(pred_patches, En.bboxes)
-    pb = patch_bundle = pred_patches
-    keys = En.runs_p
-# %%
-    C = Compose(tfms)
-    A = Activationsd(keys="pred", softmax=True)
-    D = AsDiscreted(keys=["pred"], argmax=True)
-    K = KeepLargestConnectedComponentWithMetad(
-        keys=["pred"], independent=False, applied_labels=1
-    )  # label=1 is the organ
-    F = FillBBoxPatchesd()
-    if len(keys) == 1:
-        MR = RenameDictKeys(keys=keys, new_keys=["pred"])
+    im2 = sitk.ReadImage(img_fns[0])
+
+    sr = im2.GetDimension()
+    direction = im2.GetDirection()
+    if len(direction)!=9:
+        raise NotImplemented
     else:
-        MR = MeanEnsembled(keys=keys, output_key="pred")
-    tfms = [MR, A, D, K, F]
+        direction = np.array(direction)
+        direction = direction.reshape(3,3)
 
-    # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
-    C = Compose(tfms)
-
-# %%
-
-    if len(En.runs_p) == 0:
-        E = EnsureChannelFirstd(keys="pred")
-        tfms.insert(1, E)
-    # S = SaveListd(keys = ['pred'],output_dir=En.output_folder,output_postfix='',separate_folder=False)
-    output = C(patch_bundle)
+    spacing = np.asarray(im2.GetSpacing())
+    origin = np.asarray(im2.GetOrigin())
 
 # %%
-    R = RenameDictKeys(keys=keys, new_keys=["pred"])
-# %%
-    pb = patch_bundle[0]
-    pb33 = C(pb)
-    pb["pred"] = pb["LITS-709"]
-    pb2 = C(pb)
-    pb3 = E(pb2)
+    ds = En.ds
+    ds2 = En2.ds
 
-    pb2 = M(pb)
-    pb4 = A(pb3)
-    pb3.keys()
-    pred = pb33["pred"]
-    pred.shape
-    img = pb33["image"]
-    img.shape
-    pred.shape
-
-    ImageMaskViewer([img[0], pred[0]])
 # %%
-    w = WholeImageInferer(
-        En.project, En.run_name_w, En.ds, debug=True, devices=En.devices
-    )
+    im = ds[0]['image']
+    im2 = ds2[0]['image']
 # %%
-    print("Preparing data")
-    p = w.predict()
-
+    for k in im.meta.keys():
+        it1 = im.meta[k]
+        it2  = im2.meta[k]
+        print(k)
+        print(it1==it2)
+# %%
+    im.meta['affine']
+    im2.meta['affine']
+# %%
+    start = time()
+    for n in range(10):
+        print(n)
+        L = LoadImaged(keys=['image'], reader=SITKReader)
+        dici = {'image':img_fn}
+        img = L(dici)
+    stop = time()
+    spent = stop - start
+    print(spent)
+# %%
+    start = time()
+    for n in range(10):
+        L = LoadImaged(keys= ['image'])
+        dici = {'image':img_fn}
+        img = L(dici)
+    stop = time()
+    spent = stop - start
+    print(spent)
+# %%
+    start = time()
+    for n in range(10):
+        La = LoadImaged(keys= ['image'], reader=SITKReader)
+        dici = {'image':img_fn}
+        img = La(dici)
+    stop = time()
+    spent = stop - start
+    print(spent)

@@ -28,13 +28,14 @@ class EnsembleActor(object):
         self.value = 0
 
     def process(self,project,run_name_w,runs_ensemble ,fnames,half,debug,overwrite=False):
-        self.En =CascadeInferer(project, run_name_w, runs_ensemble)
-        out = self.En.predict(fnames)
+
+        self.En = CascadeInferer(project=project, run_name_w=run_name_w, runs_p=runs_ensemble, debug=debug,overwrite_p=overwrite )
+        preds = En.predict(fnames)
 # %%
 
 def main(args):
 
-    run_name_w= 'LIT-41'
+    run_name_w= 'LIT-145'
     input_folder = args.input_folder
     proj= Project(project_title=args.t)
     overwrite=args.overwrite
@@ -66,6 +67,7 @@ if __name__ == "__main__":
     # runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436","LITS-445"]
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
 
+    run_ensemble= ["LITS-787", "LITS-810", "LITS-811"]
     # runs_ensemble=["LITS-408","LITS-385","LITS-383","LITS-357"]
     parser = argparse.ArgumentParser(description="Ensemble Predictor")
     parser.add_argument('-o','--overwrite',action='store_true')
@@ -77,11 +79,12 @@ if __name__ == "__main__":
     parser.add_argument('-e','--ensemble', nargs='+')
     parser.add_argument('--gpus', type=int,default=0)
     args = parser.parse_known_args()[0]
-    # args.overwrite=False
-    # args.t= 'lits'
-    # # args.input_folder ="/s/datasets_bkp/litq/nifti/patient_60/" "/media/ub2/datasets/drli/sitk/images/"
+    args.overwrite=False
+    args.t= 'litsmc'
+    args.input_folder ="/s/xnat_shadow/crc/srn/cases_with_findings/images"
     # args.input_folder = ""
     #
+# %%
     main(args)
 
 

@@ -1,7 +1,6 @@
 # %%
 import sqlite3
 from fastcore.basics import listify
-import math
 import ipdb
 from fastcore.basics import GetAttr
 from fran.utils.string import (
@@ -16,7 +15,6 @@ tr = ipdb.set_trace
 from pathlib import Path
 import os, sys
 import itertools as il
-import functools as fl
 from fastcore.basics import detuplify, store_attr
 from fran.utils.dictopts import dic_in_list
 from fran.utils.helpers import *
@@ -24,7 +22,6 @@ import shutil
 from fran.utils.helpers import DictToAttr, ask_proceed
 
 sys.path += ["/home/ub/Dropbox/code"]
-from types import SimpleNamespace
 from fran.utils.fileio import *
 
 if "XNAT_CONFIG_PATH" in os.environ:
@@ -78,11 +75,11 @@ class Project(DictToAttr):
 
         self.create_table()
         if data_folders:
-            datasources = self.add_data(data_folders, test)
+            self.add_data(data_folders, test)
 
     def sql_alter(self, sql_str):
         with db_ops(self.db) as cur:
-            res = cur.execute(sql_str)
+            cur.execute(sql_str)
 
     def sql_query(self, sql_str,chain_output=False):
         with db_ops(self.db) as cur:
@@ -205,11 +202,10 @@ class Project(DictToAttr):
             cur.executemany("INSERT INTO datasources VALUES (?,?,?,?,?,?,?,?)", strs)
 
     def add_datasources_xnat(self, xnat_proj: str):
-        xnat_shadow_fldr = "/s/xnat_shadow/"
         proj = Proj(xnat_proj)
         rc = proj.resource("IMAGE_MASK_FPATHS")
         csv_fn = rc.get("/tmp", extract=True)[0]
-        df = pd.read_csv(csv_fn)
+        pd.read_csv(csv_fn)
 
     def filter_existing_images(self, ds):
         ss = "SELECT image FROM datasources WHERE ds='{}'".format(ds.name)

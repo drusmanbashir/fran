@@ -35,24 +35,6 @@ class FilenameFromBBox(ItemTransform):
         fname = str(bbox['filename'])
         return img,mask, fname
 
-class Squeeze(ItemTransform):
-
-    def __init__(self, dim):
-        store_attr()
-    def encodes(self,x):
-        outputs =[]
-        for tensr in x:
-            tensr= tensr.squeeze(self.dim)
-            outputs.append(tensr)
-        return outputs
-
-    def decodes(self,x):
-        outputs =[]
-        for tensr in x:
-            tensr= tensr.unsqueeze(self.dim)
-            outputs.append(tensr)
-        return outputs
- 
 class DropBBoxFromDataset(ItemTransform):
     def encodes(self,x):
         if len(x)==3:

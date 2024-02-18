@@ -16,7 +16,7 @@ from fran.transforms.totensor import ToTensorImgMask
 from fran.utils.image_utils import *
 from fran.utils.imageviewers import *
 from fran.utils.helpers import *
-from mask_analysis.utils import *
+from label_analysis.utils import *
 import numpy as np
 
 # from fastai.vision.all import *
@@ -31,9 +31,9 @@ tr = ipdb.set_trace
 def generate_bboxes_from_masks_folder(
     masks_folder, bg_label=0,  debug=False, num_processes=16
 ):
-    mask_files = masks_folder.glob("*pt")
+    label_files = masks_folder.glob("*pt")
     arguments = [
-        [x,  bg_label] for x in mask_files
+        [x,  bg_label] for x in label_files
     ]  # 0.2 factor for thresholding as kidneys are small on low-res imaging and will be wiped out by default threshold 3000
     bboxes = multiprocess_multiarg(
         func=bboxes_function_version,
@@ -55,13 +55,13 @@ def save_properties(properties, output_folder, verbose=True):
 
 
 def crop_clip(case, proj_defaults):
-    img, mask, properties = get_img_mask_from_nii(case)
-    mask_gantry = np.ones(img.shape)
-    mask_gantry[img < 50] = 0
-    mask_gantry[img > 250] = 0
-    bbox_gantry = get_bbox_from_mask(mask_gantry)
+    img, mask, properties = get_img_label_from_nii(case)
+    label_gantry = np.ones(img.shape)
+    label_gantry[img < 50] = 0
+    label_gantry[img > 250] = 0
+    bbox_gantry = get_bbox_from_mask(label_gantry)
 
-    img_gantry_cropped, mask_gantry_cropped = [
+    img_gantry_cropped, label_gantry_cropped = [
         crop_to_bbox(
             x,
             bbox_gantry,
@@ -79,11 +79,11 @@ def crop_clip(case, proj_defaults):
     ] = proj_defaults.HU_clip_range[1]
     properties["crop_bbox"] = bbox_gantry
     properties["classes"] = np.max(
-        mask_gantry_cropped
+        label_gantry_cropped
     )  # UB changed this code might break nnUNet preprocessing - so be it!
     properties["size_after_cropping"] = img_gantry_cropped.shape
 
-    return img_gantry_cropped, mask_gantry_cropped, properties
+    return img_gantry_cropped, label_gantry_cropped, properties
 
 
 def crop_normalize_store(
@@ -97,7 +97,7 @@ def crop_normalize_store(
     crop_padding,
     crop_stride,
 ):
-    img, mask, properties = get_img_mask_from_nii(case)
+    img, mask, properties = get_img_label_from_nii(case)
     bbox = get_bbox_from_mask(mask)
     properties["bbox"] = bbox
     img, mask = crop_and_clip(
@@ -421,21 +421,21 @@ class SITKToNumpy(ItemTransform):
 
 
 class NumpyToTorch(ItemTransform):
-    def __init__(self,img_dtype = torch.float32, mask_dtype= torch.uint8): store_attr()
+    def __init__(self,img_dtype = torch.float32, label_dtype= torch.uint8): store_attr()
     def encodes(self, x):
         img, mask = x
         img = torch.tensor(img,dtype = self.img_dtype)
         if mask.dtype!=np.uint8 :
             mask =mask.astype(np.uint8)
-        mask= torch.tensor(mask,dtype=self.mask_dtype)
+        mask= torch.tensor(mask,dtype=self.label_dtype)
         return img,mask
 
 
 class GetFilenames(ItemTransform):
     def encodes(self, single_case_properties):
         img_fname = single_case_properties["properties"]["img_file"]
-        mask_fname = single_case_properties["properties"]["mask_file"]
-        return img_fname, mask_fname
+        label_fname = single_case_properties["properties"]["label_file"]
+        return img_fname, label_fname
 
 
 class TransposeSITKImageMask(ItemTransform):
@@ -453,7 +453,7 @@ class TransposeSITKImageMask(ItemTransform):
 def niipair_to_torch_wrapper(
     single_case_properties,
     output_img_folder,
-    output_mask_folder,
+    output_label_folder,
     clip_centre,
     global_properties,
     spacings,
@@ -462,7 +462,7 @@ def niipair_to_torch_wrapper(
 ):
         N = NiipairToTorch(
          
-            output_img_folder, output_mask_folder, global_properties, spacings, half_precision,'dataset',clip_centre
+            output_img_folder, output_label_folder, global_properties, spacings, half_precision,'dataset',clip_centre
         )
 
         return N.process_sitk_to_tensors(single_case_properties, overwrite=overwrite)
@@ -484,7 +484,7 @@ class NiipairToTorch(DictToAttr):
     def __init__(
         self,
         output_img_folder,
-        output_mask_folder,
+        output_label_folder,
         global_properties,
         spacings,
         half_precision,
@@ -544,7 +544,7 @@ class NiipairToTorch(DictToAttr):
         fn = strip_extension(single_case_properties["properties"]["img_file"].name)
         self.output_filenames = [
             output_folder /(fn + ".pt")
-            for output_folder in [self.output_img_folder, self.output_mask_folder]
+            for output_folder in [self.output_img_folder, self.output_label_folder]
         ]
     def set_normalization_values(self,mean_std_mode):
         if mean_std_mode == 'dataset':
@@ -568,7 +568,7 @@ if __name__ == "__main__":
     maybe_makedirs([output_imgs, output_masks])
 # %%
     N = NiipairToTorch(
-        output_mask_folder=output_masks,
+        output_label_folder=output_masks,
         output_img_folder=output_imgs,
         global_properties=globalp,
         spacings=[1.0, 2.0, 3.0],
@@ -654,9 +654,9 @@ if __name__ == "__main__":
     )
 
     bg_label=0
-    mask_files = masks_folder.glob("*pt")
+    label_files = masks_folder.glob("*pt")
     arguments = [
-        [x,  bg_label] for x in mask_files
+        [x,  bg_label] for x in label_files
     ]  # 0.2 factor for thresholding as kidneys are small on low-res imaging and will be wiped out by default threshold 3000
     bboxes = multiprocess_multiarg(
         func=bboxes_function_version,
@@ -686,7 +686,7 @@ if __name__ == "__main__":
 #
 #     spacing_dest = R.global_properties["spacings_median"]
 #     img_fname = R.raw_dataset_properties[0]["properties"]["img_file"]
-#     mask_fname = R.raw_dataset_properties[0]["properties"]["mask_file"]
+#     label_fname = R.raw_dataset_properties[0]["properties"]["label_file"]
 #
 # # %%
 #

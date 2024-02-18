@@ -12,7 +12,7 @@ from torch.functional import Tensor
 import ipdb
 
 from fran.transforms.basetransforms import KeepBBoxTransform
-from mask_analysis.utils import *
+from label_analysis.utils import *
 
 from fran.inference.helpers import get_amount_to_pad, get_scale_factor_from_spacings, rescale_bbox
 
@@ -388,7 +388,7 @@ class Stride(Transform):
 
 class ToTensorBBoxes(ItemTransform):
 
-    def __init__(self, img_dtype=torch.float, mask_dtype=torch.uint8):
+    def __init__(self, img_dtype=torch.float, label_dtype=torch.uint8):
         store_attr()
 
     def encodes(self, x):
@@ -535,7 +535,6 @@ class BBoxFromPred(MapTransform):
         pred.meta["bounding_box"] = sls
         return pred
 
-
 class SlicesFromBBox(MapTransform):
     def __init__(
         self,
@@ -581,7 +580,7 @@ class Saved(Transform):
 
         array_full = patch_bundle[key].detach().cpu()
         array_full.meta = patch_bundle["image"].meta
-        channels = array.shape[0]
+        array.shape[0]
         # ch=0
         # array = array_full[ch:ch+1,:]
         writer.set_data_array(array)

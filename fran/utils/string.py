@@ -1,7 +1,7 @@
 from datetime import datetime
 import re
 from pathlib import Path
-from fastcore.basics import listify
+from fastcore.basics import Union, listify
 import ipdb
 import numpy as np
 
@@ -53,6 +53,14 @@ def strip_extension(fname: str):
     fname_stripped = fname.split(".")[0]
     return fname_stripped
         
+def replace_extension(fname: str, new_ext: str):
+    '''
+    new_ext has no dot
+    '''
+    fname_base = strip_extension(fname)
+    fname_out  = ".".join([fname_base,new_ext])
+    return fname_out
+
 
 
 def strip_slicer_strings(fname: str):
@@ -148,6 +156,19 @@ def match_filenames(fname1:str,fname2:str):
     info2=info_from_filename(fname2)
     matched=all([val1==val2 for val1,val2 in zip(info1.values(),info2.values())])
     return matched
+
+def find_file(substring:str, filenames:Union[list,Path]):
+    if isinstance(filenames,Path) and filenames.is_dir():
+        filenames = filenames.glob("*")
+
+    matching_fn= [fn for fn in filenames if substring in fn.name]
+    if len(matching_fn) == 1:
+        return matching_fn[0]
+    elif len(matching_fn) == 0:
+        raise ValueError(f"Found {len(matching_fn)} matches for {substring}")
+    else:
+        print("Multiple matches found")
+        return matching_fn
 
 # %%
 if __name__ == "__main__":

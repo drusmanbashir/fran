@@ -10,7 +10,9 @@ from nnunet.network_architecture.initialization import InitWeights_He
 from monai.networks.nets import SwinUNETR
 from fran.architectures.dynunet import DynUNet_UB, get_kernel_strides, DynUNet
 from torch import nn
+import torch.nn.functional as F
 import ipdb
+from fran.architectures.unet3d.model import UNet3D
 tr = ipdb.set_trace
 
 

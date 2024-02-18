@@ -6,17 +6,29 @@ import torch
 from torch.functional import Tensor 
 import ipdb
 
-from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
-from monai.transforms.transform import MapTransform, RandomizableTransform
-from monai.data.meta_obj import get_track_meta
-from monai.transforms.intensity.array import RandGaussianNoise
-from monai.utils.type_conversion import convert_to_tensor
-from typing import Any, Dict, Hashable, Mapping
 import itertools as il
 
 tr = ipdb.set_trace
 # %%
 
+class Squeeze(ItemTransform):
+
+    def __init__(self, dim):
+        store_attr()
+    def encodes(self,x):
+        outputs =[]
+        for tensr in x:
+            tensr= tensr.squeeze(self.dim)
+            outputs.append(tensr)
+        return outputs
+
+    def decodes(self,x):
+        outputs =[]
+        for tensr in x:
+            tensr= tensr.unsqueeze(self.dim)
+            outputs.append(tensr)
+        return outputs
+ 
 class KeepBBoxTransform(ItemTransform):
 
     def encodes(self,x:Union[list,tuple]):

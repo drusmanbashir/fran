@@ -2,7 +2,6 @@
 from fastcore.all import store_attr
 import ast
 from fastcore.basics import GetAttr
-from monai.utils.aliases import GlobalAliases
 import torch
 import h5py
 import numpy as np

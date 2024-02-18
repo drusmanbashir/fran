@@ -39,7 +39,6 @@ def override_configs(args , configs:dict):
         return configs
     else : return None
 
-    pass
 def load_and_update_configs(project, args,compute_bs=True):
     # if recompute_bs==True:
     # if args.resume is None or args.update == True:

@@ -1,5 +1,4 @@
 from fastai.data.transforms import delegates
-from torch.utils.data import DataLoader as DL_torch
 import torchio as tio
 from torchio.data import Subject, subject
 from fran.data.dataset import ImageMaskBBoxDataset
@@ -14,8 +13,8 @@ def reader_tensor_dict(path:Path):
     dic={}
     for key,val in tnsr.items():
         dic.update({key:tio.ScalarImage(tensor=val.unsqueeze(0))})
-    s = Subject(dic)
-    im1 = tio.ScalarImage(tensor)
+    Subject(dic)
+    tio.ScalarImage(tensor)
 
 # %%
     

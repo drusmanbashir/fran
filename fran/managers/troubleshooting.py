@@ -1,47 +1,27 @@
 # %%
 from neptune.exceptions import FileNotFound
-import shutil
 from fran.utils.batch_size_scaling import _scale_batch_size2, _reset_dataloaders
 from paramiko import SSHClient
-from copy import deepcopy
-import time
-from lightning.pytorch.utilities.exceptions import MisconfigurationException, _TunerExitException
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
-from lightning.pytorch.callbacks import BatchSizeFinder, LearningRateMonitor
-from lightning.pytorch.strategies import DDPStrategy
-import torch.multiprocessing as mp
+from lightning.pytorch.callbacks import BatchSizeFinder
 from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
 from monai.data.meta_obj import get_track_meta
 from monai.transforms.intensity.array import RandGaussianNoise
-from monai.transforms.spatial.array import RandFlip, Resize
+from monai.transforms.spatial.array import Resize
 from monai.transforms.transform import MapTransform, RandomizableTransform
 from monai.utils.type_conversion import convert_to_tensor
 
 import neptune as nt
-from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
-from monai.transforms.intensity.dictionary import (
-    RandAdjustContrastd,
-    RandGaussianNoised,
-    RandScaleIntensityd,
-    RandShiftIntensityd,
-)
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, EnsureTyped
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.profiler import profile, record_function, ProfilerActivity
 from neptune.types import File
 from torchvision.utils import make_grid
-from lightning.pytorch.profilers import AdvancedProfiler
-import warnings
-from typing import Any, Dict, Hashable, Mapping
+from typing import Any, Hashable, Mapping
 
 # from fastcore.basics import GenttAttr
-from lightning.pytorch.callbacks import Callback, ModelCheckpoint, TQDMProgressBar
+from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers.neptune import NeptuneLogger
-from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
 from torchvision.transforms import Compose
 from monai.data import DataLoader
-from monai.transforms import RandAffined
 from lightning.pytorch import LightningDataModule, LightningModule, Trainer
 
 import torch
@@ -507,7 +487,7 @@ class NeptuneManager(NeptuneLogger, Callback):
             fnames = []
             for f in sorted(ftp_client.listdir_attr(remote_dir), key=lambda k: k.st_mtime, reverse=True):
                 fnames.append(f.filename)
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             print("\n------------------------------------------------------------------")
             print("Error:Could not find {}.\nIs this a remote folder and exists?\n".format(remote_dir))
             return

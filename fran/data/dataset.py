@@ -7,30 +7,28 @@
 # from torch.utils.data import DataLoader
 # from fastai.data.transforms import DataLoader as DL2
 from collections.abc import Hashable, Mapping
+from random import choice
 from fastcore.basics import Dict
-from monai.data.dataset import PersistentDataset
-from monai.data.image_writer import ITKWriter
+from monai.data.image_reader import ITKReader
 from monai.data.meta_tensor import MetaTensor
 from monai.transforms.io.array import SaveImage
 from monai.transforms.transform import Transform
 from monai.transforms.croppad.dictionary import   ResizeWithPadOrCropd
-from monai.transforms.intensity.dictionary import NormalizeIntensityd, RandAdjustContrastd, RandScaleIntensityd, RandShiftIntensityd, ScaleIntensityRanged, ThresholdIntensityd,RandGaussianNoised
+from monai.transforms.intensity.dictionary import RandAdjustContrastd, RandScaleIntensityd, RandShiftIntensityd, RandGaussianNoised
 from monai.transforms.spatial.dictionary import RandFlipd
 from monai.transforms.utility.dictionary import  EnsureChannelFirstd
 from monai.transforms import Compose, MapTransform
-from monai.utils.enums import TransformBackends
 import numpy as np
 import operator 
 from functools import reduce
 
 import itertools
-from functools import partial
+from fran.transforms.imageio import SITKReaderFast
 
 from fran.transforms.intensitytransforms import standardize
 from torch.utils.data import Dataset
 from fran.utils.helpers import *
 from fran.utils.imageviewers import ImageMaskViewer
-from monai.transforms import CropForegroundd
 
 from fran.transforms.spatialtransforms import *
 import ipdb
@@ -43,6 +41,131 @@ tr = ipdb.set_trace
 # masks_folder=  proj_default_folders.preprocessing_output_folder/("masks")
 #
 from fran.utils.fileio import *
+from fran.utils.common import *
+from collections.abc import Callable, Sequence
+import SimpleITK as sitk
+from fastcore.all import listify, store_attr
+from fastcore.foundation import GetAttr
+from lightning.fabric import Fabric
+from monai.data.dataloader import DataLoader    
+from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
+import itk
+from monai.data.dataset import Dataset, PersistentDataset
+from monai.transforms.compose import Compose
+from monai.transforms.io.dictionary import LoadImaged
+from monai.transforms.spatial.dictionary import Orientationd, Spacingd
+from pathlib import Path
+
+from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from fran.utils.fileio import maybe_makedirs
+from fran.utils.itk_sitk import ConvertSimpleItkImageToItkImage
+import numpy as np
+import itertools as il
+
+
+class InferenceDatasetNii(Dataset):
+    def __init__(self,project, imgs,dataset_params,reader=None):
+
+        self.reader=reader
+        self.dataset_params= dataset_params
+        self.project= project
+        self.imgs= self.parse_input(imgs)
+        self.create_transforms()
+
+
+
+    def __len__(self) -> int:
+        return len(self.imgs)
+
+
+    def parse_input(self,imgs_inp):
+        '''
+        input types:
+            folder of img_fns
+            nifti img_fns 
+            itk imgs (slicer)
+        returns list of img_fns if folder. Otherwise just the imgs
+        '''
+
+        if not isinstance(imgs_inp,list): imgs_inp=[imgs_inp]
+        imgs_out = []
+        for dat in imgs_inp:
+            if any([isinstance(dat,str),isinstance(dat,Path)]):
+                self.input_type= 'files'
+                dat = Path(dat)
+                if dat.is_dir():
+                    dat = list(dat.glob("*"))
+                else:
+                    dat=[dat]
+            else:
+                self.input_type= 'itk'
+                if isinstance(dat,sitk.Image):
+                    dat= ConvertSimpleItkImageToItkImage(dat, itk.F)
+                # if isinstance(dat,itk.Image):
+                dat=itm(dat) 
+            imgs_out.extend(dat)
+        imgs_out = [{'image':img} for img in imgs_out]
+        return imgs_out
+
+    def create_transforms(self):
+        if self.reader:
+            self.L=LoadImaged(keys=['image'],image_only=True,ensure_channel_first=False,simple_keys=True, reader=self.reader)
+        else:
+            self.L = SITKReaderFast(keys=['image'], image_only=True,ensure_channel_first=False,simple_keys=True)
+        self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
+        self.S = Spacingd(keys=["image"], pixdim=self.dataset_params['spacings'])
+        self.N = NormaliseClipd(
+            keys=["image"],
+            clip_range=self.dataset_params["intensity_clip_range"],
+            mean=self.dataset_params["mean_fg"],
+            std=self.dataset_params["std_fg"],
+        )
+
+        self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+
+        # tfms += [E,S,N]
+
+        # self.transform=Compose(tfms)
+    def set_transforms(self,tfms:str=''):
+        tfms_final = []
+        for tfm in tfms:
+            tfms_final.append(getattr(self,tfm))
+        if self.input_type=='files':
+            tfms_final.insert(0,self.L)
+        self.transform=Compose(tfms_final)
+
+
+    def __getitem__(self, index):
+        dici = self.imgs[index]
+        if self.transform:
+            dici=self.transform(dici)
+        return dici
+
+#
+# class InferenceDatasetCascade(InferenceDatasetNii):
+#     '''
+#     This creates two image formats, one low-res ,and one high-res
+#     '''
+#     def __init__(self,project, imgs,dataset_params_w, dataset_params_p):
+#         super().__init__(project, imgs,dataset_params_p)
+#         self.dataset_params_w= dataset_params_w
+#
+#     def set_transforms(self):
+#         super().set_transforms()
+#         self.transform_w = Resize(spatial_size=self.dataset_params_w["patch_size"])
+#
+#     def __getitem__(self, index):
+#         dici = super().__getitem__(index)
+#         dici['image_w'] = self.transform_w(dici['image'])
+#         return dici
+#     
+
+class InferenceDatasetPersistent(InferenceDatasetNii,PersistentDataset):
+    def __init__(self,project, data: Sequence,  dataset_params, cache_dir , hash_func: Callable[..., bytes] = ..., pickle_module: str = "pickle", pickle_protocol: int = ..., hash_transform = None, reset_ops_id: bool = True) -> None:
+        maybe_makedirs(cache_dir)
+        InferenceDatasetNii.__init__(self,project=project,imgs=data,dataset_params=dataset_params)
+        PersistentDataset().__init__(data, self.transform, cache_dir, hash_func, pickle_module, pickle_protocol, hash_transform, reset_ops_id)
+
 
 # export
 def foldername_from_shape(parent_folder, shape):
@@ -180,7 +303,7 @@ class ImageMaskBBoxDataset(Dataset):
             candidate_indices= self.get_inds_with_label()
         else:
             candidate_indices = range(0,len(self.bboxes))
-        sub_idx = random.choice(candidate_indices)
+        sub_idx = choice(candidate_indices)
         bbox = self.bboxes[sub_idx]
         fn = bbox["filename"]
         return fn, bbox
@@ -466,6 +589,8 @@ class MaskLabelRemap2(MapTransform):
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
+
+    from fran.inference.base import load_dataset_params
     P = Project(project_title="litsmc");
     configs_excel = ConfigMaker(P,raytune=False).config
 
@@ -488,83 +613,27 @@ if __name__ == "__main__":
         )
     a= train_ds[1]
 # %%
-    a['label'].dtype
-    bb ="/home/ub/datasets/preprocessed/lax/patches/spc_080_080_150/dim_192_192_96/images/lits_0ub_2.pt"
-    img = torch.load(bb)
-    img.dtype
-# %%
-    scale_ranges=[.75,1.25]
-    contrast_ranges=[.7,1.3]
-    shift=[-1.0,1.0]
-    noise=.1
-    src_dest_labels=[[0,2],[1,1],[2,1]]
-    tfm_keys=['image','label']
-    tfms=Compose([
-            MaskLabelRemap2(keys=['label'],src_dest_labels=src_dest_labels),
-            EnsureChannelFirstd(keys=tfm_keys,channel_dim='no_channel'),
-            NormaliseClipd(keys=['image'],clip_range= glob_props['intensity_clip_range'],mean=glob_props['mean_fg'],std=glob_props['std_fg']),
-            RandFlipd(keys=["image", "label"], prob=0.99, spatial_axis=0),
-            RandFlipd(keys=["image", "label"], prob=1.0, spatial_axis=1),
-            RandScaleIntensityd(keys="image", factors=scale_ranges, prob=1.0),
-            RandGaussianNoised(keys=['image'],prob=0.9,std=noise),
-            RandShiftIntensityd(keys="image", offsets=shift, prob=1.0),
-            RandAdjustContrastd(['image'],prob=1.0,gamma=contrast_ranges),
-            ResizeWithPadOrCropd(keys=['image','label'],source_key='image',spatial_size=[160,160,96]),
-    ])
-# %%
-    Af=Affine3D(tfm_keys)
-    A = EnsureChannelFirstd(keys=tfm_keys,channel_dim='no_channel')
 
-# %%
-    tfms.insert(1,A)
-    Ra=RandFlipd(keys=["image", "label"], prob=1.0, spatial_axis=0)
+    img_fn = "/s/xnat_shadow/crc/images/crc_CRC183_20170922_ABDOMEN.nii.gz"
+    img_fn2 = "/s/xnat_shadow/crc/images/crc_CRC261_20170322_AbdoPelvis1p5.nii.gz"
 
-    E = EnsureChannelFirstd(keys=tfm_keys,channel_dim='no_channel')
+    img_fns = [img_fn, img_fn2]
 
-    aaa = tfms(a)
-    a4 = E(aaa)
+    run_ps = ["LITS-787", "LITS-810", "LITS-811"]
+    dataset_params = load_dataset_params(run_ps[0])
 # %%
-    a5 = Af(a4)
+    ds = InferenceDatasetNii(P,img_fns,dataset_params)
+    ds.set_transforms("E")
 # %%
-# %%
-    # a = a.permute(*axes)
-    ImageMaskViewer([a4['image'][0,0],a4['label'][0,0]])
-    ImageMaskViewer([a5['image'][0,0],a5['label'][0,0]])
-# %%
-    import pywt
-    wavelet = pywt.Wavelet('haar')
-    d = pywt.wavedec(a, wavelet, mode='zero', level=2)
-    dd = torch.tensor(d[0])
-    dd = dd.permute(*axes)
-    a2 = a.permute(*axes)
-    org_shape = a.shape
-    a2 = resize_tensor(a,dd.shape,mode='trilinear')
-    a3 = resize_tensor(a2,org_shape,mode='trilinear')
-    a = a.permute(*axes)
-    a3 = a3.permute(*axes)
-    a=a.permute(*axes)
-    ImageMaskViewer([a,b],data_types=['img','img'])
 
-     
-# %%
-    from time import time
-    start = time()
+    im = ds[0]
 
-    a2 = [resize_tensor(a,dd.shape,mode='trilinear') for x in range(100)]
-    end = time()
-    print(end-start)
+    dici = {'image':img_fn}
+    ds.L(dici)
+# %%
+    im = ds.L(dici)
+    img = im['image']
+    img.meta
 
-# %% [markdown]
-    start = time()
-    d = [pywt.wavedec(a, wavelet, mode='zero', level=1) for x in range(100)]
-    end = time()
-    print(end-start)
-## Versus torch resize
-# %%
-    resize_tensor
-# %%
-    fn = fnames[0]
-# %%
-# Create geometries and projector.
-# %%
+
 # %%

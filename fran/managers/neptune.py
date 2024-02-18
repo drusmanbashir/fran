@@ -1,3 +1,5 @@
+
+# %%
 import os
 from typing import Optional
 
@@ -7,7 +9,6 @@ from paramiko import SSHClient
 
 from fran.managers.data import (DataManager, DataManagerPatch,
                                 DataManagerShort, DataManagerSource)
-from fran.managers.troubleshooting import RandRandGaussianNoised
 from fran.utils.batch_size_scaling import (_reset_dataloaders,
                                            _scale_batch_size2)
 
@@ -17,11 +18,8 @@ from typing import Any
 
 import neptune as nt
 import torch
-import torch.multiprocessing as mp
 # from fastcore.basics import GenttAttr
 from lightning.pytorch.loggers.neptune import NeptuneLogger
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.profiler import ProfilerActivity, profile, record_function
 from torchvision.transforms import Compose
 from torchvision.utils import make_grid
 
@@ -105,11 +103,14 @@ class NeptuneManager(NeptuneLogger):
         os.environ["NEPTUNE_API_TOKEN"] = api_token
         os.environ["NEPTUNE_PROJECT"] = project_nep
         self.df = self.fetch_project_df()
+        # if run_id is given cannot give neptune parameters !
         if run_id:
+            name = None
             nep_run = self.load_run(run_id, nep_mode)
             project_nep, api_token = None, None
             neptune_run_kwargs = {}
         else:
+            name = project.project_title
             nep_run = None
 
         NeptuneLogger.__init__(
@@ -117,6 +118,7 @@ class NeptuneManager(NeptuneLogger):
             api_key=api_token,
             project=project_nep,
             run=nep_run,
+            name = name,
             log_model_checkpoints=log_model_checkpoints,
             prefix=prefix,
             **neptune_run_kwargs
@@ -272,4 +274,5 @@ class NeptuneManager(NeptuneLogger):
         return str(sd)
 
 
+# %%
 

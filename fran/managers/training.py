@@ -1,17 +1,12 @@
 # %%
 import shutil
-import time
-from copy import deepcopy
 
 import psutil
+import random
 import torch._dynamo
-from lightning.pytorch.utilities.exceptions import (MisconfigurationException,
-                                                    _TunerExitException)
-from paramiko import SSHClient
 
 from fran.managers.data import (DataManager, DataManagerPatch,
                                 DataManagerShort, DataManagerSource)
-from fran.managers.troubleshooting import RandRandGaussianNoised
 from fran.utils.batch_size_scaling import (_reset_dataloaders,
                                            _scale_batch_size2)
 
@@ -20,38 +15,16 @@ from fran.managers.neptune import NeptuneManager
 import itertools as il
 import operator
 import warnings
-from typing import Any, Dict, Hashable, Mapping
+from typing import Any
 
 import neptune as nt
 import torch
-import torch.multiprocessing as mp
-from lightning.pytorch import LightningDataModule, LightningModule, Trainer
+from lightning.pytorch import LightningModule, Trainer
 # from fastcore.basics import GenttAttr
-from lightning.pytorch.callbacks import (BatchSizeFinder, Callback,
-                                         LearningRateMonitor, ModelCheckpoint,
+from lightning.pytorch.callbacks import (Callback, LearningRateMonitor,
                                          TQDMProgressBar)
-from lightning.pytorch.profilers import AdvancedProfiler
-from lightning.pytorch.loggers.neptune import NeptuneLogger
-from lightning.pytorch.strategies import DDPStrategy
-from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
-from monai.data import DataLoader
-from monai.data.meta_obj import get_track_meta
-from monai.transforms import RandAffined
-from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
-from monai.transforms.intensity.array import RandGaussianNoise
-from monai.transforms.intensity.dictionary import (RandAdjustContrastd,
-                                                   RandGaussianNoised,
-                                                   RandScaleIntensityd,
-                                                   RandShiftIntensityd)
-from monai.transforms.spatial.array import RandFlip, Resize
-from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
-from monai.transforms.transform import MapTransform, RandomizableTransform
-from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
-                                                 EnsureTyped)
-from monai.utils.type_conversion import convert_to_tensor
 from neptune.types import File
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.profiler import ProfilerActivity, profile, record_function
 from torchvision.transforms import Compose
 from torchvision.utils import make_grid
 
@@ -78,7 +51,6 @@ except:
 
 import torch
 from lightning.pytorch import LightningModule, Trainer
-from torch.utils.data import DataLoader, Dataset
 
 
 def fix_dict_keys(input_dict, old_string, new_string):
@@ -593,12 +565,14 @@ class TrainingManager:
 
     def heuristic_batch_size(self):
         ram = psutil.virtual_memory()[3] / 1e9
-        if ram < 18:
+        if ram < 15:
             return 6
-        elif ram > 18 and ram < 48:
+        elif ram > 15 and ram < 32:
             return 8
-        elif ram > 48 and ram < 72:
+        elif ram > 32 and ram < 48:
             return 20
+        else:
+            return 48
 
     def init_D_N(self, batch_size, epochs, sync_dist, batch_finder=False):
         DMClass = self.resolve_datamanager(self.configs["dataset_params"]["mode"])
@@ -697,7 +671,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "lungs"
+    project_title = "litsmc"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -718,12 +692,12 @@ if __name__ == "__main__":
 # %%
     device_id = 1
 # %%
-    bs = 2
+    bs = 8
     # run_name ='LITS-709'
     compiled = False
     run_name = None
 
-    batch_finder = False
+    batch_finder = True
     neptune = True
     tags = []
     description = "Baseline all transforms as in previous full data runs"
@@ -755,8 +729,8 @@ if __name__ == "__main__":
 
 # %%
     b = next(iteri)
-    b2 = next(iter(dl2))
-    batch = b2
+    # b2 = next(iter(dl2))
+    batch = b
     inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]
 
     [pp(a["filename"]) for a in bbox]
@@ -766,10 +740,9 @@ if __name__ == "__main__":
     pred = pred.detach().cpu()
     pp(pred.shape)
 # %%
-    n = 4
+    n = 1
     img = inputs[n, 0]
     mask = target[n, 0]
-    pre = pred[n, 2]
 # %%
     ImageMaskViewer([img.permute(2, 1, 0), mask.permute(2, 1, 0)])
 # %%

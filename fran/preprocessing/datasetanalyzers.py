@@ -2,7 +2,6 @@
 import logging
 from fastcore.basics import  GetAttr, listify, store_attr
 import numpy as np
-import ast
 from fran.transforms.totensor import ToTensorT
 from fran.utils.helpers import *
 import h5py
@@ -12,9 +11,9 @@ from fran.utils.helpers import *
 from fran.utils.fileio import *
 import cc3d
 
-from fran.utils.image_utils import get_img_mask_from_nii
+from fran.utils.image_utils import get_img_label_from_nii
 from fran.utils.imageviewers import ImageMaskViewer
-from mask_analysis.utils import SITKImageMaskFixer
+from label_analysis.utils import SITKImageMaskFixer
 from fran.utils.string import drop_digit_suffix, info_from_filename
 
 
@@ -24,7 +23,7 @@ def get_intensity_range(global_properties: dict) -> list:
     return key_idx, intensity_range
 
 @str_to_path()
-def get_img_mask_filepairs(parent_folder: Union[str,Path]):
+def get_img_label_filepairs(parent_folder: Union[str,Path]):
     '''
     param: parent_folder. Must contain subfolders labelled masks and images
     Files in either folder belonging to a given case should be identically named.
@@ -35,12 +34,12 @@ def get_img_mask_filepairs(parent_folder: Union[str,Path]):
     imgs_all=list(imgs_folder.glob('*'))
     masks_all=list(masks_folder.glob('*'))
     assert (len(imgs_all)==len(masks_all)), "{0} and {1} folders have unequal number of files!".format(imgs_folder,masks_folder)
-    img_mask_filepairs= []
+    img_label_filepairs= []
     for img_fn in imgs_all:
-            mask_fn = find_matching_fn(img_fn,masks_all)
-            assert mask_fn.exists(), f"{mask_fn} doest not exist, corresponding tto {img_fn}"
-            img_mask_filepairs.append([img_fn,mask_fn])
-    return img_mask_filepairs
+            label_fn = find_matching_fn(img_fn,masks_all)
+            assert label_fn.exists(), f"{label_fn} doest not exist, corresponding tto {img_fn}"
+            img_label_filepairs.append([img_fn,label_fn])
+    return img_label_filepairs
 
 
 @str_to_path(0)
@@ -51,7 +50,7 @@ def verify_dataset_integrity(folder:Path, debug=False,fix=False):
     print("Verifying dataset integrity")
     subfolder = list(folder.glob("mask*"))[0]
     args = [[fn,fix] for fn in subfolder.glob("*")]
-    res = multiprocess_multiarg(verify_img_mask_match,args,debug=debug)
+    res = multiprocess_multiarg(verify_img_label_match,args,debug=debug)
     errors = [item for item in res if re.search("mismatch", item[0],re.IGNORECASE)]
     if len(errors)>0:
         outname = folder/("errors.txt")
@@ -72,42 +71,42 @@ def verify_datasets_integrity(folders:list, debug=False,fix=False)->list:
         
     
 
-def verify_img_mask_match(mask_fn:Path,fix=False):
-    imgs_foldr = mask_fn.parent.str_replace("masks","images")
+def verify_img_label_match(label_fn:Path,fix=False):
+    imgs_foldr = label_fn.parent.str_replace("masks","images")
     img_fnames = list(imgs_foldr.glob("*"))
-    assert (imgs_foldr.exists()),"{0} corresponding to {1} parent folder does not exis".format(imgs_foldr,mask_fn)
-    img_fn = find_matching_fn (mask_fn,img_fnames)
-    if '.pt' in mask_fn.name:
-        return verify_img_mask_torch(mask_fn)
+    assert (imgs_foldr.exists()),"{0} corresponding to {1} parent folder does not exis".format(imgs_foldr,label_fn)
+    img_fn = find_matching_fn (label_fn,img_fnames)
+    if '.pt' in label_fn.name:
+        return verify_img_label_torch(label_fn)
     else:
-        S = SITKImageMaskFixer(img_fn,mask_fn)
+        S = SITKImageMaskFixer(img_fn,label_fn)
         S.process(fix=fix)
         return S.log
 
 @str_to_path()
-def verify_img_mask_torch(mask_fn:Path):
-    if isinstance(mask_fn,str): mask_fn = Path(mask_fn)
-    img_fn = mask_fn.str_replace('masks','images')
-    img,mask = list(map(torch.load,[img_fn,mask_fn]))
+def verify_img_label_torch(label_fn:Path):
+    if isinstance(label_fn,str): label_fn = Path(label_fn)
+    img_fn = label_fn.str_replace('masks','images')
+    img,mask = list(map(torch.load,[img_fn,label_fn]))
     if img.shape!=mask.shape:
-        print(f"Image mask mismatch {mask_fn}")
-        return '\nMismatch',img_fn,mask_fn,str(img.shape),str(mask.shape)
+        print(f"Image mask mismatch {label_fn}")
+        return '\nMismatch',img_fn,label_fn,str(img.shape),str(mask.shape)
 
 def get_label_stats(mask, label, separate_islands=True, dusting_threshold: int = None):
     if torch.is_tensor(mask):
         mask = mask.numpy()
-    mask_tmp = np.copy(mask.astype(np.uint8))
-    mask_tmp[mask != label] = 0
+    label_tmp = np.copy(mask.astype(np.uint8))
+    label_tmp[mask != label] = 0
     if dusting_threshold :
-        mask_tmp = cc3d.dust(
-            mask_tmp, threshold=dusting_threshold, connectivity=26, in_place=True
+        label_tmp = cc3d.dust(
+            label_tmp, threshold=dusting_threshold, connectivity=26, in_place=True
         )
 
     if separate_islands:
-        mask_tmp, N = cc3d.largest_k(
-            mask_tmp, k=1000, return_N=True
+        label_tmp, N = cc3d.largest_k(
+            label_tmp, k=1000, return_N=True
         ) 
-    stats = cc3d.statistics(mask_tmp)
+    stats = cc3d.statistics(label_tmp)
     return stats
 
 
@@ -132,8 +131,8 @@ class BBoxesFromMask(object):
 
     def __call__(self):
         bboxes_all = []
-        mask_all_fg = self.mask.copy()
-        mask_all_fg[mask_all_fg > 1] = 1
+        label_all_fg = self.mask.copy()
+        label_all_fg[label_all_fg > 1] = 1
         labels = np.unique(self.mask)
         labels = np.delete(labels,self.bg_label)
         for label in labels:
@@ -150,7 +149,7 @@ class BBoxesFromMask(object):
         stats = {"label": "all_fg"}
         stats.update(
             get_label_stats(
-                mask_all_fg,1,False)
+                label_all_fg,1,False)
         )
         bboxes_all.append(stats)
         self.bboxes_info["bbox_stats"] = bboxes_all
@@ -179,7 +178,7 @@ class SingleCaseAnalyzer:
         store_attr("case_files_tuple,bg_label,percentile_range")
 
     def load_case(self):
-        self.img, self.mask, self._properties = get_img_mask_from_nii(
+        self.img, self.mask, self._properties = get_img_label_from_nii(
             self.case_files_tuple, bg_label=self.bg_label
         )
 
@@ -221,11 +220,11 @@ class MultiCaseAnalyzer(GetAttr):
             print("First time preprocessing dataset. Will create new file: {}".format(self.project.raw_dataset_properties_filename))
             self.raw_dataset_properties = []
             prev_processed_cases = set()
-        ss = "SELECT ds, case_id, mask_symlink, img_symlink FROM datasources" 
+        ss = "SELECT ds, case_id, label_symlink, img_symlink FROM datasources" 
         res= self.project.sql_query(ss)
         all_cases= []
         for r in res:
-            case_ = {"case_id":r[0]+"_"+r[1], "mask_symlink":r[2] , "img_symlink":r[3]}
+            case_ = {"case_id":r[0]+"_"+r[1], "label_symlink":r[2] , "img_symlink":r[3]}
             all_cases.append(case_)
         all_case_ids = set([c['case_id'] for c  in all_cases])
         new_cases = all_case_ids.difference(prev_processed_cases)
@@ -235,7 +234,7 @@ class MultiCaseAnalyzer(GetAttr):
             print("No new cases found.")
             self.new_cases = []
         else:
-            self.new_cases = [[c['img_symlink'],c['mask_symlink']] for c in all_cases if c['case_id'] in new_cases]
+            self.new_cases = [[c['img_symlink'],c['label_symlink']] for c in all_cases if c['case_id'] in new_cases]
 
     def process_new_cases(
         self, return_voxels=True, num_processes=8, multiprocess=True, debug=False
@@ -368,21 +367,21 @@ if __name__ == "__main__":
 
     existing_cases = set([b['case_id'] for b in bboxes_info])
 
-    ss = "SELECT ds, case_id, mask_symlink FROM datasources" 
+    ss = "SELECT ds, case_id, label_symlink FROM datasources" 
     raw_info = load_dict(P2.raw_dataset_properties_filename)
 # %%
     cases = []
     res= P.sql_query(ss)
     for dad in res:
-        case_ = {"case_id":dad[0]+"_"+dad[1], "mask_symlink":dad[2]}
+        case_ = {"case_id":dad[0]+"_"+dad[1], "label_symlink":dad[2]}
         cases.append(case_)
 # %%
     cases = set(cases)
     new_cases = cases.difference(existing_cases)
     assert (l:=len(new_cases)) == (l2:=(len(cases)-len(existing_cases))), "Difference in number of new cases"
-    mask_fns = [c['mask_symlink'] for c in cases if c['case_id'] in new_cases]
+    label_fns = [c['label_symlink'] for c in cases if c['case_id'] in new_cases]
 # %%
-    fn = Path(mask_fns[0])
+    fn = Path(label_fns[0])
     aa = bboxes_function_version(fn, 0)
     fn2 = fn.str_replace("masks","images")
     img = torch.load(fn2)
@@ -414,8 +413,8 @@ if __name__ == "__main__":
     ImageMaskViewer([img2,mask2])
 # %%
     bboxes_all = []
-    mask_all_fg = A.mask.copy()
-    mask_all_fg[mask_all_fg > 1] = 1
+    label_all_fg = A.mask.copy()
+    label_all_fg[label_all_fg > 1] = 1
     for label,label_info in A.label_settings.items():
             label = int(label)
             if label in A.mask:
@@ -435,7 +434,7 @@ if __name__ == "__main__":
     stats = {"label": "all_fg"}
     stats.update(
             get_label_stats(
-                mask_all_fg,
+                label_all_fg,
                 1,
                 1,
                 dusting_threshold=3000 * A.dusting_threshold_factor,

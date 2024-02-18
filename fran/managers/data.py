@@ -1,29 +1,34 @@
 # %%
+from pathlib import Path
+from typing import Union
+from fastai.data.core import tuplify
+from monai.data.itk_torch_bridge import has_itk
+import itk
 from SimpleITK import Not
-from monai.data.utils import is_supported_format
+import SimpleITK as sitk
+from monai.data.utils import is_supported_format, orientation_ras_lps
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import LoadImaged
+from monai.utils.module import require_pkg
 import torch
-from monai.data.image_reader import _copy_compatible_dict, _stack_images
+from monai.data.image_reader import ITKReader, _copy_compatible_dict, _stack_images
 import numpy as np
 from typing import Sequence
-from monai.config.type_definitions import KeysCollection, PathLike, SequenceStr
+from monai.config.type_definitions import KeysCollection, PathLike
 from monai.data import DataLoader
-from fastcore.basics import store_attr, warnings
+from fastcore.basics import listify, store_attr, warnings
 from lightning.pytorch import LightningDataModule
 from monai.data.image_reader import ImageReader
-from monai.transforms.croppad.dictionary import BorderPadd, Padd, RandCropByPosNegLabeld, ResizeWithPadOrCropd, SpatialPadd
+from monai.transforms.croppad.dictionary import RandCropByPosNegLabeld, ResizeWithPadOrCropd
 from monai.transforms.intensity.dictionary import RandAdjustContrastd, RandScaleIntensityd, RandShiftIntensityd
-from monai.transforms.inverse import InvertibleTransform
-from monai.transforms.transform import LazyTransform
-from monai.utils.enums import LazyAttr, MetaKeys, Method, PytorchPadMode, SpaceKeys, TraceKeys
+from monai.utils.enums import MetaKeys, SpaceKeys
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 from monai.utils.misc import ensure_tuple
 from torchvision.utils import Any
 from fran.data.dataloader import img_mask_bbox_collated
 from fran.data.dataset import ImageMaskBBoxDatasetd, MaskLabelRemap2, NormaliseClipd, SimpleDatasetPT
-from fran.managers.troubleshooting import RandRandGaussianNoised
+from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.spatialtransforms import PadDeficitd
 from fran.utils.fileio import load_dict
 
@@ -314,62 +319,6 @@ class DataManagerShort(DataManagerPatch):
 
     def train_dataloader(self, num_workers=4, **kwargs): return super().train_dataloader(num_workers,**kwargs)
 
-class TorchReader(ImageReader):
-    def __init__(self,channel_dim=None,**kwargs) -> None:
-        self.kwargs=  kwargs
-        self.channel_dim = float("nan") if channel_dim == "no_channel" else channel_dim
-        super().__init__()
-    def read(self, data , **kwargs):
-        filenames: Sequence[PathLike] = ensure_tuple(data)
-        kwargs_ = self.kwargs.copy()
-        kwargs_.update(kwargs)
-        img_ = []
-        for name in filenames:
-            name = f"{name}"
-            img_.append(torch.load(name, **kwargs_))
-        return img_ if len(filenames) > 1 else img_[0]
-
-    def get_data(self, img) -> tuple[torch.Tensor, dict]:
-        """
-        Extract data array and metadata from loaded image and return them.
-        This function returns two objects, first is torch.Tensor of image data, second is dict of metadata.
-        It constructs `affine`, `original_affine`, and `spatial_shape` and stores them in meta dict.
-        When loading a list of files, they are stacked together at a new dimension as the first dimension,
-        and the metadata of the first image is used to represent the output metadata.
-
-        Args:
-            img: a torch.Tensor loaded from a file or a list of torch.Tensors.
-
-        """
-
-        img_array: list[torch.Tensor] = []
-        compatible_meta: dict = {}
-        if isinstance(img, torch.Tensor):
-            img = (img,)
-
-        for i in ensure_tuple(img):
-            header: dict[MetaKeys, Any] = {}
-            if isinstance(i, torch.Tensor):
-                # if `channel_dim` is None, can not detect the channel dim, use all the dims as spatial_shape
-                spatial_shape = np.asarray(i.shape)
-                if isinstance(self.channel_dim, int):
-                    spatial_shape = np.delete(spatial_shape, self.channel_dim)
-                header[MetaKeys.SPATIAL_SHAPE] = spatial_shape
-                header[MetaKeys.SPACE] = SpaceKeys.RAS
-            img_array.append(i)
-            header[MetaKeys.ORIGINAL_CHANNEL_DIM] = (
-                self.channel_dim if isinstance(self.channel_dim, int) else float("nan")
-            )
-            
-            _copy_compatible_dict(header, compatible_meta)
-
-        return _stack_images(img_array, compatible_meta), compatible_meta
-
-    def verify_suffix(self, filename) -> bool:
-        suffixes = ['pt']
-        return is_supported_format(filename,suffixes)
-
-
 # %%
 if __name__ == "__main__":
 
@@ -392,7 +341,20 @@ if __name__ == "__main__":
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
+# %%
+    fn = "/s/xnat_shadow/crc/images/crc_CRC261_20170322_AbdoPelvis1p5.nii.gz"
+    reader = SITKReader()
+    img = reader.read(fn)
+    dat = reader.get_data(img)
+
+    L1 = LoadImaged(keys=['image'], reader=ITKReader,dtype=torch.Tensor)
+    dici = {'image':fn}
+    img = L1(dici)
     
+# %%
+
+    L2 = LoadImaged(keys=['image'], reader=SITKReader,dtype=torch.Tensor)
+    img2 = L2(dici)
 # %%
     batch_size=2
     D = DataManager(
@@ -414,7 +376,7 @@ if __name__ == "__main__":
     im_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/nodes/spc_080_080_300/images/nodes_20_20190611_Neck1p0I30f3_thick.pt"
     label_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/nodes/spc_080_080_300/masks/nodes_20_20190611_Neck1p0I30f3_thick.pt"
     dici = {'image':im_fn, 'label':label_fn}
-    L = LoadImaged(keys =['image','label'], reader= TorchReader)
+    L = LoadImaged(keys =['image','label'], reader= TorchReader,dtype=torch.float16)
     D.setup()
 # %%
     ind = 1

@@ -15,7 +15,6 @@ if 'get_ipython' in globals():
 from fastcore.basics import GetAttr, listify, store_attr
 import nibabel as nib
 from pathlib import Path
-import os
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.utils.fileio import *
 from fran.utils.imageviewers import *
@@ -23,7 +22,6 @@ from fran.utils.helpers import   *
 import ipdb
 import SimpleITK as sitk
 import numpy as np
-import os
 # from fastai.vision.all import *
 # export
 import ipdb

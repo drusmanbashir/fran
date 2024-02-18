@@ -22,7 +22,6 @@ from time import time
 tr = ipdb.set_trace
 import gc
 # from fran.utils.fileio import *
-import random
 
 def timing(f):
     @wraps(f)
@@ -67,6 +66,9 @@ class LazyDict:
 def abs_list(numlist:list):
     return [abs(num) for num in numlist]
 
+
+def slice_list(listi, start_end: list):
+    return listi[start_end[0] : start_end[1]]
 
 def chunks (listi, n):
     chunk_size = round(len(listi)/n)

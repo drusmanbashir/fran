@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Union
 import numpy as np
 import ipdb
-import torch,re
+import torch
 import SimpleITK as sitk
 from fastcore.basics import patch_to
 import pandas as pd

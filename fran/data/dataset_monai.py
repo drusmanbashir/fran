@@ -7,7 +7,6 @@ from fran.data.dataset import *
 from fran.managers.project import Project
 from fran.utils.imageviewers import ImageMaskViewer
 
-from monai.data import PatchDataset, DataLoader
 
 from fran.transforms.misc_transforms import DropBBoxFromDataset
 

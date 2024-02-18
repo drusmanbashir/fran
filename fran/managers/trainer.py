@@ -1,5 +1,4 @@
 # %%
-import time
 from SimpleITK import ImageViewer_SetProcessDelay
 from fastai.data.core import DataLoaders
 from fastai.torch_core import delegates
