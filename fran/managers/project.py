@@ -453,14 +453,14 @@ class Datasource(GetAttr):
 
 # %%
 if __name__ == "__main__":
-    ds = "/s/xnat_shadow/nodes"
-    ds2="/s/datasets_bkp/litqmall"
+    ds2=Path("/s/xnat_shadow/litqtmp")
+    ds3="/s/xnat_shadow/lidctmp"
     ds3="/s/datasets_bkp/drli"
     ds4="/s/datasets_bkp/lits_segs_improved/"
     ds5="/s/datasets_bkp/drli_short/"
     ds6="/s/datasets_bkp/Task06Lung/"
-    P = Project(project_title="lungs")
-    P.create_project([ds6])
+    P = Project(project_title="lilun")
+    P.create_project([ds2, ds3])
 # %%
     # P.add_data(ds5)
     # P.create_project([ds,ds2,ds3,ds4])
@@ -468,6 +468,6 @@ if __name__ == "__main__":
     len(P.raw_data_imgs)
     len(P)
 # %%
-    D = Datasource(ds6)
+    D2 = Datasource(ds3)
 # %%
 # %%

@@ -27,11 +27,11 @@ class EnsembleActor(object):
     def __init__(self):
         self.value = 0
 
-    def process(self,proj_defaults,run_name_w,runs_ensemble ,fnames,half,debug,overwrite=False):
-        self.En = CascadeInferer(proj_defaults, 3, run_name_w, runs_ensemble, bs=3, half=half, device='cuda', debug=debug, overwrite=overwrite)
-        for img_fn in fnames:
-            img_fn = Path(img_fn)
-            self.En.predict(img_fn)
+    def process(self,project,run_name_w,runs_ensemble ,fnames,half,debug,overwrite=False):
+        En = CascadeInferer(project=project, run_name_w=run_name_w, runs_p=runs_ensemble, debug=debug,overwrite_p=overwrite )
+        preds = En.predict(fnames)
+        return 1
+
 # %%
 
 def main(args):
@@ -42,8 +42,6 @@ def main(args):
     debug = args.debug
     ensemble = args.ensemble
     P = Project(project_title=args.t); proj_defaults= P
-    # ensemble=["LITS-451","LITS-452","LITS-453","LITS-454","LITS-456"]
-    # ensemble=["LITS-451"]
     # if not input_folder:
     #     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
     #     fnames = list(mo_df.image_filenames)
@@ -51,6 +49,7 @@ def main(args):
 
     actor = EnsembleActor()
     results = [actor.process(proj_defaults,run_name_w,ensemble, fnames ,half, debug,overwrite) for fname in fnames]
+
     print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 # gpu_actor = GPUActor.remote()
 # %%
@@ -72,11 +71,15 @@ if __name__ == "__main__":
     parser.add_argument('-e','--ensemble', nargs='+')
     parser.add_argument('--gpus', type=int,default=0)
     args = parser.parse_known_args()[0]
+
+# %%
+
+    args.overwrite=False
+    args.t= 'litsmc'
+    args.input_folder ="/s/xnat_shadow/crc/wxh/completed"
+    args.ensemble= ["LITS-787", "LITS-810", "LITS-811"]
     # args.overwrite=False
-    # args.t= 'lits'
-    # # args.input_folder ="/s/datasets_bkp/litq/nifti/patient_60/" "/media/ub2/datasets/drli/sitk/images/"
-    # args.input_folder = ""
-    #
+# %%
     main(args)
 
 

@@ -142,7 +142,6 @@ class CreateDataLoaderAggregator(ItemTransform):
                 dls.append([patch_loader,aggregator])
             return dls
 
-# %%
 class PadNpArray(KeepBBoxTransform):
 
         def __init__(self, patch_size, mode='constant'):
@@ -430,7 +429,7 @@ class LabelMapToBinary(Transform):
 
 
 class KeepLargestConnectedComponentWithMetad(KeepLargestConnectedComponentd):
-    def __init__(self, keys, applied_labels, is_onehot= None, independent: bool = True, connectivity = None, num_components: int = 1, allow_missing_keys: bool = False) -> None:
+    def __init__(self, keys, applied_labels=None, is_onehot= None, independent: bool = True, connectivity = None, num_components: int = 1, allow_missing_keys: bool = False) -> None:
          super().__init__(keys, applied_labels, is_onehot, independent, connectivity, num_components, allow_missing_keys)
 
     def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> dict[Hashable, NdarrayOrTensor]:

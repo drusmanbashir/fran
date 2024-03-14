@@ -1,5 +1,5 @@
 # %%
-import logging
+import logging, os
 import collections
 import pprint
 import re
@@ -22,6 +22,18 @@ from time import time
 tr = ipdb.set_trace
 import gc
 # from fran.utils.fileio import *
+
+
+def test_modified(filename,ndays:int= 1):
+    '''
+    returns true if file was modified in last ndays
+    '''
+    
+    delta = time() - os.path.getmtime(filename)
+    delta = delta / (60*60*24)
+    if delta < ndays:
+        return True
+    return False
 
 def timing(f):
     @wraps(f)

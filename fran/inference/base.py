@@ -23,6 +23,7 @@ from fran.transforms.inferencetransforms import ToCPUd
 from fran.utils.dictopts import DictToAttr
 from fran.utils.fileio import maybe_makedirs
 from fran.utils.itk_sitk import ConvertSimpleItkImageToItkImage
+from fran.utils.helpers import slice_list
 import numpy as np
 import itertools as il
 

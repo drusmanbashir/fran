@@ -1,6 +1,10 @@
 # %%
 import gc
 import ipdb
+from monai.transforms.post.array import KeepLargestConnectedComponent
+from monai.transforms.utility.array import ToTensor
+
+from fran.transforms.totensor import ToTensorI, ToTensorT
 tr = ipdb.set_trace
 
 from monai.utils.misc import ensure_tuple
@@ -259,6 +263,8 @@ class WholeImageInferer(GetAttr, DictToAttr):
         with torch.inference_mode():
             for i, batch in enumerate(self.pred_dl):
                 img = batch["image"].cuda()
+                if 'filename_or_obj' in img.meta.keys():
+                    print("Processing: ",img.meta['filename_or_obj'])
                 output = self.model(img)
                 output = output[0]
                 batch["pred"] = output
@@ -419,33 +425,46 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         else:
             pass
             # self.save = False  # don't save if input is pure images. Just output those.
-        imgs = list_to_chunks(imgs, chunksize)
-        for imgs_sublist in imgs:
-            self.create_ds(imgs_sublist)
-            self.bboxes = self.extract_fg_bboxes()
-            pred_patches = self.patch_prediction(self.ds, self.bboxes)
-            pred_patches = self.decollate_patches(pred_patches, self.bboxes)
-            output = self.postprocess(pred_patches)
-            if self.save == True:
-                self.save_pred(output)
-        return output
+        if len(imgs)>0:
+            imgs = list_to_chunks(imgs, chunksize)
+            for imgs_sublist in imgs:
+                self.create_ds(imgs_sublist)
+                self.bboxes = self.extract_fg_bboxes()
+                pred_patches = self.patch_prediction(self.ds, self.bboxes)
+                pred_patches = self.decollate_patches(pred_patches, self.bboxes)
+                output = self.postprocess(pred_patches)
+                if self.save == True:
+                    self.save_pred(output)
+            return output
+        else: return 1
+
 
 
     def filter_existing_preds(self, imgs):
+
         print("Filtering existing predictions\nNumber of images provided: {}".format(len(imgs)))
-        new_Ps =[]
-        for P in self.Ps:
-            out_fns = [P.output_folder/img.name for img in imgs]
-            new_P = np.array([not fn.exists() for fn in out_fns])
-            new_Ps.append(new_P)
-        if len(P)>1:
-            new_Ps= np.logical_or(*new_Ps)
-        else:
-            new_Ps = new_Ps[0]
-        imgs = list(il.compress(imgs, new_Ps))
+        out_fns = [self.output_folder/img.name for img in imgs]
+        to_do= [not fn.exists() for fn in out_fns]
+        imgs = list(il.compress(imgs, to_do))
         print("Number of images remaining to be predicted: {}".format(len(imgs)))
         return imgs
-
+        #
+        # per_P_done =[]
+        # for P in self.Ps:
+        #     out_fns = [P.output_folder/img.name for img in imgs]
+        #     new_P = np.array([fn.exists() for fn in out_fns])
+        #     per_P_done.append(new_P)
+        # if len(self.Ps)>1:
+        #     per_P_done = np.array(per_P_done)
+        #     done_by_all= per_P_done.all(axis = 0)
+        # else:
+        #     done_by_all= per_P_done[0]
+        # done_by_all_not = np.invert(done_by_all)
+        # imgs = list(il.compress(imgs, done_by_all_not))
+        # print("Number of images remaining to be predicted: {}".format(len(imgs)))
+        # print("Filtering existing predictions\nNumber of images provided: {}".format(len(imgs)))
+        # return imgs
+        #
 
     def filter_existing_localisers(self, imgs):
         print("Filtering existing localisers\nNumber of images provided: {}".format(len(imgs)))
@@ -525,7 +544,7 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         A = Activationsd(keys="pred", softmax=True)
         D = AsDiscreted(keys=["pred"], argmax=True)
         K = KeepLargestConnectedComponentWithMetad(
-            keys=["pred"], independent=False, applied_labels=1
+            keys=["pred"], independent=False, 
         )  # label=1 is the organ
         F = FillBBoxPatchesd()
         if len(keys) == 1:
@@ -535,6 +554,8 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         tfms = [MR, A, D, K, F]
 
         # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
+
+
         C = Compose(tfms)
         output = C(patch_bundle)
         return output
@@ -543,6 +564,8 @@ class CascadeFew(CascadeInferer):
     pass
 
 # %%
+
+
 
 if __name__ == "__main__":
     # ... run your application ...
@@ -554,32 +577,35 @@ if __name__ == "__main__":
     run_ps = ["LITS-720"]
 
     run_ps = ["LITS-709"]
-    run_ps = ["LITS-787", "LITS-810", "LITS-811"]
     run_ps = ["LITS-787"]
+    run_ps = ["LITS-787", "LITS-810", "LITS-811"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
 # %%
-    img_fn = "/s/xnat_shadow/crc/images/crc_CRC183_20170922_ABDOMEN.nii.gz"
-    img_fn2 = "/s/xnat_shadow/crc/images/crc_CRC261_20170322_AbdoPelvis1p5.nii.gz"
+    img_fn = "/s/xnat_shadow/crc/wxh/images/crc_CRC183_20170922_ABDOMEN.nii.gz"
+    img_fn2= "/s/xnat_shadow/crc/wxh/images/crc_CRC198_20170718_CAP1p51.nii.gz"
 
     img_fns = [img_fn, img_fn2]
 
     imgs_fldr = Path("/s/xnat_shadow/crc/images")
 # %%
-    srn_fldr = "/s/xnat_shadow/crc/srn/images/"
+    srn_fldr = "/s/xnat_shadow/crc/srn/cases_with_findings/images/"
     srn_imgs = list(Path(srn_fldr).glob("*"))
+    wxh_fldr = "/s/xnat_shadow/crc/wxh/completed/"
+    wxh_imgs = list(Path(wxh_fldr).glob("*"))
     litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
     litq_imgs = list(Path(litq_fldr).glob("*"))
 # %%
-    En = CascadeInferer(proj, run_w, run_ps, debug=False, devices=[0],overwrite_w=False,overwrite_p=False)
-
-    preds = En.predict(srn_imgs)
+    En = CascadeInferer(proj, run_w, run_ps, debug=False, devices=[0],overwrite_w=False,overwrite_p=True)
 
 # %%
-    En = CascadeInferer(proj, run_w, run_ps, debug=True, devices=[1])
+    preds = En.predict([img_fn,img_fn2])
+
 # %%
-    preds = En.predict(crc_imgs)
+
+    ImageMaskViewer([img2,pred2])
+# %%
 # %%
 
     reader = ITKReader()
@@ -662,3 +688,27 @@ if __name__ == "__main__":
     stop = time()
     spent = stop - start
     print(spent)
+# %%
+    imgs = fnames
+    print("Filtering existing predictions\nNumber of images provided: {}".format(len(imgs)))
+    per_P_done =[]
+
+# %%
+    for P in En.Ps:
+        out_fns = [P.output_folder/img.name for img in imgs]
+        new_P = np.array([fn.exists() for fn in out_fns])
+        per_P_done.append(new_P)
+    if len(En.Ps)>1:
+        per_P_done = np.array(per_P_done)
+        done_by_all= per_P_done.all(axis = 0)
+    else:
+        done_by_all= per_P_done[0]
+# %%
+    done_by_all_not = np.invert(done_by_all)
+    imgs = list(il.compress(imgs, done_by_all_not))
+    print("Number of images remaining to be predicted: {}".format(len(imgs)))
+    print("Filtering existing predictions\nNumber of images provided: {}".format(len(imgs)))
+
+# %%
+
+# %%
