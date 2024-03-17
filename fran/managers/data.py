@@ -1,7 +1,6 @@
 # %%
 from pathlib import Path
 from typing import Union
-from fastai.data.core import tuplify
 from monai.data.itk_torch_bridge import has_itk
 import itk
 from SimpleITK import Not

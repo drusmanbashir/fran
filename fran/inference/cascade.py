@@ -42,7 +42,7 @@ from fran.managers.training import (DataManager, UNetTrainer,
                                     checkpoint_from_model_id)
 from fran.transforms.imageio import SITKReader
 from fran.transforms.inferencetransforms import (
-    BBoxFromPred, KeepLargestConnectedComponentWithMetad, RenameDictKeys,
+    BBoxFromPred, KeepLargestConnectedComponentWithMetad, RenameDictKeys, SaveMultiChanneld,
     ToCPUd, TransposeSITKd)
 from fran.utils.common import *
 from fran.utils.dictopts import DictToAttr
@@ -211,7 +211,7 @@ class WholeImageInferer(GetAttr, DictToAttr):
         )
         tfms = [I, D, K, C, B]
         if self.debug == True:
-            Sa = SaveImaged(
+            Sa = SaveMultiChanneld(
                 keys=["pred"],
                 output_dir=self.output_folder,
                 output_postfix="",
@@ -413,7 +413,7 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         return spacings
 
 
-    def predict(self, imgs:list, chunksize=12):
+    def run(self, imgs:list, chunksize=12):
         """
         imgs can be a list comprising any of filenames, folder, or images (sitk or itk)
         chunksize is necessary in large lists to manage system ram
@@ -566,7 +566,6 @@ class CascadeFew(CascadeInferer):
 # %%
 
 
-
 if __name__ == "__main__":
     # ... run your application ...
     proj = Project(project_title="litsmc")
@@ -600,7 +599,7 @@ if __name__ == "__main__":
     En = CascadeInferer(proj, run_w, run_ps, debug=False, devices=[0],overwrite_w=False,overwrite_p=True)
 
 # %%
-    preds = En.predict([img_fn,img_fn2])
+    preds = En.run([img_fn,img_fn2])
 
 # %%
 

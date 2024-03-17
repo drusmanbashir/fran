@@ -4,6 +4,7 @@ from collections.abc import Hashable, Mapping
 from typing import Union
 from fastai.data.core import Sequence
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
+from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import KeepLargestConnectedComponentd
 from monai.transforms.transform import MapTransform, Transform
 from monai.transforms.utils import generate_spatial_bounding_box
@@ -15,6 +16,7 @@ from fran.transforms.basetransforms import KeepBBoxTransform
 from label_analysis.utils import *
 
 from fran.inference.helpers import get_amount_to_pad, get_scale_factor_from_spacings, rescale_bbox
+from fran.utils.string import strip_extension
 
 tr = ipdb.set_trace
 
@@ -556,40 +558,27 @@ class SlicesFromBBox(MapTransform):
         return d
 
 
-class Saved(Transform):
-    def __init__(self, output_folder):
-        self.output_folder = output_folder
+class SaveMultiChanneld(SaveImaged):
 
-    def __call__(self, patch_bundle):
-        key = "pred"
+    def __call__(self, data):
+        d = dict(data)
+        for key, meta_key, meta_key_postfix in self.key_iterator(d, self.meta_keys, self.meta_key_postfix):
+            if meta_key is None and meta_key_postfix is not None:
+                meta_key = f"{key}_{meta_key_postfix}"
+            meta_data = d.get(meta_key) if meta_key is not None else None
+            img = d[key]   
+            imgs = torch.unbind(img)
+            for ind, img in enumerate(imgs):
+                    img.meta = self.apply_postfix(img.meta,ind)
+                    self.saver(img=img, meta_data=meta_data)
+        return d
 
-        maybe_makedirs(self.output_folder)
-        try:
-            fl = Path(patch_bundle["image"].meta["filename_or_obj"]).name
-        except:
-            fl = "_tmp.nii.gz"
-        outname = self.output_folder / fl
-
-        meta = {
-            "original_affine": patch_bundle["image"].meta["original_affine"],
-            "affine": patch_bundle["image"].meta["affine"],
-        }
-
-        writer = ITKWriter()
-
-        array_full = patch_bundle[key].detach().cpu()
-        array_full.meta = patch_bundle["image"].meta
-        array.shape[0]
-        # ch=0
-        # array = array_full[ch:ch+1,:]
-        writer.set_data_array(array)
-        writer.set_data_array(patch_bundle["image"])
-        writer.set_metadata(meta)
-        assert (
-            di := patch_bundle[key].dim()
-        ) == 4, "Dimension should be 4. Got {}".format(di)
-        writer.write(outname)
-
-
-
+    def apply_postfix(self, img_meta,ind):
+                    fname = Path(img_meta['filename_or_obj'])
+                    fname_neo = strip_extension(fname.name)+"_{}".format(ind)
+                    fname_neo = fname_neo +".nii.gz"
+                    fname_neo = fname.parent/fname_neo
+                    img_meta['filename_or_obj'] = str(fname_neo)
+                    return img_meta
+# %%
 # %%

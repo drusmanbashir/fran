@@ -6,9 +6,13 @@ import torch
 import h5py
 import numpy as np
 
-from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, get_img_mask_filepairs, get_intensity_range, get_means_voxelcounts, get_std_numerator, percentile_range_to_str
+from fran.preprocessing.datasetanalyzers import get_img_mask_filepairs,case_analyzer_wrapper,  get_intensity_range, get_means_voxelcounts, get_std_numerator, percentile_range_to_str
 from fran.utils.fileio import load_dict, save_dict
 from fran.utils.helpers import multiprocess_multiarg
+
+def unique_idx(total_len):
+        for x in range(1, total_len+1):
+            yield(x)
 
 
 class GlobalProperties(GetAttr):
@@ -42,39 +46,37 @@ class GlobalProperties(GetAttr):
                 [h5f_file[case][:] for case in h5f_file.keys()]
             )  # convert h5file cases into an array
         intensity_range = np.percentile(cases, self.percentile_range)
-        global_properties = {}
         dataset_size = len(self.list_of_raw_cases)
-        global_properties["project_title"] = self.project_title
-        global_properties["dataset_size"] = dataset_size
+        self.global_properties["dataset_size"] = dataset_size
 
-        global_properties["mean_fg"] = np.double(
+        self.global_properties["mean_fg"] = np.double(
             cases.mean()
         )  # np.single is not JSON serializable
-        global_properties["std_fg"] = np.double(cases.std())
-        global_properties[
+        self.global_properties["std_fg"] = np.double(cases.std())
+        self.global_properties[
             percentile_range_to_str(self.percentile_range) + "_fg"
         ] = (
             intensity_range
         ).tolist()  # np.array is not JSON serializable
-        global_properties["max_fg"] = np.double(cases.max())
-        global_properties["min_fg"] = np.double(cases.min())
+        self.global_properties["max_fg"] = np.double(cases.max())
+        self.global_properties["min_fg"] = np.double(cases.min())
 
         all_spacings = np.zeros((dataset_size, 3))
         for ind, case_ in enumerate(self.case_properties):
             # if "case_id" in case_:
-                spacing = case_["properties"]["itk_spacing"]
+                spacing = case_["properties"]["spacing"]
                 all_spacings[ind, :] = spacing
 
         spacings_median = np.median(all_spacings, 0)
-        global_properties["spacings_median"] = spacings_median.tolist()
+        self.global_properties["spacings_median"] = spacings_median.tolist()
 
-        # global_properties collected. Now storing
+        # self.global_properties collected. Now storing
         print(
-            "\nWriting dataset global_properties to json file: {}".format(
+            "\nWriting dataset self.global_properties to json file: {}".format(
                 self.global_properties_filename
             )
         )
-        save_dict(global_properties, self.global_properties_filename)
+        save_dict(self.global_properties, self.global_properties_filename)
 
     def compute_std_mean_dataset(
         self, num_processes=32, multiprocess=True, debug=False
@@ -85,15 +87,15 @@ class GlobalProperties(GetAttr):
         Requires global_properties (intensity_percentile_fg range) for clipping ()
         """
 
-        try:
-            self.global_properties = load_dict(self.global_properties_filename)
-        except:
-            print(
-                "Run process_cases first. Correct global_properties not found in file {}, or file does not exist".format(
-                    self.raw_dataset_properties_filename
-                )
-            )
-
+        # try:
+        #     self.global_properties = load_dict(self.global_properties_filename)
+        # except:
+        #     print(
+        #         "Run process_cases first. Correct global_properties not found in file {}, or file does not exist".format(
+        #             self.raw_dataset_properties_filename
+        #         )
+        #     )
+        #
         percentile_label, intensity_percentile_range=  get_intensity_range(self.global_properties)
         if not self.clip_range: self.user_query_clip_range(intensity_percentile_range)
         self._compute_dataset_mean(num_processes,multiprocess,debug)
@@ -111,6 +113,7 @@ class GlobalProperties(GetAttr):
         save_dict(self.global_properties, self.global_properties_filename,sort=True)
 
 
+    # def collate_labels(self):
 
 
     def _compute_dataset_mean(self,num_processes,multiprocess,debug):
@@ -155,14 +158,64 @@ class GlobalProperties(GetAttr):
                 self.clip_range = intensity_percentile_range
 
 
+    def collate_lm_labels(self):
+        labels_tot=0
+        lmgps = "lm_group"
+        keys = [k for k in self.global_properties.keys() if lmgps in k]
+        for key in keys:
+            shared_labels_gps= self.global_properties[key]['ds']
+            labs_gp = []
+            for gp in shared_labels_gps:
+                for c in self.case_properties:
+                    if gp in c['case_id']:
+                        labs_gp.extend(c['properties'] ['labels'])
+
+            labs_gp = list(set(labs_gp))
+            labels_tot+=len(labs_gp)
+            print(labs_gp)
+
+            self.global_properties[key].update({'labels':labs_gp ,'num_labels':len(labs_gp)})
+
+        if len(keys)>1: self._remap_labels(keys,labels_tot)
+        self.save_global_properties()
+
+
+    def _remap_labels(self, keys,labels_tot):
+        uns = unique_idx(labels_tot)
+        for key in keys:
+            gp_labels = self.global_properties[key]['labels']
+            labels_neo = [next(uns) for lab in gp_labels]
+            self.global_properties[key]['labels_neo']=labels_neo
+
+
+
 
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
-    P = Project(project_title="litsmallx");
+    P = Project(project_title="lilun3");
     G = GlobalProperties(P)
-    G.store_projectwide_properties()
+    # G.store_projectwide_properties()
 # %%
-    G.compute_std_mean_dataset()
+    G.collate_lm_labels()
+    # G.compute_std_mean_dataset()
+
+    G.global_properties
+# %%
+    
+    len(keys)>1
+
+
+# %%
+    f =  unique_idx(5)
+
+    f.__next__()
+# %%
+    
+
+
+    
+    
+
 
 # %%

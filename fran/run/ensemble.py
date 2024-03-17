@@ -28,7 +28,7 @@ class EnsembleActor(object):
 
     def process(self,project,run_name_w,runs_ensemble ,fnames,half,debug,overwrite=False):
         En = CascadeInferer(project=project, run_name_w=run_name_w, runs_p=runs_ensemble, debug=debug,overwrite_p=overwrite )
-        preds = En.predict(fnames)
+        preds = En.run(fnames)
         return 1
 # %%
 

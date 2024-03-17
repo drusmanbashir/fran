@@ -1,7 +1,10 @@
 # %%
 import logging
-from fastcore.basics import  GetAttr, listify, store_attr
+from fastcore.all import test_eq
+from fastcore.basics import  GetAttr, listify, properties, store_attr
+from label_analysis.helpers import get_labels
 import numpy as np
+from fran.transforms.imageio import LoadSITKd
 from fran.transforms.totensor import ToTensorT
 from fran.utils.helpers import *
 import h5py
@@ -11,7 +14,6 @@ from fran.utils.helpers import *
 from fran.utils.fileio import *
 import cc3d
 
-from fran.utils.image_utils import get_img_label_from_nii
 from fran.utils.imageviewers import ImageMaskViewer
 from label_analysis.utils import SITKImageMaskFixer
 from fran.utils.string import drop_digit_suffix, info_from_filename
@@ -23,7 +25,7 @@ def get_intensity_range(global_properties: dict) -> list:
     return key_idx, intensity_range
 
 @str_to_path()
-def get_img_label_filepairs(parent_folder: Union[str,Path]):
+def get_img_mask_filepairs(parent_folder: Union[str,Path]):
     '''
     param: parent_folder. Must contain subfolders labelled masks and images
     Files in either folder belonging to a given case should be identically named.
@@ -159,8 +161,8 @@ class BBoxesFromMask(object):
 
 class SingleCaseAnalyzer:
     """
-    Loads nifti -> nifti properties (spacings bbox)
-    returns numpy array containing bbox voxels only
+    Wraps LoadSITKd to load a single case
+
     """
 
     def __init__(
@@ -178,17 +180,42 @@ class SingleCaseAnalyzer:
         store_attr("case_files_tuple,bg_label,percentile_range")
 
     def load_case(self):
-        self.img, self.mask, self._properties = get_img_label_from_nii(
-            self.case_files_tuple, bg_label=self.bg_label
-        )
+        L= LoadSITKd(keys=['image','mask'], image_only=True,ensure_channel_first=False,simple_keys=True,lm_key='mask')
+        dici = {'image':self.case_files_tuple[0],'mask':self.case_files_tuple[1]}
+        dd = L(dici)
+        # self.properties['itk_spacing']= self.img.meta['']
+        self.img,self.mask = dd['image'],dd['mask']
+        self.set_properties()
+
+    @property   
+    def properties(self):
+        return self._properties
+        
+    def set_properties(self):
+        self._properties = {}
+        excluded = 'filename_or_obj','original_channel_dim'
+        for k in self.img.meta.keys():
+            if k not in excluded:
+                v1 = self.img.meta[k]
+                v2 = self.mask.meta[k]
+                test_eq(v1,v2)
+                self._properties[k] = v1
+
+        self._properties['img_fname'] = self.img.meta['filename_or_obj']
+        self._properties['lm_fname'] = self.mask.meta['filename_or_obj']
+        self._properties['labels'] = self.mask.meta['labels']
+        self._properties["case_id"]= self.case_id
+
+
+
+
+        
+
+    
 
     def get_bbox_only_voxels(self):
         return self.img[self.mask != self.bg_label]
 
-
-    @property
-    def properties(self):
-        return self._properties if self._properties else print("Run load_case() first")
 
     @property
     def case_id(self):
@@ -214,17 +241,17 @@ class MultiCaseAnalyzer(GetAttr):
         '''
         
         try:
-            self.raw_dataset_properties = load_dict(self.project.raw_dataset_properties_filename)
+            self.raw_dataset_properties = load_dict(self.raw_dataset_properties_filename)
             prev_processed_cases = set([b['case_id'] for b in self.raw_dataset_properties])
         except FileNotFoundError:
-            print("First time preprocessing dataset. Will create new file: {}".format(self.project.raw_dataset_properties_filename))
+            print("First time preprocessing dataset. Will create new file: {}".format(self.raw_dataset_properties_filename))
             self.raw_dataset_properties = []
             prev_processed_cases = set()
-        ss = "SELECT ds, case_id, label_symlink, img_symlink FROM datasources" 
+        ss = "SELECT ds, case_id, lm_symlink, img_symlink FROM datasources" 
         res= self.project.sql_query(ss)
         all_cases= []
         for r in res:
-            case_ = {"case_id":r[0]+"_"+r[1], "label_symlink":r[2] , "img_symlink":r[3]}
+            case_ = {"case_id":r[0]+"_"+r[1], "lm_symlink":r[2] , "img_symlink":r[3]}
             all_cases.append(case_)
         all_case_ids = set([c['case_id'] for c  in all_cases])
         new_cases = all_case_ids.difference(prev_processed_cases)
@@ -234,7 +261,7 @@ class MultiCaseAnalyzer(GetAttr):
             print("No new cases found.")
             self.new_cases = []
         else:
-            self.new_cases = [[c['img_symlink'],c['label_symlink']] for c in all_cases if c['case_id'] in new_cases]
+            self.new_cases = [[c['img_symlink'],c['lm_symlink']] for c in all_cases if c['case_id'] in new_cases]
 
     def process_new_cases(
         self, return_voxels=True, num_processes=8, multiprocess=True, debug=False
@@ -294,13 +321,12 @@ def case_analyzer_wrapper(
         bg_label=bg_label,
         percentile_range=percentile_range,
     )
-
     S.load_case()
     case_ = dict()
     case_["case_id"] = S.case_id
     voxels=None
     if get_voxels == True:
-        voxels = S.get_bbox_only_voxels()
+        voxels = S.get_bbox_only_voxels().float()
         S.properties["mean_fg"] = int(voxels.mean())
         S.properties["min_fg"] = int(voxels.min())
         S.properties["max_fg"] = int(voxels.max())
@@ -359,7 +385,7 @@ if __name__ == "__main__":
     
     from fran.utils.common import *
 
-    P2 = Project(project_title="litsmc"); proj_defaults= P
+    P2 = Project(project_title="litsmc")
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litsmc/resampling_configs.pkl"
     fn = Path(fn)
     dd = load_dict(fn)
@@ -395,10 +421,9 @@ if __name__ == "__main__":
         )
     aa = A()
 # %%
-    P = Project("litsmallx")
-    P.add_data("/s/datasets_bkp/litsmall")
+    P = Project("lilun")
     M = MultiCaseAnalyzer(P)
-    M.process_new_cases(debug=False)
+    M.process_new_cases(debug=True, num_processes=2, multiprocess=True)
     M.dump_to_h5f()
     M.store_raw_dataset_properties()
 
@@ -577,21 +602,28 @@ if __name__ == "__main__":
         logname = logname
     )
 # %%
-    h5f = h5py.File(M.h5f_fname, "w") if get_voxels == True else None
-    for output in M.outputs:
-        M.case_properties.append(output["case"])
-        if h5f:
-            h5f.create_dataset(output["case"]["case_id"], data=output["voxels"])
-    if h5f:
-        h5f.close()
+    project_title = "litsmc"
+    bg_label = 0
+    c1 = Path("/s/xnat_shadow/lidctmp/images/lidc2_0069.nii.gz")
+    c2 = Path("/s/xnat_shadow/lidctmp/masks/lidc2_0069.nii.gz")
+    tup = [c1, c2]
+
 
     S = SingleCaseAnalyzer(
         project_title=project_title,
-        case_files_tuple=case_files_tuple,
+        case_files_tuple=tup,
         bg_label=bg_label,
-        percentile_range=percentile_range,
+        percentile_range=[.5, 99.5],
     )
 
+    S.load_case()
+    S.properties
+# %%
+    L= LoadSITKd(keys=['image','mask'], image_only=True,ensure_channel_first=False,simple_keys=True)
+    dici = {'image':c1,'mask':c2}
+    dd = L(dici)
+
+# %%
     S.load_case()
     case_ = dict()
     case_["case_id"] = S.case_id
@@ -607,10 +639,16 @@ if __name__ == "__main__":
     case_["properties"] = S.properties
     output = {"case": case_, "voxels": voxels}
 
-# %%
-    fn = Path("/s/xnat_shadow/litq/images/litq_41b_20221122.nii.gz")
 
     case_props =  info_from_filename(fn.name)
     case_id = "_".join([case_props['proj_title'],case_props["case_id"]])
     print(case_id)
+# %%
+
+
+    db_name = "/s/fran_storage/projects/lilun/cases.db"
+    conn = sqlite3.connect(db_name)
+    
+    ss = """ALTER TABLE datasources RENAME COLUMN mask_symlink to lm_symlink"""
+    conn.execute(ss)
 # %%

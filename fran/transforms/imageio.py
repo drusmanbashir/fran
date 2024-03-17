@@ -1,56 +1,45 @@
 # %%
 from __future__ import annotations
-from pathlib import Path
-from typing import Hashable, Mapping, Union
-import SimpleITK as sitk
-from fastcore.foundation import inspect
-from monai.transforms.transform import MapTransform, Transform
-from monai.data.utils import is_supported_format, orientation_ras_lps
-from monai.transforms.compose import Compose
-from monai.transforms.io.array import SUPPORTED_READERS, LoadImage, switch_endianness
-from monai.transforms.io.dictionary import DEFAULT_POST_FIX, LoadImaged
-from monai.utils.enums import MetaKeys, SpaceKeys
-from monai.utils.module import optional_import, require_pkg
-from neptune.metadata_containers.metadata_container import traceback
-import torch
-from monai.data.image_reader import ITKReader, _copy_compatible_dict, _stack_images
-import numpy as np
-from typing import Sequence
-from monai.config.type_definitions import DtypeLike, KeysCollection, PathLike
-from fastcore.basics import listify, store_attr, warnings
-from monai.data.image_reader import ImageReader
-from monai.utils.misc import ensure_tuple, ensure_tuple_rep
-from torchvision.utils import Any
-from fran.transforms.totensor import ToTensorT
-from fran.utils.fileio import load_dict
-
+from label_analysis.helpers import get_labels as gl
 
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
 from pydoc import locate
-from typing import Callable
+from typing import Callable, Hashable, Mapping, Sequence, Union
 
 import numpy as np
+import SimpleITK as sitk
 import torch
-
-from monai.config import DtypeLike,  PathLike
-from monai.data.image_reader import (
-    ImageReader,
-    ITKReader,
-    NibabelReader,
-    NrrdReader,
-    NumpyReader,
-    PILReader,
-    PydicomReader,
-)
+from fastcore.basics import listify, store_attr, warnings
+from fastcore.foundation import inspect
+from monai.config import DtypeLike, PathLike
+from monai.config.type_definitions import DtypeLike, KeysCollection, PathLike
+from monai.data.image_reader import (ImageReader, ITKReader, NibabelReader,
+                                     NrrdReader, NumpyReader, PILReader,
+                                     PydicomReader, _copy_compatible_dict,
+                                     _stack_images)
 from monai.data.meta_tensor import MetaTensor
-from monai.data.utils import is_no_channel
-from monai.transforms.transform import Transform
+from monai.data.utils import (is_no_channel, is_supported_format,
+                              orientation_ras_lps)
+from monai.transforms.compose import Compose
+from monai.transforms.io.array import (SUPPORTED_READERS, LoadImage,
+                                       switch_endianness)
+from monai.transforms.io.dictionary import DEFAULT_POST_FIX, LoadImaged
+from monai.transforms.transform import MapTransform, Transform
 from monai.transforms.utility.array import EnsureChannelFirst
 from monai.utils import GridSamplePadMode
 from monai.utils import ImageMetaKey as Key
-from monai.utils import OptionalImportError, convert_to_dst_type, ensure_tuple, look_up_option, optional_import
+from monai.utils import (OptionalImportError, convert_to_dst_type,
+                         ensure_tuple, look_up_option, optional_import)
+from monai.utils.enums import MetaKeys, SpaceKeys
+from monai.utils.misc import ensure_tuple, ensure_tuple_rep
+from monai.utils.module import optional_import, require_pkg
+from neptune.metadata_containers.metadata_container import traceback
+from torchvision.utils import Any
+
+from fran.transforms.totensor import ToTensorT
+from fran.utils.fileio import load_dict
 
 nib, _ = optional_import("nibabel")
 Image, _ = optional_import("PIL.Image")
@@ -66,24 +55,37 @@ SUPPORTED_READERS = {
     "pilreader": PILReader,
     "nibabelreader": NibabelReader,
 }
+import ipdb
+
 from fran.utils.helpers import folder_name_from_list
 from fran.utils.imageviewers import ImageMaskViewer
-import ipdb
+
 tr = ipdb.set_trace
 
 
-
-class SITKReaderFast(MapTransform):
-    def __init__(self, keys: KeysCollection, allow_missing_keys: bool = False,  reverse_indexing: bool= False,ensure_channel_first: bool= False,affine_lps_to_ras=True,
+class LoadSITKd(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+        reverse_indexing: bool = False,
+        ensure_channel_first: bool = False,
+        affine_lps_to_ras=True,
+        lm_key=None, # if provided it will store number of labels in LM
         channel_dim: str | int | None = None,
         simple_keys: bool = False,
         pattern=None,
         sep: str = ".",
         image_only: bool = False,
-                 ) -> None:
+    ) -> None:
+        '''
+        Multipurpose function to load images in SITK format. Can also directly take sitk.Image object.
+        '''
+        
         super().__init__(keys, allow_missing_keys)
-        store_attr('reverse_indexing,ensure_channel_first,affine_lps_to_ras,channel_dim,simple_keys,pattern,sep,image_only')
-
+        store_attr(
+            "reverse_indexing,ensure_channel_first,affine_lps_to_ras,channel_dim,simple_keys,pattern,sep,image_only,lm_key"
+        )
 
     def _get_meta_dict(self, img) -> dict:
         """
@@ -93,18 +95,8 @@ class SITKReaderFast(MapTransform):
             img: an ITK image object loaded from an image file.
 
         """
-        meta_dict  = {}
+        meta_dict = {}
         meta_dict["spacing"] = np.asarray(img.GetSpacing())
-        #
-        # img_meta_dict = img.GetMetaDataDictionary()
-        #
-        # meta_dict = {}
-        # for key in img_meta_dict.GetKeys():
-        #     if key.startswith("ITK_"):
-        #         continue
-        #     val = img_meta_dict[key]
-        #     meta_dict[key] = np.asarray(val) if type(val).__name__.startswith("itk") else val
-
         return meta_dict
 
     def _get_affine(self, img, lps_to_ras: bool = True):
@@ -119,11 +111,11 @@ class SITKReaderFast(MapTransform):
         """
 
         direction = img.GetDirection()
-        if len(direction)!=9:
+        if len(direction) != 9:
             raise NotImplemented
         else:
             direction = np.array(direction)
-            direction = direction.reshape(3,3)
+            direction = direction.reshape(3, 3)
 
         spacing = np.asarray(img.GetSpacing())
         origin = np.asarray(img.GetOrigin())
@@ -167,22 +159,13 @@ class SITKReaderFast(MapTransform):
             img: an ITK image object loaded from an image file.
 
         """
-        # img_np = sitk.GetArrayFromImage(img)
-        # 
-        # if img.GetNumberOfComponentsPerPixel() == 1:  # handling spatial images
-        #     img_np = img_np if self.reverse_indexing else img_np.T
-        # # handling multi-channel images
-        # img_np = img_np if self.reverse_indexing else np.moveaxis(img_np.T, 0, -1)
-        # # return img_np
-        #
-        #
         np_img = sitk.GetArrayFromImage(img)
         if img.GetNumberOfComponentsPerPixel() == 1:  # handling spatial images
             return np_img if self.reverse_indexing else np_img.T
         # handling multi-channel images
         return np_img if self.reverse_indexing else np.moveaxis(np_img.T, 0, -1)
 
-    def get_data(self, img) -> tuple[np.ndarray, dict]:
+    def get_data(self, img,get_labels=False) -> tuple[np.ndarray, dict]:
         """
         Args:
             img: an SITK image object loaded from an image file or a list of ITK image objects.
@@ -192,43 +175,51 @@ class SITKReaderFast(MapTransform):
         data = self._get_array_data(img)
         header = self._get_meta_dict(img)
         header[MetaKeys.ORIGINAL_AFFINE] = self._get_affine(img, self.affine_lps_to_ras)
-        header[MetaKeys.SPACE] = SpaceKeys.RAS if self.affine_lps_to_ras else SpaceKeys.LPS
+        header[MetaKeys.SPACE] = (
+            SpaceKeys.RAS if self.affine_lps_to_ras else SpaceKeys.LPS
+        )
         header[MetaKeys.AFFINE] = header[MetaKeys.ORIGINAL_AFFINE].copy()
         header[MetaKeys.SPATIAL_SHAPE] = self._get_spatial_shape(img)
         if self.channel_dim is None:  # default to "no_channel" or -1
             header[MetaKeys.ORIGINAL_CHANNEL_DIM] = (
-                float("nan") if len(data.shape) == len(header[MetaKeys.SPATIAL_SHAPE]) else -1
+                float("nan")
+                if len(data.shape) == len(header[MetaKeys.SPATIAL_SHAPE])
+                else -1
             )
         else:
             header[MetaKeys.ORIGINAL_CHANNEL_DIM] = self.channel_dim
+        if get_labels==True:
+            labels = gl(img )
+            header['labels']= labels
 
-        return data,header
+        return data, header
 
-
-
-    def func(self,fname):
-        img= sitk.ReadImage(fname)
-
-        array_np = self._get_array_data(img)
-
-        array_np,  meta_data = self.get_data(img)
-        meta_data[Key.FILENAME_OR_OBJ] =str(fname)
+    def func(self, img:Union[str, sitk.Image],get_labels=False):
+        if isinstance(img, str):
+            img = sitk.ReadImage(img)
+            array_np, meta_data = self.get_data(img,get_labels)
+            meta_data[Key.FILENAME_OR_OBJ] = str(img)
+        elif isinstance(img,sitk.Image):
+            array_np, meta_data = self.get_data(img,get_labels)
+        else:
+            raise TypeError("img must be a str filename or a sitk.Image object")
         array_pt = ToTensorT()(array_np)
 
         img = MetaTensor.ensure_torch_and_prune_meta(
-                array_pt, meta_data, self.simple_keys, pattern=self.pattern, sep=self.sep
+            array_pt, meta_data, self.simple_keys, pattern=self.pattern, sep=self.sep
         )
         if self.ensure_channel_first:
             img = EnsureChannelFirst()(img)
         return img
 
-    def __call__(self, data ):
+    def __call__(self, data):
         d = dict(data)
         for key in self.key_iterator(d):
-            d[key] = self.func(d[key])
+            if self.lm_key is not None and key == self.lm_key:
+                d[key] = self.func(d[key],get_labels=True)
+            else:
+                d[key] = self.func(d[key],get_labels=False)
         return d
-
-
 
 
 @require_pkg(pkg_name="SimpleITK")
@@ -263,7 +254,6 @@ class SITKReader(ITKReader):
             https://github.com/InsightSoftwareConsortium/ITK/blob/master/Wrapping/Generators/Python/itk/support/extras.py
 
     """
-
 
     def read(self, data: Sequence[PathLike] | PathLike, **kwargs):
         """
@@ -306,20 +296,26 @@ class SITKReader(ITKReader):
         """
         img_array: list[np.ndarray] = []
         compatible_meta: dict = {}
-        if not isinstance(img,Union[list,tuple]): 
+        if not isinstance(img, Union[list, tuple]):
             img = [img]
 
-        for i in img: # ensure_tuple freezes with sitk images
+        for i in img:  # ensure_tuple freezes with sitk images
             data = self._get_array_data(i)
             img_array.append(data)
             header = self._get_meta_dict(i)
-            header[MetaKeys.ORIGINAL_AFFINE] = self._get_affine(i, self.affine_lps_to_ras)
-            header[MetaKeys.SPACE] = SpaceKeys.RAS if self.affine_lps_to_ras else SpaceKeys.LPS
+            header[MetaKeys.ORIGINAL_AFFINE] = self._get_affine(
+                i, self.affine_lps_to_ras
+            )
+            header[MetaKeys.SPACE] = (
+                SpaceKeys.RAS if self.affine_lps_to_ras else SpaceKeys.LPS
+            )
             header[MetaKeys.AFFINE] = header[MetaKeys.ORIGINAL_AFFINE].copy()
             header[MetaKeys.SPATIAL_SHAPE] = self._get_spatial_shape(i)
             if self.channel_dim is None:  # default to "no_channel" or -1
                 header[MetaKeys.ORIGINAL_CHANNEL_DIM] = (
-                    float("nan") if len(data.shape) == len(header[MetaKeys.SPATIAL_SHAPE]) else -1
+                    float("nan")
+                    if len(data.shape) == len(header[MetaKeys.SPATIAL_SHAPE])
+                    else -1
                 )
             else:
                 header[MetaKeys.ORIGINAL_CHANNEL_DIM] = self.channel_dim
@@ -335,7 +331,7 @@ class SITKReader(ITKReader):
             img: an ITK image object loaded from an image file.
 
         """
-        meta_dict  = {}
+        meta_dict = {}
         meta_dict["spacing"] = np.asarray(img.GetSpacing())
         #
         # img_meta_dict = img.GetMetaDataDictionary()
@@ -361,11 +357,11 @@ class SITKReader(ITKReader):
         """
 
         direction = img.GetDirection()
-        if len(direction)!=9:
+        if len(direction) != 9:
             raise NotImplemented
         else:
             direction = np.array(direction)
-            direction = direction.reshape(3,3)
+            direction = direction.reshape(3, 3)
 
         spacing = np.asarray(img.GetSpacing())
         origin = np.asarray(img.GetOrigin())
@@ -416,270 +412,11 @@ class SITKReader(ITKReader):
         return np_img if self.reverse_indexing else np.moveaxis(np_img.T, 0, -1)
 
 
-class LoadSITK(Transform):
-
-
-    def __init__(
-        self,
-        image_only: bool = True,
-        dtype: DtypeLike | None = np.float32,
-        ensure_channel_first: bool = False,
-        simple_keys: bool = False,
-        prune_meta_pattern: str | None = None,
-        prune_meta_sep: str = ".",
-        expanduser: bool = True,
-        *args,
-        **kwargs,
-    ) -> None:
-        """
-        Args:
-            image_only: if True return only the image MetaTensor, otherwise return image and header dict.
-            dtype: if not None convert the loaded image to this data type.
-            ensure_channel_first: if `True` and loaded both image array and metadata, automatically convert
-                the image array shape to `channel first`. default to `False`.
-            simple_keys: whether to remove redundant metadata keys, default to False for backward compatibility.
-            prune_meta_pattern: combined with `prune_meta_sep`, a regular expression used to match and prune keys
-                in the metadata (nested dictionary), default to None, no key deletion.
-            prune_meta_sep: combined with `prune_meta_pattern`, used to match and prune keys
-                in the metadata (nested dictionary). default is ".", see also :py:class:`monai.transforms.DeleteItemsd`.
-                e.g. ``prune_meta_pattern=".*_code$", prune_meta_sep=" "`` removes meta keys that ends with ``"_code"``.
-            expanduser: if True cast filename to Path and call .expanduser on it, otherwise keep filename as is.
-            args: additional parameters for reader if providing a reader name.
-            kwargs: additional parameters for reader if providing a reader name.
-
-        """
-
-        self.auto_select = False
-        self.image_only = image_only
-        self.dtype = dtype
-        self.ensure_channel_first = ensure_channel_first
-        self.simple_keys = simple_keys
-        self.pattern = prune_meta_pattern
-        self.sep = prune_meta_sep
-        self.expanduser = expanduser
-        self.reader = SITKReader()
-    def __call__(self, filename: Sequence[PathLike] | PathLike):
-        """
-
-        Args:
-            filename: path file or file-like object or a list of files.
-                will save the filename to meta_data with key `filename_or_obj`.
-                if provided a list of files, use the filename of first file to save,
-                and will stack them together as multi-channels data.
-                if provided directory path instead of file path, will treat it as
-                DICOM images series and read.
-            reader: runtime reader to load image file and metadata.
-
-        """
-        filename = tuple(
-            f"{Path(s).expanduser()}" if self.expanduser else s for s in ensure_tuple(filename)  # allow Path objects
-        )
-        img, err = None, []
-        img =self.reader.read(data= filename)
-        if img is None :
-            if isinstance(filename, tuple) and len(filename) == 1:
-                filename = filename[0]
-            msg = "\n".join([f"{e}" for e in err])
-            raise RuntimeError(
-                f"{self.__class__.__name__} cannot find a suitable reader for file: {filename}.\n"
-                "    Please install the reader libraries, see also the installation instructions:\n"
-                "    https://docs.monai.io/en/latest/installation.html#installing-the-recommended-dependencies.\n"
-                f"   The current registered: {self.readers}.\n{msg}"
-            )
-
-        img_array, meta_data = self.reader.get_data(img)
-
-        if not isinstance(meta_data, dict):
-            raise ValueError(f"`meta_data` must be a dict, got type {type(meta_data)}.")
-        # make sure all elements in metadata are little endian
-        meta_data = switch_endianness(meta_data, "<")
-
-        meta_data[Key.FILENAME_OR_OBJ] = f"{ensure_tuple(filename)[0]}"  # Path obj should be strings for data loader
-        img = MetaTensor.ensure_torch_and_prune_meta(
-            img_array, meta_data, self.simple_keys, pattern=self.pattern, sep=self.sep
-        )
-        if self.ensure_channel_first:
-            img = EnsureChannelFirst()(img)
-        if self.image_only:
-            return img
-        return img, img.meta if isinstance(img, MetaTensor) else meta_data
-
-
-class LoadSITKd(LoadImaged):
-    """
-    Dictionary-based wrapper of :py:class:`monai.transforms.LoadImage`,
-    It can load both image data and metadata. When loading a list of files in one key,
-    the arrays will be stacked and a new dimension will be added as the first dimension
-    In this case, the metadata of the first image will be used to represent the stacked result.
-    The affine transform of all the stacked images should be same.
-    The output metadata field will be created as ``meta_keys`` or ``key_{meta_key_postfix}``.
-
-    If reader is not specified, this class automatically chooses readers
-    based on the supported suffixes and in the following order:
-
-        - User-specified reader at runtime when calling this loader.
-        - User-specified reader in the constructor of `LoadImage`.
-        - Readers from the last to the first in the registered list.
-        - Current default readers: (nii, nii.gz -> NibabelReader), (png, jpg, bmp -> PILReader),
-          (npz, npy -> NumpyReader), (dcm, DICOM series and others -> ITKReader).
-
-    Please note that for png, jpg, bmp, and other 2D formats, readers by default swap axis 0 and 1 after
-    loading the array with ``reverse_indexing`` set to ``True`` because the spatial axes definition
-    for non-medical specific file formats is different from other common medical packages.
-
-    Note:
-
-        - If `reader` is specified, the loader will attempt to use the specified readers and the default supported
-          readers. This might introduce overheads when handling the exceptions of trying the incompatible loaders.
-          In this case, it is therefore recommended setting the most appropriate reader as
-          the last item of the `reader` parameter.
-
-    See also:
-
-        - tutorial: https://github.com/Project-MONAI/tutorials/blob/master/modules/load_medical_images.ipynb
-
-
-    """
-
-    def __init__(
-        self,
-        keys: KeysCollection,
-        dtype: DtypeLike = np.float32,
-        meta_keys: KeysCollection | None = None,
-        meta_key_postfix: str = DEFAULT_POST_FIX,
-        overwriting: bool = False,
-        image_only: bool = True,
-        ensure_channel_first: bool = False,
-        simple_keys: bool = False,
-        prune_meta_pattern: str | None = None,
-        prune_meta_sep: str = ".",
-        allow_missing_keys: bool = False,
-        expanduser: bool = True,
-        *args,
-        **kwargs,
-    ) -> None:
-        super().__init__(keys, allow_missing_keys)
-        self._loader = LoadSITK(
-            image_only = image_only,
-            dtype = dtype,
-            ensure_channel_first=ensure_channel_first,
-            simple_keys= simple_keys,
-            prune_meta_pattern= prune_meta_pattern,
-            prune_meta_sep= prune_meta_sep,
-            expanduser=expanduser,
-            *args,
-            **kwargs,
-        )
-        if not isinstance(meta_key_postfix, str):
-            raise TypeError(f"meta_key_postfix must be a str but is {type(meta_key_postfix).__name__}.")
-        self.meta_keys = ensure_tuple_rep(None, len(self.keys)) if meta_keys is None else ensure_tuple(meta_keys)
-        if len(self.keys) != len(self.meta_keys):
-            raise ValueError(
-                f"meta_keys should have the same length as keys, got {len(self.keys)} and {len(self.meta_keys)}."
-            )
-        self.meta_key_postfix = ensure_tuple_rep(meta_key_postfix, len(self.keys))
-        self.overwriting = overwriting
-
-
-    def __call__(self, data):
-        """
-        Raises:
-            KeyError: When not ``self.overwriting`` and key already exists in ``data``.
-
-        """
-        d = dict(data)
-        for key, meta_key, meta_key_postfix in self.key_iterator(d, self.meta_keys, self.meta_key_postfix):
-            data = self._loader(d[key])
-            if self._loader.image_only:
-                d[key] = data
-            else:
-                if not isinstance(data, (tuple, list)):
-                    raise ValueError(
-                        f"loader must return a tuple or list (because image_only=False was used), got {type(data)}."
-                    )
-                d[key] = data[0]
-                if not isinstance(data[1], dict):
-                    raise ValueError(f"metadata must be a dict, got {type(data[1])}.")
-                meta_key = meta_key or f"{key}_{meta_key_postfix}"
-                if meta_key in d and not self.overwriting:
-                    raise KeyError(f"Metadata with key {meta_key} already exists and overwriting=False.")
-                d[meta_key] = data[1]
-        return d
-
-
-
-
-class Reader(ImageReader):
-    def __init__(self,channel_dim=None,**kwargs) -> None:
-        self.kwargs=  kwargs
-        self.channel_dim = float("nan") if channel_dim == "no_channel" else channel_dim
-        super().__init__()
-
-    def read_func(self,fn,**kwargs):
-        '''
-        return torch tensor
-        '''
-        pass
-      
-    def read(self, data , **kwargs):
-        filenames: Sequence[PathLike] = ensure_tuple(data)
-        kwargs_ = self.kwargs.copy()
-        kwargs_.update(kwargs)
-        img_ = []
-        for fn in filenames:
-            fn = f"{fn}"
-            img_.append(self.read_func(fn, **kwargs_))
-        return img_ if len(filenames) > 1 else img_[0]
-
-    def get_data(self, img) -> tuple[torch.Tensor, dict]:
-        """
-        Extract data array and metadata from loaded image and return them.
-        This function returns two objects, first is torch.Tensor of image data, second is dict of metadata.
-        It constructs `affine`, `original_affine`, and `spatial_shape` and stores them in meta dict.
-        When loading a list of files, they are stacked together at a new dimension as the first dimension,
-        and the metadata of the first image is used to represent the output metadata.
-
-        Args:
-            img: a torch.Tensor loaded from a file or a list of torch.Tensors.
-
-        """
-
-        img_array: list[torch.Tensor] = []
-        compatible_meta: dict = {}
-        if isinstance(img, torch.Tensor):
-            img = (img,)
-
-        for i in ensure_tuple(img):
-            header: dict[MetaKeys, Any] = {}
-            if isinstance(i, torch.Tensor):
-                # if `channel_dim` is None, can not detect the channel dim, use all the dims as spatial_shape
-                spatial_shape = np.asarray(i.shape)
-                if isinstance(self.channel_dim, int):
-                    spatial_shape = np.delete(spatial_shape, self.channel_dim)
-                header[MetaKeys.SPATIAL_SHAPE] = spatial_shape
-                header[MetaKeys.SPACE] = SpaceKeys.RAS
-            img_array.append(i)
-            header[MetaKeys.ORIGINAL_CHANNEL_DIM] = (
-                self.channel_dim if isinstance(self.channel_dim, int) else float("nan")
-            )
-            
-            _copy_compatible_dict(header, compatible_meta)
-
-        return _stack_images(img_array, compatible_meta), compatible_meta
-
-    def verify_suffix(self, filename) -> bool:
-        suffixes = ['pt']
-        return is_supported_format(filename,suffixes)
-
-class TorchReader(Reader):
-    def read_func(self,fn,**kwargs):
-        return torch.load(fn)
-
-
 # %%
 if __name__ == "__main__":
 
     import torch
+
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
@@ -688,29 +425,30 @@ if __name__ == "__main__":
     project_title = "nodes"
     proj = Project(project_title=project_title)
 
-    configuration_filename="/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
-    configuration_filename=None
+    configuration_filename = (
+        "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
+    )
+    configuration_filename = None
 
     configs = ConfigMaker(
-        proj,
-        raytune=False,
-        configuration_filename=configuration_filename
+        proj, raytune=False, configuration_filename=configuration_filename
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
-# %%
+    # %%
     fn = "/s/xnat_shadow/crc/images/crc_CRC261_20170322_AbdoPelvis1p5.nii.gz"
-    dici = {'image':fn}
+    dici = {"image": fn}
 
-    L = LoadImaged(keys= ['image'])
+    L = LoadImaged(keys=["image"])
     img = L(dici)
 
-# %%
-    dici = {'image':fn}
+    # %%
+    dici = {"image": fn}
     from time import time
-    L1 = LoadSITKd(keys=['image'])
-    L = LoadImaged(keys= ['image'])
-# %%
+
+    L1 = LoadSITKd(keys=["image"])
+    L = LoadImaged(keys=["image"])
+    # %%
     start = time()
     for n in range(5):
         img = L1(dici)
@@ -718,29 +456,26 @@ if __name__ == "__main__":
     spent = stop - start
     print(spent)
 
-    
-# %%
+    # %%
     start = time()
     for n in range(5):
         img = L(dici)
     stop = time()
     spent = stop - start
     print(spent)
-# %%
+    # %%
 
- 
-    L2 = LoadImaged(keys=['image'], reader=SITKReader)
+    L2 = LoadImaged(keys=["image"], reader=SITKReader)
     img2 = L2(dici)
 
-    img2['image'].meta
-# %%
-    L3 = SITKReaderFast(keys=['image'])
+    img2["image"].meta
+    # %%
+    L3 = LoadSITKd(keys=["image"])
     im3 = L3(dici)
 
-# %%
-    ImageMaskViewer([img2['image'],im3['image']],data_types=['image','image'])
-# %%
+    # %%
+    ImageMaskViewer([img2["image"], im3["image"]], data_types=["image", "image"])
+    # %%
     fname = fn
     img = sitk.ReadImage(fname)
 # %%
-

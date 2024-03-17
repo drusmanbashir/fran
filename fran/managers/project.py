@@ -54,12 +54,15 @@ def db_ops(db_name):
         conn.close()
 
 
+
 class Project(DictToAttr):
     def __init__(self, project_title):
         store_attr()
         self.set_folder_file_names()
         self.db = self.project_folder / ("cases.db")
 
+        if self.global_properties_filename.exists():
+            self.global_properties = load_dict(self.global_properties_filename)
     def create_project(self, data_folders: list = None, test: list = None):
         """
         param datasets: list of datasets to add to raw_data_folder
@@ -70,12 +73,16 @@ class Project(DictToAttr):
             ask_proceed(
                 "Project already exists. Proceed and make folders again (e.g., if some were deleted)?"
             )(self._create_folder_tree)()
+            
         else:
+            self.global_properties = {'project_title':self.project_title}
             self._create_folder_tree()
 
         self.create_table()
         if data_folders:
             self.add_data(data_folders, test)
+    def save_global_properties(self):
+            save_dict(self.global_properties, self.global_properties_filename)
 
     def sql_alter(self, sql_str):
         with db_ops(self.db) as cur:
@@ -110,7 +117,7 @@ class Project(DictToAttr):
         tbl_name = "datasources"
         if not self.table_exists(tbl_name):
             self.sql_alter(
-                "CREATE TABLE {} (ds, case_id, image,mask,img_symlink,mask_symlink,fold INTEGER,test)".format(
+                "CREATE TABLE {} (ds, case_id, image,mask,img_symlink,lm_symlink,fold INTEGER,test)".format(
                     tbl_name
                 )
             )
@@ -145,7 +152,7 @@ class Project(DictToAttr):
 
     def populate_raw_data_folder(self):
         query_imgs = "SELECT image, img_symlink FROM datasources"
-        query_masks = "SELECT mask, mask_symlink FROM datasources"
+        query_masks = "SELECT mask, lm_symlink FROM datasources"
         pairs = self.sql_query(query_imgs)
         pairs.extend(self.sql_query(query_masks))
         for pair in pairs:
@@ -337,6 +344,27 @@ class Project(DictToAttr):
         print("Done")
 
 
+    def set_label_groups(self,lm_groups:list= None):
+        if lm_groups is None:
+            self.global_properties['lm_group1']= {'ds': self.dataset_names}
+        elif isinstance(lm_groups[0],Union[list,tuple]):  # list of list
+            gps_all = list(il.chain.from_iterable(lm_groups))
+            assert set(gps_all) == set(self.dataset_names),"Expected all datasets {} in lm_groups".format(self.dataset_names)
+            for idx, grp in enumerate(lm_groups):
+                for ds in grp:
+                   assert ds in self.dataset_names, "{} not in dataset names".format(ds)
+                self.global_properties[f'lm_group{idx+1}']={'ds': grp}
+        else:
+            assert set(lm_groups) == set(self.dataset_names),"Expected all datasets {} in lm_groups".format(self.dataset_names)
+            self.global_properties[f'lm_group1']=lm_groups
+        print("LM groups created")
+        for key in self.global_properties.keys():
+            if 'lm_group' in key:
+                print(self.global_properties[key])
+        self.save_global_properties()
+
+
+
 
     def __len__(self):
         ss = "SELECT COUNT (image )from datasources"
@@ -375,6 +403,24 @@ class Project(DictToAttr):
     def raw_data_masks(self):
         self._raw_data_masks = (self.raw_data_folder / ("masks")).glob("*")
         return list(self._raw_data_masks)
+
+    @property
+    def lm_remap(self):
+        '''
+        tells whether postprocessing should remap labels (i.e., if more than 1 lm_group)
+        '''
+        
+        key = 'lm_group'
+        keys=[]
+        for k in self.global_properties.keys():
+            if key in k:
+                keys.append(k)
+        if len(keys)>1:
+            return True
+        else:
+            return False
+
+
 
 class Datasource(GetAttr):
     def __init__(self, folder: Union[str, Path],name:str=None, test=False) -> None:
@@ -416,7 +462,7 @@ class Datasource(GetAttr):
     def extract_img_mask_fnames(self, ds):
         img_fnames = list((ds["source_path"] / ("images")).glob("*"))
         mask_fnames = list((ds["source_path"] / ("masks")).glob("*"))
-        img_symlinks, mask_symlinks = [], []
+        img_symlinks, lm_symlinks = [], []
 
         verified_pairs = []
         for img_fn in img_fnames:
@@ -426,10 +472,10 @@ class Datasource(GetAttr):
         ), "(Some) paths do not exist. Fix paths and try again."
         print("self.populating raw data folder (with symlinks)")
         for pair in verified_pairs:
-            img_symlink, mask_symlink = self.filepair_symlink(pair)
+            img_symlink, lm_symlink = self.filepair_symlink(pair)
             img_symlinks.append(img_symlink)
-            mask_symlinks.append(mask_symlink)
-        return img_symlinks, mask_symlinks
+            lm_symlinks.append(lm_symlink)
+        return img_symlinks, lm_symlinks
 
     @property
     def images(self):
@@ -451,16 +497,34 @@ class Datasource(GetAttr):
     def create_symlinks(self):
         pass
 
+
+def get_ds_remapping(ds:str,global_properties):
+        key = 'lm_group'
+        keys=[]
+        for k in global_properties.keys():
+            if key in k:
+                keys.append(k)
+
+        for k in keys:
+            dses  = global_properties[k]['ds']
+            if ds in dses:
+                labs_src = global_properties[k]['labels']
+                labs_dest = global_properties[k]['labels_neo']
+                remapping = {src:dest for src,dest in zip(labs_src,labs_dest)}
+                return remapping
+        raise Exception("No lm group for dataset {}".format(ds))
 # %%
 if __name__ == "__main__":
     ds2=Path("/s/xnat_shadow/litqtmp")
     ds3="/s/xnat_shadow/lidctmp"
-    ds3="/s/datasets_bkp/drli"
     ds4="/s/datasets_bkp/lits_segs_improved/"
     ds5="/s/datasets_bkp/drli_short/"
     ds6="/s/datasets_bkp/Task06Lung/"
-    P = Project(project_title="lilun")
+    P= Project(project_title="lilun3")
     P.create_project([ds2, ds3])
+# %%
+    P.set_label_groups([['lidc2'],['litq']])
+    P.set_label_groups()
 # %%
     # P.add_data(ds5)
     # P.create_project([ds,ds2,ds3,ds4])
@@ -470,4 +534,9 @@ if __name__ == "__main__":
 # %%
     D2 = Datasource(ds3)
 # %%
+
+    conn = sqlite3.connect(db_name)
+    
+    ss = """ALTER TABLE datasources RENAME COLUMN lm_symlink to lm_symlink"""
+    conn.execute(ss)
 # %%

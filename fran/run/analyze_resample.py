@@ -50,14 +50,17 @@ class InteractiveAnalyserResampler:
             if self._analyse_dataset_questions() == True:
                 self.GlobalP= GlobalProperties(self.proj_defaults, bg_label=0)
                 self.GlobalP.store_projectwide_properties()
-                self.GlobalP.compute_std_mean_dataset()
+                self.GlobalP.compute_std_mean_dataset(debug=self.debug)
+                self.GlobalP.collate_lm_labels()
 
     def _analyse_dataset_questions(self):
-        do_analysis = not self.proj_defaults.global_properties_filename.exists()
-        if do_analysis==True: return True
+
+        global_properties = load_dict(self.proj_defaults.global_properties_filename)
+        if not 'total_voxels' in global_properties.keys():
+             return True
         else:
             reanalyse = input(
-                "Dataset global properties file exists already. Re-analyse dataset (Y/y)?"
+                "Dataset global properties already computed. Re-analyse dataset (Y/y)?"
             )
             if reanalyse.lower() == "y":
                 return True
@@ -291,9 +294,9 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title = "lungs"
+    args.project_title = "lilun3"
     # args.num_processes = 1
-    # args.debug=False
+    args.debug=False
     # args.overwrite=False
     I = InteractiveAnalyserResampler(args)
 # %%
@@ -305,6 +308,12 @@ if __name__ == "__main__":
     I.generate_whole_images_dataset()
     I.generate_hires_patches_dataset(debug=True)
 
+# %%
+    im1 = "/home/ub/tmp/imgs/litq_72b_20170224_old.pt"
+    im2 = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lilun3/spc_074_074_160/images/litq_72b_20170224.pt"
+    im1 = torch.load(im1)
+    im2 = torch.load(im2)
+    ImageMaskViewer([im1,im2], data_types=['image','image'])
 # %%
 
 # ii = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lax/spc_080_080_150/images/lits_5.pt"

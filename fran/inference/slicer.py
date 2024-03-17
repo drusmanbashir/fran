@@ -29,29 +29,27 @@ class SlicerCascadeInferer(CascadeInferer):
                 return func(*args, **kwargs)
         return wrapper
 
-
-    def transforms(self):
-
-        self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
-        self.S = Spacingd(keys=["image"], pixdim=self.dataset_params['spacings'])
-        self.N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.dataset_params["intensity_clip_range"],
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
-        )
-        self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
-
-
+    #
+    # def transforms(self):
+    #
+    #     self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
+    #     self.S = Spacingd(keys=["image"], pixdim=self.dataset_params['spacings'])
+    #     self.N = NormaliseClipd(
+    #         keys=["image"],
+    #         clip_range=self.dataset_params["intensity_clip_range"],
+    #         mean=self.dataset_params["mean_fg"],
+    #         std=self.dataset_params["std_fg"],
+    #     )
+    #     self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+    #
+    #
 
     # @profile_decorator
-    def predict(self, img): 
-        pass
-        # with record_function("model_inference"):
-        #     self.create_ds(img)
-        #     self.bboxes = self.extract_fg_bboxes()
-        #     pred_patches = self.patch_prediction(self.ds, self.bboxes)
-        #     pred_patches = self.decollate_patches(pred_patches, self.bboxes)
-        #     output = self.postprocess(pred_patches)
-        # return output
-        #
+    def run(self, img): 
+            self.prepare_data(img)
+            self.bboxes = self.extract_fg_bboxes()
+            pred_patches = self.patch_prediction(self.ds, self.bboxes)
+            pred_patches = self.decollate_patches(pred_patches, self.bboxes)
+            output = self.postprocess(pred_patches)
+            return output
+
