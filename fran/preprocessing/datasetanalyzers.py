@@ -1,6 +1,6 @@
 # %%
 import logging
-from fastcore.all import test_eq
+from fastcore.all import is_close, test_eq
 from fastcore.basics import  GetAttr, listify, properties, store_attr
 from label_analysis.helpers import get_labels
 import numpy as np
@@ -166,7 +166,7 @@ class SingleCaseAnalyzer:
     """
 
     def __init__(
-            self, project_title, case_files_tuple, percentile_range:list, bg_label=0
+            self,  case_files_tuple, percentile_range:list, bg_label=0
     ):
         """
         param: case_files_tuple are two nii_gz files (img,mask)
@@ -198,7 +198,10 @@ class SingleCaseAnalyzer:
             if k not in excluded:
                 v1 = self.img.meta[k]
                 v2 = self.mask.meta[k]
-                test_eq(v1,v2)
+                if isinstance(v1,np.ndarray):
+                    assert is_close(v1,v2,eps=1e-4),"Metadata mismatch for key: "+k
+                elif isinstance(v1,str):
+                    test_eq(v1,v2)
                 self._properties[k] = v1
 
         self._properties['img_fname'] = self.img.meta['filename_or_obj']
@@ -271,7 +274,7 @@ class MultiCaseAnalyzer(GetAttr):
         if return_voxels == True, returns voxels to be stored inside the h5f file
         """
         args_list = [
-            [case_tuple, self.project_title, self.bg_label, return_voxels]
+            [case_tuple,  self.bg_label, return_voxels]
             for case_tuple in self.new_cases
         ]
         self.outputs = multiprocess_multiarg(
@@ -307,16 +310,13 @@ class MultiCaseAnalyzer(GetAttr):
         save_dict(raw_dataset_props, self.raw_dataset_properties_filename)
 
 
-
 def case_analyzer_wrapper(
     case_files_tuple,
-    project_title,
     bg_label,
     get_voxels=True,
     percentile_range=[0.5, 99.5],
 ):
     S = SingleCaseAnalyzer(
-        project_title=project_title,
         case_files_tuple=case_files_tuple,
         bg_label=bg_label,
         percentile_range=percentile_range,
@@ -421,7 +421,7 @@ if __name__ == "__main__":
         )
     aa = A()
 # %%
-    P = Project("lilun")
+    P = Project("tmp")
     M = MultiCaseAnalyzer(P)
     M.process_new_cases(debug=True, num_processes=2, multiprocess=True)
     M.dump_to_h5f()
@@ -589,7 +589,7 @@ if __name__ == "__main__":
         get_voxels = False
         print("Voxels file: {0} exists".format(M.h5f_fname))
     args_list = [
-        [case_tuple, M.project_title, M.bg_label, get_voxels]
+        [case_tuple,  M.bg_label, get_voxels]
         for case_tuple in M.list_of_raw_cases
     ]
 # %%

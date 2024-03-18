@@ -1,5 +1,6 @@
 # %%
 from fastcore.basics import store_attr
+from fastcore.transform import GetAttr
 import pandas as pd
 import ast,sys
 import ipdb
@@ -29,14 +30,14 @@ def out_channels_from_dict_or_cell(src_dest_labels):
     return out_channels
 
 
-def get_imagelists_from_config(proj_defaults, fold, patch_based, dim0, dim1):
-    json_fname = proj_defaults.validation_folds_filename
+def get_imagelists_from_config(project, fold, patch_based, dim0, dim1):
+    json_fname = project.validation_folds_filename
     if patch_based == False:
-        folder_name = proj_defaults.stage1_folder / "{0}_{1}_{1}/images".format(
+        folder_name = project.stage1_folder / "{0}_{1}_{1}/images".format(
             dim0, dim1, dim1
         )
         train_list, valid_list, _ = get_train_valid_test_lists_from_json(
-            project_title=proj_defaults.project_title,
+            project_title=project.project_title,
             fold=fold,
             json_fname=json_fname,
             image_folder=folder_name,
@@ -45,9 +46,9 @@ def get_imagelists_from_config(proj_defaults, fold, patch_based, dim0, dim1):
         print("Retrieved whole image datasets from folder: {}".format(folder_name))
     else:
         train_list, valid_list, _ = get_train_valid_test_lists_from_json(
-            project_title=proj_defaults.project_title,
+            project_title=project.project_title,
             fold=fold,
-            image_folder=proj_defaults.stage1_folder / "cropped/images_pt/images",
+            image_folder=project.stage1_folder / "cropped/images_pt/images",
             json_fname=json_fname,
             ext=".pt",
         )
@@ -135,12 +136,12 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
     return config
 
 
-class ConfigMaker:
-    def __init__(self, proj_defaults, configuration_filename=None,raytune=False):
+class ConfigMaker():
+    def __init__(self, project, configuration_filename=None,raytune=False):
 
 
-        if not configuration_filename: configuration_filename = proj_defaults.configuration_filename
         store_attr()
+        if not configuration_filename: configuration_filename = project.configuration_filename
         self.config = load_config_from_workbook(configuration_filename, raytune)
         if not "mom_low" in self.config["model_params"].keys() and raytune==True:
             config = {
@@ -159,25 +160,29 @@ class ConfigMaker:
         self.add_further_keys()
       
 
-
     def add_further_keys(self):
-        self.add_out_channels()
+        if not 'out_channels' in self.config["model_params"]:
+            self.add_out_channels()
         self.add_patch_size()
         self.add_dataset_props()
 
 
     def add_dataset_props(self):
-        global_properties = load_dict(self.proj_defaults.global_properties_filename)
-        self.config['dataset_params']['clip_range']=global_properties["intensity_clip_range"]
-        self.config['dataset_params']['mean_fg']=global_properties["mean_fg"]
-        self.config['dataset_params']['std_fg']=global_properties["std_fg"]
+        self.config['dataset_params']['clip_range']=self.project.global_properties["intensity_clip_range"]
+        self.config['dataset_params']['mean_fg']=self.project.global_properties["mean_fg"]
+        self.config['dataset_params']['std_fg']=self.project.global_properties["std_fg"]
 
     def add_out_channels(self):
-        if not 'out_channels' in self.config["model_params"]:
-
-            self.config['model_params']["out_channels"] = out_channels_from_dict_or_cell(
-                self.config['dataset_params']["src_dest_labels"]
-            )
+            if isinstance(self.config['dataset_params']["src_dest_labels"], Union[tuple,list]):
+                out_ch = out_channels_from_dict_or_cell(
+                    self.config['dataset_params']["src_dest_labels"]
+                )
+            else: # i.e., it doesnt exist
+                out_ch=1
+                for k in self.project.global_properties.keys():
+                    if 'lm_group' in k:
+                        out_ch +=self.project.global_properties[k]['num_labels']
+            self.config['model_params']["out_channels"]  = out_ch
 
     def add_patch_size(self):
         if not "patch_size" in self.config['dataset_params']:
@@ -236,20 +241,20 @@ def parse_neptune_dict(dic: dict):
 if __name__ == "__main__":
 
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P
-    proj_defaults = proj_defaults.configuration_filename
-    wb = load_workbook(proj_defaults)
+    P = Project(project_title="lits"); project= P
+    project = project.configuration_filename
+    wb = load_workbook(project)
     sheets = wb.sheetnames
     mode = "manual"
-    meta = load_metadata(proj_defaults)
+    meta = load_metadata(project)
     sheet_name = "after_item_intensity"
     trans = load_config_from_worksheet(
-        proj_defaults, "after_item_intensity", raytune=True
+        project, "after_item_intensity", raytune=True
     )
     spat = load_config_from_worksheet(
-        proj_defaults, "after_item_spatial", raytune=True
+        project, "after_item_spatial", raytune=True
     )
-    met = load_config_from_worksheet(proj_defaults, "metadata", raytune=True)
+    met = load_config_from_worksheet(project, "metadata", raytune=True)
 
 
 
@@ -257,9 +262,9 @@ if __name__ == "__main__":
 
 
 
-    config = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+    config = ConfigMaker(project.configuration_filename, raytune=False).config
 # %%
-    wb = load_workbook(proj_defaults)
+    wb = load_workbook(project)
     sheets = wb.sheetnames
     metadata = wb["metadata"]
     dat = metadata[2 : metadata.max_row]
@@ -269,11 +274,11 @@ if __name__ == "__main__":
     raytune = False
 
     configs_dict = {
-        sheet: load_config_from_worksheet(proj_defaults, sheet, raytune)
+        sheet: load_config_from_worksheet(project, sheet, raytune)
         for sheet in sheets
     }
 
-    df = pd.read_excel(proj_defaults, sheet_name="metadata", dtype=str)
+    df = pd.read_excel(project, sheet_name="metadata", dtype=str)
     df
     # %%
 
@@ -289,7 +294,7 @@ if __name__ == "__main__":
     # %%
     tune.sample_from(lambda _: np.random.uniform(100) ** 2).sample()
     # %%
-    config = load_config_from_workbook(proj_defaults, raytune=True)
+    config = load_config_from_workbook(project, raytune=True)
     if not "mom_low" in config["model_params"].keys():
         conds = {
             "mom_low": tune.sample_from(
@@ -306,4 +311,5 @@ if __name__ == "__main__":
     config["model_params"]["mom_low"].sample()
     config["model_params"]["mom_added"].sample()
 
+# %%
 # %%

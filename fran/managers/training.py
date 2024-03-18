@@ -671,7 +671,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "lilun"
+    project_title = "lilu"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -692,7 +692,7 @@ if __name__ == "__main__":
 # %%
     device_id = 1
 # %%
-    bs = 8
+    bs = 1
     # run_name ='LITS-709'
     compiled = False
     run_name = None

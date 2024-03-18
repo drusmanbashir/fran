@@ -43,7 +43,8 @@ from fastcore.all import listify, store_attr
 from fastcore.foundation import GetAttr
 from lightning.fabric import Fabric
 from monai.data.dataloader import DataLoader
-from monai.data.dataset import Dataset, PersistentDataset
+from monai.data.dataset import  PersistentDataset
+
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import LoadImaged, SaveImaged
@@ -175,6 +176,8 @@ class ResamplerDataset(GetAttr,Dataset):
         project,
         spacings,
         half_precision=False,
+        clip_center=False,
+
         mean_std_mode: str = "dataset",
         raw_dataset_properties=None,
     ):
@@ -186,6 +189,7 @@ class ResamplerDataset(GetAttr,Dataset):
         self.project = project
         self.spacings = spacings
         self.half_precision = half_precision
+        self.clip_center = clip_center
         super(GetAttr).__init__()
 
         if raw_dataset_properties is None:
@@ -236,7 +240,9 @@ class ResamplerDataset(GetAttr,Dataset):
             mean=self.mean,
             std=self.std,
         )
-        tfms = [R,L,Ai,Am,E,Si,Sm,N]
+        tfms = [R,L,Ai,Am,E,Si,Sm]
+        if self.clip_center == True:
+            tfms.extend([N])
         if self.half_precision == True:
             H = HalfPrecisiond(keys=["image"])
             tfms.extend([H])

@@ -27,6 +27,7 @@ from monai.utils.misc import ensure_tuple
 from torchvision.utils import Any
 from fran.data.dataloader import img_mask_bbox_collated
 from fran.data.dataset import ImageMaskBBoxDatasetd, MaskLabelRemap2, NormaliseClipd, SimpleDatasetPT
+from fran.transforms.imageio import LoadTorchd
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.spatialtransforms import PadDeficitd
 from fran.utils.fileio import load_dict
@@ -172,8 +173,7 @@ class DataManagerSource(DataManager):
             #     keys=["label"], src_dest_labels=self.dataset_params["src_dest_labels"]
             # ),
 
-
-            L = LoadImaged(keys =['image','label'], reader= TorchReader)
+            L = LoadTorchd(keys =['image','label'])
             E = EnsureChannelFirstd(keys=["image", "label"], channel_dim="no_channel")
             P= PadDeficitd(
 
@@ -234,9 +234,7 @@ class DataManagerSource(DataManager):
             self.tfms_valid = Compose([L,E,P,R,N])
 
     def setup(self, stage: str = None):
-
         self.create_transforms()
-
         self.train_ds = SimpleDatasetPT(self.dataset_folder,self.train_list,transform=self.tfms_train)
         self.valid_ds= SimpleDatasetPT(self.dataset_folder,self.valid_list,transform=self.tfms_valid)
 
@@ -341,20 +339,6 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
-    fn = "/s/xnat_shadow/crc/images/crc_CRC261_20170322_AbdoPelvis1p5.nii.gz"
-    reader = SITKReader()
-    img = reader.read(fn)
-    dat = reader.get_data(img)
-
-    L1 = LoadImaged(keys=['image'], reader=ITKReader,dtype=torch.Tensor)
-    dici = {'image':fn}
-    img = L1(dici)
-    
-# %%
-
-    L2 = LoadImaged(keys=['image'], reader=SITKReader,dtype=torch.Tensor)
-    img2 = L2(dici)
-# %%
     batch_size=2
     D = DataManager(
                     proj,
@@ -365,7 +349,7 @@ if __name__ == "__main__":
                 )
 # %%
     D.prepare_data()
-    D.setup()
+    # D.setup()
     dl = D.train_dataloader()
     iteri = iter(dl)
     aa = D.train_ds[0]

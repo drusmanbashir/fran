@@ -218,14 +218,15 @@ class ResampleDatasetniftiToTorch(GetAttr):
         maybe_makedirs(output_subfolders)
 
         ds = ResamplerDataset(project=self.project, spacings=self._spacings, half_precision=self.half_precision,raw_dataset_properties=self.raw_dataset_properties)
-        dl = DataLoader(dataset=ds,num_workers=num_processes,collate_fn = img_mask_metadata_lists_collated,batch_size=8 if debug==False else 1)
+        dl = DataLoader(dataset=ds,num_workers=4,collate_fn = img_mask_metadata_lists_collated,batch_size=4 if debug==False else 1)
         self.results=[]
         for id, batch in enumerate(dl):
             images,masks = batch['image'], batch['mask']
-
-            [self.save_tensor(img[0],output_subfolders[0],overwrite) for img in images]
-            [self.save_tensor(mask[0],output_subfolders[1],overwrite) for mask in masks]
-            [self.results.append(self.get_tensor_stats(img)) for img in images]
+            for img, mask in zip(images,masks):
+                assert img.shape == mask.shape, "Mismatch in shape".format(img.shape,mask.shape)
+                self.save_tensor(img[0],output_subfolders[0],overwrite) 
+                self.save_tensor(mask[0],output_subfolders[1],overwrite) 
+                self.results.append(self.get_tensor_stats(img))
         self.results = pd.DataFrame(self.results).values
         if self.results.shape[-1] == 3:  # only store if entire dset is processed
             self._store_resampled_dataset_properties()
@@ -252,8 +253,6 @@ class ResampleDatasetniftiToTorch(GetAttr):
             "median": np.median(tnsr),
         }
         return dic
-
-
 
 
     def _store_resampled_dataset_properties(self):
@@ -712,6 +711,22 @@ if __name__ == "__main__":
         num_processes=num_processes,
         debug=debug,
     )
+# %%
+    print("Resampling dataset to spacing: {0}".format(R.spacings))
+    output_subfolders = [
+        R.resampling_output_folder / ("images"),
+        R.resampling_output_folder / ("masks"),
+    ]
+    maybe_makedirs(output_subfolders)
+
+    debug=True
+    ds = ResamplerDataset(project=R.project, spacings=R._spacings, half_precision=R.half_precision,raw_dataset_properties=R.raw_dataset_properties)
+    dl = DataLoader(dataset=ds,num_workers=num_processes,collate_fn = img_mask_metadata_lists_collated,batch_size=8 if debug==False else 1)
+    iteri = iter(dl)
+    b = next(iteri)
+
+    R.results=[]
+
 
 # %%
     fn = Path("/s/fran_storage/projects/raw_dataset_properties.pkl")

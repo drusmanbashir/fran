@@ -1,8 +1,11 @@
 # %%
-import sqlite3
+
+import sqlite3, h5py
 from fastcore.basics import listify
 import ipdb
 from fastcore.basics import GetAttr
+from monai.utils.enums import StrEnum
+from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper
 from fran.utils.string import (
     cleanup_fname,
     drop_digit_suffix,
@@ -30,6 +33,15 @@ common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 from fran.utils.templates import mask_labels_template
 from fran.utils.helpers import pat_full, pat_nodesc, pat_idonly
 from contextlib import contextmanager
+
+class DS(StrEnum):
+    lits="/s/datasets_bkp/lits_segs_improved/"
+    litq="/s/xnat_shadow/litq"
+    drli_short="/s/datasets_bkp/drli_short/"
+    drli="/s/datasets_bkp/drli/"
+    litqsmall="/s/datasets_bkp/litqsmall/"
+    lidc2="/s/xnat_shadow/lidc2"
+    totalseg = "/s//xnat_shadow/totalseg"
 
 
 def val_indices(a, n):
@@ -177,6 +189,8 @@ class Project(DictToAttr):
         """
         self.sql_alter(ss)
 
+
+
     def purge(self):
         self.purge_raw_data_folder()
         files_to_del = [self.raw_dataset_info_filename]
@@ -301,7 +315,7 @@ class Project(DictToAttr):
         with db_ops(self.db) as cur:
             cur.executemany(ss, dds)
 
-    @ask_proceed("Create train/valid folds (80:20) ")
+    # @ask_proceed("Create train/valid folds (80:20) ")
     def create_folds(self, pct_valid=0.2, shuffle=False):
         self.delete_duplicates()
         cases_unassigned = self.get_unassigned_cases()
@@ -423,21 +437,26 @@ class Project(DictToAttr):
 
 
 class Datasource(GetAttr):
-    def __init__(self, folder: Union[str, Path],name:str=None, test=False) -> None:
+    def __init__(self, folder: Union[str, Path],name:str=None,bg_label=0, test=False) -> None:
         """
         src_folder: has subfolders 'images' and 'masks'. Files in each are identically named
         """
+        self.bg_label = bg_label
         self.folder = Path(folder)
         self.test=test
+        self.h5_fname = self.folder / "fg_voxels.h5"
+        self.raw_dataset_properties_filename = self.folder /"raw_dataset_properties.pkl"
         if name is None:
             self.name = self.infer_dataset_name()
         else:
             self.name = name
 
         self.integrity_check()
+        self.filter_unprocessed_cases()
 
     def infer_dataset_name(self):
-        fn = list((self.folder / ("images")).glob("*"))[0]
+        subfolder = self.folder / ("images")
+        fn = list(subfolder.glob("*"))[0]
         proj_title = info_from_filename(fn.name)["proj_title"]
         return proj_title
 
@@ -458,6 +477,85 @@ class Datasource(GetAttr):
         for img_fn in images:
             self.verified_pairs.append([img_fn, find_matching_fn(img_fn, masks)])
         print("Verified filepairs are matched")
+
+
+    def filter_unprocessed_cases(self):
+        '''
+        Loads project.raw_dataset_properties_filename to get list of already completed cases.
+        Any new cases will be processed and added to project.raw_dataset_properties_filename
+        '''
+        
+        try:
+            self.raw_dataset_properties = load_dict(self.raw_dataset_properties_filename)
+            prev_processed_cases = set([b['case_id'] for b in self.raw_dataset_properties])
+        except FileNotFoundError:
+            print("First time preprocessing dataset. Will create new file: {}".format(self.raw_dataset_properties_filename))
+            self.raw_dataset_properties = []
+            prev_processed_cases = set()
+        all_case_ids = []
+        for fns in self.verified_pairs:
+            inf = info_from_filename(fns[0].name,full_caseid=True)
+            case_id = inf['case_id']
+            all_case_ids.append(case_id)
+        assert(len(all_case_ids)==len(set(all_case_ids))),"Some case_ids are repeated. Not implemented yet!"
+
+        new_case_ids = set(all_case_ids).difference(prev_processed_cases)
+        print("Found {0} new cases\nCases already processed in a previous session: {1}".format(len(new_case_ids), len(prev_processed_cases)))
+        assert (l:=len(new_case_ids)) == (l2:=(len(all_case_ids)-len(prev_processed_cases))), "Difference in number of new cases"
+        if len(new_case_ids) == 0: 
+            print("No new cases found.")
+            self.new_cases = []
+        else:
+            self.new_cases = [file_tuple for file_tuple in self.verified_pairs if info_from_filename(file_tuple[0].name,full_caseid=True)['case_id'] in new_case_ids] #file_tuple[0]
+
+
+    def process_new_cases(
+        self, return_voxels=True, num_processes=8, multiprocess=True, debug=False
+    ):
+        """
+        Stage 1: derives datase properties especially intensity_fg
+        if return_voxels == True, returns voxels to be stored inside the h5 file
+        """
+        args_list = [
+            [case_tuple,  self.bg_label, return_voxels]
+            for case_tuple in self.new_cases
+        ]
+        self.outputs = multiprocess_multiarg(
+            func=case_analyzer_wrapper,
+            arguments=args_list,
+            num_processes=num_processes,
+            multiprocess=multiprocess,
+            debug=debug,
+        )
+
+        for output in self.outputs:
+            self.raw_dataset_properties.append(output["case"])
+        self.dump_to_h5()
+        self.store_raw_dataset_properties()
+
+
+    def dump_to_h5(self):
+        if self.h5_fname.exists():
+            mode= 'a'
+        else: mode = 'w'
+        with h5py.File(self.h5_fname, mode) as h5f: 
+            for output in self.outputs:
+                try:
+                    h5f.create_dataset(output["case"]["case_id"], data=output["voxels"])
+                except ValueError:
+                    print("Case id {} already exists in h5 file. Skipping".format(output['case']['case_id']))
+
+    def store_raw_dataset_properties(self):
+        processed_props = [output['case'] for output in self.outputs]
+        if self.raw_dataset_properties_filename.exists():
+            existing_props = load_dict(self.raw_dataset_properties_filename)
+            existing_total = len(existing_props)
+            assert existing_total + len(processed_props) == len(self.project), "There is an existing raw_dataset_properties file. New cases are processed also, but their sum does not match the size of this project"
+            raw_dataset_props = existing_props + processed_props
+        else:
+            raw_dataset_props = processed_props
+        save_dict(raw_dataset_props, self.raw_dataset_properties_filename)
+
 
     def extract_img_mask_fnames(self, ds):
         img_fnames = list((ds["source_path"] / ("images")).glob("*"))
@@ -515,16 +613,15 @@ def get_ds_remapping(ds:str,global_properties):
         raise Exception("No lm group for dataset {}".format(ds))
 # %%
 if __name__ == "__main__":
-    ds2=Path("/s/xnat_shadow/litqtmp")
-    ds3="/s/xnat_shadow/lidctmp"
-    ds4="/s/datasets_bkp/lits_segs_improved/"
-    ds5="/s/datasets_bkp/drli_short/"
-    ds6="/s/datasets_bkp/Task06Lung/"
-    P= Project(project_title="lilun3")
-    P.create_project([ds2, ds3])
+    aa = load_pickle(D2.raw_dataset_properties_filename)
+    P= Project(project_title="tmp")
+    liver_ds = [DS.litq,DS.litqsmall,DS.lits,DS.drli]
+    # P.create_project([DS.litq,DS.litqsmall,DS.lits,DS.drli,DS.lidc2])
+    P.create_project([DS.drli_short])
 # %%
-    P.set_label_groups([['lidc2'],['litq']])
+    P.set_label_groups([['litq','litqsmall','drli','lits'],['lidc2']])
     P.set_label_groups()
+    P.analyze_ds()
 # %%
     # P.add_data(ds5)
     # P.create_project([ds,ds2,ds3,ds4])
@@ -532,7 +629,13 @@ if __name__ == "__main__":
     len(P.raw_data_imgs)
     len(P)
 # %%
-    D2 = Datasource(ds3)
+    debug=True
+    D2 = Datasource(DS.litq)
+
+    D2.process_new_cases(debug=debug)
+
+
+# %%
 # %%
 
     conn = sqlite3.connect(db_name)

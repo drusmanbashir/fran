@@ -138,8 +138,10 @@ def drop_digit_suffix(fname: str):
     return fname_cl
 
 
-def info_from_filename(fname: str):
+def info_from_filename(fname: str,full_caseid=False):
+
     """
+    full_caseid: if true, return project_title+case_id
     returns [proj_title,case_id,desc, ?all-else]
     """
     tags = ["proj_title","case_id", "date", "desc"]
@@ -149,6 +151,8 @@ def info_from_filename(fname: str):
     output_dic={}
     for key,val in zip(tags,parts):
         output_dic[key]=val
+    if full_caseid==True:
+        output_dic['case_id']=output_dic['proj_title']+"_"+output_dic['case_id']
     return output_dic
 
 def match_filenames(fname1:str,fname2:str):

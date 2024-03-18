@@ -48,7 +48,7 @@ class InteractiveAnalyserResampler:
                 self.MultiAnalyser.dump_to_h5f()
                 self.MultiAnalyser.store_raw_dataset_properties()
             if self._analyse_dataset_questions() == True:
-                self.GlobalP= GlobalProperties(self.proj_defaults, bg_label=0)
+                self.GlobalP= GlobalProperties(self.proj_defaults, bg_label=0,clip_range=self.clip_range)
                 self.GlobalP.store_projectwide_properties()
                 self.GlobalP.compute_std_mean_dataset(debug=self.debug)
                 self.GlobalP.collate_lm_labels()
@@ -66,18 +66,22 @@ class InteractiveAnalyserResampler:
                 return True
 
     def resample_dataset(self):
-        @ask_proceed("Resample dataset?")
+        # @ask_proceed("Resample dataset?")
         def _inner():
             self.Resampler = ResampleDatasetniftiToTorch(
                 self.proj_defaults,
                 minimum_final_spacing=0.5,
                 enforce_isotropy=self.enforce_isotropy,
                 half_precision=self.half_precision,
-                clip_centre=self.clip_centre
+                clip_centre=False
             )
 
 
-            vals = input("Press enter to accept defaults or a list/float for new values: ")
+
+            if self.spacings is None:
+                vals = input("Press enter to accept defaults or a list/float for new values: ")
+            else:
+                vals = self.spacings
             self.maybe_change_default_spacings(vals)
             self.spacings = self.Resampler.spacings
             self.Resampler.resample_cases(
@@ -91,6 +95,7 @@ class InteractiveAnalyserResampler:
             )
 
         self.get_resampling_configs()
+        # if self.spacings is None:
         _inner()
     @ask_proceed("Generating low-res whole images to localise organ of interest")
     def generate_whole_images_dataset(self):
@@ -223,7 +228,8 @@ class InteractiveAnalyserResampler:
             print("Accepting defaults")
 
         try:
-            vals = ast.literal_eval(vals)
+            if isinstance(vals, str):
+                vals = ast.literal_eval(vals)
             if all([isinstance(vals, (list, tuple)), len(vals) == 3]):
                 self.Resampler.spacings = vals
             elif isinstance(vals, (int, float)):
@@ -283,6 +289,8 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--enforce-isotropy", action="store_true")
     parser.add_argument("-o", "--overwrite", action="store_true")
     parser.add_argument("-c", "--clip-centre", action='store_true', help="Clip and centre data now or during training?")
+    parser.add_argument("-r", "--clip-range", nargs='+', help="Give clip range to compute dataset std and mean")
+    parser.add_argument("-s", "--spacings", nargs='+', help="Give clip range to compute dataset std and mean")
     parser.add_argument("-po", "--patch-overlap" ,help="Generating patches will overlying by this fraction range [0,.9). Default is 0.25 ", default=0.25, type=float)
     parser.add_argument("-hp", "--half_precision" ,action="store_true")
     parser.add_argument("-nf", "--no-fix", action="store_false",help="By default if img/mask sitk arrays mismatch in direction, orientation or spacings, FRAN tries to align them. Set this flag to disable")
@@ -294,17 +302,20 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "lilun3"
+    args.project_title = "totalseg"
     # args.num_processes = 1
     args.debug=False
+    # args.clip_range=[-100,200]
+    # args.spacings= [.8,.8,1.5]
     # args.overwrite=False
     I = InteractiveAnalyserResampler(args)
 # %%
-    I.verify_dataset_integrity()
+    # I.verify_dataset_integrity()
 
     I.analyse_dataset()
     I.resample_dataset()
 
+# %%
     I.generate_whole_images_dataset()
     I.generate_hires_patches_dataset(debug=True)
 

@@ -1,6 +1,5 @@
 # %%
 from __future__ import annotations
-from label_analysis.helpers import get_labels as gl
 
 import warnings
 from collections.abc import Sequence
@@ -13,6 +12,7 @@ import SimpleITK as sitk
 import torch
 from fastcore.basics import listify, store_attr, warnings
 from fastcore.foundation import inspect
+from label_analysis.helpers import get_labels as gl
 from monai.config import DtypeLike, PathLike
 from monai.config.type_definitions import DtypeLike, KeysCollection, PathLike
 from monai.data.image_reader import (ImageReader, ITKReader, NibabelReader,
@@ -71,17 +71,17 @@ class LoadSITKd(MapTransform):
         reverse_indexing: bool = False,
         ensure_channel_first: bool = False,
         affine_lps_to_ras=True,
-        lm_key=None, # if provided it will store number of labels in LM
+        lm_key=None,  # if provided it will store number of labels in LM
         channel_dim: str | int | None = None,
         simple_keys: bool = False,
         pattern=None,
         sep: str = ".",
         image_only: bool = False,
     ) -> None:
-        '''
+        """
         Multipurpose function to load images in SITK format. Can also directly take sitk.Image object.
-        '''
-        
+        """
+
         super().__init__(keys, allow_missing_keys)
         store_attr(
             "reverse_indexing,ensure_channel_first,affine_lps_to_ras,channel_dim,simple_keys,pattern,sep,image_only,lm_key"
@@ -165,7 +165,7 @@ class LoadSITKd(MapTransform):
         # handling multi-channel images
         return np_img if self.reverse_indexing else np.moveaxis(np_img.T, 0, -1)
 
-    def get_data(self, img,get_labels=False) -> tuple[np.ndarray, dict]:
+    def get_data(self, img, get_labels=False) -> tuple[np.ndarray, dict]:
         """
         Args:
             img: an SITK image object loaded from an image file or a list of ITK image objects.
@@ -188,19 +188,29 @@ class LoadSITKd(MapTransform):
             )
         else:
             header[MetaKeys.ORIGINAL_CHANNEL_DIM] = self.channel_dim
-        if get_labels==True:
-            labels = gl(img )
-            header['labels']= labels
+        if get_labels == True:
+            labels = gl(img)
+            header["labels"] = labels
 
         return data, header
 
-    def func(self, img:Union[str, sitk.Image],get_labels=False):
-        if isinstance(img, str):
+    def maybe_recast_sitk(self, img: sitk.Image):
+        pixid = img.GetPixelID()
+        if pixid == 5: # unsigned 32 int
+            img = sitk.Cast(img, sitk.sitkInt32)
+        return img
+
+
+
+    def func(self, img: Union[str,Path, sitk.Image], get_labels=False):
+        if isinstance(img, Union[Path,str]):
+            img_fn = img
             img = sitk.ReadImage(img)
-            array_np, meta_data = self.get_data(img,get_labels)
-            meta_data[Key.FILENAME_OR_OBJ] = str(img)
-        elif isinstance(img,sitk.Image):
-            array_np, meta_data = self.get_data(img,get_labels)
+            img = self.maybe_recast_sitk(img)
+            array_np, meta_data = self.get_data(img, get_labels)
+            meta_data[Key.FILENAME_OR_OBJ] = str(img_fn)
+        elif isinstance(img, sitk.Image):
+            array_np, meta_data = self.get_data(img, get_labels)
         else:
             raise TypeError("img must be a str filename or a sitk.Image object")
         array_pt = ToTensorT()(array_np)
@@ -216,9 +226,9 @@ class LoadSITKd(MapTransform):
         d = dict(data)
         for key in self.key_iterator(d):
             if self.lm_key is not None and key == self.lm_key:
-                d[key] = self.func(d[key],get_labels=True)
+                d[key] = self.func(d[key], get_labels=True)
             else:
-                d[key] = self.func(d[key],get_labels=False)
+                d[key] = self.func(d[key], get_labels=False)
         return d
 
 
@@ -412,6 +422,32 @@ class SITKReader(ITKReader):
         return np_img if self.reverse_indexing else np.moveaxis(np_img.T, 0, -1)
 
 
+class LoadTorchd(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        """
+        Multipurpose function to load images in SITK format. Can also directly take sitk.Image object.
+        """
+
+        super().__init__(keys, allow_missing_keys)
+    def __call__(self, d):
+        for key in self.key_iterator(d):
+            d[key] = self.func(d[key])
+        return d
+
+    def func(self,fn):
+        img = torch.load(fn)
+        meta = img.meta
+        meta['src_filename'] = meta['filename']
+        meta['filename'] = str(fn)
+        img.meta = meta
+        return img
+
+
+
 # %%
 if __name__ == "__main__":
 
@@ -435,20 +471,25 @@ if __name__ == "__main__":
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
-    # %%
+# %%
     fn = "/s/xnat_shadow/crc/images/crc_CRC261_20170322_AbdoPelvis1p5.nii.gz"
+    fn_pt = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lilu/spc_080_080_150/images/drli_001ub.pt"
     dici = {"image": fn}
 
     L = LoadImaged(keys=["image"])
     img = L(dici)
+# %%
+    dici_pt = {"image": fn_pt}
+    Lp = LoadTorchd(keys=["image"])
+    img_pt = Lp(dici_pt)
 
-    # %%
+# %%
     dici = {"image": fn}
     from time import time
 
     L1 = LoadSITKd(keys=["image"])
     L = LoadImaged(keys=["image"])
-    # %%
+# %%
     start = time()
     for n in range(5):
         img = L1(dici)
@@ -456,26 +497,25 @@ if __name__ == "__main__":
     spent = stop - start
     print(spent)
 
-    # %%
+# %%
     start = time()
     for n in range(5):
         img = L(dici)
     stop = time()
     spent = stop - start
     print(spent)
-    # %%
+# %%
 
     L2 = LoadImaged(keys=["image"], reader=SITKReader)
     img2 = L2(dici)
 
     img2["image"].meta
-    # %%
+# %%
     L3 = LoadSITKd(keys=["image"])
     im3 = L3(dici)
 
-    # %%
+# %%
     ImageMaskViewer([img2["image"], im3["image"]], data_types=["image", "image"])
-    # %%
+# %%
     fname = fn
     img = sitk.ReadImage(fname)
-# %%
