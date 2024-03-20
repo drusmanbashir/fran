@@ -7,7 +7,6 @@ import numpy as np
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.totensor import ToTensorT
 from fran.utils.helpers import *
-import h5py
 
 # sys.path += ["/home/ub/Dropbox/code/fran"]
 from fran.utils.helpers import *
@@ -17,6 +16,12 @@ import cc3d
 from fran.utils.imageviewers import ImageMaskViewer
 from label_analysis.utils import SITKImageMaskFixer
 from fran.utils.string import drop_digit_suffix, info_from_filename
+
+
+def import_h5py():
+    import h5py
+    return h5py
+
 
 
 def get_intensity_range(global_properties: dict) -> list:
@@ -283,6 +288,8 @@ class MultiCaseAnalyzer(GetAttr):
             self.raw_dataset_properties.append(output["case"])
 
     def dump_to_h5f(self):
+        h5py = import_h5py()
+
         if self.h5f_fname.exists():
             mode= 'a'
         else: mode = 'w'

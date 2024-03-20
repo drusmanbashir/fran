@@ -33,8 +33,7 @@ from monai.transforms.spatial.dictionary import Orientationd, Resized
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
 from torchvision.transforms.functional import resize
 
-from fran.data.dataloader import img_metadata_collated
-from fran.data.dataset import (FillBBoxPatchesd, NormaliseClip, NormaliseClipd,
+from fran.data.dataset import (FillBBoxPatchesd,  NormaliseClipd,
                                SavePatchd)
 from fran.inference.base import (BaseInferer, InferenceDatasetNii,
                                  list_to_chunks, load_dataset_params)

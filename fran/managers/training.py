@@ -1,5 +1,6 @@
 # %%
 import shutil
+from lightning.pytorch.profilers import AdvancedProfiler
 
 import psutil
 import random
@@ -22,7 +23,7 @@ import torch
 from lightning.pytorch import LightningModule, Trainer
 # from fastcore.basics import GenttAttr
 from lightning.pytorch.callbacks import (Callback, LearningRateMonitor,
-                                         TQDMProgressBar)
+                                         TQDMProgressBar, DeviceStatsMonitor)
 from neptune.types import File
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision.transforms import Compose
@@ -497,6 +498,7 @@ class TrainingManager:
         devices=1,
         compiled=False,
         neptune=True,
+        profiler=False,
         tags=[],
         description="",
         epochs=1000,
@@ -539,9 +541,14 @@ class TrainingManager:
                 LearningRateMonitor(logging_interval="epoch"),
                 TQDMProgressBar(refresh_rate=3),
             ]
-
         else:
             logger = None
+        if profiler==True:
+            # profiler = AdvancedProfiler(dirpath=self.project.log_folder, filename="profiler")
+            profiler ='simple'
+            cbs+=[DeviceStatsMonitor(cpu_stats=True)]
+        else:
+            profiler = None
 
         self.D.prepare_data()
 
@@ -553,6 +560,7 @@ class TrainingManager:
             accelerator="gpu",
             devices=devices,
             precision="16-mixed",
+            profiler = profiler,
             logger=logger,
             max_epochs=epochs,
             log_every_n_steps=logging_freq,
@@ -670,7 +678,7 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
-
+    from torch.profiler import profile, record_function, ProfilerActivity
     project_title = "totalseg"
     proj = Project(project_title=project_title)
 
@@ -696,11 +704,12 @@ if __name__ == "__main__":
     run_name = None
     run_name ='LITS-827'
     compiled = False
+    profiler=False
 
     batch_finder = False
     neptune = True
     tags = []
-    description = "Baseline all transforms as in previous full data runs"
+    description = ""
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,
@@ -708,6 +717,7 @@ if __name__ == "__main__":
         devices=[device_id],
         epochs=500,
         batchsize_finder=batch_finder,
+        profiler=profiler,
         neptune=neptune,
         tags=tags,
         description=description,
@@ -716,7 +726,7 @@ if __name__ == "__main__":
     Tm.N.compiled = compiled
 # %%
     Tm.fit()
-# %%
+        # model(inputs)
 # %%
 
     Tm.D.setup()

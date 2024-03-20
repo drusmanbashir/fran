@@ -70,15 +70,6 @@ class DataManager(LightningDataModule):
         self.batch_size = batch_size
         self.assimilate_tfm_factors(transform_factors)
 
-    #
-    # def state_dict(self):
-    #     state={'batch_size':'j'}
-    #     return state
-    #     # return self.dataset_params
-    #
-    # def load_state_dict(self,state_dict):
-    #     self.batch_size= state_dict['batch_size']
-    # #
     def assimilate_tfm_factors(self, transform_factors):
         for key, value in transform_factors.items():
             dici = {"value": value[0], "prob": value[1]}
@@ -117,22 +108,22 @@ class DataManager(LightningDataModule):
         )
 
 
-    def train_dataloader(self, num_workers=24, **kwargs):
+    def train_dataloader(self):
         train_dl = DataLoader(
             self.train_ds,
             batch_size=self.batch_size,
-            num_workers=num_workers,
+            num_workers=self.batch_size*2,
             collate_fn=self.collate_fn,
             persistent_workers=True,
             pin_memory=True,
         )
         return train_dl
 
-    def val_dataloader(self, num_workers=24, **kwargs):
+    def val_dataloader(self ):
         valid_dl = DataLoader(
             self.valid_ds,
             batch_size=self.batch_size,
-            num_workers=num_workers,
+            num_workers=self.batch_size*2,
             collate_fn=self.collate_fn,
             persistent_workers=True,
             pin_memory=True,

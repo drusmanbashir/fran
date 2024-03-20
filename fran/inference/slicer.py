@@ -1,4 +1,3 @@
-
 from contextlib import contextmanager
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
@@ -46,7 +45,7 @@ class SlicerCascadeInferer(CascadeInferer):
 
     # @profile_decorator
     def run(self, img): 
-            self.prepare_data(img)
+            self.create_ds(img)
             self.bboxes = self.extract_fg_bboxes()
             pred_patches = self.patch_prediction(self.ds, self.bboxes)
             pred_patches = self.decollate_patches(pred_patches, self.bboxes)

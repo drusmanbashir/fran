@@ -131,15 +131,17 @@ class BaseInferer(GetAttr, DictToAttr):
         A = Activationsd(keys="pred", softmax=True)
         D = AsDiscreted(keys=["pred"], argmax=True)  # ,threshold=0.5)
         C = ToCPUd(keys=["image", "pred"])
-        tfms = [Sq, I, A, D, C]
+        Sa = SaveMultiChanneld(
+            keys=["pred"],
+            output_dir=self.output_folder,
+            output_postfix="",
+            separate_folder=False,
+        )
+
+
+        tfms = [Sq,  A, D,I, C]
         if self.debug == True:
-            Sa = SaveMultiChanneld(
-                keys=["pred"],
-                output_dir=self.output_folder,
-                output_postfix="",
-                separate_folder=False,
-            )
-            tfms.insert(3, Sa)  # after activations
+            tfms = [Sq,I,Sa,A,D,C]
         C = Compose(tfms)
         self.postprocess_transforms = C
 
@@ -193,16 +195,19 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
     proj = Project(project_title="nodes")
-
     run_ps = ["LITS-702"]
-    run_name = run_ps[0]
+# %%
+    proj = Project(project_title="totalseg")
+
+    run_ps = ["LITS-827"]
+# %% run_name = run_ps[0]
 
 # %%
     img_fn = "/s/xnat_shadow/nodes/imgs_no_mask/nodes_4_20201024_CAP1p5mm_thick.nii.gz"
 
     img_fns = [img_fn]
     input_data = [{"image": im_fn} for im_fn in img_fns]
-    debug = True
+    debug = False
 
 # %%
     P = BaseInferer(proj, run_ps[0], debug=debug)
@@ -214,15 +219,48 @@ if __name__ == "__main__":
     P.prepare_data(imgs)
     P.create_postprocess_transforms()
     preds = P.predict()
+
+# %%
+    Sq = SqueezeDimd(keys=["pred"], dim=0)
+
+    A = Activationsd(keys="pred", softmax=True)
+    D = AsDiscreted(keys=["pred"], argmax=True)  # ,threshold=0.5)
+    C = ToCPUd(keys=["image", "pred"])
+
+
+
+    I = Invertd(
+        keys=["pred"], transform=P.ds.transform, orig_keys=["image"]
+    )  # watchout: use detach beforeharnd. make sure spacings are correct in preds
+    tfms = [Sq,  A,I ,D, C]
+    A = Activationsd(keys="pred", softmax=True)
+    pred = preds[0]
+# %%
+    pred['pred'].shape
+# %%
+    pred = Sq(pred)
+    pred['pred'].shape
+    pred = A(pred)
+    pred['pred'].shape
+    pred = D(pred)
+    pred['pred'].shape
+    pred = I(pred)
+    pred['pred'].shape
+    pred = C(pred)
+# %%
+    pred = P.ds.S.inverse(pred)
     tmp = preds[0]
     tmp["pred"] = tmp["pred"].detach()
 # %%
     pred = preds[0]["pred"][0]
+    pred = pred.detach().to('cpu')
     a = P.ds[0]
     im = a["image"]
     im = im[0]
     dici = {"image": im, "pred": im}
-    ImageMaskViewer([im, pred])
+    ImageMaskViewer([im, pred['pred'][0]])
+
+    output = P.postprocess(preds)
 # %%
     lm_fn = "/s/fran_storage/predictions/nodes/LITS-702/nodes_4_20201024_CAP1p5mm_thick.nii.gz"
     lm = sitk.ReadImage(lm_fn)

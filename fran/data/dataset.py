@@ -309,7 +309,7 @@ class SimpleDatasetPT(Dataset):
     def __init__(self, parent_folder, fnames, transform=None) -> None:
         """
         takes files_list, converts to pt format, and creates img/mask pair dataset
-        fnames: files_list in nifti format
+        fnames: files_list 
         """
 
         super().__init__()
@@ -330,14 +330,6 @@ class SimpleDatasetPT(Dataset):
 
     def __len__(self):
         return len(self.img_mask_pairs)
-
-    #
-    # def create_metatensor(self,fn):
-    #     t = torch.load(fn)
-    #     meta = {'filename':fn}
-    #     tnsr = MetaTensor(t,meta=meta)
-    #     return tnsr
-    #
 
     def __getitem__(self, ind):
         img_fn, label_fn = self.img_mask_pairs[ind]

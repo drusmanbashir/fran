@@ -1,6 +1,6 @@
 # %%
 
-import sqlite3, h5py
+import sqlite3
 from fastcore.basics import listify
 import ipdb
 from fastcore.basics import GetAttr
