@@ -186,8 +186,6 @@ class ResampleDatasetniftiToTorch(GetAttr):
         minimum_final_spacing is only used when enforce_isotropy is True
         """
         store_attr("project,half_precision,clip_centre")
-        self.raw_dataset_properties = load_dict(self.raw_dataset_properties_filename)
-        self._dataset_size = len(self.raw_dataset_properties)
 
         if enforce_isotropy == True:
             self.spacings = [
@@ -217,13 +215,14 @@ class ResampleDatasetniftiToTorch(GetAttr):
         ]
         maybe_makedirs(output_subfolders)
 
-        ds = ResamplerDataset(project=self.project, spacings=self._spacings, half_precision=self.half_precision,raw_dataset_properties=self.raw_dataset_properties)
+        ds = ResamplerDataset(project=self.project, spacings=self._spacings, half_precision=self.half_precision)
         dl = DataLoader(dataset=ds,num_workers=4,collate_fn = img_mask_metadata_lists_collated,batch_size=4 if debug==False else 1)
         self.results=[]
         for id, batch in enumerate(dl):
             images,masks = batch['image'], batch['mask']
             for img, mask in zip(images,masks):
                 assert img.shape == mask.shape, "Mismatch in shape".format(img.shape,mask.shape)
+                assert img.dim()==4, "Images should be CxHxWxD"
                 self.save_tensor(img[0],output_subfolders[0],overwrite) 
                 self.save_tensor(mask[0],output_subfolders[1],overwrite) 
                 self.results.append(self.get_tensor_stats(img))
@@ -283,11 +282,6 @@ class ResampleDatasetniftiToTorch(GetAttr):
             debug,
             num_processes,
         )
-
-    @property
-    def dataset_size(self):
-        """The dataset_size property."""
-        return self._dataset_size
 
     @property
     def spacings(self):

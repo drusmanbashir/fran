@@ -1,6 +1,8 @@
 from typing import Union
 from fastcore.basics import listify, store_attr
 from fastcore.transform import ItemTransform
+from monai.config.type_definitions import KeysCollection
+from monai.transforms.transform import MapTransform
 import numpy as np
 import torch
 from torch.functional import Tensor 
@@ -10,6 +12,21 @@ import itertools as il
 
 tr = ipdb.set_trace
 # %%
+
+
+class MonaiDictTransform(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+    ) -> None:
+        super().__init__(keys, False)
+    def __call__(self, d: dict):
+        for key in self.key_iterator(d):
+            d[key] = self.func(d[key])
+        return d
+
+    def func(self,data):
+        pass
 
 class Squeeze(ItemTransform):
 

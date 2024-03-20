@@ -12,7 +12,7 @@ import numpy as np
 from torch.functional import Tensor
 import ipdb
 
-from fran.transforms.basetransforms import KeepBBoxTransform
+from fran.transforms.base import KeepBBoxTransform
 from label_analysis.utils import *
 
 from fran.inference.helpers import get_amount_to_pad, get_scale_factor_from_spacings, rescale_bbox

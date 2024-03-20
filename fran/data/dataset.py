@@ -25,7 +25,7 @@ from fran.data.dataloader import  img_mask_metadata_lists_collated
 from fran.managers.project import get_ds_remapping
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import standardize
-from fran.transforms.misc_transforms import AddMetadata, HalfPrecisiond, RemapSITK
+from fran.transforms.misc_transforms import AddMetadata, HalfPrecisiond, RemapSITKImage
 from fran.transforms.spatialtransforms import *
 from fran.utils.helpers import *
 from fran.utils.imageviewers import ImageMaskViewer
@@ -120,7 +120,7 @@ class InferenceDatasetNii(Dataset):
                 ensure_channel_first=False,
                 simple_keys=True,
             )
-        self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
+        self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel") # this creates funny shapes mismatch
         self.S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacings"])
         self.N = NormaliseClipd(
             keys=["image"],
@@ -179,7 +179,6 @@ class ResamplerDataset(GetAttr,Dataset):
         clip_center=False,
 
         mean_std_mode: str = "dataset",
-        raw_dataset_properties=None,
     ):
 
         assert mean_std_mode in [
@@ -187,32 +186,28 @@ class ResamplerDataset(GetAttr,Dataset):
             "fg",
         ], "Select either dataset mean/std or fg mean/std for normalization"
         self.project = project
+        self.df = self.filter_completed_cases()
         self.spacings = spacings
         self.half_precision = half_precision
         self.clip_center = clip_center
         super(GetAttr).__init__()
-
-        if raw_dataset_properties is None:
-            self.raw_dataset_properties = load_dict(
-                project.raw_dataset_properties_filename
-            )
-        else: self.raw_dataset_properties = raw_dataset_properties
-        self.raw_dataset_properties = load_dict(project.raw_dataset_properties_filename)
         self.set_normalization_values(mean_std_mode)
         self.create_transforms()
 
-    def __len__(self): return len(self.raw_dataset_properties)   
+    def filter_completed_cases(self):
+        df = self.project.df.copy() # speed up things
+        return df
+    def __len__(self): return len(self.df)   
 
     def __getitem__(self, index):
-        cp = self.raw_dataset_properties[index]
-        cid = cp["case_id"]
-        ds = cid.split("_")[0]
+        cp = self.df.iloc[index]
+        ds = cp['ds']
         remapping = get_ds_remapping(ds, self.global_properties)
 
-        img_fname = cp["properties"]["img_fname"]
-        mask_fname = cp["properties"]["lm_fname"]
-        img = sitk.ReadImage(cp["properties"]["img_fname"])
-        mask = sitk.ReadImage(cp["properties"]["lm_fname"])
+        img_fname = cp["image"]
+        mask_fname = cp["lm"]
+        img = sitk.ReadImage(img_fname)
+        mask = sitk.ReadImage(mask_fname)
         dici = {
             "image": img,
             "mask": mask,
@@ -226,21 +221,23 @@ class ResamplerDataset(GetAttr,Dataset):
 
 
     def create_transforms(self):
-        R = RemapSITK(keys=["mask"])
+        R = RemapSITKImage(keys=["mask"])
         L = LoadSITKd(keys=["image", "mask"], image_only=True)
 
         Ai = AddMetadata(keys=['image'], meta_keys=['image_fname'],renamed_keys=['filename'])
         Am = AddMetadata(keys=['mask'], meta_keys=['mask_fname','remapping'],renamed_keys=['filename','remapping'])
-        E = EnsureChannelFirstd(keys=["image","mask"], channel_dim="no_channel")
-        Si = Spacingd(keys=["image"], pixdim=self.spacings,mode="bilinear")
-        Sm = Spacingd(keys=["mask"], pixdim=self.spacings,mode="nearest")
+        E = EnsureChannelFirstd(keys=["image","mask"], channel_dim="no_channel") # funny shape output mismatch
+        Si = Spacingd(keys=["image"], pixdim=self.spacings,mode="trilinear")
+        Rz = ResizeDynamicd(keys=["mask"], key_spatial_size='image', mode='nearest')
+
+        #Sm = Spacingd(keys=["mask"], pixdim=self.spacings,mode="nearest")
         N = NormaliseClipd(
             keys=["image"],
             clip_range=self.global_properties["intensity_clip_range"],
             mean=self.mean,
             std=self.std,
         )
-        tfms = [R,L,Ai,Am,E,Si,Sm]
+        tfms = [R,L,Ai,Am,E,Si, Rz]
         if self.clip_center == True:
             tfms.extend([N])
         if self.half_precision == True:
@@ -740,15 +737,12 @@ if __name__ == "__main__":
     from fran.inference.base import load_dataset_params
     from fran.utils.common import *
 
-    P = Project(project_title="lilun3")
+    P = Project(project_title="totalseg")
 
-    case_props = load_dict(
-        Path("/s/fran_storage/projects/lilun3/raw_dataset_properties.pkl")
-    )
     global_properties = load_dict(P.global_properties_filename)
 # %%
 
-    R = ResamplerDataset(project=P, spacings=[1, 1, 2], half_precision=False)
+    R = ResamplerDataset(project=P, spacings=[3,3,3], half_precision=False)
     dl = DataLoader(dataset=R,num_workers=2,collate_fn = img_mask_metadata_lists_collated,batch_size=2)
 
     iteri = iter(dl)
@@ -759,8 +753,93 @@ if __name__ == "__main__":
     images,masks = bb['image'], bb['mask']
     image = images[0]
     fname = Path(image.meta['filename'])
+    img_fn ="/s/fran_storage/datasets/preprocessed/fixed_spacings/totalseg/spc_300_300_300/images/totalseg_s1418.pt"
 
+    img = torch.load(img_fn)
+    img.shape
+# %%
+    P = Project(project_title="totalseg")
+    img_fn =  Path('/s/xnat_shadow/totalseg/images/totalseg_s0627.nii.gz')
+    mask_fn =  Path('/s/xnat_shadow/totalseg/masks/totalseg_s0627.nii.gz')
+
+    img = sitk.ReadImage(img_fn)
+    mask = sitk.ReadImage(mask_fn)
+
+    remapping = get_ds_remapping('totalseg', P.global_properties)
+    dici = {'image':img,'mask':mask, 'remapping':remapping , 
+            "image_fname": img_fn,
+            "mask_fname": mask_fn,}
 
 # %%
-    
+
+    spacings = [3,3,3]
+    R = RemapSITKImage(keys=["mask"])
+    L = LoadSITKd(keys=["image", "mask"], image_only=True)
+
+    Ai = AddMetadata(keys=['image'], meta_keys=['image_fname'],renamed_keys=['filename'])
+    Am = AddMetadata(keys=['mask'], meta_keys=['mask_fname','remapping'],renamed_keys=['filename','remapping'])
+    E = EnsureChannelFirstd(keys=["image","mask"], channel_dim="no_channel")
+    Si = Spacingd(keys=["image"], pixdim=spacings,mode="trilinear")
+
+    Rz = ResizeDynamicd(keys=["mask"], key_spatial_size='image', mode='nearest')
+
+    tfms = [R,L,Ai,Am,E,Si, Rz]
+
+    C = Compose(tfms)
+# %%
+    c = C(dici)
+# %%
+
+
+    print(c['image'].shape)
+    print(c['mask'].meta)
+# %%
+    Lo = LoadImaged(keys=["image", "mask"])
+# %%
+    dici2 = {'image': img_fn, 'mask':mask_fn}
+    a = Lo(dici2)
+
+    print(a['image'].shape)
+    print(a['image'].meta)
+# %%
+
+    print(c['image'].shape, c['mask'].shape)
+    ImageMaskViewer([c['image'][0].permute(2,0,1),c['mask'][0]])
+# %%
+
+    image = c['image']
+    data = c['mask']
+    spatial_size = image[0].shape
+    mode ='nearest'
+    mask2 =fm.resize(
+            img=data,
+            out_size=spatial_size,
+            mode=mode,
+            lazy=False,
+            align_corners=None,
+            dtype=None,
+            input_ndim=3,
+            anti_aliasing=False,
+            anti_aliasing_sigma=0.0,
+            transform_info=None,
+        )
+
+    print(mask2.shape)
+# %%
+    R(dici)
+    a = L(dici)
+    b = Si(a)
+    c2 = Sm(b)
+    img = b['img']
+    c= Rz(b)
+# %%
+    print(c['image'].shape)
+    print(c['mask'].shape)
+# %%
+
+    print(c2['image'].shape)
+    print(c2['mask'].shape)
+# %%
+    index = 0
+  
 # %%

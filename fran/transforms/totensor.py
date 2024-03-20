@@ -9,7 +9,7 @@ import SimpleITK as sitk
 from batchgenerators.dataloading.multi_threaded_augmenter import torch
 from fastcore.transform import ItemTransform, Transform, store_attr
 from torch.functional import Tensor
-from fran.transforms.basetransforms import KeepBBoxTransform
+from fran.transforms.base import KeepBBoxTransform
 
 
 import ipdb

@@ -671,7 +671,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "lilu"
+    project_title = "totalseg"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -693,11 +693,11 @@ if __name__ == "__main__":
     device_id = 1
 # %%
     bs = 1
-    # run_name ='LITS-709'
-    compiled = False
     run_name = None
+    run_name ='LITS-827'
+    compiled = False
 
-    batch_finder = True
+    batch_finder = False
     neptune = True
     tags = []
     description = "Baseline all transforms as in previous full data runs"
@@ -720,15 +720,34 @@ if __name__ == "__main__":
 # %%
 
     Tm.D.setup()
+    ds = Tm.D.train_ds
     dl = Tm.D.train_dataloader()
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
 # %%
+    # img = ds.create_metatensor(img_fn)
+    # label = ds.create_metatensor(label_fn)
+    dici = {"image": img_fn, "label": label_fn}
+    im = torch.load(img_fn)
+
+    im.shape
+
+
+# %%
+    b = next(iteri)
+
     m = Tm.N.model
     N = Tm.N
 
 # %%
-    b = next(iteri)
+    for x  in range(len(ds)):
+        casei= ds[x]
+        for a in range(len(casei)):
+            print(casei[a]['image'].shape)
+# %%
+    for i,b in enumerate(dl):
+        print(b['image'].shape )
+# %%
     # b2 = next(iter(dl2))
     batch = b
     inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]

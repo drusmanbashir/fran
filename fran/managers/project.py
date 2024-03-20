@@ -41,6 +41,7 @@ class DS(StrEnum):
     drli="/s/datasets_bkp/drli/"
     litqsmall="/s/datasets_bkp/litqsmall/"
     lidc2="/s/xnat_shadow/lidc2"
+    lidctmp="/s/xnat_shadow/lidctmp"
     totalseg = "/s//xnat_shadow/totalseg"
 
 
@@ -109,7 +110,7 @@ class Project(DictToAttr):
         return output
 
     def vars_to_sql(self, dataset_name, img_fn, mask_fn, test):
-        case_id = info_from_filename(img_fn.name)['case_id']
+        case_id = info_from_filename(img_fn.name,full_caseid=True)['case_id']
         fold = "NULL"
         img_sym = self.create_raw_ds_fname(img_fn)
         mask_sym = self.create_raw_ds_fname(mask_fn)
@@ -129,7 +130,7 @@ class Project(DictToAttr):
         tbl_name = "datasources"
         if not self.table_exists(tbl_name):
             self.sql_alter(
-                "CREATE TABLE {} (ds, case_id, image,mask,img_symlink,lm_symlink,fold INTEGER,test)".format(
+                "CREATE TABLE {} (ds, case_id, image,lm,img_symlink,lm_symlink,fold INTEGER,test)".format(
                     tbl_name
                 )
             )
@@ -152,6 +153,7 @@ class Project(DictToAttr):
             ds = self.filter_existing_images(ds)
             self.populate_tbl(ds)
         self.populate_raw_data_folder()
+        self.register_datasources()
 
     def _create_folder_tree(self):
         maybe_makedirs(self.project_folder)
@@ -285,7 +287,12 @@ class Project(DictToAttr):
         self.raw_dataset_info_filename = self.project_folder / ("raw_dataset_srcs.pkl")
         self.log_folder = self.project_folder / ("logs")
 
-
+    @property
+    def case_ids(self):
+        ss = "SELECT case_id FROM datasources "  # only training cases
+        qr = self.sql_query(ss)
+        qr = list(il.chain.from_iterable(qr))
+        return qr
 
     def get_unassigned_cases(self):
         ss = "SELECT case_id, image FROM datasources WHERE test=0 AND fold='NULL'"  # only training cases
@@ -294,21 +301,21 @@ class Project(DictToAttr):
         print("Cases not assigned to any training fold: {}".format(len(qr)))
         return qr
 
-    def create_df(self, cases):
-        self.df = pd.DataFrame(cases, columns=["case_id", "image"])
-        self.df["index"] = 0
-        self.df["fold"] = np.nan
-        case_ids = self.df["case_id"]
+    def create_df_folds(self, cases):
+        self.df_folds = pd.DataFrame(cases, columns=["case_id", "image"])
+        self.df_folds["index"] = 0
+        self.df_folds["fold"] = np.nan
+        case_ids = self.df_folds["case_id"]
         case_ids = case_ids.sort_values()
         case_ids = case_ids.drop_duplicates()
 
         for ind, case_id in enumerate(case_ids):
-            self.df.loc[self.df["case_id"] == case_id, "index"] = ind
+            self.df_folds.loc[self.df_folds["case_id"] == case_id, "index"] = ind
 
     def update_tbl_folds(self):
         dds = []
-        for n in range(len(self.df)):
-            dd = list(self.df.loc[n, ["fold", "image"]])
+        for n in range(len(self.df_folds)):
+            dd = list(self.df_folds.loc[n, ["fold", "image"]])
             dd[0] = str(dd[0])
             dds.append(dd)
         ss = "UPDATE datasources SET fold= ? WHERE image=?"
@@ -320,25 +327,40 @@ class Project(DictToAttr):
         self.delete_duplicates()
         cases_unassigned = self.get_unassigned_cases()
         if len(cases_unassigned) > 0:
-            self.create_df(cases_unassigned)
+            self.create_df_folds(cases_unassigned)
             pct_valid = 0.2
             folds = int(1 / pct_valid)
-            sl = val_indices(len(self.df), folds)
+            sl = val_indices(len(self.df_folds), folds)
             print(
                 "Given proportion {0} of validation files yield {1} folds".format(
                     pct_valid, folds
                 )
             )
             if shuffle == True:
-                self.df = self.df.sample(frac=1).reset_index(drop=True)
+                self.df_folds = self.df_folds.sample(frac=1).reset_index(drop=True)
             else:
-                self.df = self.df.sort_values("index")
-                self.df = self.df.reset_index(drop=True)
+                self.df_folds = self.df_folds.sort_values("index")
+                self.df_folds = self.df_folds.reset_index(drop=True)
 
             for n in range(folds):
-                self.df.loc[sl[n], "fold"] = n
+                self.df_folds.loc[sl[n], "fold"] = n
 
             self.update_tbl_folds()
+
+    def register_datasources(self):
+        ss = "SELECT DISTINCT ds FROM datasources ORDER BY ds"
+        qr = self.sql_query(ss,True)
+        dicis=[]
+        for q in qr:
+            fldr = Path(getattr(DS,q))
+            h5_fname = fldr/("fg_voxels.h5")
+            dici = {'ds':q, 'folder':str(fldr), 'h5_fname':str(h5_fname) }
+            dicis.append(dici)
+        self.global_properties['datasources'] = dicis
+        self.save_global_properties()
+        return dicis
+
+
 
     def get_train_val_files(self,fold):
         ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{}".format(fold)
@@ -358,18 +380,19 @@ class Project(DictToAttr):
         print("Done")
 
 
+
     def set_label_groups(self,lm_groups:list= None):
         if lm_groups is None:
-            self.global_properties['lm_group1']= {'ds': self.dataset_names}
+            self.global_properties['lm_group1']= {'ds': self.datasources}
         elif isinstance(lm_groups[0],Union[list,tuple]):  # list of list
             gps_all = list(il.chain.from_iterable(lm_groups))
-            assert set(gps_all) == set(self.dataset_names),"Expected all datasets {} in lm_groups".format(self.dataset_names)
+            assert set(gps_all) == set(self.datasources),"Expected all datasets {} in lm_groups".format(self.datasources)
             for idx, grp in enumerate(lm_groups):
                 for ds in grp:
-                   assert ds in self.dataset_names, "{} not in dataset names".format(ds)
+                   assert ds in self.datasources, "{} not in dataset names".format(ds)
                 self.global_properties[f'lm_group{idx+1}']={'ds': grp}
         else:
-            assert set(lm_groups) == set(self.dataset_names),"Expected all datasets {} in lm_groups".format(self.dataset_names)
+            assert set(lm_groups) == set(self.datasources),"Expected all datasets {} in lm_groups".format(self.datasources)
             self.global_properties[f'lm_group1']=lm_groups
         print("LM groups created")
         for key in self.global_properties.keys():
@@ -387,10 +410,26 @@ class Project(DictToAttr):
 
     def __repr__(self):
         try:
-            s = "Project {0}\n{1}".format(self.project_title, self.dataset_names)
+            s = "Project {0}\n{1}".format(self.project_title, self.datasources)
         except:
             s= "Project {0}\n{1}".format(self.project_title,"Datasets Unknown")
         return s
+
+    @property
+    def df(self):
+        ss = """select * FROM datasources"""
+        with db_ops(self.db) as cur:
+                qr = cur.execute(ss)
+                colnames = [q[0] for q in qr.description]
+                df = pd.DataFrame(qr, columns =colnames)
+        return df
+
+
+
+    @property
+    def datasources(self):
+        dses = [a['ds'] for a in self.global_properties['datasources']]
+        return  dses
 
 
     @property
@@ -400,12 +439,6 @@ class Project(DictToAttr):
             if isinstance(value, Path) and "folder" in key:
                 self._folders.append(value)
         return self._folders
-
-    @property
-    def dataset_names(self):
-        ss = "SELECT DISTINCT ds FROM datasources ORDER BY ds"
-        qr = self.sql_query(ss,True)
-        return qr
 
 
     @property
@@ -531,7 +564,7 @@ class Datasource(GetAttr):
         for output in self.outputs:
             self.raw_dataset_properties.append(output["case"])
         self.dump_to_h5()
-        self.store_raw_dataset_properties()
+        # self.store_raw_dataset_properties() # redundant
 
 
     def dump_to_h5(self):
@@ -541,7 +574,17 @@ class Datasource(GetAttr):
         with h5py.File(self.h5_fname, mode) as h5f: 
             for output in self.outputs:
                 try:
-                    h5f.create_dataset(output["case"]["case_id"], data=output["voxels"])
+                    ds= h5f.create_dataset(output["case"]["case_id"], data=output["voxels"])
+                    ds.attrs['spacing'] = list(output['case']['properties']['spacing'])
+                    ds.attrs['labels'] = list(output['case']['properties']['labels'])
+
+
+                    ds.attrs['numel_fg']= output['case']['properties']['numel_fg']
+                    ds.attrs['mean_fg']= output['case']['properties']['mean_fg']
+                    ds.attrs['min_fg']= output['case']['properties']['min_fg']
+                    ds.attrs['max_fg']= output['case']['properties']['max_fg']
+                    ds.attrs['std_fg']= output['case']['properties']['std_fg']
+
                 except ValueError:
                     print("Case id {} already exists in h5 file. Skipping".format(output['case']['case_id']))
 
@@ -596,6 +639,7 @@ class Datasource(GetAttr):
         pass
 
 
+
 def get_ds_remapping(ds:str,global_properties):
         key = 'lm_group'
         keys=[]
@@ -607,21 +651,26 @@ def get_ds_remapping(ds:str,global_properties):
             dses  = global_properties[k]['ds']
             if ds in dses:
                 labs_src = global_properties[k]['labels']
-                labs_dest = global_properties[k]['labels_neo']
+                if hasattr (global_properties[k],'labels'):
+                    labs_dest = global_properties[k]['labels_neo']
+                else:
+                    labs_dest = labs_src
                 remapping = {src:dest for src,dest in zip(labs_src,labs_dest)}
                 return remapping
         raise Exception("No lm group for dataset {}".format(ds))
 # %%
 if __name__ == "__main__":
-    aa = load_pickle(D2.raw_dataset_properties_filename)
-    P= Project(project_title="tmp")
+    P= Project(project_title="totalseg")
     liver_ds = [DS.litq,DS.litqsmall,DS.lits,DS.drli]
     # P.create_project([DS.litq,DS.litqsmall,DS.lits,DS.drli,DS.lidc2])
-    P.create_project([DS.drli_short])
+
+    P.create_project([DS.drli_short,DS.lidctmp])
+    P.create_project([DS.totalseg])
+    # P.add_data(DS.litq)
 # %%
     P.set_label_groups([['litq','litqsmall','drli','lits'],['lidc2']])
+    P.set_label_groups([['drli'],['lidc2']])
     P.set_label_groups()
-    P.analyze_ds()
 # %%
     # P.add_data(ds5)
     # P.create_project([ds,ds2,ds3,ds4])
@@ -630,16 +679,24 @@ if __name__ == "__main__":
     len(P)
 # %%
     debug=True
-    D2 = Datasource(DS.litq)
+    D2 = Datasource(DS.totalseg)
 
     D2.process_new_cases(debug=debug)
 
 
 # %%
 # %%
+    import sqlite3
+    db_name = "/s/fran_storage/projects/totalseg/cases.db"
 
     conn = sqlite3.connect(db_name)
     
-    ss = """ALTER TABLE datasources RENAME COLUMN lm_symlink to lm_symlink"""
+    ss = """ALTER TABLE datasources RENAME COLUMN mask to lm"""
     conn.execute(ss)
 # %%
+    # %%
+    ss = """select * FROM datasources"""
+    qr = conn.execute(ss)
+    pd.DataFrame(qr)
+# %%
+

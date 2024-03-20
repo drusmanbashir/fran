@@ -211,11 +211,6 @@ class SingleCaseAnalyzer:
 
 
 
-
-        
-
-    
-
     def get_bbox_only_voxels(self):
         return self.img[self.mask != self.bg_label]
 
@@ -327,6 +322,7 @@ def case_analyzer_wrapper(
     voxels=None
     if get_voxels == True:
         voxels = S.get_bbox_only_voxels().float()
+        S.properties['numel_fg']= voxels.numel()
         S.properties["mean_fg"] = int(voxels.mean())
         S.properties["min_fg"] = int(voxels.min())
         S.properties["max_fg"] = int(voxels.max())

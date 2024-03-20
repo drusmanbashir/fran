@@ -38,15 +38,6 @@ class InteractiveAnalyserResampler:
 
 
     def analyse_dataset(self):
-            self.MultiAnalyser = MultiCaseAnalyzer(self.proj_defaults,bg_label=0)
-            if len(self.MultiAnalyser.new_cases)>0:
-                self.MultiAnalyser.process_new_cases(
-                    num_processes=self.num_processes,
-                    debug=self.debug,
-                    multiprocess=True,
-                )
-                self.MultiAnalyser.dump_to_h5f()
-                self.MultiAnalyser.store_raw_dataset_properties()
             if self._analyse_dataset_questions() == True:
                 self.GlobalP= GlobalProperties(self.proj_defaults, bg_label=0,clip_range=self.clip_range)
                 self.GlobalP.store_projectwide_properties()
@@ -65,7 +56,7 @@ class InteractiveAnalyserResampler:
             if reanalyse.lower() == "y":
                 return True
 
-    def resample_dataset(self):
+    def resample_dataset(self, generate_bboxes=True):
         # @ask_proceed("Resample dataset?")
         def _inner():
             self.Resampler = ResampleDatasetniftiToTorch(
@@ -90,9 +81,10 @@ class InteractiveAnalyserResampler:
                 overwrite=self.overwrite,
                 debug=self.debug,
             )
-            self.Resampler.generate_bboxes_from_masks_folder(
-                debug=self.debug, bg_label=0,num_processes=self.num_processes
-            )
+            if generate_bboxes==True:
+                self.Resampler.generate_bboxes_from_masks_folder(
+                    debug=self.debug, bg_label=0,num_processes=self.num_processes
+                    )
 
         self.get_resampling_configs()
         # if self.spacings is None:
@@ -290,6 +282,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     parser.add_argument("-c", "--clip-centre", action='store_true', help="Clip and centre data now or during training?")
     parser.add_argument("-r", "--clip-range", nargs='+', help="Give clip range to compute dataset std and mean")
+    parser.add_argument("-p", "--patch-based", action="store_true",  help="if you want a high res patch-based dataset")
     parser.add_argument("-s", "--spacings", nargs='+', help="Give clip range to compute dataset std and mean")
     parser.add_argument("-po", "--patch-overlap" ,help="Generating patches will overlying by this fraction range [0,.9). Default is 0.25 ", default=0.25, type=float)
     parser.add_argument("-hp", "--half_precision" ,action="store_true")
@@ -306,14 +299,14 @@ if __name__ == "__main__":
     # args.num_processes = 1
     args.debug=False
     # args.clip_range=[-100,200]
-    # args.spacings= [.8,.8,1.5]
+    args.spacings= [3,3,3]
     # args.overwrite=False
     I = InteractiveAnalyserResampler(args)
 # %%
     # I.verify_dataset_integrity()
 
-    I.analyse_dataset()
-    I.resample_dataset()
+    # I.analyse_dataset()
+    I.resample_dataset(I.patch_based)
 
 # %%
     I.generate_whole_images_dataset()

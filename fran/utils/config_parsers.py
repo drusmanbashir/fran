@@ -138,8 +138,6 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
 
 class ConfigMaker():
     def __init__(self, project, configuration_filename=None,raytune=False):
-
-
         store_attr()
         if not configuration_filename: configuration_filename = project.configuration_filename
         self.config = load_config_from_workbook(configuration_filename, raytune)
@@ -168,9 +166,11 @@ class ConfigMaker():
 
 
     def add_dataset_props(self):
-        self.config['dataset_params']['clip_range']=self.project.global_properties["intensity_clip_range"]
-        self.config['dataset_params']['mean_fg']=self.project.global_properties["mean_fg"]
-        self.config['dataset_params']['std_fg']=self.project.global_properties["std_fg"]
+        props = ['intensity_clip_range', 'mean_fg', 'std_fg' ,'mean_dataset_clipped', 'std_dataset_clipped']
+        for prop in props:
+            self.config['dataset_params'][prop]=self.project.global_properties[prop]
+        # self.config['dataset_params']['mean_fg']=self.project.global_properties["mean_fg"]
+        # self.config['dataset_params']['std_fg']=self.project.global_properties["std_fg"]
 
     def add_out_channels(self):
             if isinstance(self.config['dataset_params']["src_dest_labels"], Union[tuple,list]):

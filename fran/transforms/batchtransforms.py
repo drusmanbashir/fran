@@ -3,7 +3,7 @@ import ipdb
 tr = ipdb.set_trace
 
 import torch.nn.functional as F
-from fran.transforms.basetransforms import *
+from fran.transforms.base import *
 # class AffineTrainingTransform3D(ItemTransform):
 #     '''
 #     to-do: verify if nearestneighbour method preserves multiple mask labels

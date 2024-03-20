@@ -17,7 +17,7 @@ from fastcore.transform import ItemTransform, store_attr
 
 
 
-class RemapSITK(MapTransform):
+class RemapSITKImage(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
