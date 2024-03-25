@@ -92,7 +92,7 @@ def create_model_from_conf(model_params, dataset_params,metadata=None,deep_super
 def create_model_from_conf_dynunet(model_params, dataset_params):
 
     kernels, strides = get_kernel_strides(
-        dataset_params["patch_size"], dataset_params["spacings"]
+        dataset_params["patch_size"], dataset_params["spacing"]
     )
     model = DynUNet(
         3,
@@ -110,7 +110,7 @@ def create_model_from_conf_dynunet(model_params, dataset_params):
 def create_model_from_conf_dynunet_ub(model_params, dataset_params):
 
     kernels, strides = get_kernel_strides(
-        dataset_params["patch_size"], dataset_params["spacings"]
+        dataset_params["patch_size"], dataset_params["spacing"]
     )
     model = DynUNet_UB(
         3,

@@ -63,12 +63,13 @@ class BaseInferer(GetAttr, DictToAttr):
         devices=[1],
         debug=True,
         save=True,
+        overwrite=True,
     ):
         """
         data is a dataset from Ensemble in this base class
         """
 
-        store_attr("project,run_name,devices,debug, save")
+        store_attr("project,run_name,devices,debug, overwrite,save")
         self.dataset_params = load_dataset_params(run_name)
 
         self.inferer = SlidingWindowInferer(
@@ -101,14 +102,7 @@ class BaseInferer(GetAttr, DictToAttr):
         """
         imgs: list
         """
-        if len(imgs) > 3:
-            self.ds = InferenceDatasetPersistent(
-                project=self.project,
-                data=imgs,
-                cache_dir=self.project.cold_datasets_folder / ("cache"),
-            )
-        else:
-            self.ds = InferenceDatasetNii(self.project, imgs, self.dataset_params)
+        self.ds = InferenceDatasetNii(self.project, imgs, self.dataset_params)
         self.ds.set_transforms("ESN")
         self.pred_dl = DataLoader(self.ds, num_workers=0, batch_size=1, collate_fn=None)
 
@@ -127,7 +121,7 @@ class BaseInferer(GetAttr, DictToAttr):
         Sq = SqueezeDimd(keys=["pred"], dim=0)
         I = Invertd(
             keys=["pred"], transform=self.ds.transform, orig_keys=["image"]
-        )  # watchout: use detach beforeharnd. make sure spacings are correct in preds
+        )  # watchout: use detach beforeharnd. make sure spacing are correct in preds
         A = Activationsd(keys="pred", softmax=True)
         D = AsDiscreted(keys=["pred"], argmax=True)  # ,threshold=0.5)
         C = ToCPUd(keys=["image", "pred"])
@@ -205,6 +199,8 @@ if __name__ == "__main__":
 # %%
     img_fn = "/s/xnat_shadow/nodes/imgs_no_mask/nodes_4_20201024_CAP1p5mm_thick.nii.gz"
 
+    fldr_lidc= Path("/s/xnat_shadow/lidc2/images/")
+    imgs_lidc = list(fldr_lidc.glob("*"))
     img_fns = [img_fn]
     input_data = [{"image": im_fn} for im_fn in img_fns]
     debug = False
@@ -213,7 +209,7 @@ if __name__ == "__main__":
     P = BaseInferer(proj, run_ps[0], debug=debug)
 
 # %%
-    preds = P.run(img_fns)
+    preds = P.run(imgs_lidc,chunksize=3)
 # %%
     imgs = img_fns
     P.prepare_data(imgs)
@@ -231,7 +227,7 @@ if __name__ == "__main__":
 
     I = Invertd(
         keys=["pred"], transform=P.ds.transform, orig_keys=["image"]
-    )  # watchout: use detach beforeharnd. make sure spacings are correct in preds
+    )  # watchout: use detach beforeharnd. make sure spacing are correct in preds
     tfms = [Sq,  A,I ,D, C]
     A = Activationsd(keys="pred", softmax=True)
     pred = preds[0]
@@ -310,7 +306,7 @@ if __name__ == "__main__":
     L = LoadSITKd(
         keys=["image"], image_only=True, ensure_channel_first=False, simple_keys=True
     )
-    S = Spacingd(keys=["image"], pixdim=P.ds.dataset_params["spacings"])
+    S = Spacingd(keys=["image"], pixdim=P.ds.dataset_params["spacing"])
     tfms = [L, S]
     Co = Compose(tfms)
 

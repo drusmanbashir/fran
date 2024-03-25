@@ -1,12 +1,13 @@
 # %%
 from fastcore.all import store_attr
+from fran.utils.helpers import pbar
 import random
+from monai.utils.misc import progress_bar
 import pandas as pd
 import ast
 from fastcore.basics import GetAttr
 from pathlib import Path
 import torch
-import h5py
 import numpy as np
 import ipdb
 
@@ -14,12 +15,12 @@ from fran.utils.string import info_from_filename
 tr = ipdb.set_trace
 
 
-from fran.preprocessing.datasetanalyzers import get_img_mask_filepairs,case_analyzer_wrapper,  get_intensity_range, get_means_voxelcounts, get_std_numerator, percentile_range_to_str
+from fran.preprocessing.datasetanalyzers import get_img_mask_filepairs,case_analyzer_wrapper,  get_intensity_range, get_means_voxelcounts, get_std_numerator, import_h5py, percentile_range_to_str
 from fran.utils.fileio import load_dict, save_dict
 from fran.utils.helpers import multiprocess_multiarg
 
-def unique_idx(total_len):
-        for x in range(1, total_len+1):
+def unique_idx(total_len,start=1):
+        for x in range(start, total_len+1):
             yield(x)
 
 
@@ -59,7 +60,7 @@ class GlobalProperties(GetAttr):
 
     def sample_cases(self,max_cases):
         if max_cases:
-            cases_for_sampling= random.sample(self.case_ids,max_cases)
+            cases_for_sampling= random.sample(self.case_ids,np.minimum(len(self.case_ids),max_cases))
         else:
             cases_for_sampling= self.case_ids
         return cases_for_sampling
@@ -68,6 +69,7 @@ class GlobalProperties(GetAttr):
 
     def retrieve_h5_voxels(self):
         voxels=[]
+        h5py = import_h5py()
         for ds in self.global_properties['datasources']:
             ds_name =ds['ds']
             h5fn = ds['h5_fname']
@@ -90,7 +92,7 @@ class GlobalProperties(GetAttr):
             h5fn = ds['h5_fname']
             cases_ds = [ cid for cid in self.case_ids if ds_name in cid]
             with h5py.File(h5fn, "r") as h5f_file:
-                for cid in cases_ds:
+                for cid in pbar(cases_ds):
                     cs = h5f_file[cid]
                     props = {'case_id':cid, 'spacing': cs.attrs['spacing'] ,'labels':cs.attrs['labels']}
                     case_properties.append(props)
@@ -100,7 +102,9 @@ class GlobalProperties(GetAttr):
 
     def store_projectwide_properties(self):
         '''
+        Stage 1.
         Start here.
+
         '''
         cases = self.retrieve_h5_voxels()
         self.case_properties = self.retrieve_h5_properties()
@@ -128,8 +132,8 @@ class GlobalProperties(GetAttr):
                 spacing = case_["spacing"]
                 all_spacings[ind, :] = spacing
 
-        spacings_median = np.median(all_spacings, 0)
-        self.global_properties["spacings_median"] = spacings_median.tolist()
+        spacing_median = np.median(all_spacings, 0)
+        self.global_properties["spacing_median"] = spacing_median.tolist()
 
         # self.global_properties collected. Now storing
         print(
@@ -208,7 +212,7 @@ class GlobalProperties(GetAttr):
                 self.clip_range = intensity_percentile_range
 
     def collate_lm_labels(self):
-        labels_tot=0
+        labels_all=[]
         lmgps = "lm_group"
         keys = [k for k in self.global_properties.keys() if lmgps in k]
         for key in keys:
@@ -222,12 +226,15 @@ class GlobalProperties(GetAttr):
                         labs_gp.extend(labels)
 
             labs_gp = list(set(labs_gp))
-            labels_tot+=len(labs_gp)
+            self.labels_all.extend(labs_gp)
             print(labs_gp)
 
             self.global_properties[key].update({'labels':labs_gp ,'num_labels':len(labs_gp)})
+        self.global_properties['labels_all'] = list(set(labels_all))
+        labels_tot= len(self.labels_all)
 
         if len(keys)>1: self._remap_labels(keys,labels_tot)
+        self.maybe_append_imported_labels()
         self.save_global_properties()
 
     def serializable_obj(self,ints_list):
@@ -236,11 +243,25 @@ class GlobalProperties(GetAttr):
 
     def _remap_labels(self, keys,labels_tot):
         uns = unique_idx(labels_tot)
+        self.global_properties['labels_all']=[]
         for key in keys:
             gp_labels = self.global_properties[key]['labels']
-            labels_neo = [next(uns) for lab in gp_labels]
+            labels_neo = []
+            for lab in gp_labels:
+                entry = next(uns)
+                labels_neo.append(entry)
+                self.global_properties['labels_all'].append(entry)
             self.global_properties[key]['labels_neo']=labels_neo
 
+
+    def maybe_append_imported_labels(self):
+        for key in self.lm_group_keys:
+            dici = self.global_properties[key]
+            largest_label = self.global_properties['labels_all'][-1]
+            if 'imported_labelsets' in dici.keys():
+                n_labels_to_add = len(dici['imported_labelsets'])
+                labels = list(range(largest_label+1,largest_label+1+n_labels_to_add))
+                self.global_properties['labels_all'].extend(labels)
 
 
 

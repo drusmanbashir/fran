@@ -2,15 +2,41 @@
 import argparse
 import ast
 import shutil
+
+from label_analysis.totalseg import TotalSegmenterLabels
+
+from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from fran.preprocessing.patch import PatchGenerator
 from fran.preprocessing.stage1_preprocessors import *
 from fran.preprocessing.datasetanalyzers import *
-from fran.preprocessing.stage0_preprocessors import ResampleDatasetniftiToTorch, generate_bboxes_from_masks_folder, verify_dataset_integrity
+
 from fran.utils.helpers import *
 from fran.utils.fileio import *
 
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
+
+
+@str_to_path(0)
+def verify_dataset_integrity(folder:Path, debug=False,fix=False):
+    '''
+    folder has subfolders images and masks
+    '''
+    print("Verifying dataset integrity")
+    subfolder = list(folder.glob("mask*"))[0]
+    args = [[fn,fix] for fn in subfolder.glob("*")]
+    res = multiprocess_multiarg(verify_img_label_match,args,debug=debug)
+    errors = [item for item in res if re.search("mismatch", item[0],re.IGNORECASE)]
+    if len(errors)>0:
+        outname = folder/("errors.txt")
+        print(f"Errors found saved in {outname}")
+        save_list(errors,outname)
+        res.insert(0,errors)
+    else:
+        print("All images and masks are verified for matching sizes and spacings.")
+    return res
 
 def user_input(inp:str, out=int):
     tmp = input(inp)
@@ -22,31 +48,41 @@ def user_input(inp:str, out=int):
     return tmp
 
 
-class InteractiveAnalyserResampler:
+class Preprocessor():
+    #dont use getattr
     def __init__(self, args):
         self.assimilate_args(args)
 
         P = Project(project_title=args.project_title); 
-        self.proj_defaults= P
+        self.project= P
+        self.Resampler = ResampleDatasetniftiToTorch(
+                    self.project,
+                    minimum_final_spacing=0.5,
+                    enforce_isotropy=self.enforce_isotropy,
+                    half_precision=self.half_precision,
+                    clip_centre=False,
+                    device='cpu'
+                )
+
+
+
         # 
         print("Project: {0}".format(self.project_title))
 
 
-    @ask_proceed("Verify dataset integry? ..Recommended if this is your first resampling run.")
     def verify_dataset_integrity(self):
-        verify_dataset_integrity(self.proj_defaults.raw_data_folder,debug=self.debug,fix = not self.no_fix)
-
+        verify_dataset_integrity(self.project.raw_data_folder,debug=self.debug,fix = not self.no_fix)
 
     def analyse_dataset(self):
             if self._analyse_dataset_questions() == True:
-                self.GlobalP= GlobalProperties(self.proj_defaults, bg_label=0,clip_range=self.clip_range)
+                self.GlobalP= GlobalProperties(self.project, bg_label=0,clip_range=self.clip_range)
                 self.GlobalP.store_projectwide_properties()
                 self.GlobalP.compute_std_mean_dataset(debug=self.debug)
                 self.GlobalP.collate_lm_labels()
 
     def _analyse_dataset_questions(self):
 
-        global_properties = load_dict(self.proj_defaults.global_properties_filename)
+        global_properties = load_dict(self.project.global_properties_filename)
         if not 'total_voxels' in global_properties.keys():
              return True
         else:
@@ -59,22 +95,13 @@ class InteractiveAnalyserResampler:
     def resample_dataset(self, generate_bboxes=True):
         # @ask_proceed("Resample dataset?")
         def _inner():
-            self.Resampler = ResampleDatasetniftiToTorch(
-                self.proj_defaults,
-                minimum_final_spacing=0.5,
-                enforce_isotropy=self.enforce_isotropy,
-                half_precision=self.half_precision,
-                clip_centre=False
-            )
-
-
-
-            if self.spacings is None:
+        
+            if self.spacing is None:
                 vals = input("Press enter to accept defaults or a list/float for new values: ")
             else:
-                vals = self.spacings
-            self.maybe_change_default_spacings(vals)
-            self.spacings = self.Resampler.spacings
+                vals = self.spacing
+            self.maybe_change_default_spacing(vals)
+            self.spacing = self.Resampler.spacing
             self.Resampler.resample_cases(
                 multiprocess=True,
                 num_processes=self.num_processes,
@@ -87,12 +114,34 @@ class InteractiveAnalyserResampler:
                     )
 
         self.get_resampling_configs()
-        # if self.spacings is None:
+        # if self.spacing is None:
         _inner()
+
+
+    def generate_labelboundeddataset(self):
+        TSL = TotalSegmenterLabels()
+        imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
+        remapping = TSL.create_remapping(imported_labelsets, [8, 9])
+        self.L = LabelBoundedDataGenerator(
+            project=P,
+            expand_by=20,
+            spacing=self.spacing,
+            lm_group="lm_group1",
+            imported_folder=self.imported_folder,
+            imported_labelsets=imported_labelsets,
+            keep_imported_labels=False,
+            remapping=remapping,
+        )
+
+        self.L.create_dl()
+        self.L.process()
+
+
+
     @ask_proceed("Generating low-res whole images to localise organ of interest")
     def generate_whole_images_dataset(self):
-        if not hasattr(self, "spacings"):
-            self.set_spacings()
+        if not hasattr(self, "spacing"):
+            self.set_spacing()
         output_shape = ast.literal_eval(
             input(
                 "Enter whole image matrix shape as list/tuple/number(e.g., [128,128,96]): "
@@ -103,8 +152,8 @@ class InteractiveAnalyserResampler:
                 output_shape,
             ] * 3
         self.WholeImageTM = WholeImageTensorMaker(
-            self.proj_defaults,
-            source_spacings=self.spacings,
+            self.project,
+            source_spacing=self.spacing,
             output_size=output_shape,
             num_processes=self.num_processes,
         )
@@ -114,22 +163,36 @@ class InteractiveAnalyserResampler:
         print("Now call bboxes_from_masks_folder")
         generate_bboxes_from_masks_folder(self.WholeImageTM.output_folder_masks,0,self.debug,self.num_processes)
 
-    @ask_proceed("Generating hi-res patches. I recommend adding extra size to generated patches. The extra voxels will benefit affine transformation and will be cropped out before feeding the data to the NN")
-    def generate_hires_patches_dataset(self,debug=False,overwrite=False):
-        self.set_patch_size()
-        self.set_spacings()
+    def set_patches_config(self,spacing_ind=0,patch_overlap=.25,expand_by=20):
+
+        resampling_configs = self.get_resampling_configs()
+        spacing_config = resampling_configs[spacing_ind]
+        self.spacing, self.fixed_spacing_folder = spacing_config.values()
         patches_output_folder = self.create_patches_output_folder(
-            self.fixed_sp_folder, self.patch_size
+            self.fixed_spacing_folder, self.patch_size
         )
+        patches_config_fn = patches_output_folder / "patches_config.json"
+        if patches_config_fn.exists()==True:
+            print("Patches configs already exist. Loading from file")
+            patches_config = load_dict(patches_config_fn)
+        else:
+            patches_config = {
+                
+                "patch_overlap": patch_overlap,
+                "expand_by": expand_by,
+            }
+        return patches_config, patches_output_folder
 
-        patches_config = self.get_patches_config(patches_output_folder / "patches_config.json")
 
-        PG = PatchGeneratorDataset(self.proj_defaults,self.fixed_sp_folder, self.patch_size,**patches_config)
+
+    def generate_hires_patches_dataset(self,spacing_ind, patch_overlap=.25,expand_by=20,debug=False,overwrite=False):
+        patches_config , patches_output_folder= self.set_patches_config(spacing_ind,patch_overlap,expand_by)
+        PG = PatchGenerator(self.project,self.fixed_spacing_folder, self.patch_size,**patches_config)
         PG.create_patches(overwrite=overwrite,debug=debug)
         print("Generating boundingbox data")
         PG.generate_bboxes(debug=debug)
 
-        resampled_dataset_properties_fn_org = self.fixed_sp_folder / (
+        resampled_dataset_properties_fn_org = self.fixed_spacing_folder / (
             "resampled_dataset_properties.json"
         )
         resampled_dataset_properties_fn_dest = (
@@ -142,71 +205,25 @@ class InteractiveAnalyserResampler:
             )
 
 
-    def get_patches_config(self, patches_config_fn):
-        if patches_config_fn.exists()==True:
-            print("Patches configs already exist. Loading from file")
-            patches_config = load_dict(patches_config_fn)
-        else:
-            expand_by = user_input(
-                "Optionally add surrounding anatomy with target organ? Enter int (e.g., 10 for 10mm): "
-            )
-            patch_overlap = user_input(
-                "Select patch overlap factor: [0,0.9) (current default: {})".format(
-                    self.patch_overlap
-                ),
-                float,
-            )
-            patches_config = {
-                "patch_overlap": patch_overlap,
-                "expand_by": expand_by,
-            }
-        return patches_config
-
     def get_resampling_configs(self):
         try:
             resampling_configs = load_dict(
-                self.proj_defaults.fixed_spacings_folder / ("resampling_configs")
+                self.project.fixed_spacing_folder / ("resampling_configs")
             )
             print(
                 "Based on earlier pre-processing, following data-spacing configs are available:"
             )
             for indx, config in enumerate(resampling_configs):
-                print("Index: {0}, config {1}".format(indx, config["spacings"]))
+                print("Index: {0}, config {1}".format(indx, config["spacing"]))
             return resampling_configs
         except:
             print("No resampling configs exist.")
             return []
 
-
-    def set_spacings(self):
-        resampling_configs = self.get_resampling_configs()
-        while True:
-            try:
-                indx = ast.literal_eval(
-                    input("Enter valid index for desired spacing spec: ")
-                )
-                spacings_config = resampling_configs[indx]
-            except (ValueError, IndexError):
-                continue
-            else:
-                break
-        self.spacings, self.fixed_sp_folder = spacings_config.values()
-
-    def set_patch_size(self):
-        patch_size = ast.literal_eval(
-            input("What patch size? Enter list or int (e.g., [160,160,64]): ")
-        )
-        if isinstance(patch_size, int):
-            patch_size = [
-                patch_size,
-            ] * 3
-        print("Patch size set to: {}".format(patch_size))
-        self.patch_size = patch_size
-
-    def create_patches_output_folder(self, fixed_sp_folder, patch_size):
+    def create_patches_output_folder(self, fixed_spacing_folder, patch_size):
         patches_fldr_name = "dim_{0}_{1}_{2}".format(*patch_size)
         output_folder = (
-            self.proj_defaults.patches_folder / fixed_sp_folder.name / patches_fldr_name
+            self.project.patches_folder / fixed_spacing_folder.name / patches_fldr_name
         )
         # maybe_makedirs(output_folder)
         return output_folder
@@ -215,7 +232,7 @@ class InteractiveAnalyserResampler:
         for key, value in vars(args).items():
             setattr(self, key, value)
 
-    def maybe_change_default_spacings(self, vals):
+    def maybe_change_default_spacing(self, vals):
         def _accept_defaults():
             print("Accepting defaults")
 
@@ -223,12 +240,12 @@ class InteractiveAnalyserResampler:
             if isinstance(vals, str):
                 vals = ast.literal_eval(vals)
             if all([isinstance(vals, (list, tuple)), len(vals) == 3]):
-                self.Resampler.spacings = vals
+                self.Resampler.spacing = vals
             elif isinstance(vals, (int, float)):
                 vals = [
                     vals,
                 ] * 3
-                self.Resampler.spacings = vals
+                self.Resampler.spacing = vals
             else:
                 _accept_defaults()
         except:
@@ -239,10 +256,10 @@ def do_resampling(R, args):
     dim0 = input("Change dim0 to (press enter to leave unchanged)")
     dim1 = input("Change dim2 to (press enter to leave unchanged)")
     dim2 = input("Change dim3 to (press enter to leave unchanged)")
-    spacings = [
-        float(a) if len(a) > 0 else b for a, b in zip([dim0, dim1, dim2], R.spacings)
+    spacing = [
+        float(a) if len(a) > 0 else b for a, b in zip([dim0, dim1, dim2], R.spacing)
     ]
-    R.spacings = spacings
+    R.spacing = spacing
     R.resample_cases(debug=False, overwrite=args.overwrite, multiprocess=True)
 
 
@@ -282,11 +299,12 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     parser.add_argument("-c", "--clip-centre", action='store_true', help="Clip and centre data now or during training?")
     parser.add_argument("-r", "--clip-range", nargs='+', help="Give clip range to compute dataset std and mean")
-    parser.add_argument("-p", "--patch-based", action="store_true",  help="if you want a high res patch-based dataset")
-    parser.add_argument("-s", "--spacings", nargs='+', help="Give clip range to compute dataset std and mean")
+    parser.add_argument("-p", "--patch-size", nargs="+", default=[192,192,128] ,help="e.g., [192,192,128]if you want a high res patch-based dataset")
+    parser.add_argument("-s", "--spacing", nargs='+', help="Give clip range to compute dataset std and mean")
+    parser.add_argument("-i", "--imported-folder")
     parser.add_argument("-po", "--patch-overlap" ,help="Generating patches will overlying by this fraction range [0,.9). Default is 0.25 ", default=0.25, type=float)
     parser.add_argument("-hp", "--half_precision" ,action="store_true")
-    parser.add_argument("-nf", "--no-fix", action="store_false",help="By default if img/mask sitk arrays mismatch in direction, orientation or spacings, FRAN tries to align them. Set this flag to disable")
+    parser.add_argument("-nf", "--no-fix", action="store_false",help="By default if img/mask sitk arrays mismatch in direction, orientation or spacing, FRAN tries to align them. Set this flag to disable")
     parser.add_argument("-d", "--debug", action="store_true")
     parser.add_argument(
         "-np", "--no-pbar", dest="pbar", action="store_false", help="Switch off progress bar"
@@ -295,18 +313,28 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "totalseg"
+    args.project_title = "lidc2"
     # args.num_processes = 1
-    args.debug=False
+    args.debug=True
     # args.clip_range=[-100,200]
-    args.spacings= [3,3,3]
+    args.spacing= [.8,.8,1.5]
     # args.overwrite=False
-    I = InteractiveAnalyserResampler(args)
+    I = Preprocessor(args)
+# %%
+    I.generate_labelboundeddataset()
+    I.resample_dataset()
+
+
+
+# %%
+    PG = PatchGeneratorDataset(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
+    PG.create_patches(overwrite=overwrite,debug=debug)
+    PG.generate_bboxes(debug=debug)
 # %%
     # I.verify_dataset_integrity()
 
     # I.analyse_dataset()
-    I.resample_dataset(I.patch_based)
+    I.resample_dataset(generate_bboxes=True)
 
 # %%
     I.generate_whole_images_dataset()
@@ -314,12 +342,22 @@ if __name__ == "__main__":
 
 # %%
     im1 = "/home/ub/tmp/imgs/litq_72b_20170224_old.pt"
-    im2 = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lilun3/spc_074_074_160/images/litq_72b_20170224.pt"
+    im2 = "/s/fran_storage/datasets/preprocessed/fixed_spacing/lilun3/spc_074_074_160/images/litq_72b_20170224.pt"
     im1 = torch.load(im1)
     im2 = torch.load(im2)
     ImageMaskViewer([im1,im2], data_types=['image','image'])
 # %%
 
-# ii = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lax/spc_080_080_150/images/lits_5.pt"
+    PG = PatchGeneratorDataset(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
+    PG.create_patches(overwrite=overwrite,debug=debug)
+    print("Generating boundingbox data")
+    PG.generate_bboxes(debug=debug)
+# %%
+
+    patch_overlap=0.25
+    expand_by = 20
+    patches_config , patches_output_folder= I.set_patches_config(0,patch_overlap,expand_by)
+# %%
+# ii = "/s/fran_storage/datasets/preprocessed/fixed_spacing/lax/spc_080_080_150/images/lits_5.pt"
 # torch.load(ii).dtype
 # %%

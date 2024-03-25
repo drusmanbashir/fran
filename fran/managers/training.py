@@ -6,7 +6,7 @@ import psutil
 import random
 import torch._dynamo
 
-from fran.managers.data import (DataManager, DataManagerPatch,
+from fran.managers.data import (DataManager, DataManagerLBD, DataManagerPatch,
                                 DataManagerShort, DataManagerSource)
 from fran.utils.batch_size_scaling import (_reset_dataloaders,
                                            _scale_batch_size2)
@@ -117,7 +117,7 @@ class NeptuneImageGridCallback(Callback):
 
     #
     def on_train_start(self, trainer, pl_module):
-        trainer.store_preds = False  # DO NOT SET THIS TO TRUE. IT WILL BUG
+        trainer.store_preds = False  # DO NOT SET THIS TO TRUE. IT WILL BUG  
         len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
         self.freq = np.maximum(2, int(len_dl / self.grid_rows))
 
@@ -639,12 +639,15 @@ class TrainingManager:
         assert mode in [
             "patch",
             "whole",
+            "lbd",
             "source",
         ], "mode must be 'patch', 'whole' or 'source'"
         if mode == "patch":
             DMClass = DataManagerPatch
         elif mode == "source":
             DMClass = DataManagerSource
+        elif mode=="lbd":
+            DMClass = DataManagerLBD
         else:
             raise NotImplementedError(
                 "lowres whole image transforms not yet supported."
@@ -679,7 +682,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
-    project_title = "totalseg"
+    project_title = "lidc2"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -700,9 +703,10 @@ if __name__ == "__main__":
 # %%
     device_id = 1
 # %%
-    bs = 1
+    bs = 3
+    # run_name ='LITS-827'
+    run_name ='LITS-836'
     run_name = None
-    run_name ='LITS-827'
     compiled = False
     profiler=False
 

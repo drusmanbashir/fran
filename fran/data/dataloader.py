@@ -39,6 +39,17 @@ def img_mask_metadata_lists_collated(batch):
         output = {'image': images, 'mask':masks, 'images_meta':images_meta, 'masks_meta':masks_meta}
         return output
 
+def dict_list_collated(keys):
+    def _inner(batch):
+        output ={key:[] for key in keys}
+        for i , item in enumerate(batch):
+            for key in keys:
+                output[key].append(item[key])
+        return output
+    return _inner
+
+
+
 #
 # class TfmdDLKeepBBox(TfmdDL):
 #

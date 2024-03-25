@@ -18,14 +18,14 @@ from monai.data.meta_tensor import MetaTensor
 from monai.transforms import Compose, MapTransform
 from monai.transforms.io.array import SaveImage
 from monai.transforms.transform import Transform
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 from torch.utils.data import Dataset
 from fran.data.dataloader import  img_mask_metadata_lists_collated
 
 from fran.managers.project import get_ds_remapping
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import standardize
-from fran.transforms.misc_transforms import AddMetadata, HalfPrecisiond, RemapSITKImage
+from fran.transforms.misc_transforms import AddMetadata, HalfPrecisiond, Recast, RemapSITK
 from fran.transforms.spatialtransforms import *
 from fran.utils.helpers import *
 from fran.utils.imageviewers import ImageMaskViewer
@@ -121,7 +121,7 @@ class InferenceDatasetNii(Dataset):
                 simple_keys=True,
             )
         self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel") # this creates funny shapes mismatch
-        self.S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacings"])
+        self.S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacing"])
         self.N = NormaliseClipd(
             keys=["image"],
             clip_range=self.dataset_params["intensity_clip_range"],
@@ -168,95 +168,6 @@ class InferenceDatasetNii(Dataset):
 #         dici['image_w'] = self.transform_w(dici['image'])
 #         return dici
 #
-class ResamplerDataset(GetAttr,Dataset):
-    _default = "project"
-
-    def __init__(
-        self,
-        project,
-        spacings,
-        half_precision=False,
-        clip_center=False,
-
-        mean_std_mode: str = "dataset",
-    ):
-
-        assert mean_std_mode in [
-            "dataset",
-            "fg",
-        ], "Select either dataset mean/std or fg mean/std for normalization"
-        self.project = project
-        self.df = self.filter_completed_cases()
-        self.spacings = spacings
-        self.half_precision = half_precision
-        self.clip_center = clip_center
-        super(GetAttr).__init__()
-        self.set_normalization_values(mean_std_mode)
-        self.create_transforms()
-
-    def filter_completed_cases(self):
-        df = self.project.df.copy() # speed up things
-        return df
-    def __len__(self): return len(self.df)   
-
-    def __getitem__(self, index):
-        cp = self.df.iloc[index]
-        ds = cp['ds']
-        remapping = get_ds_remapping(ds, self.global_properties)
-
-        img_fname = cp["image"]
-        mask_fname = cp["lm"]
-        img = sitk.ReadImage(img_fname)
-        mask = sitk.ReadImage(mask_fname)
-        dici = {
-            "image": img,
-            "mask": mask,
-            "image_fname": img_fname,
-            "mask_fname": mask_fname,
-            "remapping": remapping,
-        }
-        dici = self.transform(dici)
-        return dici
-
-
-
-    def create_transforms(self):
-        R = RemapSITKImage(keys=["mask"])
-        L = LoadSITKd(keys=["image", "mask"], image_only=True)
-
-        Ai = AddMetadata(keys=['image'], meta_keys=['image_fname'],renamed_keys=['filename'])
-        Am = AddMetadata(keys=['mask'], meta_keys=['mask_fname','remapping'],renamed_keys=['filename','remapping'])
-        E = EnsureChannelFirstd(keys=["image","mask"], channel_dim="no_channel") # funny shape output mismatch
-        Si = Spacingd(keys=["image"], pixdim=self.spacings,mode="trilinear")
-        Rz = ResizeDynamicd(keys=["mask"], key_spatial_size='image', mode='nearest')
-
-        #Sm = Spacingd(keys=["mask"], pixdim=self.spacings,mode="nearest")
-        N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.global_properties["intensity_clip_range"],
-            mean=self.mean,
-            std=self.std,
-        )
-        tfms = [R,L,Ai,Am,E,Si, Rz]
-        if self.clip_center == True:
-            tfms.extend([N])
-        if self.half_precision == True:
-            H = HalfPrecisiond(keys=["image"])
-            tfms.extend([H])
-        self.transform = Compose(tfms)
-
-
-
-
-    def set_normalization_values(self, mean_std_mode):
-        if mean_std_mode == "dataset":
-            self.mean = self.global_properties["mean_dataset_clipped"]
-            self.std = self.global_properties["std_dataset_clipped"]
-        else:
-            self.mean = self.global_properties["mean_fg"]
-            self.std = self.global_properties["std_fg"]
-
-
 
 class InferenceDatasetPersistent(InferenceDatasetNii, PersistentDataset):
     def __init__(
@@ -275,15 +186,15 @@ class InferenceDatasetPersistent(InferenceDatasetNii, PersistentDataset):
         InferenceDatasetNii.__init__(
             self, project=project, imgs=data, dataset_params=dataset_params
         )
-        PersistentDataset().__init__(
-            data,
-            self.transform,
-            cache_dir,
-            hash_func,
-            pickle_module,
-            pickle_protocol,
-            hash_transform,
-            reset_ops_id,
+        PersistentDataset.__init__(
+            data=data,
+            transform=self.transform,
+            cache_dir=cache_dir,
+            hash_func = hash_func,
+            pickle_module= pickle_module,
+            pickle_protocol=pickle_protocol,
+            hash_transform=hash_transform,
+            reset_ops_id = reset_ops_id,
         )
 
 
@@ -306,36 +217,21 @@ def maybe_set_property(func):
 
 
 class SimpleDatasetPT(Dataset):
-    def __init__(self, parent_folder, fnames, transform=None) -> None:
+    def __init__(self, data  , transform=None) -> None:
         """
         takes files_list, converts to pt format, and creates img/mask pair dataset
         fnames: files_list 
         """
 
         super().__init__()
-        fnames = [strip_extension(fn) for fn in fnames]
-        fnames = [fn + ".pt" for fn in fnames]
-        fnames = fnames
-        images_fldr = parent_folder / ("images")
-        masks_fldr = parent_folder / ("masks")
-        imgs = list(images_fldr.glob("*"))
-        masks = list(masks_fldr.glob("*"))
-        self.img_mask_pairs = []
-        for fn in fnames:
-            fn = Path(fn)
-            img_mask_pair = [find_matching_fn(fn, imgs), find_matching_fn(fn, masks)]
-            self.img_mask_pairs.append(img_mask_pair)
+        self.data = data
 
         self.transform = transform
 
     def __len__(self):
-        return len(self.img_mask_pairs)
-
+        return len(self.data)
     def __getitem__(self, ind):
-        img_fn, label_fn = self.img_mask_pairs[ind]
-        # img = self.create_metatensor(img_fn)
-        # label = self.create_metatensor(label_fn)
-        dici = {"image": img_fn, "label": label_fn}
+        dici = self.data[ind]
         if self.transform:
             dici = self.transform(dici)
         return dici
@@ -734,7 +630,7 @@ if __name__ == "__main__":
     global_properties = load_dict(P.global_properties_filename)
 # %%
 
-    R = ResamplerDataset(project=P, spacings=[3,3,3], half_precision=False)
+    R = ResamplerDataset(project=P, spacing=[3,3,3], half_precision=False)
     dl = DataLoader(dataset=R,num_workers=2,collate_fn = img_mask_metadata_lists_collated,batch_size=2)
 
     iteri = iter(dl)
@@ -745,7 +641,7 @@ if __name__ == "__main__":
     images,masks = bb['image'], bb['mask']
     image = images[0]
     fname = Path(image.meta['filename'])
-    img_fn ="/s/fran_storage/datasets/preprocessed/fixed_spacings/totalseg/spc_300_300_300/images/totalseg_s1418.pt"
+    img_fn ="/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_300_300_300/images/totalseg_s1418.pt"
 
     img = torch.load(img_fn)
     img.shape
@@ -764,14 +660,14 @@ if __name__ == "__main__":
 
 # %%
 
-    spacings = [3,3,3]
+    spacing = [3,3,3]
     R = RemapSITKImage(keys=["mask"])
     L = LoadSITKd(keys=["image", "mask"], image_only=True)
 
     Ai = AddMetadata(keys=['image'], meta_keys=['image_fname'],renamed_keys=['filename'])
     Am = AddMetadata(keys=['mask'], meta_keys=['mask_fname','remapping'],renamed_keys=['filename','remapping'])
     E = EnsureChannelFirstd(keys=["image","mask"], channel_dim="no_channel")
-    Si = Spacingd(keys=["image"], pixdim=spacings,mode="trilinear")
+    Si = Spacingd(keys=["image"], pixdim=spacing,mode="trilinear")
 
     Rz = ResizeDynamicd(keys=["mask"], key_spatial_size='image', mode='nearest')
 

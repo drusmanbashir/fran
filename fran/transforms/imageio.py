@@ -172,6 +172,7 @@ class LoadSITKd(MapTransform):
 
         """
 
+        img = self.maybe_recast_sitk(img)
         data = self._get_array_data(img)
         header = self._get_meta_dict(img)
         header[MetaKeys.ORIGINAL_AFFINE] = self._get_affine(img, self.affine_lps_to_ras)
@@ -196,7 +197,7 @@ class LoadSITKd(MapTransform):
 
     def maybe_recast_sitk(self, img: sitk.Image):
         pixid = img.GetPixelID()
-        if pixid == 5: # unsigned 32 int
+        if pixid in [2,3,5] : # unsigned signed 16 bit, unsigned 32 int
             img = sitk.Cast(img, sitk.sitkInt32)
         return img
 
@@ -206,7 +207,6 @@ class LoadSITKd(MapTransform):
         if isinstance(img, Union[Path,str]):
             img_fn = img
             img = sitk.ReadImage(img)
-            img = self.maybe_recast_sitk(img)
             array_np, meta_data = self.get_data(img, get_labels)
             meta_data[Key.FILENAME_OR_OBJ] = str(img_fn)
         elif isinstance(img, sitk.Image):

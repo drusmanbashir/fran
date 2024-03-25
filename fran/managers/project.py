@@ -1,11 +1,13 @@
 # %%
 
 import sqlite3
+from label_analysis.totalseg import TotalSegmenterLabels
 from fastcore.basics import listify
 import ipdb
 from fastcore.basics import GetAttr
 from monai.utils.enums import StrEnum
 from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper
+from fran.preprocessing.globalproperties import GlobalProperties
 from fran.utils.string import (
     cleanup_fname,
     drop_digit_suffix,
@@ -166,7 +168,7 @@ class Project(DictToAttr):
 
     def populate_raw_data_folder(self):
         query_imgs = "SELECT image, img_symlink FROM datasources"
-        query_masks = "SELECT mask, lm_symlink FROM datasources"
+        query_masks = "SELECT lm, lm_symlink FROM datasources"
         pairs = self.sql_query(query_imgs)
         pairs.extend(self.sql_query(query_masks))
         for pair in pairs:
@@ -270,13 +272,14 @@ class Project(DictToAttr):
         )
         self.configuration_filename = self.project_folder / ("experiment_configs.xlsx")
 
-        self.fixed_spacings_folder = (
+        self.fixed_spacing_folder = (
             self.cold_datasets_folder
             / ("preprocessed/fixed_spacings")
             / self.project_title
         )
         self.global_properties_filename = self.project_folder / "global_properties.json"
         self.patches_folder = self.fixed_dimensions_folder / ("patches")
+        self.lbd_folder= self.fixed_dimensions_folder / ("lbd")
         self.raw_dataset_properties_filename = (
             self.project_folder / "raw_dataset_properties.pkl"
         )
@@ -323,7 +326,7 @@ class Project(DictToAttr):
             cur.executemany(ss, dds)
 
     # @ask_proceed("Create train/valid folds (80:20) ")
-    def create_folds(self, pct_valid=0.2, shuffle=False):
+    def _create_folds(self, pct_valid=0.2, shuffle=False):
         self.delete_duplicates()
         cases_unassigned = self.get_unassigned_cases()
         if len(cases_unassigned) > 0:
@@ -381,7 +384,7 @@ class Project(DictToAttr):
 
 
 
-    def set_label_groups(self,lm_groups:list= None):
+    def set_lm_groups(self,lm_groups:list= None):
         if lm_groups is None:
             self.global_properties['lm_group1']= {'ds': self.datasources}
         elif isinstance(lm_groups[0],Union[list,tuple]):  # list of list
@@ -399,6 +402,21 @@ class Project(DictToAttr):
             if 'lm_group' in key:
                 print(self.global_properties[key])
         self.save_global_properties()
+
+    def imported_labels(self, lm_group,input_fldr,labelsets):
+        dici = self.global_properties[lm_group]
+        dici['imported_folder1']=str(input_fldr)
+        dici['imported_labelsets']= labelsets
+        self.global_properties[lm_group]=dici
+        self.save_global_properties()
+
+    def maybe_store_projectwide_properties(self,clip_range=None,max_cases=250, overwrite=False):
+        self._create_folds()
+        self.G = GlobalProperties(self,max_cases=max_cases,clip_range=clip_range)
+        if not 'labels_all' in self.global_properties.keys() or overwrite==True:
+            self.G.store_projectwide_properties()
+            self.G.compute_std_mean_dataset()
+            self.G.collate_lm_labels()
 
 
 
@@ -456,16 +474,17 @@ class Project(DictToAttr):
         '''
         tells whether postprocessing should remap labels (i.e., if more than 1 lm_group)
         '''
-        
-        key = 'lm_group'
-        keys=[]
-        for k in self.global_properties.keys():
-            if key in k:
-                keys.append(k)
-        if len(keys)>1:
+        if len(self.lm_group_keys)>1:
             return True
         else:
             return False
+
+    @property
+    def lm_group_keys(self):
+        lmgps = "lm_group"
+        keys = [k for k in self.global_properties.keys() if lmgps in k]
+        return keys
+
 
 
 
@@ -623,6 +642,7 @@ class Datasource(GetAttr):
         images = [x[0] for x in self.verified_pairs]
         return images
 
+    
     @property
     def masks(self):
         masks = [x[1] for x in self.verified_pairs]
@@ -660,21 +680,24 @@ def get_ds_remapping(ds:str,global_properties):
         raise Exception("No lm group for dataset {}".format(ds))
 # %%
 if __name__ == "__main__":
-    P= Project(project_title="totalseg")
     liver_ds = [DS.litq,DS.litqsmall,DS.lits,DS.drli]
     # P.create_project([DS.litq,DS.litqsmall,DS.lits,DS.drli,DS.lidc2])
 
-    P.create_project([DS.drli_short,DS.lidctmp])
+    P= Project(project_title="lidc2")
+# %%
     P.create_project([DS.totalseg])
     # P.add_data(DS.litq)
+    P.create_project([DS.lidc2])
+    P.global_properties
 # %%
-    P.set_label_groups([['litq','litqsmall','drli','lits'],['lidc2']])
-    P.set_label_groups([['drli'],['lidc2']])
-    P.set_label_groups()
+    # P.set_lm_groups([['litq','litqsmall','drli','lits'],['lidc2']])
+    P.set_lm_groups([['drli'],['lidc2']])
+    P.set_lm_groups()
+    P.maybe_store_projectwide_properties()
+    # P.set_lm_groups()
 # %%
     # P.add_data(ds5)
     # P.create_project([ds,ds2,ds3,ds4])
-    P.create_folds()
     len(P.raw_data_imgs)
     len(P)
 # %%
@@ -685,6 +708,20 @@ if __name__ == "__main__":
 
 
 # %%
+    TSL = TotalSegmenterLabels()
+    lr= TSL.labels("lung","right")
+    ll = TSL.labels("lung","left")
+
+    remapping  = {l:0 for l in TSL.all}
+    for l in lr:
+        remapping[l]= 8
+
+    for l in ll:
+        remapping[l]= 9
+
+# %%
+    P.imported_labels('lm_group2',Path("/s/fran_storage/predictions/totalseg/LITS-827/"),labelsets =[lr,ll])
+
 # %%
     import sqlite3
     db_name = "/s/fran_storage/projects/totalseg/cases.db"
@@ -694,7 +731,7 @@ if __name__ == "__main__":
     ss = """ALTER TABLE datasources RENAME COLUMN mask to lm"""
     conn.execute(ss)
 # %%
-    # %%
+# %%
     ss = """select * FROM datasources"""
     qr = conn.execute(ss)
     pd.DataFrame(qr)

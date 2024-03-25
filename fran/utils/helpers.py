@@ -124,6 +124,16 @@ def folder_name_from_list(prefix:str,parent_folder:Path,values_list=None):
         output= [dec_to_str(val,add_zeros) for val in values_list]
         subfolder =  "_".join([prefix]+output)
         return parent_folder/subfolder
+
+def spacing_from_folder_name(prefix:str,folder_name:str):
+    assert prefix in ("spc","dim"), "Choose a valid prefix between spc(for spacings) and dim(for patch size)"
+    name = Path(folder_name).name
+    name = name.replace(prefix+"_","")
+    pcs = name.split("_")
+    output= [float(pc)*1e-2 for pc in pcs]
+    return output
+
+    
 # ========================== wrapper functions ====================
 
 

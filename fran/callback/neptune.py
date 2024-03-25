@@ -139,7 +139,7 @@ class NeptuneManager(GetAttr):
         # model_params = self.run_dict['model_params']
         # dataset_params = self.run_dict['dataset_params']
         config_dict = self.download_run_params()
-        resample_spacings = config_dict["dataset_params"]["spacings"]
+        resample_spacing = config_dict["dataset_params"]["spacing"]
         # if not   'out_channels' in model_params:
         #     oc = {'out_channels':  out_channels_from_dict_or_cell(self.run_dict['metadata']['src_dest_labels'])}
         #     model_params['out_channels']  = out_channels_from_dict_or_cell(metadata['src_dest_labels'])
@@ -157,7 +157,7 @@ class NeptuneManager(GetAttr):
         if is_remote(model_dir):
             model_dir = self.shadow_remote_folder(model_dir)
         load_checkpoint(model_dir, model, device)
-        return model, patch_size, resample_spacings, out_channels
+        return model, patch_size, resample_spacing, out_channels
 
     def get_run_id(self, run_name):
         if run_name == "most_recent":

@@ -1,9 +1,18 @@
+
+# %%
+from pathlib import Path
+import SimpleITK as sitk
+
 from functools import partial
+from typing import Union
+from label_analysis.merge import merge_pt
 import torch
 import ipdb
 from label_analysis.helpers import relabel
 from monai.config.type_definitions import KeysCollection
 from monai.transforms.transform import MapTransform
+
+from fran.transforms.base import MonaiDictTransform
 
 tr = ipdb.set_trace
 
@@ -16,13 +25,72 @@ import fran.transforms.spatialtransforms as spatial
 from fastcore.transform import ItemTransform, store_attr
 
 
-
-class RemapSITKImage(MapTransform):
+class ApplyBBox(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
+        bbox_key:str,
         allow_missing_keys: bool = False,
     ) -> None:
+        '''
+        lm which will be overwritten by others should be first in the keys
+        '''
+        
+        self.bbox_key = bbox_key
+        super().__init__(keys, allow_missing_keys)
+
+    def __call__(self, d: dict):
+
+        bbox = d[self.bbox_key]
+        for key in self.key_iterator(d):
+            d[key] = d[key][bbox]
+        return d
+
+
+
+class Recast(MonaiDictTransform):
+    def func(self,img):
+        img = img.float()
+        return img
+
+
+class MergeLabelmapsd (MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        key_output:str,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        '''
+        lm which will be overwritten by others should be first in the keys
+        '''
+        
+        self.key_output = key_output
+        assert len(keys) == 2, "Only allows 2 keys, i.e., 2 pt lms to merge"
+        super().__init__(keys, allow_missing_keys)
+
+    def __call__(self, d: dict):
+
+
+        lms =[]
+        for key in self.key_iterator(d):
+            lms.append (d[key] )
+        lm_out = merge_pt(lms[0],lms[1])
+        d[self.key_output] = lm_out
+        return d
+
+class RemapSITK(MapTransform):
+    '''
+    input can be a file or Image
+    '''
+    
+    def __init__(
+        self,
+        keys: KeysCollection,
+        remapping_key:str,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        self.remapping_key = remapping_key
         super().__init__(keys, allow_missing_keys)
 
     def need_remapping(self,remapping):
@@ -30,13 +98,15 @@ class RemapSITKImage(MapTransform):
         return not all(same)
 
     def __call__(self, d: dict):
-        remapping = d['remapping']
+        remapping = d[self.remapping_key]
 
         for key in self.key_iterator(d):
             d[key] = self.func(d[key],remapping)
         return d
 
     def func(self, lm, remapping):
+        if isinstance(lm,Union[str,Path]):
+            lm = sitk.ReadImage(lm)
         if self.need_remapping(remapping):
             lm = relabel(lm, remapping)
         return lm

@@ -3,6 +3,8 @@ import gc
 import ipdb
 from monai.transforms.post.array import KeepLargestConnectedComponent
 from monai.transforms.utility.array import ToTensor
+from monai.transforms.utility.dictionary import SqueezeDimd
+from fran.transforms.spatialtransforms import ResizeDynamicMetaKeyd, ResizeDynamicd
 
 from fran.transforms.totensor import ToTensorI, ToTensorT
 tr = ipdb.set_trace
@@ -41,7 +43,7 @@ from fran.managers.training import (DataManager, UNetTrainer,
                                     checkpoint_from_model_id)
 from fran.transforms.imageio import SITKReader
 from fran.transforms.inferencetransforms import (
-    BBoxFromPred, KeepLargestConnectedComponentWithMetad, RenameDictKeys, SaveMultiChanneld,
+    BBoxFromPTd, KeepLargestConnectedComponentWithMetad, RenameDictKeys, SaveMultiChanneld,
     ToCPUd, TransposeSITKd)
 from fran.utils.common import *
 from fran.utils.dictopts import DictToAttr
@@ -139,7 +141,7 @@ class PersistentDS(PersistentDataset):
             mean=self.dataset_params["mean_fg"],
             std=self.dataset_params["std_fg"],
         )
-        # S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacings"])
+        # S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacing"])
         C = Compose([N], lazy=True)
         self.batch_transforms = C
 
@@ -154,7 +156,7 @@ class PatchDM(DataManager):
             mean=self.dataset_params["mean_fg"],
             std=self.dataset_params["std_fg"],
         )
-        S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacings"])
+        S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacing"])
         C = Compose([T, E, N, S], lazy=True)
         self.transforms = C
 
@@ -172,20 +174,21 @@ class PatchDM(DataManager):
         pass
 
 
-class WholeImageInferer(GetAttr, DictToAttr):
+class WholeImageInferer(BaseInferer):
     def __init__(
         self,
         project,
         run_name,
         devices=[1],
         debug=True,
+        save=True,
         overwrite=False,
     ):
         """
         data is a dataset from Ensemble in this base class
         """
 
-        store_attr("project,run_name,devices,debug,overwrite")
+        store_attr("project,run_name,devices,debug,overwrite,save")
         self.ckpt = checkpoint_from_model_id(run_name)
         dic1 = torch.load(self.ckpt)
         dic2 = {}
@@ -202,13 +205,16 @@ class WholeImageInferer(GetAttr, DictToAttr):
 
     def create_postprocess_transforms(self):
         I = Invertd(keys=["pred"], transform=self.ds2.transform, orig_keys=["image"])
+        Rz = ResizeDynamicMetaKeyd(
+                keys=["pred"], key_spatial_size="spatial_shape", mode="nearest"
+            )
         D = AsDiscreted(keys=["pred"], argmax=True, threshold=0.5)
         K = KeepLargestConnectedComponentd(keys=["pred"])
         C = ToCPUd(keys=["image", "pred"])
-        B = BBoxFromPred(
-            keys=["pred"], expand_by=20, spacings=self.dataset_params["spacings"]
+        B = BBoxFromPTd(
+            keys=["pred"], expand_by=20, spacing=self.dataset_params["spacing"]
         )
-        tfms = [I, D, K, C, B]
+        tfms = [ D,Rz, K, C, B]
         if self.debug == True:
             Sa = SaveMultiChanneld(
                 keys=["pred"],
@@ -317,7 +323,7 @@ class PatchInferer(WholeImageInferer):
         """
         data is a list containing a dataset from ensemble and bboxes
         """
-        S = Spacingd(keys=["image_cropped"], pixdim=self.dataset_params["spacings"])
+        S = Spacingd(keys=["image_cropped"], pixdim=self.dataset_params["spacing"])
         N = NormaliseClipd(
             keys=["image_cropped"],
             clip_range=self.dataset_params["intensity_clip_range"],
@@ -390,10 +396,19 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         self.predictions_folder = project.predictions_folder
         self.dataset_params = load_dataset_params(runs_p[0])
         self.Ps = [PatchInferer(project=project,run_name=run, devices=devices, debug=debug, overwrite=overwrite_p) for run in runs_p]
-        self.W = WholeImageInferer(
-            project=project, run_name=run_name_w,  debug=True, devices=devices, overwrite=overwrite_w
+        WSInf = self.inferer_from_params(run_name_w)
+        self.W = WSInf( project=project, run_name=run_name_w,  debug=debug, devices=devices, overwrite=overwrite_w
         )
         store_attr()
+
+    def inferer_from_params(self,run_name_w):
+          self.ckpt = checkpoint_from_model_id(run_name_w)
+          dic1 = torch.load(self.ckpt)
+          mode = dic1['datamodule_hyper_parameters']['dataset_params']['mode']
+          if mode == "source":
+            return BaseInferer
+          elif mode == "whole":
+            return WholeImageInferer
 
     def create_ds(self, data):
         """
@@ -405,11 +420,11 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         self.ds = InferenceDatasetNii(self.project, data, self.dataset_params)
         self.ds.set_transforms("E")
 
-    def get_patch_spacings(self, run_name):
+    def get_patch_spacing(self, run_name):
         ckpt = checkpoint_from_model_id(run_name)
         dic1 = torch.load(ckpt)
-        spacings = dic1["datamodule_hyper_parameters"]["dataset_params"]["spacings"]
-        return spacings
+        spacing = dic1["datamodule_hyper_parameters"]["dataset_params"]["spacing"]
+        return spacing
 
 
     def run(self, imgs:list, chunksize=12):
@@ -567,7 +582,7 @@ class CascadeFew(CascadeInferer):
 
 if __name__ == "__main__":
     # ... run your application ...
-    proj = Project(project_title="litsmc")
+    project = Project(project_title="totalseg")
 
     run_w = "LIT-145"
     run_ps = ["LIT-143", "LIT-150", "LIT-149", "LIT-153", "LIT-161"]
@@ -575,8 +590,8 @@ if __name__ == "__main__":
     run_ps = ["LITS-720"]
 
     run_ps = ["LITS-709"]
-    run_ps = ["LITS-787"]
     run_ps = ["LITS-787", "LITS-810", "LITS-811"]
+    run_ts= ["LITS-827"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
@@ -595,118 +610,64 @@ if __name__ == "__main__":
     litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
     litq_imgs = list(Path(litq_fldr).glob("*"))
 # %%
-    En = CascadeInferer(proj, run_w, run_ps, debug=False, devices=[0],overwrite_w=False,overwrite_p=True)
+    En = CascadeInferer(project, run_w, run_ps, debug=False, devices=[0],overwrite_w=False,overwrite_p=True)
 
 # %%
     preds = En.run([img_fn,img_fn2])
 
 # %%
-
-    ImageMaskViewer([img2,pred2])
-# %%
-# %%
-
-    reader = ITKReader()
-    imgs = reader.read(img_fns)
-    dat = reader.get_data(imgs)
-
-    aff = reader._get_affine(img)
-
-    meta = img.GetMetaDataDictionary()
-    keys = meta.GetKeys()
+    run_name_w = "LITS-827"
+    debug=False
+    devices = [0]
+    overwrite_w=False
+    W = WholeImageInferer(
+            project=project, run_name=run_name_w,  debug=debug, devices=devices, overwrite=overwrite_w
+        )
 
 # %%
-    sr = img.GetDimension()
-    sr = max(min(sr, 3), 1)
-    _size = list(itk.size(img))
-    if isinstance(self.channel_dim, int):
-        _size.pop(self.channel_dim)
-# %%
+    data = img_fn
+    ds = InferenceDatasetNii(project, data, W.dataset_params)
+    ds.set_transforms("E")
+    W.setup(ds)
+    p = W.predict()
+    preds = W.postprocess(p)
 
+    preds[0]['pred'].meta
+    preds[0]['pred'].max()
+    W.ds2[0]['image'].meta
+    bb= preds[0]['pred'].meta['bounding_box']
 
-    direction = itk.array_from_matrix(img.GetDirection())
-    spacing = np.asarray(img.GetSpacing())
-    origin = np.asarray(img.GetOrigin())
+    pred2 = preds[0]['pred'][bb]
+    pred2= pred2.cpu()
+    ImageMaskViewer([pred2[0], pred2[0]])
+# %%
+    Rz = ResizeDynamicMetaKeyd(
+            keys=["pred"], key_spatial_size="spatial_shape", mode="nearest"
+        )
+# %%
+# %%
+    preds = p
+    out_final = []
+    batch = preds[0]
+    # for batch in preds:
+    out2 = decollate_batch(batch, detach=True)
+        # for ou in out2:
+    ou=out2[0]
+    tmp = W.postprocess_transforms(ou)
+    out_final.append(tmp)
 
-# %%
-    im2 = sitk.ReadImage(img_fns[0])
+    Sq = SqueezeDimd(keys=["pred"], dim=0)
+    A = Activationsd(keys="pred", softmax=True)
+    D = AsDiscreted(keys=["pred"], argmax=True, threshold=0.5)
+    I = Invertd(keys=["pred"], transform=W.ds2.transform, orig_keys=["image"])
+    ou2 = A(ou)
+    ou3 = D(ou2)
+    ou4 = Rz(ou3)
 
-    sr = im2.GetDimension()
-    direction = im2.GetDirection()
-    if len(direction)!=9:
-        raise NotImplemented
-    else:
-        direction = np.array(direction)
-        direction = direction.reshape(3,3)
-
-    spacing = np.asarray(im2.GetSpacing())
-    origin = np.asarray(im2.GetOrigin())
-
-# %%
-    ds = En.ds
-    ds2 = En2.ds
-
-# %%
-    im = ds[0]['image']
-    im2 = ds2[0]['image']
-# %%
-    for k in im.meta.keys():
-        it1 = im.meta[k]
-        it2  = im2.meta[k]
-        print(k)
-        print(it1==it2)
-# %%
-    im.meta['affine']
-    im2.meta['affine']
-# %%
-    start = time()
-    for n in range(10):
-        print(n)
-        L = LoadImaged(keys=['image'], reader=SITKReader)
-        dici = {'image':img_fn}
-        img = L(dici)
-    stop = time()
-    spent = stop - start
-    print(spent)
-# %%
-    start = time()
-    for n in range(10):
-        L = LoadImaged(keys= ['image'])
-        dici = {'image':img_fn}
-        img = L(dici)
-    stop = time()
-    spent = stop - start
-    print(spent)
-# %%
-    start = time()
-    for n in range(10):
-        La = LoadImaged(keys= ['image'], reader=SITKReader)
-        dici = {'image':img_fn}
-        img = La(dici)
-    stop = time()
-    spent = stop - start
-    print(spent)
-# %%
-    imgs = fnames
-    print("Filtering existing predictions\nNumber of images provided: {}".format(len(imgs)))
-    per_P_done =[]
-
-# %%
-    for P in En.Ps:
-        out_fns = [P.output_folder/img.name for img in imgs]
-        new_P = np.array([fn.exists() for fn in out_fns])
-        per_P_done.append(new_P)
-    if len(En.Ps)>1:
-        per_P_done = np.array(per_P_done)
-        done_by_all= per_P_done.all(axis = 0)
-    else:
-        done_by_all= per_P_done[0]
-# %%
-    done_by_all_not = np.invert(done_by_all)
-    imgs = list(il.compress(imgs, done_by_all_not))
-    print("Number of images remaining to be predicted: {}".format(len(imgs)))
-    print("Filtering existing predictions\nNumber of images provided: {}".format(len(imgs)))
-
-# %%
-
+    ImageMaskViewer([ou3['image'][0].cpu(), ou3['pred'][0].cpu()])
+    ou3 = I(ou2)
+# %%
+    R = Resized(keys=["image"], spatial_size=W.dataset_params["patch_size"])
+    preds = W.postprocess(p)
+    bboxes = [pred["pred"].meta["bounding_box"] for pred in preds]
 # %%

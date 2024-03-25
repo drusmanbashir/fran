@@ -270,40 +270,6 @@ def resize_tensor(img,target_size,mode):
         for times in range(unsqueeze_times): img= img.squeeze(0)
         return img
 
-class ApplyBBox(ItemTransform):
-    '''
-    param bbox: 3-tuple of slices
-    param x: input image of 3 or greater dims. BBox is repeated over every extra dim (e.g., channel or batch dims)
-    '''
-    
-    def __init__(self,bboxes):
-        self.bboxes = tuple(bboxes)
-    def encodes(self, x):
-            self.org_size = x.shape
-            x_out = [x[bbox] for bbox in self.bboxes]
-            return x_out
-
-    def decodes(self,x):
-            bbox = self.bboxes[0] # havent figured out a multi-bbox version
-            img,anything = x
-            self.bbox_equate_dims(img)
-            output_img = torch.zeros(self.org_size)
-            output_img[bbox]= img
-            return output_img,anything
-
-    def bbox_equate_dims(self,img):
-        first_dims = img.dim()- len(self.bbox)
-        first_dims_output_img = img.dim() - len(self.org_size)
-        if first_dims >0:
-            sizes = list(img.shape[:first_dims])
-            slices_added = [slice(0,end) for end in sizes]
-            self.bbox =tuple(slices_added)+self.bbox
-        if first_dims_output_img>0:
-            sizes = list(img.shape[:first_dims])
-            self.org_size = sizes+self.org_size
-
-# A = ApplyBBox([400,400,400],self.bboxes_transformed[0])
-# y = A.encodes([x,self.bboxes_transformed])
 class AddBatchChannelDims(ItemTransform):
     def __init__(self,preserve_dims_on_decode=[0,1]): # (batch,channel)
         self.preserve_dims_on_decode = preserve_dims_on_decode
@@ -513,28 +479,29 @@ class ToCPUd(MapTransform):
         return d
 
 
-class BBoxFromPred(MapTransform):
+class BBoxFromPTd(MapTransform):
     def __init__(
         self,
-        spacings,
+        spacing,
         expand_by: int,  # in millimeters
         keys: KeysCollection,
         allow_missing_keys: bool = False,
     ) -> None:
         super().__init__(keys, allow_missing_keys)
-        store_attr("spacings,expand_by")
+        store_attr("spacing,expand_by")
 
     def __call__(self, d: dict):
         for key in self.key_iterator(d):
             d[key] = self.func(d[key])
+            d['bounding_box']=d[key].meta['bounding_box']
         return d
 
-    def func(self, pred):
-        add_to_bbox = [int(self.expand_by / sp) for sp in self.spacings]
-        bb = generate_spatial_bounding_box(pred, channel_indices=0, margin=add_to_bbox)
+    def func(self, img):
+        add_to_bbox = [int(self.expand_by / sp) for sp in self.spacing]
+        bb = generate_spatial_bounding_box(img, channel_indices=0, margin=add_to_bbox,allow_smaller=True)
         sls = [slice(0, 100, None)] + [slice(a, b, None) for a, b in zip(*bb)]
-        pred.meta["bounding_box"] = sls
-        return pred
+        img.meta["bounding_box"] = sls
+        return img
 
 class SlicesFromBBox(MapTransform):
     def __init__(

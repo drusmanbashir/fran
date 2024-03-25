@@ -32,21 +32,21 @@ from fran.transforms.base import *
 
 
 class ResizeDynamicd(MonaiDictTransform):
-    def __init__(self, keys: KeysCollection, key_spatial_size, mode):
+    def __init__(self, keys: KeysCollection, mode, key_spatial_size):
         super().__init__(keys)
         self.key_spatial_size = key_spatial_size  # spatial size is extracted from this key, typically an image
         self.mode = mode
 
     def __call__(self, data):
-        dici = dict(data)
-        tnsr  =dici[self.key_spatial_size]
+        tnsr  =data[self.key_spatial_size]
+
         if len(tnsr.shape) ==4:
             spatial_size = tnsr[0].shape
         elif len(tnsr.shape) ==3:
             spatial_size = tnsr.shape
-        for key in self.key_iterator(dici):
-            dici[key] = self.func(dici[key], spatial_size, self.mode)
-        return dici
+        for key in self.key_iterator(data):
+            data[key] = self.func(data[key], spatial_size, self.mode)
+        return data
 
     def func(self, data, spatial_size, mode):
         data_out =fm.resize(
@@ -62,6 +62,15 @@ class ResizeDynamicd(MonaiDictTransform):
                     transform_info=None,
                 )
         return data_out
+
+
+class ResizeDynamicMetaKeyd(ResizeDynamicd):
+    def __call__(self,data):
+        for key in self.key_iterator(data):
+            spatial_size = data[key].meta[self.key_spatial_size]
+            spatial_size = spatial_size.tolist()# tnsr to list
+            data[key] = self.func(data[key], spatial_size, self.mode)
+        return data
 
 
 class PadDeficitd(Padd):
