@@ -1,3 +1,5 @@
+
+# %%
 from typing import Union
 from fastcore.basics import listify, store_attr
 from fastcore.transform import ItemTransform
@@ -10,15 +12,19 @@ import ipdb
 
 import itertools as il
 
+from fran.utils.dictopts import DictToAttr
+
 tr = ipdb.set_trace
-# %%
 
 
 class MonaiDictTransform(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
+        **kwargs,
     ) -> None:
+        for key,val in kwargs.items():
+                    setattr(self,key,val)
         super().__init__(keys, False)
     def __call__(self, d: dict):
         for key in self.key_iterator(d):
@@ -27,6 +33,9 @@ class MonaiDictTransform(MapTransform):
 
     def func(self,data):
         pass
+
+
+
 
 class Squeeze(ItemTransform):
 
@@ -128,11 +137,10 @@ class FixDType(ItemTransform):
 # %%
 if __name__ == "__main__":
 # %%
-    def a(): 
-        j = [1,2,3]
-        r  = [11,10]
-        return list(il.chain(j,r[1]))
-
-    Tensor
+    fn = "/home/ub/datasets/preprocessed/litsmc/patches/spc_080_080_150/dim_192_192_128/masks/lits_129ub_17.pt"
+    mask = torch.load(fn)
+    dici = {'mask':mask}
+    C = ChangeDtype(keys=['mask'], target_dtype=torch.uint8)
+    # C = MonaiDictTransform(keys=['mask'], target_dtype=torch.int8)
+    dici2 = C(dici)
 # %%
-    b = a()

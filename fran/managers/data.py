@@ -30,11 +30,13 @@ from monai.utils.module import require_pkg
 from SimpleITK import Not
 from torchvision.utils import Any
 
+from monai.data import Dataset
 from fran.data.dataloader import img_mask_bbox_collated
 from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemap2,
-                               NormaliseClipd, SimpleDatasetPT)
-from fran.transforms.imageio import LoadTorchd
+                               NormaliseClipd, SimpleDataset)
+from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
+from fran.transforms.misc_transforms import ChangeDtype
 from fran.transforms.spatialtransforms import PadDeficitd
 from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
@@ -93,9 +95,9 @@ class DataManager(LightningDataModule):
         self.train_nii, self.valid_nii = self.project.get_train_val_files(
             self.dataset_params["fold"]
         )
-        self.dataset_folder = self.derive_dataset_folder(dataset_mode=dataset_mode)
-        self.data_train = self.create_data_dicts(self.train_nii)
-        self.data_valid = self.create_data_dicts(self.valid_nii)
+        self.dataset_folder = self.derive_dataset_folder()
+        # self.data_train = self.create_data_dicts(self.train_nii)
+        # self.data_valid = self.create_data_dicts(self.valid_nii)
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
@@ -115,30 +117,8 @@ class DataManager(LightningDataModule):
             data.append(dici)
         return data
 
-    def derive_dataset_folder(self, dataset_mode):
-        prefixes, value_lists = ["spc", "dim"], [
-            self.dataset_params["spacing"],
-            self.dataset_params["src_dims"],
-        ]
-
-        if dataset_mode == "patch":
-            parent_folder = self.project.patches_folder
-        elif dataset_mode == "whole":
-            parent_folder = self.project.whole_images_folder
-            for listi in prefixes, value_lists:
-                del listi[0]
-        else:
-            parent_folder = self.project.fixed_spacing_folder
-            for listi in prefixes, value_lists:
-                del listi[1]
-
-        for prefix, value_list in zip(prefixes, value_lists):
-            parent_folder = folder_name_from_list(prefix, parent_folder, value_list)
-        dataset_folder = parent_folder
-        assert dataset_folder.exists(), "Dataset folder {} does not exists".format(
-            dataset_folder
-        )
-        return dataset_folder
+    def derive_dataset_folder(self):
+        raise NotImplementedError
 
     def train_dataloader(self):
         train_dl = DataLoader(
@@ -182,7 +162,13 @@ class DataManager(LightningDataModule):
     def setup(self, stage: str) -> None:
         raise NotImplementedError
 
-
+    @property
+    def src_dims(self):
+        if self.dataset_params["zoom"] == True:
+            src_dims = self.dataset_params["src_dims"]
+        else:
+            src_dims = self.dataset_params["patch_size"]
+        return src_dims
 class DataManagerSource(DataManager):
     def __init__(
         self,
@@ -197,17 +183,36 @@ class DataManagerSource(DataManager):
         )
         self.collate_fn = simple_collated
 
+    def derive_dataset_folder(self):
+        prefix = "spc"
+        spacing = self.dataset_params["spacing"]
+        parent_folder = self.project.fixed_spacing_folder
+        dataset_folder = folder_name_from_list(prefix, parent_folder, spacing)
+        return dataset_folder
+
+
+    def prepare_data(self):
+        super().prepare_data()
+        self.data_train = self.create_data_dicts(self.train_nii)
+        self.data_valid = self.create_data_dicts(self.valid_nii)
+
+
     def create_transforms(self):
-        if self.dataset_params["zoom"] == True:
-            src_dims = self.dataset_params["src_dims"]
-        else:
-            src_dims = self.dataset_params["patch_size"]
-        L = LoadTorchd(keys=["image", "label"])
+
+        L = LoadImaged(
+            keys=["image",'label'],
+            image_only=True,
+            ensure_channel_first=False,
+            simple_keys=True,
+        )
+        L.register(TorchReader())
+
+
         E = EnsureChannelFirstd(keys=["image", "label"], channel_dim="no_channel")
         P = PadDeficitd(
             keys=["image", "label"],
             source_key="image",
-            spatial_size=src_dims,
+            spatial_size=self.src_dims,
             lazy=True,
         )
         Rtr = RandCropByPosNegLabeld(
@@ -215,7 +220,7 @@ class DataManagerSource(DataManager):
             label_key="label",
             image_key="image",
             image_threshold=-2600,
-            spatial_size=src_dims,
+            spatial_size=self.src_dims,
             pos=1,
             neg=1,
             num_samples=self.dataset_params["samples_per_file"],
@@ -277,24 +282,26 @@ class DataManagerSource(DataManager):
 
     def setup(self, stage: str = None):
         self.create_transforms()
-        self.train_ds = SimpleDatasetPT(data=self.data_train, transform=self.tfms_train)
-        self.valid_ds = SimpleDatasetPT(data=self.data_valid, transform=self.tfms_valid)
+        self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
+        self.valid_ds = Dataset(data=self.data_valid, transform=self.tfms_valid)
 
 
 class DataManagerLBD(DataManagerSource):
-    def prepare_data(self):
-        self.train_list, self.valid_list = self.project.get_train_val_files(
-            self.dataset_params["fold"]
-        )
+    def derive_dataset_folder(self,dataset_mode=None):
         spacing = self.dataset_params["spacing"]
         parent_folder = self.project.lbd_folder
-        self.dataset_folder = folder_name_from_list(
+        dataset_folder = folder_name_from_list(
             prefix="spc", parent_folder=parent_folder, values_list=spacing
         )
-        assert self.dataset_folder.exists(), "Dataset folder {} does not exists".format(
-            self.dataset_folder
+        assert dataset_folder.exists(), "Dataset folder {} does not exists".format(
+            dataset_folder
         )
+        return dataset_folder
 
+    def prepare_data(self):
+        super().prepare_data()
+        self.data_train = self.create_data_dicts(self.train_nii)
+        self.data_valid = self.create_data_dicts(self.valid_nii)
 
 class DataManagerShort(DataManager):
     def prepare_data(self):
@@ -318,6 +325,15 @@ class DataManagerPatch(DataManager):
             project, dataset_params, transform_factors, affine3d, batch_size
         )
         self.collate_fn = img_mask_bbox_collated
+
+    def derive_dataset_folder(self):
+            parent_folder = self.project.patches_folder
+            spacing = self.dataset_params["spacing"]
+            subfldr1 = folder_name_from_list("spc",parent_folder,spacing)
+            src_dims= self.src_dims
+            subfldr2 =  folder_name_from_list("dim",subfldr1,src_dims)
+            return subfldr2
+
 
     def create_transforms(self):
         all_after_item = [
@@ -363,6 +379,7 @@ class DataManagerPatch(DataManager):
         ]
         self.tfms_train = Compose(all_after_item + t2 + t3)
         self.tfms_valid = Compose(all_after_item + t3)
+
 
     def setup(self, stage: str = None):
         self.create_transforms()
@@ -431,7 +448,7 @@ if __name__ == "__main__":
 # %%
     dl = D.train_dataloader()
     iteri = iter(dl)
-    aa = D.train_ds[0]
+    aa = D.Train_ds[0]
     b = next(iteri)
     print(b["image"].shape)
 # %%
@@ -444,4 +461,4 @@ if __name__ == "__main__":
     img = b["image"][ind][0]
     lab = b["label"][ind][0]
     ImageMaskViewer([img, lab])
-# %%
+# %

@@ -682,7 +682,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
-    project_title = "lidc2"
+    project_title = "totalseg"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -696,17 +696,16 @@ if __name__ == "__main__":
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
-# %%
     conf["model_params"]["arch"] = "nnUNet"
     # conf['model_params']['lr']=1e-3
 
 # %%
     device_id = 1
 # %%
-    bs = 3
+    bs = 1
     # run_name ='LITS-827'
-    run_name ='LITS-836'
     run_name = None
+    # run_name ='LITS-836'
     compiled = False
     profiler=False
 
@@ -734,13 +733,24 @@ if __name__ == "__main__":
 # %%
 
     Tm.D.setup()
+    D = Tm.D
     ds = Tm.D.train_ds
     dl = Tm.D.train_dataloader()
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
+    iteri2 = iter(dl2)
 # %%
     # img = ds.create_metatensor(img_fn)
     # label = ds.create_metatensor(label_fn)
+    dici = ds.data[3]
+    dici =ds[3]
+    dici[0]['image']
+    dat =ds.data[5]
+    dici = ds.transform(dat)
+    type(dici)
+    dici = ds[4]
+    dici.keys()
+    dat
     dici = {"image": img_fn, "label": label_fn}
     im = torch.load(img_fn)
 
@@ -748,8 +758,9 @@ if __name__ == "__main__":
 
 
 # %%
-    b = next(iteri)
+    b = next(iteri2)
 
+    b['image'].shape
     m = Tm.N.model
     N = Tm.N
 
@@ -760,7 +771,9 @@ if __name__ == "__main__":
             print(casei[a]['image'].shape)
 # %%
     for i,b in enumerate(dl):
+        print("\----------------------------")
         print(b['image'].shape )
+        print(b['label'].shape )
 # %%
     # b2 = next(iter(dl2))
     batch = b

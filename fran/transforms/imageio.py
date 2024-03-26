@@ -422,6 +422,54 @@ class SITKReader(ITKReader):
         return np_img if self.reverse_indexing else np.moveaxis(np_img.T, 0, -1)
 
 
+
+class TorchReader(ImageReader):
+
+
+    def get_data(self, img) -> tuple[torch.Tensor, dict]:
+        """
+        Extract data array and metadata from loaded image and return them.
+        This function returns two objects, first is numpy array of image data, second is dict of metadata.
+        It constructs `affine`, `original_affine`, and `spatial_shape` and stores them in meta dict.
+        When loading a list of files, they are stacked together at a new dimension as the first dimension,
+        and the metadata of the first image is used to represent the output metadata.
+
+        Args:
+            img: an ITK image object loaded from an image file or a list of ITK image objects.
+
+        """
+        img_array: list[torch.Tensor] = []
+        for i in ensure_tuple(img):
+            header = i.meta
+            img_array.append(i)
+
+        img_array = torch.stack(img_array, 0)
+        img_array= np.array(img_array)
+        return img_array, header
+
+
+
+
+    def verify_suffix(self, filename: Sequence[PathLike] | PathLike) -> bool:
+        """
+        Verify whether the specified file or files format is supported by Numpy reader.
+
+        Args:
+            filename: file name or a list of file names to read.
+                if a list of files, verify all the suffixes.
+        """
+        suffixes: Sequence[str] = ["pt"]
+        return is_supported_format(filename, suffixes)
+    def read(self,data, **kwargs):
+
+        img_: list = []
+
+        filenames: Sequence[PathLike] = ensure_tuple(data)
+        for name in filenames:
+            img = torch.load(name,  **kwargs)
+            img_.append(img)
+        return img_ if len(img_) > 1 else img_[0]
+
 class LoadTorchd(MapTransform):
     def __init__(
         self,

@@ -610,6 +610,7 @@ if __name__ == "__main__":
     litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
     litq_imgs = list(Path(litq_fldr).glob("*"))
 # %%
+    run_w = run_ts[0]
     En = CascadeInferer(project, run_w, run_ps, debug=False, devices=[0],overwrite_w=False,overwrite_p=True)
 
 # %%

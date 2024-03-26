@@ -53,6 +53,10 @@ class Recast(MonaiDictTransform):
         img = img.float()
         return img
 
+class ChangeDtype(MonaiDictTransform):
+    def func(self,data):
+        data = data.to(self.target_dtype)
+        return data
 
 class MergeLabelmapsd (MapTransform):
     def __init__(

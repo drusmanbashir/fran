@@ -60,7 +60,7 @@ class BaseInferer(GetAttr, DictToAttr):
         bs=8,
         patch_overlap=0.25,
         mode="gaussian",
-        devices=[1],
+        devices=[0],
         debug=True,
         save=True,
         overwrite=True,
@@ -197,8 +197,10 @@ if __name__ == "__main__":
 # %% run_name = run_ps[0]
 
 # %%
-    img_fn = "/s/xnat_shadow/nodes/imgs_no_mask/nodes_4_20201024_CAP1p5mm_thick.nii.gz"
+    img_fn = "/s/xnat_shadow/lidc2/images/lidc2_0001.nii.gz"
 
+
+    img = sitk.ReadImage(img_fn)
     fldr_lidc= Path("/s/xnat_shadow/lidc2/images/")
     imgs_lidc = list(fldr_lidc.glob("*"))
     img_fns = [img_fn]
@@ -209,7 +211,10 @@ if __name__ == "__main__":
     P = BaseInferer(proj, run_ps[0], debug=debug)
 
 # %%
-    preds = P.run(imgs_lidc,chunksize=3)
+    preds = P.run(img_fns,chunksize=3)
+# %%
+    pp  = preds[0]['pred'][0]
+    ImageMaskViewer([pp,pp])
 # %%
     imgs = img_fns
     P.prepare_data(imgs)
