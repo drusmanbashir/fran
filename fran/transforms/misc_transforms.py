@@ -8,7 +8,7 @@ from typing import Union
 from label_analysis.merge import merge_pt
 import torch
 import ipdb
-from label_analysis.helpers import relabel
+from label_analysis.helpers import listify, relabel
 from monai.config.type_definitions import KeysCollection
 from monai.transforms.transform import MapTransform
 
@@ -46,14 +46,51 @@ class ApplyBBox(MapTransform):
             d[key] = d[key][bbox]
         return d
 
+class SelectLabels(MonaiDictTransform):
+    def __init__(self, keys: KeysCollection, labels) -> None:
+        labels = listify(labels)
+        self.labels = labels
+        super().__init__(keys )
 
+    def func(self,lm):
+        lm_neo = torch.zeros_like(lm)
+        for label in self.labels:
+            lm_neo[lm==label] =label 
+        return lm_neo
+
+
+class MetaToDict(MonaiDictTransform):
+    def __init__(self,keys,meta_keys,renamed_keys=None):
+        '''
+        keys cannot be more than len 1!
+        '''
+        
+        assert len(keys)==1,"keys cannot be more than len 1! Otherwise duplicate keys will be created from metadatas"
+        if renamed_keys is None:
+            renamed_keys = meta_keys
+        store_attr('meta_keys,renamed_keys')
+        super().__init__(keys)
+
+    def extract_metadata(self,tnsr):
+        meta_data = {k1:tnsr.meta[k2] for k1,k2 in zip(self.renamed_keys, self.meta_keys)}
+        return meta_data
+
+    def __call__(self, d: dict):
+
+        for key in self.key_iterator(d):
+            meta_dict = self.extract_metadata(d[key])
+        d.update(meta_dict)
+        return d
+
+
+        
 
 class Recast(MonaiDictTransform):
     def func(self,img):
         img = img.float()
         return img
 
-class ChangeDtype(MonaiDictTransform):
+class ChangeDtyped(MonaiDictTransform):
     def func(self,data):
         data = data.to(self.target_dtype)
         return data
@@ -128,7 +165,9 @@ class HalfPrecisiond(MapTransform):
             d[key] = d[key].to(torch.float16)
         return d
 
-class AddMetadata(MapTransform):
+
+
+class DictToMeta(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,

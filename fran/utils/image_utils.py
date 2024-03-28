@@ -1,3 +1,9 @@
+
+# %%
+
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid
+from pathlib import Path
 import numpy as np
 from numpy.core.fromnumeric import resize
 import torch
@@ -6,6 +12,7 @@ from fran.utils.fileio import save_np
 from fran.utils.helpers import abs_list
 import torch.nn.functional as F
 import ipdb
+from fran.utils.imageviewers import ImageMaskViewer
 
 from fran.utils.string import cleanup_fname
 
@@ -15,7 +22,6 @@ tr = ipdb.set_trace
 
 
 
-# %%
 def convert_float16_to_float32(img_fn):  # for torchfloat32
     img = np.load(img_fn)
     img.dtype
@@ -50,7 +56,6 @@ def resize_tensor_3d(x: torch.Tensor, output_size, mode=None):
     return x
 
 
-# %%
 def resize_multilabel_mask_torch(mask_np, sz_dest_np, label_priority=None):
     if mask_np.dtype == np.uint16:
         mask_np = mask_np.astype(np.uint8)
@@ -81,7 +86,6 @@ def resize_multilabel_mask_sitk(mask_np, sz_dest_np, label_priority):
     return mask_template
 
 
-# %%
 def get_bbox_from_mask(mask, bg_label=0):
     mask_voxel_coords = np.where(mask != bg_label)
     minzidx = int(np.min(mask_voxel_coords[0]))
@@ -178,6 +182,53 @@ def retrieve_properties_from_nii(case):
     properties["itk_direction"] = data_itk[0].GetDirection()
     return properties
 
+# %%
 if __name__ == "__main__":
-    tupl = "/s/fran_storage/datasets/raw_data/lits/masks/lits-51.nii", "/s/fran_storage/datasets/raw_data/lits/masks/lits-51.nii"
+    fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/lidc2/spc_080_080_150/")
+    imgs_fldr = fldr/("images")
+    lms_fldr = fldr/("lms")
+    imgs= list(imgs_fldr.glob("*.*"))
+    lms= list(lms_fldr.glob("*.*"))
+# %%
+    ind = 1
+    img_fn = imgs[ind]
+    lm_fn = lms[ind]
+    img = torch.load(img_fn)
+    lm = torch.load(lm_fn)
 
+
+    sps = lm.meta['spacing']
+    uns = np.unique(sps)
+    if len(uns)!=2:
+        order = [0,1,2]
+    else:
+        inda = np.where(sps== uns[0])[0]
+        indb = np.where(sps==uns[1])[0]
+        if inda.shape[0]==1:
+            long_axis = inda
+            short_axes = indb
+        else:
+            long_axis =indb
+            short_axes = inda
+        long_axis = long_axis.item()
+        mid = int(img.shape[short_axes[1]]/2)
+        mid_axis = short_axes[1]
+        
+
+    img2 = img.permute(short_axes[0], mid_axis, long_axis)
+    lm2 = lm.permute(short_axes[0], mid_axis, long_axis)
+# %%
+# %%
+    # ImageMaskViewer([tnsr,tnsr])
+# %%
+    fig, axs = plt.subplots(2, 2)
+    tnsra = img2[:,mid, :]
+    tnsrb = img2[mid,:, :]
+    lma = lm2[:,mid,:]
+    lmb = lm2[mid,:,:]
+    plt.imshow(lma)
+    plt.show()
+
+
+
+# %%

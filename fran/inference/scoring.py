@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
 # %%
     # %%
-    label_files = list((proj_defaults.raw_data_folder/("masks")).glob("*nii*"))
+    label_files = list((proj_defaults.raw_data_folder/("lms")).glob("*nii*"))
     img_files= list((proj_defaults.raw_data_folder/("images")).glob("*nii*"))
     masks_valid = [filename for filename in label_files if  cleanup_fname(filename.name) in valid_list]
     masks_train = [filename for filename in label_files if  cleanup_fname(filename.name) in train_list]

@@ -74,32 +74,6 @@ class ResizeDynamicMetaKeyd(ResizeDynamicd):
 
 
 class PadDeficitd(Padd):
-    """
-    Dictionary-based wrapper of :py:class:`monai.transforms.ResizeWithPadOrCrop`.
-
-    This transform is capable of lazy execution. See the :ref:`Lazy Resampling topic<lazy_resampling>`
-    for more information.
-
-    Args:
-        keys: keys of the corresponding items to be transformed.
-            See also: monai.transforms.MapTransform
-        spatial_size: the spatial size of output data after padding or crop.
-            If has non-positive values, the corresponding size of input image will be used (no padding).
-        mode: available modes for numpy array:{``"constant"``, ``"edge"``, ``"linear_ramp"``, ``"maximum"``,
-            ``"mean"``, ``"median"``, ``"minimum"``, ``"reflect"``, ``"symmetric"``, ``"wrap"``, ``"empty"``}
-            available modes for PyTorch Tensor: {``"constant"``, ``"reflect"``, ``"replicate"``, ``"circular"``}.
-            One of the listed string values or a user supplied function. Defaults to ``"constant"``.
-            See also: https://numpy.org/doc/1.18/reference/generated/numpy.pad.html
-            https://pytorch.org/docs/stable/generated/torch.nn.functional.pad.html
-            It also can be a sequence of string, each element corresponds to a key in ``keys``.
-        allow_missing_keys: don't raise exception if key is missing.
-        method: {``"symmetric"``, ``"end"``}
-            Pad image symmetrically on every side or only pad at the end sides. Defaults to ``"symmetric"``.
-        lazy: a flag to indicate whether this transform should execute lazily or not. Defaults to False.
-        pad_kwargs: other arguments for the `np.pad` or `torch.pad` function.
-            note that `np.pad` treats channel dimension as the first dimension.
-
-    """
 
     def __init__(
         self,
@@ -1562,7 +1536,7 @@ if __name__ == "__main__":
     json_fname = proj_defaults.validation_folds_filename
 
     imgs = list((proj_defaults.raw_data_folder / ("images")).glob("*"))
-    masks = list((proj_defaults.raw_data_folder / ("masks")).glob("*"))
+    masks = list((proj_defaults.raw_data_folder / ("lms")).glob("*"))
     img_fn = imgs[0]
     mask_fn = masks[0]
     train_ids, val_ids, _ = get_fold_case_ids(

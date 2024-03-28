@@ -90,7 +90,7 @@ class LabelBoundedDataGenerator(PatchGenerator, GetAttr):
             dataset=self.ds,
             num_workers=4,
             collate_fn=dict_list_collated(
-                keys=["image", "mask", "mask_imported", "bounding_box"]
+                keys=["image", "lm", "lm_imported", "bounding_box"]
             ),
             batch_size=4 if debug == False else 1,
         )
@@ -109,12 +109,12 @@ class LabelBoundedDataGenerator(PatchGenerator, GetAttr):
             self.shapes =[]
             images = item["image"]
             if self.keep_imported_labels == False:
-                masks = item["mask"]
+                masks = item["lm"]
             else:
-                masks = item["mask_out"]
+                masks = item["lm_out"]
             for image, mask in zip(images, masks):
                 self.save_pt(image[0], "images")
-                self.save_pt(mask[0], "masks")
+                self.save_pt(mask[0], "lms")
                 self.shapes.append(image.shape[1:])
         self.store_info()
 
@@ -124,7 +124,7 @@ class LabelBoundedDataGenerator(PatchGenerator, GetAttr):
         torch.save(tnsr, fn)
 
     def store_info(self):
-        generate_bboxes_from_masks_folder(self.output_folder/("masks"))
+        generate_bboxes_from_masks_folder(self.output_folder/("lms"))
         self.shapes = np.array(self.shapes)
         fn_dict = self.output_folder / "info.json"
         labels ={k[0]:k[1] for k in self.remapping.items() if self.remapping[k[0]] != 0}
@@ -165,7 +165,7 @@ class ImporterDataset(Dataset):
         Dataset.__init__(self, data=data, transform=self.transform)
 
     def create_data_dicts(self, imported_folder, remapping):
-        masks_folder = self.fixed_spacing_folder / "masks"
+        masks_folder = self.fixed_spacing_folder / "lms"
         images_folder = self.fixed_spacing_folder / "images"
         lm_fns = list(masks_folder.glob("*.pt"))
         img_fns = list(images_folder.glob("*.pt"))
@@ -176,9 +176,9 @@ class ImporterDataset(Dataset):
             img_fn = self.case_id_file_match(cid, img_fns)
             imported_fn = self.case_id_file_match(cid, imported_files)
             dici = {
-                "mask": lm_fn,
+                "lm": lm_fn,
                 "image": img_fn,
-                "mask_imported": imported_fn,
+                "lm_imported": imported_fn,
                 "remapping": remapping,
             }
             data.append(dici)
@@ -192,22 +192,22 @@ class ImporterDataset(Dataset):
 
     def create_transforms(self):
 
-        R = RemapSITK(keys=["mask_imported"], remapping_key="remapping")
-        L1 = LoadSITKd(keys=["mask_imported"], image_only=True)
-        L2 = LoadTorchd(keys=["mask", "image"])
-        Re = Recast(keys=["mask_imported"])
+        R = RemapSITK(keys=["lm_imported"], remapping_key="remapping")
+        L1 = LoadSITKd(keys=["lm_imported"], image_only=True)
+        L2 = LoadTorchd(keys=["lm", "image"])
+        Re = Recast(keys=["lm_imported"])
 
         E = EnsureChannelFirstd(
-            keys=["mask_imported", "image", "mask"], channel_dim="no_channel"
+            keys=["lm_imported", "image", "lm"], channel_dim="no_channel"
         )  # funny shape output mismatch
         Rz = ResizeDynamicd(
-            keys=["mask_imported"], key_spatial_size="mask", mode="nearest"
+            keys=["lm_imported"], key_spatial_size="lm", mode="nearest"
         )
-        M = MergeLabelmapsd(keys=["mask_imported", "mask"], key_output="mask_out")
+        M = MergeLabelmapsd(keys=["lm_imported", "lm"], key_output="lm_out")
         B = BBoxFromPTd(
-            keys=["mask_imported"], spacings=self.spacing, expand_by=self.expand_by
+            keys=["lm_imported"], spacing=self.spacing, expand_by=self.expand_by
         )
-        A = ApplyBBox(keys=["mask", "image", "mask_out"], bbox_key="bounding_box")
+        A = ApplyBBox(keys=["lm", "image", "lm_out"], bbox_key="bounding_box")
         tfms = [R, L1, L2, Re, E, Rz, M, B, A]
         C = Compose(tfms)
         self.transform = C

@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import itk
+from lightning.pytorch import LightningModule
 import numpy as np
 import SimpleITK as sitk
 import torch
@@ -23,7 +24,7 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  SqueezeDimd)
 from prompt_toolkit.shortcuts import input_dialog
 
-from fran.data.dataset import InferenceDatasetNii, InferenceDatasetPersistent
+from fran.data.dataset import InferenceDatasetNii, InferenceDatasetPersistent, NormaliseClipd
 from fran.managers.training import UNetTrainer, checkpoint_from_model_id
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import SaveMultiChanneld, ToCPUd
@@ -62,6 +63,7 @@ class BaseInferer(GetAttr, DictToAttr):
         mode="gaussian",
         devices=[0],
         debug=True,
+        reader=None,
         save=True,
         overwrite=True,
     ):
@@ -69,8 +71,10 @@ class BaseInferer(GetAttr, DictToAttr):
         data is a dataset from Ensemble in this base class
         """
 
-        store_attr("project,run_name,devices,debug, overwrite,save")
+        store_attr("project,run_name,devices,debug, overwrite,save,reader")
+        self.ckpt = checkpoint_from_model_id(run_name)
         self.dataset_params = load_dataset_params(run_name)
+
 
         self.inferer = SlidingWindowInferer(
             roi_size=self.dataset_params["patch_size"],
@@ -79,9 +83,12 @@ class BaseInferer(GetAttr, DictToAttr):
             mode=mode,
             progress=True,
         )
-        self.ckpt = checkpoint_from_model_id(run_name)
+
+    def setup(self,data,tfms:str,collate_fn=None):
+        self.create_transforms()
         self.prepare_model()
-        # self.prepare_data(data)
+        self.prepare_data(data,tfms,collate_fn)
+        self.create_postprocess_transforms()
 
     def run(self, imgs, chunksize=12):
         """
@@ -90,7 +97,6 @@ class BaseInferer(GetAttr, DictToAttr):
         imgs = list_to_chunks(imgs, chunksize)
         for imgs_sublist in imgs:
             self.prepare_data(imgs_sublist)
-            self.create_postprocess_transforms()
             preds = self.predict()
             # preds = self.decollate(preds)
             output = self.postprocess(preds)
@@ -98,13 +104,62 @@ class BaseInferer(GetAttr, DictToAttr):
                 self.save_pred(output)
         return output
 
-    def prepare_data(self, imgs):
+    def create_transforms(self):
+        # single letter name is must for each tfm to use with set_transforms
+        if self.reader:
+            self.L = LoadImaged(
+                keys=["image"],
+                image_only=True,
+                ensure_channel_first=False,
+                simple_keys=True,
+                reader=self.reader,
+            )
+        else:
+            self.L = LoadSITKd(
+                keys=["image"],
+                image_only=True,
+                ensure_channel_first=False,
+                simple_keys=True,
+            )
+        self.E = EnsureChannelFirstd(
+            keys=["image"], channel_dim="no_channel"
+        )  # this creates funny shapes mismatch
+        self.S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacing"])
+        self.N = NormaliseClipd(
+            keys=["image"],
+            clip_range=self.dataset_params["intensity_clip_range"],
+            mean=self.dataset_params["mean_fg"],
+            std=self.dataset_params["std_fg"],
+        )
+
+        self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+
+    def __repr__(self) -> str:
+        return self.__class__
+
+
+    def set_transforms(self, tfms: str = ""):
+        tfms_final = []
+        for tfm in tfms:
+            tfms_final.append(getattr(self, tfm))
+        # if self.input_type == "files":
+        #     tfms_final.insert(0, self.L)
+        transform = Compose(tfms_final)
+        return transform
+
+    def prepare_data(self, data, tfms,collate_fn=None):
         """
-        imgs: list
+        data: list
         """
-        self.ds = InferenceDatasetNii(self.project, imgs, self.dataset_params)
-        self.ds.set_transforms("ESN")
-        self.pred_dl = DataLoader(self.ds, num_workers=0, batch_size=1, collate_fn=None)
+
+        # if len(data)<4:
+        nw,bs = 0,1 # Slicer bugs out
+        # else:
+        # nw,bs = 12,12
+        transform = self.set_transforms(tfms)
+        # self.ds = InferenceDatasetNii(self.project, imgs, self.dataset_params)
+        self.ds = Dataset(data=data,transform=transform)
+        self.pred_dl = DataLoader(self.ds, num_workers=nw, batch_size=bs, collate_fn=collate_fn)
 
     def save_pred(self, preds):
         S = SaveImaged(
@@ -132,7 +187,6 @@ class BaseInferer(GetAttr, DictToAttr):
             separate_folder=False,
         )
 
-
         tfms = [Sq,  A, D,I, C]
         if self.debug == True:
             tfms = [Sq,I,Sa,A,D,C]
@@ -153,18 +207,18 @@ class BaseInferer(GetAttr, DictToAttr):
     def predict(self):
         outputs = []
         self.model.eval()
-        for i, batch in enumerate(self.pred_dl):
-            with torch.no_grad():
-                img_input = batch["image"]
-                img_input = img_input.cuda()
-
-                if "filename_or_obj" in img_input.meta.keys():
-                    print("Processing: ", img_input.meta["filename_or_obj"])
-                output_tensor = self.inferer(inputs=img_input, network=self.model)
-                output_tensor = output_tensor[0]
-                batch["pred"] = output_tensor
-                batch["pred"].meta = batch["image"].meta.copy()
-                outputs.append(batch)
+        with torch.inference_mode():
+            for i, batch in enumerate(self.pred_dl):
+                with torch.no_grad():
+                    img_input = batch["image"]
+                    img_input = img_input.cuda()
+                    if "filename_or_obj" in img_input.meta.keys():
+                        print("Processing: ", img_input.meta["filename_or_obj"])
+                    output_tensor = self.inferer(inputs=img_input, network=self.model)
+                    output_tensor = output_tensor[0]
+                    batch["pred"] = output_tensor
+                    batch["pred"].meta = batch["image"].meta.copy()
+                    outputs.append(batch)
         return outputs
 
     def postprocess(self, preds):

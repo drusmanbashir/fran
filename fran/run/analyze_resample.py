@@ -118,16 +118,22 @@ class Preprocessor():
         _inner()
 
 
-    def generate_labelboundeddataset(self):
+    def generate_TSlabelboundeddataset(self,organ,imported_folder):
+        '''
+        requires resampled folder to exist. Crops within this folder
+        '''
+        imported_folder=Path(imported_folder)
+        
         TSL = TotalSegmenterLabels()
-        imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
+        if organ=="lungs":
+            imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
         remapping = TSL.create_remapping(imported_labelsets, [8, 9])
         self.L = LabelBoundedDataGenerator(
-            project=P,
+            project=self.project,
             expand_by=20,
             spacing=self.spacing,
             lm_group="lm_group1",
-            imported_folder=self.imported_folder,
+            imported_folder=imported_folder,
             imported_labelsets=imported_labelsets,
             keep_imported_labels=False,
             remapping=remapping,
@@ -321,8 +327,8 @@ if __name__ == "__main__":
     # args.overwrite=False
     I = Preprocessor(args)
 # %%
-    I.generate_labelboundeddataset()
-    I.resample_dataset()
+    # I.resample_dataset()
+    I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
 
 
 

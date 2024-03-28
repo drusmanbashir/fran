@@ -1,32 +1,31 @@
-
 # %%
 import itertools
-from pathlib import Path
-import pandas as pd
-import torch
 import operator
-from fastcore.all import Union, save_pickle, store_attr
-from monai.data.dataloader import DataLoader
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
-from torch.utils.data import Dataset
-from fran.data.dataloader import img_mask_metadata_lists_collated
-from fran.data.dataset import NormaliseClipd
+from pathlib import Path
 
+import numpy as np
+import pandas as pd
+import SimpleITK as sitk
+import torch
+from fastcore.all import Union, save_pickle, store_attr
+from fastcore.foundation import GetAttr
+from monai.data.dataloader import DataLoader
+from monai.transforms.compose import Compose
+from monai.transforms.spatial.dictionary import Orientationd, Spacingd
+from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
+                                                 FgBgToIndicesd, ToDeviced)
+from torch.utils.data import Dataset
+
+from fran.data.dataloader import img_lm_metadata_lists_collated
+from fran.data.dataset import NormaliseClipd
 from fran.managers.project import get_ds_remapping
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
-from fran.transforms.misc_transforms import AddMetadata, HalfPrecisiond, Recast, RemapSITK
-
-import SimpleITK as sitk
-from fastcore.foundation import GetAttr
-from monai.transforms.compose import Compose
-from monai.transforms.spatial.dictionary import Orientationd, Spacingd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from fran.transforms.inferencetransforms import ChangeDType
+from fran.transforms.misc_transforms import (ChangeDtyped, DictToMeta, HalfPrecisiond,
+                                             Recast, RemapSITK)
 from fran.transforms.spatialtransforms import ResizeDynamicd
-
 from fran.utils.common import *
-import numpy as np
-
 from fran.utils.fileio import load_dict, maybe_makedirs, save_dict, save_json
 from fran.utils.helpers import folder_name_from_list, multiprocess_multiarg
 from fran.utils.string import strip_extension
@@ -49,6 +48,7 @@ def generate_bboxes_from_masks_folder(
     print("Storing bbox info in {}".format(bbox_fn))
     save_dict(bboxes, bbox_fn)
 
+
 class ResampleDatasetniftiToTorch(GetAttr):
     _default = "project"
 
@@ -59,7 +59,7 @@ class ResampleDatasetniftiToTorch(GetAttr):
         enforce_isotropy=True,
         half_precision=False,
         clip_centre=True,
-        device='cpu'
+        device="cpu",
     ) -> None:
         """
         minimum_final_spacing is only used when enforce_isotropy is True
@@ -90,20 +90,32 @@ class ResampleDatasetniftiToTorch(GetAttr):
         print("Resampling dataset to spacing: {0}".format(self.spacing))
         output_subfolders = [
             self.resampling_output_folder / ("images"),
-            self.resampling_output_folder / ("masks"),
+            self.resampling_output_folder / ("lms"),
         ]
         maybe_makedirs(output_subfolders)
 
-        ds = ResamplerDataset(project=self.project, spacing=self._spacing, half_precision=self.half_precision,device=self.device)
-        dl = DataLoader(dataset=ds,num_workers=4,collate_fn = img_mask_metadata_lists_collated,batch_size=4 if debug==False else 1)
-        self.results=[]
+        ds = ResamplerDataset(
+            project=self.project,
+            spacing=self._spacing,
+            half_precision=self.half_precision,
+            device=self.device,
+        )
+        dl = DataLoader(
+            dataset=ds,
+            num_workers=4,
+            collate_fn=img_lm_metadata_lists_collated,
+            batch_size=4 if debug == False else 1,
+        )
+        self.results = []
         for id, batch in enumerate(dl):
-            images,masks = batch['image'], batch['mask']
-            for img, mask in zip(images,masks):
-                assert img.shape == mask.shape, "Mismatch in shape".format(img.shape,mask.shape)
-                assert img.dim()==4, "Images should be CxHxWxD"
-                self.save_tensor(img[0],output_subfolders[0],overwrite) 
-                self.save_tensor(mask[0],output_subfolders[1],overwrite) 
+            images, lms = batch["image"], batch["lm"]
+            for img, lm in zip(images, lms):
+                assert img.shape == lm.shape, "Mismatch in shape".format(
+                    img.shape, lm.shape
+                )
+                assert img.dim() == 4, "Images should be CxHxWxD"
+                self.save_tensor(img[0], output_subfolders[0], overwrite)
+                self.save_tensor(lm[0], output_subfolders[1], overwrite)
                 self.results.append(self.get_tensor_stats(img))
         self.results = pd.DataFrame(self.results).values
         if self.results.shape[-1] == 3:  # only store if entire dset is processed
@@ -114,24 +126,21 @@ class ResampleDatasetniftiToTorch(GetAttr):
             )
         update_resampling_configs(self.spacing, self.resampling_output_folder)
 
-    def save_tensor(self,tnsr,output_folder,overwrite):
-        fname = Path(tnsr.meta['filename'])
-        fname_name = strip_extension(fname.name)+".pt"
-        fname_full = output_folder/fname_name
-        if overwrite==True or not fname_full.exists():
+    def save_tensor(self, tnsr, output_folder, overwrite):
+        fname = Path(tnsr.meta["filename"])
+        fname_name = strip_extension(fname.name) + ".pt"
+        fname_full = output_folder / fname_name
+        if overwrite == True or not fname_full.exists():
             print("Writing preprocess tensor to ", fname_full)
-            torch.save(tnsr,fname_full)
+            torch.save(tnsr, fname_full)
 
-
-
-    def get_tensor_stats(self,tnsr):
+    def get_tensor_stats(self, tnsr):
         dic = {
             "max": tnsr.max().item(),
             "min": tnsr.min().item(),
             "median": np.median(tnsr),
         }
         return dic
-
 
     def _store_resampled_dataset_properties(self):
         resampled_dataset_properties = dict()
@@ -154,7 +163,7 @@ class ResampleDatasetniftiToTorch(GetAttr):
     def generate_bboxes_from_masks_folder(
         self, bg_label=0, debug=False, num_processes=8
     ):
-        masks_folder = self.resampling_output_folder / ("masks")
+        masks_folder = self.resampling_output_folder / ("lms")
         print("Generating bbox info from {}".format(masks_folder))
         generate_bboxes_from_masks_folder(
             masks_folder,
@@ -282,8 +291,7 @@ def update_resampling_configs(spacing, resampling_output_folder):
         print("Set of specs already exist in a folder. Nothing is changed.")
 
 
-
-class ResamplerDataset(GetAttr,Dataset):
+class ResamplerDataset(GetAttr, Dataset):
     _default = "project"
 
     def __init__(
@@ -292,9 +300,9 @@ class ResamplerDataset(GetAttr,Dataset):
         spacing,
         half_precision=False,
         clip_center=False,
-
+        store_label_inds=False,
         mean_std_mode: str = "dataset",
-        device='cuda'
+        device="cuda",
     ):
 
         assert mean_std_mode in [
@@ -306,19 +314,21 @@ class ResamplerDataset(GetAttr,Dataset):
         self.spacing = spacing
         self.half_precision = half_precision
         self.clip_center = clip_center
-        self.device=device
+        self.device = device
         super(GetAttr).__init__()
         self.set_normalization_values(mean_std_mode)
         self.create_transforms()
 
     def filter_completed_cases(self):
-        df = self.project.df.copy() # speed up things
+        df = self.project.df.copy()  # speed up things
         return df
-    def __len__(self): return len(self.df)   
+
+    def __len__(self):
+        return len(self.df)
 
     def __getitem__(self, index):
         cp = self.df.iloc[index]
-        ds = cp['ds']
+        ds = cp["ds"]
         remapping = get_ds_remapping(ds, self.global_properties)
 
         img_fname = cp["image"]
@@ -327,36 +337,47 @@ class ResamplerDataset(GetAttr,Dataset):
         mask = sitk.ReadImage(mask_fname)
         dici = {
             "image": img,
-            "mask": mask,
+            "lm": mask,
             "image_fname": img_fname,
-            "mask_fname": mask_fname,
+            "lm_fname": mask_fname,
             "remapping": remapping,
         }
         dici = self.transform(dici)
         return dici
 
-
-
     def create_transforms(self):
-        R = RemapSITK(keys=["mask"], remapping_key='remapping')
-        L = LoadSITKd(keys=["image", "mask"], image_only=True)
-        T = ToDeviced(keys=["image", "mask"], device=self.device)
-        Re=Recast(keys=["image", "mask"])
+        R = RemapSITK(keys=["lm"], remapping_key="remapping")
+        L = LoadSITKd(keys=["image", "lm"], image_only=True)
+        T = ToDeviced(keys=["image", "lm"], device=self.device)
+        Re = Recast(keys=["image", "lm"])
 
-        Ai = AddMetadata(keys=['image'], meta_keys=['image_fname'],renamed_keys=['filename'])
-        Am = AddMetadata(keys=['mask'], meta_keys=['mask_fname','remapping'],renamed_keys=['filename','remapping'])
-        E = EnsureChannelFirstd(keys=["image","mask"], channel_dim="no_channel") # funny shape output mismatch
-        Si = Spacingd(keys=["image"], pixdim=self.spacing,mode="trilinear")
-        Rz = ResizeDynamicd(keys=["mask"], key_spatial_size='image', mode='nearest')
+        Ind = FgBgToIndicesd(keys=["lm"], image_key="image", image_threshold=-2600)
+        Ai = DictToMeta(
+            keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
+        )
+        Am = DictToMeta(
+            keys=["lm"],
+            meta_keys=["lm_fname", "remapping", "lm_fg_indices", "lm_bg_indices"],
+            renamed_keys=["filename", "remapping", "lm_fg_indices", "lm_bg_indices"],
+        )
+        E = EnsureChannelFirstd(
+            keys=["image", "lm"], channel_dim="no_channel"
+        )  # funny shape output mismatch
+        Si = Spacingd(keys=["image"], pixdim=self.spacing, mode="trilinear")
+        Rz = ResizeDynamicd(keys=["lm"], key_spatial_size="image", mode="nearest")
 
-        #Sm = Spacingd(keys=["mask"], pixdim=self.spacing,mode="nearest")
+        # Sm = Spacingd(keys=["lm"], pixdim=self.spacing,mode="nearest")
         N = NormaliseClipd(
             keys=["image"],
             clip_range=self.global_properties["intensity_clip_range"],
             mean=self.mean,
             std=self.std,
         )
-        tfms = [R,L,T,Re,Ai,Am,E,Si, Rz]
+        Ch = ChangeDtyped(keys=['lm'],target_dtype = torch.uint8)
+
+        
+
+        tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
 
         if self.clip_center == True:
             tfms.extend([N])
@@ -364,9 +385,6 @@ class ResamplerDataset(GetAttr,Dataset):
             H = HalfPrecisiond(keys=["image"])
             tfms.extend([H])
         self.transform = Compose(tfms)
-
-
-
 
     def set_normalization_values(self, mean_std_mode):
         if mean_std_mode == "dataset":
@@ -378,4 +396,61 @@ class ResamplerDataset(GetAttr,Dataset):
 
 
 # %%
+if __name__ == "__main__":
+    from fran.utils.common import *
 
+    project = Project("tmp")
+    Rx = ResamplerDataset(project, spacing=[1.5, 1.5, 1.5])
+
+# %%
+    index = 0
+
+    cp = Rx.df.iloc[index]
+    ds = cp["ds"]
+    remapping = get_ds_remapping(ds, Rx.global_properties)
+
+    img_fname = cp["image"]
+    mask_fname = cp["lm"]
+    img = sitk.ReadImage(img_fname)
+    mask = sitk.ReadImage(mask_fname)
+    dici = {
+        "image": img,
+        "lm": mask,
+        "image_fname": img_fname,
+        "lm_fname": mask_fname,
+        "remapping": remapping,
+    }
+
+    dici = Rx.transform(dici)
+# %%
+    R = RemapSITK(keys=["lm"], remapping_key="remapping")
+    L = LoadSITKd(keys=["image", "lm"], image_only=True)
+    T = ToDeviced(keys=["image", "lm"], device=Rx.device)
+    Re = Recast(keys=["image", "lm"])
+
+    Ind = FgBgToIndicesd(keys=["lm"], image_key="image", image_threshold=-2600)
+    Ai = DictToMeta(
+        keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
+    )
+    Am = DictToMeta(
+        keys=["lm"],
+        meta_keys=["lm_fname", "remapping", "lm_fb_indices", "lm_fg_indices"],
+        renamed_keys=["filename", "remapping", "lm_fb_indices", "lm_fg_indices"],
+    )
+    E = EnsureChannelFirstd(
+        keys=["image", "lm"], channel_dim="no_channel"
+    )  # funny shape output mismatch
+    Si = Spacingd(keys=["image"], pixdim=Rx.spacing, mode="trilinear")
+    Rz = ResizeDynamicd(keys=["lm"], key_spatial_size="image", mode="nearest")
+
+    # Sm = Spacingd(keys=["lm"], pixdim=Rx.spacing,mode="nearest")
+    N = NormaliseClipd(
+        keys=["image"],
+        clip_range=Rx.global_properties["intensity_clip_range"],
+        mean=Rx.mean,
+        std=Rx.std,
+    )
+
+    tf = Compose([R, L, T, Re, Ind])
+    dici = tf(dici)
+# %%

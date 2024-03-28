@@ -5,11 +5,10 @@ from lightning.pytorch.profilers import AdvancedProfiler
 import psutil
 import random
 import torch._dynamo
+from fran.callback.neptune import NeptuneImageGridCallback
 
 from fran.managers.data import (DataManager, DataManagerLBD, DataManagerPatch,
                                 DataManagerShort, DataManagerSource)
-from fran.utils.batch_size_scaling import (_reset_dataloaders,
-                                           _scale_batch_size2)
 
 torch._dynamo.config.suppress_errors = True
 from fran.managers.neptune import NeptuneManager
@@ -21,27 +20,17 @@ from typing import Any
 import neptune as nt
 import torch
 from lightning.pytorch import LightningModule, Trainer
-# from fastcore.basics import GenttAttr
 from lightning.pytorch.callbacks import (Callback, LearningRateMonitor,
                                          TQDMProgressBar, DeviceStatsMonitor)
-from neptune.types import File
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torchvision.transforms import Compose
-from torchvision.utils import make_grid
 
 from fran.architectures.create_network import (create_model_from_conf, nnUNet,
                                                pool_op_kernels_nnunet)
-from fran.data.dataloader import img_mask_bbox_collated
-from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemap2,
-                               NormaliseClipd)
-# from fastai.learner import *
 from fran.evaluation.losses import *
 from fran.transforms.spatialtransforms import one_hot
-from fran.transforms.totensor import ToTensorT
 from fran.utils.common import *
 from fran.utils.fileio import *
 from fran.utils.helpers import *
-from fran.utils.helpers import folder_name_from_list
 from fran.utils.imageviewers import *
 from fran.utils.helpers import *
 
@@ -82,164 +71,11 @@ def checkpoint_from_model_id(model_id):
 
 
 # from fran.managers.base import *
-def normalize(tensr, intensity_percentiles=[0.0, 1.0]):
-    tensr = (tensr - tensr.min()) / (tensr.max() - tensr.min())
-    tensr = tensr.to("cpu", dtype=torch.float32)
-    qtiles = torch.quantile(tensr, q=torch.tensor(intensity_percentiles))
-
-    vmin = qtiles[0]
-    vmax = qtiles[1]
-    tensr[tensr < vmin] = vmin
-    tensr[tensr > vmax] = vmax
-    return tensr
 
 
 # class NeptuneCallback(Callback):
 # def on_train_epoch_start(self, trainer, pl_module):
 #     trainer.logger.experiment["training/epoch"] = trainer.current_epoch
-
-
-class NeptuneImageGridCallback(Callback):
-    def __init__(
-        self,
-        classes,
-        patch_size,
-        grid_rows=6,
-        imgs_per_batch=4,
-        publish_deep_preds=False,
-        apply_activation=True,
-        epoch_freq=2,  # skip how many epochs.
-    ):
-        if not isinstance(patch_size, torch.Size):
-            patch_size = torch.Size(patch_size)
-        self.stride = int(patch_size[0] / imgs_per_batch)
-        store_attr()
-
-    #
-    def on_train_start(self, trainer, pl_module):
-        trainer.store_preds = False  # DO NOT SET THIS TO TRUE. IT WILL BUG  
-        len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
-        self.freq = np.maximum(2, int(len_dl / self.grid_rows))
-
-    def on_train_epoch_start(self, trainer, pl_module):
-        if trainer.current_epoch % self.epoch_freq == 0:
-            super().on_train_epoch_start(trainer, pl_module)
-            self.grid_imgs = []
-            self.grid_preds = []
-            self.grid_labels = []
-
-    def on_validation_epoch_start(self, trainer, pl_module):
-        self.validation_grid_created = False
-
-    def on_train_batch_start(
-        self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
-        batch: Any,
-        batch_idx: int,
-    ) -> None:
-        if trainer.current_epoch % self.epoch_freq == 0:
-            if trainer.global_step % self.freq == 0:
-                trainer.store_preds = True
-            else:
-                trainer.store_preds = False
-        return super().on_train_batch_start(trainer, pl_module, batch, batch_idx)
-
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if trainer.store_preds == True:
-            self.populate_grid(pl_module, batch)
-
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if trainer.current_epoch % self.epoch_freq == 0:
-            if self.validation_grid_created == False:
-                self.populate_grid(pl_module, batch)
-                self.validation_grid_created = True
-
-    #
-    def on_train_epoch_end(self, trainer, pl_module):
-        if trainer.current_epoch % self.epoch_freq == 0:
-            grd_final = []
-            for grd, category in zip(
-                [self.grid_imgs, self.grid_preds, self.grid_labels],
-                ["imgs", "preds", "labels"],
-            ):
-                grd = torch.cat(grd)
-                if category == "imgs":
-                    grd = normalize(grd)
-                grd_final.append(grd)
-            grd = torch.stack(grd_final)
-            grd2 = (
-                grd.permute(1, 0, 2, 3, 4)
-                .contiguous()
-                .view(-1, 3, grd.shape[-2], grd.shape[-1])
-            )
-            grd3 = make_grid(grd2, nrow=self.imgs_per_batch * 3)
-            grd4 = grd3.permute(1, 2, 0)
-            grd4 = np.array(grd4)
-            trainer.logger.experiment["images"].append(File.as_image(grd4))
-
-    def populate_grid(self, pl_module, batch):
-        def _randomize():
-            n_slices = img.shape[-1]
-            batch_size = img.shape[0]
-            self.slices = [
-                random.randrange(0, n_slices) for i in range(self.imgs_per_batch)
-            ]
-            self.batches = [
-                random.randrange(0, batch_size) for i in range(self.imgs_per_batch)
-            ]
-
-        img = batch["image"].cpu()
-
-        label = batch["label"].cpu()
-        label = label.squeeze(1)
-        label = one_hot(label, self.classes, axis=1)
-        img = img.cpu()
-        # pred = torch.rand(img.shape,device='cuda')
-        # pred.unsqueeze_(0) # temporary hack)
-        # pred = pred.cpu()
-        pred = pl_module.pred
-        if isinstance(pred, Union[list, tuple]):
-            pred = pred[0]
-        elif pred.dim() == img.dim() + 1:  # deep supervision
-            pred = pred[:, 0, :]  # Bx1xCXHXWxD
-
-        # if self.apply_activation == True:
-        pred = F.softmax(pred.to(torch.float32), dim=1)
-
-        _randomize()
-        img, label, pred = (
-            self.img_to_grd(img),
-            self.img_to_grd(label),
-            self.img_to_grd(pred),
-        )
-        img, label, pred = (
-            self.fix_channels(img),
-            self.fix_channels(label),
-            self.fix_channels(pred),
-        )
-
-        self.grid_imgs.append(img)
-        self.grid_preds.append(pred)
-        self.grid_labels.append(label)
-
-    def img_to_grd(self, batch):
-        imgs = batch[self.batches, :, :, :, self.slices].clone()
-        return imgs
-
-    def fix_channels(self, tnsr):
-        if tnsr.shape[1] == 1:
-            tnsr = tnsr.repeat(1, 3, 1, 1)
-        elif tnsr.shape[1] == 2:
-            tnsr = tnsr[:, 1:, :, :]
-            tnsr = tnsr.repeat(1, 3, 1, 1)
-        elif tnsr.shape[1] > 3:
-            chs = tnsr.shape[1]
-            tnsr = tnsr[:, chs - 3 : :, :]
-        else:
-            # tnsr already in 3d
-            pass
-        return tnsr
 
 class UNetTrainer(LightningModule):
     def __init__(
@@ -261,7 +97,7 @@ class UNetTrainer(LightningModule):
     def _common_step(self, batch, batch_idx):
         if not hasattr(self, "batch_size"):
             self.batch_size = batch["image"].shape[0]
-        inputs, target = batch["image"], batch["label"]
+        inputs, target = batch["image"], batch["lm"]
         pred = self.forward(
             inputs
         )  # self.pred so that NeptuneImageGridCallback can use it
@@ -491,7 +327,7 @@ class TrainingManager:
 
     def setup(
         self,
-        batch_size=8,
+        batch_size=None,
         cbs=[],
         logging_freq=25,
         lr=None,
@@ -503,7 +339,10 @@ class TrainingManager:
         description="",
         epochs=1000,
         batchsize_finder=False,
+        cache_rate = 0.0
     ):
+        if batch_size is None:
+            batch_size = self.configs["dataset_params"]["batch_size"]
         if batchsize_finder == True:
             batch_size = self.heuristic_batch_size()
         if lr:
@@ -518,7 +357,7 @@ class TrainingManager:
         if self.ckpt:
             self.D, self.N = self.load_ckpts(lr=lr)
         else:
-            self.D, self.N = self.init_D_N(batch_size, epochs, sync_dist)
+            self.D, self.N = self.init_D_N(cache_rate,batch_size, epochs, sync_dist)
         if neptune == True:
             logger = NeptuneManager(
                 project=self.project,
@@ -582,7 +421,7 @@ class TrainingManager:
         else:
             return 48
 
-    def init_D_N(self, batch_size, epochs, sync_dist, batch_finder=False):
+    def init_D_N(self,cache_rate, batch_size, epochs, sync_dist, batch_finder=False):
         DMClass = self.resolve_datamanager(self.configs["dataset_params"]["mode"])
         D = DMClass(
             self.project,
@@ -590,6 +429,7 @@ class TrainingManager:
             transform_factors=self.configs["transform_factors"],
             affine3d=self.configs["affine3d"],
             batch_size=batch_size,
+            cache_rate =cache_rate
         )
         N = UNetTrainer(
             self.project,
@@ -682,7 +522,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
-    project_title = "totalseg"
+    project_title = "lidc2"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -702,7 +542,7 @@ if __name__ == "__main__":
 # %%
     device_id = 1
 # %%
-    bs = 1
+    bs = 4
     # run_name ='LITS-827'
     run_name = None
     # run_name ='LITS-836'
@@ -712,7 +552,8 @@ if __name__ == "__main__":
     batch_finder = False
     neptune = True
     tags = []
-    description = ""
+    cache_rate=0.3
+    description = f"ssd, saved indices, cache {cache_rate}"
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,
@@ -724,6 +565,7 @@ if __name__ == "__main__":
         neptune=neptune,
         tags=tags,
         description=description,
+        cache_rate=cache_rate
     )
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
@@ -751,11 +593,12 @@ if __name__ == "__main__":
     dici = ds[4]
     dici.keys()
     dat
-    dici = {"image": img_fn, "label": label_fn}
+    dici = {"image": img_fn, "lm": label_fn}
     im = torch.load(img_fn)
 
     im.shape
 
+# %%
 
 # %%
     b = next(iteri2)
@@ -777,7 +620,7 @@ if __name__ == "__main__":
 # %%
     # b2 = next(iter(dl2))
     batch = b
-    inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]
+    inputs, target, bbox = batch["image"], batch["lm"], batch["bbox"]
 
     [pp(a["filename"]) for a in bbox]
 # %%

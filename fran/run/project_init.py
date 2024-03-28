@@ -26,7 +26,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Create new project or manage existing ones")
     parser.add_argument("-t", help="project title")
-    parser.add_argument("-i","--input-folders" , help="Dataset parent folder containing subfolders 'images' and 'masks'",nargs='+')
+    parser.add_argument("-i","--input-folders" , help="Dataset parent folder containing subfolders 'images' and 'lms'",nargs='+')
     parser.add_argument("-d" ,"--delete" ,action='store_true')
 
 # %%

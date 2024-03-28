@@ -6,7 +6,7 @@ from fastcore.basics import listify
 import ipdb
 from fastcore.basics import GetAttr
 from monai.utils.enums import StrEnum
-from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper
+from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, import_h5py
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.utils.string import (
     cleanup_fname,
@@ -161,7 +161,7 @@ class Project(DictToAttr):
         maybe_makedirs(self.project_folder)
         additional_folders = [
             self.raw_data_folder / ("images"),
-            self.raw_data_folder / ("masks"),
+            self.raw_data_folder / ("lms"),
         ]
         for folder in il.chain(self.folders, additional_folders):
             maybe_makedirs(folder)
@@ -254,16 +254,16 @@ class Project(DictToAttr):
 
     def set_folder_file_names(self):
         common_paths = load_yaml(common_vars_filename)
+        rapid_access_folder = Path(common_paths["rapid_access_folder"])/self.project_title
         self.project_folder = Path(common_paths["projects_folder"]) / self.project_title
         self.cold_datasets_folder = (
             Path(common_paths["cold_storage_folder"]) / "datasets"
         )
-        self.fixed_dimensions_folder = (
-            Path(common_paths["rapid_access_folder"]) / self.project_title
-        )
-        self.predictions_folder = Path(common_paths["cold_storage_folder"]) / (
-            "predictions/" + self.project_title
-        )
+        self.fixed_spacing_folder = self.cold_datasets_folder/("preprocessed/fixed_spacing")/self.project_title
+        self.fixed_spacing_folder = rapid_access_folder / ("fixed_spacing")
+        # self.predictions_folder = Path(common_paths["cold_storage_folder"]) / (
+        #     "predictions/" + self.project_title
+        # )
         self.raw_data_folder = self.cold_datasets_folder / (
             "raw_data/" + self.project_title
         )
@@ -272,21 +272,17 @@ class Project(DictToAttr):
         )
         self.configuration_filename = self.project_folder / ("experiment_configs.xlsx")
 
-        self.fixed_spacing_folder = (
-            self.cold_datasets_folder
-            / ("preprocessed/fixed_spacings")
-            / self.project_title
-        )
         self.global_properties_filename = self.project_folder / "global_properties.json"
-        self.patches_folder = self.fixed_dimensions_folder / ("patches")
-        self.lbd_folder= self.fixed_dimensions_folder / ("lbd")
+        self.patches_folder = rapid_access_folder / ("patches")
+        self.cache_folder= rapid_access_folder / ("cache")
+        self.lbd_folder= rapid_access_folder / ("lbd")
         self.raw_dataset_properties_filename = (
             self.project_folder / "raw_dataset_properties.pkl"
         )
 
         self.bboxes_voxels_info_filename = self.raw_data_folder / ("bboxes_voxels_info")
         self.validation_folds_filename = self.project_folder / ("validation_folds.json")
-        self.whole_images_folder = self.fixed_dimensions_folder / ("whole_images")
+        self.whole_images_folder = rapid_access_folder / ("whole_images")
         self.raw_dataset_info_filename = self.project_folder / ("raw_dataset_srcs.pkl")
         self.log_folder = self.project_folder / ("logs")
 
@@ -466,7 +462,7 @@ class Project(DictToAttr):
 
     @property
     def raw_data_masks(self):
-        self._raw_data_masks = (self.raw_data_folder / ("masks")).glob("*")
+        self._raw_data_masks = (self.raw_data_folder / ("lms")).glob("*")
         return list(self._raw_data_masks)
 
     @property
@@ -491,7 +487,7 @@ class Project(DictToAttr):
 class Datasource(GetAttr):
     def __init__(self, folder: Union[str, Path],name:str=None,bg_label=0, test=False) -> None:
         """
-        src_folder: has subfolders 'images' and 'masks'. Files in each are identically named
+        src_folder: has subfolders 'images' and 'lms'. Files in each are identically named
         """
         self.bg_label = bg_label
         self.folder = Path(folder)
@@ -519,7 +515,7 @@ class Datasource(GetAttr):
         """
 
         images = list((self.folder / ("images")).glob("*"))
-        masks = list((self.folder / ("masks")).glob("*"))
+        masks = list((self.folder / ("lms")).glob("*"))
         assert (
             a := len(images) == (b := len(masks))
         ), "Different lengths of images {0}, and masks {1}.\nCheck your data folder".format(
@@ -587,6 +583,7 @@ class Datasource(GetAttr):
 
 
     def dump_to_h5(self):
+        h5py = import_h5py()
         if self.h5_fname.exists():
             mode= 'a'
         else: mode = 'w'
@@ -621,7 +618,7 @@ class Datasource(GetAttr):
 
     def extract_img_mask_fnames(self, ds):
         img_fnames = list((ds["source_path"] / ("images")).glob("*"))
-        mask_fnames = list((ds["source_path"] / ("masks")).glob("*"))
+        mask_fnames = list((ds["source_path"] / ("lms")).glob("*"))
         img_symlinks, lm_symlinks = [], []
 
         verified_pairs = []
@@ -685,7 +682,7 @@ if __name__ == "__main__":
 
     P= Project(project_title="lidc2")
 # %%
-    P.create_project([DS.totalseg])
+    P.create_project([DS.drli_short])
     # P.add_data(DS.litq)
     P.create_project([DS.lidc2])
     P.global_properties
@@ -693,7 +690,7 @@ if __name__ == "__main__":
     # P.set_lm_groups([['litq','litqsmall','drli','lits'],['lidc2']])
     P.set_lm_groups([['drli'],['lidc2']])
     P.set_lm_groups()
-    P.maybe_store_projectwide_properties()
+    P.maybe_store_projectwide_properties(overwrite=True)
     # P.set_lm_groups()
 # %%
     # P.add_data(ds5)

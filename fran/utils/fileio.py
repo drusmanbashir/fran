@@ -225,7 +225,7 @@ def rename_and_move_images_and_masks(project_title,img_files,mask_files=None,cou
         else:
             mask_file = None
             img_file = img_files[i]
-        subfolders = main_folder/("images"), main_folder/("masks")
+        subfolders = main_folder/("images"), main_folder/("lms")
         maybe_makedirs(subfolders)
         return img_file,mask_file, subfolders
 

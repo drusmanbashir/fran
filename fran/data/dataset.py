@@ -20,11 +20,11 @@ from monai.transforms.io.array import SaveImage
 from monai.transforms.transform import Transform
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 
-from fran.data.dataloader import img_mask_metadata_lists_collated
+from fran.data.dataloader import img_lm_metadata_lists_collated
 from fran.managers.project import get_ds_remapping
 from fran.transforms.imageio import LoadSITKd, TorchReader
 from fran.transforms.intensitytransforms import standardize
-from fran.transforms.misc_transforms import (AddMetadata, HalfPrecisiond,
+from fran.transforms.misc_transforms import (DictToMeta, HalfPrecisiond,
                                              Recast, RemapSITK)
 from fran.transforms.spatialtransforms import *
 from fran.utils.helpers import *
@@ -53,7 +53,7 @@ from monai.transforms.utility.dictionary import EnsureChannelFirstd
 from fran.utils.common import *
 # path=  proj_default_folders.preprocessing_output_folder
 # imgs_folder =  proj_default_folders.preprocessing_output_folder/("images")
-# masks_folder=  proj_default_folders.preprocessing_output_folder/("masks")
+# masks_folder=  proj_default_folders.preprocessing_output_folder/("lms")
 #
 from fran.utils.fileio import *
 from fran.utils.fileio import maybe_makedirs
@@ -587,7 +587,7 @@ class FillBBoxPatchesd(Transform):
         d is a dict with keys: 'image','pred','bbox'
         """
         pred = d["pred"]
-        bbox = d["bbox"]
+        bbox = d["bounding_box"]
         pred_out = fill_bbox(bbox, pred)
         d["pred"] = pred_out
         return d
@@ -636,7 +636,7 @@ if __name__ == "__main__":
     dl = DataLoader(
         dataset=R,
         num_workers=2,
-        collate_fn=img_mask_metadata_lists_collated,
+        collate_fn=img_lm_metadata_lists_collated,
         batch_size=2,
     )
 

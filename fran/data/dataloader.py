@@ -5,38 +5,38 @@ _loaders = (_MultiProcessingDataLoaderIter,_SingleProcessDataLoaderIter)
 import ipdb
 tr = ipdb.set_trace
 
-def img_mask_bbox_collate( batch):
+def img_lm_bbox_collate( batch):
         imgs=[]
-        masks= []
+        lms= []
         bboxes=[]
         for i , item in enumerate(batch):
             imgs.append(item[0])
-            masks.append(item[1])
+            lms.append(item[1])
             bboxes.append(item[2])
-        return torch.stack(imgs,0),torch.stack(masks,0),bboxes
+        return torch.stack(imgs,0),torch.stack(lms,0),bboxes
 
-def img_mask_bbox_collated( batch):
+def img_lm_bbox_collated( batch):
         imgs=[]
-        labels= []
+        lms= []
         bboxes=[]
         for i , item in enumerate(batch):
             imgs.append(item['image'])
-            labels.append(item['label'])
+            lms.append(item['lm'])
             bboxes.append(item['bbox'])
-        output = {'image':torch.stack(imgs,0),'label':torch.stack(labels,0),'bbox':bboxes}
+        output = {'image':torch.stack(imgs,0),'lm':torch.stack(lms,0),'bbox':bboxes}
         return output
 
-def img_mask_metadata_lists_collated(batch):
+def img_lm_metadata_lists_collated(batch):
         images=[]
-        masks=[]
+        lms=[]
         images_meta=[]
-        masks_meta=[]
+        lms_meta=[]
         for i , item in enumerate(batch):
             images.append(item['image'])
             images_meta.append(item['image'].meta)
-            masks.append(item['mask'])
-            masks_meta.append(item['mask'].meta)
-        output = {'image': images, 'mask':masks, 'images_meta':images_meta, 'masks_meta':masks_meta}
+            lms.append(item['lm'])
+            lms_meta.append(item['lm'].meta)
+        output = {'image': images, 'lm':lms, 'images_meta':images_meta, 'lms_meta':lms_meta}
         return output
 
 def dict_list_collated(keys):
@@ -55,13 +55,13 @@ def dict_list_collated(keys):
 #
 #     def create_batch(self, batch):
 #         imgs=[]
-#         masks= []
+#         lms= []
 #         bboxes=[]
 #         for i , item in enumerate(batch):
 #             imgs.append(item[0])
-#             masks.append(item[1])
+#             lms.append(item[1])
 #             bboxes.append(item[2])
-#         return torch.stack(imgs,0),torch.stack(masks,0),bboxes
+#         return torch.stack(imgs,0),torch.stack(lms,0),bboxes
 #
 #
 #

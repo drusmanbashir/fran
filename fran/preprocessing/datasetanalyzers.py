@@ -37,7 +37,7 @@ def get_img_mask_filepairs(parent_folder: Union[str,Path]):
     '''
 
     imgs_folder = Path(parent_folder)/'images'
-    masks_folder= Path(parent_folder)/'masks'
+    masks_folder= Path(parent_folder)/'lms'
     imgs_all=list(imgs_folder.glob('*'))
     masks_all=list(masks_folder.glob('*'))
     assert (len(imgs_all)==len(masks_all)), "{0} and {1} folders have unequal number of files!".format(imgs_folder,masks_folder)
@@ -79,7 +79,7 @@ def verify_datasets_integrity(folders:list, debug=False,fix=False)->list:
     
 
 def verify_img_label_match(label_fn:Path,fix=False):
-    imgs_foldr = label_fn.parent.str_replace("masks","images")
+    imgs_foldr = label_fn.parent.str_replace("lms","images")
     img_fnames = list(imgs_foldr.glob("*"))
     assert (imgs_foldr.exists()),"{0} corresponding to {1} parent folder does not exis".format(imgs_foldr,label_fn)
     img_fn = find_matching_fn (label_fn,img_fnames)
@@ -93,7 +93,7 @@ def verify_img_label_match(label_fn:Path,fix=False):
 @str_to_path()
 def verify_img_label_torch(label_fn:Path):
     if isinstance(label_fn,str): label_fn = Path(label_fn)
-    img_fn = label_fn.str_replace('masks','images')
+    img_fn = label_fn.str_replace('lms','images')
     img,mask = list(map(torch.load,[img_fn,label_fn]))
     if img.shape!=mask.shape:
         print(f"Image mask mismatch {label_fn}")
@@ -412,7 +412,7 @@ if __name__ == "__main__":
 # %%
     fn = Path(label_fns[0])
     aa = bboxes_function_version(fn, 0)
-    fn2 = fn.str_replace("masks","images")
+    fn2 = fn.str_replace("lms","images")
     img = torch.load(fn2)
     mask=torch.load(fn)
     # ImageMaskViewer([img,mask])

@@ -525,7 +525,7 @@ class NeptuneImageGridCallback(Callback):
 
     def after_epoch(self):
         grd_final=[]
-        for grd,category in zip([self.grid_imgs,self.grid_preds,self.grid_masks], ["imgs","preds","masks"]):
+        for grd,category in zip([self.grid_imgs,self.grid_preds,self.grid_masks], ["imgs","preds","lms"]):
             grd = torch.cat(grd)
             if category=="imgs":
                     grd = normalize(grd)
@@ -543,7 +543,7 @@ class NeptuneImageGridCallback(Callback):
                     return imgs
 
     def populate_grid(self):
-        for batch,category,grd in zip([self.learn.x,self.learn.pred, self.learn.y],['imgs','preds','masks'] ,[self.grid_imgs,self.grid_preds,self.grid_masks]):
+        for batch,category,grd in zip([self.learn.x,self.learn.pred, self.learn.y],['imgs','preds','lms'] ,[self.grid_imgs,self.grid_preds,self.grid_masks]):
                     if isinstance(batch,list)  and self.publish_deep_preds==False:
                             batch = batch[-1]
                     elif isinstance(batch,list)  and self.publish_deep_preds==True:
@@ -554,7 +554,7 @@ class NeptuneImageGridCallback(Callback):
                         batch = F.softmax(batch,dim=1)
 
                     imgs =self.img_to_grd(batch)
-                    if category=="masks" :
+                    if category=="lms" :
                         imgs = imgs.squeeze(1)
                         imgs = one_hot(imgs,self.classes)
                     if category!="imgs" and imgs.shape[1]!=3:

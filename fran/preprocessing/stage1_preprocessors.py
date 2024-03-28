@@ -103,7 +103,7 @@ class CropToPatientTorchToTorch(object):
     @output_folders.setter
     def output_folders(self, output_parent_folder):
         self._output_folders = [
-            output_parent_folder / subfld for subfld in ["images", "masks"]
+            output_parent_folder / subfld for subfld in ["images", "lms"]
         ]
 
     @property
@@ -165,7 +165,7 @@ class CropToPatientTorchTonifti(CropToPatientTorchToTorch):
     def output_folders(self, output_folder):
         self._output_folder = [
             output_folder / "images_nii" / "images",
-            output_folder / "images_nii" / "masks",
+            output_folder / "images_nii" / "lms",
         ]
 
     @property
@@ -219,10 +219,10 @@ class WholeImageTensorMaker:
             "dim_{0}_{1}_{2}".format(*self.output_size)
         )
         self.output_folder_imgs = self.output_parent_folder / ("images")
-        self.output_folder_masks = self.output_parent_folder / ("masks")
+        self.output_folder_masks = self.output_parent_folder / ("lms")
         self.img_files = list((self.input_folder / ("images")).glob("*pt"))
         self.mask_files = [
-            self.input_folder / ("masks/{}".format(fn.name)) for fn in self.img_files
+            self.input_folder / ("lms/{}".format(fn.name)) for fn in self.img_files
         ]
 
     def get_args_for_resizing(self):
@@ -417,7 +417,7 @@ if __name__ == "__main__":
 # %%
     n = 0
     img_fn = fixed_files[n]
-    mask_fn = img_fn.str_replace("images", "masks")
+    mask_fn = img_fn.str_replace("images", "lms")
 # %%
 
     spacing = load_dict(proj_defaults.resampled_dataset_properties_filename)[
@@ -443,7 +443,7 @@ if __name__ == "__main__":
         "/home/ub/datasets/preprocessed/lits/patches/spc_077_077_100/dim_320_320_256/"
     )
     img_fldr = stage1_fldr / ("images")
-    mask_fldr = stage1_fldr / ("masks")
+    mask_fldr = stage1_fldr / ("lms")
     stage1_img_fn = list(img_fldr.glob("*"))
     stage1_mask_fn = list(mask_fldr.glob("*"))
 # %%

@@ -1,9 +1,11 @@
 # %%
+
 from pathlib import Path
 from typing import Sequence, Union
 
 import ipdb
 import itk
+from monai.data.dataset import CacheDataset, PersistentDataset
 import numpy as np
 import SimpleITK as sitk
 import torch
@@ -23,7 +25,7 @@ from monai.transforms.intensity.dictionary import (RandAdjustContrastd,
                                                    RandShiftIntensityd)
 from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, FgBgToIndicesd, ToDeviced
 from monai.utils.enums import MetaKeys, SpaceKeys
 from monai.utils.misc import ensure_tuple
 from monai.utils.module import require_pkg
@@ -31,12 +33,12 @@ from SimpleITK import Not
 from torchvision.utils import Any
 
 from monai.data import Dataset
-from fran.data.dataloader import img_mask_bbox_collated
+from fran.data.dataloader import img_lm_bbox_collated
 from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemap2,
                                NormaliseClipd, SimpleDataset)
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
-from fran.transforms.misc_transforms import ChangeDtype
+from fran.transforms.misc_transforms import  MetaToDict
 from fran.transforms.spatialtransforms import PadDeficitd
 from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
@@ -52,8 +54,8 @@ def simple_collated(batch):
     for i, item in enumerate(batch):
         for ita in item:
             imgs.append(ita["image"])
-            labels.append(ita["label"])
-    output = {"image": torch.stack(imgs, 0), "label": torch.stack(labels, 0)}
+            labels.append(ita["lm"])
+    output = {"image": torch.stack(imgs, 0), "lm": torch.stack(labels, 0)}
     return output
 
 
@@ -65,6 +67,7 @@ class DataManager(LightningDataModule):
         transform_factors: dict,
         affine3d: dict,
         batch_size=8,
+        cache_rate=0.0,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -76,6 +79,7 @@ class DataManager(LightningDataModule):
         self.dataset_params["mean_fg"] = global_properties["mean_fg"]
         self.dataset_params["std_fg"] = global_properties["std_fg"]
         self.batch_size = batch_size
+        self.cache_rate = cache_rate
         self.assimilate_tfm_factors(transform_factors)
 
     def assimilate_tfm_factors(self, transform_factors):
@@ -104,16 +108,16 @@ class DataManager(LightningDataModule):
         fnames = [fn + ".pt" for fn in fnames]
         fnames = fnames
         images_fldr = self.dataset_folder / ("images")
-        masks_fldr = self.dataset_folder / ("masks")
+        lms_fldr = self.dataset_folder / ("lms")
         images = list(images_fldr.glob("*.pt"))
         data = []
         for fn in fnames:
             fn = Path(fn)
             img_fn = find_matching_fn(fn.name, images)
-            mask_fn = masks_fldr / img_fn.name
+            mask_fn = lms_fldr / img_fn.name
             assert img_fn.exists(), "Missing image {}".format(img_fn)
             assert mask_fn.exists(), "Missing labelmap fn {}".format(mask_fn)
-            dici = {"image": img_fn, "label": mask_fn}
+            dici = {"image": img_fn, "lm": mask_fn}
             data.append(dici)
         return data
 
@@ -144,7 +148,7 @@ class DataManager(LightningDataModule):
 
     def create_affine_tfm(self):
         affine = RandAffined(
-            keys=["image", "label"],
+            keys=["image", "lm"],
             mode=["bilinear", "nearest"],
             prob=self.affine3d["p"],
             # spatial_size=self.dataset_params['src_dims'],
@@ -177,9 +181,10 @@ class DataManagerSource(DataManager):
         transform_factors: dict,
         affine3d: dict,
         batch_size=8,
+        **kwargs
     ):
         super().__init__(
-            project, dataset_params, transform_factors, affine3d, batch_size
+            project, dataset_params, transform_factors, affine3d, batch_size,**kwargs
         )
         self.collate_fn = simple_collated
 
@@ -200,7 +205,7 @@ class DataManagerSource(DataManager):
     def create_transforms(self):
 
         L = LoadImaged(
-            keys=["image",'label'],
+            keys=["image",'lm'],
             image_only=True,
             ensure_channel_first=False,
             simple_keys=True,
@@ -208,34 +213,44 @@ class DataManagerSource(DataManager):
         L.register(TorchReader())
 
 
-        E = EnsureChannelFirstd(keys=["image", "label"], channel_dim="no_channel")
-        P = PadDeficitd(
-            keys=["image", "label"],
-            source_key="image",
-            spatial_size=self.src_dims,
-            lazy=True,
-        )
+        E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+        # G= ToDeviced(device = 'cuda',keys = ['image','lm'])
+        # P = PadDeficitd(
+        #     keys=["image", "lm"],
+        #     source_key="image",
+        #     spatial_size=self.src_dims,
+        #     lazy=True,
+        # )
+        #
+        Ind = MetaToDict(keys=["lm"], meta_keys=['lm_fg_indices','lm_bg_indices'])
         Rtr = RandCropByPosNegLabeld(
-            keys=["image", "label"],
-            label_key="label",
+            keys=["image", "lm"],
+            label_key="lm",
             image_key="image",
+            fg_indices_key = "lm_fg_indices",
+            bg_indices_key = "lm_bg_indices",
             image_threshold=-2600,
             spatial_size=self.src_dims,
             pos=1,
             neg=1,
             num_samples=self.dataset_params["samples_per_file"],
             lazy=True,
+            allow_smaller=True,
+
         )
         Rva = RandCropByPosNegLabeld(
-            keys=["image", "label"],
-            label_key="label",
+            keys=["image", "lm"],
+            label_key="lm",
             image_key="image",
             image_threshold=-2600,
+            fg_indices_key = "lm_fg_indices",
+            bg_indices_key = "lm_bg_indices",
             spatial_size=self.dataset_params["patch_size"],
             pos=1,
             neg=1,
             num_samples=self.dataset_params["samples_per_file"],
             lazy=True,
+            allow_smaller=True,
         )
 
         N = NormaliseClipd(
@@ -245,12 +260,12 @@ class DataManagerSource(DataManager):
             std=self.dataset_params["std_fg"],
         )
 
-        # EnsureTyped(keys=["image", "label"], device="cuda", track_meta=False),
+        # EnsureTyped(keys=["image", "lm"], device="cuda", track_meta=False),
         F1 = RandFlipd(
-            keys=["image", "label"], prob=self.flip["prob"], spatial_axis=0, lazy=True
+            keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
         )
         F2 = RandFlipd(
-            keys=["image", "label"], prob=self.flip["prob"], spatial_axis=1, lazy=True
+            keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
         )
         A = self.create_affine_tfm()
         int_augs = [
@@ -272,18 +287,25 @@ class DataManagerSource(DataManager):
         ]
 
         Re = ResizeWithPadOrCropd(
-            keys=["image", "label"],
+            keys=["image", "lm"],
             source_key="image",
             spatial_size=self.dataset_params["patch_size"],
             lazy=True,
         )
-        self.tfms_train = Compose([L, E, P, Rtr, F1, F2, A, Re, N, *int_augs])
-        self.tfms_valid = Compose([L, E, P, Rva, N])
 
+        self.tfms_train = Compose([L, E, Ind, Rtr, F1, F2, A, Re, N, *int_augs])
+        self.tfms_valid = Compose([L, E, Ind,Rva, Re, N])
+
+        # self.tfms_train = Compose([L, E, P, Rtr, F1, F2, A, Re, N, *int_augs])
+        # self.tfms_valid = Compose([L, E, P, Rva, N])
     def setup(self, stage: str = None):
         self.create_transforms()
-        self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
-        self.valid_ds = Dataset(data=self.data_valid, transform=self.tfms_valid)
+        if self.cache_rate == 0.0:
+            # self.train_ds = PersistentDataset(data=self.data_train, transform=self.tfms_train,cache_dir = self.project.cache_folder)
+            self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
+        else:
+            self.train_ds = CacheDataset(data=self.data_train, transform=self.tfms_train,cache_rate=self.cache_rate)
+        self.valid_ds = PersistentDataset(data=self.data_valid, transform=self.tfms_valid,cache_dir=self.project.cache_folder)
 
 
 class DataManagerLBD(DataManagerSource):
@@ -324,7 +346,7 @@ class DataManagerPatch(DataManager):
         super().__init__(
             project, dataset_params, transform_factors, affine3d, batch_size
         )
-        self.collate_fn = img_mask_bbox_collated
+        self.collate_fn = img_lm_bbox_collated
 
     def derive_dataset_folder(self):
             parent_folder = self.project.patches_folder
@@ -338,9 +360,9 @@ class DataManagerPatch(DataManager):
     def create_transforms(self):
         all_after_item = [
             MaskLabelRemap2(
-                keys=["label"], src_dest_labels=self.dataset_params["src_dest_labels"]
+                keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
             ),
-            EnsureChannelFirstd(keys=["image", "label"], channel_dim="no_channel"),
+            EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel"),
             NormaliseClipd(
                 keys=["image"],
                 clip_range=self.dataset_params["intensity_clip_range"],
@@ -350,9 +372,9 @@ class DataManagerPatch(DataManager):
         ]
 
         t2 = [
-            # EnsureTyped(keys=["image", "label"], device="cuda", track_meta=False),
-            RandFlipd(keys=["image", "label"], prob=self.flip["prob"], spatial_axis=0),
-            RandFlipd(keys=["image", "label"], prob=self.flip["prob"], spatial_axis=1),
+            # EnsureTyped(keys=["image", "lm"], device="cuda", track_meta=False),
+            RandFlipd(keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0),
+            RandFlipd(keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1),
             RandScaleIntensityd(
                 keys="image", factors=self.scale["value"], prob=self.scale["prob"]
             ),
@@ -372,7 +394,7 @@ class DataManagerPatch(DataManager):
         ]
         t3 = [
             ResizeWithPadOrCropd(
-                keys=["image", "label"],
+                keys=["image", "lm"],
                 source_key="image",
                 spatial_size=self.dataset_params["patch_size"],
             )
@@ -442,9 +464,28 @@ if __name__ == "__main__":
 # %%
 
     dici = D.train_ds.data[0]
-    L = LoadTorchd(keys=["image", "label"])
+    L = LoadTorchd(keys=["image", "lm"])
     dici = L(dici)
 
+# %%
+
+    Ind = MetaToDict(keys=["lm"], meta_keys=['lm_fg_indices','lm_bg_indices'])
+    Rtr = RandCropByPosNegLabeld(
+        keys=["image", "lm"],
+        label_key="lm",
+        image_key="image",
+        fg_indices_key = "lm_fg_indices",
+        bg_indices_key = "lm_bg_indices",
+        image_threshold=-2600,
+        spatial_size=D.src_dims,
+        pos=1,
+        neg=1,
+        num_samples=D.dataset_params["samples_per_file"],
+        lazy=True,
+        allow_smaller=False,
+
+    )
+    dici =Ind(dici)
 # %%
     dl = D.train_dataloader()
     iteri = iter(dl)
@@ -454,11 +495,12 @@ if __name__ == "__main__":
 # %%
     im_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_300/images/nodes_20_20190611_Neck1p0I30f3_thick.pt"
     label_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_300/masks/nodes_20_20190611_Neck1p0I30f3_thick.pt"
-    dici = {"image": im_fn, "label": label_fn}
+    dici = {"image": im_fn, "lm": label_fn}
     D.setup()
 # %%
     ind = 1
     img = b["image"][ind][0]
-    lab = b["label"][ind][0]
+    lab = b["lm"][ind][0]
     ImageMaskViewer([img, lab])
 # %
+

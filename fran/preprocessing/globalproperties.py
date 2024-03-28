@@ -86,6 +86,7 @@ class GlobalProperties(GetAttr):
         return voxels
 
     def retrieve_h5_properties(self):
+        h5py = import_h5py()
         case_properties=[]
         for ds in self.global_properties['datasources']:
             ds_name =ds['ds']
@@ -226,12 +227,12 @@ class GlobalProperties(GetAttr):
                         labs_gp.extend(labels)
 
             labs_gp = list(set(labs_gp))
-            self.labels_all.extend(labs_gp)
+            labels_all.extend(labs_gp)
             print(labs_gp)
 
             self.global_properties[key].update({'labels':labs_gp ,'num_labels':len(labs_gp)})
         self.global_properties['labels_all'] = list(set(labels_all))
-        labels_tot= len(self.labels_all)
+        labels_tot= len(labels_all)
 
         if len(keys)>1: self._remap_labels(keys,labels_tot)
         self.maybe_append_imported_labels()

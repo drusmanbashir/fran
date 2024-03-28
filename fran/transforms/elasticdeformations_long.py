@@ -175,7 +175,7 @@ if __name__ == "__main__":
 # %%
 
     _,_,test_list = get_train_valid_test_lists_from_json(project_title=proj_defaults.project_title,fold=0, json_fname=proj_defaults.validation_folds_filename,image_folder=proj_defaults.raw_data_folder/"images",ext=".nii.gz")
-    mask_files=[ proj_defaults.raw_data_folder/"masks"/test_file.name.replace(".npy",".nii.gz") for test_file in test_list]
+    mask_files=[ proj_defaults.raw_data_folder/"lms"/test_file.name.replace(".npy",".nii.gz") for test_file in test_list]
     img_files =  [proj_defaults.raw_data_folder/"images"/mask_file.name for mask_file in mask_files]
 # %%
 # %%

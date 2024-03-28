@@ -76,7 +76,7 @@ class PatchGenerator(GetAttr):
             self.expand_by = patches_config["expand_by"]
 
     def register_existing_files(self):
-        self.existing_files = list((self.output_folder / ("masks")).glob("*pt"))
+        self.existing_files = list((self.output_folder / ("lms")).glob("*pt"))
         self.existing_case_ids= [info_from_filename(f.name,full_caseid=True)['case_id'] for f in self.existing_files]
         self.existing_case_ids = set(self.existing_case_ids)
 
@@ -119,7 +119,7 @@ class PatchGenerator(GetAttr):
         #     P.create_patches_from_all_bboxes()
 
     def generate_bboxes(self, num_processes=24, debug=False):
-        masks_folder = self.output_folder / "masks"
+        masks_folder = self.output_folder / "lms"
         mask_filenames = list(masks_folder.glob("*pt"))
         bg_label = 0
         arguments = [[x, bg_label] for x in mask_filenames]
@@ -143,7 +143,7 @@ class PatchGenerator(GetAttr):
 
     def create_output_folders(self):
         maybe_makedirs(
-            [self.output_folder / ("masks"), self.output_folder / ("images")]
+            [self.output_folder / ("lms"), self.output_folder / ("images")]
         )
 
     @property
@@ -173,10 +173,10 @@ class PatchGeneratorFG(DictToAttr):
         spacings are essential to compute number of array elements to add in case expand_by is required. Default: None
         """
         store_attr("output_folder,output_patch_size,info,patch_overlap")
-        self.output_masks_folder = output_folder / ("masks")
+        self.output_masks_folder = output_folder / ("lms")
         self.output_imgs_folder = output_folder / ("images")
         self.mask_fn = info["filename"]
-        self.img_fn = Path(str(self.mask_fn).replace("masks", "images"))
+        self.img_fn = Path(str(self.mask_fn).replace("lms", "images"))
         self.assimilate_dict(dataset_properties)
         bbs = info["bbox_stats"]
 
@@ -288,10 +288,10 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
 
-    P = Project(project_title="tmp")
+    P = Project(project_title="lidc2")
     P.maybe_store_projectwide_properties()
 # %%
-    lmg = "lm_group2"
+    lmg = "lm_group1"
     P.global_properties[lmg]
 
     imported_folder = Path("/s/fran_storage/predictions/totalseg/LITS-827/")
@@ -301,11 +301,9 @@ if __name__ == "__main__":
     remapping = TSL.create_remapping(imported_labelsets, [8, 9])
 # %%
 
+    from fran.preprocessing.labelbounded import ImporterDataset
     I = ImporterDataset(
-        project=P,
         expand_by=20,
-        spacing=[0.8, 0.8, 1.5],
-        lm_group="lm_group2",
         imported_folder=imported_folder,
         imported_labelsets=imported_labelsets,
         keep_imported_labels=False,
