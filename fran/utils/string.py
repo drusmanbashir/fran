@@ -31,6 +31,10 @@ def int_to_str(val:int, total_length=5):
     return '0'*precending_zeros+val
 
 
+def headline(inp:str):
+    print("=")*20
+    print(inp)
+    print("=")*20
 
 def append_time(input_str, now=True):
     now = datetime.now()

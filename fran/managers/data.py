@@ -1,5 +1,5 @@
 # %%
-
+import math
 from pathlib import Path
 from typing import Sequence, Union
 
@@ -342,9 +342,10 @@ class DataManagerPatch(DataManager):
         transform_factors: dict,
         affine3d: dict,
         batch_size=8,
+        **kwargs
     ):
         super().__init__(
-            project, dataset_params, transform_factors, affine3d, batch_size
+            project, dataset_params, transform_factors, affine3d, batch_size,**kwargs
         )
         self.collate_fn = img_lm_bbox_collated
 
@@ -358,18 +359,20 @@ class DataManagerPatch(DataManager):
 
 
     def create_transforms(self):
-        all_after_item = [
-            MaskLabelRemap2(
+        P = MaskLabelRemap2(
                 keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
-            ),
-            EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel"),
-            NormaliseClipd(
+            )
+        E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+        N= NormaliseClipd(
                 keys=["image"],
                 clip_range=self.dataset_params["intensity_clip_range"],
                 mean=self.dataset_params["mean_fg"],
                 std=self.dataset_params["std_fg"],
-            ),
-        ]
+            )
+        if not math.isnan(self.dataset_params["src_dest_labels"]):
+            all_after_item = [P, E, N]
+        else:
+            all_after_item = [E, N]
 
         t2 = [
             # EnsureTyped(keys=["image", "lm"], device="cuda", track_meta=False),

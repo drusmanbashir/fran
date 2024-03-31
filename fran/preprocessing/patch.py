@@ -1,21 +1,9 @@
 # %%
 import cc3d
 import torchio as tio
-from label_analysis.helpers import relabel
 from label_analysis.merge import merge, merge_pt
 from label_analysis.totalseg import TotalSegmenterLabels
-from monai.data import Dataset, GridPatchDataset, PatchIter
-from monai.transforms import Compose
-from monai.transforms.croppad.dictionary import BoundingRectd
-from monai.transforms.intensity.array import RandShiftIntensity
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
-from torch.utils.data import DataLoader
-
-from fran.transforms.imageio import LoadSITKd, LoadTorchd
-from fran.transforms.inferencetransforms import BBoxFromPTd
-from fran.transforms.misc_transforms import (MergeLabelmapsd, Recast, RemapSITK,
-                                             )
-from fran.transforms.spatialtransforms import PadDeficitImgMask, ResizeDynamicd
+from fran.transforms.spatialtransforms import PadDeficitImgMask
 from fran.utils.string import info_from_filename, strip_extension
 
 if "get_ipython" in globals():
@@ -52,13 +40,13 @@ class PatchGenerator(GetAttr):
         fixed_sp_bboxes_fn = fixed_spacing_folder / ("bboxes_info")
         self.fixed_sp_bboxes = load_dict(fixed_sp_bboxes_fn)
 
-        dataset_properties_fn = self.fixed_spacing_folderolder / (
+        dataset_properties_fn = self.fixed_spacing_folder/ (
             "resampled_dataset_properties.json"
         )
         assert (
             dataset_properties_fn.exists()
         ), "Dataset properties file does not exist. Has the Resampling been run to create folder {}?".format(
-            self.fixed_spacing_folderolder
+            self.fixed_spacing_folder
         )
         self.dataset_properties = load_dict(dataset_properties_fn)
         self.create_output_folders()
@@ -77,7 +65,10 @@ class PatchGenerator(GetAttr):
 
     def register_existing_files(self):
         self.existing_files = list((self.output_folder / ("lms")).glob("*pt"))
-        self.existing_case_ids= [info_from_filename(f.name,full_caseid=True)['case_id'] for f in self.existing_files]
+        self.existing_case_ids = [
+            info_from_filename(f.name, full_caseid=True)["case_id"]
+            for f in self.existing_files
+        ]
         self.existing_case_ids = set(self.existing_case_ids)
 
     def remove_completed_cases(self):
@@ -119,10 +110,10 @@ class PatchGenerator(GetAttr):
         #     P.create_patches_from_all_bboxes()
 
     def generate_bboxes(self, num_processes=24, debug=False):
-        masks_folder = self.output_folder / "lms"
-        mask_filenames = list(masks_folder.glob("*pt"))
+        lms_folder = self.output_folder / "lms"
+        lm_filenames = list(lms_folder.glob("*pt"))
         bg_label = 0
-        arguments = [[x, bg_label] for x in mask_filenames]
+        arguments = [[x, bg_label] for x in lm_filenames]
         res_cropped = multiprocess_multiarg(
             func=bboxes_function_version,
             arguments=arguments,
@@ -130,7 +121,7 @@ class PatchGenerator(GetAttr):
             debug=debug,
         )
 
-        stats_outfilename = (masks_folder.parent) / ("bboxes_info.json")
+        stats_outfilename = (lms_folder.parent) / ("bboxes_info.json")
         print("Saving bbox stats to {}".format(stats_outfilename))
         save_dict(res_cropped, stats_outfilename)
 
@@ -142,16 +133,14 @@ class PatchGenerator(GetAttr):
         save_dict(patches_config, self.patches_config_fn)
 
     def create_output_folders(self):
-        maybe_makedirs(
-            [self.output_folder / ("lms"), self.output_folder / ("images")]
-        )
+        maybe_makedirs([self.output_folder / ("lms"), self.output_folder / ("images")])
 
     @property
     def output_folder(self):
         patches_fldr_name = "dim_{0}_{1}_{2}".format(*self.patch_size)
         output_folder_ = (
             self.patches_folder
-            / self.fixed_spacing_folderolder.name
+            / self.fixed_spacing_folder.name
             / patches_fldr_name
         )
         return output_folder_
@@ -175,29 +164,29 @@ class PatchGeneratorFG(DictToAttr):
         store_attr("output_folder,output_patch_size,info,patch_overlap")
         self.output_masks_folder = output_folder / ("lms")
         self.output_imgs_folder = output_folder / ("images")
-        self.mask_fn = info["filename"]
-        self.img_fn = Path(str(self.mask_fn).replace("lms", "images"))
+        self.lm_fn = info["filename"]
+        self.img_fn = Path(str(self.lm_fn).replace("lms", "images"))
         self.assimilate_dict(dataset_properties)
         bbs = info["bbox_stats"]
 
         b = [b for b in bbs if b["label"] == "all_fg"][0]
         self.bboxes = b["bounding_boxes"][1:]
         if expand_by:
-            self.add_to_bbox = [int(expand_by / sp) for sp in self.dataset_spacings]
+            self.add_to_bbox = [int(expand_by / sp) for sp in self.dataset_spacing]
         else:
             self.add_to_bbox = [
                 0.0,
             ] * 3
 
-    def load_img_mask_padding(self):
-        mask = torch.load(self.mask_fn)
+    def load_img_lm_padding(self):
+        lm = torch.load(self.lm_fn)
         img = torch.load(self.img_fn)
-        self.img, self.mask, self.padding = PadDeficitImgMask(
+        self.img, self.lm, self.padding = PadDeficitImgMask(
             patch_size=self.output_patch_size,
             input_dims=3,
             pad_values=[self.dataset_min, 0],
             return_padding_array=True,
-        ).encodes([img, mask])
+        ).encodes([img, lm])
         self.shift_bboxes_by = list(self.padding[::2])
         self.shift_bboxes_by.reverse()
 
@@ -236,10 +225,10 @@ class PatchGeneratorFG(DictToAttr):
 
     def create_grid_sampler_from_patchsize(self, bbox_final):
         img_f = self.img[tuple(bbox_final)].unsqueeze(0)
-        mask_f = self.mask[tuple(bbox_final)].unsqueeze(0)
+        lm_f = self.lm[tuple(bbox_final)].unsqueeze(0)
         img_tio = tio.ScalarImage(tensor=img_f)
-        mask_tio = tio.ScalarImage(tensor=mask_f)
-        subject = tio.Subject(image=img_tio, mask=mask_tio)
+        lm_tio = tio.ScalarImage(tensor=lm_f)
+        subject = tio.Subject(image=img_tio, lm=lm_tio)
         self.grid_sampler = tio.GridSampler(
             subject=subject,
             patch_size=self.output_patch_size,
@@ -248,18 +237,20 @@ class PatchGeneratorFG(DictToAttr):
 
     def create_patches_from_grid_sampler(self):
         for i, a in enumerate(self.grid_sampler):
-            nm = strip_extension(self.mask_fn.name)
+            nm = strip_extension(self.lm_fn.name)
             out_fname = nm + "_" + str(i) + ".pt"
             out_mask_fname = self.output_masks_folder / out_fname
             out_img_fname = self.output_imgs_folder / out_fname
             print("Saving to files {0} and {1}".format(out_img_fname, out_mask_fname))
             img = a["image"][tio.DATA].squeeze(0)
-            mask = a["mask"][tio.DATA].squeeze(0)
+            lm = a["lm"][tio.DATA].squeeze(0)
+            img = img.contiguous()
+            lm = lm.contiguous().to(torch.uint8)
             torch.save(img, out_img_fname)
-            torch.save(mask, out_mask_fname)
+            torch.save(lm, out_mask_fname)
 
     def create_patches_from_all_bboxes(self):
-        self.load_img_mask_padding()
+        self.load_img_lm_padding()
         for bbx in self.bboxes:
             bbox_new = self.maybe_expand_bbox(bbx)
             self.create_grid_sampler_from_patchsize(bbox_new)
@@ -282,7 +273,6 @@ def patch_generator_wrapper(
     return 1, info["filename"]
 
 
-
 # %%
 if __name__ == "__main__":
 
@@ -290,7 +280,7 @@ if __name__ == "__main__":
 
     P = Project(project_title="lidc2")
     P.maybe_store_projectwide_properties()
-# %%
+    # %%
     lmg = "lm_group1"
     P.global_properties[lmg]
 
@@ -299,9 +289,10 @@ if __name__ == "__main__":
     imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
     P.imported_labels(lmg, imported_folder, imported_labelsets)
     remapping = TSL.create_remapping(imported_labelsets, [8, 9])
-# %%
+    # %%
 
     from fran.preprocessing.labelbounded import ImporterDataset
+
     I = ImporterDataset(
         expand_by=20,
         imported_folder=imported_folder,
@@ -310,8 +301,7 @@ if __name__ == "__main__":
         remapping=remapping,
     )
     I.setup()
-# %%
-
+    # %%
 
     dsrcs = P.global_properties[lmg]["ds"]
     ind = 0
@@ -320,34 +310,32 @@ if __name__ == "__main__":
     cids = P.df["case_id"][P.df["ds"] == dsrc].to_list()
 
     spacing = [0.8, 0.8, 1.5]
-    fixed_folder = P.fixed_spacing_folder / ("spc_080_080_150/masks")
+    fixed_folder = P.fixed_spacing_folder / ("spc_080_080_150/lms")
     fixed_files = list(fixed_folder.glob("*.pt"))
 
     fixed_files_out = []
-# %%
+    # %%
     for cid in cids:
         fn = [fn for fn in fixed_files if cid in fn.name][0]
         fixed_files_out.append(fn)
 
-# %%
+    # %%
     fn = fixed_files_out[-1]
     lm_pt = torch.load(fn)
     print(lm_pt.shape)
     imported_fn = find_matching_fn(fn, imported_folder.glob("*"))
     lm_imp = sitk.ReadImage(imported_fn)
     print(lm_imp.GetSpacing())
-    dici = {"mask": lm_pt, "mask_imported": lm_imp, "remapping": remapping}
+    dici = {"lm": lm_pt, "lm_imported": lm_imp, "remapping": remapping}
 
-# %%
-# %%
+    # %%
+    # %%
     PT = PatchImporterDataset(P, spacing, 20)
-# %%
+    # %%
     dici = C(dici)
-    mask_out = dici["mask"][dici["mask_imported"].meta["bounding_box"]]
-    ImageMaskViewer(
-        [mask_out[0], dici["mask_imported"][0]], data_types=["mask", "mask"]
-    )
-    view_sitk(dici["mask_imported"], lm_imp, data_types=["mask", "mask"])
+    lm_out = dici["lm"][dici["lm_imported"].meta["bounding_box"]]
+    ImageMaskViewer([lm_out[0], dici["lm_imported"][0]], data_types=["lm", "lm"])
+    view_sitk(dici["lm_imported"], lm_imp, data_types=["lm", "lm"])
     config = {
         "spacing": PI.spacing,
         "expand_by": PI.expand_by,
@@ -355,17 +343,15 @@ if __name__ == "__main__":
         "imported_labelsets": PI.imported_labelsets,
     }
 
-# %%
+    # %%
 
-    mask2 = merge_pt(dici["mask_imported"][0], dici["mask"])[0]
-    ImageMaskViewer(
-        [mask_out[0], dici["mask_imported"][0]], data_types=["mask", "mask"]
-    )
+    lm2 = merge_pt(dici["lm_imported"][0], dici["lm"])[0]
+    ImageMaskViewer([lm_out[0], dici["lm_imported"][0]], data_types=["lm", "lm"])
     lm = sitk.ReadImage(fn)
     lm_out = merge(lm_imp, lm)
 
-    view_sitk(lm, lm_out, data_types=["mask", "mask"])
-# %%
+    view_sitk(lm, lm_out, data_types=["lm", "lm"])
+    # %%
     P = PatchGeneratorFG(
         dataset_properties,
         output_folder,
@@ -392,20 +378,19 @@ if __name__ == "__main__":
     inf = load_dict(dici_fn)
 
     info = inf[0]
-# %%
-# %%
+    # %%
+    # %%
     I.transform = C
 
-    dici =I.data[0]
+    dici = I.data[0]
     dici = C(dici)
-    print(dici['bounding_box'])
-# %%
+    print(dici["bounding_box"])
+    # %%
     dici = R(dici)
     dici = L1(dici)
     dici = L2(dici)
     dici = Re(dici)
     dici = E(dici)
-# %%
-    bb = dici['bounding_box']
+    # %%
+    bb = dici["bounding_box"]
     print(bb)
-

@@ -53,7 +53,7 @@ from monai.transforms.utility.dictionary import EnsureChannelFirstd
 from fran.utils.common import *
 # path=  proj_default_folders.preprocessing_output_folder
 # imgs_folder =  proj_default_folders.preprocessing_output_folder/("images")
-# masks_folder=  proj_default_folders.preprocessing_output_folder/("lms")
+# masks_folder=  proj_default_folders.preprocessing_output_folder/("masks")
 #
 from fran.utils.fileio import *
 from fran.utils.fileio import maybe_makedirs
@@ -413,8 +413,8 @@ class ImageMaskBBoxDatasetd(ImageMaskBBoxDataset):
             self.maybe_randomize_idx()
 
         filename, bbox = self.get_filename_bbox()
-        img, label = self.load_tensors(filename)
-        dici = {"image": img, "label": label, "bbox": bbox}
+        img, lm= self.load_tensors(filename)
+        dici = {"image": img, "lm": lm, "bbox": bbox}
         if self.transform is not None:
             dici = self.transform(dici)
 

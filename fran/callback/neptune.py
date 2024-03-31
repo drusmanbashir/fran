@@ -18,7 +18,6 @@ from fran.utils.fileio import load_yaml
 
 # from fran.managers.learner_plus import *
 from fran.utils.helpers import *
-from fran.callback.tune import *
 from fran.utils.config_parsers import *
 
 from lightning.pytorch.callbacks import Callback

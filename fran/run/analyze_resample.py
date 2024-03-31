@@ -8,7 +8,7 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-from fran.preprocessing.patch import PatchGenerator
+from fran.preprocessing.patch import PatchGenerator, PatchGeneratorFG
 from fran.preprocessing.stage1_preprocessors import *
 from fran.preprocessing.datasetanalyzers import *
 
@@ -118,7 +118,7 @@ class Preprocessor():
         _inner()
 
 
-    def generate_TSlabelboundeddataset(self,organ,imported_folder):
+    def generate_TSlabelboundeddataset(self,organ,imported_folder,keep_imported_labels=False,lm_group="lm_group1"):
         '''
         requires resampled folder to exist. Crops within this folder
         '''
@@ -127,15 +127,15 @@ class Preprocessor():
         TSL = TotalSegmenterLabels()
         if organ=="lungs":
             imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
-        remapping = TSL.create_remapping(imported_labelsets, [8, 9])
+            remapping = TSL.create_remapping(imported_labelsets, [8, 9])
         self.L = LabelBoundedDataGenerator(
             project=self.project,
             expand_by=20,
             spacing=self.spacing,
-            lm_group="lm_group1",
+            lm_group=lm_group,
             imported_folder=imported_folder,
             imported_labelsets=imported_labelsets,
-            keep_imported_labels=False,
+            keep_imported_labels=keep_imported_labels,
             remapping=remapping,
         )
 
@@ -174,6 +174,7 @@ class Preprocessor():
         resampling_configs = self.get_resampling_configs()
         spacing_config = resampling_configs[spacing_ind]
         self.spacing, self.fixed_spacing_folder = spacing_config.values()
+        self.fixed_spacing_folder = Path(self.fixed_spacing_folder)
         patches_output_folder = self.create_patches_output_folder(
             self.fixed_spacing_folder, self.patch_size
         )
@@ -227,6 +228,7 @@ class Preprocessor():
             return []
 
     def create_patches_output_folder(self, fixed_spacing_folder, patch_size):
+        
         patches_fldr_name = "dim_{0}_{1}_{2}".format(*patch_size)
         output_folder = (
             self.project.patches_folder / fixed_spacing_folder.name / patches_fldr_name
@@ -328,13 +330,19 @@ if __name__ == "__main__":
     I = Preprocessor(args)
 # %%
     # I.resample_dataset()
-    I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+    I.generate_hires_patches_dataset(spacing_ind=0,debug=True,overwrite=True)
+    # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+# %%
+    PG.create_patches(overwrite=overwrite,debug=debug)
 
 
 
 # %%
-    PG = PatchGeneratorDataset(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
+    PG = PatchGenerator(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
+    overwrite=True
+    debug=True
     PG.create_patches(overwrite=overwrite,debug=debug)
+
     PG.generate_bboxes(debug=debug)
 # %%
     # I.verify_dataset_integrity()
@@ -344,7 +352,6 @@ if __name__ == "__main__":
 
 # %%
     I.generate_whole_images_dataset()
-    I.generate_hires_patches_dataset(debug=True)
 
 # %%
     im1 = "/home/ub/tmp/imgs/litq_72b_20170224_old.pt"
@@ -354,8 +361,11 @@ if __name__ == "__main__":
     ImageMaskViewer([im1,im2], data_types=['image','image'])
 # %%
 
-    PG = PatchGeneratorDataset(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
-    PG.create_patches(overwrite=overwrite,debug=debug)
+    spacing_ind = 0
+    patch_overlap=.25
+    expand_by = 20
+    patches_config , patches_output_folder= I.set_patches_config(spacing_ind,patch_overlap,expand_by)
+    PG = PatchGeneratorFG(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
     print("Generating boundingbox data")
     PG.generate_bboxes(debug=debug)
 # %%

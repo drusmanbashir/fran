@@ -31,27 +31,10 @@ from monai.transforms.croppad.dictionary import Padd
 from fran.transforms.base import *
 
 
-class ResizeDynamicd(MonaiDictTransform):
-    def __init__(self, keys: KeysCollection, mode, key_spatial_size):
-        super().__init__(keys)
-        self.key_spatial_size = key_spatial_size  # spatial size is extracted from this key, typically an image
-        self.mode = mode
-
-    def __call__(self, data):
-        tnsr  =data[self.key_spatial_size]
-
-        if len(tnsr.shape) ==4:
-            spatial_size = tnsr[0].shape
-        elif len(tnsr.shape) ==3:
-            spatial_size = tnsr.shape
-        for key in self.key_iterator(data):
-            data[key] = self.func(data[key], spatial_size, self.mode)
-        return data
-
-    def func(self, data, spatial_size, mode):
+def _resize3d( data, spatial_shape, mode):
         data_out =fm.resize(
                     img=data,
-                    out_size=spatial_size,
+                    out_size=spatial_shape,
                     mode=mode,
                     lazy=False,
                     align_corners=None,
@@ -64,12 +47,37 @@ class ResizeDynamicd(MonaiDictTransform):
         return data_out
 
 
-class ResizeDynamicMetaKeyd(ResizeDynamicd):
-    def __call__(self,data):
+class ResizeToTensord(MonaiDictTransform):
+    def __init__(self, keys: KeysCollection, mode, key_template_tensor):
+        super().__init__(keys)
+        self.key_template_tensor = key_template_tensor  # spatial size is extracted from this key, typically an image
+        self.mode = mode
+
+    def __call__(self, data):
+        tnsr  =data[self.key_template_tensor]
+
+        if (l:=len(tnsr.shape) )==4:
+            spatial_shape = tnsr[0].shape
+        elif l ==3:
+            spatial_shape = tnsr.shape
+        else:
+            raise ValueError("spatial size is not 3 or 4, but is {}".format(l))
         for key in self.key_iterator(data):
-            spatial_size = data[key].meta[self.key_spatial_size]
-            spatial_size = spatial_size.tolist()# tnsr to list
-            data[key] = self.func(data[key], spatial_size, self.mode)
+            data[key] = _resize3d(data[key], spatial_shape, self.mode)
+        return data
+
+class ResizeToMetaSpatialShaped(MonaiDictTransform):
+    def __init__(self, keys: KeysCollection, mode, meta_key='spatial_shape'):
+        super().__init__(keys)
+        self.meta_key= meta_key
+        self.mode = mode
+
+    def __call__(self, data):
+        for key in self.key_iterator(data):
+            tnsr = data[key]
+            spatial_shape = tnsr.meta[self.meta_key]
+            spatial_shape = spatial_shape.tolist()
+            data[key] = _resize3d(tnsr, spatial_shape, self.mode)
         return data
 
 
@@ -1516,8 +1524,8 @@ if __name__ == "__main__":
     from fran.transforms.misc_transforms import create_augmentations
     from fran.utils.common import *
 
-    # %%
-    # %%
+# %%
+# %%
     P = Project(project_title="lits")
     proj_defaults = P
     spacings = [1, 1, 1]
@@ -1546,7 +1554,7 @@ if __name__ == "__main__":
     valid_ds = ImageMaskBBoxDataset(proj_defaults, val_ids, bboxes_fn)
 
     aa = train_ds.median_shape
-    # %%
+# %%
     after_item_intensity = {
         "brightness": [[0.7, 1.3], 0.1],
         "shift": [[-0.2, 0.2], 0.1],
@@ -1566,12 +1574,12 @@ if __name__ == "__main__":
     after_item_spatial = TrainingAugmentations(
         augs=spatial_augs, p=probabilities_spatial
     )
-    # %%
+# %%
     from fran.data.dataset import ImageMaskBBoxDataset
     from fran.utils.imageviewers import *
 
     P = Project(project_title="lits")
     proj_defaults = P
-    # %%
+# %%
     bboxes_pt_fn = proj_defaults.stage1_folder / ("cropped/images_pt/bboxes_info")
     bboxes_nii_fn = proj_defaults.stage1_folder / ("cropped/images_nii/bboxes_info")

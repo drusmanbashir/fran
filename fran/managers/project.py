@@ -37,6 +37,10 @@ from fran.utils.helpers import pat_full, pat_nodesc, pat_idonly
 from contextlib import contextmanager
 
 class DS(StrEnum):
+    '''
+    each folder has subfolder images and masks
+    '''
+    
     lits="/s/datasets_bkp/lits_segs_improved/"
     litq="/s/xnat_shadow/litq"
     drli_short="/s/datasets_bkp/drli_short/"
@@ -45,6 +49,7 @@ class DS(StrEnum):
     lidc2="/s/xnat_shadow/lidc2"
     lidctmp="/s/xnat_shadow/lidctmp"
     totalseg = "/s//xnat_shadow/totalseg"
+    task6="/s/datasets_bkp/Task06Lung/"
 
 
 def val_indices(a, n):
@@ -261,9 +266,9 @@ class Project(DictToAttr):
         )
         self.fixed_spacing_folder = self.cold_datasets_folder/("preprocessed/fixed_spacing")/self.project_title
         self.fixed_spacing_folder = rapid_access_folder / ("fixed_spacing")
-        # self.predictions_folder = Path(common_paths["cold_storage_folder"]) / (
-        #     "predictions/" + self.project_title
-        # )
+        self.predictions_folder = Path(common_paths["cold_storage_folder"]) / (
+            "predictions/" + self.project_title
+        )
         self.raw_data_folder = self.cold_datasets_folder / (
             "raw_data/" + self.project_title
         )

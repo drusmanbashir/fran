@@ -6,7 +6,7 @@ from monai.transforms.post.array import KeepLargestConnectedComponent
 from monai.transforms.utility.array import ToTensor
 from monai.transforms.utility.dictionary import SqueezeDimd
 from fran.transforms.misc_transforms import SelectLabels
-from fran.transforms.spatialtransforms import ResizeDynamicMetaKeyd, ResizeDynamicd
+from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 
 from fran.transforms.totensor import ToTensorI, ToTensorT
 tr = ipdb.set_trace
@@ -75,35 +75,6 @@ from fastcore.transform import Transform as TFC
 from fran.utils.imageviewers import ImageMaskViewer
 
 
-class SimpleTrainer(UNetTrainer):
-    def test_step(self, batch, batch_idx):
-        img = batch["image"]
-        outputs = self.forward(img)
-        outputs2 = outputs[0]
-        batch["pred"] = outputs2
-        # output=outputs[0]
-        # outputs = {'pred':output,'org_size':batch['org_size']}
-        # outputs_backsampled=self.post_process(outputs)
-        return batch
-
-
-class ImageBBoxDataset(Dataset):
-    def __init__(self, data, transform: Union[Callable, None] = None) -> None:
-        self.ds, self.bboxes = data
-        self.transform = transform
-
-    def __getitem__(self, idx):
-        im = self.ds[idx]["image"]
-        bbox = self.bboxes[idx]
-        img_c = im[bbox]
-        outputs = {"image": im, "image_cropped": img_c, "bbox": bbox}
-        if self.transform:
-            outputs = self.transform(outputs)
-        return outputs
-
-    def __len__(self):
-        return len(self.ds)
-
     
 
 
@@ -123,58 +94,6 @@ def img_bbox_collated(batch):
     return output
 
 
-class PersistentDS(PersistentDataset):
-    def __init__(self, imgs: Union[torch.Tensor, list], cache_dir) -> None:
-        L = LoadImaged(
-            keys=["image"], image_only=True, ensure_channel_first=True, simple_keys=True
-        )
-        # E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
-        O = Orientationd(keys=["image"], axcodes="RAS")
-        tfms = Compose([L, O])
-        self.cache_dir = cache_dir
-        super().__init__(imgs, tfms)
-
-    def create_batch_transforms(self):
-        # T = TransposeSITKd(keys=["image", "org_size"])
-        # E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
-        N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.dataset_params["intensity_clip_range"],
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
-        )
-        # S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacing"])
-        C = Compose([N], lazy=True)
-        self.batch_transforms = C
-
-
-class PatchDM(DataManager):
-    def create_batch_transforms(self):
-        T = TransposeSITKd(keys=["image", "org_size"])
-        E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
-        N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.dataset_params["intensity_clip_range"],
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
-        )
-        S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacing"])
-        C = Compose([T, E, N, S], lazy=True)
-        self.transforms = C
-
-    def patch_batchmaker(self, batch):  # note batch_size = 1
-        imgs = []
-        R = Resized(keys=["image"], spatial_size=patch_size)
-        tfms = Compose([R])
-        for i, item in enumerate(batch):
-            img = tfms(item)["image"]
-            imgs.append(img)
-        output = {"image": torch.stack(imgs, 0)}
-        return output
-
-    def create_dataloader(self):
-        pass
-
 
 class WholeImageInferer(BaseInferer):
     def __init__(
@@ -182,98 +101,17 @@ class WholeImageInferer(BaseInferer):
         project,
         run_name,
         devices=[1],
-        debug=True,
+        save_channels=True,
         save=True,
         overwrite=False,
+        **kwargs
     ):
-        """
-        data is a dataset from Ensemble in this base class
-        """
 
-        store_attr("project,run_name,devices,debug,overwrite,save")
-        self.ckpt = checkpoint_from_model_id(run_name)
-        self.dataset_params = load_dataset_params(run_name)
-        # dic1 = torch.load(self.ckpt)
-        # dic2 = {}
-        # relevant_keys = ["datamodule_hyper_parameters"]
-        # for key in relevant_keys:
-        #     dic2[key] = dic1[key]
-        #     self.assimilate_dict(dic2[key])
-
-
-    def setup(self,data):
-        self.prepare_model()
-        self.prepare_data(data)
-        self.create_postprocess_transforms()
-
-    def create_postprocess_transforms(self):
-        I = Invertd(keys=["pred"], transform=self.ds2.transform, orig_keys=["image"])
-        Rz = ResizeDynamicMetaKeyd(
-                keys=["pred"], key_spatial_size="spatial_shape", mode="nearest"
-            )
-        D = AsDiscreted(keys=["pred"], argmax=True, threshold=0.5)
-        K = KeepLargestConnectedComponentd(keys=["pred"])
-        C = ToCPUd(keys=["image", "pred"])
-        B = BBoxFromPTd(
-            keys=["pred"], expand_by=20, spacing=self.dataset_params["spacing"]
-        )
-        tfms = [ D,Rz, K, C, B]
-        if self.debug == True:
-            Sa = SaveMultiChanneld(
-                keys=["pred"],
-                output_dir=self.output_folder,
-                output_postfix="",
-                separate_folder=False,
-            )
-            #
-            # Sa = SavePatchd(keys=['pred'],output_folder=self.output_folder,postfix_channel=True)
-            tfms.insert(1, Sa)
-        C = Compose(tfms)
-        self.postprocess_transforms = C
+        super().__init__(project=project, run_name=run_name, devices=devices, save_channels=save_channels,overwrite= overwrite,save=save,**kwargs)
 
     def create_transforms(self):
-        self.R = Resized(keys=["image"], spatial_size=self.dataset_params["patch_size"])
-        self.N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.dataset_params["intensity_clip_range"],
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
-        )
-
-    # def prepare_model(self):
-    #     self.model = UNetTrainer.load_from_checkpoint(
-    #         self.ckpt,
-    #         project=self.project,
-    #         dataset_params=self.dataset_params,
-    #         strict=False,
-    #     )
-    #     self.model.eval()
-    #     fabric = Fabric(precision="16-mixed", devices=self.devices)
-    #     self.model = fabric.setup(self.model)
-    #
-    # def predict(self):
-    #     outputs = []
-    #     self.model.eval()
-    #     with torch.inference_mode():
-    #         for i, batch in enumerate(self.pred_dl):
-    #             img = batch["image"].cuda()
-    #             if 'filename_or_obj' in img.meta.keys():
-    #                 print("Processing: ",img.meta['filename_or_obj'])
-    #             output = self.model(img)
-    #             output = output[0]
-    #             batch["pred"] = output
-    #             batch["pred"].meta = batch["image"].meta
-    #             outputs.append(batch)
-    #     return outputs
-
-    def postprocess(self, preds):
-        out_final = []
-        for batch in preds:
-            out2 = decollate_batch(batch, detach=True)
-            for ou in out2:
-                tmp = self.postprocess_transforms(ou)
-                out_final.append(tmp)
-        return out_final
+        super().create_transforms()
+        self.S = Resized(keys=["image"], spatial_size=self.dataset_params["patch_size"])
 
 class PatchInferer(BaseInferer):
     def __init__(
@@ -284,18 +122,20 @@ class PatchInferer(BaseInferer):
         bs=1,
         grid_mode="gaussian",
         devices=[1],
-        debug=True,
+        save_channels=True,
         overwrite=False,
+        **kwargs
     ):
-        super().__init__(project=project, run_name=run_name, devices= devices, debug=debug,overwrite= overwrite,save=False)
+        super().__init__(project=project, run_name=run_name, devices= devices, save_channels=save_channels,overwrite= overwrite,save=False,**kwargs)
 
 
-    def create_postprocess_transforms(self):
-        Sq = SqueezeDimd(keys=["pred"], dim=0)
+    def create_postprocess_transforms(self,preprocess_transform):
+        Sq = SqueezeDimd(keys=["image","pred"], dim=0)
+
         I = Invertd(
-            keys=["pred"], transform=self.ds.transform, orig_keys=["image"]
+            keys=["pred"], transform=preprocess_transform, orig_keys=["image"]
         )  # watchout: use detach beforeharnd. make sure spacing are correct in preds
-        C = ToCPUd(keys=["image", "pred"])
+        U = ToCPUd(keys=["image", "pred"])
         Sa = SaveMultiChanneld(
             keys=["pred"],
             output_dir=self.output_folder,
@@ -303,13 +143,13 @@ class PatchInferer(BaseInferer):
             separate_folder=False,
         )
 
-        tfms = [Sq, I, C]
-        if self.debug == True:
-            tfms = [Sq,I,Sa,C]
+        tfms = [Sq,I,  U]
+        if self.save_channels == True:
+            tfms = [Sq,I,Sa,U]
         C = Compose(tfms)
         self.postprocess_transforms = C
 
-class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
+class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
     def __init__(
         self,
         project,
@@ -317,11 +157,10 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         runs_p,
         localiser_labels:list ,  #these labels will be used to create bbox
         devices=[0],
-
-        overwrite_w=False,
-        overwrite_p=True,
+        overwrite=True,
+        safe_mode=False,
         profile=None,
-        debug=False,
+        save_channels=False,
         save=True,
         k_largest=None, # assign a number if there are organs involved
     ):
@@ -332,12 +171,12 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
 
         self.predictions_folder = project.predictions_folder
         self.dataset_params = load_dataset_params(runs_p[0])
-        self.Ps = [PatchInferer(project=project,run_name=run, devices=devices, debug=debug, overwrite=overwrite_p) for run in runs_p]
+        self.Ps = [PatchInferer(project=project,run_name=run, devices=devices, save_channels=save_channels, overwrite=overwrite,safe_mode=safe_mode) for run in runs_p]
         self.localiser_tfms= "ESN"
         WSInf = self.inferer_from_params(run_name_w)
-        self.W = WSInf( project=project, run_name=run_name_w,  debug=debug, devices=devices, overwrite=overwrite_w
-        )
+        self.W = WSInf( project=project, run_name=run_name_w,  save_channels=save_channels, devices=devices, overwrite=overwrite,safe_mode=safe_mode)
         store_attr()
+    def setup(self): pass
 
     def inferer_from_params(self,run_name_w):
           self.ckpt = checkpoint_from_model_id(run_name_w)
@@ -347,50 +186,6 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
             return BaseInferer
           elif mode == "whole":
             return WholeImageInferer
-
-    def parse_input(self, imgs_inp):
-        """
-        input types:
-            folder of img_fns
-            nifti img_fns
-            itk imgs (slicer)
-        returns list of img_fns if folder. Otherwise just the imgs
-        """
-
-        if not isinstance(imgs_inp, list):
-            imgs_inp = [imgs_inp]
-        imgs_out = []
-        for dat in imgs_inp:
-            if any([isinstance(dat, str), isinstance(dat, Path)]):
-                self.input_type = "files"
-                dat = Path(dat)
-                if dat.is_dir():
-                    dat = list(dat.glob("*"))
-                else:
-                    dat = [dat]
-            else:
-                self.input_type = "itk"
-                if isinstance(dat, sitk.Image):
-                    dat = ConvertSimpleItkImageToItkImage(dat, itk.F)
-                # if isinstance(dat,itk.Image):
-                dat = itm(dat)
-            imgs_out.extend(dat)
-        imgs_out = [{"image": img} for img in imgs_out]
-        return imgs_out
-
-
-
-    def load_images(self, data):
-        """
-        data can be filenames or images. InferenceDatasetNii will resolve data type and add LoadImaged if it is a filename
-        """
-
-        Loader = LoadSITKd(['image'])
-        data = self.parse_input(data)
-        data = [Loader(d) for d in data]
-
-        return data
-
     def get_patch_spacing(self, run_name):
         ckpt = checkpoint_from_model_id(run_name)
         dic1 = torch.load(ckpt)
@@ -404,8 +199,7 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         chunksize is necessary in large lists to manage system ram
         """
         imgs=listify(imgs)
-
-        if self.overwrite_p==False and (isinstance(imgs[0],str) or isinstance(imgs[0], Path)):
+        if self.overwrite==False and (isinstance(imgs[0],str) or isinstance(imgs[0], Path)):
             imgs = self.filter_existing_preds(imgs)
         else:
             pass
@@ -413,6 +207,11 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         if len(imgs)>0:
             imgs = list_to_chunks(imgs, chunksize)
             for imgs_sublist in imgs:
+                output = self.process_imgs_sublist(imgs_sublist)
+            return output
+        else: return 1
+
+    def process_imgs_sublist(self,imgs_sublist):
                 data = self.load_images(imgs_sublist)
                 self.bboxes = self.extract_fg_bboxes(data)
                 data = self.apply_bboxes(data,self.bboxes)
@@ -422,16 +221,13 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
                 if self.save == True:
                     self.save_pred(output)
                 self.cuda_clear()
-            return output
-        else: return 1
-
+                return output
 
     def apply_bboxes(self,data,bboxes):
-
         data2=[]
         for i, dat in enumerate(data):
-            dat['image'] = dat['image'][En.bboxes[i][1:]]
-            dat['bounding_box'] = En.bboxes[i]
+            dat['image'] = dat['image'][self.bboxes[i][1:]]
+            dat['bounding_box'] = self.bboxes[i]
             data2.append(dat)
         return data2
 
@@ -501,13 +297,13 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         torch.cuda.empty_cache()
 
     def extract_fg_bboxes(self,data):
-
         Sel = SelectLabels(keys = ['pred'],labels = self.localiser_labels)
         B = BBoxFromPTd(keys = ['pred'],spacing = self.W.dataset_params['spacing'], expand_by =10)
-        if self.overwrite_w==False:
+        if self.overwrite==False:
             print("Bbox overwrite not implemented yet")
         print("Starting localiser data prep and prediction")
-        self.W.setup(data,self.localiser_tfms)
+        self.W.setup()
+        self.W.prepare_data(data,tfms="ESN")
         p = self.W.predict()
         preds = self.W.postprocess(p)
         bboxes = []
@@ -524,7 +320,8 @@ class CascadeInferer:  # SPACING HAS TO BE SAME IN PATCHES
         preds_all_runs = {}
         print("Starting patch data prep and prediction")
         for P in self.Ps:
-            P.setup(data=data,tfms='ESN', collate_fn=img_bbox_collated)
+            P.setup()
+            P.prepare_data(data=data,tfms='ESN', collate_fn=img_bbox_collated)
             preds = P.predict()
             preds = P.postprocess(preds)
             preds_all_runs[P.run_name] = preds
@@ -568,7 +365,7 @@ class CascadeFew(CascadeInferer):
 
 if __name__ == "__main__":
     # ... run your application ...
-    project = Project(project_title="totalseg")
+    project = Project(project_title="litsmc")
 
     run_w = "LIT-145"
     run_ps = ["LIT-143", "LIT-150", "LIT-149", "LIT-153", "LIT-161"]
@@ -576,96 +373,52 @@ if __name__ == "__main__":
     run_ps = ["LITS-720"]
 
     run_ps = ["LITS-787", "LITS-810", "LITS-811"]
-    run_ps = ["LITS-709"]
+    run_lidc2 = ["LITS-902"]
     run_lidc2 = ["LITS-842"]
     run_ts= ["LITS-827"]
+    run_ps = ["LITS-910"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
-# %%
     img_fldr= Path("/s/xnat_shadow/lidc2/images/")
     img_fn2= "/s/xnat_shadow/crc/wxh/images/crc_CRC198_20170718_CAP1p51.nii.gz"
+    img_fn3= "/s/xnat_shadow/crc/srn/images/crc_CRC002_20190415_CAP1p5.nii.gz"
 
 
     imgs_fldr = Path("/s/xnat_shadow/crc/images")
-# %%
     srn_fldr = "/s/xnat_shadow/crc/srn/cases_with_findings/images/"
     srn_imgs = list(Path(srn_fldr).glob("*"))
     wxh_fldr = "/s/xnat_shadow/crc/wxh/completed/"
     wxh_imgs = list(Path(wxh_fldr).glob("*"))
     litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
     litq_imgs = list(Path(litq_fldr).glob("*"))
+    img_t6 = Path("/s/datasets_bkp/Task06Lung/images/lung_003.nii.gz")
 # %%
-    run_w = run_ts[0]
+    react_fldr = Path("/s/insync/react/sitk/images")
+    imgs_react = list(react_fldr.glob("*"))
+
+    img_fns = [img_fn3]
     localiser_labels =[1]
     localiser_labels =[45,46,47,48,49]
     runs_p = run_ps
-    En = CascadeInferer(project, run_w, run_lidc2, debug=False, devices=[0],overwrite_w=False,overwrite_p=True,localiser_labels=localiser_labels)
+    runs_lidc= ["LITS-910"]
+    runs_lbd = ["LITS-903"]
+# %%
+    run_w = run_ts[0]
+    runs_p = runs_lidc
+# %%
+    project = Project(project_title="lidc2")
+    En = CascadeInferer(project, run_w, runs_p, save_channels=False, devices=[0],overwrite=True,localiser_labels=localiser_labels,safe_mode=True)
 
 # %%
-    # img_fns = ["/s/xnat_shadow/lidc2/images/lidc2_0001.nii.gz","/s/xnat_shadow/lidc2/images/lidc2_0003.nii.gz"]
-    img_fns = list(img_fldr.glob("*"))[20:50]
-    preds = En.run(img_fns)
+    # img_fns = list(img_fldr.glob("*"))[20:50]
+    preds = En.run(imgs_react)
 
 # %%
-# %%
-    imgs_sublist = img_fns
-    data1 = En.load_images(imgs_sublist)
-    En.bboxes = En.extract_fg_bboxes(data1)
-    data = En.apply_bboxes(data1,En.bboxes)
-    pred_patches = En.patch_prediction(data )
-    pred_patches = En.decollate_patches(pred_patches, En.bboxes)
-
-
-    output = En.postprocess(pred_patches)
-# %%    
-    img = data1[0]['image']
-    pp = pred_patches['LITS-842']
-    image = pp[0]['image'][0,0]
-    pred = pp[0]['pred']
-# %%
-
-    keys = En.runs_p
-    A = Activationsd(keys="pred", softmax=True)
-    D = AsDiscreted(keys=["pred"], argmax=True)
-    K = KeepLargestConnectedComponentWithMetad(
-        keys=["pred"], independent=False, 
-    )  # label=1 is the organ
-    F = FillBBoxPatchesd()
-    if len(keys) == 1:
-        MR = RenameDictKeys(new_keys=["pred"], keys=keys)
-    else:
-        MR = MeanEnsembled(output_key="pred", keys=keys)
-    if En.k_largest:
-        tfms = [MR, A, D, K, F]
-    else:
-        tfms = [MR, A, D,  F]
-    # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
-
-
-    C = Compose(tfms)
-
-# %%
-    ind = 1
-    pred =pred_patches[ind]
-    pred= MR(pred)
-    pred= A(pred)
-    pred= D(pred)
-# %%
-    ind=1
-    pr= output[ind]['pred']
-    im = data[ind]['image']
-    bbox = pred['bounding_box']
-    img = im.permute(2,1,0)
-    pr = pr[0].permute(2,1,0)
-    ImageMaskViewer([img,pr.cpu()])
+    imgs_sublist = imgs_react
+    data = En.load_images(imgs_sublist)
+    En.bboxes = En.extract_fg_bboxes(data)
+    data = En.apply_bboxes(data,En.bboxes)
 
 # %%
 
-# %%
-    for p in En.Ps:
-        del p.model
-    torch.cuda.empty_cache()
-
-
-# %%

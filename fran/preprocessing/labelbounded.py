@@ -8,7 +8,7 @@ from monai.transforms.utility.dictionary import EnsureChannelFirstd
 from torch.utils.data import DataLoader
 
 from fran.data.dataloader import dict_list_collated
-from fran.preprocessing.fixed_spacing import generate_bboxes_from_masks_folder
+from fran.preprocessing.fixed_spacing import generate_bboxes_from_lms_folder
 from fran.preprocessing.patch import PatchGenerator
 from fran.transforms.imageio import LoadSITKd, LoadTorchd
 from fran.transforms.inferencetransforms import BBoxFromPTd
@@ -109,22 +109,23 @@ class LabelBoundedDataGenerator(PatchGenerator, GetAttr):
             self.shapes =[]
             images = item["image"]
             if self.keep_imported_labels == False:
-                masks = item["lm"]
+                lms = item["lm"]
             else:
-                masks = item["lm_out"]
-            for image, mask in zip(images, masks):
+                lms = item["lm_out"]
+            for image, lm in zip(images, lms):
                 self.save_pt(image[0], "images")
-                self.save_pt(mask[0], "lms")
+                self.save_pt(lm[0], "lms")
                 self.shapes.append(image.shape[1:])
         self.store_info()
 
     def save_pt(self, tnsr, subfolder):
+        tnsr = tnsr.contiguous()
         fn = Path(tnsr.meta["filename"])
         fn = self.output_folder / subfolder / fn.name
         torch.save(tnsr, fn)
 
     def store_info(self):
-        generate_bboxes_from_masks_folder(self.output_folder/("lms"))
+        generate_bboxes_from_lms_folder(self.output_folder/("lms"))
         self.shapes = np.array(self.shapes)
         fn_dict = self.output_folder / "info.json"
         labels ={k[0]:k[1] for k in self.remapping.items() if self.remapping[k[0]] != 0}

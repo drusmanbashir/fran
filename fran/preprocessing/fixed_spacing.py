@@ -31,7 +31,7 @@ from fran.utils.helpers import folder_name_from_list, multiprocess_multiarg
 from fran.utils.string import strip_extension
 
 
-def generate_bboxes_from_masks_folder(
+def generate_bboxes_from_lms_folder(
     masks_folder, bg_label=0, debug=False, num_processes=16
 ):
     label_files = masks_folder.glob("*pt")
@@ -127,6 +127,7 @@ class ResampleDatasetniftiToTorch(GetAttr):
         update_resampling_configs(self.spacing, self.resampling_output_folder)
 
     def save_tensor(self, tnsr, output_folder, overwrite):
+        tnsr = tnsr.contiguous()
         fname = Path(tnsr.meta["filename"])
         fname_name = strip_extension(fname.name) + ".pt"
         fname_full = output_folder / fname_name
@@ -165,7 +166,7 @@ class ResampleDatasetniftiToTorch(GetAttr):
     ):
         masks_folder = self.resampling_output_folder / ("lms")
         print("Generating bbox info from {}".format(masks_folder))
-        generate_bboxes_from_masks_folder(
+        generate_bboxes_from_lms_folder(
             masks_folder,
             bg_label,
             debug,

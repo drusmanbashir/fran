@@ -204,7 +204,7 @@ class LoadSITKd(MapTransform):
 
 
     def func(self, img: Union[str,Path, sitk.Image], get_labels=False):
-        if isinstance(img, Union[Path,str]):
+        if isinstance(img, Path) or isinstance(img,str): # for compatibility with Slicerpython 3.9
             img_fn = img
             img = sitk.ReadImage(img)
             array_np, meta_data = self.get_data(img, get_labels)

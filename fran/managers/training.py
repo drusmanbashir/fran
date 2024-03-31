@@ -1,6 +1,7 @@
 # %%
 import shutil
 from lightning.pytorch.profilers import AdvancedProfiler
+from monai.transforms.utility.dictionary import EnsureChannelFirstd
 
 import psutil
 import random
@@ -542,8 +543,8 @@ if __name__ == "__main__":
 # %%
     device_id = 1
 # %%
-    bs = 4
-    # run_name ='LITS-827'
+    bs = 10
+    run_name ='LITS-902'
     run_name = None
     # run_name ='LITS-836'
     compiled = False
@@ -553,7 +554,7 @@ if __name__ == "__main__":
     neptune = True
     tags = []
     cache_rate=0.3
-    description = f"ssd, saved indices, cache {cache_rate}"
+    description = f""
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,
@@ -581,6 +582,20 @@ if __name__ == "__main__":
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
     iteri2 = iter(dl2)
+# %%
+    idx= 0
+    ds.set_bboxes_labels(idx)
+    if ds.enforce_ratios == True:
+        ds.mandatory_label = ds.randomize_label()
+        ds.maybe_randomize_idx()
+
+    filename, bbox = ds.get_filename_bbox()
+    img, lm= ds.load_tensors(filename)
+    dici = {"image": img, "lm": lm, "bbox": bbox}
+    dici = ds.transform(dici)
+
+    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+    dici = E(dici)
 # %%
     # img = ds.create_metatensor(img_fn)
     # label = ds.create_metatensor(label_fn)
