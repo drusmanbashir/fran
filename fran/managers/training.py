@@ -44,6 +44,9 @@ import torch
 from lightning.pytorch import LightningModule, Trainer
 
 
+
+
+
 def fix_dict_keys(input_dict, old_string, new_string):
     output_dict = {}
     for key in input_dict.keys():
@@ -325,6 +328,7 @@ class TrainingManager:
     def __init__(self, project, configs, run_name=None):
         store_attr()
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
+        self.qc_configs(configs,project)
 
     def setup(
         self,
@@ -410,6 +414,15 @@ class TrainingManager:
             strategy=strategy
             # strategy='ddp_find_unused_parameters_true'
         )
+
+    def qc_configs(self, configs,project):
+        ratios = configs['dataset_params']["fgbg_ratio"]
+        labels_fg = project.global_properties['labels_all']
+        labels = [0]+labels_fg
+        if isinstance(ratios,list):
+            assert(a:=(len(ratios))==(b:=len(labels))), "Class ratios {0} do not match number of labels in dataset {1}".format(a,b)
+        else:
+            assert  isinstance(ratios, int), "If no list is provided, fgbg_ratio must be an integer"
 
     def heuristic_batch_size(self):
         ram = psutil.virtual_memory()[3] / 1e9
@@ -542,10 +555,10 @@ if __name__ == "__main__":
 
 # %%
     device_id = 1
-# %%
-    bs = 10
-    run_name ='LITS-902'
+    bs = 4
+    run_name ='LITS-911'
     run_name = None
+    run_name = "LITS-913"
     # run_name ='LITS-836'
     compiled = False
     profiler=False
@@ -553,7 +566,7 @@ if __name__ == "__main__":
     batch_finder = False
     neptune = True
     tags = []
-    cache_rate=0.3
+    cache_rate=0.0
     description = f""
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(

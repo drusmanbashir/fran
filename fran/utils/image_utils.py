@@ -1,14 +1,25 @@
 
 # %%
-
+from monai.utils import first, set_determinism
+from monai.apps.utils import download_and_extract
+from monai.data.dataloader import DataLoader
+from monai.data.dataset import Dataset
+from monai.transforms.compose import Compose
+from monai.transforms.croppad.dictionary import CropForegroundd
+from monai.transforms.intensity.dictionary import ScaleIntensityRanged
+from monai.transforms.io.dictionary import LoadImaged
+from monai.transforms.spatial.dictionary import Orientationd, SpacingD
+from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from monai.visualize import blend_images, matshow3d, plot_2d_or_3d_image
 import matplotlib.pyplot as plt
+from torch.utils.tensorboard.writer import SummaryWriter
 from torchvision.utils import make_grid
 from pathlib import Path
 import numpy as np
 from numpy.core.fromnumeric import resize
 import torch
 import SimpleITK as sitk
-from fran.utils.fileio import save_np
+from fran.utils.fileio import maybe_makedirs, save_np
 from fran.utils.helpers import abs_list
 import torch.nn.functional as F
 import ipdb
@@ -196,6 +207,49 @@ if __name__ == "__main__":
     img = torch.load(img_fn)
     lm = torch.load(lm_fn)
 
+# %%
+    root_dir = "/tmp"
+    resource = "https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09_Spleen.tar"
+    md5 = "410d4a301da4e5b2f6f86ec3ddba524e"
+
+    import os
+    compressed_file = os.path.join(root_dir, "Task09_Spleen.tar")
+    data_dir = os.path.join(root_dir, "Task09_Spleen")
+    if not os.path.exists(data_dir):
+        download_and_extract(resource, compressed_file, root_dir, md5)
+# %%
+
+    import glob
+    train_images = sorted(glob.glob(os.path.join(data_dir, "imagesTr", "*.nii.gz")))
+    train_labels = sorted(glob.glob(os.path.join(data_dir, "labelsTr", "*.nii.gz")))
+    data_dicts = [{"image": image_name, "label": label_name} for image_name, label_name in zip(train_images, train_labels)]
+    transform = Compose(
+        [
+            LoadImaged(keys=["image", "label"]),
+            EnsureChannelFirstd(keys=["image", "label"]),
+            Orientationd(keys=["image", "label"], axcodes="PLS"),
+            SpacingD(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
+            ScaleIntensityRanged(keys=["image"], a_min=-57, a_max=164, b_min=0.0, b_max=1.0, clip=True),
+            CropForegroundd(keys=["image", "label"], source_key="image"),
+        ]
+    )
+# %%
+
+    check_ds = Dataset(data=data_dicts, transform=transform)
+    check_loader = DataLoader(check_ds, batch_size=1)
+    data = first(check_loader)
+    print(f"image shape: {data['image'].shape}, label shape: {data['label'].shape}")
+# %%
+    ret = blend_images(image=data["image"][0], label=data["label"][0], alpha=0.5, cmap="hsv", rescale_arrays=False)
+    ret = ret.unsqueeze(0)
+# %%
+    tb_dir ="/s/fran_storage/tensorboard/"
+    im = img.unsqueeze(0).unsqueeze(0)
+    plot_2d_or_3d_image(data=ret, writer=SummaryWriter(log_dir=tb_dir), frame_dim=-1,step=0)
+    plot_2d_or_3d_image(data=im, step=0, writer=SummaryWriter(log_dir=tb_dir), frame_dim=-1)
+    # %load_ext tensorboard
+    # %tensorboard --logdir=$tb_dir
+# %%
 
     sps = lm.meta['spacing']
     uns = np.unique(sps)

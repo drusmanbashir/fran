@@ -27,7 +27,7 @@ class SlicerCascadeInferer(CascadeInferer):
             devices=devices,
             save_channels=save_channels,
             profile=profile,
-            overwrite_p=overwrite,
+            overwrite=overwrite,
             save=save,
             **kwargs
         )

@@ -18,7 +18,7 @@ mamba install -c conda-forge black
 Inside slicer:
 import pip
 mods="lightning","monai","ipdb" "lxml","seaborn","nnunet","bs4", "ipywidgets",
-modules= "torch", "torchvision","lightning","monai", "fastcore","fastai", ipython","ipywidgets","pandas","matplotlib","openpyxl","pillow","pygments","jupyterlab","pyyaml","scikit-image","scipy","timm","einops","ipdb","gputil","ipympl","lxml","seaborn","nnunet","pyxnat", "paramiko","itk", "neptune"
+modules= "torch", "torchvision","lightning","monai", "torchio","tensorboard","fastcore","fastai", ipython","ipywidgets","pandas","matplotlib","openpyxl","pillow","pygments","jupyterlab","pyyaml","scikit-image","scipy","timm","einops","ipdb","gputil","ipympl","lxml","seaborn","nnunet","pyxnat", "paramiko","itk", "neptune"
 def install(modules):
     for mod in modules:
       pip.main(['install',mod])

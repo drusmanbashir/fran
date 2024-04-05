@@ -375,8 +375,9 @@ if __name__ == "__main__":
     run_ps = ["LITS-787", "LITS-810", "LITS-811"]
     run_lidc2 = ["LITS-902"]
     run_lidc2 = ["LITS-842"]
+    run_lidc2= ["LITS-913"]
+    run_lidc2= ["LITS-911"]
     run_ts= ["LITS-827"]
-    run_ps = ["LITS-910"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
@@ -392,27 +393,27 @@ if __name__ == "__main__":
     wxh_imgs = list(Path(wxh_fldr).glob("*"))
     litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
     litq_imgs = list(Path(litq_fldr).glob("*"))
-    img_t6 = Path("/s/datasets_bkp/Task06Lung/images/lung_003.nii.gz")
+    t6_fldr = Path("/s/datasets_bkp/Task06Lung/images")
+    imgs_t6 = list(t6_fldr.glob("*"))
 # %%
     react_fldr = Path("/s/insync/react/sitk/images")
     imgs_react = list(react_fldr.glob("*"))
 
-    img_fns = [img_fn3]
+    img_fns = [imgs_t6][:20]
     localiser_labels =[1]
     localiser_labels =[45,46,47,48,49]
     runs_p = run_ps
-    runs_lidc= ["LITS-910"]
-    runs_lbd = ["LITS-903"]
 # %%
     run_w = run_ts[0]
-    runs_p = runs_lidc
+    runs_p = run_lidc2
 # %%
     project = Project(project_title="lidc2")
-    En = CascadeInferer(project, run_w, runs_p, save_channels=False, devices=[0],overwrite=True,localiser_labels=localiser_labels,safe_mode=True)
+    safe_mode=True
+    En = CascadeInferer(project, run_w, runs_p, save_channels=False, devices=[0],overwrite=True,localiser_labels=localiser_labels,safe_mode=safe_mode)
 
 # %%
     # img_fns = list(img_fldr.glob("*"))[20:50]
-    preds = En.run(imgs_react)
+    preds = En.run(imgs_t6)
 
 # %%
     imgs_sublist = imgs_react

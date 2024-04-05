@@ -1,18 +1,20 @@
 # %%
 import math
+from functools import reduce
+from operator import add
 from pathlib import Path
 from typing import Sequence, Union
 
 import ipdb
 import itk
-from monai.data.dataset import CacheDataset, PersistentDataset
 import numpy as np
 import SimpleITK as sitk
 import torch
 from fastcore.basics import listify, store_attr, warnings
 from lightning.pytorch import LightningDataModule
 from monai.config.type_definitions import KeysCollection, PathLike
-from monai.data import DataLoader
+from monai.data import DataLoader, Dataset
+from monai.data.dataset import CacheDataset, PersistentDataset
 from monai.data.image_reader import (ImageReader, ITKReader,
                                      _copy_compatible_dict, _stack_images)
 from monai.data.itk_torch_bridge import has_itk
@@ -25,20 +27,20 @@ from monai.transforms.intensity.dictionary import (RandAdjustContrastd,
                                                    RandShiftIntensityd)
 from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, FgBgToIndicesd, ToDeviced
+from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
+                                                 FgBgToIndicesd, ToDeviced)
 from monai.utils.enums import MetaKeys, SpaceKeys
 from monai.utils.misc import ensure_tuple
 from monai.utils.module import require_pkg
 from SimpleITK import Not
 from torchvision.utils import Any
 
-from monai.data import Dataset
 from fran.data.dataloader import img_lm_bbox_collated
 from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemap2,
                                NormaliseClipd, SimpleDataset)
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
-from fran.transforms.misc_transforms import  MetaToDict
+from fran.transforms.misc_transforms import MetaToDict
 from fran.transforms.spatialtransforms import PadDeficitd
 from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
@@ -46,6 +48,18 @@ from fran.utils.imageviewers import ImageMaskViewer
 from fran.utils.string import strip_extension
 
 tr = ipdb.set_trace
+
+
+def int_to_ratios(n_fg_labels, fgbg_ratio=3):
+    ratios = [1] + [fgbg_ratio / n_fg_labels] * n_fg_labels
+    return ratios
+
+
+def list_to_fgbg(class_ratios):
+    bg = class_ratios[0]
+    fg = class_ratios[1:]
+    fg = reduce(add, fg)
+    return fg,bg
 
 
 def simple_collated(batch):
@@ -173,6 +187,8 @@ class DataManager(LightningDataModule):
         else:
             src_dims = self.dataset_params["patch_size"]
         return src_dims
+
+
 class DataManagerSource(DataManager):
     def __init__(
         self,
@@ -184,7 +200,7 @@ class DataManagerSource(DataManager):
         **kwargs
     ):
         super().__init__(
-            project, dataset_params, transform_factors, affine3d, batch_size,**kwargs
+            project, dataset_params, transform_factors, affine3d, batch_size, **kwargs
         )
         self.collate_fn = simple_collated
 
@@ -195,23 +211,26 @@ class DataManagerSource(DataManager):
         dataset_folder = folder_name_from_list(prefix, parent_folder, spacing)
         return dataset_folder
 
-
     def prepare_data(self):
         super().prepare_data()
         self.data_train = self.create_data_dicts(self.train_nii)
         self.data_valid = self.create_data_dicts(self.valid_nii)
 
-
     def create_transforms(self):
+        fgbg_ratio = self.dataset_params["fgbg_ratio"]
+        if isinstance(fgbg_ratio, list):
+            fg,bg= list_to_fgbg(fgbg_ratio)
+        else:
+            fg = fgbg_ratio
+            bg=1
 
         L = LoadImaged(
-            keys=["image",'lm'],
+            keys=["image", "lm"],
             image_only=True,
             ensure_channel_first=False,
             simple_keys=True,
         )
         L.register(TorchReader())
-
 
         E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
         # G= ToDeviced(device = 'cuda',keys = ['image','lm'])
@@ -222,29 +241,28 @@ class DataManagerSource(DataManager):
         #     lazy=True,
         # )
         #
-        Ind = MetaToDict(keys=["lm"], meta_keys=['lm_fg_indices','lm_bg_indices'])
+        Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
         Rtr = RandCropByPosNegLabeld(
             keys=["image", "lm"],
             label_key="lm",
             image_key="image",
-            fg_indices_key = "lm_fg_indices",
-            bg_indices_key = "lm_bg_indices",
+            fg_indices_key="lm_fg_indices",
+            bg_indices_key="lm_bg_indices",
             image_threshold=-2600,
             spatial_size=self.src_dims,
-            pos=1,
-            neg=1,
+            pos=fg,
+            neg=bg,
             num_samples=self.dataset_params["samples_per_file"],
             lazy=True,
             allow_smaller=True,
-
         )
         Rva = RandCropByPosNegLabeld(
             keys=["image", "lm"],
             label_key="lm",
             image_key="image",
             image_threshold=-2600,
-            fg_indices_key = "lm_fg_indices",
-            bg_indices_key = "lm_bg_indices",
+            fg_indices_key="lm_fg_indices",
+            bg_indices_key="lm_bg_indices",
             spatial_size=self.dataset_params["patch_size"],
             pos=1,
             neg=1,
@@ -294,22 +312,31 @@ class DataManagerSource(DataManager):
         )
 
         self.tfms_train = Compose([L, E, Ind, Rtr, F1, F2, A, Re, N, *int_augs])
-        self.tfms_valid = Compose([L, E, Ind,Rva, Re, N])
+        self.tfms_valid = Compose([L, E, Ind, Rva, Re, N])
 
         # self.tfms_train = Compose([L, E, P, Rtr, F1, F2, A, Re, N, *int_augs])
         # self.tfms_valid = Compose([L, E, P, Rva, N])
+
     def setup(self, stage: str = None):
         self.create_transforms()
         if self.cache_rate == 0.0:
             # self.train_ds = PersistentDataset(data=self.data_train, transform=self.tfms_train,cache_dir = self.project.cache_folder)
             self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
         else:
-            self.train_ds = CacheDataset(data=self.data_train, transform=self.tfms_train,cache_rate=self.cache_rate)
-        self.valid_ds = PersistentDataset(data=self.data_valid, transform=self.tfms_valid,cache_dir=self.project.cache_folder)
+            self.train_ds = CacheDataset(
+                data=self.data_train,
+                transform=self.tfms_train,
+                cache_rate=self.cache_rate,
+            )
+        self.valid_ds = PersistentDataset(
+            data=self.data_valid,
+            transform=self.tfms_valid,
+            cache_dir=self.project.cache_folder,
+        )
 
 
 class DataManagerLBD(DataManagerSource):
-    def derive_dataset_folder(self,dataset_mode=None):
+    def derive_dataset_folder(self, dataset_mode=None):
         spacing = self.dataset_params["spacing"]
         parent_folder = self.project.lbd_folder
         dataset_folder = folder_name_from_list(
@@ -324,6 +351,7 @@ class DataManagerLBD(DataManagerSource):
         super().prepare_data()
         self.data_train = self.create_data_dicts(self.train_nii)
         self.data_valid = self.create_data_dicts(self.valid_nii)
+
 
 class DataManagerShort(DataManager):
     def prepare_data(self):
@@ -345,30 +373,29 @@ class DataManagerPatch(DataManager):
         **kwargs
     ):
         super().__init__(
-            project, dataset_params, transform_factors, affine3d, batch_size,**kwargs
+            project, dataset_params, transform_factors, affine3d, batch_size, **kwargs
         )
         self.collate_fn = img_lm_bbox_collated
 
     def derive_dataset_folder(self):
-            parent_folder = self.project.patches_folder
-            spacing = self.dataset_params["spacing"]
-            subfldr1 = folder_name_from_list("spc",parent_folder,spacing)
-            src_dims= self.src_dims
-            subfldr2 =  folder_name_from_list("dim",subfldr1,src_dims)
-            return subfldr2
-
+        parent_folder = self.project.patches_folder
+        spacing = self.dataset_params["spacing"]
+        subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
+        src_dims = self.src_dims
+        subfldr2 = folder_name_from_list("dim", subfldr1, src_dims)
+        return subfldr2
 
     def create_transforms(self):
         P = MaskLabelRemap2(
-                keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
-            )
+            keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
+        )
         E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-        N= NormaliseClipd(
-                keys=["image"],
-                clip_range=self.dataset_params["intensity_clip_range"],
-                mean=self.dataset_params["mean_fg"],
-                std=self.dataset_params["std_fg"],
-            )
+        N = NormaliseClipd(
+            keys=["image"],
+            clip_range=self.dataset_params["intensity_clip_range"],
+            mean=self.dataset_params["mean_fg"],
+            std=self.dataset_params["std_fg"],
+        )
         if not math.isnan(self.dataset_params["src_dest_labels"]):
             all_after_item = [P, E, N]
         else:
@@ -405,14 +432,20 @@ class DataManagerPatch(DataManager):
         self.tfms_train = Compose(all_after_item + t2 + t3)
         self.tfms_valid = Compose(all_after_item + t3)
 
-
     def setup(self, stage: str = None):
         self.create_transforms()
+        fgbg_ratio = self.dataset_params["fgbg_ratio"]
+        if isinstance(fgbg_ratio, int):
+            n_fg_labels = len(self.project.global_properties["labels_all"])
+            class_ratios = int_to_ratios(n_fg_labels=n_fg_labels, fgbg_ratio=fgbg_ratio)
+        else:
+            class_ratios = fgbg_ratio
+
         bboxes_fname = self.dataset_folder / "bboxes_info"
         self.train_ds = ImageMaskBBoxDatasetd(
             self.train_nii,
             bboxes_fname,
-            self.dataset_params["class_ratios"],
+            class_ratios,
             transform=self.tfms_train,
         )
         self.valid_ds = ImageMaskBBoxDatasetd(
@@ -452,7 +485,7 @@ if __name__ == "__main__":
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
-# %%
+    # %%
     batch_size = 2
     D = DataManagerSource(
         proj,
@@ -461,24 +494,24 @@ if __name__ == "__main__":
         affine3d=configs["affine3d"],
         batch_size=batch_size,
     )
-# %%
+    # %%
     D.prepare_data()
     D.setup(None)
-# %%
+    # %%
 
     dici = D.train_ds.data[0]
     L = LoadTorchd(keys=["image", "lm"])
     dici = L(dici)
 
-# %%
+    # %%
 
-    Ind = MetaToDict(keys=["lm"], meta_keys=['lm_fg_indices','lm_bg_indices'])
+    Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
     Rtr = RandCropByPosNegLabeld(
         keys=["image", "lm"],
         label_key="lm",
         image_key="image",
-        fg_indices_key = "lm_fg_indices",
-        bg_indices_key = "lm_bg_indices",
+        fg_indices_key="lm_fg_indices",
+        bg_indices_key="lm_bg_indices",
         image_threshold=-2600,
         spatial_size=D.src_dims,
         pos=1,
@@ -486,24 +519,22 @@ if __name__ == "__main__":
         num_samples=D.dataset_params["samples_per_file"],
         lazy=True,
         allow_smaller=False,
-
     )
-    dici =Ind(dici)
-# %%
+    dici = Ind(dici)
+    # %%
     dl = D.train_dataloader()
     iteri = iter(dl)
     aa = D.Train_ds[0]
     b = next(iteri)
     print(b["image"].shape)
-# %%
+    # %%
     im_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_300/images/nodes_20_20190611_Neck1p0I30f3_thick.pt"
     label_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_300/masks/nodes_20_20190611_Neck1p0I30f3_thick.pt"
     dici = {"image": im_fn, "lm": label_fn}
     D.setup()
-# %%
+    # %%
     ind = 1
     img = b["image"][ind][0]
     lab = b["lm"][ind][0]
     ImageMaskViewer([img, lab])
 # %
-

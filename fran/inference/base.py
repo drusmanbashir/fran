@@ -338,19 +338,18 @@ if __name__ == "__main__":
     # ... run your application ...
     from fran.utils.common import *
 
-    # %%
-    proj = Project(project_title="nodes")
-    runs_nodes = ["LITS-702"]
+# %%
+    proj = Project(project_title="totalseg")
     run_ps = ["LITS-860"]
-    safe_mode = False
+    safe_mode = True
 
-    # %%
+# %%
     proj = Project(project_title="nodes")
     run_ps = ["LITS-702"]
     safe_mode = False
     bs = 8
 
-    # %%
+# %%
     img_fn = "/s/xnat_shadow/nodes/images/nodes_53_20220405_Source.nii.gz"
 
     img = sitk.ReadImage(img_fn)
@@ -358,24 +357,26 @@ if __name__ == "__main__":
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images")
     img_nodes = list(fldr_nodes.glob("*"))
-    save_channels = False
 
-    # %%
+    save_channels = True
+    overwrite = True
+
+# %%
     devices = [0]
     P = BaseInferer(
         proj,
         run_ps[0],
-        overwrite=False,
+        overwrite=overwrite,
         save_channels=save_channels,
         safe_mode=safe_mode,
         devices=devices,
     )
 
-    # %%
+# %%
     preds = P.run(img_nodes, chunksize=5)
-    # %%
+# %%
     data = P.ds.data[0]
-    # %%
+# %%
     P.setup()
     imgs_sublist = img_fns
     data = P.load_images(imgs_sublist)
@@ -386,8 +387,8 @@ if __name__ == "__main__":
     pred = preds[0]
     pp = preds[0]["pred"][0]
     ImageMaskViewer([pp, pp])
-    # %%
-    # %%
+# %%
+# %%
 
     Sq = SqueezeDimd(keys=["pred"], dim=0)
     pred = Sq(pred)
@@ -420,6 +421,6 @@ if __name__ == "__main__":
     pr2 = I(pr)
     p = pr["pred"][0].cpu()
     img = pr["image"][0, 0]
-    # %%
+# %%
     ImageMaskViewer([img, p])
 # %%

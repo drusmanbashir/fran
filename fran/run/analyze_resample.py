@@ -5,16 +5,14 @@ import shutil
 
 from label_analysis.totalseg import TotalSegmenterLabels
 
+from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-from fran.preprocessing.patch import PatchGenerator, PatchGeneratorFG
+from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from fran.preprocessing.stage1_preprocessors import *
-from fran.preprocessing.datasetanalyzers import *
-
-from fran.utils.helpers import *
 from fran.utils.fileio import *
-
+from fran.utils.helpers import *
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
@@ -48,7 +46,7 @@ def user_input(inp:str, out=int):
     return tmp
 
 
-class Preprocessor():
+class PreprocessingManager():
     #dont use getattr
     def __init__(self, args):
         self.assimilate_args(args)
@@ -56,11 +54,9 @@ class Preprocessor():
         P = Project(project_title=args.project_title); 
         self.project= P
         self.Resampler = ResampleDatasetniftiToTorch(
-                    self.project,
-                    minimum_final_spacing=0.5,
-                    enforce_isotropy=self.enforce_isotropy,
-                    half_precision=self.half_precision,
-                    clip_centre=False,
+                    project=self.project,
+                    spacing=self.spacing,
+
                     device='cpu'
                 )
 
@@ -144,6 +140,7 @@ class Preprocessor():
 
 
 
+
     @ask_proceed("Generating low-res whole images to localise organ of interest")
     def generate_whole_images_dataset(self):
         if not hasattr(self, "spacing"):
@@ -171,12 +168,11 @@ class Preprocessor():
 
     def set_patches_config(self,spacing_ind=0,patch_overlap=.25,expand_by=20):
 
-        resampling_configs = self.get_resampling_configs()
-        spacing_config = resampling_configs[spacing_ind]
-        self.spacing, self.fixed_spacing_folder = spacing_config.values()
-        self.fixed_spacing_folder = Path(self.fixed_spacing_folder)
+        spacing_config = self.resampling_configs[spacing_ind]
+        self.spacing, self.fixed_spacing_folder , self.lbd_output_folder = spacing_config.values()
+        self.lbd_output_folder= Path(self.lbd_output_folder)
         patches_output_folder = self.create_patches_output_folder(
-            self.fixed_spacing_folder, self.patch_size
+            self.lbd_output_folder, self.patch_size
         )
         patches_config_fn = patches_output_folder / "patches_config.json"
         if patches_config_fn.exists()==True:
@@ -190,16 +186,17 @@ class Preprocessor():
             }
         return patches_config, patches_output_folder
 
-
-
-    def generate_hires_patches_dataset(self,spacing_ind, patch_overlap=.25,expand_by=20,debug=False,overwrite=False):
+    def generate_hires_patches_dataset(self,spacing_ind, patch_overlap=.25,expand_by=0,debug=False,overwrite=False,mode=None):
         patches_config , patches_output_folder= self.set_patches_config(spacing_ind,patch_overlap,expand_by)
-        PG = PatchGenerator(self.project,self.fixed_spacing_folder, self.patch_size,**patches_config)
+
+        if mode is None:
+            mode = self.mode
+        PG = PatchDataGenerator(self.project,self.lbd_output_folder, self.patch_size,**patches_config,mode=mode)
         PG.create_patches(overwrite=overwrite,debug=debug)
         print("Generating boundingbox data")
         PG.generate_bboxes(debug=debug)
 
-        resampled_dataset_properties_fn_org = self.fixed_spacing_folder / (
+        resampled_dataset_properties_fn_org = self.lbd_output_folder / (
             "resampled_dataset_properties.json"
         )
         resampled_dataset_properties_fn_dest = (
@@ -259,6 +256,11 @@ class Preprocessor():
         except:
             _accept_defaults()
 
+    @property
+    def resampling_configs(self):
+        return self.get_resampling_configs()
+
+
 
 def do_resampling(R, args):
     dim0 = input("Change dim0 to (press enter to leave unchanged)")
@@ -307,6 +309,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     parser.add_argument("-c", "--clip-centre", action='store_true', help="Clip and centre data now or during training?")
     parser.add_argument("-r", "--clip-range", nargs='+', help="Give clip range to compute dataset std and mean")
+    parser.add_argument("-m", "--mode", default= "fgbg", help = "Mode of Patch generator, 'fg' or 'fgbg'")
     parser.add_argument("-p", "--patch-size", nargs="+", default=[192,192,128] ,help="e.g., [192,192,128]if you want a high res patch-based dataset")
     parser.add_argument("-s", "--spacing", nargs='+', help="Give clip range to compute dataset std and mean")
     parser.add_argument("-i", "--imported-folder")
@@ -319,6 +322,7 @@ if __name__ == "__main__":
     )
 
 
+
     args = parser.parse_known_args()[0]
 # %%
     args.project_title = "lidc2"
@@ -327,22 +331,42 @@ if __name__ == "__main__":
     # args.clip_range=[-100,200]
     args.spacing= [.8,.8,1.5]
     # args.overwrite=False
-    I = Preprocessor(args)
+    I = PreprocessingManager(args)
 # %%
     # I.resample_dataset()
-    I.generate_hires_patches_dataset(spacing_ind=0,debug=True,overwrite=True)
     # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+    I.generate_hires_patches_dataset(spacing_ind=1,debug=True,overwrite=True)
 # %%
-    PG.create_patches(overwrite=overwrite,debug=debug)
+    
+    fixed_spacing_folder =Path(I.resampling_configs[1]['resampling_output_folder'])
+    PG = PatchDataGenerator(I.project,fixed_spacing_folder, I.patch_size,**patches_config,mode=I.mode)
 
 
 
 # %%
-    PG = PatchGenerator(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
     overwrite=True
     debug=True
     PG.create_patches(overwrite=overwrite,debug=debug)
 
+# %%
+    bb= PG.fixed_sp_bboxes[0]
+    args =             [
+                PG.dataset_properties,
+                PG.output_folder,
+                PG.patch_size,
+                bb,
+                patch_overlap,
+                PG.expand_by,
+                PG.mode
+            ]
+# %%
+    P = PatchGenerator(
+        PG.dataset_properties, PG.output_folder, PG.patch_size, bb, patch_overlap, expand_by, 'fg'
+    )
+# %%
+    P.create_patches_from_all_bboxes()
+
+# %%
     PG.generate_bboxes(debug=debug)
 # %%
     # I.verify_dataset_integrity()
@@ -365,7 +389,7 @@ if __name__ == "__main__":
     patch_overlap=.25
     expand_by = 20
     patches_config , patches_output_folder= I.set_patches_config(spacing_ind,patch_overlap,expand_by)
-    PG = PatchGeneratorFG(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
+    PG = PatchDataGenerator(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
     print("Generating boundingbox data")
     PG.generate_bboxes(debug=debug)
 # %%
@@ -374,6 +398,28 @@ if __name__ == "__main__":
     expand_by = 20
     patches_config , patches_output_folder= I.set_patches_config(0,patch_overlap,expand_by)
 # %%
+
+    resampling_configs = I.get_resampling_configs()
+    spacing_config = resampling_configs[spacing_ind]
+
+
+    value= spacing_config['spacing']
+# %%
+    folder_name_from_list(
+            prefix="spc",
+            parent_folder=I.project.lbd_folder,
+            values_list=value,
+        )
+# %%
+    spacing_ind=1
+    patch_overlap=.25
+    expand_by=0
+    patches_config , patches_output_folder= I.set_patches_config(spacing_ind,patch_overlap,expand_by)
+
+    if mode is None:
+        mode = I.mode
+        PG = PatchDataGenerator(I.project,I.lbd_output_folder, I.patch_size,**patches_config,mode=mode)
+
 # ii = "/s/fran_storage/datasets/preprocessed/fixed_spacing/lax/spc_080_080_150/images/lits_5.pt"
 # torch.load(ii).dtype
 # %%

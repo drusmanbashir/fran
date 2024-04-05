@@ -22,6 +22,7 @@ from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 
 from fran.data.dataloader import img_lm_metadata_lists_collated
 from fran.managers.project import get_ds_remapping
+from fran.preprocessing.patch import contains_bg_only
 from fran.transforms.imageio import LoadSITKd, TorchReader
 from fran.transforms.intensitytransforms import standardize
 from fran.transforms.misc_transforms import (DictToMeta, HalfPrecisiond,
@@ -246,7 +247,7 @@ class ImageMaskBBoxDataset(Dataset):
 
     def __init__(self, fnames, bbox_fn, class_ratios: list = None, transform=None):
         """
-        class_ratios decide the proportionate guarantee of each class in the output including background. While that class is guaranteed to be present at that frequency, others may still be present if they coexist
+        ratios decide the proportionate guarantee of each class in the output including background. While that class is guaranteed to be present at that frequency, others may still be present if they coexist. However, the exception to this is label 0. This allows some patches which have no foreground voxels to participate in trianing too.
         """
         self.transform = transform
         if not class_ratios:
@@ -317,7 +318,7 @@ class ImageMaskBBoxDataset(Dataset):
         return fn, bbox
 
     def maybe_randomize_idx(self):
-        while self.mandatory_label not in self.label_info["labels_this_case"]:
+        while (self.mandatory_label not in self.label_info["labels_this_case"])^(self.mandatory_label==0 and len(self.label_info["labels_this_case"])==1) :
             idx = np.random.randint(0, len(self))
             self.set_bboxes_labels(idx)
 
@@ -348,10 +349,13 @@ class ImageMaskBBoxDataset(Dataset):
         for indx, bb in enumerate(case_bboxes):
             bbox_stats = bb["bbox_stats"]
             labels = [(a["label"]) for a in bbox_stats if not a["label"] == "all_fg"]
-            if self.contains_bg(bbox_stats):
-                labels = [0] + labels
-            if len(labels) == 0:
-                labels = [0]  # background class only by exclusion
+            if contains_bg_only(bbox_stats) == True:
+                labels = [0]
+            else:
+                labels = [0]+labels
+            # if len(labels) == 0:
+            #     tr()
+            #     labels = [0]  # background class only by exclusion
             indices.append(indx)
             labels_per_file.append(labels)
         labels_this_case = list(set(reduce(operator.add, labels_per_file)))
@@ -363,13 +367,13 @@ class ImageMaskBBoxDataset(Dataset):
 
     @property
     def class_ratios(self):
-        """The class_ratios property."""
-        return self._class_ratios
+        """The ratios property."""
+        return self._ratios
 
     @class_ratios.setter
     def class_ratios(self, raw_ratios):
         denom = reduce(operator.add, raw_ratios)
-        self._class_ratios = [x / denom for x in raw_ratios]
+        self._ratios = [x / denom for x in raw_ratios]
 
     @property
     @maybe_set_property
@@ -413,7 +417,7 @@ class ImageMaskBBoxDatasetd(ImageMaskBBoxDataset):
             self.maybe_randomize_idx()
 
         filename, bbox = self.get_filename_bbox()
-        img, lm= self.load_tensors(filename)
+        img, lm = self.load_tensors(filename)
         dici = {"image": img, "lm": lm, "bbox": bbox}
         if self.transform is not None:
             dici = self.transform(dici)
@@ -627,141 +631,7 @@ if __name__ == "__main__":
     from fran.inference.base import load_dataset_params
     from fran.utils.common import *
 
-    P = Project(project_title="totalseg")
+    P = Project(project_title="lidc2")
 
     global_properties = load_dict(P.global_properties_filename)
-# %%
-
-    R = ResamplerDataset(project=P, spacing=[3, 3, 3], half_precision=False)
-    dl = DataLoader(
-        dataset=R,
-        num_workers=2,
-        collate_fn=img_lm_metadata_lists_collated,
-        batch_size=2,
-    )
-
-    iteri = iter(dl)
-
-    bb = next(iteri)
-# %%
-    n_items = dl.batch_size
-    images, masks = bb["image"], bb["mask"]
-    image = images[0]
-    fname = Path(image.meta["filename"])
-    img_fn = Path("/home/ub/datasets/preprocessed/lidc2/lbd/spc_080_080_150/images/lidc2_0001.pt")
-
-    im = torch.load(img_fn)
-# %%
-    data = {"image": img_fn}
-
-    L2 = LoadImaged(
-        keys=["image"],
-        image_only=True,
-        ensure_channel_first=False,
-        simple_keys=True,
-    )
-    L2.register(TorchReader())
-
-# %%
-
-
-    data2 = L2(data)
-    data2['image']
-# %%
-    img = torch.load(img_fn)
-    img.shape
-# %%
-    P = Project(project_title="totalseg")
-    img_fn = Path("/s/xnat_shadow/totalseg/images/totalseg_s0627.nii.gz")
-    mask_fn = Path("/s/xnat_shadow/totalseg/masks/totalseg_s0627.nii.gz")
-
-    img = sitk.ReadImage(img_fn)
-    mask = sitk.ReadImage(mask_fn)
-
-    remapping = get_ds_remapping("totalseg", P.global_properties)
-    dici = {
-        "image": img,
-        "mask": mask,
-        "remapping": remapping,
-        "image_fname": img_fn,
-        "mask_fname": mask_fn,
-    }
-
-# %%
-
-    spacing = [3, 3, 3]
-    R = RemapSITKImage(keys=["mask"])
-    L = LoadSITKd(keys=["image", "mask"], image_only=True)
-
-    Ai = AddMetadata(
-        keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
-    )
-    Am = AddMetadata(
-        keys=["mask"],
-        meta_keys=["mask_fname", "remapping"],
-        renamed_keys=["filename", "remapping"],
-    )
-    E = EnsureChannelFirstd(keys=["image", "mask"], channel_dim="no_channel")
-    Si = Spacingd(keys=["image"], pixdim=spacing, mode="trilinear")
-
-    Rz = ResizeDynamicd(keys=["mask"], key_spatial_size="image", mode="nearest")
-
-    tfms = [R, L, Ai, Am, E, Si, Rz]
-
-    C = Compose(tfms)
-# %%
-    c = C(dici)
-# %%
-
-    print(c["image"].shape)
-    print(c["mask"].meta)
-# %%
-    Lo = LoadImaged(keys=["image", "mask"])
-# %%
-    dici2 = {"image": img_fn, "mask": mask_fn}
-    a = Lo(dici2)
-
-    print(a["image"].shape)
-    print(a["image"].meta)
-# %%
-
-    print(c["image"].shape, c["mask"].shape)
-    ImageMaskViewer([c["image"][0].permute(2, 0, 1), c["mask"][0]])
-# %%
-
-    image = c["image"]
-    data = c["mask"]
-    spatial_size = image[0].shape
-    mode = "nearest"
-    mask2 = fm.resize(
-        img=data,
-        out_size=spatial_size,
-        mode=mode,
-        lazy=False,
-        align_corners=None,
-        dtype=None,
-        input_ndim=3,
-        anti_aliasing=False,
-        anti_aliasing_sigma=0.0,
-        transform_info=None,
-    )
-
-    print(mask2.shape)
-# %%
-    R(dici)
-    a = L(dici)
-    b = Si(a)
-    c2 = Sm(b)
-    img = b["img"]
-    c = Rz(b)
-# %%
-    print(c["image"].shape)
-    print(c["mask"].shape)
-# %%
-
-    print(c2["image"].shape)
-    print(c2["mask"].shape)
-# %%
-    index = 0
-
 # %%
