@@ -1,6 +1,6 @@
 # %%
 import shutil
-from lightning.pytorch.profilers import AdvancedProfiler
+from fastcore.basics import store_attr
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 
 import psutil
@@ -8,33 +8,26 @@ import random
 import torch._dynamo
 from fran.callback.neptune import NeptuneImageGridCallback
 
-from fran.managers.data import (DataManager, DataManagerLBD, DataManagerPatch,
-                                DataManagerShort, DataManagerSource)
+from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
+from fran.managers.data import ( DataManagerLBD, DataManagerPatch,
+                                 DataManagerSource)
+from fran.utils.fileio import load_yaml
+from fran.utils.imageviewers import ImageMaskViewer
 
 torch._dynamo.config.suppress_errors = True
 from fran.managers.neptune import NeptuneManager
 import itertools as il
 import operator
 import warnings
-from typing import Any
-
-import neptune as nt
-import torch
 from lightning.pytorch import LightningModule, Trainer
-from lightning.pytorch.callbacks import (Callback, LearningRateMonitor,
+from lightning.pytorch.callbacks import ( LearningRateMonitor,
                                          TQDMProgressBar, DeviceStatsMonitor)
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from fran.architectures.create_network import (create_model_from_conf, nnUNet,
+from fran.architectures.create_network import (create_model_from_conf, 
                                                pool_op_kernels_nnunet)
-from fran.evaluation.losses import *
+import torch.nn.functional as F
 from fran.transforms.spatialtransforms import one_hot
-from fran.utils.common import *
-from fran.utils.fileio import *
-from fran.utils.helpers import *
-from fran.utils.imageviewers import *
-from fran.utils.helpers import *
-
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
 except:
@@ -556,9 +549,9 @@ if __name__ == "__main__":
 # %%
     device_id = 1
     bs = 4
+    run_name = "LITS-913"
     run_name ='LITS-911'
     run_name = None
-    run_name = "LITS-913"
     # run_name ='LITS-836'
     compiled = False
     profiler=False
@@ -595,6 +588,25 @@ if __name__ == "__main__":
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
     iteri2 = iter(dl2)
+# %%
+
+    dici = ds[0]
+    dici = ds.data[0]
+    keys_tr="L,E,Ind,Rtr,F1,F2,A,Re,N,I"
+    keys_val="L,E,Ind,Rva,Re,N"
+    keys_tr = keys_tr.split(",")
+    keys_val = keys_val.split(",")
+
+
+# %%
+    dici = ds.data[0]
+    for k in keys_tr[:4]:
+        tfm = D.transforms_dict[k]
+        dici =tfm(dici)
+# %%
+    tfm2 = D.transforms_dict[keys_tr[5]]
+
+    dici = tfm2(dici)
 # %%
     idx= 0
     ds.set_bboxes_labels(idx)

@@ -3,22 +3,13 @@ import math
 from functools import reduce
 from operator import add
 from pathlib import Path
-from typing import Sequence, Union
 
 import ipdb
-import itk
-import numpy as np
-import SimpleITK as sitk
 import torch
 from fastcore.basics import listify, store_attr, warnings
 from lightning.pytorch import LightningDataModule
-from monai.config.type_definitions import KeysCollection, PathLike
 from monai.data import DataLoader, Dataset
 from monai.data.dataset import CacheDataset, PersistentDataset
-from monai.data.image_reader import (ImageReader, ITKReader,
-                                     _copy_compatible_dict, _stack_images)
-from monai.data.itk_torch_bridge import has_itk
-from monai.data.utils import is_supported_format, orientation_ras_lps
 from monai.transforms.compose import Compose
 from monai.transforms.croppad.dictionary import (RandCropByPosNegLabeld,
                                                  ResizeWithPadOrCropd)
@@ -29,19 +20,13 @@ from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
 from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  FgBgToIndicesd, ToDeviced)
-from monai.utils.enums import MetaKeys, SpaceKeys
-from monai.utils.misc import ensure_tuple
-from monai.utils.module import require_pkg
-from SimpleITK import Not
-from torchvision.utils import Any
 
 from fran.data.dataloader import img_lm_bbox_collated
 from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemap2,
-                               NormaliseClipd, SimpleDataset)
+                               NormaliseClipd)
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import MetaToDict
-from fran.transforms.spatialtransforms import PadDeficitd
 from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
 from fran.utils.imageviewers import ImageMaskViewer
@@ -59,7 +44,7 @@ def list_to_fgbg(class_ratios):
     bg = class_ratios[0]
     fg = class_ratios[1:]
     fg = reduce(add, fg)
-    return fg,bg
+    return fg, bg
 
 
 def simple_collated(batch):
@@ -101,6 +86,77 @@ class DataManager(LightningDataModule):
             dici = {"value": value[0], "prob": value[1]}
             setattr(self, key, dici)
 
+    def create_transforms(self):
+        E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+        N = NormaliseClipd(
+            keys=["image"],
+            clip_range=self.dataset_params["intensity_clip_range"],
+            mean=self.dataset_params["mean_fg"],
+            std=self.dataset_params["std_fg"],
+        )
+        P = MaskLabelRemap2(
+            keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
+        )
+
+        F1 = RandFlipd(
+            keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
+        )
+        F2 = RandFlipd(
+            keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
+        )
+        int_augs = [
+            RandScaleIntensityd(
+                keys="image", factors=self.scale["value"], prob=self.scale["prob"]
+            ),
+            RandRandGaussianNoised(
+                keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
+            ),
+            # RandGaussianNoised(
+            #     keys=["image"], std=self.noise["value"], prob=self.noise["prob"]
+            # ),
+            RandShiftIntensityd(
+                keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
+            ),
+            RandAdjustContrastd(
+                ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
+            ),
+            self.create_affine_tfm(),
+        ]
+
+        A = self.create_affine_tfm()
+        Re = ResizeWithPadOrCropd(
+                keys=["image", "lm"],
+                source_key="image",
+                spatial_size=self.dataset_params["patch_size"],
+                lazy=True,
+            )
+        self.transforms_dict = {
+            "A": A,
+            "E": E,
+            "N": N,
+            "F1": F1,
+            "F2": F2,
+            "I": int_augs,
+            "Re": Re,
+            "P": P,
+        }
+
+    def set_transforms(self, keys_tr: str, keys_val: str):
+        self.tfms_train = self.tfms_from_dict(keys_tr)
+        self.tfms_valid = self.tfms_from_dict(keys_val)
+
+    def tfms_from_dict(self, keys: str):
+        keys = keys.split(",")
+        tfms = []
+        for key in keys:
+            tfm = self.transforms_dict[key]
+            if key == "I":
+                tfms.extend(tfm)
+            else:
+                tfms.append(tfm)
+        tfms = Compose(tfms)
+        return tfms
+
     def prepare_data(self):
         # getting the right folders
         dataset_mode = self.dataset_params["mode"]
@@ -114,8 +170,6 @@ class DataManager(LightningDataModule):
             self.dataset_params["fold"]
         )
         self.dataset_folder = self.derive_dataset_folder()
-        # self.data_train = self.create_data_dicts(self.train_nii)
-        # self.data_valid = self.create_data_dicts(self.valid_nii)
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
@@ -174,9 +228,6 @@ class DataManager(LightningDataModule):
     def forward(self, inputs, target):
         return self.model(inputs)
 
-    def create_transforms(self):
-        raise NotImplementedError
-
     def setup(self, stage: str) -> None:
         raise NotImplementedError
 
@@ -217,12 +268,13 @@ class DataManagerSource(DataManager):
         self.data_valid = self.create_data_dicts(self.valid_nii)
 
     def create_transforms(self):
+        super().create_transforms()
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
         if isinstance(fgbg_ratio, list):
-            fg,bg= list_to_fgbg(fgbg_ratio)
+            fg, bg = list_to_fgbg(fgbg_ratio)
         else:
             fg = fgbg_ratio
-            bg=1
+            bg = 1
 
         L = LoadImaged(
             keys=["image", "lm"],
@@ -232,15 +284,6 @@ class DataManagerSource(DataManager):
         )
         L.register(TorchReader())
 
-        E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-        # G= ToDeviced(device = 'cuda',keys = ['image','lm'])
-        # P = PadDeficitd(
-        #     keys=["image", "lm"],
-        #     source_key="image",
-        #     spatial_size=self.src_dims,
-        #     lazy=True,
-        # )
-        #
         Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
         Rtr = RandCropByPosNegLabeld(
             keys=["image", "lm"],
@@ -270,57 +313,21 @@ class DataManagerSource(DataManager):
             lazy=True,
             allow_smaller=True,
         )
-
-        N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.dataset_params["intensity_clip_range"],
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
+        self.transforms_dict.update(
+            {
+                "L": L,
+                "Ind": Ind,
+                "Rtr": Rtr,
+                "Rva": Rva,
+            }
         )
-
-        # EnsureTyped(keys=["image", "lm"], device="cuda", track_meta=False),
-        F1 = RandFlipd(
-            keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
-        )
-        F2 = RandFlipd(
-            keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
-        )
-        A = self.create_affine_tfm()
-        int_augs = [
-            RandScaleIntensityd(
-                keys="image", factors=self.scale["value"], prob=self.scale["prob"]
-            ),
-            RandRandGaussianNoised(
-                keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
-            ),
-            # RandGaussianNoised(
-            #     keys=["image"], std=self.noise["value"], prob=self.noise["prob"]
-            # ),
-            RandShiftIntensityd(
-                keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
-            ),
-            RandAdjustContrastd(
-                ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
-            ),
-        ]
-
-        Re = ResizeWithPadOrCropd(
-            keys=["image", "lm"],
-            source_key="image",
-            spatial_size=self.dataset_params["patch_size"],
-            lazy=True,
-        )
-
-        self.tfms_train = Compose([L, E, Ind, Rtr, F1, F2, A, Re, N, *int_augs])
-        self.tfms_valid = Compose([L, E, Ind, Rva, Re, N])
-
-        # self.tfms_train = Compose([L, E, P, Rtr, F1, F2, A, Re, N, *int_augs])
-        # self.tfms_valid = Compose([L, E, P, Rva, N])
 
     def setup(self, stage: str = None):
         self.create_transforms()
+        self.set_transforms(
+            keys_tr="L,E,Ind,Rtr,F1,F2,A,Re,N,I", keys_val="L,E,Ind,Rva,Re,N"
+        )
         if self.cache_rate == 0.0:
-            # self.train_ds = PersistentDataset(data=self.data_train, transform=self.tfms_train,cache_dir = self.project.cache_folder)
             self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
         else:
             self.train_ds = CacheDataset(
@@ -385,55 +392,14 @@ class DataManagerPatch(DataManager):
         subfldr2 = folder_name_from_list("dim", subfldr1, src_dims)
         return subfldr2
 
-    def create_transforms(self):
-        P = MaskLabelRemap2(
-            keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
-        )
-        E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-        N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.dataset_params["intensity_clip_range"],
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
-        )
-        if not math.isnan(self.dataset_params["src_dest_labels"]):
-            all_after_item = [P, E, N]
-        else:
-            all_after_item = [E, N]
-
-        t2 = [
-            # EnsureTyped(keys=["image", "lm"], device="cuda", track_meta=False),
-            RandFlipd(keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0),
-            RandFlipd(keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1),
-            RandScaleIntensityd(
-                keys="image", factors=self.scale["value"], prob=self.scale["prob"]
-            ),
-            RandRandGaussianNoised(
-                keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
-            ),
-            # RandGaussianNoised(
-            #     keys=["image"], std=self.noise["value"], prob=self.noise["prob"]
-            # ),
-            RandShiftIntensityd(
-                keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
-            ),
-            RandAdjustContrastd(
-                ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
-            ),
-            self.create_affine_tfm(),
-        ]
-        t3 = [
-            ResizeWithPadOrCropd(
-                keys=["image", "lm"],
-                source_key="image",
-                spatial_size=self.dataset_params["patch_size"],
-            )
-        ]
-        self.tfms_train = Compose(all_after_item + t2 + t3)
-        self.tfms_valid = Compose(all_after_item + t3)
-
     def setup(self, stage: str = None):
         self.create_transforms()
+        if math.isnan(self.dataset_params["src_dest_labels"]):
+            keys_tr = "P,E,F1,F2,A,Re,N,I"
+        else:
+            keys_tr = "E,F1,F2,A,Re,N,I"
+        keys_val = "E,Re,N"
+        self.set_transforms(keys_tr=keys_tr, keys_val=keys_val)
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
         if isinstance(fgbg_ratio, int):
             n_fg_labels = len(self.project.global_properties["labels_all"])
@@ -485,7 +451,7 @@ if __name__ == "__main__":
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
-    # %%
+# %%
     batch_size = 2
     D = DataManagerSource(
         proj,
@@ -494,16 +460,16 @@ if __name__ == "__main__":
         affine3d=configs["affine3d"],
         batch_size=batch_size,
     )
-    # %%
+# %%
     D.prepare_data()
     D.setup(None)
-    # %%
+# %%
 
     dici = D.train_ds.data[0]
     L = LoadTorchd(keys=["image", "lm"])
     dici = L(dici)
 
-    # %%
+# %%
 
     Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
     Rtr = RandCropByPosNegLabeld(
@@ -521,20 +487,21 @@ if __name__ == "__main__":
         allow_smaller=False,
     )
     dici = Ind(dici)
-    # %%
+# %%
     dl = D.train_dataloader()
     iteri = iter(dl)
     aa = D.Train_ds[0]
     b = next(iteri)
     print(b["image"].shape)
-    # %%
+# %%
     im_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_300/images/nodes_20_20190611_Neck1p0I30f3_thick.pt"
     label_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_300/masks/nodes_20_20190611_Neck1p0I30f3_thick.pt"
     dici = {"image": im_fn, "lm": label_fn}
     D.setup()
-    # %%
+# %%
     ind = 1
     img = b["image"][ind][0]
     lab = b["lm"][ind][0]
     ImageMaskViewer([img, lab])
 # %
+# %%
