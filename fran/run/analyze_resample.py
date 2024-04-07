@@ -2,6 +2,7 @@
 import argparse
 import ast
 import shutil
+from fran.managers.project import DS
 
 from label_analysis.totalseg import TotalSegmenterLabels
 
@@ -50,9 +51,16 @@ class PreprocessingManager():
     #dont use getattr
     def __init__(self, args):
         self.assimilate_args(args)
-
         P = Project(project_title=args.project_title); 
         self.project= P
+        conf = ConfigMaker(
+            P, raytune=False, configuration_filename=None, configuration_mnemonic='liver'
+        ).config
+
+        # args.overwrite=False
+        plan = conf[self.plan]
+        self.spacing = ast.literal_eval(plan['spacing'])
+
         self.Resampler = ResampleDatasetniftiToTorch(
                     project=self.project,
                     spacing=self.spacing,
@@ -89,29 +97,13 @@ class PreprocessingManager():
                 return True
 
     def resample_dataset(self, generate_bboxes=True):
-        # @ask_proceed("Resample dataset?")
-        def _inner():
-        
-            if self.spacing is None:
-                vals = input("Press enter to accept defaults or a list/float for new values: ")
-            else:
-                vals = self.spacing
-            self.maybe_change_default_spacing(vals)
-            self.spacing = self.Resampler.spacing
-            self.Resampler.resample_cases(
-                multiprocess=True,
-                num_processes=self.num_processes,
-                overwrite=self.overwrite,
-                debug=self.debug,
-            )
-            if generate_bboxes==True:
-                self.Resampler.generate_bboxes_from_masks_folder(
+        self.get_resampling_configs()
+        self.Resampler.create_dl()
+        self.Resampler.process()
+        if generate_bboxes==True:
+            self.Resampler.generate_bboxes_from_masks_folder(
                     debug=self.debug, bg_label=0,num_processes=self.num_processes
                     )
-
-        self.get_resampling_configs()
-        # if self.spacing is None:
-        _inner()
 
 
     def generate_TSlabelboundeddataset(self,organ,imported_folder,keep_imported_labels=False,lm_group="lm_group1"):
@@ -135,7 +127,7 @@ class PreprocessingManager():
             remapping=remapping,
         )
 
-        self.L.create_dl()
+        self.L.setup()
         self.L.process()
 
 
@@ -330,11 +322,31 @@ if __name__ == "__main__":
     # args.num_processes = 1
     args.debug=True
     # args.clip_range=[-100,200]
-    args.spacing= [.8,.8,1.5]
-    # args.overwrite=False
-    I = PreprocessingManager(args)
+
+    args.plan = "plan1"
 # %%
-    # I.resample_dataset()
+
+    P= Project(project_title=args.project_title)
+
+# %%
+    conf = ConfigMaker(
+        P, raytune=False, configuration_filename=None, configuration_mnemonic='liver'
+    ).config
+# %%
+
+    plans = conf['plan1']
+    dss = plans['datasources']
+    dss= dss.split(",")
+    datasources = [getattr(DS,g) for g in dss]
+    P.create_project(datasources)
+    P.set_lm_groups(plans['lm_groups'])
+    P.maybe_store_projectwide_properties(overwrite=False)
+
+# %%
+    I = PreprocessingManager(args)
+    # I.spacing = 
+# %%
+    I.resample_dataset()
     # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
     I.generate_hires_patches_dataset(spacing_ind=1,debug=True,overwrite=True)
 # %%
@@ -423,4 +435,9 @@ if __name__ == "__main__":
 
 # ii = "/s/fran_storage/datasets/preprocessed/fixed_spacing/lax/spc_080_080_150/images/lits_5.pt"
 # torch.load(ii).dtype
+# %%
+
+        I.get_resampling_configs()
+        I.Resampler.create_dl()
+        I.Resampler.process()
 # %%

@@ -95,19 +95,15 @@ class LabelBoundedDataGenerator(PatchDataGenerator,_Preprocessor, GetAttr):
         return cids
 
  
-    def store_info(self):
-        self.shapes = np.array(self.shapes)
-        fn_dict = self.output_folder / "info.json"
+    def create_properties_dict(self):
+        resampled_dataset_properties = super().create_properties_dict()
         labels ={k[0]:k[1] for k in self.remapping.items() if self.remapping[k[0]] != 0}
-
-        dici = {
-            "median_shape":np.median(self.shapes,0).tolist(),
+        additional_props = {
             "imported_folder": str(self.imported_folder),
             "imported_labels":labels,
             "keep_imported_labels": self.keep_imported_labels,
-            "spacing": self.spacing,
         }
-        save_dict(dici,fn_dict)
+        return resampled_dataset_properties|additional_props
 
 
 

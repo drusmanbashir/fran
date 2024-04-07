@@ -70,10 +70,12 @@ class _Preprocessor(GetAttr):
     def save_pt(self, tnsr, subfolder):
         tnsr = tnsr.contiguous()
         fn = Path(tnsr.meta["filename"])
-        fn = self.output_folder / subfolder / fn.name
+        fn = Path(tnsr.meta["filename"])
+        fn_name = strip_extension(fn.name)+".pt"
+        fn = self.output_folder / subfolder / fn_name
         torch.save(tnsr, fn)
 
-    def _store_resampled_dataset_properties(self):
+    def _store_dataset_properties(self):
         resampled_dataset_properties = dict()
         resampled_dataset_properties["dataset_spacing"] = self.spacing
         resampled_dataset_properties["dataset_max"] = self.results[:, 0].max().item()
@@ -99,7 +101,7 @@ class _Preprocessor(GetAttr):
                 self.create_output_folders()
                 self.results =[]
                 self.shapes=[]
-                for i, batch in enumerate(self.dl):
+                for i, batch in pbar(enumerate(self.dl)):
                     images, lms = batch["image"], batch["lm"]
                     for image, lm in zip(images, lms):
                         assert image.shape == lm.shape, "mismatch in shape".format(
@@ -114,30 +116,23 @@ class _Preprocessor(GetAttr):
 
                 self.results = pd.DataFrame(self.results).values
                 if self.results.shape[-1] == 3:  # only store if entire dset is processed
-                    self._store_resampled_dataset_properties()
-
+                    self._store_dataset_properties()
                     generate_bboxes_from_lms_folder(self.output_folder/("lms"))
-                    self.store_info()
                 else:
                     print(
                         "since some files skipped, dataset stats are not being stored. run resampledatasetniftitotorch.get_tensor_folder_stats separately"
                     )
-
 
     def get_tensor_folder_stats(self, debug=True):
         img_filenames = (self.output_folder / ("images")).glob("*")
         args = [[img_fn] for img_fn in img_filenames]
         results = multiprocess_multiarg(get_tensorfile_stats, args, debug=debug)
         self.results = pd.DataFrame(results).values
-        self._store_resampled_dataset_properties()
+        self._store_dataset_properties()
 
-    def _store_resampled_dataset_properties(self):
-        resampled_dataset_properties = dict()
-        resampled_dataset_properties["dataset_spacing"] = self.spacing
-        resampled_dataset_properties["dataset_max"] = self.results[:, 0].max().item()
-        resampled_dataset_properties["dataset_min"] = self.results[:, 1].min().item()
-        resampled_dataset_properties["dataset_std"] = self.results[:, 1].std().item()
-        resampled_dataset_properties["dataset_median"] = np.median(self.results[:, 2])
+    def _store_dataset_properties(self):
+        resampled_dataset_properties = self.create_properties_dict()
+
         resampled_dataset_properties_fname = (
             self.output_folder / "resampled_dataset_properties.json"
         )
@@ -149,30 +144,41 @@ class _Preprocessor(GetAttr):
         )
         save_dict(resampled_dataset_properties, resampled_dataset_properties_fname)
 
+    def create_properties_dict(self):
+        self.shapes = np.array(self.shapes)
+        resampled_dataset_properties = dict()
+        resampled_dataset_properties["median_shape"] =np.median(self.shapes,0).tolist()
+        resampled_dataset_properties["dataset_spacing"] = self.spacing
+        resampled_dataset_properties["dataset_max"] = self.results[:, 0].max().item()
+        resampled_dataset_properties["dataset_min"] = self.results[:, 1].min().item()
+        resampled_dataset_properties["dataset_std"] = self.results[:, 1].std().item()
+        resampled_dataset_properties["dataset_median"] = np.median(self.results[:, 2])
+        return resampled_dataset_properties
+
 
     def create_output_folders(self):
         maybe_makedirs([self.output_folder / ("lms"), self.output_folder / ("images")])
 
 class ResampleDatasetniftiToTorch(_Preprocessor):
-    def __init__(self, project, spacing, device="cpu"):
+    def __init__(self, project, spacing, device="cpu",half_precision=False):
         super().__init__(project, spacing, device=device)
         self.output_folder = folder_name_from_list(
             prefix="spc",
             parent_folder=self.fixed_spacing_folder,
             values_list=spacing,
         )
+        self.half_precision = half_precision
 
     def create_dl(self,debug=False):
-
         self.ds = ResamplerDataset(
             project=self.project,
-            spacing=self._spacing,
+            spacing=self.spacing,
             half_precision=self.half_precision,
             device=self.device,
         )
-        self.df.setup()
+        self.ds.setup()
         self.dl = DataLoader(
-            dataset=ds,
+            dataset=self.ds,
             num_workers=4,
             collate_fn=img_lm_metadata_lists_collated,
             batch_size=4 if debug == False else 1,
@@ -222,7 +228,7 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
         args = [[img_fn] for img_fn in img_filenames]
         results = multiprocess_multiarg(get_tensorfile_stats, args, debug=debug)
         self.results = pd.DataFrame(results).values
-        self._store_resampled_dataset_properties()
+        self._store_dataset_properties()
 
 
 def get_tensorfile_stats(filename):
@@ -328,13 +334,9 @@ class ResamplerDataset(GetAttr, Dataset):
 
             img_fname = cp["image"]
             mask_fname = cp["lm"]
-            img = sitk.ReadImage(img_fname)
-            mask = sitk.ReadImage(mask_fname)
             dici = {
-                "image": img,
-                "lm": mask,
-                "image_fname": img_fname,
-                "lm_fname": mask_fname,
+                "image": img_fname,
+                "lm": mask_fname,
                 "remapping": remapping,
             }
             data.append(dici)
@@ -344,18 +346,17 @@ class ResamplerDataset(GetAttr, Dataset):
 
     def filter_completed_cases(self):
         df = self.project.df.copy()  # speed up things
+        tr()
         return df
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, index):
-        cp = self.df.iloc[index]
-        ds = cp["ds"]
-        remapping = get_ds_remapping(ds, self.global_properties)
-
-        img_fname = cp["image"]
-        mask_fname = cp["lm"]
+        dici = self.data[index]
+        img_fname = dici["image"]
+        mask_fname = dici["lm"]
+        remapping = dici['remapping']
         img = sitk.ReadImage(img_fname)
         mask = sitk.ReadImage(mask_fname)
         dici = {
@@ -477,3 +478,21 @@ if __name__ == "__main__":
     tf = Compose([R, L, T, Re, Ind])
     dici = tf(dici)
 # %%
+    I.Resampler.shapes = np.array(I.Resampler.shapes)
+    fn_dict = I.Resampler.output_folder / "info.json"
+
+    dici = {
+        "median_shape":np.median(I.Resampler.shapes,0).tolist(),
+        "spacing": I.Resampler.spacing,
+    }
+    save_dict(dici,fn_dict)
+
+
+
+    resampled_dataset_properties["median_shape"] =np.median(I.Resampler.shapes,0).tolist()
+# %%
+    tnsr = torch.load("/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/lms/drli_001ub.nii.gz")
+    fn = Path(tnsr.meta["filename"])
+    fn_name = strip_extension(fn.name)+".pt"
+    fn_out = fn.parent/(fn_name)
+    generate_bboxes_from_lms_folder(I.Resampler.output_folder/("lms"))
