@@ -21,7 +21,6 @@ from monai.transforms.transform import Transform
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 
 from fran.data.dataloader import img_lm_metadata_lists_collated
-from fran.managers.project import get_ds_remapping
 from fran.preprocessing.patch import contains_bg_only
 from fran.transforms.imageio import LoadSITKd, TorchReader
 from fran.transforms.intensitytransforms import standardize

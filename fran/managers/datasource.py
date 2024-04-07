@@ -1,6 +1,9 @@
+
+# %%
 import sqlite3
 import ipdb
 from fastcore.basics import GetAttr, Union
+from label_analysis.totalseg import TotalSegmenterLabels
 from monai.utils.enums import StrEnum
 from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, import_h5py
 from fran.utils.fileio import load_dict, save_dict
@@ -36,7 +39,6 @@ class Datasource(GetAttr):
         self.folder = Path(folder)
         self.test=test
         self.h5_fname = self.folder / "fg_voxels.h5"
-        self.raw_dataset_properties_filename = self.folder /"raw_dataset_properties.pkl"
         if name is None:
             self.name = self.infer_dataset_name()
         else:
@@ -77,8 +79,9 @@ class Datasource(GetAttr):
         '''
         
         try:
-            self.raw_dataset_properties = load_dict(self.raw_dataset_properties_filename)
-            prev_processed_cases = set([b['case_id'] for b in self.raw_dataset_properties])
+            with h5py.File(self.h5_fname, 'r') as h5f:
+                prev_processed_cases = list(h5f.keys())
+            # prev_processed_cases = set([b['case_id'] for b in self.raw_dataset_properties])
         except FileNotFoundError:
             print("First time preprocessing dataset. Will create new file: {}".format(self.raw_dataset_properties_filename))
             self.raw_dataset_properties = []
@@ -122,7 +125,6 @@ class Datasource(GetAttr):
         for output in self.outputs:
             self.raw_dataset_properties.append(output["case"])
         self.dump_to_h5()
-        # self.store_raw_dataset_properties() # redundant
 
 
     def dump_to_h5(self):
@@ -136,8 +138,6 @@ class Datasource(GetAttr):
                     ds= h5f.create_dataset(output["case"]["case_id"], data=output["voxels"])
                     ds.attrs['spacing'] = list(output['case']['properties']['spacing'])
                     ds.attrs['labels'] = list(output['case']['properties']['labels'])
-
-
                     ds.attrs['numel_fg']= output['case']['properties']['numel_fg']
                     ds.attrs['mean_fg']= output['case']['properties']['mean_fg']
                     ds.attrs['min_fg']= output['case']['properties']['min_fg']
@@ -219,3 +219,33 @@ def get_ds_remapping(ds:str,global_properties):
                 return remapping
         raise Exception("No lm group for dataset {}".format(ds))
 
+# %%
+if __name__ == "__main__":
+    debug=False
+    D2 = Datasource(DS.drli)
+    # D2.process_new_cases(debug=debug)
+
+
+    import h5py
+    f = h5py.File(D2.h5_fname,"r")
+    case_ids = list(f.keys())
+    cid = case_ids[0]
+    f[cid].attrs.keys()
+
+
+
+# %%
+    TSL = TotalSegmenterLabels()
+    lr= TSL.labels("lung","right")
+    ll = TSL.labels("lung","left")
+
+    remapping  = {l:0 for l in TSL.all}
+    for l in lr:
+        remapping[l]= 8
+
+    for l in ll:
+        remapping[l]= 9
+
+
+# %%
+# %%

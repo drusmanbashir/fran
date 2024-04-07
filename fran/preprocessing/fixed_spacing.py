@@ -16,7 +16,7 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
 from monai.data import Dataset
 from fran.data.dataloader import img_lm_metadata_lists_collated
 from fran.data.dataset import NormaliseClipd
-from fran.managers.project import get_ds_remapping
+from fran.managers.datasource import get_ds_remapping
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import ChangeDType

@@ -11,7 +11,6 @@ from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
-from fran.preprocessing.stage1_preprocessors import *
 from fran.utils.fileio import *
 from fran.utils.helpers import *
 

@@ -504,23 +504,6 @@ if __name__ == "__main__":
     len(P.raw_data_imgs)
     len(P)
 # %%
-    debug=False
-    D2 = Datasource(DS.drli)
-    D2.process_new_cases(debug=debug)
-
-
-# %%
-    TSL = TotalSegmenterLabels()
-    lr= TSL.labels("lung","right")
-    ll = TSL.labels("lung","left")
-
-    remapping  = {l:0 for l in TSL.all}
-    for l in lr:
-        remapping[l]= 8
-
-    for l in ll:
-        remapping[l]= 9
-
 # %%
     P.imported_labels('lm_group2',Path("/s/fran_storage/predictions/totalseg/LITS-827/"),labelsets =[lr,ll])
 
