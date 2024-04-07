@@ -325,7 +325,8 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "lidc2"
+    args.project_title = "litsmc"
+
     # args.num_processes = 1
     args.debug=True
     # args.clip_range=[-100,200]

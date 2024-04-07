@@ -187,7 +187,7 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
 
-    P = Project(project_title="lidc2")
+    P = Project(project_title="litsmc")
     P.maybe_store_projectwide_properties()
 # %%
     lmg = "lm_group1"

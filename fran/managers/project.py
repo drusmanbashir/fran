@@ -32,13 +32,11 @@ from fran.utils.fileio import *
 if "XNAT_CONFIG_PATH" in os.environ:
     from xnat.object_oriented import *
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
-from fran.utils.templates import mask_labels_template
-from fran.utils.helpers import pat_full, pat_nodesc, pat_idonly
 from contextlib import contextmanager
 
 class DS(StrEnum):
     '''
-    each folder has subfolder images and masks
+    each folder has subfolder images and lms
     '''
     
     lits="/s/datasets_bkp/lits_segs_improved/"
@@ -90,9 +88,7 @@ class Project(DictToAttr):
         """
 
         if self.db.exists():
-            ask_proceed(
-                "Project already exists. Proceed and make folders again (e.g., if some were deleted)?"
-            )(self._create_folder_tree)()
+                "Project already exists. Proceeding"
             
         else:
             self.global_properties = {'project_title':self.project_title}
@@ -116,18 +112,18 @@ class Project(DictToAttr):
                 output= list(il.chain.from_iterable(output))
         return output
 
-    def vars_to_sql(self, dataset_name, img_fn, mask_fn, test):
+    def vars_to_sql(self, dataset_name, img_fn, lm_fn, test):
         case_id = info_from_filename(img_fn.name,full_caseid=True)['case_id']
         fold = "NULL"
         img_sym = self.create_raw_ds_fname(img_fn)
-        mask_sym = self.create_raw_ds_fname(mask_fn)
+        lm_sym = self.create_raw_ds_fname(lm_fn)
         cols = (
             dataset_name,
             case_id,
             str(img_fn),
-            str(mask_fn),
+            str(lm_fn),
             str(img_sym),
-            str(mask_sym),
+            str(lm_sym),
             fold,
             test,
         )
@@ -173,9 +169,9 @@ class Project(DictToAttr):
 
     def populate_raw_data_folder(self):
         query_imgs = "SELECT image, img_symlink FROM datasources"
-        query_masks = "SELECT lm, lm_symlink FROM datasources"
+        query_lms = "SELECT lm, lm_symlink FROM datasources"
         pairs = self.sql_query(query_imgs)
-        pairs.extend(self.sql_query(query_masks))
+        pairs.extend(self.sql_query(query_lms))
         for pair in pairs:
             self.filepair_symlink(*pair)
 
@@ -211,7 +207,7 @@ class Project(DictToAttr):
                 pass
 
     def purge_raw_data_folder(self):
-        for f in il.chain.from_iterable([self.raw_data_imgs, self.raw_data_masks]):
+        for f in il.chain.from_iterable([self.raw_data_imgs, self.raw_data_lms]):
             f.unlink()
 
 
@@ -223,7 +219,7 @@ class Project(DictToAttr):
             print(all_exist)
             return False
         else:
-            print("Matching image / mask file pairs found in all raw_data sources")
+            print("Matching image / lm file pairs found in all raw_data sources")
             return True
 
     def populate_tbl(self, ds):
@@ -233,7 +229,7 @@ class Project(DictToAttr):
 
     def add_datasources_xnat(self, xnat_proj: str):
         proj = Proj(xnat_proj)
-        rc = proj.resource("IMAGE_MASK_FPATHS")
+        rc = proj.resource("IMAGE_lm_FPATHS")
         csv_fn = rc.get("/tmp", extract=True)[0]
         pd.read_csv(csv_fn)
 
@@ -385,7 +381,7 @@ class Project(DictToAttr):
 
 
     def set_lm_groups(self,lm_groups:list= None):
-        if lm_groups is None:
+        if not lm_groups  or isinstance(lm_groups,float):
             self.global_properties['lm_group1']= {'ds': self.datasources}
         elif isinstance(lm_groups[0],Union[list,tuple]):  # list of list
             gps_all = list(il.chain.from_iterable(lm_groups))
@@ -465,9 +461,9 @@ class Project(DictToAttr):
         return list(self._raw_data_imgs)
 
     @property
-    def raw_data_masks(self):
-        self._raw_data_masks = (self.raw_data_folder / ("lms")).glob("*")
-        return list(self._raw_data_masks)
+    def raw_data_lms(self):
+        self._raw_data_lms = (self.raw_data_folder / ("lms")).glob("*")
+        return list(self._raw_data_lms)
 
     @property
     def lm_remap(self):
@@ -519,15 +515,15 @@ class Datasource(GetAttr):
         """
 
         images = list((self.folder / ("images")).glob("*"))
-        masks = list((self.folder / ("lms")).glob("*"))
+        lms = list((self.folder / ("lms")).glob("*"))
         assert (
-            a := len(images) == (b := len(masks))
-        ), "Different lengths of images {0}, and masks {1}.\nCheck your data folder".format(
+            a := len(images) == (b := len(lms))
+        ), "Different lengths of images {0}, and lms {1}.\nCheck your data folder".format(
             a, b
         )
         self.verified_pairs = []
         for img_fn in images:
-            self.verified_pairs.append([img_fn, find_matching_fn(img_fn, masks)])
+            self.verified_pairs.append([img_fn, find_matching_fn(img_fn, lms)])
         print("Verified filepairs are matched")
 
 
@@ -620,14 +616,14 @@ class Datasource(GetAttr):
         save_dict(raw_dataset_props, self.raw_dataset_properties_filename)
 
 
-    def extract_img_mask_fnames(self, ds):
+    def extract_img_lm_fnames(self, ds):
         img_fnames = list((ds["source_path"] / ("images")).glob("*"))
-        mask_fnames = list((ds["source_path"] / ("lms")).glob("*"))
+        lm_fnames = list((ds["source_path"] / ("lms")).glob("*"))
         img_symlinks, lm_symlinks = [], []
 
         verified_pairs = []
         for img_fn in img_fnames:
-            verified_pairs.append([img_fn, find_matching_fn(img_fn, mask_fnames)])
+            verified_pairs.append([img_fn, find_matching_fn(img_fn, lm_fnames)])
         assert self.paths_exist(
             verified_pairs
         ), "(Some) paths do not exist. Fix paths and try again."
@@ -645,9 +641,9 @@ class Datasource(GetAttr):
 
     
     @property
-    def masks(self):
-        masks = [x[1] for x in self.verified_pairs]
-        return masks
+    def lms(self):
+        lms = [x[1] for x in self.verified_pairs]
+        return lms
 
     def __len__(self):
         return len(self.verified_pairs)
@@ -681,30 +677,41 @@ def get_ds_remapping(ds:str,global_properties):
         raise Exception("No lm group for dataset {}".format(ds))
 # %%
 if __name__ == "__main__":
+    from fran.utils.common import *
     liver_ds = [DS.litq,DS.litqsmall,DS.lits,DS.drli]
-    # P.create_project([DS.litq,DS.litqsmall,DS.lits,DS.drli,DS.lidc2])
 
-    P= Project(project_title="lidc2")
+    P= Project(project_title="litsmc")
+
 # %%
-    P.create_project([DS.drli_short])
+    conf = ConfigMaker(
+        P, raytune=False, configuration_filename=None, configuration_mnemonic='liver'
+    ).config
+# %%
+
+    plans = conf['plan1']
+    dss = plans['datasources']
+    dss= dss.split(",")
+    datasources = [getattr(DS,g) for g in dss]
+    P.create_project(datasources)
+    P.set_lm_groups(plans['lm_groups'])
+    P.maybe_store_projectwide_properties(overwrite=True)
+# %%
+    P.create_project(liver_ds)
     # P.add_data(DS.litq)
     P.create_project([DS.lidc2])
     P.global_properties
 # %%
     # P.set_lm_groups([['litq','litqsmall','drli','lits'],['lidc2']])
-    P.set_lm_groups([['drli'],['lidc2']])
-    P.set_lm_groups()
-    P.maybe_store_projectwide_properties(overwrite=True)
     # P.set_lm_groups()
+
 # %%
     # P.add_data(ds5)
     # P.create_project([ds,ds2,ds3,ds4])
     len(P.raw_data_imgs)
     len(P)
 # %%
-    debug=True
-    D2 = Datasource(DS.totalseg)
-
+    debug=False
+    D2 = Datasource(DS.drli)
     D2.process_new_cases(debug=debug)
 
 
@@ -729,7 +736,7 @@ if __name__ == "__main__":
 
     conn = sqlite3.connect(db_name)
     
-    ss = """ALTER TABLE datasources RENAME COLUMN mask to lm"""
+    ss = """ALTER TABLE datasources RENAME COLUMN lm to lm"""
     conn.execute(ss)
 # %%
 # %%

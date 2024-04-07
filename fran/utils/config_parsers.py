@@ -4,6 +4,8 @@ from fastcore.transform import GetAttr
 import pandas as pd
 import ast,sys
 import ipdb
+
+from fran.utils.fileio import load_yaml
 tr = ipdb.set_trace
 
 if not sys.executable=="": # workaround for slicer as it does not load ray tune
@@ -137,9 +139,10 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
 
 
 class ConfigMaker():
-    def __init__(self, project, configuration_filename=None,raytune=False):
+    def __init__(self, project, configuration_filename=None,configuration_mnemonic=None, raytune=False):
         store_attr()
-        if not configuration_filename: configuration_filename = project.configuration_filename
+
+        configuration_filename = self.resolve_configuration_filename(configuration_filename,configuration_mnemonic)
         self.config = load_config_from_workbook(configuration_filename, raytune)
         if not "mom_low" in self.config["model_params"].keys() and raytune==True:
             config = {
@@ -157,10 +160,34 @@ class ConfigMaker():
             self.config["model_params"].update(config)
         self.add_further_keys()
       
+    def resolve_configuration_filename(self,configuration_filename,configuration_mnemonic):
+
+        _mnemonics = ["liver", "lungs", "nodes", "bones", "lilu"]
+        if configuration_filename: return configuration_filename
+        assert configuration_filename or configuration_mnemonic, "Provide either a configuration filename or a configuration mnemonic"
+
+
+
+        common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
+        common_paths = load_yaml(common_vars_filename)
+        configurations_folder = Path(common_paths['configurations_folder'])
+        if configuration_mnemonic: 
+            assert configuration_mnemonic in _mnemonics, "Please provide a valid mnemonic from the list {}".format(_mnemonics)
+        if configuration_mnemonic == "liver":
+            return configurations_folder/("experiment_configs_liver.xlsx")
+        elif configuration_mnemonic == "lungs":
+            return configurations_folder/("experiment_configs_lungs.xlsx")
+        elif configuration_mnemonic == "nodes":
+            return configurations_folder/("experiment_configs_nodes.xlsx")
 
     def add_further_keys(self):
         if not 'out_channels' in self.config["model_params"]:
-            self.add_out_channels()
+            try:
+                self.add_out_channels()
+            except KeyError as er:
+                print("Warning: Key {} not is in config['model_params']".format(er))
+                print("Training will breakdown unless projectwide properties are set first. \nAlternatively set 'out_channels' key in config['model_params']  ")
+
         self.add_patch_size()
         self.add_dataset_props()
 
@@ -168,9 +195,10 @@ class ConfigMaker():
     def add_dataset_props(self):
         props = ['intensity_clip_range', 'mean_fg', 'std_fg' ,'mean_dataset_clipped', 'std_dataset_clipped']
         for prop in props:
-            self.config['dataset_params'][prop]=self.project.global_properties[prop]
-        # self.config['dataset_params']['mean_fg']=self.project.global_properties["mean_fg"]
-        # self.config['dataset_params']['std_fg']=self.project.global_properties["std_fg"]
+            try:
+                self.config['dataset_params'][prop]=self.project.global_properties[prop]
+            except:
+                self.config['dataset_params'][prop]=None
 
     def add_out_channels(self):
             if isinstance(self.config['dataset_params']["src_dest_labels"], Union[tuple,list]):

@@ -66,14 +66,13 @@ class GlobalProperties(GetAttr):
         return cases_for_sampling
 
 
-
     def retrieve_h5_voxels(self):
         voxels=[]
         h5py = import_h5py()
         for ds in self.global_properties['datasources']:
             ds_name =ds['ds']
             h5fn = ds['h5_fname']
-            cases_ds = [ cid for cid in self.cases_for_sampling if ds_name in cid]
+            cases_ds = [ cid for cid in self.cases_for_sampling if cid.split("_")[0] == ds_name ]
             with h5py.File(h5fn, "r") as h5f_file:
                 for cid in cases_ds:
                     cs = h5f_file[cid]
@@ -91,7 +90,7 @@ class GlobalProperties(GetAttr):
         for ds in self.global_properties['datasources']:
             ds_name =ds['ds']
             h5fn = ds['h5_fname']
-            cases_ds = [ cid for cid in self.case_ids if ds_name in cid]
+            cases_ds = [ cid for cid in self.cases_for_sampling if cid.split("_")[0] == ds_name ]
             with h5py.File(h5fn, "r") as h5f_file:
                 for cid in pbar(cases_ds):
                     cs = h5f_file[cid]
@@ -154,7 +153,7 @@ class GlobalProperties(GetAttr):
         """
 
         percentile_label, intensity_percentile_range=  get_intensity_range(self.global_properties)
-        if not self.clip_range: self.user_query_clip_range(intensity_percentile_range)
+        if not self.clip_range: self.clip_range =intensity_percentile_range
         self._compute_dataset_mean(num_processes,multiprocess,debug)
         self._compute_dataset_std(num_processes,multiprocess,debug)
         self.global_properties['intensity_clip_range']= self.clip_range
@@ -203,14 +202,14 @@ class GlobalProperties(GetAttr):
         std_num = torch.tensor(std_num)
         self.std = torch.sqrt(std_num.sum() / self.total_voxels)
 
-    def user_query_clip_range(self,intensity_percentile_range):
-            try:
-                self.clip_range = input("A Clip range has not been given. Press enter to accept clip range based on intensity-percentiles (i.e.{}) or give a new range now: ".format(intensity_percentile_range))
-                if len(self.clip_range) == 0: self.clip_range = intensity_percentile_range
-                else: self.clip_range = ast.literal_eval(self.clip_range) 
-            except:
-                print("A valid clip_range is not entered. Using intensity-default")
-                self.clip_range = intensity_percentile_range
+    # def user_query_clip_range(self,intensity_percentile_range):
+    #         try:
+    #             self.clip_range = input("A Clip range has not been given. Press enter to accept clip range based on intensity-percentiles (i.e.{}) or give a new range now: ".format(intensity_percentile_range))
+    #             if len(self.clip_range) == 0: self.clip_range = intensity_percentile_range
+    #             else: self.clip_range = ast.literal_eval(self.clip_range) 
+    #         except:
+    #             print("A valid clip_range is not entered. Using intensity-default")
+    #             self.clip_range = intensity_percentile_range
 
     def collate_lm_labels(self):
         labels_all=[]
@@ -289,6 +288,10 @@ if __name__ == "__main__":
 
 
 # %%
+    cid ='litqsmall_00008'
+    cid ='litqsmall_00007'
+    aa= h5f_file[cid]
+# %%
     f =  unique_idx(5)
 
     f.__next__()
@@ -297,7 +300,20 @@ if __name__ == "__main__":
 
 
     
+    dss = G.global_properties['datasources']
     
+    ds =dss[-2]
+    ds_name =ds['ds']
+    h5fn = ds['h5_fname']
 
+    cases_ds = [ cid for cid in G.cases_for_sampling if ds_name in cid]
+# %%
+    import h5py
+    voxels = []
+    with h5py.File(h5fn, "r") as h5f_file:
+                for cid in cases_ds:
+                    cs = h5f_file[cid]
+                    voxels.append(cs[:])
 
 # %%
+   
