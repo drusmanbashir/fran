@@ -88,6 +88,7 @@ class PatchDataGenerator(GetAttr):
             for f in self.existing_files
         ]
         self.existing_case_ids = set(self.existing_case_ids)
+        print("Case ids processed in a previous session: ",len(self.existing_case_ids))
 
     def remove_completed_cases(self):
         all_cases = set([bb["case_id"] for bb in self.fixed_sp_bboxes])

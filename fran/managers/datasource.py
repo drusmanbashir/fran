@@ -78,6 +78,7 @@ class Datasource(GetAttr):
         Any new cases will be processed and added to project.raw_dataset_properties_filename
         '''
         
+        h5py = import_h5py()
         try:
             with h5py.File(self.h5_fname, 'r') as h5f:
                 prev_processed_cases = list(h5f.keys())

@@ -236,6 +236,14 @@ def get_available_device(max_memory=0.8)->int:
 
     return available 
 
+def resolve_device (device):
+    assert device in ['gpu', 'cpu',0,1], "Device has to be either 'cpu' , 'gpu' or an integer"
+    if device == 'cpu': return 'cpu'
+    if device == 'gpu': device = 0
+    device = torch.device('cuda:{}'.format(device))
+    return device
+
+
 def set_cuda_device(device_id=None):
         if device_id == None:        device_id= get_available_device()
         torch.cuda.set_device(device_id)

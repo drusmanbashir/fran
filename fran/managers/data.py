@@ -22,7 +22,7 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  FgBgToIndicesd, ToDeviced)
 
 from fran.data.dataloader import img_lm_bbox_collated
-from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemap2,
+from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemapd, 
                                NormaliseClipd)
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
@@ -94,7 +94,7 @@ class DataManager(LightningDataModule):
             mean=self.dataset_params["mean_fg"],
             std=self.dataset_params["std_fg"],
         )
-        P = MaskLabelRemap2(
+        P = MaskLabelRemapd(
             keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
         )
 
@@ -126,7 +126,6 @@ class DataManager(LightningDataModule):
         A = self.create_affine_tfm()
         Re = ResizeWithPadOrCropd(
                 keys=["image", "lm"],
-                source_key="image",
                 spatial_size=self.dataset_params["patch_size"],
                 lazy=True,
             )

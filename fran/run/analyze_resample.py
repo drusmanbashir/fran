@@ -2,7 +2,7 @@
 import argparse
 import ast
 import shutil
-from fran.managers.project import DS
+from fran.managers.datasource import DS
 
 from label_analysis.totalseg import TotalSegmenterLabels
 
@@ -57,8 +57,8 @@ class PreprocessingManager():
         ).config
 
         # args.overwrite=False
-        plan = conf[self.plan]
-        self.spacing = ast.literal_eval(plan['spacing'])
+        self.plan = conf[self.plan]
+        self.spacing = ast.literal_eval(self.plan['spacing'])
 
         self.Resampler = ResampleDatasetniftiToTorch(
                     project=self.project,
@@ -96,7 +96,6 @@ class PreprocessingManager():
                 return True
 
     def resample_dataset(self, generate_bboxes=True):
-        self.get_resampling_configs()
         self.Resampler.create_dl()
         self.Resampler.process()
         if generate_bboxes==True:
@@ -198,22 +197,6 @@ class PreprocessingManager():
                 resampled_dataset_properties_fn_org,
                 resampled_dataset_properties_fn_dest,
             )
-
-
-    def get_resampling_configs(self):
-        try:
-            resampling_configs = load_dict(
-                self.project.fixed_spacing_folder / ("resampling_configs")
-            )
-            print(
-                "Based on earlier pre-processing, following data-spacing configs are available:"
-            )
-            for indx, config in enumerate(resampling_configs):
-                print("Index: {0}, config {1}".format(indx, config["spacing"]))
-            return resampling_configs
-        except:
-            print("No resampling configs exist.")
-            return []
 
     def create_patches_output_folder(self, fixed_spacing_folder, patch_size):
         
@@ -338,8 +321,10 @@ if __name__ == "__main__":
     dss= dss.split(",")
     datasources = [getattr(DS,g) for g in dss]
     P.create_project(datasources)
-    P.set_lm_groups(plans['lm_groups'])
-    P.maybe_store_projectwide_properties(overwrite=False)
+# %%
+    if not "labels_all" in P.global_properties.keys():
+        P.set_lm_groups(plans['lm_groups'])
+        P.maybe_store_projectwide_properties(overwrite=True)
 
 # %%
     I = PreprocessingManager(args)

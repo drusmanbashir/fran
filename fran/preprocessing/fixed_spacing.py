@@ -1,5 +1,7 @@
 # %%
 from pathlib import Path
+from fran.preprocessing.dataset import ResamplerDataset
+from fran.utils.helpers import pbar
 
 import numpy as np
 import pandas as pd
@@ -101,7 +103,8 @@ class _Preprocessor(GetAttr):
                 self.create_output_folders()
                 self.results =[]
                 self.shapes=[]
-                for i, batch in pbar(enumerate(self.dl)):
+
+                for  batch in pbar(self.dl):
                     images, lms = batch["image"], batch["lm"]
                     for image, lm in zip(images, lms):
                         assert image.shape == lm.shape, "mismatch in shape".format(
@@ -289,135 +292,6 @@ def update_resampling_configs(spacing, output_folder):
         save_json(output_specs, specs_file)
     else:
         print("Set of specs already exist in a folder. Nothing is changed.")
-
-
-class ResamplerDataset(GetAttr, Dataset):
-    _default = "project"
-
-    def __init__(
-        self,
-        project,
-        spacing,
-        half_precision=False,
-        clip_center=False,
-        store_label_inds=False,
-        mean_std_mode: str = "dataset",
-        device="cuda",
-    ):
-
-        assert mean_std_mode in [
-            "dataset",
-            "fg",
-        ], "Select either dataset mean/std or fg mean/std for normalization"
-        self.project = project
-        self.df = self.filter_completed_cases()
-        self.spacing = spacing
-        self.half_precision = half_precision
-        self.clip_center = clip_center
-        self.device = device
-        super(GetAttr).__init__()
-        self.set_normalization_values(mean_std_mode)
-        self.create_transforms()
-
-    def setup(self):
-        self.create_transforms()
-        data = self.create_data_dicts()
-        Dataset.__init__(self, data,self.transform)
-
-
-    def create_data_dicts(self):
-        data = []
-        for index in range(len(self)):
-            cp = self.df.iloc[index]
-            ds = cp["ds"]
-            remapping = get_ds_remapping(ds, self.global_properties)
-
-            img_fname = cp["image"]
-            mask_fname = cp["lm"]
-            dici = {
-                "image": img_fname,
-                "lm": mask_fname,
-                "remapping": remapping,
-            }
-            data.append(dici)
-        return data
-
-
-
-    def filter_completed_cases(self):
-        df = self.project.df.copy()  # speed up things
-        tr()
-        return df
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, index):
-        dici = self.data[index]
-        img_fname = dici["image"]
-        mask_fname = dici["lm"]
-        remapping = dici['remapping']
-        img = sitk.ReadImage(img_fname)
-        mask = sitk.ReadImage(mask_fname)
-        dici = {
-            "image": img,
-            "lm": mask,
-            "image_fname": img_fname,
-            "lm_fname": mask_fname,
-            "remapping": remapping,
-        }
-        dici = self.transform(dici)
-        return dici
-
-    def create_transforms(self):
-        R = RemapSITK(keys=["lm"], remapping_key="remapping")
-        L = LoadSITKd(keys=["image", "lm"], image_only=True)
-        T = ToDeviced(keys=["image", "lm"], device=self.device)
-        Re = Recast(keys=["image", "lm"])
-
-        Ind = FgBgToIndicesd(keys=["lm"], image_key="image", image_threshold=-2600)
-        Ai = DictToMeta(
-            keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
-        )
-        Am = DictToMeta(
-            keys=["lm"],
-            meta_keys=["lm_fname", "remapping", "lm_fg_indices", "lm_bg_indices"],
-            renamed_keys=["filename", "remapping", "lm_fg_indices", "lm_bg_indices"],
-        )
-        E = EnsureChannelFirstd(
-            keys=["image", "lm"], channel_dim="no_channel"
-        )  # funny shape output mismatch
-        Si = Spacingd(keys=["image"], pixdim=self.spacing, mode="trilinear")
-        Rz = ResizeToTensord(keys=["lm"], key_template_tensor="image", mode="nearest")
-
-        # Sm = Spacingd(keys=["lm"], pixdim=self.spacing,mode="nearest")
-        N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.global_properties["intensity_clip_range"],
-            mean=self.mean,
-            std=self.std,
-        )
-        Ch = ChangeDtyped(keys=['lm'],target_dtype = torch.uint8)
-
-        
-
-        tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
-
-        if self.clip_center == True:
-            tfms.extend([N])
-        if self.half_precision == True:
-            H = HalfPrecisiond(keys=["image"])
-            tfms.extend([H])
-        self.transform = Compose(tfms)
-
-    def set_normalization_values(self, mean_std_mode):
-        if mean_std_mode == "dataset":
-            self.mean = self.global_properties["mean_dataset_clipped"]
-            self.std = self.global_properties["std_dataset_clipped"]
-        else:
-            self.mean = self.global_properties["mean_fg"]
-            self.std = self.global_properties["std_fg"]
-
 
 # %%
 if __name__ == "__main__":

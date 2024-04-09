@@ -6,6 +6,7 @@ from fastcore.basics import listify
 import ipdb
 from fastcore.basics import GetAttr
 from monai.utils.enums import StrEnum
+from fran.managers.datasource import Datasource, DS
 from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, import_h5py
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.utils.string import (

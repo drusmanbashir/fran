@@ -1,6 +1,16 @@
 # %%
 import shutil
+from fran.utils.common import common_vars_filename
+import ipdb
+tr = ipdb.set_trace
+
+from label_analysis.overlap import get_ipython
+import numpy as np
+from typing import Union
+from pathlib import Path
 from fastcore.basics import store_attr
+from label_analysis.merge import load_dict
+from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 
 import psutil
@@ -326,36 +336,76 @@ class TrainingManager:
     def setup(
         self,
         batch_size=None,
-        cbs=[],
         logging_freq=25,
         lr=None,
         devices=1,
-        compiled=False,
+        compiled=None,
         neptune=True,
         profiler=False,
         tags=[],
         description="",
-        epochs=1000,
+        epochs=600,
         batchsize_finder=False,
         cache_rate = 0.0
     ):
-        if batch_size is None:
-            batch_size = self.configs["dataset_params"]["batch_size"]
-        if batchsize_finder == True:
-            batch_size = self.heuristic_batch_size()
-        if lr:
-            self.configs["model_params"]["lr"] = lr
-        self.configs["model_params"]["compiled"] = compiled
-        strategy = maybe_ddp(devices)
-        if type(devices) == int and devices > 1:
-            sync_dist = True
-        else:
-            sync_dist = False
+        self.maybe_alter_configs(batch_size,batchsize_finder,compiled)
+        self.set_lr(lr)
+        self.set_strategy(devices)
+        self.init_dm_unet(epochs)
+        cbs, logger, profiler = self.init_cbs(neptune,profiler,tags, description)
+        self.D.prepare_data()
 
+        if self.configs["model_params"]["compiled"] == True:
+            self.N = torch.compile(self.N)
+
+        self.trainer = Trainer(
+            callbacks=cbs,
+            accelerator="gpu",
+            devices=devices,
+            # precision="16-mixed",
+            precision="bf16",
+            profiler = profiler,
+            logger=logger,
+            max_epochs=epochs,
+            log_every_n_steps=logging_freq,
+            num_sanity_val_steps=0,
+            enable_checkpointing=True,
+            default_root_dir=self.project.checkpoints_parent_folder,
+            strategy=self.strategy
+            # strategy='ddp_find_unused_parameters_true'
+        )
+
+    def init_dm_unet(self,epochs):
         if self.ckpt:
-            self.D, self.N = self.load_ckpts(lr=lr)
+            self.D = self.load_dm()
+            self.configs['dataset_params'] = self.D.dataset_params
+            self.N = self.load_trainer()
+        
         else:
-            self.D, self.N = self.init_D_N(cache_rate,batch_size, epochs, sync_dist)
+            self.D = self.init_dm(cache_rate)
+            self.N = self.init_trainer( epochs )
+
+
+    def set_lr(self,lr):
+        if lr and not self.ckpt:
+            self.lr  = lr
+        elif lr and self.ckpt:
+            self.state_dict = torch.load(self.ckpt)
+            self.state_dict["lr_schedulers"][0]["_last_lr"][0] = lr
+            torch.save(self.state_dict, self.ckpt)
+
+        elif lr is None and self.ckpt:
+            self.state_dict = torch.load(self.ckpt)
+            self.lr = self.state_dict["lr_schedulers"][0]["_last_lr"][0]
+        else:
+            self.lr  = self.configs["model_params"]["lr"]
+    
+
+    def init_cbs(self,neptune,profiler,tags,description):
+        cbs = [
+                LearningRateMonitor(logging_interval="epoch"),
+                TQDMProgressBar(refresh_rate=3),
+        ]
         if neptune == True:
             logger = NeptuneManager(
                 project=self.project,
@@ -374,12 +424,11 @@ class TrainingManager:
             )
 
             cbs += [
-                N,
-                LearningRateMonitor(logging_interval="epoch"),
-                TQDMProgressBar(refresh_rate=3),
+                N
             ]
         else:
             logger = None
+
         if profiler==True:
             # profiler = AdvancedProfiler(dirpath=self.project.log_folder, filename="profiler")
             profiler ='simple'
@@ -387,26 +436,28 @@ class TrainingManager:
         else:
             profiler = None
 
-        self.D.prepare_data()
+        return cbs, logger, profiler
 
-        if self.configs["model_params"]["compiled"] == True:
-            self.N = torch.compile(self.N)
 
-        self.trainer = Trainer(
-            callbacks=cbs,
-            accelerator="gpu",
-            devices=devices,
-            precision="16-mixed",
-            profiler = profiler,
-            logger=logger,
-            max_epochs=epochs,
-            log_every_n_steps=logging_freq,
-            num_sanity_val_steps=0,
-            enable_checkpointing=True,
-            default_root_dir=self.project.checkpoints_parent_folder,
-            strategy=strategy
-            # strategy='ddp_find_unused_parameters_true'
-        )
+    def set_strategy(self,devices):
+        self.strategy = maybe_ddp(devices)
+        if type(devices) == int and devices > 1:
+            self.sync_dist = True
+        else:
+            self.sync_dist = False
+
+
+
+    def maybe_alter_configs(self,batch_size,batchsize_finder,compiled):
+        if batch_size :
+            self.configs["dataset_params"]["batch_size"] = batch_size
+            # batch_size = self.configs["dataset_params"]["batch_size"]
+        if batchsize_finder == True: # note even if you set a batchsize, that will be overridden by this.
+            batch_size = self.heuristic_batch_size()
+            self.configs["dataset_params"]["batch_size"] = batch_size
+        if compiled:
+            self.configs["model_params"]["compiled"] = compiled
+
 
     def qc_configs(self, configs,project):
         ratios = configs['dataset_params']["fgbg_ratio"]
@@ -428,48 +479,44 @@ class TrainingManager:
         else:
             return 48
 
-    def init_D_N(self,cache_rate, batch_size, epochs, sync_dist, batch_finder=False):
+    def init_dm(self,cache_rate, ):
         DMClass = self.resolve_datamanager(self.configs["dataset_params"]["mode"])
         D = DMClass(
             self.project,
             dataset_params=self.configs["dataset_params"],
             transform_factors=self.configs["transform_factors"],
             affine3d=self.configs["affine3d"],
-            batch_size=batch_size,
+            batch_size=self.configs["dataset_params"]["batch_size"],
             cache_rate =cache_rate
         )
+
+        return D
+
+    def init_trainer(self,epochs):
         N = UNetTrainer(
             self.project,
             self.configs["dataset_params"],
             self.configs["model_params"],
             self.configs["loss_params"],
-            lr=self.configs["model_params"]["lr"],
+            lr=self.lr,
             max_epochs=epochs,
-            sync_dist=sync_dist,
+            sync_dist=self.sync_dist,
         )
-        return D, N
+        return  N
 
-    def load_ckpts(self, lr=None):
-        state_dict = torch.load(self.ckpt)
-        DMClass = self.resolve_datamanager(
-            state_dict["datamodule_hyper_parameters"]["dataset_params"]["mode"]
-        )
-        D = DMClass.load_from_checkpoint(self.ckpt, project=self.project)
-        if lr is None:
-            lr = state_dict["lr_schedulers"][0]["_last_lr"][0]
-        else:
-            state_dict["lr_schedulers"][0]["_last_lr"][0] = lr
-            torch.save(state_dict, self.ckpt)
+
+    def load_trainer(self,**kwargs):
         try:
             N = UNetTrainer.load_from_checkpoint(
-                self.ckpt, project=self.project, dataset_params=D.dataset_params, lr=lr
+                self.ckpt, project=self.project, dataset_params=self.configs['dataset_params'], lr=self.lr,**kwargs
             )
+            print("Model loaded from checkpoint: ",self.ckpt)
         except:
             tr()
-            ckpt_state = state_dict["state_dict"]
+            ckpt_state = self.state_dict["state_dict"]
             ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
             print(ckpt_state_updated.keys())
-            state_dict_neo = state_dict.copy()
+            state_dict_neo = self.state_dict.copy()
             state_dict_neo["state_dict"] = ckpt_state_updated
 
             ckpt_old = self.ckpt.str_replace("_bkp", "")
@@ -478,9 +525,17 @@ class TrainingManager:
             shutil.move(self.ckpt, ckpt_old)
 
             N = UNetTrainer.load_from_checkpoint(
-                self.ckpt, project=self.project, dataset_params=D.dataset_params, lr=lr
+                self.ckpt, project=self.project, dataset_params=self.configs['dataset_params'], lr=self.lr,**kwargs
             )
-        return D, N
+        return  N
+
+
+    def load_dm(self):
+        DMClass = self.resolve_datamanager(
+            self.state_dict["datamodule_hyper_parameters"]["dataset_params"]["mode"]
+        )
+        D = DMClass.load_from_checkpoint(self.ckpt, project=self.project)
+        return D
 
     def resolve_datamanager(self, mode: str):
         assert mode in [
@@ -502,8 +557,6 @@ class TrainingManager:
         return DMClass
 
     def fit(self):
-        # if self.configs['model_params']['compiled']==True:
-        #     self.N = torch.compile(self.)
         self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
 
     def fix_state_dict_keys(self, bad_str="model", good_str="model._orig_mod"):
@@ -529,7 +582,8 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
-    project_title = "lidc2"
+    project_title = "litsmc"
+    mnemonic = "liver"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -539,20 +593,17 @@ if __name__ == "__main__":
     configuration_filename = None
 
     conf = ConfigMaker(
-        proj, raytune=False, configuration_filename=configuration_filename
+        proj, raytune=False, configuration_mnemonic=mnemonic
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
-    conf["model_params"]["arch"] = "nnUNet"
     # conf['model_params']['lr']=1e-3
 
 # %%
     device_id = 1
-    bs = 4
-    run_name = "LITS-913"
-    run_name ='LITS-911'
+    bs =None # if none, will get it from the conf file 
     run_name = None
-    # run_name ='LITS-836'
+    run_name ='LITS-933'
     compiled = False
     profiler=False
 
@@ -560,13 +611,13 @@ if __name__ == "__main__":
     neptune = True
     tags = []
     cache_rate=0.0
-    description = f""
+    description = f"benchmarking baseline LBD "
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=500,
+        epochs=600,
         batchsize_finder=batch_finder,
         profiler=profiler,
         neptune=neptune,
@@ -584,13 +635,33 @@ if __name__ == "__main__":
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.train_ds
+    ds = Tm.D.valid_ds
+# %%
+    for i,id in enumerate(ds):
+        print(i)
+# %%
+    dici = ds.data[3]
+    dici = ds[0]
+    dici = ds.transform(dici)
+
+# %%
     dl = Tm.D.train_dataloader()
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
     iteri2 = iter(dl2)
+    batch = next(iteri2)
 # %%
 
-    dici = ds[0]
+
+    Re = ResizeWithPadOrCropd(
+                keys=["image", "lm"],
+                spatial_size=D.dataset_params["patch_size"],
+                lazy=False,
+            )
+# %%
+    dici = Re(dici)
+# %%
+    dici = ds[1]
     dici = ds.data[0]
     keys_tr="L,E,Ind,Rtr,F1,F2,A,Re,N,I"
     keys_val="L,E,Ind,Rva,Re,N"
@@ -599,14 +670,22 @@ if __name__ == "__main__":
 
 
 # %%
-    dici = ds.data[0]
-    for k in keys_tr[:4]:
+    dici = ds.data[5].copy()
+    for k in keys_val[:3]:
         tfm = D.transforms_dict[k]
         dici =tfm(dici)
 # %%
+
+    ind =0
+    dici = ds.data[ind]
+    ImageMaskViewer([dici['image'][0],dici['lm'][0]])
+    ImageMaskViewer([dici[ind]['image'][0],dici[ind]['lm'][0]])
+# %%
     tfm2 = D.transforms_dict[keys_tr[5]]
 
-    dici = tfm2(dici)
+# %%
+    for didi in dici:
+        dd = tfm2(didi)
 # %%
     idx= 0
     ds.set_bboxes_labels(idx)

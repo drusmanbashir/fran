@@ -596,7 +596,7 @@ class FillBBoxPatchesd(Transform):
         return d
 
 
-class MaskLabelRemap2(MapTransform):
+class MaskLabelRemapd(MapTransform):
     def __init__(self, keys, src_dest_labels: tuple, allow_missing_keys=False):
         super().__init__(keys, allow_missing_keys)
         if isinstance(src_dest_labels, str):

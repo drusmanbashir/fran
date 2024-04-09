@@ -26,7 +26,7 @@ from lightning.pytorch import LightningDataModule, LightningModule, Trainer
 
 import torch
 import operator
-from fran.data.dataset import ImageMaskBBoxDatasetd, MaskLabelRemap2, NormaliseClipd
+from fran.data.dataset import ImageMaskBBoxDatasetd, MaskLabelRemapd, NormaliseClipd
 from fran.transforms.spatialtransforms import one_hot
 from fran.transforms.totensor import ToTensorT
 from fran.utils.helpers import folder_name_from_list
