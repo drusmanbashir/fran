@@ -580,6 +580,7 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
+
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
     project_title = "litsmc"
@@ -601,7 +602,7 @@ if __name__ == "__main__":
 
 # %%
     device_id = 1
-    bs =None # if none, will get it from the conf file 
+    bs = 6# if none, will get it from the conf file 
     run_name = None
     run_name ='LITS-933'
     compiled = False

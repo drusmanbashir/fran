@@ -129,7 +129,8 @@ class NeptuneImageGridCallback(Callback):
             self.populate_grid(pl_module, batch)
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if trainer.current_epoch % self.epoch_freq == 0:
+        if trainer.store_preds == True:
+        # if trainer.current_epoch % self.epoch_freq == 0:
             if self.validation_grid_created == False:
                 self.populate_grid(pl_module, batch)
                 self.validation_grid_created = True
@@ -173,7 +174,6 @@ class NeptuneImageGridCallback(Callback):
         label = batch["lm"].cpu()
         label = label.squeeze(1)
         label = one_hot(label, self.classes, axis=1)
-        img = img.cpu()
         # pred = torch.rand(img.shape,device='cuda')
         # pred.unsqueeze_(0) # temporary hack)
         # pred = pred.cpu()
