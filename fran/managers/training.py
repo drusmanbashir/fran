@@ -603,8 +603,8 @@ if __name__ == "__main__":
 # %%
     device_id = 1
     bs = 6# if none, will get it from the conf file 
-    run_name = None
     run_name ='LITS-933'
+    run_name = None
     compiled = False
     profiler=False
 
@@ -612,7 +612,7 @@ if __name__ == "__main__":
     neptune = True
     tags = []
     cache_rate=0.0
-    description = f"benchmarking baseline LBD "
+    description = f"benchmarking baseline Patch"
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,

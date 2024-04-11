@@ -393,7 +393,7 @@ class DataManagerPatch(DataManager):
 
     def setup(self, stage: str = None):
         self.create_transforms()
-        if math.isnan(self.dataset_params["src_dest_labels"]):
+        if not math.isnan(self.dataset_params["src_dest_labels"]):
             keys_tr = "P,E,F1,F2,A,Re,N,I"
         else:
             keys_tr = "E,F1,F2,A,Re,N,I"
