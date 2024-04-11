@@ -67,8 +67,6 @@ class PreprocessingManager():
                     device='cpu'
                 )
 
-
-
         # 
         print("Project: {0}".format(self.project_title))
 
@@ -95,14 +93,9 @@ class PreprocessingManager():
             if reanalyse.lower() == "y":
                 return True
 
-    def resample_dataset(self, generate_bboxes=True):
-        self.Resampler.create_dl()
+    def resample_dataset(self, overwrite=False):
+        self.Resampler.create_dl(overwrite)
         self.Resampler.process()
-        if generate_bboxes==True:
-            self.Resampler.generate_bboxes_from_masks_folder(
-                    debug=self.debug, bg_label=0,num_processes=self.num_processes
-                    )
-
 
     def generate_TSlabelboundeddataset(self,organ,imported_folder,keep_imported_labels=False,lm_group="lm_group1"):
         '''
@@ -116,7 +109,7 @@ class PreprocessingManager():
             remapping = TSL.create_remapping(imported_labelsets, [8, 9])
         self.L = LabelBoundedDataGenerator(
             project=self.project,
-            expand_by=20,
+            expand_by=self.plan['expand_by_lbd'],
             spacing=self.spacing,
             lm_group=lm_group,
             imported_folder=imported_folder,
@@ -156,41 +149,28 @@ class PreprocessingManager():
         print("Now call bboxes_from_masks_folder")
         generate_bboxes_from_masks_folder(self.WholeImageTM.output_folder_masks,0,self.debug,self.num_processes)
 
-    def set_patches_config(self,spacing_ind=0,patch_overlap=.25,expand_by=20):
 
-        spacing_config = self.resampling_configs[spacing_ind]
-        self.spacing, self.fixed_spacing_folder , self.lbd_output_folder = spacing_config.values()
-        self.lbd_output_folder= Path(self.lbd_output_folder)
-        patches_output_folder = self.create_patches_output_folder(
-            self.lbd_output_folder, self.patch_size
+    def generate_hires_patches_dataset(self,debug=False,overwrite=False,mode=None):
+        lbd_folder = folder_name_from_list(
+            prefix="spc",
+            parent_folder=self.project.lbd_folder,
+            values_list=self.spacing,
         )
-        patches_config_fn = patches_output_folder / "patches_config.json"
-        if patches_config_fn.exists()==True:
-            print("Patches configs already exist. Loading from file")
-            patches_config = load_dict(patches_config_fn)
-        else:
-            patches_config = {
-                
-                "patch_overlap": patch_overlap,
-                "expand_by": expand_by,
-            }
-        return patches_config, patches_output_folder
-
-    def generate_hires_patches_dataset(self,spacing_ind, patch_overlap=.25,expand_by=0,debug=False,overwrite=False,mode=None):
-        patches_config , patches_output_folder= self.set_patches_config(spacing_ind,patch_overlap,expand_by)
+        patch_overlap = self.plan['patch_overlap']
+        expand_by = self.plan['expand_by_patch']
 
         if mode is None:
             mode = self.mode
-        PG = PatchDataGenerator(self.project,self.lbd_output_folder, self.patch_size,**patches_config,mode=mode)
+        PG = PatchDataGenerator(self.project,lbd_folder, self.patch_size,patch_overlap=patch_overlap,expand_by=expand_by,mode=mode)
         PG.create_patches(overwrite=overwrite,debug=debug)
         print("Generating boundingbox data")
         PG.generate_bboxes(debug=debug)
 
-        resampled_dataset_properties_fn_org = self.lbd_output_folder / (
+        resampled_dataset_properties_fn_org = lbd_folder / (
             "resampled_dataset_properties.json"
         )
         resampled_dataset_properties_fn_dest = (
-            patches_output_folder.parent / resampled_dataset_properties_fn_org.name
+            PG.output_folder.parent / resampled_dataset_properties_fn_org.name
         )
         if not resampled_dataset_properties_fn_dest.exists():
             shutil.copy(
@@ -236,7 +216,7 @@ class PreprocessingManager():
 
 
 
-def do_resampling(R, args):
+def do_resempling(R, args):
     dim0 = input("Change dim0 to (press enter to leave unchanged)")
     dim1 = input("Change dim2 to (press enter to leave unchanged)")
     dim2 = input("Change dim3 to (press enter to leave unchanged)")
@@ -331,12 +311,11 @@ if __name__ == "__main__":
     # I.spacing = 
 # %%
     I.resample_dataset()
+    if I.plan['mode']=='patch':
     # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
-    I.generate_hires_patches_dataset(spacing_ind=1,debug=True,overwrite=True)
+        I.generate_hires_patches_dataset()
 # %%
     
-    fixed_spacing_folder =Path(I.resampling_configs[1]['resampling_output_folder'])
-    PG = PatchDataGenerator(I.project,fixed_spacing_folder, I.patch_size,**patches_config,mode=I.mode)
 
 
 

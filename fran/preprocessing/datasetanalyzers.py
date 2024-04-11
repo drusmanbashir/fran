@@ -129,7 +129,7 @@ class BBoxesFromMask(object):
         self.mask =load_image(filename)
         if isinstance(self.mask,torch.Tensor): self.mask = np.array(self.mask)
         if isinstance(self.mask,sitk.Image): self.mask = sitk.GetArrayFromImage(self.mask)
-        case_id = cleanup_fname(filename.name)
+        case_id = info_from_filename(filename.name,full_caseid=True)['case_id']
         self.bboxes_info = {
             "case_id": case_id,
             "filename": filename,

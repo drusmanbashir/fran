@@ -55,6 +55,7 @@ class ResamplerDataset(GetAttr, Dataset):
     def __init__(
         self,
         project,
+        data,
         spacing,
         half_precision=False,
         clip_center=False,
@@ -68,7 +69,6 @@ class ResamplerDataset(GetAttr, Dataset):
             "fg",
         ], "Select either dataset mean/std or fg mean/std for normalization"
         self.project = project
-        self.df = self.filter_completed_cases()
         self.spacing = spacing
         self.half_precision = half_precision
         self.clip_center = clip_center
@@ -76,39 +76,9 @@ class ResamplerDataset(GetAttr, Dataset):
         super(GetAttr).__init__()
         self.set_normalization_values(mean_std_mode)
         self.create_transforms()
-
-    def setup(self):
-        self.create_transforms()
-        data = self.create_data_dicts()
         Dataset.__init__(self, data,self.transform)
 
 
-    def create_data_dicts(self):
-        data = []
-        for index in range(len(self)):
-            cp = self.df.iloc[index]
-            ds = cp["ds"]
-            remapping = get_ds_remapping(ds, self.global_properties)
-
-            img_fname = cp["image"]
-            mask_fname = cp["lm"]
-            dici = {
-                "image": img_fname,
-                "lm": mask_fname,
-                "remapping": remapping,
-            }
-            data.append(dici)
-        return data
-
-
-
-    def filter_completed_cases(self):
-        df = self.project.df.copy()  # speed up things
-        tr()
-        return df
-
-    def __len__(self):
-        return len(self.df)
 
     def __getitem__(self, index):
         dici = self.data[index]
