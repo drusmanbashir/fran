@@ -416,15 +416,11 @@ if __name__ == "__main__":
     project = Project(project_title="litsmc")
 
     run_w = "LIT-145"
-    run_ps = ["LIT-143", "LIT-150", "LIT-149", "LIT-153", "LIT-161"]
-    run_ps = ["LITS-630", "LITS-633", "LITS-632", "LITS-647", "LITS-650"]
-
-    run_ps = ["LITS-787", "LITS-810", "LITS-811"]
     run_lidc2 = ["LITS-902"]
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
     run_lidc2 = ["LITS-911"]
-    run_litsmc= ["LITS-933"]
+    run_litsmc= ["LITS-935"]
     run_ts = ["LITS-827"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
@@ -449,7 +445,6 @@ if __name__ == "__main__":
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
     localiser_labels = [1]
-    runs_p = run_ps
 # %%
     runs_p = run_litsmc
 # %%

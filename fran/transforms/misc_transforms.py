@@ -14,6 +14,7 @@ from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
 
 from fran.transforms.base import MonaiDictTransform
+from fran.utils.imageviewers import ImageMaskViewer
 
 tr = ipdb.set_trace
 
@@ -28,7 +29,7 @@ class FgBgToIndicesd2(FgBgToIndicesd):
     def __init__(
         self,
         keys: KeysCollection,
-        ignore_labels: list,
+        ignore_labels: list=None,
         fg_postfix: str = "_fg_indices",
         bg_postfix: str = "_bg_indices",
         image_key: str | None = None,
@@ -53,8 +54,12 @@ class FgBgToIndicesd2(FgBgToIndicesd):
         d = dict(data)
         image = d[self.image_key] if self.image_key else None
         for key in self.key_iterator(d):
-            lm = d[key]
-            tr()
+            if self.ignore_labels:
+                lm = d[key].clone() # clone so the original is untouched
+                for label in self.ignore_labels:
+                    lm[lm == label] = 0
+            else:
+                lm = d[key]
             d[str(key) + self.fg_postfix], d[str(key) + self.bg_postfix] = (
                 self.converter(lm, image)
             )
@@ -283,4 +288,16 @@ class Squeeze(ItemTransform):
         return outputs
 
 
+# %%
+if __name__ == "__main__":
+    img_fn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/images/drli_006.pt")
+    lm_fn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/lms/drli_006.pt")
+
+    img =  torch.load(img_fn)
+    lm = torch.load(lm_fn)
+
+# %%
+    F = FgBgToIndicesd2(keys = ['lm'], ignore_labels=[1])
+    dici = {'image':img, 'lm':lm}
+    dici = F(dici)
 # %%

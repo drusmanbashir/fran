@@ -25,7 +25,7 @@ from fran.utils.config_parsers import *
 
 # from fran.managers.learner_plus import *
 from fran.utils.helpers import *
-from fran.callback.neptune import *
+from fran.callback.nep import *
 from fran.callback.tune import *
 from fran.utils.config_parsers import *
 from torchinfo import summary
@@ -328,7 +328,7 @@ def normalize(tensr, intensity_percentiles=[0.0, 1.0]):
     return tensr
 
 
-class NeptuneCallback(NeptuneManager, Callback):
+class Neptunecallback.nepManager, Callback):
     _default = "learn"
 
     order = TrackerCallback.order + 1

@@ -16,7 +16,7 @@ from monai.transforms.utility.dictionary import EnsureChannelFirstd
 import psutil
 import random
 import torch._dynamo
-from fran.callback.neptune import NeptuneImageGridCallback
+from fran.callback.nep import NeptuneImageGridCallback
 
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 from fran.managers.data import ( DataManagerLBD, DataManagerPatch,
@@ -25,7 +25,7 @@ from fran.utils.fileio import load_yaml
 from fran.utils.imageviewers import ImageMaskViewer
 
 torch._dynamo.config.suppress_errors = True
-from fran.managers.neptune import NeptuneManager
+from fran.managers.nep import NeptuneManager
 import itertools as il
 import operator
 import warnings
@@ -603,8 +603,8 @@ if __name__ == "__main__":
 # %%
     device_id = 1
     bs = 6# if none, will get it from the conf file 
-    run_name ='LITS-933'
     run_name = None
+    run_name ='LITS-935'
     compiled = False
     profiler=False
 

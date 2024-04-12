@@ -1,6 +1,6 @@
 # %%
 
-# from fran.callback.neptune_manager import *
+# from fran.callback.nep_manager import *
 from fran.utils.config_parsers import *
 import torch.nn as nn
 from ray import tune
