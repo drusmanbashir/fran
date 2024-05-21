@@ -1,12 +1,11 @@
 # %%
-
 import sqlite3
 from label_analysis.totalseg import TotalSegmenterLabels
 from fastcore.basics import listify
 import ipdb
 from fastcore.basics import GetAttr
 from monai.utils.enums import StrEnum
-from fran.managers.datasource import Datasource, DS
+from fran.managers.datasource import Datasource, _DS
 from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, import_h5py
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.utils.string import (
@@ -36,6 +35,7 @@ common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 from contextlib import contextmanager
 
 
+DS= _DS()
 
 def val_indices(a, n):
     a = a - 1
@@ -68,22 +68,19 @@ class Project(DictToAttr):
 
         if self.global_properties_filename.exists():
             self.global_properties = load_dict(self.global_properties_filename)
-    def create_project(self, data_folders: list = None, test: list = None):
+    def create(self,mnemonic, datasources: list = None, test: list = None):
         """
         param datasets: list of datasets to add to raw_data_folder
         param test: list of bool assigning some (or none) as test set(s)
         """
 
-        if self.db.exists():
-                "Project already exists. Proceeding"
-            
-        else:
-            self.global_properties = {'project_title':self.project_title}
-            self._create_folder_tree()
-
+        assert not self.db.exists(),   "Project already exists. Use 'add_data' if you want to add data. "
+        self.global_properties = {'project_title':self.project_title, 'mnemonic':mnemonic}
+        self._create_folder_tree()
         self.create_table()
-        if data_folders:
-            self.add_data(data_folders, test)
+        if datasources:
+            self.add_data(datasources, test)
+        self.save_global_properties()
     def save_global_properties(self):
             save_dict(self.global_properties, self.global_properties_filename)
 
@@ -99,13 +96,14 @@ class Project(DictToAttr):
                 output= list(il.chain.from_iterable(output))
         return output
 
-    def vars_to_sql(self, dataset_name, img_fn, lm_fn, test):
+    def vars_to_sql(self, ds_name, ds_alias, img_fn, lm_fn, test):
         case_id = info_from_filename(img_fn.name,full_caseid=True)['case_id']
         fold = "NULL"
         img_sym = self.create_raw_ds_fname(img_fn)
         lm_sym = self.create_raw_ds_fname(lm_fn)
         cols = (
-            dataset_name,
+            ds_name,
+            ds_alias,
             case_id,
             str(img_fn),
             str(lm_fn),
@@ -120,7 +118,7 @@ class Project(DictToAttr):
         tbl_name = "datasources"
         if not self.table_exists(tbl_name):
             self.sql_alter(
-                "CREATE TABLE {} (ds, case_id, image,lm,img_symlink,lm_symlink,fold INTEGER,test)".format(
+                "CREATE TABLE {} (ds,alias, case_id, image,lm,img_symlink,lm_symlink,fold INTEGER,test)".format(
                     tbl_name
                 )
             )
@@ -132,18 +130,18 @@ class Project(DictToAttr):
         aa = self.sql_query(ss)
         return True if len(aa) > 0 else False
 
-    def add_data(self, data_folders, test=False):
-        data_folders = listify(data_folders)
-        test = [False] * len(data_folders) if not test else listify(test)
-        assert len(data_folders) == len(
+    def add_data(self, datasources, test=False):
+        test = [False] * len(datasources) if not test else listify(test)
+        assert len(datasources) == len(
             test
         ), "Unequal lengths of datafolders and (bool) test status"
-        for fldr, test in zip(data_folders, test):
-            ds = Datasource(folder=fldr, test=test)
+        for ds_dict, test in zip(datasources, test):
+            fldr = ds_dict['folder']
+            ds = Datasource(folder=fldr, name = ds_dict['ds'],alias= ds_dict['alias'],test=test)
             ds = self.filter_existing_images(ds)
             self.populate_tbl(ds)
         self.populate_raw_data_folder()
-        self.register_datasources()
+        self.register_datasources(datasources)
 
     def _create_folder_tree(self):
         maybe_makedirs(self.project_folder)
@@ -210,9 +208,10 @@ class Project(DictToAttr):
             return True
 
     def populate_tbl(self, ds):
-        strs = [self.vars_to_sql(ds.name, *pair, ds.test) for pair in ds.verified_pairs]
+
+        strs = [self.vars_to_sql(ds.name,ds.alias, *pair, ds.test) for pair in ds.verified_pairs]
         with db_ops(self.db) as cur:
-            cur.executemany("INSERT INTO datasources VALUES (?,?,?,?,?,?,?,?)", strs)
+            cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?)", strs)
 
     def add_datasources_xnat(self, xnat_proj: str):
         proj = Proj(xnat_proj)
@@ -295,7 +294,6 @@ class Project(DictToAttr):
         case_ids = self.df_folds["case_id"]
         case_ids = case_ids.sort_values()
         case_ids = case_ids.drop_duplicates()
-
         for ind, case_id in enumerate(case_ids):
             self.df_folds.loc[self.df_folds["case_id"] == case_id, "index"] = ind
 
@@ -334,18 +332,19 @@ class Project(DictToAttr):
 
             self.update_tbl_folds()
 
-    def register_datasources(self):
-        ss = "SELECT DISTINCT ds FROM datasources ORDER BY ds"
-        qr = self.sql_query(ss,True)
-        dicis=[]
-        for q in qr:
-            fldr = Path(getattr(DS,q))
-            h5_fname = fldr/("fg_voxels.h5")
-            dici = {'ds':q, 'folder':str(fldr), 'h5_fname':str(h5_fname) }
-            dicis.append(dici)
+    def register_datasources(self, datasources):
+        dicis = []
+        for ds in datasources:
+                fldr = Path(ds['folder'])
+                dataset_name = ds['ds']
+                h5_fname = fldr/("fg_voxels.h5")
+                dici = {'ds':dataset_name,'alias':ds['alias'],  'folder':str(fldr), 'h5_fname':str(h5_fname) }
+                dicis.append(dici)
         self.global_properties['datasources'] = dicis
         self.save_global_properties()
         return dicis
+
+    
 
 
 
@@ -401,6 +400,14 @@ class Project(DictToAttr):
             self.G.store_projectwide_properties()
             self.G.compute_std_mean_dataset()
             self.G.collate_lm_labels()
+
+    def add_plan(self,plan:dict, overwrite_global_properties=False):
+        dss = plans['datasources']
+        dss= dss.split(",")
+        datasources = [getattr(DS,g) for g in dss]
+        self.add_data(datasources)
+        self.set_lm_groups(plans['lm_groups'])
+        self.maybe_store_projectwide_properties(overwrite=overwrite_global_properties)
 
 
 
@@ -474,28 +481,21 @@ class Project(DictToAttr):
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
-    liver_ds = [DS.litq,DS.litqsmall,DS.lits,DS.drli]
 
-    P= Project(project_title="litsmc")
+    P= Project(project_title="nodes3")
 
+    P.create(mnemonic='nodes')
 # %%
     conf = ConfigMaker(
-        P, raytune=False, configuration_filename=None, configuration_mnemonic='liver'
+        P, raytune=False, configuration_filename=None
+
     ).config
 # %%
 
+
     plans = conf['plan1']
-    dss = plans['datasources']
-    dss= dss.split(",")
-    datasources = [getattr(DS,g) for g in dss]
-    P.create_project(datasources)
-    P.set_lm_groups(plans['lm_groups'])
-    P.maybe_store_projectwide_properties(overwrite=False)
+    P.add_plan(plans, overwrite_global_properties=False)
 # %%
-    P.create_project(liver_ds)
-    # P.add_data(DS.litq)
-    P.create_project([DS.lidc2])
-    P.global_properties
 # %%
     # P.set_lm_groups([['litq','litqsmall','drli','lits'],['lidc2']])
     # P.set_lm_groups()
@@ -511,16 +511,54 @@ if __name__ == "__main__":
 
 # %%
     import sqlite3
-    db_name = "/s/fran_storage/projects/totalseg/cases.db"
+    db_name = "/s/fran_storage/projects/litsmc/cases.db"
 
     conn = sqlite3.connect(db_name)
     
     ss = """ALTER TABLE datasources RENAME COLUMN lm to lm"""
-    conn.execute(ss)
+    ss = """DELETE FROM datasources WHERE case_id='lits_115'"""
+    cur = conn.cursor()
+    cur.execute(ss)
+    conn.commit()
+
 # %%
-# %%
+
     ss = """select * FROM datasources"""
     qr = conn.execute(ss)
     pd.DataFrame(qr)
 # %%
+    P._create_folds()
+    max_cases = 100
+    clip_range = [-300,300]
 
+    P.G = GlobalProperties(P,max_cases=max_cases,clip_range=clip_range)
+    if not 'labels_all' in P.global_properties.keys() or overwrite==True:
+        P.G.store_projectwide_properties()
+        P.G.compute_std_mean_dataset()
+        P.G.collate_lm_labels()
+
+
+# %%
+    dicis = []
+    for fldr  in data_folders:
+            dataset_name = fldr.name
+            fldr = Path(fldr)
+            h5_fname = fldr/("fg_voxels.h5")
+            dici = {'ds':dataset_name, 'folder':str(fldr), 'h5_fname':str(h5_fname) }
+            dicis.append(dici)
+
+# %%
+
+    dss = plans['datasources']
+    dss= dss.split(",")
+    datasources = [getattr(DS,g) for g in dss]
+
+    test=None
+# %%
+
+# %%
+
+    strs = [P.vars_to_sql(ds.name,ds.alias, *pair, ds.test) for pair in ds.verified_pairs]
+    with db_ops(P.db) as cur:
+        cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?)", strs)
+# %%

@@ -350,6 +350,8 @@ if __name__ == "__main__":
     bs = 8
 
 # %%
+    fldr_crc = Path("/s/xnat_shadow/crc/images")
+    imgs_crc = list(fldr_crc.glob("*"))
     img_fn = "/s/xnat_shadow/nodes/images/nodes_53_20220405_Source.nii.gz"
 
     img = sitk.ReadImage(img_fn)
@@ -358,8 +360,9 @@ if __name__ == "__main__":
     fldr_nodes = Path("/s/xnat_shadow/nodes/images")
     img_nodes = list(fldr_nodes.glob("*"))
 
-    save_channels = True
-    overwrite = True
+# %%
+    save_channels = False
+    overwrite = False
 
 # %%
     devices = [0]

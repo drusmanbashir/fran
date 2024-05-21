@@ -156,11 +156,14 @@ class CropToLabelDataset(Dataset):
         data_folder,
         spacing,
         mask_label,
+        fg_indices_exclude=None,
         device='gpu'
     ):
         """
+        mask_label: label used to crop. 
+        fg_indices_exclude: list of labels which will not count as fg in random sampling during training.
         """
-        store_attr('expand_by,spacing,case_ids,data_folder,mask_label, device') # wont work with Datasetparent otherwise
+        store_attr('expand_by,spacing,case_ids,data_folder,mask_label, device,fg_indices_exclude') # wont work with Datasetparent otherwise
 
     def setup(self):
         self.create_transforms()
@@ -191,7 +194,6 @@ class CropToLabelDataset(Dataset):
         return fns[0]
 
     def create_transforms(self):
-
         L2 = LoadTorchd(keys=["lm", "image"])
         # En = EnsureTyped(keys = ["lm","image"])
         D = ToDeviced(device =self.device,keys=["lm","image"])
@@ -201,10 +203,7 @@ class CropToLabelDataset(Dataset):
         
         margin= [int(self.expand_by / sp) for sp in self.spacing]
         C = CropForegroundd(keys = ["image","lm"], source_key = "lm", select_fn = lambda lm: lm==self.mask_label,margin = margin)
-
-
-
-        Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
+        Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", ignore_labels = self.fg_indices_exclude,image_threshold=-2600)
         Am = DictToMeta(
             keys=["lm"],
             meta_keys=[ "lm_fg_indices", "lm_bg_indices"],
@@ -212,11 +211,33 @@ class CropToLabelDataset(Dataset):
         )
 
 
-        tfms = [L2,D,E,C,Ind,Am]
+        tfms = [L2,D,E,C,Ind]
         C = Compose(tfms)
         self.transform = C
 
+class FGBGIndicesDataset(CropToLabelDataset):
 
+    '''
+    This dataset will only load labelmaps, retrieve indices, and output them.
+    '''
+
+    def __init__(self,  case_ids, data_folder, fg_indices_exclude=None, device='gpu'):
+        store_attr('case_ids,data_folder,fg_indices_exclude, device')
+
+    def create_transforms(self):
+        L2 = LoadTorchd(keys=["lm", "image"])
+        # En = EnsureTyped(keys = ["lm","image"])
+        D = ToDeviced(device =self.device,keys=["lm","image"])
+
+        E = EnsureChannelFirstd(
+            keys=[ "image", "lm"], channel_dim="no_channel")
+        
+        Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", ignore_labels = self.fg_indices_exclude,image_threshold=-2600)
+       
+        tfms = [L2,D,E,Ind]
+        C = Compose(tfms)
+        self.transform = C
+    
 
 class ImporterDataset(Dataset):
 

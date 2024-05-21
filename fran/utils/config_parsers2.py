@@ -240,9 +240,10 @@ def parse_neptune_dict(dic: dict):
 if __name__ == "__main__":
 
     from fran.utils.common import *
-    P = Project(project_title="lits"); proj_defaults= P
+    P = Project(project_title="litsmc"); proj_defaults= P
     proj_defaults = proj_defaults.configuration_filename
-    wb = load_workbook(proj_defaults)
+    configuration_filename = "/home/ub/code/fran/configurations/experiment_configs_liver.xlsx"
+    wb = load_workbook(configuration_filename)
     sheets = wb.sheetnames
     mode = "manual"
     meta = load_metadata(proj_defaults)
@@ -261,7 +262,8 @@ if __name__ == "__main__":
 
 
 
-    config = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+    mnemonic = "liver"
+    config = ConfigMaker(proj_defaults,configuration_filename, raytune=False,configuration_mnemonic=mnemonic).config
 # %%
     wb = load_workbook(proj_defaults)
     sheets = wb.sheetnames

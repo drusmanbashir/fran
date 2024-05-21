@@ -48,7 +48,7 @@ def infer_dataset_name(filename):
 
 
 def strip_extension(fname: str):
-    exts = ".mrk.json .npy .nii.gz .nii .nrrd .pt".split(" ")
+    exts = ".mrk.json .npy .nii.gz.nrrd .nii.gz .nii .nrrd .pt ".split(" ")
     for e in exts:
         pat = r"{}$".format(e)
         fname_stripped = re.sub(pat, "", fname)

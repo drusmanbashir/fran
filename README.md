@@ -77,11 +77,27 @@ For example, in the fran/runs folder, you may initialise a project called 'lits'
 ```
 python project_init.py -t lits -i /s/datasets_bkp/drli /s/datasets_bkp/lits_segs_improved/ 
 ```
+### LM Groups
+All datasources within a single lm_group are indexed continuously. Subsequent lm_groups are indexed starting after the highest index of the preceding lm_group.
 
 I have provided 2 folders as datasets for  this project in the example above. Typically, most projects will be based on a single datafolder but this provides flexibility to add more data to a project as it becomes available. After the project is initialised, look inside the project folder. You will find a mask_labels.json file. This file sets rules for postprocessing each label after running predictions. 
 
 ## 4.Analyze resample
-This interactive program will talk you through necessary dataset preprocessing and suggest reasonable defaults. It only requires project title as an argument:
+### 1.Generate fixed spacings
+
+### 2. Generate LBD (Labelbounded) dataset
+This creates variable shape volumes cropped to designated label.
+There are two ways to define the label:
+a) Use imported labels
+b) Use own labelmap label
+
+#### 1. Steps:
+ - LabelBoundedDataGenerator
+
+
+
+
+
 ```
 python analyze_resample.py -t {project_title}
 ```

@@ -72,28 +72,32 @@ class _Preprocessor(GetAttr):
     def save_pt(self, tnsr, subfolder):
         tnsr = tnsr.contiguous()
         fn = Path(tnsr.meta["filename"])
-        fn = Path(tnsr.meta["filename"])
         fn_name = strip_extension(fn.name) + ".pt"
         fn = self.output_folder / subfolder / fn_name
         torch.save(tnsr, fn)
 
     def _store_dataset_properties(self):
-        resampled_dataset_properties = dict()
-        resampled_dataset_properties["dataset_spacing"] = self.spacing
-        resampled_dataset_properties["dataset_max"] = self.results[:, 0].max().item()
-        resampled_dataset_properties["dataset_min"] = self.results[:, 1].min().item()
-        resampled_dataset_properties["dataset_std"] = self.results[:, 1].std().item()
-        resampled_dataset_properties["dataset_median"] = np.median(self.results[:, 2])
+        resampled_dataset_properties = self.create_info_dict()
         resampled_dataset_properties_fname = (
             self.output_folder / "resampled_dataset_properties.json"
         )
-        maybe_makedirs(self.output_folder)
         print(
             "Writing preprocessing output properties to {}".format(
                 resampled_dataset_properties_fname
             )
         )
         save_dict(resampled_dataset_properties, resampled_dataset_properties_fname)
+
+
+    def create_info_dict(self):
+        resampled_dataset_properties = dict()
+        resampled_dataset_properties["dataset_spacing"] = self.spacing
+        resampled_dataset_properties["dataset_max"] = self.results[:, 0].max().item()
+        resampled_dataset_properties["dataset_min"] = self.results[:, 1].min().item()
+        resampled_dataset_properties["dataset_std"] = self.results[:, 1].std().item()
+        resampled_dataset_properties["dataset_median"] = np.median(self.results[:, 2])
+        return resampled_dataset_properties
+
 
     def process(
         self,
@@ -107,18 +111,7 @@ class _Preprocessor(GetAttr):
         self.shapes = []
 
         for batch in pbar(self.dl):
-            images, lms = batch["image"], batch["lm"]
-            for image, lm in zip(images, lms):
-                assert image.shape == lm.shape, "mismatch in shape".format(
-                    image.shape, lm.shape
-                )
-                assert image.dim() == 4, "images should be cxhxwxd"
-
-                self.save_pt(image[0], "images")
-                self.save_pt(lm[0], "lms")
-                self.results.append(get_tensor_stats(image))
-                self.shapes.append(image.shape[1:])
-
+            self.process_batch(batch)
         self.results = pd.DataFrame(self.results).values
         if self.results.shape[-1] == 3:  # only store if entire dset is processed
             self._store_dataset_properties()
@@ -127,6 +120,22 @@ class _Preprocessor(GetAttr):
             print(
                 "since some files skipped, dataset stats are not being stored. run resampledatasetniftitotorch.get_tensor_folder_stats separately"
             )
+
+    def process_batch(self, batch):
+            images, lms = batch["image"], batch["lm"]
+            for image, lm in zip(images, lms):
+                assert image.shape == lm.shape, "mismatch in shape".format(
+                    image.shape, lm.shape
+                )
+                assert image.dim() == 4, "images should be cxhxwxd"
+                self.save_pt(image[0], "images")
+                self.save_pt(lm[0], "lms")
+                self.extract_image_props(image)
+
+    def extract_image_props(self, image):
+                self.results.append(get_tensor_stats(image))
+                self.shapes.append(image.shape[1:])
+
 
     def get_tensor_folder_stats(self, debug=True):
         img_filenames = (self.output_folder / ("images")).glob("*")
@@ -141,7 +150,6 @@ class _Preprocessor(GetAttr):
         resampled_dataset_properties_fname = (
             self.output_folder / "resampled_dataset_properties.json"
         )
-        maybe_makedirs(self.output_folder)
         print(
             "Writing preprocessing output properties to {}".format(
                 resampled_dataset_properties_fname
@@ -179,7 +187,10 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
 
     def register_existing_files(self):
         self.bboxes = self.maybe_load_bboxes()
-        self.existing_files = [dici["filename"] for dici in self.bboxes]
+        if self.bboxes:
+            self.existing_files = [dici["filename"] for dici in self.bboxes]
+        else:
+            self.existing_files = []
 
     def maybe_load_bboxes(self):
         fixed_sp_bboxes_fn = self.output_folder / ("bboxes_info.pkl")

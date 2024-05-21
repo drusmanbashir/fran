@@ -3,8 +3,6 @@ import gc
 
 import ipdb
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
-from monai.transforms.post.array import KeepLargestConnectedComponent
-from monai.transforms.utility.array import ToTensor
 from monai.transforms.utility.dictionary import SqueezeDimd
 
 from fran.transforms.misc_transforms import SelectLabels
@@ -19,20 +17,13 @@ from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
-from lightning.fabric import Fabric
 from monai.apps.detection.transforms.array import *
 from monai.data.box_utils import *
-from monai.data.dataloader import DataLoader
-from monai.data.dataset import Dataset, PersistentDataset
-from monai.data.image_reader import ITKReader
-from monai.data.utils import decollate_batch
-from monai.inferers import SlidingWindowInferer
 from monai.inferers.merger import *
 from monai.transforms import (AsDiscreted, Compose, EnsureChannelFirstd,
                               Invertd, Spacingd)
 from monai.transforms.io.dictionary import LoadImaged, SaveImaged
 from monai.transforms.post.dictionary import (Activationsd,
-                                              KeepLargestConnectedComponentd,
                                               MeanEnsembled)
 from monai.transforms.spatial.dictionary import Orientationd, Resized
 from monai.utils.misc import ensure_tuple
@@ -48,20 +39,14 @@ from fran.transforms.inferencetransforms import (
     BBoxFromPTd, KeepLargestConnectedComponentWithMetad, RenameDictKeys,
     SaveMultiChanneld, ToCPUd, TransposeSITKd)
 from fran.utils.common import *
-from fran.utils.dictopts import DictToAttr
-from fran.utils.fileio import load_dict, load_yaml, maybe_makedirs
-from fran.utils.helpers import get_available_device, timing
 from fran.utils.itk_sitk import *
-from fran.utils.string import drop_digit_suffix, find_file
 
 sys.path += ["/home/ub/code"]
-from label_analysis.helpers import to_cc, to_int, to_label
 
 # These are the usual ipython objects, including this one you are creating
 ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]
 import sys
 
-from fastcore.all import GetAttr, ItemTransform, Pipeline, Sequence
 from fastcore.foundation import L, Union, listify, operator
 
 from fran.transforms.intensitytransforms import ClipCenterI
@@ -420,7 +405,7 @@ if __name__ == "__main__":
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
     run_lidc2 = ["LITS-911"]
-    run_litsmc= ["LITS-935"]
+    run_litsmc= ["LITS-940"]
     run_ts = ["LITS-827"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
@@ -429,11 +414,9 @@ if __name__ == "__main__":
     img_fn2 = "/s/xnat_shadow/crc/wxh/images/crc_CRC198_20170718_CAP1p51.nii.gz"
     img_fn3 = "/s/xnat_shadow/crc/srn/images/crc_CRC002_20190415_CAP1p5.nii.gz"
 
-    imgs_fldr = Path("/s/xnat_shadow/crc/images")
-    srn_fldr = "/s/xnat_shadow/crc/srn/cases_with_findings/images/"
-    srn_imgs = list(Path(srn_fldr).glob("*"))
-    wxh_fldr = "/s/xnat_shadow/crc/wxh/images/"
-    wxh_imgs = list(Path(wxh_fldr).glob("*"))
+    # fldr_crc = Path("/s/xnat_shadow/crc/images_train_rad/images/")
+    fldr_crc = Path("/s/xnat_shadow/crc/images/")
+    # srn_fldr = "/s/xnat_shadow/crc/srn/cases_with_findings/images/"
     litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
     litq_imgs = list(Path(litq_fldr).glob("*"))
     t6_fldr = Path("/s/datasets_bkp/Task06Lung/images")
@@ -441,34 +424,50 @@ if __name__ == "__main__":
 # %%
     react_fldr = Path("/s/insync/react/sitk/images")
     imgs_react = list(react_fldr.glob("*"))
+    imgs_crc = fldr_crc.glob("*")
 
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
-    localiser_labels = [1]
 # %%
+    localiser_labels = [1]
     runs_p = run_litsmc
 # %%
+    overwrite=False
+    safe_mode=False
+    save_channels=False
+# %%
     project = Project(project_title="litsmc")
-    safe_mode = False
+    if project.project_title=="litsmc":
+        k_largest= 1
+    else:
+        k_largest= None
     En = CascadeInferer(
         project,
         run_w,
         runs_p,
-        save_channels=False,
+        save_channels=save_channels,
         devices=[0],
-        overwrite=True,
+        overwrite=overwrite,
         localiser_labels=localiser_labels,
         safe_mode=safe_mode,
+        k_largest=k_largest
     )
 
 # %%
     # img_fns = list(img_fldr.glob("*"))[20:50]
-    preds = En.run(wxh_imgs)
+    preds = En.run(imgs_crc)
 
 # %%
     imgs_sublist = imgs_react
     data = En.load_images(imgs_sublist)
     En.bboxes = En.extract_fg_bboxes(data)
     data = En.apply_bboxes(data, En.bboxes)
+
+    data = En.load_images(imgs_sublist)
+    En.bboxes = En.extract_fg_bboxes(data)
+    data = En.apply_bboxes(data, En.bboxes)
+    pred_patches = En.patch_prediction(data)
+    pred_patches = En.decollate_patches(pred_patches, En.bboxes)
+    output = En.postprocess(pred_patches)
 
 # %%

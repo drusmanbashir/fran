@@ -13,16 +13,13 @@ from random import choice
 import ipdb
 import numpy as np
 from fastcore.basics import Dict
-from label_analysis.helpers import get_labels
 from monai.data.meta_tensor import MetaTensor
 from monai.transforms import Compose, MapTransform
 from monai.transforms.io.array import SaveImage
 from monai.transforms.transform import Transform
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 
-from fran.data.dataloader import img_lm_metadata_lists_collated
 from fran.preprocessing.patch import contains_bg_only
-from fran.transforms.imageio import LoadSITKd, TorchReader
+from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import standardize
 from fran.transforms.misc_transforms import (DictToMeta, HalfPrecisiond,
                                              Recast, RemapSITK)
@@ -32,7 +29,6 @@ from fran.utils.imageviewers import ImageMaskViewer
 from fran.utils.string import strip_extension
 
 tr = ipdb.set_trace
-import itertools as il
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -40,9 +36,6 @@ import itk
 import numpy as np
 import SimpleITK as sitk
 from fastcore.all import listify, store_attr
-from fastcore.foundation import GetAttr
-from lightning.fabric import Fabric
-from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset, PersistentDataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.compose import Compose

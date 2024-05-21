@@ -204,7 +204,7 @@ class SingleCaseAnalyzer:
                 v1 = self.img.meta[k]
                 v2 = self.mask.meta[k]
                 if isinstance(v1,np.ndarray):
-                    assert is_close(v1,v2,eps=1e-4),"Metadata mismatch for key: "+k
+                    assert is_close(v1,v2,eps=1e-4),"Metadata mismatch for key: {0} . Filename: {1}".format(k,self.mask.meta['filename_or_obj'])
                 elif isinstance(v1,str):
                     test_eq(v1,v2)
                 self._properties[k] = v1

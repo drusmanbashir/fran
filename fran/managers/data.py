@@ -1,10 +1,12 @@
 # %%
+import ast
 import math
 from functools import reduce
 from operator import add
 from pathlib import Path
 
 import ipdb
+import numpy as np
 import torch
 from fastcore.basics import listify, store_attr, warnings
 from lightning.pytorch import LightningDataModule
@@ -22,11 +24,12 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  FgBgToIndicesd, ToDeviced)
 
 from fran.data.dataloader import img_lm_bbox_collated
-from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemapd, 
+from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemapd,
                                NormaliseClipd)
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
-from fran.transforms.misc_transforms import MetaToDict
+from fran.transforms.misc_transforms import LoadDict, MetaToDict
+from fran.utils.config_parsers import is_excel_nan
 from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
 from fran.utils.imageviewers import ImageMaskViewer
@@ -63,6 +66,7 @@ class DataManager(LightningDataModule):
         self,
         project,
         dataset_params: dict,
+        plan: dict,
         transform_factors: dict,
         affine3d: dict,
         batch_size=8,
@@ -125,10 +129,10 @@ class DataManager(LightningDataModule):
 
         A = self.create_affine_tfm()
         Re = ResizeWithPadOrCropd(
-                keys=["image", "lm"],
-                spatial_size=self.dataset_params["patch_size"],
-                lazy=True,
-            )
+            keys=["image", "lm"],
+            spatial_size=self.dataset_params["patch_size"],
+            lazy=True,
+        )
         self.transforms_dict = {
             "A": A,
             "E": E,
@@ -176,17 +180,33 @@ class DataManager(LightningDataModule):
         fnames = fnames
         images_fldr = self.dataset_folder / ("images")
         lms_fldr = self.dataset_folder / ("lms")
+        inds_fldr = self.infer_inds_fldr(self.plan)
         images = list(images_fldr.glob("*.pt"))
         data = []
         for fn in fnames:
             fn = Path(fn)
             img_fn = find_matching_fn(fn.name, images)
             mask_fn = lms_fldr / img_fn.name
+            indices_fn = inds_fldr / img_fn.name
             assert img_fn.exists(), "Missing image {}".format(img_fn)
             assert mask_fn.exists(), "Missing labelmap fn {}".format(mask_fn)
-            dici = {"image": img_fn, "lm": mask_fn}
+            dici = {"image": img_fn, "lm": mask_fn, "indices":indices_fn}
             data.append(dici)
         return data
+
+    def infer_inds_fldr(self, plan):
+        fg_indices_exclude = plan["fg_indices_exclude"]
+        if is_excel_nan(fg_indices_exclude):
+            fg_indices_exclude=None
+            indices_subfolder = "indices"
+        else:
+            if isinstance(fg_indices_exclude, str):
+                fg_indices_exclude = ast.literal_eval(fg_indices_exclude)
+            fg_indices_exclude = listify(fg_indices_exclude)
+            indices_subfolder = "indices_fg_exclude_{}".format(
+                "".join([str(x) for x in fg_indices_exclude])
+            )
+        return self.dataset_folder / (indices_subfolder)
 
     def derive_dataset_folder(self):
         raise NotImplementedError
@@ -244,13 +264,20 @@ class DataManagerSource(DataManager):
         self,
         project,
         dataset_params: dict,
+        plan: dict,
         transform_factors: dict,
         affine3d: dict,
         batch_size=8,
         **kwargs
     ):
         super().__init__(
-            project, dataset_params, transform_factors, affine3d, batch_size, **kwargs
+            project,
+            dataset_params,
+            plan,
+            transform_factors,
+            affine3d,
+            batch_size,
+            **kwargs
         )
         self.collate_fn = simple_collated
 
@@ -276,12 +303,14 @@ class DataManagerSource(DataManager):
             bg = 1
 
         L = LoadImaged(
-            keys=["image", "lm"],
+            keys=["image", "lm" ],
             image_only=True,
             ensure_channel_first=False,
             simple_keys=True,
         )
         L.register(TorchReader())
+
+        Ld= LoadDict(keys= ["indices"],select_keys =  ["lm_fg_indices","lm_bg_indices"])
 
         Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
         Rtr = RandCropByPosNegLabeld(
@@ -314,6 +343,7 @@ class DataManagerSource(DataManager):
         )
         self.transforms_dict.update(
             {
+                "Ld":Ld,
                 "L": L,
                 "Ind": Ind,
                 "Rtr": Rtr,
@@ -324,7 +354,7 @@ class DataManagerSource(DataManager):
     def setup(self, stage: str = None):
         self.create_transforms()
         self.set_transforms(
-            keys_tr="L,E,Ind,Rtr,F1,F2,A,Re,N,I", keys_val="L,E,Ind,Rva,Re,N"
+            keys_tr="L,Ld,E,Rtr,F1,F2,A,Re,N,I", keys_val="L,Ld,E,Rva,Re,N"
         )
         if self.cache_rate == 0.0:
             self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
@@ -373,13 +403,20 @@ class DataManagerPatch(DataManager):
         self,
         project,
         dataset_params: dict,
+        plan: dict,
         transform_factors: dict,
         affine3d: dict,
         batch_size=8,
         **kwargs
     ):
         super().__init__(
-            project, dataset_params, transform_factors, affine3d, batch_size, **kwargs
+            project,
+            dataset_params,
+            plan,
+            transform_factors,
+            affine3d,
+            batch_size,
+            **kwargs
         )
         self.collate_fn = img_lm_bbox_collated
 
@@ -460,17 +497,12 @@ if __name__ == "__main__":
         batch_size=batch_size,
     )
 # %%
-    D.prepare_data()
-    D.setup(None)
 # %%
 
-    dici = D.train_ds.data[0]
-    L = LoadTorchd(keys=["image", "lm"])
-    dici = L(dici)
 
 # %%
 
-    Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
+    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
     Rtr = RandCropByPosNegLabeld(
         keys=["image", "lm"],
         label_key="lm",
@@ -485,7 +517,43 @@ if __name__ == "__main__":
         lazy=True,
         allow_smaller=False,
     )
-    dici = Ind(dici)
+    Ld= LoadDict(keys= ["indices"],select_keys =  ["lm_fg_indices","lm_bg_indices"])
+
+    Rva = RandCropByPosNegLabeld(
+            keys=["image", "lm"],
+            label_key="lm",
+            image_key="image",
+            image_threshold=-2600,
+            fg_indices_key="lm_fg_indices",
+            bg_indices_key="lm_bg_indices",
+            spatial_size=D.dataset_params["patch_size"],
+            pos=1,
+            neg=1,
+            num_samples=D.dataset_params["samples_per_file"],
+            lazy=True,
+            allow_smaller=True,
+        )
+    Re = ResizeWithPadOrCropd(
+            keys=["image", "lm"],
+            spatial_size=D.dataset_params["patch_size"],
+            lazy=True,
+        )
+
+    L = LoadTorchd(keys=["image", "lm"])
+# %%
+    D.prepare_data()
+    D.setup(None)
+# %%
+    D.valid_ds[7]
+
+    keys_val="L,Ld,E,Rva,Re,N"
+    dici = D.valid_ds.data[7]
+    dici = L(dici)
+    dici =Ld(dici)
+    dici = E(dici)
+    dici = Rva(dici)
+    dici = Re(dici)
+
 # %%
     dl = D.train_dataloader()
     iteri = iter(dl)

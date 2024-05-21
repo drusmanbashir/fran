@@ -1,5 +1,10 @@
 # %%
 import shutil
+
+from monai.transforms.io.dictionary import LoadImaged
+from torchinfo import summary
+from fran.transforms.imageio import TorchReader
+from fran.transforms.misc_transforms import LoadDict
 from fran.utils.common import common_vars_filename
 import ipdb
 tr = ipdb.set_trace
@@ -10,7 +15,7 @@ from typing import Union
 from pathlib import Path
 from fastcore.basics import store_attr
 from label_analysis.merge import load_dict
-from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
+from monai.transforms.croppad.dictionary import RandCropByPosNegLabeld, ResizeWithPadOrCropd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 
 import psutil
@@ -189,10 +194,8 @@ class UNetTrainer(LightningModule):
     def forward(self, inputs):
         return self.model(inputs)
 
-    def create_model(self):
         model = create_model_from_conf(self.model_params, self.dataset_params)
-        # if self.checkpoints_folder:
-        #     load_checkpoint(self.checkpoints_folder, model)
+    def create_model(self):
         if (
             self.model_params["arch"] == "DynUNet"
             or self.model_params["arch"] == "DynUNet_UB"
@@ -231,9 +234,6 @@ class UNetTrainer(LightningModule):
                 self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
                     self.dataset_params["patch_size"]
                 )
-                # self.net_num_pool_op_kernel_sizes = [
-                #     [2, 2, 2],
-                # ] * num_pool
                 self.deep_supervision_scales = [[1, 1, 1]] + list(
                     list(i)
                     for i in 1
@@ -245,69 +245,12 @@ class UNetTrainer(LightningModule):
                 deep_supervision_scales=self.deep_supervision_scales,
                 fg_classes=self.model_params["out_channels"] - 1,
             )
-            # cbs += [DownsampleMaskForDS(self.deep_supervision_scales)]
 
         else:
             loss_func = CombinedLoss(
                 **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
             )
         return model, loss_func
-
-    def populate_grid(self, img, label, pred):
-        def _randomize():
-            n_slices = img.shape[-1]
-            batch_size = img.shape[0]
-            self.slices = [
-                random.randrange(0, n_slices) for i in range(self.imgs_per_batch)
-            ]
-            self.batches = [
-                random.randrange(0, batch_size) for i in range(self.imgs_per_batch)
-            ]
-
-        img = img.cpu()
-        label = label.cpu()
-        label = label.squeeze(1)
-        label = one_hot(label, self.classes, axis=1)
-        pred = pred.cpu()
-        if pred.dim() == img.dim() + 1:  # deep supervision
-            pred = pred[0]
-
-        # if self.apply_activation == True:
-        pred = F.softmax(pred.to(torch.float32), dim=1)
-
-        _randomize()
-        img, label, pred = (
-            self.img_to_grd(img),
-            self.img_to_grd(label),
-            self.img_to_grd(pred),
-        )
-        img, label, pred = (
-            self.fix_channels(img),
-            self.fix_channels(label),
-            self.fix_channels(pred),
-        )
-
-        self.grid_imgs.append(img)
-        self.grid_preds.append(pred)
-        self.grid_labels.append(label)
-
-    def img_to_grd(self, batch):
-        imgs = batch[self.batches, :, :, :, self.slices].clone()
-        return imgs
-
-    def fix_channels(self, tnsr):
-        if tnsr.shape[1] == 1:
-            tnsr = tnsr.repeat(1, 3, 1, 1)
-        elif tnsr.shape[1] == 2:
-            tnsr = tnsr[:, 1:, :, :]
-        elif tnsr.shape[1] > 3:
-            chs = tnsr.shape[1]
-            tnsr = tnsr[:, chs - 3 : :, :]
-        else:
-            # tnsr already in 3d
-            pass
-        return tnsr
-
 
 def update_nep_run_from_config(nep_run, config):
     for key, value in config.items():
@@ -467,6 +410,17 @@ class TrainingManager:
             assert(a:=(len(ratios))==(b:=len(labels))), "Class ratios {0} do not match number of labels in dataset {1}".format(a,b)
         else:
             assert  isinstance(ratios, int), "If no list is provided, fgbg_ratio must be an integer"
+        configs = self.select_plan(configs)
+
+    def select_plan(self,configs):
+        plan = configs['dataset_params']['plan']
+        plan_keys = [key for key in configs.keys() if 'plan' in key]
+        plan_selected = configs['plan'+str(plan)]
+        configs['plan']=plan_selected
+        for key in plan_keys:
+            configs.pop(key)
+        return configs
+
 
     def heuristic_batch_size(self):
         ram = psutil.virtual_memory()[3] / 1e9
@@ -484,6 +438,7 @@ class TrainingManager:
         D = DMClass(
             self.project,
             dataset_params=self.configs["dataset_params"],
+            plan=self.configs["plan"],
             transform_factors=self.configs["transform_factors"],
             affine3d=self.configs["affine3d"],
             batch_size=self.configs["dataset_params"]["batch_size"],
@@ -584,7 +539,6 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
     project_title = "litsmc"
-    mnemonic = "liver"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -594,25 +548,25 @@ if __name__ == "__main__":
     configuration_filename = None
 
     conf = ConfigMaker(
-        proj, raytune=False, configuration_mnemonic=mnemonic
+        proj, raytune=False
     ).config
 
-    global_props = load_dict(proj.global_properties_filename)
     # conf['model_params']['lr']=1e-3
 
+    pp(conf)
 # %%
     device_id = 1
     bs = 6# if none, will get it from the conf file 
+    run_name ='LITS-940'
     run_name = None
-    run_name ='LITS-935'
     compiled = False
     profiler=False
 
     batch_finder = False
-    neptune = True
+    neptune =False 
     tags = []
     cache_rate=0.0
-    description = f"benchmarking baseline Patch"
+    description = f"Using DynUnet"
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,
@@ -629,21 +583,104 @@ if __name__ == "__main__":
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
 # %%
+    m = Tm.N.model
+
+    patch_size= Tm.N.dataset_params['patch_size']
+    summ = summary(Tm.N.model, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
+# %%
     Tm.fit()
         # model(inputs)
 # %%
 
     Tm.D.setup()
     D = Tm.D
-    ds = Tm.D.train_ds
     ds = Tm.D.valid_ds
+    ds = Tm.D.train_ds
 # %%
     for i,id in enumerate(ds):
         print(i)
 # %%
-    dici = ds.data[3]
-    dici = ds[0]
+    dici = ds[7]
+    dici = ds.data[7]
     dici = ds.transform(dici)
+
+# %%
+    L = LoadImaged(
+            keys=["image", "lm" ],
+            image_only=True,
+            ensure_channel_first=False,
+            simple_keys=True,
+        )
+    L.register(TorchReader())
+
+
+    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+    Rtr = RandCropByPosNegLabeld(
+        keys=["image", "lm"],
+        label_key="lm",
+        image_key="image",
+        fg_indices_key="lm_fg_indices",
+        bg_indices_key="lm_bg_indices",
+        image_threshold=-2600,
+        spatial_size=D.src_dims,
+        pos=3,
+        neg=1,
+        num_samples=D.dataset_params["samples_per_file"],
+        lazy=True,
+        allow_smaller=False,
+    )
+    Ld= LoadDict(keys= ["indices"],select_keys =  ["lm_fg_indices","lm_bg_indices"])
+
+    Rva = RandCropByPosNegLabeld(
+            keys=["image", "lm"],
+            label_key="lm",
+            image_key="image",
+            image_threshold=-2600,
+            fg_indices_key="lm_fg_indices",
+            bg_indices_key="lm_bg_indices",
+            spatial_size=D.dataset_params["patch_size"],
+            pos=3,
+            neg=1,
+            num_samples=D.dataset_params["samples_per_file"],
+            lazy=False,
+            allow_smaller=True,
+        )
+    Re = ResizeWithPadOrCropd(
+            keys=["image", "lm"],
+            spatial_size=D.dataset_params["patch_size"],
+            lazy=False,
+        )
+
+# %%
+    D.prepare_data()
+    D.setup(None)
+# %%
+    D.valid_ds[7]
+
+# %%
+    dici = D.valid_ds.data[7]
+    dici = L(dici)
+    dici =Ld(dici)
+    dici = D.transforms_dict['E'](dici)
+    dici = D.transforms_dict['Rva'](dici)
+    dici = Re(dici[1])
+
+# %%
+    ImageMaskViewer([dici[0]['image'][0],dici[0]['lm'][0]])
+
+# %%
+    Ld= LoadDict(keys= ["indices"],select_keys =  ["lm_fg_indices","lm_bg_indices"])
+    dici = Ld(dici)
+# %%
+
+# %%
+
+
+    fn = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/images/lits_115.pt"
+    fn2 = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/lms/lits_115.pt"
+    tt = torch.load(fn)
+    tt2 =  torch.load(fn2)
+    ImageMaskViewer([tt,tt2])
 
 # %%
     dl = Tm.D.train_dataloader()
@@ -652,6 +689,7 @@ if __name__ == "__main__":
     iteri2 = iter(dl2)
     batch = next(iteri2)
 # %%
+
 
 
     Re = ResizeWithPadOrCropd(

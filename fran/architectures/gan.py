@@ -26,7 +26,7 @@ from fran.data.dataset import *
 from fran.evaluation.losses import *
 from fran.utils.config_parsers import *
 from fran.utils.helpers import *
-from fran.callback.nep import *
+from fran.callback.nept import *
 from fran.callback.tune import *
 from fran.transforms.misc_transforms import *
 

@@ -52,7 +52,6 @@ if __name__ == "__main__":
     patch_size = [192,192,96]
     spacings=[1,1,1]
     k,s=  get_kernel_strides(patch_size,spacings)
-# %%
     kernels, strides = get_kernel_strides(
         patch_size,[1,1,2]
     )
@@ -89,6 +88,9 @@ if __name__ == "__main__":
     yy = torch.unbind(y,1)
 # %%
     summ = summary(net, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
+    summ = summary(net.skip_layers, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
     summ2 = summary(net2, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
     print(summ2)
 # %%
+    iteri = net.skip_layers.modules()
+    aa= next(iteri)

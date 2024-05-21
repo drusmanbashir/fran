@@ -1,21 +1,11 @@
-
 # %%
+# %% [markdown]
+## 
+# %%
+
 import ipdb
 tr = ipdb.set_trace
-from fran.utils.common import common_vars_filename
-
-import numpy as np
-from typing import Union
-from pathlib import Path
-from fastcore.basics import store_attr
-from label_analysis.merge import load_dict
-from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
-
-import psutil
-import random
 import torch._dynamo
-from fran.callback.nep import NeptuneImageGridCallback
 
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 from fran.managers.data import ( DataManagerLBD, DataManagerPatch,
@@ -47,13 +37,15 @@ import torch
 from fastcore.basics import store_attr
 from fran.managers.training import TrainingManager, UNetTrainer, checkpoint_from_model_id
 
+#TODO: fix LR  setup in Tranfer learning
+
 
 class TrainingManagerTransfer(TrainingManager):
     def __init__(self, project, configs, run_name):
         assert run_name is not None, "Please specificy a run to transfer learning from"
         super().__init__(project, configs, run_name)
         self.run_name = None
-    def init_dm_unet(self,epochs):
+    def init_dm_unet(self, epochs):
             self.N = self.load_trainer(max_epochs= epochs)
             self.D = self.init_dm(cache_rate)
 
@@ -61,6 +53,7 @@ class TrainingManagerTransfer(TrainingManager):
         self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=None)
 
 
+# %%
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -68,17 +61,15 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
     project_title = "litsmc"
-    mnemonic = "liver"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
         "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     )
-    configuration_filename = "/s/fran_storage/projects/litsmc/experiment_configs.xlsx"
     configuration_filename = None
 
     conf = ConfigMaker(
-        proj, raytune=False, configuration_mnemonic=mnemonic
+        proj, raytune=False
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
@@ -87,7 +78,7 @@ if __name__ == "__main__":
 # %%
     device_id = 0
     run_name = None
-    bs =1# if none, will get it from the conf file 
+    bs =6# if none, will get it from the conf file 
     run_name = "LITS-811"
     run_name ='LITS-919'
     run_name = "LITS-913"
@@ -99,14 +90,15 @@ if __name__ == "__main__":
     neptune = True
     tags = []
     cache_rate=0.0
-    description = f""
+    description = f"DynUNet plan 3 based. "
     Tm = TrainingManagerTransfer(project= proj, configs =conf, run_name= run_name)
 # %%
     Tm.setup(
+        # lr = 1e-3,
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=21,
+        epochs=500,
         batchsize_finder=batch_finder,
         profiler=profiler,
         neptune=neptune,
@@ -134,4 +126,7 @@ if __name__ == "__main__":
     pred = Tm.N(batch['image'].to(0))
 #
 
+# %%
+    m =Tm.N.model
+    [print(mm) for mm in m.named_modules()]
 # %%

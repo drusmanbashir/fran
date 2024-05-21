@@ -1,5 +1,6 @@
 # %%
 from fastcore.all import store_attr
+from fran.managers.datasource import _DS
 from fran.utils.helpers import pbar
 import random
 from monai.utils.misc import progress_bar
@@ -23,7 +24,7 @@ def unique_idx(total_len,start=1):
         for x in range(start, total_len+1):
             yield(x)
 
-
+DS=_DS()
 class GlobalProperties(GetAttr):
     _default = 'project'
     """
@@ -69,34 +70,37 @@ class GlobalProperties(GetAttr):
     def retrieve_h5_voxels(self):
         voxels=[]
         h5py = import_h5py()
-        for ds in self.global_properties['datasources']:
-            ds_name =ds['ds']
-            h5fn = ds['h5_fname']
-            cases_ds = [ cid for cid in self.cases_for_sampling if cid.split("_")[0] == ds_name ]
+        for dsa in self.global_properties['datasources']:
+            h5fn = dsa['h5_fname']
+            ds_name =dsa['ds']
+            ds_name_final = DS.resolve_ds_name(ds_name)
+            cases_ds = [ cid for cid in self.cases_for_sampling if cid.split("_")[0] == ds_name_final]
             with h5py.File(h5fn, "r") as h5f_file:
                 for cid in cases_ds:
                     cs = h5f_file[cid]
                     voxels.append(cs[:])
-                    # props = {'case_id':cid, 'spacing': cs.attrs['spacing'] ,'labels':cs.attrs['labels']}
-                    # self.case_properties.append(props)
-                # cases_all.append(np.concatenate([h5f_file[case][:] for case in h5f_file.keys() if case in self.case_ids]))
-
         voxels = np.concatenate(voxels)
         return voxels
 
     def retrieve_h5_properties(self):
         h5py = import_h5py()
         case_properties=[]
-        for ds in self.global_properties['datasources']:
-            ds_name =ds['ds']
-            h5fn = ds['h5_fname']
-            cases_ds = [ cid for cid in self.cases_for_sampling if cid.split("_")[0] == ds_name ]
+        for dsa in self.global_properties['datasources']:
+            ds_props=[]
+            h5fn = dsa['h5_fname']
+            ds_name =dsa['ds']
+            ds_name_final = DS.resolve_ds_name(ds_name)
+            cases_ds = [ cid for cid in self.cases_for_sampling if cid.split("_")[0] == ds_name_final]
+
+
+            print(len(cases_ds))
             with h5py.File(h5fn, "r") as h5f_file:
                 for cid in pbar(cases_ds):
                     cs = h5f_file[cid]
-                    props = {'case_id':cid, 'spacing': cs.attrs['spacing'] ,'labels':cs.attrs['labels']}
-                    case_properties.append(props)
-
+                    props = {'ds':ds_name_final, 'case_id':cid, 'spacing': cs.attrs['spacing'] ,'labels':cs.attrs['labels']}
+                    ds_props.append(props)
+            assert(len(cases_ds) == len(ds_props)), "Mismatch in case_ids and case_properties"
+            case_properties.extend(ds_props)
         assert(len(self.case_ids) == len(case_properties)), "Mismatch in case_ids and case_properties"
         return case_properties
 
@@ -219,20 +223,20 @@ class GlobalProperties(GetAttr):
             shared_labels_gps= self.global_properties[key]['ds']
             labs_gp = []
             for gp in shared_labels_gps:
+                ds_name = DS.resolve_ds_name(gp)
                 for c in self.case_properties:
-                    if gp in c['case_id']:
+                    if ds_name== c['ds']:
                         labels = c['labels']
                         labels = self.serializable_obj(labels)
                         labs_gp.extend(labels)
 
             labs_gp = list(set(labs_gp))
+            dici = {'ds': ds_name, 'label':labs_gp}
             labels_all.extend(labs_gp)
             print(labs_gp)
-
             self.global_properties[key].update({'labels':labs_gp ,'num_labels':len(labs_gp)})
         self.global_properties['labels_all'] = list(set(labels_all))
         labels_tot= len(labels_all)
-
         if len(keys)>1: self._remap_labels(keys,labels_tot)
         self.maybe_append_imported_labels()
         self.save_global_properties()
@@ -268,7 +272,7 @@ class GlobalProperties(GetAttr):
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
-    P = Project(project_title="totalseg");
+    P = Project(project_title="nodes2");
     G = GlobalProperties(P,max_cases=200)
 # %%
     G.store_projectwide_properties()
@@ -316,4 +320,61 @@ if __name__ == "__main__":
                     voxels.append(cs[:])
 
 # %%
-   
+# %%
+    G=P.G
+    h5py = import_h5py()
+    case_properties=[]
+    for dsa in G.global_properties['datasources']:
+        ds_props=[]
+        h5fn = dsa['h5_fname']
+        ds_name =dsa['ds']
+        ds = getattr(DS,ds_name)
+        if ds['alias'] is not None:
+            ds_name_final = ds['alias']
+        else:
+            ds_name_final = ds_name
+        cases_ds = [ cid for cid in G.cases_for_sampling if cid.split("_")[0] == ds_name_final]
+
+        print(len(cases_ds))
+        with h5py.File(h5fn, "r") as h5f_file:
+            for cid in pbar(cases_ds):
+                cs = h5f_file[cid]
+                props = {'case_id':cid, 'spacing': cs.attrs['spacing'] ,'labels':cs.attrs['labels']}
+                ds_props.append(props)
+        assert(len(cases_ds) == len(ds_props)), "Mismatch in case_ids and case_properties"
+        case_properties.extend(ds_props)
+    assert(len(G.case_ids) == len(case_properties)), "Mismatch in case_ids and case_properties"
+ 
+# %%
+    gp = "tcianodesshort"
+# %%
+    labels_all=[]
+    lmgps = "lm_group"
+    keys = [k for k in G.global_properties.keys() if lmgps in k]
+    key = keys[-1]
+    gp = shared_labels_gps[-1]
+# %%
+    labels_all=[]
+    lmgps = "lm_group"
+    keys = [k for k in G.global_properties.keys() if lmgps in k]
+    for key in keys:
+        shared_labels_gps= G.global_properties[key]['ds']
+        labs_gp = []
+        for gp in shared_labels_gps:
+            tr()
+            ds_name = DS.resolve_ds_name(gp)
+            for c in G.case_properties:
+                if ds_name== c['ds']:
+                    labels = c['labels']
+                    labels = G.serializable_obj(labels)
+                    labs_gp.extend(labels)
+
+        labs_gp = list(set(labs_gp))
+        dici = {'ds': ds_name, 'label':labs_gp}
+        labels_all.extend(labs_gp)
+        print(labs_gp)
+        G.global_properties[key].update({'labels':labs_gp ,'num_labels':len(labs_gp)})
+    G.global_properties['labels_all'] = list(set(labels_all))
+    labels_tot= len(labels_all)
+
+# %%

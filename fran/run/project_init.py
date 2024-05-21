@@ -11,7 +11,7 @@ def main(args):
     P = Project(project_title=project_title); 
     print("Project: {0}".format(project_title))
     if not args.delete==True:
-        P.create_project()
+        P.create()
         if args.input_folders:
             P.add_data(input_folders)
         P.create_folds()

@@ -1,4 +1,3 @@
-
 # %%
 import lightning.pytorch as pl
 from lightning.pytorch.core import LightningModule

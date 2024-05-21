@@ -15,6 +15,13 @@ from openpyxl import load_workbook
 
 from fran.utils.helpers import *
 
+def is_excel_nan(input):
+    input = str(input)
+    if input == "nan":
+        return True
+    else:
+        return False
+
 BOOL_ROWS='patch_based,one_cycles,heavy,deep_supervision,self_attention,fake_tumours,square_in_union,apply_activation'
 def check_bool(row):
     if row['var_name'] in BOOL_ROWS.split(','):
@@ -139,9 +146,9 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
 
 
 class ConfigMaker():
-    def __init__(self, project, configuration_filename=None,configuration_mnemonic=None, raytune=False):
+    def __init__(self, project, configuration_filename=None, raytune=False):
         store_attr()
-
+        configuration_mnemonic=project.global_properties["mnemonic"]
         configuration_filename = self.resolve_configuration_filename(configuration_filename,configuration_mnemonic)
         self.config = load_config_from_workbook(configuration_filename, raytune)
         if not "mom_low" in self.config["model_params"].keys() and raytune==True:
@@ -270,7 +277,6 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
     P = Project(project_title="lits"); project= P
-    project = project.configuration_filename
     wb = load_workbook(project)
     sheets = wb.sheetnames
     mode = "manual"
@@ -288,17 +294,14 @@ if __name__ == "__main__":
 
 # %%
 
+    configuration_mnemonic="liver"
+    configuration_filename = "/home/ub/code/fran/configurations/experiment_configs_liver.xlsx"
 
 
-    config = ConfigMaker(project.configuration_filename, raytune=False).config
+    config = ConfigMaker(project,configuration_filename, raytune=False,configuration_mnemonic=configuration_mnemonic).config
 # %%
     wb = load_workbook(project)
     sheets = wb.sheetnames
-    metadata = wb["metadata"]
-    dat = metadata[2 : metadata.max_row]
-    # sheets.remove("metadata")
-    df = pd.DataFrame(metadata.values)
-    df2 = pd.DataFrame(dat.values)
     raytune = False
 
     configs_dict = {

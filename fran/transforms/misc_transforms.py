@@ -25,16 +25,23 @@ import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
 
 
+
+
+
 class FgBgToIndicesd2(FgBgToIndicesd):
+    '''
+    modified version. This allows 'ignore_labels' entry of fg labels which will be considered part of bg for indexing
+    '''
+    
     def __init__(
         self,
         keys: KeysCollection,
         ignore_labels: list=None,
         fg_postfix: str = "_fg_indices",
         bg_postfix: str = "_bg_indices",
-        image_key: str | None = None,
+        image_key  = None,
         image_threshold: float = 0,
-        output_shape: Sequence[int] | None = None,
+        output_shape= None,
         allow_missing_keys: bool = False,
     ) -> None:
         super().__init__(
@@ -58,6 +65,10 @@ class FgBgToIndicesd2(FgBgToIndicesd):
                 lm = d[key].clone() # clone so the original is untouched
                 for label in self.ignore_labels:
                     lm[lm == label] = 0
+                if lm.max()==0: 
+                        print("Warning: No foreground in label {}".format(lm.meta['filename']))
+                        print("Not removing any labels to avoid bugs")
+                        lm = d[key].clone() # clone so the original is untouched
             else:
                 lm = d[key]
             d[str(key) + self.fg_postfix], d[str(key) + self.bg_postfix] = (
@@ -103,6 +114,32 @@ class SelectLabels(MonaiDictTransform):
             lm_neo[lm == label] = label
         return lm_neo
 
+class LoadDict(MonaiDictTransform):
+    '''
+    when a tensor us just a dictionary stored in pt format, this returns the stored keys
+    '''
+    def __init__(self, keys, select_keys:list=None,drop_keys=False):
+        '''
+        select_keys will only extract mentioned keys. If none, all keys will be extracted
+        '''
+        self.select_keys = select_keys
+        self.drop_keys = drop_keys
+        super().__init__(keys)
+
+    def __call__(self, d: dict):
+
+        mini_dict ={}
+        for key in self.key_iterator(d):
+            dici = torch.load(d[key])
+            for k in self.select_keys:
+                mini_dict[k] = dici[k]
+            if self.drop_keys==True:
+                d.pop(key)
+        d = d|mini_dict
+        return d
+
+
+    
 
 class MetaToDict(MonaiDictTransform):
     def __init__(self, keys, meta_keys, renamed_keys=None):
@@ -295,6 +332,14 @@ if __name__ == "__main__":
 
     img =  torch.load(img_fn)
     lm = torch.load(lm_fn)
+
+    fn = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/indices_fg_exclude_1/drli_002.pt"
+    tnser = torch.load(fn)
+    tnser["lm_fg_indices"] = tnser["lm_fg_indicesmask_label"]
+    tnser["lm_bg_indicesmask_label"].pop()
+    dici = {"indices": tnser}
+    T = TensorToDict(keys= ["indices"],select_keys =  ["lm_fg_indices","lm_bg_indices"])
+    dici = T(dici)
 
 # %%
     F = FgBgToIndicesd2(keys = ['lm'], ignore_labels=[1])

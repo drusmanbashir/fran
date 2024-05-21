@@ -53,7 +53,7 @@ class PreprocessingManager():
         P = Project(project_title=args.project_title); 
         self.project= P
         conf = ConfigMaker(
-            P, raytune=False, configuration_filename=None, configuration_mnemonic='liver'
+            P, raytune=False, configuration_filename=None
         ).config
 
         # args.overwrite=False
@@ -279,7 +279,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "litsmc"
+    args.project_title = "nodes3"
 
     # args.num_processes = 1
     args.debug=True
@@ -292,15 +292,11 @@ if __name__ == "__main__":
 
 # %%
     conf = ConfigMaker(
-        P, raytune=False, configuration_filename=None, configuration_mnemonic='liver'
+        P, raytune=False, configuration_filename=None
     ).config
 # %%
 
-    plans = conf['plan1']
-    dss = plans['datasources']
-    dss= dss.split(",")
-    datasources = [getattr(DS,g) for g in dss]
-    P.create_project(datasources)
+    plans = conf[args.plan]
 # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plans['lm_groups'])
@@ -348,10 +344,7 @@ if __name__ == "__main__":
     # I.verify_dataset_integrity()
 
     # I.analyse_dataset()
-    I.resample_dataset(generate_bboxes=True)
 
-# %%
-    I.generate_whole_images_dataset()
 
 # %%
     im1 = "/home/ub/tmp/imgs/litq_72b_20170224_old.pt"
