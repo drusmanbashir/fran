@@ -2,14 +2,13 @@
 import argparse
 import ast
 import shutil
-from fran.managers.datasource import DS
 
 from label_analysis.totalseg import TotalSegmenterLabels
 
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
-from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from fran.preprocessing.labelbounded import FGBGIndicesGenerator, LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from fran.utils.fileio import *
 from fran.utils.helpers import *
@@ -58,11 +57,11 @@ class PreprocessingManager():
 
         # args.overwrite=False
         self.plan = conf[self.plan]
-        self.spacing = ast.literal_eval(self.plan['spacing'])
+        self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
         self.Resampler = ResampleDatasetniftiToTorch(
                     project=self.project,
-                    spacing=self.spacing,
+                    spacing=self.plan['spacing'],
 
                     device='cpu'
                 )
@@ -97,6 +96,38 @@ class PreprocessingManager():
         self.Resampler.create_dl(overwrite)
         self.Resampler.process()
 
+    def generate_lbd_dataset(self):
+# %%
+        L = LabelBoundedDataGenerator(
+            project=P,
+            expand_by=self.plan['expand_by_lbd'],
+            spacing=self.plan['spacing'],
+            lm_group=self.plan['lm_groups'],
+
+            fg_indices_exclude=None,
+        )
+        L.setup()
+        L.create_dl()
+        L.process()
+
+
+
+
+
+        L = LabelBoundedDataGenerator(
+            project=self.project,
+            expand_by=self.plan['expand_by_lbd'],
+            spacing=self.plan['spacing'],
+            lm_group="lm_group1",
+            mask_label=1,
+
+            fg_indices_exclude=None,
+        )
+        L.setup()
+        L.create_dl()
+        L.process()
+
+
     def generate_TSlabelboundeddataset(self,organ,imported_folder,keep_imported_labels=False,lm_group="lm_group1"):
         '''
         requires resampled folder to exist. Crops within this folder
@@ -110,7 +141,7 @@ class PreprocessingManager():
         self.L = LabelBoundedDataGenerator(
             project=self.project,
             expand_by=self.plan['expand_by_lbd'],
-            spacing=self.spacing,
+            spacing=self.plan['spacing'],
             lm_group=lm_group,
             imported_folder=imported_folder,
             imported_labelsets=imported_labelsets,
@@ -139,7 +170,7 @@ class PreprocessingManager():
             ] * 3
         self.WholeImageTM = WholeImageTensorMaker(
             self.project,
-            source_spacing=self.spacing,
+            source_spacing=self.plan['spacing'],
             output_size=output_shape,
             num_processes=self.num_processes,
         )
@@ -154,7 +185,7 @@ class PreprocessingManager():
         lbd_folder = folder_name_from_list(
             prefix="spc",
             parent_folder=self.project.lbd_folder,
-            values_list=self.spacing,
+            values_list=self.plan['spacing'],
         )
         patch_overlap = self.plan['patch_overlap']
         expand_by = self.plan['expand_by_patch']
@@ -283,8 +314,6 @@ if __name__ == "__main__":
 
     # args.num_processes = 1
     args.debug=True
-    # args.clip_range=[-100,200]
-
     args.plan = "plan1"
 # %%
 
@@ -297,6 +326,7 @@ if __name__ == "__main__":
 # %%
 
     plans = conf[args.plan]
+    plans['spacing'] = ast.literal_eval(plans['spacing'])
 # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plans['lm_groups'])
@@ -310,6 +340,7 @@ if __name__ == "__main__":
     if I.plan['mode']=='patch':
     # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
+    I.generate_lbd_dataset()
 # %%
     
 

@@ -19,6 +19,7 @@ from fran.transforms.inferencetransforms import BBoxFromPTd
 from fran.transforms.misc_transforms import (ApplyBBox, MergeLabelmapsd,
                                              Recast, RemapSITK)
 from fran.transforms.spatialtransforms import ResizeToTensord
+from fran.utils.config_parsers import is_excel_nan
 from fran.utils.string import info_from_filename, strip_extension
 
 if "get_ipython" in globals():
@@ -51,17 +52,20 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         expand_by,
         spacing,
         lm_group,
-        mask_label,
+        mask_label=None,
         fg_indices_exclude: list = None,
     ) -> None:
         """
         mask_label: this label is used to apply mask, i.e., crop the image and lm
         """
 
-        store_attr()
-        self.case_ids = self.get_case_ids_lm_group(lm_group)
-        self.set_folders_from_spacing(spacing)
+        store_attr() #WARN: leave this as top line otherwise getattr fails
+        if is_excel_nan(self.lm_group):
+            self.lm_group = "lm_group1"
+        self.case_ids = self.get_case_ids_lm_group(self.lm_group)
+        self.set_folders_from_spacing(self.spacing)
         print("Total case ids:", len(self.case_ids))
+        if not self.mask_label: self.mask_label = 1
 
     def set_folders_from_spacing(self, spacing):
         self.fixed_spacing_subfolder = folder_name_from_list(
@@ -154,9 +158,9 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
                 "meta": image.meta,
             }
             self.save_indices(inds, self.indices_subfolder)
-            # self.save_pt(image[0], "images")
-            # self.save_pt(lm[0], "lms")
-            # self.extract_image_props(image)
+            self.save_pt(image[0], "images")
+            self.save_pt(lm[0], "lms")
+            self.extract_image_props(image)
 
     def make_contiguous(self, batch):
         for key, listvals in batch.items():
@@ -317,8 +321,8 @@ class FGBGIndicesGenerator(LabelBoundedDataGenerator):
                 "meta": image.meta,
             }
             self.save_indices(inds, self.indices_subfolder)
-            self.save_pt(image[0], "images")
-            self.save_pt(lm[0], "lms")
+            # self.save_pt(image[0], "images")
+            # self.save_pt(lm[0], "lms")
             self.extract_image_props(image)
 
 

@@ -67,6 +67,10 @@ As shown above, mask and image files of a given case will have identical names, 
 
 *Note: Having separate `{slow_storage}` and `{fast_storage}` is not a requirement. Both folders can be on the same drive. I recommend using SSD for `{fast_storage}` to speed up learning.*
 ## 3. Project
+
+### 1. Excel spreadsheet
+Make sure to add a sheet labelled 'plan1' at least.
+
 Run script `fran/runs/project_init.py` to initialize a project. It requires two arguments: -t (project title) and -i (input folders: 1 or more, containing datasets).\
 
 ```
@@ -93,6 +97,9 @@ b) Use own labelmap label
 
 #### 1. Steps:
  - LabelBoundedDataGenerator
+
+Note: if you want to generate a new set of FGBG indices, use FGBGIndicesGenerator.
+
 
 
 

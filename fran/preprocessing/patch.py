@@ -2,7 +2,7 @@
 import torch
 from fran.utils.dictopts import DictToAttr
 import torchio as tio
-from label_analysis.totalseg import TotalSegmenterLabels
+# from label_analysis.totalseg import TotalSegmenterLabels
 from fran.transforms.spatialtransforms import PadDeficitImgMask
 from fran.utils.fileio import load_dict, maybe_makedirs, save_dict
 from fran.utils.helpers import multiprocess_multiarg

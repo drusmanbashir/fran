@@ -16,7 +16,7 @@ from tqdm.notebook import tqdm as tqdm_nb
 
 from fran.utils.dictopts import *
 from fran.utils.fileio import load_dict, save_dict, str_to_path
-from fran.utils.string import cleanup_fname, dec_to_str, path_to_str, regex_matcher
+from fran.utils.string import cleanup_fname, dec_to_str, info_from_filename, path_to_str, regex_matcher
 from functools import wraps
 from time import time
 tr = ipdb.set_trace
@@ -348,17 +348,23 @@ def get_train_valid_test_lists_from_json(project_title, fold, json_fname, image_
 
 
 
-
 @str_to_path(0)
-def find_matching_fn(src_fn:Path,mask_fnames:list):
+def find_matching_fn(src_fn:Path,mask_fnames:list,use_cid=False):
         src_fn = cleanup_fname(src_fn.name)
+        cid = info_from_filename(src_fn)['case_id']
         matching_mask_fns=[]
         for mask_fn in mask_fnames:
-            mask_fn_clean = cleanup_fname(mask_fn.name)
-            if mask_fn_clean==src_fn:
-                matching_mask_fns.append(mask_fn)
-        if len(matching_mask_fns)>1: tr()
-        else: return matching_mask_fns[0]
+            if use_cid == False:
+                mask_fn_clean = cleanup_fname(mask_fn.name)
+                if mask_fn_clean==src_fn:
+                    matching_mask_fns.append(mask_fn)
+            else:
+                cid_mask = info_from_filename(mask_fn.name)['case_id']
+                if cid_mask == cid:
+                    matching_mask_fns.append(mask_fn)
+        if len(matching_mask_fns)==1: return matching_mask_fns[0]
+        elif len(matching_mask_fns)==0: return None
+        else: raise Exception("Multiple files matching {} found".format(src_fn))
 
 
 def get_fileslist_from_path(path:Path, ext:str = ".pt"):

@@ -171,13 +171,7 @@ class ChangeDType(KeepBBoxTransform):
     def __init__(self,target_dtype):store_attr()
     def func(self,img):
         return img.to(self.target_dtype)
-        # dest = [200,300,400]
-        # x  = np.random.rand(50,100,200)
-        # R = ResizeNP(dest)
-        # P = PadNpArray(patch_size=[160,160,160])
-        # y = P.encodes([x])
-        # R.encodes([x])
-        
+
 
 class DICOMOrientSITK(ItemTransform):
         def __init__(self): self.orientation = (1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0)

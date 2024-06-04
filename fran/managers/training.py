@@ -194,8 +194,8 @@ class UNetTrainer(LightningModule):
     def forward(self, inputs):
         return self.model(inputs)
 
-        model = create_model_from_conf(self.model_params, self.dataset_params)
     def create_model(self):
+        model = create_model_from_conf(self.model_params, self.dataset_params)
         if (
             self.model_params["arch"] == "DynUNet"
             or self.model_params["arch"] == "DynUNet_UB"

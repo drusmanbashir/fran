@@ -405,7 +405,7 @@ if __name__ == "__main__":
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
     run_lidc2 = ["LITS-911"]
-    run_litsmc= ["LITS-940"]
+    run_litsmc= ["LITS-933"]
     run_ts = ["LITS-827"]
 # %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
@@ -415,7 +415,7 @@ if __name__ == "__main__":
     img_fn3 = "/s/xnat_shadow/crc/srn/images/crc_CRC002_20190415_CAP1p5.nii.gz"
 
     # fldr_crc = Path("/s/xnat_shadow/crc/images_train_rad/images/")
-    fldr_crc = Path("/s/xnat_shadow/crc/images/")
+    fldr_crc = Path("/s/xnat_shadow/crc/images")
     # srn_fldr = "/s/xnat_shadow/crc/srn/cases_with_findings/images/"
     litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
     litq_imgs = list(Path(litq_fldr).glob("*"))
@@ -424,7 +424,7 @@ if __name__ == "__main__":
 # %%
     react_fldr = Path("/s/insync/react/sitk/images")
     imgs_react = list(react_fldr.glob("*"))
-    imgs_crc = fldr_crc.glob("*")
+    imgs_crc = list(fldr_crc.glob("*"))
 
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
