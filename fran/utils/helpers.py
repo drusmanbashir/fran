@@ -349,7 +349,9 @@ def get_train_valid_test_lists_from_json(project_title, fold, json_fname, image_
 
 
 @str_to_path(0)
-def find_matching_fn(src_fn:Path,mask_fnames:list,use_cid=False):
+def find_matching_fn(src_fn:Path,mask_fnames:Union[list|Path],use_cid=False):
+        if isinstance(mask_fnames,Path) and mask_fnames.is_dir():
+            mask_fnames = list(mask_fnames.glob("*"))
         src_fn = cleanup_fname(src_fn.name)
         cid = info_from_filename(src_fn)['case_id']
         matching_mask_fns=[]

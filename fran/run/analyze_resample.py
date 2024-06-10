@@ -382,7 +382,7 @@ if __name__ == "__main__":
     im2 = "/s/fran_storage/datasets/preprocessed/fixed_spacing/lilun3/spc_074_074_160/images/litq_72b_20170224.pt"
     im1 = torch.load(im1)
     im2 = torch.load(im2)
-    ImageMaskViewer([im1,im2], data_types=['image','image'])
+    ImageMaskViewer([im1,im2], dtypes=['image','image'])
 # %%
 
     spacing_ind = 0

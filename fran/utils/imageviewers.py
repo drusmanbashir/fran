@@ -17,22 +17,17 @@ plt.ion()
 import ipdb
 tr = ipdb.set_trace
 # %%
-def fix_labels(func):
-    def _inner(*args,**kwargs):
-        img_mask = args
-        args_fixed =[]
-        for x in img_mask:
+def fix_labels(x):
             if x.GetPixelID()==22:
                 x = sitk.Cast(x,sitk.sitkUInt8)
-            args_fixed.append(x)
-        return func(*args_fixed,**kwargs)
-    return _inner
+            return x
+            
 
-@fix_labels
-def view_sitk(img,mask,**kwargs):
+def view_sitk(img,mask,dtypes='im',**kwargs):
+    img = fix_labels(img)
+    mask = fix_labels(mask)
     img,mask=map(sitk.GetArrayFromImage,[img,mask])
-    # img, mask = img.transpose(2,1,0), mask.transpose(2,1,0)
-    ImageMaskViewer([img,mask],**kwargs)
+    ImageMaskViewer([img,mask],dtypes,**kwargs)
 
 
 def view_3d_np(x):
@@ -64,7 +59,7 @@ def view(a,b,n=0, cmap_img='Greys_r', cmap_mask='RdPu_r'):
 def get_window_level_numpy_array(
     image_list,
     intensity_slider_range_percentile=[2, 98],
-    data_types=["img", "mask"],
+    dtypes='im'
 ):
     # to the original images. If they are deleted outside the view would become
     # invalid, so we use a copy wich guarentees that the gui is consistent.
@@ -83,8 +78,8 @@ def get_window_level_numpy_array(
     # grayscale and color images. If they are color we set the wl_rangenotebooks/nbs/gui_building.sync.py
     # to [0,255] and the wl_init is equal, ignoring the window_level_list
     # entry.
-    for npa, data_type in zip(npa_list, data_types):
-        if data_type == "img":
+    for npa, data_type in zip(npa_list, dtypes):
+        if data_type == "i":
             min_max = np.percentile(npa.flatten(),
                                     intensity_slider_range_percentile)
         else:
@@ -106,16 +101,16 @@ class ImageMaskViewer(object):
     
     def __init__(self,
                  image_list,
-                 data_types=["img", "mask"],
+                 dtypes="im",
                  figure_size=(10, 8),
                  intensity_slider_range_percentile=[2, 98],
                  cmap_img= 'Greys_r',
                  cmap_mask = 'RdPu_r',
                  apply_transpose=True) ->None:
-        self.cmap_img ,self.cmap_mask, self.data_types= cmap_img, cmap_mask, data_types
+        self.cmap_img ,self.cmap_mask, self.dtypes= cmap_img, cmap_mask, dtypes
 
         self.npa_list, self.wl_range, self.wl_init = get_window_level_numpy_array(
-            image_list, intensity_slider_range_percentile, self.data_types)
+            image_list, intensity_slider_range_percentile, self.dtypes)
 
         # if apply_transpose==True :
         #     self.npa_list= [a.transpose(2,1,0) for a in self.npa_list]
@@ -139,7 +134,7 @@ class ImageMaskViewer(object):
     def create_images(self):
         ax_imgs=[]
         for ax, img, data_type in zip(self.axises, self.npa_list,
-                                      self.data_types):
+                                      self.dtypes):
 
             img_slice = img[0,:,:]
             if data_type == 'mask':

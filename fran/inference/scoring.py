@@ -144,6 +144,6 @@ if __name__ == "__main__":
 
 
 # %%
-    ImageMaskViewer([pred_pt,label_pt],data_types=['mask','mask'])
+    ImageMaskViewer([pred_pt,label_pt],dtypes=['mask','mask'])
 
 # %%
