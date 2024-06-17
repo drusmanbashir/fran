@@ -1,14 +1,15 @@
 # %%
+from typing import Union
 import logging, os
 import collections
 import pprint
 import re
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Union
 
 import ipdb
 from ipdb.__main__ import get_ipython
+from label_analysis.helpers import get_labels, relabel
 import numpy as np
 import torch
 from tqdm import tqdm as tqdm_ip
@@ -275,7 +276,7 @@ def match_filename_with_case_id(project_title, case_id,filename):
                 pat = project_title+"_"+case_id+"_?\."
                 return pat,filename
 
-def project_title_from_folder(folder_name: Union[str,Path]):
+def project_title_from_folder(folder_name):
     if isinstance(folder_name,Path): folder_name = folder_name.name
     pat = re.compile("(Task\d{0,5}_)?(\w*)",re.IGNORECASE)
     result= re.search(pat,folder_name)
@@ -349,7 +350,7 @@ def get_train_valid_test_lists_from_json(project_title, fold, json_fname, image_
 
 
 @str_to_path(0)
-def find_matching_fn(src_fn:Path,mask_fnames:Union[list|Path],use_cid=False):
+def find_matching_fn(src_fn:Path,mask_fnames:Union[list,Path],use_cid=False):
         if isinstance(mask_fnames,Path) and mask_fnames.is_dir():
             mask_fnames = list(mask_fnames.glob("*"))
         src_fn = cleanup_fname(src_fn.name)
@@ -402,6 +403,16 @@ def write_files_or_not(output_filenames, overwrite=True):
 # %%
 if __name__=="__main__":
     dd = load_dict("/home/ub/datasets/preprocessed/lits/patches/spc_100_100_200/dim_256_256_128/bboxes_info.pkl")
+
+    fn = Path("/s/fran_storage/predictions/litsmc/LITS-933_fixed_mc/crc_CRC154_20140712_ABDOMEN.nii.gz")
+    fldr = Path("/s/xnat_shadow/crc/lms_staging/")
+    fn_out = fldr/fn.name
+    import SimpleITK as sitk
+    lm = sitk.ReadImage(str(fn))
+    get_labels(lm)
+    lm = relabel(lm,{3:2})
+    sitk.WriteImage(lm,str(fn_out))
+
     dd[0]
     from fran.utils.common import *
     P = Project(project_title="lits"); proj_defaults= P
