@@ -3,6 +3,7 @@ import torch
 from monai.networks.nets import DynUNet
 import ipdb
 tr = ipdb.set_trace
+from torch.nn.functional import interpolate
 
 
 def get_kernel_strides(patch_size,spacings):
@@ -49,7 +50,7 @@ class DynUNet_UB(DynUNet):
 # %%
 if __name__ == "__main__":
     from torchinfo import summary
-    patch_size = [192,192,96]
+    patch_size = [128,128,96]
     spacings=[1,1,1]
     k,s=  get_kernel_strides(patch_size,spacings)
     kernels, strides = get_kernel_strides(
@@ -57,6 +58,7 @@ if __name__ == "__main__":
     )
 # %%
     net= DynUNet(
+
         3,
         1,
         3,
@@ -79,7 +81,24 @@ if __name__ == "__main__":
         deep_supr_num=3,
     )
 # %%
-    x = torch.randn(2, 1, *patch_size, device="cpu")
+    net.to('cuda')
+    x = torch.randn(3, 1, *patch_size, device="cuda")
+# %%
+
+    out = net.skip_layers(x)
+    print(out.shape)
+    
+    out = net.output_block(out)
+    print(out.shape)
+# %%
+    if net.training and net.deep_supervision:
+        out_all = [out]
+        for feature_map in net.heads:
+        # return torch.stack(out_all, dim=1)
+            out_all.append(interpolate(feature_map, out.shape[2:]))
+
+    [print(xx.shape) for xx in out_all]
+# %%
     y= net(x)
     y2= net2(x)
     print(y.shape)

@@ -97,29 +97,11 @@ class PreprocessingManager():
         self.Resampler.process()
 
     def generate_lbd_dataset(self):
-# %%
         L = LabelBoundedDataGenerator(
             project=P,
             expand_by=self.plan['expand_by_lbd'],
             spacing=self.plan['spacing'],
             lm_group=self.plan['lm_groups'],
-
-            fg_indices_exclude=None,
-        )
-        L.setup()
-        L.create_dl()
-        L.process()
-
-
-
-
-
-        L = LabelBoundedDataGenerator(
-            project=self.project,
-            expand_by=self.plan['expand_by_lbd'],
-            spacing=self.plan['spacing'],
-            lm_group="lm_group1",
-            mask_label=1,
 
             fg_indices_exclude=None,
         )
@@ -310,7 +292,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "nodes3"
+    args.project_title = "nodes"
 
     # args.num_processes = 1
     args.debug=True

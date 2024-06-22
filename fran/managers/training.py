@@ -7,6 +7,8 @@ from fran.transforms.imageio import TorchReader
 from fran.transforms.misc_transforms import LoadDict
 from fran.utils.common import common_vars_filename
 import ipdb
+
+from fran.utils.helpers import pp
 tr = ipdb.set_trace
 
 from label_analysis.overlap import get_ipython
@@ -538,7 +540,7 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
-    project_title = "litsmc"
+    project_title = "nodes"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -566,7 +568,7 @@ if __name__ == "__main__":
     neptune =False 
     tags = []
     cache_rate=0.0
-    description = f"Using DynUnet"
+    description = f""
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,

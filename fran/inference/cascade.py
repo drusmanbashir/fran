@@ -432,10 +432,13 @@ if __name__ == "__main__":
     localiser_labels = [1]
     runs_p = run_litsmc
 # %%
-    overwrite=False
+    overwrite=True
     safe_mode=False
     save_channels=False
 # %%
+# %%
+#SECTION:-------------------- LITSMC predictions--------------------------------------------------------------------------------------
+
     project = Project(project_title="litsmc")
     if project.project_title=="litsmc":
         k_largest= 1
@@ -455,6 +458,8 @@ if __name__ == "__main__":
 
 # %%
     # img_fns = list(img_fldr.glob("*"))[20:50]
+    case_id = "crc_CRC003"
+    imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
     preds = En.run(imgs_crc)
 
 # %%

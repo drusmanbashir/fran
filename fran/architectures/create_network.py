@@ -251,7 +251,53 @@ if __name__ == "__main__":
     pool_op_kernel_sizes = [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     # net = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
     net2 = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
-    # out = net(x)
+    net2.to('cuda')
+    out = net2(x)
+# %%
+    x = torch.rand(1,1,128,128,96)
+    x = x.to('cuda')
+    print(x.shape)
+
+    skips = []
+    seg_outputs = []
+    for d in range(len(net2.conv_blocks_context) - 1):
+        x = net2.conv_blocks_context[d](x)
+        skips.append(x)
+        print(x.shape)
+        if not net2.convolutional_pooling:
+            x = net2.td[d](x)
+            print(x.shape)
+        print("--"*20)
+# %%
+
+    x = net2.conv_blocks_context[-1](x)
+    print(x.shape)
+
+# %%
+    for u in range(len(net2.tu)):
+        x = net2.tu[u](x)
+        print(x.shape)
+        y =  skips[-(u + 1)]
+        print(y.shape)
+        x = torch.cat((x,y), dim=1)
+        print(x.shape)
+        x = net2.conv_blocks_localization[u](x)
+        print(x.shape)
+
+        print("--"*20)
+        z  = net2.final_nonlin(net2.seg_outputs[u](x))
+        print(z.shape)
+        print("=="*20)
+        seg_outputs.append(z)
+
+# %%
+    outs = tuple([seg_outputs[-1]] + [i(j) for i, j in
+                                              zip(list(net2.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])
+# %%
+    for out in outs:
+        print (out.shape)
+        print("**"*20)
+# %%
     # summ = summary(net, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
     summ2 = summary(net2, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
 # %%

@@ -70,6 +70,20 @@ As shown above, mask and image files of a given case will have identical names, 
 
 ### 1. Excel spreadsheet
 Make sure to add a sheet labelled 'plan1' at least.
+Steps are :
+```
+
+    P= Project(project_title="nodes") <-- any title
+
+    P.create(mnemonic='nodes')
+    conf = ConfigMaker(
+        P, raytune=False, configuration_filename=None
+
+    ).config
+    plans = conf['plan1']  # or any other name
+    P.add_plan(plans, overwrite_global_properties=False)
+
+```
 
 Run script `fran/runs/project_init.py` to initialize a project. It requires two arguments: -t (project title) and -i (input folders: 1 or more, containing datasets).\
 

@@ -402,11 +402,11 @@ class Project(DictToAttr):
             self.G.collate_lm_labels()
 
     def add_plan(self,plan:dict, overwrite_global_properties=False):
-        dss = plans['datasources']
+        dss = plan['datasources']
         dss= dss.split(",")
         datasources = [getattr(DS,g) for g in dss]
         self.add_data(datasources)
-        self.set_lm_groups(plans['lm_groups'])
+        self.set_lm_groups(plan['lm_groups'])
         self.maybe_store_projectwide_properties(overwrite=overwrite_global_properties)
 
 
@@ -482,7 +482,7 @@ class Project(DictToAttr):
 if __name__ == "__main__":
     from fran.utils.common import *
 
-    P= Project(project_title="nodes3")
+    P= Project(project_title="nodes")
 
     P.create(mnemonic='nodes')
 # %%
@@ -493,9 +493,9 @@ if __name__ == "__main__":
 # %%
 
 
+# %%
     plans = conf['plan1']
     P.add_plan(plans, overwrite_global_properties=False)
-# %%
 # %%
     # P.set_lm_groups([['litq','litqsmall','drli','lits'],['lidc2']])
     # P.set_lm_groups()
