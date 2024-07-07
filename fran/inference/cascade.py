@@ -8,6 +8,7 @@ from monai.transforms.utility.dictionary import SqueezeDimd
 from fran.transforms.misc_transforms import SelectLabels
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 from fran.transforms.totensor import ToTensorI, ToTensorT
+from fran.utils.fileio import maybe_makedirs
 
 tr = ipdb.set_trace
 
@@ -434,7 +435,7 @@ if __name__ == "__main__":
 # %%
     overwrite=True
     safe_mode=False
-    save_channels=False
+    save_channels=True
 # %%
 # %%
 #SECTION:-------------------- LITSMC predictions--------------------------------------------------------------------------------------
@@ -457,22 +458,125 @@ if __name__ == "__main__":
     )
 
 # %%
-    # img_fns = list(img_fldr.glob("*"))[20:50]
-    case_id = "crc_CRC003"
+
+# %%
+# img_fns = list(img_fldr.glob("*"))[20:50]
+    case_id = "crc_CRC089"
     imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
     preds = En.run(imgs_crc)
 
 # %%
-    imgs_sublist = imgs_react
-    data = En.load_images(imgs_sublist)
-    En.bboxes = En.extract_fg_bboxes(data)
-    data = En.apply_bboxes(data, En.bboxes)
 
-    data = En.load_images(imgs_sublist)
-    En.bboxes = En.extract_fg_bboxes(data)
-    data = En.apply_bboxes(data, En.bboxes)
+# %%
+#SECTION:-------------------- TROUBLESHOOTING En.run--------------------------------------------------------------------------------------
+
+
     pred_patches = En.patch_prediction(data)
     pred_patches = En.decollate_patches(pred_patches, En.bboxes)
     output = En.postprocess(pred_patches)
+    chunksize=12
+    imgs_sublist = imgs_crc
+    imgs_sublist = listify(imgs)
+    if En.overwrite == False and (
+        isinstance(imgs[0], str) or isinstance(imgs[0], Path)
+    ):
+        imgs = En.filter_existing_preds(imgs)
+    else:
+        pass
+        # En.save = False  # don't save if input is pure images. Just output those.
+    if len(imgs) > 0:
+        imgs = list_to_chunks(imgs, chunksize)
+        for imgs_sublist in imgs:
+                output = En.process_imgs_sublist(imgs_sublist)
 
 # %%
+#SECTION:-------------------- extract_fg_bboxes--------------------------------------------------------------------------------------
+        Sel = SelectLabels(keys=["pred"], labels=En.localiser_labels)
+        B = BBoxFromPTd(
+            keys=["pred"], spacing=En.W.dataset_params["spacing"], expand_by=10
+        )
+        if En.overwrite == False:
+            print("Bbox overwrite not implemented yet")
+        print("Starting localiser data prep and prediction")
+        En.W.setup()
+        En.W.prepare_data(data, tfms="ESN")
+        p = En.W.predict()
+        preds = En.W.postprocess(p)
+        bboxes = []
+        for pred in preds:
+            pred = Sel(pred)
+            pred = B(pred)
+            bb = pred["bounding_box"]
+            bboxes.append(bb)
+
+# %%
+#SECTION:-------------------- process_imgs_sublist--------------------------------------------------------------------------------------
+      
+        imgs_sublist = imgs_crc
+        data = En.load_images(imgs_sublist)
+        En.bboxes = En.extract_fg_bboxes(data)
+        data = En.apply_bboxes(data, En.bboxes)
+# %%
+#SECTION:--------------------Patch predictor --------------------------------------------------------------------------------------
+
+        P = En.Ps[0]
+
+        P.setup()
+        P.prepare_data(data=data, tfms="ESN", collate_fn=img_bbox_collated)
+        batch = next(iter(P.pred_dl))
+
+        with torch.inference_mode():
+            for i, batch in enumerate(P.pred_dl):
+                with torch.no_grad():
+                    img_input = batch["image"]
+                    img_input = img_input.cuda()
+                    if "filename_or_obj" in img_input.meta.keys():
+                        print("Processing: ", img_input.meta["filename_or_obj"])
+                    output_tensor = P.inferer(inputs=img_input, network=P.model)
+
+
+                    #
+# %%
+        fn = img_input.meta['filename_or_obj']
+        fn_name = Path(fn).name
+        fn_out = Path(fldr)/fn_name
+        img_input.shape
+        img_input2 = img_input[0,0].cpu()
+        img_input2 = torch.permute(img_input2,(2,1,0))
+        img = sitk.GetImageFromArray(img_input2)
+        sitk.WriteImage(img,str(fn_out))
+        fldr = "preds"
+        maybe_makedirs(fldr)
+        ot = output_tensor
+        imgs = [im.cpu()[0] for im in ot]
+
+        [i.shape for i in imgs]
+# %%
+        for ind in range(len(imgs)):
+            for ch, im in enumerate(imgs[ind]):
+                fn_name_pred = fn_name+"_pred_{0}_ch{1}.nii.gz".format(ind,ch)
+                im2 = torch.permute(im,(2,1,0))
+                print(im.shape)
+                pred_out = sitk.GetImageFromArray(im2)
+                print(fn_name_pred)
+                sitk.WriteImage(pred_out,Path(fldr)/fn_name_pred)
+                print("\\n")
+
+# %%
+            img = imgs[ind]
+
+        ImageMaskViewer([ot[0][0][2].cpu(),ot[2][0][2].cpu()])
+# %%
+                    # output_tensor = output_tensor[0]
+                    # batch["pred"] = output_tensor
+                    # batch["pred"].meta = batch["image"].meta.copy()
+
+        pred_patches = En.patch_prediction(data)
+        pred_patches = En.decollate_patches(pred_patches, En.bboxes)
+        output = En.postprocess(pred_patches)
+        if En.save == True:
+            En.save_pred(output)
+        En.cuda_clear()
+
+
+

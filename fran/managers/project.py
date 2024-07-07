@@ -344,9 +344,8 @@ class Project(DictToAttr):
         self.save_global_properties()
         return dicis
 
-    
 
-
+    #NOTE: Later functions patch repeated case ids (e.g., LBGgenerator) so that there is 49,49a, 49b also lm_fnames have substrings 'label-' etc. Fix databases so that after LBD generates new tables are added. Consider updating case ids for repeat ids perhaps
 
     def get_train_val_files(self,fold):
         ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{}".format(fold)

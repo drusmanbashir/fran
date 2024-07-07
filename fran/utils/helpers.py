@@ -16,7 +16,7 @@ from tqdm import tqdm as tqdm_ip
 from tqdm.notebook import tqdm as tqdm_nb
 
 from fran.utils.dictopts import *
-from fran.utils.fileio import is_sitk_file, load_dict, save_dict, str_to_path
+from fran.utils.fileio import is_img_file, is_sitk_file, load_dict, save_dict, str_to_path
 from fran.utils.string import cleanup_fname, dec_to_str, info_from_filename, path_to_str, regex_matcher
 from functools import wraps
 from time import time
@@ -353,7 +353,7 @@ def get_train_valid_test_lists_from_json(project_title, fold, json_fname, image_
 def find_matching_fn(src_fn:Path,mask_fnames:Union[list,Path],use_cid=False):
         if isinstance(mask_fnames,Path) and mask_fnames.is_dir():
             mask_fnames = list(mask_fnames.glob("*"))
-            mask_fnames = [fn for fn in mask_fnames if is_sitk_file(fn)]
+            mask_fnames = [fn for fn in mask_fnames if is_img_file(fn)]
         src_fn = cleanup_fname(src_fn.name)
         cid = info_from_filename(src_fn)['case_id']
         matching_mask_fns=[]

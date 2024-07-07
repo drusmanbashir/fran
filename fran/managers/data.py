@@ -186,11 +186,11 @@ class DataManager(LightningDataModule):
         for fn in fnames:
             fn = Path(fn)
             img_fn = find_matching_fn(fn.name, images)
-            mask_fn = lms_fldr / img_fn.name
+            lm_fn =  find_matching_fn(fn.name, lms_fldr, True)
             indices_fn = inds_fldr / img_fn.name
             assert img_fn.exists(), "Missing image {}".format(img_fn)
-            assert mask_fn.exists(), "Missing labelmap fn {}".format(mask_fn)
-            dici = {"image": img_fn, "lm": mask_fn, "indices":indices_fn}
+            assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
+            dici = {"image": img_fn, "lm": lm_fn, "indices":indices_fn}
             data.append(dici)
         return data
 
@@ -309,9 +309,7 @@ class DataManagerSource(DataManager):
             simple_keys=True,
         )
         L.register(TorchReader())
-
         Ld= LoadDict(keys= ["indices"],select_keys =  ["lm_fg_indices","lm_bg_indices"])
-
         Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
         Rtr = RandCropByPosNegLabeld(
             keys=["image", "lm"],
@@ -474,7 +472,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "lidc2"
+    project_title = "nodes"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -495,8 +493,13 @@ if __name__ == "__main__":
         transform_factors=configs["transform_factors"],
         affine3d=configs["affine3d"],
         batch_size=batch_size,
+        plan = configs["plan2"]
     )
 # %%
+    D.prepare_data()
+
+    D.setup()
+    D.dataset_folder
 # %%
 
 

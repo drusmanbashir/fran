@@ -98,10 +98,11 @@ class PreprocessingManager():
 
     def generate_lbd_dataset(self):
         L = LabelBoundedDataGenerator(
-            project=P,
+            project=self.project,
             expand_by=self.plan['expand_by_lbd'],
             spacing=self.plan['spacing'],
-            lm_group=self.plan['lm_groups'],
+            lm_group="lm_group1",
+            mask_label=1,
 
             fg_indices_exclude=None,
         )

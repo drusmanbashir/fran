@@ -1,0 +1,14 @@
+,0,relabel
+1,/s/xnat_shadow/crc/lms/crc_CRC004_20190425_CAP1p5.nii.gz,{1:0}
+7,/s/xnat_shadow/crc/lms/crc_CRC005_20190802_CAP1p5.nii.gz,{1:0}
+11,/s/xnat_shadow/crc/lms/crc_CRC006_20191025_CAP1p5.nii.gz,{1:0}
+8,/s/xnat_shadow/crc/lms/crc_CRC072_20181025_Abdomen3p0I30f3-tissue-label.nrrd,{1:0}
+4,/s/xnat_shadow/crc/lms/crc_CRC078_20161226_Abdomen1p5-tissue.nii.gz,{1:0}
+5,/s/xnat_shadow/crc/lms/crc_CRC116_20150623_AbdoPelvis1p5.nii.gz,{1:0}
+3,/s/xnat_shadow/crc/lms/crc_CRC123_20170221_AbdoPelvis1p5.nii.gz-label.nrrd,{1:0}
+9,/s/xnat_shadow/crc/lms/crc_CRC138_20180812_Abdomen3p0I30f3.nii.gz,{1:0}
+6,/s/xnat_shadow/crc/lms/crc_CRC164_20180213_Abdomen3p0I30f3.nrrd,{1:0}
+12,/s/xnat_shadow/crc/lms/crc_CRC180_20151118_CAP1p5Soft.nii.gz,{1:0}
+10,/s/xnat_shadow/crc/lms/crc_CRC194_20151231_CAP1p5Soft.nii.gz,{1:0}
+0,/s/xnat_shadow/crc/lms/crc_CRC292_20120312_AbdoPelvis1p5.nii.gz,{1:0}
+2,/s/xnat_shadow/crc/lms/crc_CRC306_20161210_Abdomen3p0I30f3.nii.gz,{1:0}

@@ -558,14 +558,15 @@ if __name__ == "__main__":
     pp(conf)
 # %%
     device_id = 1
-    bs = 6# if none, will get it from the conf file 
-    run_name ='LITS-940'
+    bs = 5# 5 is good if LBD with 2 samples per case
     run_name = None
+    run_name ='LITS-946'
     compiled = False
     profiler=False
+    #NOTE: if Neptune = False, should store checkpoint locally
 
     batch_finder = False
-    neptune =False 
+    neptune =True
     tags = []
     cache_rate=0.0
     description = f""
@@ -582,13 +583,9 @@ if __name__ == "__main__":
         description=description,
         cache_rate=cache_rate
     )
+# %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-# %%
-    m = Tm.N.model
-
-    patch_size= Tm.N.dataset_params['patch_size']
-    summ = summary(Tm.N.model, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
 # %%
     Tm.fit()
         # model(inputs)
@@ -599,6 +596,9 @@ if __name__ == "__main__":
     ds = Tm.D.valid_ds
     ds = Tm.D.train_ds
 # %%
+    i =  ds[12]
+
+    ImageMaskViewer([i[1]['image'][0].cpu(), i[1]['lm'][0].cpu()] )
     for i,id in enumerate(ds):
         print(i)
 # %%

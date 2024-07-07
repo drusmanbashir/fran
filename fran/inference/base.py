@@ -127,6 +127,7 @@ class BaseInferer(GetAttr, DictToAttr):
         return output
 
     def filter_existing_preds(self, imgs):
+        imgs = [Path(img) for img in imgs]
         print(
             "Filtering existing predictions\nNumber of images provided: {}".format(
                 len(imgs)
@@ -175,7 +176,7 @@ class BaseInferer(GetAttr, DictToAttr):
         self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
 
     def __repr__(self) -> str:
-        return self.__class__
+        return str(self.__class__)
 
     def set_transforms(self, tfms: str = ""):
         tfms_final = []
@@ -272,11 +273,10 @@ class BaseInferer(GetAttr, DictToAttr):
             output_postfix="",
             separate_folder=False,
         )
+        I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
         if self.save_channels == True:
-            I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
             tfms = [Sq, Sa, A, D, I]
         else:
-            I = ResizeToMetaSpatialShaped(keys=["pred"], mode="trilinear")
             tfms = [Sq, A, D, I]
         if self.safe_mode == True:
             tfms.insert(0, U)
@@ -345,9 +345,9 @@ if __name__ == "__main__":
 
 # %%
     proj = Project(project_title="nodes")
-    run_ps = ["LITS-702"]
+    run_ps = ["LITS-945"]
     safe_mode = False
-    bs = 8
+    bs = 5
 
 # %%
     fldr_crc = Path("/s/xnat_shadow/crc/images")
@@ -359,10 +359,11 @@ if __name__ == "__main__":
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images")
     img_nodes = list(fldr_nodes.glob("*"))
+    img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
     save_channels = False
-    overwrite = False
+    overwrite = True
 
 # %%
     devices = [0]
@@ -376,7 +377,7 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = P.run(img_nodes, chunksize=5)
+    preds = P.run(img_nodes, chunksize=1)
 # %%
     data = P.ds.data[0]
 # %%
