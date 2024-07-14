@@ -6,6 +6,7 @@ from typing import Sequence, Union
 
 import ipdb
 import SimpleITK as sitk
+from monai.data.meta_tensor import MetaTensor
 import torch
 from label_analysis.helpers import listify, relabel
 from label_analysis.merge import merge_pt
@@ -14,6 +15,7 @@ from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
 
 from fran.transforms.base import MonaiDictTransform
+from fran.transforms.imageio import LoadSITKd
 from fran.utils.imageviewers import ImageMaskViewer
 
 tr = ipdb.set_trace
@@ -23,6 +25,25 @@ from fastcore.transform import ItemTransform, store_attr
 
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
+
+def one_hot(x, classes, axis=1):
+        "Creates one binay mask per class"
+        return torch.stack([torch.where(x==c, 1, 0) for c in range(classes)], axis=axis)
+
+def reassign_labels(remapping, lm):
+    #input is a torch tensor. It remaps labels and copies meta information to output tensor
+    #works 2% slower than converting to sitk first then using remap
+    n_classes = max(remapping.values())+1 # include bgclass
+    lm_out = torch.zeros(lm.shape, dtype=lm.dtype)
+    lm_out = MetaTensor(lm_out)
+    lm_out.copy_meta_from(lm) 
+    lm_tmp = one_hot(lm, n_classes, 0)
+    lm_reassigned = torch.zeros(lm_tmp.shape, device=lm.device)
+    for src,dest in remapping.items():
+        lm_reassigned[dest] += lm_tmp[src]
+    for x in range(n_classes):
+        lm_out[torch.isin(lm_reassigned[x], 1.0)] = x
+    return lm_out
 
 
 
@@ -169,7 +190,7 @@ class MetaToDict(MonaiDictTransform):
         return d
 
 
-class Recast(MonaiDictTransform):
+class Recastd(MonaiDictTransform):
     def func(self, img):
         img = img.float()
         return img
@@ -206,9 +227,10 @@ class MergeLabelmapsd(MapTransform):
         return d
 
 
-class RemapSITK(MapTransform):
+class LabelRemapd(MapTransform):
     """
-    input can be a file or Image
+    Works on Metatensor. Accepts remapping dictionary as in sitk
+
     """
 
     def __init__(
@@ -231,6 +253,26 @@ class RemapSITK(MapTransform):
             d[key] = self.func(d[key], remapping)
         return d
 
+    def func(self, lm, remapping):
+        if self.need_remapping(remapping):
+            lm_sitk = sitk.GetImageFromArray(lm)
+            lm_sitk = relabel(lm_sitk, remapping)
+            lm_np = sitk.GetArrayFromImage(lm_sitk)
+            lm_pt = torch.tensor(lm_np)
+            lm_out= MetaTensor(lm_pt)
+            lm_out.copy_meta_from(lm) 
+            return lm_out
+        return lm
+
+
+
+
+
+
+class LabelRemapSITKd(LabelRemapd):
+    """
+    input can be a file or Image
+    """
     def func(self, lm, remapping):
         if isinstance(lm, Union[str, Path]):
             lm = sitk.ReadImage(lm)

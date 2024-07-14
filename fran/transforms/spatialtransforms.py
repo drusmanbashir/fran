@@ -1299,43 +1299,6 @@ def get_amount_to_pad_torch(img_shape, patch_size):
     return padding
 
 
-def reassign_labels(src_dest_labels, x):
-    def _inner(mask):
-        n_classes = len(src_dest_labels)
-        mask_out = torch.zeros(mask.shape, dtype=mask.dtype)
-        mask_tmp = one_hot(mask, n_classes, 0)
-        mask_reassigned = torch.zeros(mask_tmp.shape, device=mask.device)
-        for src_des in src_dest_labels:
-            src, dest = src_des[0], src_des[1]
-            mask_reassigned[dest] += mask_tmp[src]
-
-        for x in range(n_classes):
-            mask_out[torch.isin(mask_reassigned[x], 1.0)] = x
-        return mask_out
-
-    if len(x) == 2:
-        img, mask = x
-        output = [img]
-    elif len(x) == 1:
-        mask = x
-        output = []
-    else:
-        tr()
-    output.append(_inner(mask))
-    return output
-
-
-class MaskLabelRemap(KeepBBoxTransform):
-    """
-    switches label values from src->dest by accepting list of lists [[1,2],[2,2]] will convert all ones to twos and twos to twos
-    """
-
-    def __init__(self, src_dest_labels: tuple):
-        if isinstance(src_dest_labels, str):
-            src_dest_labels = ast.literal_eval(src_dest_labels)
-        self.func = partial(reassign_labels, src_dest_labels)
-
-
 class StrideRandom(ItemTransform):
     def __init__(
         self, patch_size, input_dims, stride_max=[2, 2, 2], pad_value=-3.0, p=0.3

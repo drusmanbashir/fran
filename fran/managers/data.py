@@ -162,7 +162,7 @@ class DataManager(LightningDataModule):
 
     def prepare_data(self):
         # getting the right folders
-        dataset_mode = self.dataset_params["mode"]
+        dataset_mode = self.plan["mode"]
         assert dataset_mode in [
             "whole",
             "patch",
@@ -185,7 +185,7 @@ class DataManager(LightningDataModule):
         data = []
         for fn in fnames:
             fn = Path(fn)
-            img_fn = find_matching_fn(fn.name, images)
+            img_fn = find_matching_fn(fn.name, images,True)
             lm_fn =  find_matching_fn(fn.name, lms_fldr, True)
             indices_fn = inds_fldr / img_fn.name
             assert img_fn.exists(), "Missing image {}".format(img_fn)
@@ -283,7 +283,7 @@ class DataManagerSource(DataManager):
 
     def derive_dataset_folder(self):
         prefix = "spc"
-        spacing = self.dataset_params["spacing"]
+        spacing = ast.literal_eval(self.plan["spacing"])
         parent_folder = self.project.fixed_spacing_folder
         dataset_folder = folder_name_from_list(prefix, parent_folder, spacing)
         return dataset_folder

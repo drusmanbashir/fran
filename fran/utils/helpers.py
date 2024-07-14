@@ -355,7 +355,6 @@ def find_matching_fn(src_fn:Path,mask_fnames:Union[list,Path],use_cid=False):
             mask_fnames = list(mask_fnames.glob("*"))
             mask_fnames = [fn for fn in mask_fnames if is_img_file(fn)]
         src_fn = cleanup_fname(src_fn.name)
-        cid = info_from_filename(src_fn)['case_id']
         matching_mask_fns=[]
         for mask_fn in mask_fnames:
             if use_cid == False:
@@ -363,7 +362,8 @@ def find_matching_fn(src_fn:Path,mask_fnames:Union[list,Path],use_cid=False):
                 if mask_fn_clean==src_fn:
                     matching_mask_fns.append(mask_fn)
             else:
-                cid_mask = info_from_filename(mask_fn.name)['case_id']
+                cid = info_from_filename(src_fn,full_caseid=True)['case_id']
+                cid_mask = info_from_filename(mask_fn.name,full_caseid=True)['case_id']
                 if cid_mask == cid:
                     matching_mask_fns.append(mask_fn)
         if len(matching_mask_fns)==1: return matching_mask_fns[0]

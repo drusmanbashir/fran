@@ -4,7 +4,6 @@ import ast
 import shutil
 
 from label_analysis.totalseg import TotalSegmenterLabels
-
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
@@ -59,13 +58,6 @@ class PreprocessingManager():
         self.plan = conf[self.plan]
         self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
-        self.Resampler = ResampleDatasetniftiToTorch(
-                    project=self.project,
-                    spacing=self.plan['spacing'],
-
-                    device='cpu'
-                )
-
         # 
         print("Project: {0}".format(self.project_title))
 
@@ -93,10 +85,15 @@ class PreprocessingManager():
                 return True
 
     def resample_dataset(self, overwrite=False):
-        self.Resampler.create_dl(overwrite)
-        self.Resampler.process()
+        self.R = ResampleDatasetniftiToTorch(
+                    project=self.project,
+                    spacing=self.plan['spacing'],
+                    device='cpu'
+                )
+        self.R.setup(overwrite)
+        self.R.process()
 
-    def generate_lbd_dataset(self):
+    def generate_lbd_dataset(self, overwrite=False):
         L = LabelBoundedDataGenerator(
             project=self.project,
             expand_by=self.plan['expand_by_lbd'],
@@ -106,8 +103,7 @@ class PreprocessingManager():
 
             fg_indices_exclude=None,
         )
-        L.setup()
-        L.create_dl()
+        L.setup(overwrite=overwrite)
         L.process()
 
 
@@ -213,12 +209,12 @@ class PreprocessingManager():
             if isinstance(vals, str):
                 vals = ast.literal_eval(vals)
             if all([isinstance(vals, (list, tuple)), len(vals) == 3]):
-                self.Resampler.spacing = vals
+                self.R.spacing = vals
             elif isinstance(vals, (int, float)):
                 vals = [
                     vals,
                 ] * 3
-                self.Resampler.spacing = vals
+                self.R.spacing = vals
             else:
                 _accept_defaults()
         except:
@@ -297,7 +293,7 @@ if __name__ == "__main__":
 
     # args.num_processes = 1
     args.debug=True
-    args.plan = "plan1"
+    args.plan = "plan2"
 # %%
 
     P= Project(project_title=args.project_title)
@@ -320,14 +316,29 @@ if __name__ == "__main__":
     # I.spacing = 
 # %%
     I.resample_dataset()
+
+# %%
     if I.plan['mode']=='patch':
     # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     I.generate_lbd_dataset()
 # %%
+    R = I.R
+    dici = R.ds.data[0]
+    dici = L(dici)
     
+    dici['image'].meta
+# %%
+    ca = R.ds[0]
+# %%
 
 
+
+    dici = R(dici)
+    dici = L(dici)
+
+    lm = dici['lm']
+# %%
 
 # %%
     overwrite=True
@@ -408,6 +419,6 @@ if __name__ == "__main__":
 # %%
 
         I.get_resampling_configs()
-        I.Resampler.create_dl()
-        I.Resampler.process()
+        I.R.create_dl()
+        I.R.process()
 # %%

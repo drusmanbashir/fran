@@ -16,8 +16,8 @@ from fran.managers.datasource import get_ds_remapping
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import ChangeDType
-from fran.transforms.misc_transforms import (ChangeDtyped, DictToMeta, FgBgToIndicesd2, HalfPrecisiond,
-                                             Recast, RemapSITK)
+from fran.transforms.misc_transforms import (ChangeDtyped, DictToMeta, FgBgToIndicesd2, HalfPrecisiond, LabelRemapd,
+                                             Recastd, LabelRemapSITKd)
 from fran.transforms.spatialtransforms import ResizeToTensord
 
 
@@ -29,7 +29,7 @@ from monai.transforms.utility.dictionary import EnsureChannelFirstd
 from fran.transforms.imageio import LoadSITKd, LoadTorchd
 from fran.transforms.inferencetransforms import BBoxFromPTd
 from fran.transforms.misc_transforms import (ApplyBBox, MergeLabelmapsd,
-                                             Recast, RemapSITK)
+                                             Recastd, LabelRemapSITKd)
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.string import info_from_filename
 
@@ -55,7 +55,7 @@ class ResamplerDataset(GetAttr, Dataset):
     def __init__(
         self,
         project,
-        data,
+        df,
         spacing,
         half_precision=False,
         clip_center=False,
@@ -69,41 +69,60 @@ class ResamplerDataset(GetAttr, Dataset):
             "fg",
         ], "Select either dataset mean/std or fg mean/std for normalization"
         self.project = project
+        self.df = df
         self.spacing = spacing
         self.half_precision = half_precision
         self.clip_center = clip_center
         self.device = device
         super(GetAttr).__init__()
         self.set_normalization_values(mean_std_mode)
+
+    def setup(self):
         self.create_transforms()
+        data = self.create_data_dicts()
         Dataset.__init__(self, data,self.transform)
 
 
+    #
+    # def __getitem__(self, index):
+    #     dici = self.data[index]
+    #     img_fname = dici["image"]
+    #     mask_fname = dici["lm"]
+    #     remapping = dici['remapping']
+    #     img = sitk.ReadImage(img_fname)
+    #     mask = sitk.ReadImage(mask_fname)
+    #     dici = {
+    #         "image": img,
+    #         "lm": lm,
+    #         "remapping": remapping,
+    #     }
+    #     dici = self.transform(dici)
+    #     return dici
+    #
+    def create_data_dicts(self, overwrite=False):
+        data = []
+        for index in range(len(self.df)):
+            cp = self.df.iloc[index]
+            ds = cp["ds"]
+            remapping = get_ds_remapping(ds, self.global_properties)
+            img_fname = cp["image"]
+            mask_fname = cp["lm"]
+            dici = {
+                "image": img_fname,
+                "lm": mask_fname,
+                "remapping": remapping,
+            }
+            data.append(dici)
+        return data
 
-    def __getitem__(self, index):
-        dici = self.data[index]
-        img_fname = dici["image"]
-        mask_fname = dici["lm"]
-        remapping = dici['remapping']
-        img = sitk.ReadImage(img_fname)
-        mask = sitk.ReadImage(mask_fname)
-        dici = {
-            "image": img,
-            "lm": mask,
-            "image_fname": img_fname,
-            "lm_fname": mask_fname,
-            "remapping": remapping,
-        }
-        dici = self.transform(dici)
-        return dici
 
     def create_transforms(self):
-        R = RemapSITK(keys=["lm"], remapping_key="remapping")
         L = LoadSITKd(keys=["image", "lm"], image_only=True)
+        R = LabelRemapd(keys=["lm"], remapping_key="remapping")
         T = ToDeviced(keys=["image", "lm"], device=self.device)
-        Re = Recast(keys=["image", "lm"])
+        Re = Recastd(keys=["image", "lm"])
 
-        Ind = FgBgToIndicesd(keys=["lm"], image_key="image", image_threshold=-2600)
+        Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
         Ai = DictToMeta(
             keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
         )
@@ -127,9 +146,8 @@ class ResamplerDataset(GetAttr, Dataset):
         )
         Ch = ChangeDtyped(keys=['lm'],target_dtype = torch.uint8)
 
-        
-
-        tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
+        # tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
+        tfms = [L, R, T, Re, Ind, E, Si, Rz,Ch]
 
         if self.clip_center == True:
             tfms.extend([N])
@@ -168,7 +186,6 @@ class CropToLabelDataset(Dataset):
     def setup(self):
         self.create_transforms()
         data = self.create_data_dicts()
-
         Dataset.__init__(self, data=data, transform=self.transform)
 
     def create_data_dicts(self ):
@@ -289,10 +306,10 @@ class ImporterDataset(Dataset):
 
     def create_transforms(self):
 
-        R = RemapSITK(keys=["lm_imported"], remapping_key="remapping")
+        R = LabelRemapSITKd(keys=["lm_imported"], remapping_key="remapping")
         L1 = LoadSITKd(keys=["lm_imported"], image_only=True)
         L2 = LoadTorchd(keys=["lm", "image"])
-        Re = Recast(keys=["lm_imported"])
+        Re = Recastd(keys=["lm_imported"])
 
         E = EnsureChannelFirstd(
             keys=["lm_imported", "image", "lm"], channel_dim="no_channel")

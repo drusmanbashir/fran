@@ -17,6 +17,38 @@ plt.ion()
 import ipdb
 tr = ipdb.set_trace
 # %%
+
+import matplotlib as mpl
+from matplotlib import pyplot as plt
+def discrete_cmap():
+    cmap = plt.cm.jet  # define the colormap
+# extract all colors from the .jet map
+    cmaplist = [cmap(i) for i in range(cmap.N)]
+# force the first color entry to be grey
+    cmaplist[0] = (.0, .0, .0, 1.0)
+# create the new map
+    cmap = mpl.colors.LinearSegmentedColormap.from_list(
+        'Custom cmap', cmaplist, cmap.N)
+
+    bounds = np.linspace(0, 255, 256)
+    norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+    return cmap, norm
+def discrete_cmap(N, base_cmap=None):
+    """Create an N-bin discrete colormap from the specified input map"""
+
+    # Note that if base_cmap is a string or None, you can simply do
+    #    return plt.cm.get_cmap(base_cmap, N)
+    # The following works for string, None, or a colormap instance:
+
+    base = plt.cm.get_cmap(base_cmap)
+    color_list = base(np.linspace(0, 1, N))
+    cmap_name = base.name + str(N)
+    return base.from_list(cmap_name, color_list, N)
+import numpy as np
+x = np.random.rand(20)  # define the data
+y = np.random.rand(20)  # define the data
+tag = np.random.randint(0, 20, 20)
+
 def fix_labels(x):
             if x.GetPixelID()==22:
                 x = sitk.Cast(x,sitk.sitkUInt8)
@@ -105,7 +137,7 @@ class ImageMaskViewer(object):
                  figure_size=(10, 8),
                  intensity_slider_range_percentile=[2, 98],
                  cmap_img= 'Greys_r',
-                 cmap_mask = 'RdPu_r',
+                 cmap_mask = None,
                  apply_transpose=True) ->None:
         self.cmap_img ,self.cmap_mask, self.dtypes= cmap_img, cmap_mask, dtypes
 
@@ -137,8 +169,15 @@ class ImageMaskViewer(object):
                                       self.dtypes):
 
             img_slice = img[0,:,:]
-            if data_type == 'mask':
-                ax_imgs.append(ax.imshow(img_slice,cmap=self.cmap_mask,vmin=img.min(),vmax=img.max() ))
+            if data_type == 'm':
+                if not self.cmap_mask:
+                    N = img.max()
+                    # cmap = discrete_cmap(N,'cubehelix')
+                    # ax_imgs.append(ax.imshow(img_slice,cmap=cmap))
+                    cmap_mask ='nipy_spectral'
+                    ax_imgs.append(ax.imshow(img_slice,cmap=cmap_mask,vmin=img.min(),vmax=img.max() ))
+                else:
+                    ax_imgs.append(ax.imshow(img_slice,cmap=self.cmap_mask,vmin=img.min(),vmax=img.max() ))
 
             else:
                 ax_imgs.append(ax.imshow(img_slice,

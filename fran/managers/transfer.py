@@ -1,7 +1,4 @@
-# %%
-# %% [markdown]
 ## 
-# %%
 
 import ipdb
 tr = ipdb.set_trace
@@ -25,6 +22,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from fran.architectures.create_network import (create_model_from_conf, 
                                                pool_op_kernels_nnunet)
+from torch import nn
 import torch.nn.functional as F
 from fran.transforms.spatialtransforms import one_hot
 try:
@@ -41,13 +39,32 @@ from fran.managers.training import TrainingManager, UNetTrainer, checkpoint_from
 
 
 class TrainingManagerTransfer(TrainingManager):
-    def __init__(self, project, configs, run_name):
+    def __init__(self, project, configs, run_name, freeze=None):
+        assert freeze in [None,'encoder'],"Freeze either None or encoder"
         assert run_name is not None, "Please specificy a run to transfer learning from"
         super().__init__(project, configs, run_name)
+        self.freeze=freeze
         self.run_name = None
     def init_dm_unet(self, epochs):
             self.N = self.load_trainer(max_epochs= epochs)
             self.D = self.init_dm(cache_rate)
+            if self.freeze=='encoder':
+                self.freeze_encoder()
+            self.replace_final_layer()
+
+
+    def freeze_encoder(self):
+        enc= self.N.model.conv_blocks_context
+        for param in enc.parameters():
+            param.requires_grad = False
+
+    def replace_final_layer(self):
+        out_channels = self.configs['model_params']['out_channels']
+        current= self.N.model.seg_outputs[-1]
+        in_ch,out_ch, kernel,stride = current.in_channels,current.out_channels, current.kernel_size,current.stride
+        newhead = nn.Conv3d(in_ch,out_ch,kernel,stride)
+        self.N.model.seg_outputs[-1]=newhead
+        print("----------------------------------\nReplacing final layer outchannels ({0} to {1})\n---------------------------------)".format(out_ch,out_channels))
 
     def fit(self):
         self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=None)
@@ -60,7 +77,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
-    project_title = "litsmc"
+    project_title = "nodes"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -76,11 +93,12 @@ if __name__ == "__main__":
     # conf['model_params']['lr']=1e-3
 
 # %%
-    device_id = 0
+    device_id = 1
     run_name = None
-    bs =6# if none, will get it from the conf file 
+    bs =5# if none, will get it from the conf file 
     run_name = "LITS-811"
     run_name ='LITS-919'
+    run_name = "LITS-948"
     run_name = "LITS-913"
     # run_name ='LITS-836'
     compiled = False
@@ -90,11 +108,11 @@ if __name__ == "__main__":
     neptune = True
     tags = []
     cache_rate=0.0
-    description = f"DynUNet plan 3 based. "
-    Tm = TrainingManagerTransfer(project= proj, configs =conf, run_name= run_name)
+    description = f" "
+    Tm = TrainingManagerTransfer(project= proj, configs =conf, run_name= run_name,freeze='encoder')
 # %%
     Tm.setup(
-        # lr = 1e-3,
+        lr = 1e-2,
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
@@ -106,11 +124,26 @@ if __name__ == "__main__":
         description=description,
         cache_rate=cache_rate
     )
+# %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
 # %%
     Tm.fit()
  
+# %%
+#SECTION:-------------------- Tinkering with N--------------------------------------------------------------------------------------
+
+    N = Tm.N
+
+    enc= N.model.conv_blocks_context
+    for param in enc.parameters():
+        param.requires_grad = False
+
+# %%
+    N.freeze()
+    cc = list(N.children())
+    ccc = list(cc[0].children())
+    ccc[-1]
 
 # %%
     Tm.D.setup()
@@ -123,8 +156,10 @@ if __name__ == "__main__":
     iteri = iter(dl)
     iteri2 = iter(dl2)
     batch = next(iteri2)
-    pred = Tm.N(batch['image'].to(0))
+    pred = Tm.N(batch['image'].to(1))
 #
+    from torch import nn
+
 
 # %%
     m =Tm.N.model

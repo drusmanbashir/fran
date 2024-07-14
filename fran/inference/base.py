@@ -336,18 +336,19 @@ class BaseInferer(GetAttr, DictToAttr):
 
 if __name__ == "__main__":
     # ... run your application ...
+# %%
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+
     from fran.utils.common import *
 
 # %%
     proj = Project(project_title="totalseg")
-    run_ps = ["LITS-860"]
+    run_tot= ["LITS-860"]
     safe_mode = True
 
 # %%
-    proj = Project(project_title="nodes")
-    run_ps = ["LITS-945"]
-    safe_mode = False
-    bs = 5
+    proj_nodes = Project(project_title="nodes")
+    run_nodes= ["LITS-945"]
 
 # %%
     fldr_crc = Path("/s/xnat_shadow/crc/images")
@@ -357,19 +358,24 @@ if __name__ == "__main__":
     img = sitk.ReadImage(img_fn)
     fldr_lidc = Path("/s/xnat_shadow/lidc2/images/")
     imgs_lidc = list(fldr_lidc.glob("*"))
-    fldr_nodes = Path("/s/xnat_shadow/nodes/images")
+    fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/")
     img_nodes = list(fldr_nodes.glob("*"))
-    img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
+    # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
+# %%
+#SECTION:-------------------- NODES--------------------------------------------------------------------------------------
+
+    safe_mode = False
+    bs = 5
     save_channels = False
-    overwrite = True
+    overwrite = False
 
 # %%
     devices = [0]
-    P = BaseInferer(
+    N = BaseInferer(
         proj,
-        run_ps[0],
+        run_nodes[0],
         overwrite=overwrite,
         save_channels=save_channels,
         safe_mode=safe_mode,
@@ -377,7 +383,7 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = P.run(img_nodes, chunksize=1)
+    preds = N.run(img_nodes, chunksize=1)
 # %%
     data = P.ds.data[0]
 # %%

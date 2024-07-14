@@ -192,7 +192,8 @@ class ConfigMaker():
             try:
                 self.add_out_channels()
             except KeyError as er:
-                print("Warning: Key {} not is in config['model_params']".format(er))
+                print("*"*20)
+                print("Warning: Key {} not is in project.global_properties ".format(er))
                 print("Training will breakdown unless projectwide properties are set first. \nAlternatively set 'out_channels' key in config['model_params']  ")
 
         self.add_patch_size()
@@ -208,15 +209,7 @@ class ConfigMaker():
                 self.config['dataset_params'][prop]=None
 
     def add_out_channels(self):
-            if isinstance(self.config['dataset_params']["src_dest_labels"], Union[tuple,list]):
-                out_ch = out_channels_from_dict_or_cell(
-                    self.config['dataset_params']["src_dest_labels"]
-                )
-            else: # i.e., it doesnt exist
-                out_ch=1
-                for k in self.project.global_properties.keys():
-                    if 'lm_group' in k:
-                        out_ch +=self.project.global_properties[k]['num_labels']
+            out_ch=len(self.project.global_properties['labels_all'])+1
             self.config['model_params']["out_channels"]  = out_ch
 
     def add_patch_size(self):
@@ -342,5 +335,4 @@ if __name__ == "__main__":
     config["model_params"]["mom_low"].sample()
     config["model_params"]["mom_added"].sample()
 
-# %%
 # %%

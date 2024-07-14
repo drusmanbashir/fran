@@ -1,6 +1,6 @@
 # %%
 import shutil
-
+from lightning.pytorch.callbacks import ModelCheckpoint
 from monai.transforms.io.dictionary import LoadImaged
 from torchinfo import summary
 from fran.transforms.imageio import TorchReader
@@ -105,7 +105,7 @@ class UNetTrainer(LightningModule):
         super().__init__()
         self.lr = lr if lr else model_params["lr"]
         store_attr()
-        self.save_hyperparameters("model_params", "loss_params")
+        self.save_hyperparameters("model_params", "loss_params","lr")
         self.model, self.loss_fnc = self.create_model()
 
     def _common_step(self, batch, batch_idx):
@@ -335,6 +335,7 @@ class TrainingManager:
         if lr and not self.ckpt:
             self.lr  = lr
         elif lr and self.ckpt:
+            self.lr  = lr
             self.state_dict = torch.load(self.ckpt)
             self.state_dict["lr_schedulers"][0]["_last_lr"][0] = lr
             torch.save(self.state_dict, self.ckpt)
@@ -348,6 +349,11 @@ class TrainingManager:
 
     def init_cbs(self,neptune,profiler,tags,description):
         cbs = [
+                ModelCheckpoint(save_top_k=3,
+                                monitor = "val_loss",
+                                mode="min",),
+
+
                 LearningRateMonitor(logging_interval="epoch"),
                 TQDMProgressBar(refresh_rate=3),
         ]
@@ -412,7 +418,7 @@ class TrainingManager:
             assert(a:=(len(ratios))==(b:=len(labels))), "Class ratios {0} do not match number of labels in dataset {1}".format(a,b)
         else:
             assert  isinstance(ratios, int), "If no list is provided, fgbg_ratio must be an integer"
-        configs = self.select_plan(configs)
+        self.configs = self.select_plan(configs)
 
     def select_plan(self,configs):
         plan = configs['dataset_params']['plan']
@@ -436,7 +442,7 @@ class TrainingManager:
             return 48
 
     def init_dm(self,cache_rate, ):
-        DMClass = self.resolve_datamanager(self.configs["dataset_params"]["mode"])
+        DMClass = self.resolve_datamanager(self.configs["plan"]["mode"])
         D = DMClass(
             self.project,
             dataset_params=self.configs["dataset_params"],
@@ -466,6 +472,7 @@ class TrainingManager:
         try:
             N = UNetTrainer.load_from_checkpoint(
                 self.ckpt, project=self.project, dataset_params=self.configs['dataset_params'], lr=self.lr,**kwargs
+
             )
             print("Model loaded from checkpoint: ",self.ckpt)
         except:
@@ -555,12 +562,12 @@ if __name__ == "__main__":
 
     # conf['model_params']['lr']=1e-3
 
-    pp(conf)
+
 # %%
-    device_id = 1
+    device_id = 0
     bs = 5# 5 is good if LBD with 2 samples per case
+    run_name ='LITS-960'
     run_name = None
-    run_name ='LITS-946'
     compiled = False
     profiler=False
     #NOTE: if Neptune = False, should store checkpoint locally

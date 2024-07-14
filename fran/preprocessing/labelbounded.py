@@ -1,26 +1,23 @@
-# %%
+# j %%
 from label_analysis.totalseg import TotalSegmenterLabels
-from monai.data import Dataset
-from monai.data.meta_tensor import MetaTensor
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import CropForegroundd
-from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
-                                                 ToDeviceD, ToDeviced)
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 from torch.utils.data import DataLoader
 
 from fran.data.dataloader import dict_list_collated
-from fran.preprocessing.dataset import CropToLabelDataset, FGBGIndicesDataset, ImporterDataset
-from fran.preprocessing.fixed_spacing import (ResampleDatasetniftiToTorch,
-                                              generate_bboxes_from_lms_folder,
-                                              get_tensor_stats)
+from fran.preprocessing.dataset import (
+    CropToLabelDataset,
+    FGBGIndicesDataset,
+    ImporterDataset,
+)
+from fran.preprocessing.fixed_spacing import (
+    generate_bboxes_from_lms_folder,
+)
 from fran.preprocessing.patch import PatchDataGenerator
-from fran.transforms.imageio import LoadSITKd, LoadTorchd
-from fran.transforms.inferencetransforms import BBoxFromPTd
-from fran.transforms.misc_transforms import (ApplyBBox, MergeLabelmapsd,
-                                             Recast, RemapSITK)
-from fran.transforms.spatialtransforms import ResizeToTensord
+from fran.transforms.imageio import LoadTorchd
 from fran.utils.config_parsers import is_excel_nan
-from fran.utils.string import info_from_filename, strip_extension
+from fran.utils.string import info_from_filename
 
 if "get_ipython" in globals():
     print("setting autoreload")
@@ -59,13 +56,14 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         mask_label: this label is used to apply mask, i.e., crop the image and lm
         """
 
-        store_attr() #WARN: leave this as top line otherwise getattr fails
+        store_attr()  # WARN: leave this as top line otherwise getattr fails
         if is_excel_nan(self.lm_group):
             self.lm_group = "lm_group1"
         self.case_ids = self.get_case_ids_lm_group(self.lm_group)
         self.set_folders_from_spacing(self.spacing)
         print("Total case ids:", len(self.case_ids))
-        if not self.mask_label: self.mask_label = 1
+        if not self.mask_label:
+            self.mask_label = 1
 
     def set_folders_from_spacing(self, spacing):
         self.fixed_spacing_subfolder = folder_name_from_list(
@@ -79,8 +77,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             values_list=spacing,
         )
 
-    def setup(
-            self, device="cpu", batch_size=4, overwrite=True):
+    def setup(self, device="cpu", batch_size=4, overwrite=True):
         device = resolve_device(device)
         print("Processing on ", device)
         self.register_existing_files()
@@ -98,16 +95,13 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             device=device,
         )
         self.ds.setup()
-        self.create_dl(batch_size=batch_size,num_workers=1)
+        self.create_dl(batch_size=batch_size, num_workers=1)
 
-
-
-    def create_dl(self,num_workers=1,batch_size=4
-    ):  # optimised defaults. Do not change. GPU wont work (multiprocessing issues)
-        # 'gpu' wont work on multiprocessing
+    def create_dl(self, num_workers=1, batch_size=4):
+        # same function as labelbounded
         self.dl = DataLoader(
             dataset=self.ds,
-            num_workers=num_workers,
+            num_workers=4,
             collate_fn=dict_list_collated(
                 keys=[
                     "image",
@@ -118,6 +112,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
                     "foreground_end_coord",
                 ]
             ),
+            # collate_fn=img_lm_metadata_lists_collated,
             batch_size=batch_size,
             pin_memory=False,
         )
@@ -169,12 +164,6 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             batch[key] = listvals
         return batch
 
-    def save_indices(self, indices_dict, subfolder):
-        fn = Path(indices_dict["meta"]["filename"])
-        fn_name = strip_extension(fn.name) + ".pt"
-        fn = self.output_folder / subfolder / fn_name
-        torch.save(indices_dict, fn)
-
     def create_info_dict(self):
         resampled_dataset_properties = super().create_info_dict()
         resampled_dataset_properties["fg_indices_exclude"] = self.fg_indices_exclude
@@ -191,10 +180,6 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             cids.extend(cds)
         return cids
 
-    def create_output_folders(self):
-        super().create_output_folders()
-        maybe_makedirs(self.output_folder / self.indices_subfolder)
-
     @property
     def indices_subfolder(self):
         if self.fg_indices_exclude is not None:
@@ -204,6 +189,9 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         else:
             indices_subfolder = "indices"
         return indices_subfolder
+
+    # def create_output_folders(self):
+    #     super().create_output_folders()
 
 
 class FGBGIndicesGenerator(LabelBoundedDataGenerator):
@@ -218,19 +206,18 @@ class FGBGIndicesGenerator(LabelBoundedDataGenerator):
         self.output_folder = Path(data_folder)
         store_attr()
 
-
     def register_existing_files(self):
-        self.existing_files = list((self.output_folder / self.indices_subfolder).glob("*pt"))
+        self.existing_files = list(
+            (self.output_folder / self.indices_subfolder).glob("*pt")
+        )
         self.existing_case_ids = [
             info_from_filename(f.name, full_caseid=True)["case_id"]
             for f in self.existing_files
         ]
         self.existing_case_ids = set(self.existing_case_ids)
-        print("Case ids processed in a previous session: ",len(self.existing_case_ids))
+        print("Case ids processed in a previous session: ", len(self.existing_case_ids))
 
-
-    def setup(
-            self, device="cpu", batch_size=4, overwrite=False):
+    def setup(self, device="cpu", batch_size=4, overwrite=False):
         device = resolve_device(device)
         print("Processing on ", device)
         self.register_existing_files()
@@ -245,9 +232,10 @@ class FGBGIndicesGenerator(LabelBoundedDataGenerator):
             device=device,
         )
         self.ds.setup()
-        self.create_dl(batch_size=batch_size,num_workers=1)
+        self.create_dl(batch_size=batch_size, num_workers=1)
 
-    def create_dl(self,num_workers=1,batch_size=4
+    def create_dl(
+        self, num_workers=1, batch_size=4
     ):  # optimised defaults. Do not change. GPU wont work (multiprocessing issues)
         # 'gpu' wont work on multiprocessing
         self.dl = DataLoader(
@@ -267,14 +255,17 @@ class FGBGIndicesGenerator(LabelBoundedDataGenerator):
             pin_memory=False,
         )
 
-
     def process(
         self,
     ):
-        if not hasattr(self,"dl"):
+        if not hasattr(self, "dl"):
             print("No data loader created. No data to be processed. Create dl first")
             return 0
-        print("Retrieving FGBG indices from datafolder {0} and storing to subfolder {1}".format(self.data_folder,self.indices_subfolder))
+        print(
+            "Retrieving FGBG indices from datafolder {0} and storing to subfolder {1}".format(
+                self.data_folder, self.indices_subfolder
+            )
+        )
         self.create_output_folders()
         self.results = []
         self.shapes = []
@@ -289,9 +280,15 @@ class FGBGIndicesGenerator(LabelBoundedDataGenerator):
         #         "since some files skipped, dataset stats are not being stored. run resampledatasetniftitotorch.get_tensor_folder_stats separately"
         #     )
         #
+
     def process_batch(self, batch):
         batch = self.make_contiguous(batch)
-        images, lms, fg_inds, bg_inds, =  (
+        (
+            images,
+            lms,
+            fg_inds,
+            bg_inds,
+        ) = (
             batch["image"],
             batch["lm"],
             batch["lm_fg_indices"],
@@ -307,7 +304,10 @@ class FGBGIndicesGenerator(LabelBoundedDataGenerator):
             # foreground_start_coord,
             # foreground_end_coord,
         ) in zip(
-            images, lms, fg_inds, bg_inds#, foreground_start_coord, foreground_end_coord
+            images,
+            lms,
+            fg_inds,
+            bg_inds,  # , foreground_start_coord, foreground_end_coord
         ):
             assert image.shape == lm.shape, "mismatch in shape".format(
                 image.shape, lm.shape
@@ -375,7 +375,7 @@ class LabelBoundedDataGeneratorImported(PatchDataGenerator, _Preprocessor, GetAt
             )
         )
 
-    def create_dl(self,batch_size=4 ):
+    def create_dl(self, batch_size=4):
         self.register_existing_files()
         self.ds = ImporterDataset(
             case_ids=self.case_ids,
@@ -388,7 +388,7 @@ class LabelBoundedDataGeneratorImported(PatchDataGenerator, _Preprocessor, GetAt
         self.ds.setup()
         self.dl = DataLoader(
             dataset=self.ds,
-            num_workers= 1,
+            num_workers=1,
             collate_fn=dict_list_collated(
                 keys=["image", "lm", "lm_imported", "bounding_box"]
             ),
@@ -423,12 +423,14 @@ if __name__ == "__main__":
 
     P = Project(project_title="nodes3")
     P.maybe_store_projectwide_properties()
-# %%
-    F = FGBGIndicesGenerator(project=P,data_folder="/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/")
+    # %%
+    F = FGBGIndicesGenerator(
+        project=P, data_folder="/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/"
+    )
     F.setup()
-# %%
+    # %%
     F.process()
-# %%
+    # %%
     L = LabelBoundedDataGenerator(
         project=P,
         expand_by=40,
@@ -438,22 +440,22 @@ if __name__ == "__main__":
         fg_indices_exclude=None,
     )
     L.indices_subfolder
-# %%
+    # %%
     L.create_dl(overwrite=False, device="cpu", batch_size=4)
     L.process()
-# %%
+    # %%
     fldr = Path(
         "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/indices_fg_exclude_1"
     )
     fns = list(fldr.glob("*pt"))
-# %%
+    # %%
     zeros = 0
     for fn in pbar(fns):
         tnser = torch.load(fn)
         lm_fg = tnser["lm_fg_indices"]
         if len(lm_fg) == 0:
             zeros += 1
-# %%
+        # %%
 
         if not "lm_fg_indices" in tnser.keys():
             tnser["lm_fg_indices"] = tnser["lm_fg_indicesmask_label"]
@@ -469,13 +471,13 @@ if __name__ == "__main__":
         tnsr_neo["lm_fg_indices"] = tnsr_neo["lm_fg_indices"].contiguous()
         tnsr_neo["lm_bg_indices"] = tnsr_neo["lm_fg_indices"].contiguous()
         torch.save(tnsr_neo, fn)
-# %%
+    # %%
 
-# %%
-# %%
+    # %%
+    # %%
 
     fn = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/indices_fg_exclude_1/drli_002.pt"
-# %%
+    # %%
     lmg = "lm_group1"
     P.global_properties[lmg]
 
@@ -485,7 +487,7 @@ if __name__ == "__main__":
     remapping = TSL.create_remapping(imported_labelsets, [8, 9])
     P.imported_labels(lmg, imported_folder, imported_labelsets)
 
-# %%
+    # %%
     L = LabelBoundedDataGenerator(
         project=P,
         expand_by=40,
@@ -497,13 +499,13 @@ if __name__ == "__main__":
     L.create_dl()
     L.process()
 
-# %%
+    # %%
 
     for batch in pbar(L.dl):
         images, lms = batch["image"], batch["lm"]
         print(images.shape)
     ImageMaskViewer([images[0][0], lms[0][0]])
-# %%
+    # %%
     L = LabelBoundedDataGenerator(
         project=P,
         expand_by=20,
@@ -518,15 +520,15 @@ if __name__ == "__main__":
     L.create_dl()
     L.process()
 
-# %%
+    # %%
     bbfn = "/home/ub/datasets/preprocessed/tmp/lbd/spc_080_080_150/bboxes_info.pkl"
     dic = load_dict(bbfn)
     generate_bboxes_from_lms_folder(
         Path("/r/datasets/preprocessed/lidc2/lbd/spc_080_080_150/lms/")
     )
-# %%
+    # %%
     spacing = [0.8, 0.8, 1.5]
-# %%
+    # %%
     L.expand_by = 50
     L.device = "cpu"
 
@@ -538,7 +540,7 @@ if __name__ == "__main__":
 
     margin = [int(L.expand_by / sp) for sp in L.spacing]
     margin2 = [int(L.expand_by / sp) * 2 for sp in L.spacing]
-# %%
+    # %%
     Cr1 = CropForegroundd(
         keys=["image", "lm"],
         source_key="lm",
@@ -556,13 +558,13 @@ if __name__ == "__main__":
 
     tfms2 = [L2, D, E, Cr2]
     C2 = Compose(tfms)
-# %%
+    # %%
     dici = L.ds.data[1].copy()
     dici1 = C1(dici)
     img1 = dici1["image"][0]
     lm1 = dici1["lm"][0]
     ImageMaskViewer([img1, lm1])
-# %%
+    # %%
 
     dici2 = L.ds.data[1].copy()
     dici2 = C2(dici2)

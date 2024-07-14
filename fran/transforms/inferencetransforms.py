@@ -25,7 +25,7 @@ from torch.nn import functional as F
 from fastcore.basics import store_attr
 from fastcore.transform import ItemTransform
 # from fran.inference.inference_base import get_scale_factor_from_spacings, rescale_bbox
-from fran.transforms.spatialtransforms import MaskLabelRemap, slices_from_lists
+from fran.transforms.spatialtransforms import  slices_from_lists
 
 from fran.utils.helpers import multiply_lists
 from fastcore.test import is_close
@@ -361,35 +361,6 @@ class ToTensorBBoxes(ItemTransform):
     def decodes(self,img):
         return img.detach().cpu().numpy()
         
-
-class LabelMapToBinary(Transform):
-    '''
-    outputs a binary mask of 1s and 0s.
-    label: label which should be mapped to 1.
-    list in merge_labels will merge mentioned labels into label
-    '''
-    def __init__(self,label,n_classes,return_type='numpy',merge_labels=[]):
-
-        maps = [[x,0] for x in range(n_classes)]
-        info= [label,1]
-        altered= [[m,1] for m in merge_labels]
-        altered.append(info)
-        self.mapping=[]
-        for m in maps:
-            if not  m[0] in [x[0] for x in altered]:
-                self.mapping.append(m)
-        self.mapping.extend(altered)
-        self.mapping.sort()
-        self.remapper= MaskLabelRemap(self.mapping)
-        self.return_type=return_type
-        
-   
-    
-    def encodes(self,x):
-        _,mask = self.remapper([None,x])
-        if self.return_type=='numpy': mask = np.array(mask)
-        return mask
-
 
 class KeepLargestConnectedComponentWithMetad(KeepLargestConnectedComponentd):
     def __init__(self, keys, applied_labels=None, is_onehot= None, independent: bool = True, connectivity = None, num_components: int = 1, allow_missing_keys: bool = False) -> None:

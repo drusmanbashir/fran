@@ -486,8 +486,8 @@ class LoadTorchd(MapTransform):
     def func(self,fn):
         img = torch.load(fn)
         meta = img.meta
-        meta['src_filename'] = meta['filename']
-        meta['filename'] = str(fn)
+        meta['src_filename'] = meta['filename_or_obj']
+        meta['filename_or_obj'] = str(fn)
         img.meta = meta
         return img
 

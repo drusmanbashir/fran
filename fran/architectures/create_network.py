@@ -251,6 +251,7 @@ if __name__ == "__main__":
     pool_op_kernel_sizes = [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     # net = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
     net2 = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
+    x = x.to('cuda')
     net2.to('cuda')
     out = net2(x)
 # %%
@@ -273,6 +274,7 @@ if __name__ == "__main__":
     x = net2.conv_blocks_context[-1](x)
     print(x.shape)
 
+    net2.conv_blocks_context.parameters()
 # %%
     for u in range(len(net2.tu)):
         x = net2.tu[u](x)
@@ -298,7 +300,15 @@ if __name__ == "__main__":
         print (out.shape)
         print("**"*20)
 # %%
+# %%
+#SECTION:-------------------- Model parts--------------------------------------------------------------------------------------
+#NOTE: TD
+
+    cc = net2.td.children()
+    list(cc)
+
     # summ = summary(net, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
+# %%
     summ2 = summary(net2, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
 # %%
     print(summ2)

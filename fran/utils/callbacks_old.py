@@ -30,9 +30,6 @@ from fran.utils.helpers import  make_patch_size
 tr = ipdb.set_trace
 
 # %%
-def one_hot(x, classes, axis=1):
-        "Creates one binay mask per class"
-        return torch.stack([torch.where(x==c, 1, 0) for c in range(classes)], axis=axis)
 
 def make_grid_5d_input(a:torch.Tensor,batch_size_to_plot=16):
     '''
