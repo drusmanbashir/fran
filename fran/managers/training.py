@@ -65,7 +65,7 @@ def fix_dict_keys(input_dict, old_string, new_string):
     return output_dict
 
 
-def checkpoint_from_model_id(model_id):
+def checkpoint_from_model_id(model_id, sort_method="last"):
     common_paths = load_yaml(common_vars_filename)
     fldr = Path(common_paths["checkpoints_parent_folder"])
     all_fldrs = [
@@ -80,7 +80,10 @@ def checkpoint_from_model_id(model_id):
         tr()
 
     list_of_files = list(fldr.glob("*"))
-    ckpt = max(list_of_files, key=lambda p: p.stat().st_ctime)
+    if sort_method == "last":
+        ckpt = max(list_of_files, key=lambda p: p.stat().st_mtime)
+    elif sort_method == "best":
+        tr()
     return ckpt
 
 
@@ -351,7 +354,8 @@ class TrainingManager:
         cbs = [
                 ModelCheckpoint(save_top_k=3,
                                 monitor = "val_loss",
-                                mode="min",),
+                                mode="min",
+                                auto_insert_metric_name=True),
 
 
                 LearningRateMonitor(logging_interval="epoch"),
@@ -496,7 +500,8 @@ class TrainingManager:
 
     def load_dm(self):
         DMClass = self.resolve_datamanager(
-            self.state_dict["datamodule_hyper_parameters"]["dataset_params"]["mode"]
+            self.state_dict['datamodule_hyper_parameters']['plan']['mode']
+           
         )
         D = DMClass.load_from_checkpoint(self.ckpt, project=self.project)
         return D
@@ -566,8 +571,8 @@ if __name__ == "__main__":
 # %%
     device_id = 0
     bs = 5# 5 is good if LBD with 2 samples per case
-    run_name ='LITS-960'
     run_name = None
+    run_name ='LITS-966'
     compiled = False
     profiler=False
     #NOTE: if Neptune = False, should store checkpoint locally

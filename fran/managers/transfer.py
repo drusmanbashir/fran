@@ -59,12 +59,12 @@ class TrainingManagerTransfer(TrainingManager):
             param.requires_grad = False
 
     def replace_final_layer(self):
-        out_channels = self.configs['model_params']['out_channels']
+        out_ch_new = self.configs['model_params']['out_channels']
         current= self.N.model.seg_outputs[-1]
-        in_ch,out_ch, kernel,stride = current.in_channels,current.out_channels, current.kernel_size,current.stride
-        newhead = nn.Conv3d(in_ch,out_ch,kernel,stride)
+        in_ch,out_ch_old, kernel,stride = current.in_channels,current.out_channels, current.kernel_size,current.stride
+        newhead = nn.Conv3d(in_ch,out_ch_new,kernel,stride)
         self.N.model.seg_outputs[-1]=newhead
-        print("----------------------------------\nReplacing final layer outchannels ({0} to {1})\n---------------------------------)".format(out_ch,out_channels))
+        print("----------------------------------\nReplacing final layer outchannels ({0} to {1})\n---------------------------------)".format(out_ch_old,out_ch_new))
 
     def fit(self):
         self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=None)
@@ -155,7 +155,8 @@ if __name__ == "__main__":
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
     iteri2 = iter(dl2)
-    batch = next(iteri2)
+    batch = next(iteri)
+    Tm.N.model.to('cuda:1')
     pred = Tm.N(batch['image'].to(1))
 #
     from torch import nn

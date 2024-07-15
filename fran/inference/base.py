@@ -341,14 +341,14 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
 
-# %%
+
     proj = Project(project_title="totalseg")
     run_tot= ["LITS-860"]
     safe_mode = True
 
 # %%
     proj_nodes = Project(project_title="nodes")
-    run_nodes= ["LITS-945"]
+    run_nodes= ["LITS-962"]
 
 # %%
     fldr_crc = Path("/s/xnat_shadow/crc/images")
@@ -359,7 +359,7 @@ if __name__ == "__main__":
     fldr_lidc = Path("/s/xnat_shadow/lidc2/images/")
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/")
-    img_nodes = list(fldr_nodes.glob("*"))
+    img_nodes = list(fldr_nodes.glob("*"))[:50]
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
