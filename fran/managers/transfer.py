@@ -48,10 +48,19 @@ class TrainingManagerTransfer(TrainingManager):
     def init_dm_unet(self, epochs):
             self.N = self.load_trainer(max_epochs= epochs)
             self.D = self.init_dm(cache_rate)
+            self.update_model()
+            self.update_trainer()
+
+
+    def update_trainer(self):
+        self.N.model_params = self.configs['model_params']
+
+
+
+    def update_model(self):
             if self.freeze=='encoder':
                 self.freeze_encoder()
             self.replace_final_layer()
-
 
     def freeze_encoder(self):
         enc= self.N.model.conv_blocks_context
@@ -60,10 +69,10 @@ class TrainingManagerTransfer(TrainingManager):
 
     def replace_final_layer(self):
         out_ch_new = self.configs['model_params']['out_channels']
-        current= self.N.model.seg_outputs[-1]
-        in_ch,out_ch_old, kernel,stride = current.in_channels,current.out_channels, current.kernel_size,current.stride
-        newhead = nn.Conv3d(in_ch,out_ch_new,kernel,stride)
-        self.N.model.seg_outputs[-1]=newhead
+        for i, current in enumerate(self.N.model.seg_outputs):
+            in_ch,out_ch_old, kernel,stride = current.in_channels,current.out_channels, current.kernel_size,current.stride
+            newhead = nn.Conv3d(in_ch,out_ch_new,kernel,stride)
+            self.N.model.seg_outputs[i]=newhead
         print("----------------------------------\nReplacing final layer outchannels ({0} to {1})\n---------------------------------)".format(out_ch_old,out_ch_new))
 
     def fit(self):
@@ -85,7 +94,7 @@ if __name__ == "__main__":
     )
     configuration_filename = None
 
-    conf = ConfigMaker(
+    config = ConfigMaker(
         proj, raytune=False
     ).config
 
@@ -98,8 +107,8 @@ if __name__ == "__main__":
     bs =5# if none, will get it from the conf file 
     run_name = "LITS-811"
     run_name ='LITS-919'
-    run_name = "LITS-948"
-    run_name = "LITS-913"
+    run_name = "LITS-949"
+    run_name = "LITS-911"
     # run_name ='LITS-836'
     compiled = False
     profiler=False
@@ -109,10 +118,10 @@ if __name__ == "__main__":
     tags = []
     cache_rate=0.0
     description = f" "
-    Tm = TrainingManagerTransfer(project= proj, configs =conf, run_name= run_name,freeze='encoder')
+    Tm = TrainingManagerTransfer(project= proj, configs =config, run_name= run_name,freeze='encoder')
 # %%
     Tm.setup(
-        lr = 1e-2,
+        lr = 1e-3,
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
@@ -133,6 +142,7 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- Tinkering with N--------------------------------------------------------------------------------------
 
+    Tm.N.model.seg_outputs[-1]
     N = Tm.N
 
     enc= N.model.conv_blocks_context
@@ -155,14 +165,16 @@ if __name__ == "__main__":
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
     iteri2 = iter(dl2)
-    batch = next(iteri)
+    batch = next(iteri2)
     Tm.N.model.to('cuda:1')
     pred = Tm.N(batch['image'].to(1))
+    print(pred[0].shape)
 #
-    from torch import nn
+
 
 
 # %%
     m =Tm.N.model
     [print(mm) for mm in m.named_modules()]
 # %%
+

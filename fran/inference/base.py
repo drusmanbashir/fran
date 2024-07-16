@@ -1,4 +1,5 @@
 # %%
+import ast
 import itertools as il
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -37,6 +38,8 @@ from fran.utils.imageviewers import ImageMaskViewer, view_sitk
 from fran.utils.itk_sitk import ConvertSimpleItkImageToItkImage
 
 
+
+
 def list_to_chunks(input_list: list, chunksize: int):
     n_lists = int(np.ceil(len(input_list) / chunksize))
 
@@ -48,11 +51,13 @@ def list_to_chunks(input_list: list, chunksize: int):
     return chunks
 
 
-def load_dataset_params(model_id):
+def load_params(model_id):
     ckpt = checkpoint_from_model_id(model_id)
     dic_tmp = torch.load(ckpt, map_location="cpu")
-    dataset_params = dic_tmp["datamodule_hyper_parameters"]["dataset_params"]
-    return dataset_params
+    dic_relevant = dic_tmp["datamodule_hyper_parameters"]
+    # dic_tmp['datamodule_hyper_parameters']['plan']['spacing']= '.8,.8,1.5'# = fix_ast(dic_tmp, keys=['spacing'])
+    dic_relevant['plan']=fix_ast(dic_relevant['plan'], keys = ['spacing'])# = fix_ast(dic_tmp, keys=['spacing'])
+    return dic_relevant
 
 
 class BaseInferer(GetAttr, DictToAttr):
@@ -62,7 +67,7 @@ class BaseInferer(GetAttr, DictToAttr):
         run_name,
         ckpt=None,
         state_dict=None,
-        dataset_params=None,
+        params=None,
         bs=8,
         patch_overlap=0.25,
         mode="gaussian",
@@ -75,6 +80,7 @@ class BaseInferer(GetAttr, DictToAttr):
     ):
         """
         data is a dataset from Ensemble in this base class
+        params: should be a dict with 2 keys: dataset_params and plan.
         """
         torch.cuda.empty_cache()
 
@@ -83,10 +89,10 @@ class BaseInferer(GetAttr, DictToAttr):
             self.ckpt = checkpoint_from_model_id(run_name)
         else:
             self.ckpt = ckpt
-        if dataset_params is None:
-            self.dataset_params = load_dataset_params(run_name)
+        if params is None:
+            self.params = load_params(run_name)
         else:
-            self.dataset_params = dataset_params
+            self.params = params
 
         if safe_mode == True:
             print(
@@ -97,7 +103,7 @@ class BaseInferer(GetAttr, DictToAttr):
         else:
             stitch_device = "cuda"
         self.inferer = SlidingWindowInferer(
-            roi_size=self.dataset_params["patch_size"],
+            roi_size=self.params["dataset_params"]["patch_size"],
             sw_batch_size=bs,
             overlap=patch_overlap,
             mode=mode,
@@ -164,13 +170,14 @@ class BaseInferer(GetAttr, DictToAttr):
         )
         self.E = EnsureChannelFirstd(
             keys=["image"], channel_dim="no_channel"
-        )  # this creates funny shapes mismatch
-        self.S = Spacingd(keys=["image"], pixdim=self.dataset_params["spacing"])
+        )  
+
+        self.S = Spacingd(keys=["image"], pixdim= self.params['plan']["spacing"])
         self.N = NormaliseClipd(
             keys=["image"],
-            clip_range=self.dataset_params["intensity_clip_range"],
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
+            clip_range=self.params["dataset_params"]["intensity_clip_range"],
+            mean=self.params["dataset_params"]["mean_fg"],
+            std=self.params["dataset_params"]["std_fg"],
         )
 
         self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
@@ -291,7 +298,7 @@ class BaseInferer(GetAttr, DictToAttr):
         model = UNetTrainer.load_from_checkpoint(
             self.ckpt,
             project=self.project,
-            dataset_params=self.dataset_params,
+            dataset_params=self.params['dataset_params'],
             strict=False,
             map_location=device,
         )
@@ -348,7 +355,7 @@ if __name__ == "__main__":
 
 # %%
     proj_nodes = Project(project_title="nodes")
-    run_nodes= ["LITS-962"]
+    run_nodes= ["LITS-966"]
 
 # %%
     fldr_crc = Path("/s/xnat_shadow/crc/images")
@@ -359,10 +366,9 @@ if __name__ == "__main__":
     fldr_lidc = Path("/s/xnat_shadow/lidc2/images/")
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/")
-    img_nodes = list(fldr_nodes.glob("*"))[:50]
+    img_nodes = list(fldr_nodes.glob("*"))
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
-# %%
 # %%
 #SECTION:-------------------- NODES--------------------------------------------------------------------------------------
 
@@ -370,11 +376,9 @@ if __name__ == "__main__":
     bs = 5
     save_channels = False
     overwrite = False
-
-# %%
     devices = [0]
     N = BaseInferer(
-        proj,
+        proj_nodes,
         run_nodes[0],
         overwrite=overwrite,
         save_channels=save_channels,

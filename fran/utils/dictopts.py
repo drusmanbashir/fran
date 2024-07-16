@@ -1,4 +1,4 @@
-
+import ast
        
 class DictToAttr(dict):
     def __init__(self, *args, **kwargs):
@@ -39,3 +39,12 @@ def dic_in_list(query_dic,dic_list)->bool:
     query_dic = dic_lists_to_sets(query_dic)
     dic_list= [dic_lists_to_sets(dic) for dic in dic_list]
     return True if query_dic in dic_list else False
+
+
+def fix_ast(dici,keys):
+    for key in keys:
+        if isinstance(dici[key], str):
+            dici[key]= ast.literal_eval(dici[key])
+    return dici
+
+

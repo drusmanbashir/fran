@@ -109,7 +109,12 @@ class UNetTrainer(LightningModule):
         self.lr = lr if lr else model_params["lr"]
         store_attr()
         self.save_hyperparameters("model_params", "loss_params","lr")
-        self.model, self.loss_fnc = self.create_model()
+        self.model  = self.create_model()
+
+
+    def on_fit_start(self):
+        self.loss_fnc  = self.create_loss_fnc()
+        super().on_fit_start()
 
     def _common_step(self, batch, batch_idx):
         if not hasattr(self, "batch_size"):
@@ -201,12 +206,27 @@ class UNetTrainer(LightningModule):
 
     def create_model(self):
         model = create_model_from_conf(self.model_params, self.dataset_params)
-        if (
-            self.model_params["arch"] == "DynUNet"
-            or self.model_params["arch"] == "DynUNet_UB"
-            or self.model_params["arch"] == "nnUNet"
-        ):
-            if (
+        return model
+
+    def create_loss_fnc(self):
+        if (self.model_params["arch"] == "nnUNet"):
+                num_pool = 5
+                self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
+                    self.dataset_params["patch_size"]
+                )
+                self.deep_supervision_scales = [[1, 1, 1]] + list(
+                    list(i)
+                    for i in 1
+                    / np.cumprod(np.vstack(self.net_num_pool_op_kernel_sizes), axis=0)
+                )[:-1]
+                loss_func = DeepSupervisionLoss(
+                    levels=num_pool,
+                    deep_supervision_scales=self.deep_supervision_scales,
+                    fg_classes=self.model_params["out_channels"] - 1,
+                )
+                return loss_func
+
+        elif (
                 self.model_params["arch"] == "DynUNet"
                 or self.model_params["arch"] == "DynUNet_UB"
             ):
@@ -232,30 +252,18 @@ class UNetTrainer(LightningModule):
                         ds_factors,
                     )
                 )
-
-            else:
-                num_pool = 5
-
-                self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
-                    self.dataset_params["patch_size"]
+                loss_func = DeepSupervisionLoss(
+                    levels=num_pool,
+                    deep_supervision_scales=self.deep_supervision_scales,
+                    fg_classes=self.model_params["out_channels"] - 1,
                 )
-                self.deep_supervision_scales = [[1, 1, 1]] + list(
-                    list(i)
-                    for i in 1
-                    / np.cumprod(np.vstack(self.net_num_pool_op_kernel_sizes), axis=0)
-                )[:-1]
-
-            loss_func = DeepSupervisionLoss(
-                levels=num_pool,
-                deep_supervision_scales=self.deep_supervision_scales,
-                fg_classes=self.model_params["out_channels"] - 1,
-            )
+                return loss_func
 
         else:
             loss_func = CombinedLoss(
                 **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
             )
-        return model, loss_func
+            return loss_func
 
 def update_nep_run_from_config(nep_run, config):
     for key, value in config.items():
@@ -475,18 +483,15 @@ class TrainingManager:
     def load_trainer(self,**kwargs):
         try:
             N = UNetTrainer.load_from_checkpoint(
-                self.ckpt, project=self.project, dataset_params=self.configs['dataset_params'], lr=self.lr,**kwargs
-
-            )
+                self.ckpt, project=self.project, dataset_params=self.configs['dataset_params'], lr=self.lr,**kwargs     )
             print("Model loaded from checkpoint: ",self.ckpt)
         except:
             tr()
             ckpt_state = self.state_dict["state_dict"]
             ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
-            print(ckpt_state_updated.keys())
+            # print(ckpt_state_updated.keys())
             state_dict_neo = self.state_dict.copy()
             state_dict_neo["state_dict"] = ckpt_state_updated
-
             ckpt_old = self.ckpt.str_replace("_bkp", "")
             ckpt_old = self.ckpt.str_replace(".ckpt", ".ckpt_bkp")
             torch.save(state_dict_neo, self.ckpt)

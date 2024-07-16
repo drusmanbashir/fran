@@ -33,7 +33,7 @@ from torchvision.transforms.functional import resize
 
 from fran.data.dataset import FillBBoxPatchesd
 from fran.inference.base import (BaseInferer, 
-                                 list_to_chunks, load_dataset_params)
+                                 list_to_chunks, load_params)
 from fran.managers.training import checkpoint_from_model_id
 from fran.transforms.imageio import LoadSITKd, SITKReader
 from fran.transforms.inferencetransforms import (
@@ -101,7 +101,7 @@ class WholeImageInferer(BaseInferer):
 
     def create_transforms(self):
         super().create_transforms()
-        self.S = Resized(keys=["image"], spatial_size=self.dataset_params["patch_size"])
+        self.S = Resized(keys=["image"], spatial_size=self.params["patch_size"])
 
 
 class PatchInferer(BaseInferer):
@@ -174,7 +174,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         ], "Choose one of None , 'dataloading', 'prediction', 'all'"
 
         self.predictions_folder = project.predictions_folder
-        self.dataset_params = load_dataset_params(runs_p[0])
+        self.params = load_params(runs_p[0])
         self.Ps = [
             PatchInferer(
                 project=project,
@@ -213,7 +213,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
     def get_patch_spacing(self, run_name):
         ckpt = checkpoint_from_model_id(run_name)
         dic1 = torch.load(ckpt)
-        spacing = dic1["datamodule_hyper_parameters"]["dataset_params"]["spacing"]
+        spacing = dic1["datamodule_hyper_parameters"]["plan"]["spacing"]
         return spacing
 
     def run(self, imgs: list, chunksize=12):
@@ -330,7 +330,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
     def extract_fg_bboxes(self, data):
         Sel = SelectLabels(keys=["pred"], labels=self.localiser_labels)
         B = BBoxFromPTd(
-            keys=["pred"], spacing=self.W.dataset_params["spacing"], expand_by=10
+            keys=["pred"], spacing=self.W.params['plan']["spacing"], expand_by=10
         )
         if self.overwrite == False:
             print("Bbox overwrite not implemented yet")
@@ -429,17 +429,16 @@ if __name__ == "__main__":
 
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
+    localiser_labels_litsmc = [1]
 # %%
-    localiser_labels = [1]
-    runs_p = run_litsmc
-# %%
-    overwrite=True
-    safe_mode=False
-    save_channels=True
 # %%
 # %%
 #SECTION:-------------------- LITSMC predictions--------------------------------------------------------------------------------------
 
+    devices = [1]
+    overwrite=True
+    safe_mode=False
+    save_channels=True
     project = Project(project_title="litsmc")
     if project.project_title=="litsmc":
         k_largest= 1
@@ -448,16 +447,14 @@ if __name__ == "__main__":
     En = CascadeInferer(
         project,
         run_w,
-        runs_p,
+        run_litsmc,
         save_channels=save_channels,
-        devices=[0],
+        devices=devices ,
         overwrite=overwrite,
-        localiser_labels=localiser_labels,
+        localiser_labels=localiser_labels_litsmc,
         safe_mode=safe_mode,
         k_largest=k_largest
     )
-
-# %%
 
 # %%
 # img_fns = list(img_fldr.glob("*"))[20:50]
@@ -493,7 +490,7 @@ if __name__ == "__main__":
 #SECTION:-------------------- extract_fg_bboxes--------------------------------------------------------------------------------------
         Sel = SelectLabels(keys=["pred"], labels=En.localiser_labels)
         B = BBoxFromPTd(
-            keys=["pred"], spacing=En.W.dataset_params["spacing"], expand_by=10
+            keys=["pred"], spacing=En.W.params["spacing"], expand_by=10
         )
         if En.overwrite == False:
             print("Bbox overwrite not implemented yet")
