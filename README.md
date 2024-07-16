@@ -162,4 +162,5 @@ This is because inference functions will not natively have the rights to downloa
 Sources of inspiration and code snippets:\
 Fastai programming paradigm is at the core of this library.\
 I have also drawn lots of inspiration from [nnUNet](https://github.com/MIC-DKFZ/nnUNet) in structuring the pipeline.
+Good
 
