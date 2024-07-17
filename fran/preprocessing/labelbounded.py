@@ -3,6 +3,7 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
+from prompt_toolkit.shortcuts import yes_no_dialog
 from torch.utils.data import DataLoader
 
 from fran.data.dataloader import dict_list_collated
@@ -28,7 +29,6 @@ if "get_ipython" in globals():
     ipython.run_line_magic("autoreload", "2")
 from pathlib import Path
 
-import ipdb
 import numpy as np
 import SimpleITK as sitk
 from fastcore.basics import GetAttr, store_attr
@@ -421,16 +421,21 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
 
-    P = Project(project_title="nodes3")
+    P = Project(project_title="litsmc")
     P.maybe_store_projectwide_properties()
-    # %%
+# %%
     F = FGBGIndicesGenerator(
-        project=P, data_folder="/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/"
+        project=P, data_folder="/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/"
     )
     F.setup()
-    # %%
+# %%
     F.process()
-    # %%
+
+
+
+
+
+# %%
     L = LabelBoundedDataGenerator(
         project=P,
         expand_by=40,
@@ -440,22 +445,22 @@ if __name__ == "__main__":
         fg_indices_exclude=None,
     )
     L.indices_subfolder
-    # %%
+# %%
     L.create_dl(overwrite=False, device="cpu", batch_size=4)
     L.process()
-    # %%
+# %%
     fldr = Path(
         "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/indices_fg_exclude_1"
     )
     fns = list(fldr.glob("*pt"))
-    # %%
+# %%
     zeros = 0
     for fn in pbar(fns):
         tnser = torch.load(fn)
         lm_fg = tnser["lm_fg_indices"]
         if len(lm_fg) == 0:
             zeros += 1
-        # %%
+# %%
 
         if not "lm_fg_indices" in tnser.keys():
             tnser["lm_fg_indices"] = tnser["lm_fg_indicesmask_label"]
@@ -471,13 +476,13 @@ if __name__ == "__main__":
         tnsr_neo["lm_fg_indices"] = tnsr_neo["lm_fg_indices"].contiguous()
         tnsr_neo["lm_bg_indices"] = tnsr_neo["lm_fg_indices"].contiguous()
         torch.save(tnsr_neo, fn)
-    # %%
+# %%
 
-    # %%
-    # %%
+# %%
+# %%
 
     fn = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/indices_fg_exclude_1/drli_002.pt"
-    # %%
+# %%
     lmg = "lm_group1"
     P.global_properties[lmg]
 
@@ -487,7 +492,7 @@ if __name__ == "__main__":
     remapping = TSL.create_remapping(imported_labelsets, [8, 9])
     P.imported_labels(lmg, imported_folder, imported_labelsets)
 
-    # %%
+# %%
     L = LabelBoundedDataGenerator(
         project=P,
         expand_by=40,
@@ -499,13 +504,13 @@ if __name__ == "__main__":
     L.create_dl()
     L.process()
 
-    # %%
+# %%
 
     for batch in pbar(L.dl):
         images, lms = batch["image"], batch["lm"]
         print(images.shape)
     ImageMaskViewer([images[0][0], lms[0][0]])
-    # %%
+# %%
     L = LabelBoundedDataGenerator(
         project=P,
         expand_by=20,
@@ -520,15 +525,16 @@ if __name__ == "__main__":
     L.create_dl()
     L.process()
 
-    # %%
+# %%
     bbfn = "/home/ub/datasets/preprocessed/tmp/lbd/spc_080_080_150/bboxes_info.pkl"
     dic = load_dict(bbfn)
     generate_bboxes_from_lms_folder(
         Path("/r/datasets/preprocessed/lidc2/lbd/spc_080_080_150/lms/")
     )
-    # %%
+# %%
     spacing = [0.8, 0.8, 1.5]
-    # %%
+
+# %%
     L.expand_by = 50
     L.device = "cpu"
 
@@ -540,7 +546,7 @@ if __name__ == "__main__":
 
     margin = [int(L.expand_by / sp) for sp in L.spacing]
     margin2 = [int(L.expand_by / sp) * 2 for sp in L.spacing]
-    # %%
+# %%
     Cr1 = CropForegroundd(
         keys=["image", "lm"],
         source_key="lm",
@@ -558,14 +564,15 @@ if __name__ == "__main__":
 
     tfms2 = [L2, D, E, Cr2]
     C2 = Compose(tfms)
-    # %%
+# %%
     dici = L.ds.data[1].copy()
     dici1 = C1(dici)
     img1 = dici1["image"][0]
     lm1 = dici1["lm"][0]
     ImageMaskViewer([img1, lm1])
-    # %%
+# %%
 
+   
     dici2 = L.ds.data[1].copy()
     dici2 = C2(dici2)
     img2 = dici2["image"][0]

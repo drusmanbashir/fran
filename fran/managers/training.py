@@ -318,8 +318,7 @@ class TrainingManager:
             callbacks=cbs,
             accelerator="gpu",
             devices=devices,
-            # precision="16-mixed",
-            precision="bf16",
+            precision="bf16-mixed",
             profiler = profiler,
             logger=logger,
             max_epochs=epochs,
@@ -363,6 +362,7 @@ class TrainingManager:
                 ModelCheckpoint(save_top_k=3,
                                 monitor = "val_loss",
                                 mode="min",
+                                filename = '{epoch}-{val_loss:.2f}',
                                 auto_insert_metric_name=True),
 
 
@@ -430,6 +430,7 @@ class TrainingManager:
             assert(a:=(len(ratios))==(b:=len(labels))), "Class ratios {0} do not match number of labels in dataset {1}".format(a,b)
         else:
             assert  isinstance(ratios, int), "If no list is provided, fgbg_ratio must be an integer"
+
         self.configs = self.select_plan(configs)
 
     def select_plan(self,configs):
@@ -551,13 +552,14 @@ class TrainingManager:
 
 
 if __name__ == "__main__":
+
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
 
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
-    project_title = "nodes"
+    project_title = "litsmc"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -574,10 +576,10 @@ if __name__ == "__main__":
 
 
 # %%
-    device_id = 0
+    device_id = 1
     bs = 5# 5 is good if LBD with 2 samples per case
+    run_name ='LITS-984'
     run_name = None
-    run_name ='LITS-966'
     compiled = False
     profiler=False
     #NOTE: if Neptune = False, should store checkpoint locally
@@ -586,7 +588,7 @@ if __name__ == "__main__":
     neptune =True
     tags = []
     cache_rate=0.0
-    description = f""
+    description = f"From Src. First time"
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,
@@ -607,6 +609,8 @@ if __name__ == "__main__":
     Tm.fit()
         # model(inputs)
 # %%
+
+
 
     Tm.D.setup()
     D = Tm.D
@@ -829,7 +833,8 @@ if __name__ == "__main__":
     ckpt = Path(
         "/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt"
     )
-    kk = torch.load(ckpt)
+    kk = torch.load(self.ckpt)
+    kk['datamodule_hyper_parameters'].keys()
     kk.keys()
     kk["datamodule_hyper_parameters"]
 # %%

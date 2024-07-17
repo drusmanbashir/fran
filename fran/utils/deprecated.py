@@ -7,6 +7,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import itk
+from label_analysis.overlap import pbar
 import numpy as np
 import SimpleITK as sitk
 import torch
@@ -100,4 +101,16 @@ if __name__ == "__main__":
         spacing  =dic_tmp['datamodule_hyper_parameters']['dataset_params']['spacing']
         dic_tmp['datamodule_hyper_parameters']['plan']= {'spacing':spacing}
         torch.save(dic_tmp, ckpt)
+# %%
+#SECTION:-------------------- filename_or_obj--------------------------------------------------------------------------------------
 
+# %%
+    fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150")
+    fns = list(fldr.rglob("*.pt"))
+    for fn in pbar( fns):
+        lm = torch.load(fn)
+        lm.meta
+        lm.meta['filename_or_obj']=lm.meta['filename']
+        del lm.meta['filename']
+        torch.save(lm,fn)
+# %%

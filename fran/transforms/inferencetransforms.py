@@ -2,7 +2,6 @@
 # %%
 from collections.abc import Hashable, Mapping
 from typing import Union
-from fastai.data.core import Sequence
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import KeepLargestConnectedComponentd
