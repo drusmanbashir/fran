@@ -1,6 +1,6 @@
 mamba install -c conda-forge ipython ipywidgets pandas matplotlib medpy numpy openpyxl pillow pygments jupyterlab pyyaml scikit-image scipy SimpleITK timm torchio tqdm einops monai ipdb gputil ray-tune ipympl lxml seaborn tensorboard
 mamba install -c pytorch ignite
-pip install nnunet neptune pipe connected-components-3d h5py torchinfo
+pip install nnunet neptune pipe connected-components-3d h5py torchinfo lmdb
 mamba install -c fastchan fastai torchinfo
 
 # -----------others --------------------

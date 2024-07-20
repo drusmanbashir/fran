@@ -1,4 +1,5 @@
 # %%
+
 import ast
 import math
 from functools import partial
@@ -14,14 +15,19 @@ from monai.data.meta_obj import get_track_meta
 from monai.data.meta_tensor import MetaTensor
 from monai.transforms.croppad.array import SpatialPad
 from monai.transforms.inverse import InvertibleTransform
-from monai.transforms.transform import (LazyTransform, MapTransform,
-                                        RandomizableTransform)
+from monai.transforms.transform import (
+    LazyTransform,
+    MapTransform,
+    Randomizable,
+    RandomizableTransform,
+)
 from monai.utils.enums import LazyAttr, Method, PytorchPadMode, TraceKeys
 from torch import cos, pi, sin
 
-from fran.utils.fileio import *
+# from fran.utils.fileio import *
 from fran.utils.helpers import *
 from fran.utils.image_utils import get_bbox_from_mask
+
 
 tr = ipdb.set_trace
 
@@ -31,21 +37,50 @@ from monai.transforms.croppad.dictionary import Padd
 from fran.transforms.base import *
 
 
-def _resize3d( data, spatial_shape, mode):
-        data_out =fm.resize(
-                    img=data,
-                    out_size=spatial_shape,
-                    mode=mode,
-                    lazy=False,
-                    align_corners=None,
-                    dtype=None,
-                    input_ndim=3,
-                    anti_aliasing=False,
-                    anti_aliasing_sigma=0.0,
-                    transform_info=None,
-                )
-        return data_out
+def _resize3d(data, spatial_shape, mode):
+    data_out = fm.resize(
+        img=data,
+        out_size=spatial_shape,
+        mode=mode,
+        lazy=False,
+        align_corners=None,
+        dtype=None,
+        input_ndim=3,
+        anti_aliasing=False,
+        anti_aliasing_sigma=0.0,
+        transform_info=None,
+    )
+    return data_out
 
+
+
+class Project2D(MonaiDictTransform, Randomizable):
+    def __init__(
+        self, keys: KeysCollection, operations=["sum"], dim=None, output_keys=None
+    ):
+         super().__init__(keys)
+         assert len(keys)==len(operations), "Same number of operations as keys must be given"
+         self.operations =[ getattr(torch, operation) for operation in operations]
+         self.output_keys =output_keys if output_keys else keys
+         self.dim = dim
+         self.do_randomize = False if dim else True
+
+
+    def __call__(self, d: dict):
+        self.randomize()
+        for key,output_key, operation in zip(self.key_iterator(d),self.output_keys, self.operations):
+            d[output_key] = self.func(d[key],operation)
+        return d
+
+    def randomize(self):
+        if self.do_randomize:
+            self.dim = self.R.randint(1, 4)
+
+    def func(self, data, operation):
+        data = operation(data, dim=self.dim)
+        return data
+
+# %%
 
 class ResizeToTensord(MonaiDictTransform):
     def __init__(self, keys: KeysCollection, mode, key_template_tensor):
@@ -54,11 +89,11 @@ class ResizeToTensord(MonaiDictTransform):
         self.mode = mode
 
     def __call__(self, data):
-        tnsr  =data[self.key_template_tensor]
+        tnsr = data[self.key_template_tensor]
 
-        if (l:=len(tnsr.shape) )==4:
+        if (l := len(tnsr.shape)) == 4:
             spatial_shape = tnsr[0].shape
-        elif l ==3:
+        elif l == 3:
             spatial_shape = tnsr.shape
         else:
             raise ValueError("spatial size is not 3 or 4, but is {}".format(l))
@@ -66,10 +101,11 @@ class ResizeToTensord(MonaiDictTransform):
             data[key] = _resize3d(data[key], spatial_shape, self.mode)
         return data
 
+
 class ResizeToMetaSpatialShaped(MonaiDictTransform):
-    def __init__(self, keys: KeysCollection, mode, meta_key='spatial_shape'):
+    def __init__(self, keys: KeysCollection, mode, meta_key="spatial_shape"):
         super().__init__(keys)
-        self.meta_key= meta_key
+        self.meta_key = meta_key
         self.mode = mode
 
     def __call__(self, data):
@@ -1487,8 +1523,8 @@ if __name__ == "__main__":
     from fran.transforms.misc_transforms import create_augmentations
     from fran.utils.common import *
 
-# %%
-# %%
+    # %%
+    # %%
     P = Project(project_title="lits")
     proj_defaults = P
     spacings = [1, 1, 1]
@@ -1517,7 +1553,7 @@ if __name__ == "__main__":
     valid_ds = ImageMaskBBoxDataset(proj_defaults, val_ids, bboxes_fn)
 
     aa = train_ds.median_shape
-# %%
+    # %%
     after_item_intensity = {
         "brightness": [[0.7, 1.3], 0.1],
         "shift": [[-0.2, 0.2], 0.1],
@@ -1537,12 +1573,12 @@ if __name__ == "__main__":
     after_item_spatial = TrainingAugmentations(
         augs=spatial_augs, p=probabilities_spatial
     )
-# %%
+    # %%
     from fran.data.dataset import ImageMaskBBoxDataset
     from fran.utils.imageviewers import *
 
     P = Project(project_title="lits")
     proj_defaults = P
-# %%
+    # %%
     bboxes_pt_fn = proj_defaults.stage1_folder / ("cropped/images_pt/bboxes_info")
     bboxes_nii_fn = proj_defaults.stage1_folder / ("cropped/images_nii/bboxes_info")

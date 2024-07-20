@@ -15,7 +15,9 @@ from openpyxl import load_workbook
 
 from fran.utils.helpers import *
 
-def is_excel_nan(input):
+def is_excel_None(input):
+    if not input: 
+        return True
     input = str(input)
     if input == "nan":
         return True

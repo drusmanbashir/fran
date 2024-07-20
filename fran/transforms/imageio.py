@@ -1,6 +1,6 @@
 # %%
 from __future__ import annotations
-
+from monai.data import ImageWriter
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
@@ -14,7 +14,7 @@ from fastcore.basics import listify, store_attr, warnings
 from fastcore.foundation import inspect
 from label_analysis.helpers import get_labels as gl
 from monai.config import DtypeLike, PathLike
-from monai.config.type_definitions import DtypeLike, KeysCollection, PathLike
+from monai.config.type_definitions import KeysCollection
 from monai.data.image_reader import (ImageReader, ITKReader, NibabelReader,
                                      NrrdReader, NumpyReader, PILReader,
                                      PydicomReader, _copy_compatible_dict,
@@ -491,6 +491,16 @@ class LoadTorchd(MapTransform):
         img.meta = meta
         return img
 
+class TorchWriter(ImageWriter):
+    def set_data_array(self,data_array,**kwargs):
+        self.data_obj = data_array
+
+    def set_metadata(self,meta_dict, resample,**kwargs):
+        if hasattr(self.data_obj, "meta"):
+            self.data_obj.meta = meta_dict
+    def write(self,filename, verbose:bool = False,**kwargs):
+        super().write(filename, verbose, **kwargs)
+        torch.save(self.data_obj,filename)
 
 
 # %%

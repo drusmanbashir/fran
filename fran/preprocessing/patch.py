@@ -8,6 +8,7 @@ from fran.utils.fileio import load_dict, maybe_makedirs, save_dict
 from fran.utils.helpers import multiprocess_multiarg
 from fran.utils.string import info_from_filename, strip_extension
 
+# %%
 if "get_ipython" in globals():
     print("setting autoreload")
     from IPython import get_ipython
@@ -26,6 +27,7 @@ import ipdb
 tr = ipdb.set_trace
 
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
+# %%
 
 
 def contains_bg_only( bbox_stats):

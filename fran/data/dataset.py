@@ -18,6 +18,7 @@ from monai.transforms import Compose, MapTransform
 from monai.transforms.io.array import SaveImage
 from monai.transforms.transform import Transform
 
+# %%
 from fran.preprocessing.patch import contains_bg_only
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import standardize
@@ -30,6 +31,7 @@ tr = ipdb.set_trace
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+# %%
 import itk
 import numpy as np
 import SimpleITK as sitk

@@ -23,7 +23,6 @@ from monai.transforms.post.dictionary import Activationsd, AsDiscreted, Invertd
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  SqueezeDimd)
-from prompt_toolkit.shortcuts import input_dialog
 
 from fran.data.dataset import (InferenceDatasetNii, InferenceDatasetPersistent,
                                NormaliseClipd)
@@ -343,7 +342,6 @@ class BaseInferer(GetAttr, DictToAttr):
 
 if __name__ == "__main__":
     # ... run your application ...
-# %%
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
     from fran.utils.common import *
@@ -353,16 +351,12 @@ if __name__ == "__main__":
     run_tot= ["LITS-860"]
     safe_mode = True
 
-# %%
     proj_nodes = Project(project_title="nodes")
     run_nodes= ["LITS-966"]
 
-# %%
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
-    img_fn = "/s/xnat_shadow/nodes/images/nodes_53_20220405_Source.nii.gz"
 
-    img = sitk.ReadImage(img_fn)
     fldr_lidc = Path("/s/xnat_shadow/lidc2/images/")
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/")
@@ -391,6 +385,30 @@ if __name__ == "__main__":
 # %%
     data = P.ds.data[0]
 # %%
+# %%
+#SECTION:-------------------- TOTALSEG--------------------------------------------------------------------------------------
+
+    safe_mode = True
+    bs = 4
+    save_channels = False
+    overwrite = False
+    devices = [0]
+    
+
+    T = BaseInferer(
+        proj,
+        run_tot[0],
+        overwrite=overwrite,
+        save_channels=save_channels,
+        safe_mode=safe_mode,
+        devices=devices
+    )
+# %%
+
+    preds = T.run(imgs_lidc, chunksize=1)
+
+# %%
+
     P.setup()
     imgs_sublist = img_fns
     data = P.load_images(imgs_sublist)

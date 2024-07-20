@@ -7,7 +7,7 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
-from fran.preprocessing.labelbounded import FGBGIndicesGenerator, LabelBoundedDataGenerator
+from fran.preprocessing.labelbounded import FGBGIndicesLBD, LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from fran.utils.fileio import *
 from fran.utils.helpers import *
@@ -289,11 +289,11 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "nodes"
+    args.project_title = "litsmc"
 
     # args.num_processes = 1
     args.debug=True
-    args.plan = "plan2"
+    args.plan = "plan3"
 # %%
 
     P= Project(project_title=args.project_title)
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     I = PreprocessingManager(args)
     # I.spacing = 
 # %%
-    I.resample_dataset()
+    I.resample_dataset(overwrite=True)
 
 # %%
     if I.plan['mode']=='patch':

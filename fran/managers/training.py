@@ -1,6 +1,6 @@
 # %%
-import shutil
 from lightning.pytorch.callbacks import ModelCheckpoint
+import shutil
 from monai.transforms.io.dictionary import LoadImaged
 from torchinfo import summary
 from fran.transforms.imageio import TorchReader
@@ -302,7 +302,6 @@ class TrainingManager:
         description="",
         epochs=600,
         batchsize_finder=False,
-        cache_rate = 0.0
     ):
         self.maybe_alter_configs(batch_size,batchsize_finder,compiled)
         self.set_lr(lr)
@@ -337,7 +336,7 @@ class TrainingManager:
             self.N = self.load_trainer()
         
         else:
-            self.D = self.init_dm(cache_rate)
+            self.D = self.init_dm()
             self.N = self.init_trainer( epochs )
 
 
@@ -393,8 +392,8 @@ class TrainingManager:
             logger = None
 
         if profiler==True:
-            # profiler = AdvancedProfiler(dirpath=self.project.log_folder, filename="profiler")
-            profiler ='simple'
+            profiler = AdvancedProfiler(dirpath=self.project.log_folder, filename="profiler")
+            # profiler ='simple'
             cbs+=[DeviceStatsMonitor(cpu_stats=True)]
         else:
             profiler = None
@@ -454,7 +453,9 @@ class TrainingManager:
         else:
             return 48
 
-    def init_dm(self,cache_rate, ):
+    def init_dm(self):
+        cache_rate= self.configs['dataset_params']['cache_rate']
+        ds_type = self.configs['dataset_params']['ds_type']
         DMClass = self.resolve_datamanager(self.configs["plan"]["mode"])
         D = DMClass(
             self.project,
@@ -463,7 +464,8 @@ class TrainingManager:
             transform_factors=self.configs["transform_factors"],
             affine3d=self.configs["affine3d"],
             batch_size=self.configs["dataset_params"]["batch_size"],
-            cache_rate =cache_rate
+            cache_rate =cache_rate,
+            ds_type=ds_type
         )
 
         return D
@@ -578,7 +580,7 @@ if __name__ == "__main__":
 # %%
     device_id = 1
     bs = 5# 5 is good if LBD with 2 samples per case
-    run_name ='LITS-984'
+    run_name ='LITS-988'
     run_name = None
     compiled = False
     profiler=False
@@ -587,20 +589,19 @@ if __name__ == "__main__":
     batch_finder = False
     neptune =True
     tags = []
-    cache_rate=0.0
+    conf['dataset_params']['ds_type']= 'lmdb'
     description = f"From Src. First time"
     Tm = TrainingManager(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=600,
+        epochs=600 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
         neptune=neptune,
         tags=tags,
         description=description,
-        cache_rate=cache_rate
     )
 # %%
     # Tm.D.batch_size=8
@@ -619,7 +620,6 @@ if __name__ == "__main__":
 # %%
     i =  ds[12]
 
-    ImageMaskViewer([i[1]['image'][0].cpu(), i[1]['lm'][0].cpu()] )
     for i,id in enumerate(ds):
         print(i)
 # %%

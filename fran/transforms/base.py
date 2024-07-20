@@ -34,7 +34,7 @@ class MonaiDictTransform(MapTransform):
         return d
 
     def func(self,data):
-        pass
+        raise NotImplementedError
 
 
 

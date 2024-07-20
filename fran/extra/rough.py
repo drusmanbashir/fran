@@ -1,39 +1,52 @@
 # %%
 import time
+
+from fran.data.dataloader import img_lm_metadata_lists_collated
+from monai.data.dataloader import DataLoader
+from monai.data.dataset import Dataset
+from monai.transforms import Compose
+from fran.transforms.imageio import TorchWriter
 import SimpleITK as sitk
 import itertools as il
 from SimpleITK.SimpleITK import LabelShapeStatisticsImageFilter
 from label_analysis.helpers import get_labels, relabel, to_binary
+from label_analysis.utils import compress_img
+from monai.apps.detection.transforms.dictionary import MaskToBoxd, RandCropBoxByPosNegLabeld, RandRotateBox90d
 from label_analysis.merge import LabelMapGeometry
+from monai.apps.detection.transforms.array import ConvertBoxMode
+from monai.data.box_utils import BoxMode, CenterSizeMode
 from monai.data.meta_tensor import MetaTensor
+from monai.transforms.croppad.dictionary import BoundingRectd
+from monai.transforms.io.array import SaveImage
+from monai.transforms.io.dictionary import SaveImaged
+from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from monai.transforms.utils import generate_spatial_bounding_box
+import matplotlib.patches as patches
 import torch.nn.functional as F
 from pathlib import Path
 from monai.transforms.intensity.array import NormalizeIntensity, ScaleIntensity
-from monai.transforms.intensity.dictionary import NormalizeIntensityd
+from monai.transforms.intensity.dictionary import NormalizeIntensityD, NormalizeIntensityd
 from monai.transforms.spatial.dictionary import Resized, Resize
 from torchvision.datasets.folder import is_image_file
 
 from fran.transforms.imageio import LoadSITKd
-from fran.utils.config_parsers import is_excel_nan
+from fran.transforms.misc_transforms import BoundingBoxYOLOd, DictToMeta, MetaToDict
+from fran.transforms.spatialtransforms import Project2D
 from fran.utils.helpers import match_filename_with_case_id, pbar
 import shutil, os
 import h5py
-from lightning.pytorch.callbacks import BatchSizeFinder
 import torch
-from lightning.pytorch import LightningModule, Trainer
-from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard.writer import SummaryWriter
-from torchio import IntensityTransform
-from fran.transforms.misc_transforms import ChangeDtyped, one_hot
 from fran.utils.fileio import is_sitk_file, load_dict
 from fran.utils.helpers import find_matching_fn
 import ipdb
+tr = ipdb.set_trace
 
 from fran.utils.imageviewers import ImageMaskViewer, view_sitk
 from fran.utils.string import info_from_filename
-tr = ipdb.set_trace
 from monai.visualize import *
-
+import matplotlib.pyplot as plt
+from monai.data import dataset_summary, register_writer
 import pandas as pd
 import numpy as np
 # %%
@@ -41,6 +54,151 @@ import numpy as np
 # %%
 if __name__ == "__main__":
     fldr = Path("/s/xnat_shadow/tcianode/lms/")
+
+
+    lm_fn = Path("/s/fran_storage/predictions/totalseg/LITS-860/lidc2_0009.nii.gz")
+    img_fn = Path("/s/xnat_shadow/lidc2/images/lidc2_0009.nii.gz")
+
+
+# %%
+
+
+    register_writer("pt", TorchWriter)
+    dim= 1
+    L = LoadSITKd(keys=['image','lm'])
+    N = NormalizeIntensityd(['image'])
+    E = EnsureChannelFirstd(['image', 'lm'])
+    P1 = Project2D(keys = ['lm', 'image'], operations = ['sum','mean'],dim=1, output_keys=['lm1','image1'])
+    P2 = Project2D(keys = ['lm', 'image'], operations = ['sum','mean'],dim=2, output_keys=['lm2','image2'])
+    P3 = Project2D(keys = ['lm', 'image'], operations = ['sum','mean'],dim=3, output_keys=['lm3','image3'])
+    BB1 = BoundingRectd(keys = ['lm1'])
+    BB2 = BoundingRectd(keys = ['lm2'])
+    BB3 = BoundingRectd(keys = ['lm3'])
+    M = MetaToDict(keys = ['image'], meta_keys = ['filename_or_obj'])
+    B1= BoundingBoxYOLOd(['lm1_bbox'],2,key_template_tensor='lm1')
+    B2= BoundingBoxYOLOd(['lm2_bbox'],2, key_template_tensor='lm2')
+    B3= BoundingBoxYOLOd(['lm3_bbox'],2, key_template_tensor='lm3')
+    D1 = DictToMeta(keys=['image1'], meta_keys=['lm1_bbox'])
+    D2 = DictToMeta(keys=['image2'], meta_keys=['lm2_bbox'])
+    D3 = DictToMeta(keys=['image3'], meta_keys=['lm3_bbox'])
+
+
+    tfms = Compose([L,N,E,P1,P2,P3,BB1,BB2,BB3, B1,B2,B3,D1,D2,D3])
+
+# %%
+    fldr_imgs = Path("/s/xnat_shadow/lidc2/images/")
+    fldr_lms = Path("/s/fran_storage/predictions/totalseg/LITS-827/")
+    lms = list(fldr_lms.glob("*"))
+    imgs = list(fldr_imgs.glob("*"))[:20]
+
+# %%
+    data_dicts= []
+    for img in imgs:
+        dici = {'image':img, 'lm':  find_matching_fn(img,lms,use_cid=True)}
+        data_dicts.append(dici)
+
+
+
+# %%
+
+    ds = Dataset(data=data_dicts, transform=tfms)
+
+    dl = DataLoader(ds, batch_size=2, num_workers=0, collate_fn = as_is_collated)
+    ii = iter(dl)
+    aa = next(ii)
+# %%
+    S1 = SaveImage(output_ext='pt',  output_dir='tmp', output_postfix=str(1), output_dtype='float32', writer=TorchWriter)
+    S2 = SaveImage(output_ext='pt',  output_dir='tmp', output_postfix=str(2), output_dtype='float32', writer=TorchWriter)
+    S3 = SaveImage(output_ext='pt',  output_dir='tmp', output_postfix=str(3), output_dtype='float32', writer=TorchWriter)
+# %%
+    images1 = aa['image1']
+    images2 = aa['image2']
+    images3 = aa['image3']
+
+
+# %%
+    for img in images1:
+        S1(img)
+
+    for img in images2:
+        S1(img)
+
+    for img in images3:
+        S1(img)
+# %%
+
+
+    dici =data_dicts[0]
+    dici = L(dici)
+    # dici = M(dici)
+
+
+    dici = E(dici)
+    dici = N(dici)
+    dici = P1(dici)
+    dici = P2(dici)
+    dici = P3(dici)
+# %%
+    dici = BB1(dici)
+    dici = BB2(dici)
+    dici = BB3(dici)
+# %%
+
+    dici = B1(dici)
+    dici = B2(dici)
+    dici = B3(dici)
+    dici = D1(dici)
+    dici = D2(dici)
+    dici = D3(dici)
+# %%
+
+    d2 = dici['lm_bbox'].copy()
+    dici = B(dici)
+
+
+# %%
+# %%
+
+    lmv = dici['lm'][0]
+    lmv = torch.permute(lmv,(1,0))
+    imv = dici['image'][0]
+    imv = torch.permute(imv,(1,0))
+# %%
+    box_converter = ConvertBoxMode(src_mode="xxyy", dst_mode="ccwh")
+    box_converter(dici['lm_bbox'])
+
+# %%
+
+# convert boxes with format [xmin, ymin, xmax, ymax] to [xcenter, ycenter, xsize, ysize].
+    bc2 = ConvertBoxMode(src_mode= "xxyy", dst_mode= "xywh")
+    bb_im = bc2(dici['lm_bbox'])
+    bb_im = bb_im.flatten()
+    box_converter(bb2)
+
+    dici = B(dici)
+
+    lm = dici['lm']
+    lm2 = lm.sum(0)
+    lmv = torch.permute(lm2,(1,0))
+    lmv.unsqueeze_(0)
+    lm3 = lm2.unsqueeze(0)
+
+
+
+# %%
+    fig,ax = plt.subplots()
+    ax.imshow(lmv)
+    ax.imshow(imv)
+
+    rect = patches.Rectangle((bb_im[0],bb_im[1]), bb_im[2],bb_im[3],linewidth=1,edgecolor='r',facecolor='none')
+    ax.add_patch(rect)
+
+# %%
+# %%
+    lm = sitk.ReadImage(str(lm_fn))
+
+
+
     fns = list(fldr.glob("*"))
     fns = [fn for fn in fns if is_sitk_file(fn)]
     fil = sitk.LabelShapeStatisticsImageFilter()
@@ -62,13 +220,22 @@ if __name__ == "__main__":
     df = pd.DataFrame(dicis)
     df.to_csv(fldr.parent/("info.csv"))
 # %%
+    fn = "/s/fran_storage/checkpoints/litsmc/litsmc/LITS-944/checkpoints/epoch=55-step=1848.ckpt"
+    ckp = torch.load(fn)
     src_fn  =Path('/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_150/lms/nodes_70_20210804_ChestAbdomenPelviswithIVC1p00Hr40S3.pt')
+
     lm = torch.load(src_fn)
     mask_fnames = Path('/r/datasets/preprocessed/nodes/lbd/spc_080_080_150/lms')
     fn2 = find_matching_fn(fn,fldr1)
+    fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/indices/drli_017.pt"
+
+    lm = torch.load(fn)
+# %%
+    fldr = Path("/s/xnat_shadow/litq/images")
+    fns = fldr.glob("*")
+    for fn in fns: compress_img(fn)
 
 # %%
-
     fn = "/s/xnat_shadow/crc/lms/crc_CRC133_20130102_ABDOMEN.nii.gz"
     dici = {'lm':fn}
     L = LoadSITKd(keys=['lm'])

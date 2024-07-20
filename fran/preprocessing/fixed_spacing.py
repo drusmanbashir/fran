@@ -218,7 +218,7 @@ class _Preprocessor(GetAttr):
             [
                 self.output_folder / ("lms"),
                 self.output_folder / ("images"),
-                self.output_folder / self.indices_subfolder,
+                self.indices_subfolder,
             ]
         )
 
@@ -333,7 +333,7 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
 
     @property
     def indices_subfolder(self):
-        indices_subfolder = "indices"
+        indices_subfolder =self.output_folder/ ( "indices")
         return indices_subfolder
 
 
@@ -350,13 +350,62 @@ def get_tensor_stats(tnsr):
     }
     return dic
 
+class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
+    def __init__(self, project, spacing, device="cpu", half_precision=False):
+        super().__init__(project, spacing, device, half_precision)
+
+    def register_existing_files(self):
+        self.existing_files = list(self.indices_subfolder.glob("*"))
+
+
+    def process(
+        self,
+    ):
+        if not hasattr(self, "dl"):
+            print("No data loader created. No data to be processed")
+            return 0
+        print("resampling dataset to spacing: {0}".format(self.spacing))
+        self.create_output_folders()
+        for batch in pbar(self.dl):
+            self.process_batch(batch)
+
+    def process_batch(self, batch):
+        images, lms, fg_inds, bg_inds=(
+            batch["image"],
+            batch["lm"],
+            batch["lm_fg_indices"],
+            batch["lm_bg_indices"]
+        )
+        for (
+            image,
+            lm,
+            fg_ind,
+            bg_ind,
+        ) in zip(
+            images, lms, fg_inds, bg_inds,
+        ):
+            assert image.shape == lm.shape, "mismatch in shape".format(
+                image.shape, lm.shape
+            )
+            assert image.dim() == 4, "images should be cxhxwxd"
+            inds = {
+                "lm_fg_indices": fg_ind,
+                "lm_bg_indices": bg_ind,
+                "meta": image.meta,
+            }
+            self.save_indices(inds, self.indices_subfolder)
+
+
 
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
 
-    project = Project("nodes")
+    project = Project("litsmc")
     Rs = ResampleDatasetniftiToTorch(project, spacing=[0.8, 0.8, 1.5], device="cpu")
+    F = FGBGIndicesResampleDataset(project, spacing=[0.8, 0.8, 1.5], device="cpu")
+    F.setup()
+    F.process()
     # R.register_existing_files()
 
     Rs.setup(True)

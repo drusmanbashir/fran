@@ -27,6 +27,7 @@ def img_lm_bbox_collated( batch):
         return output
 
 def img_lm_metadata_lists_collated(batch):
+        tr()
         images=[]
         lms=[]
         images_meta=[]
@@ -38,6 +39,17 @@ def img_lm_metadata_lists_collated(batch):
             lms_meta.append(item['lm'].meta)
         output = {'image': images, 'lm':lms, 'images_meta':images_meta, 'lms_meta':lms_meta}
         return output
+
+def as_is_collated(batch):
+    keys= batch[0].keys()
+    output_dict = {k:[] for k in keys }
+    listlen = len(keys)
+    lists = []*listlen
+    for i , item in enumerate(batch):
+        for k in keys:
+            output_dict[k].append(item[k])
+    return output_dict
+
 
 def dict_list_collated(keys):
     def _inner(batch):

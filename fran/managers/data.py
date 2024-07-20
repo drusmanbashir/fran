@@ -11,7 +11,7 @@ import torch
 from fastcore.basics import listify, store_attr, warnings
 from lightning.pytorch import LightningDataModule
 from monai.data import DataLoader, Dataset
-from monai.data.dataset import CacheDataset, PersistentDataset
+from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
 from monai.transforms.compose import Compose
 from monai.transforms.croppad.dictionary import (RandCropByPosNegLabeld,
                                                  ResizeWithPadOrCropd)
@@ -29,7 +29,7 @@ from fran.data.dataset import (ImageMaskBBoxDatasetd, MaskLabelRemapd,
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import LoadDict, MetaToDict
-from fran.utils.config_parsers import is_excel_nan
+from fran.utils.config_parsers import is_excel_None
 from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
 from fran.utils.imageviewers import ImageMaskViewer
@@ -71,6 +71,7 @@ class DataManager(LightningDataModule):
         affine3d: dict,
         batch_size=8,
         cache_rate=0.0,
+        ds_type=None
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -83,6 +84,7 @@ class DataManager(LightningDataModule):
         self.dataset_params["std_fg"] = global_properties["std_fg"]
         self.batch_size = batch_size
         self.cache_rate = cache_rate
+        self.ds_type=ds_type
         self.assimilate_tfm_factors(transform_factors)
 
     def assimilate_tfm_factors(self, transform_factors):
@@ -196,7 +198,7 @@ class DataManager(LightningDataModule):
 
     def infer_inds_fldr(self, plan):
         fg_indices_exclude = plan["fg_indices_exclude"]
-        if is_excel_nan(fg_indices_exclude):
+        if is_excel_None(fg_indices_exclude):
             fg_indices_exclude=None
             indices_subfolder = "indices"
         else:
@@ -354,13 +356,21 @@ class DataManagerSource(DataManager):
         self.set_transforms(
             keys_tr="L,Ld,E,Rtr,F1,F2,A,Re,N,I", keys_val="L,Ld,E,Rva,Re,N"
         )
-        if self.cache_rate == 0.0:
+        print("Setting up datasets. Training ds type is: ",self.ds_type)
+        if is_excel_None(self.ds_type):
             self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
-        else:
+        elif self.ds_type == "cache":
             self.train_ds = CacheDataset(
                 data=self.data_train,
                 transform=self.tfms_train,
                 cache_rate=self.cache_rate,
+            )
+        elif self.ds_type == "lmdb":
+            self.train_ds = LMDBDataset(
+                data=self.data_train,
+                transform=self.tfms_train,
+                cache_dir=self.project.cache_folder,
+                db_name="training_cache"
             )
         self.valid_ds = PersistentDataset(
             data=self.data_valid,
@@ -574,4 +584,6 @@ if __name__ == "__main__":
     lab = b["lm"][ind][0]
     ImageMaskViewer([img, lab])
 # %
+
+
 # %%

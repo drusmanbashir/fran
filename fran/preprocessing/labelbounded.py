@@ -1,4 +1,4 @@
-# j %%
+# %%
 from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import CropForegroundd
@@ -39,6 +39,7 @@ from fran.utils.fileio import *
 from fran.utils.helpers import *
 from fran.utils.imageviewers import *
 
+#NOTE:  move all file io processes to ray to avoid 'too many open files' error
 
 class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
     _default = "project"
@@ -188,13 +189,14 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             )
         else:
             indices_subfolder = "indices"
+        indices_subfolder = self.output_folder / indices_subfolder
         return indices_subfolder
 
     # def create_output_folders(self):
     #     super().create_output_folders()
 
 
-class FGBGIndicesGenerator(LabelBoundedDataGenerator):
+class FGBGIndicesLBD(LabelBoundedDataGenerator):
     """
     Outputs FGBGIndices only. No images of lms are created.
     Use this generator when LBD images and lms are already created, but a new set of FG indices is required, for example with exclusion of a new label
@@ -202,9 +204,10 @@ class FGBGIndicesGenerator(LabelBoundedDataGenerator):
     """
 
     def __init__(self, project, data_folder, fg_indices_exclude: list = None) -> None:
-        data_folder = Path(data_folder)
-        self.output_folder = Path(data_folder)
         store_attr()
+        self.data_folder = Path(data_folder)
+        self.output_folder = Path(data_folder)
+
 
     def register_existing_files(self):
         self.existing_files = list(
@@ -255,6 +258,9 @@ class FGBGIndicesGenerator(LabelBoundedDataGenerator):
             pin_memory=False,
         )
 
+    def create_output_folders(self):
+        maybe_makedirs(self.indices_subfolder)
+
     def process(
         self,
     ):
@@ -280,6 +286,8 @@ class FGBGIndicesGenerator(LabelBoundedDataGenerator):
         #         "since some files skipped, dataset stats are not being stored. run resampledatasetniftitotorch.get_tensor_folder_stats separately"
         #     )
         #
+
+
 
     def process_batch(self, batch):
         batch = self.make_contiguous(batch)
@@ -424,17 +432,59 @@ if __name__ == "__main__":
     P = Project(project_title="litsmc")
     P.maybe_store_projectwide_properties()
 # %%
-    F = FGBGIndicesGenerator(
+
+    F = FGBGIndicesLBD(
         project=P, data_folder="/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/"
     )
-    F.setup()
+  
 # %%
     F.process()
 
+# %%
+    batch = next(iter(F.dl))
+    F.process_batch(batch)
+
+# %%
+    batch = F.make_contiguous(batch)
+    (
+        images,
+        lms,
+        fg_inds,
+        bg_inds,
+    ) = (
+        batch["image"],
+        batch["lm"],
+        batch["lm_fg_indices"],
+        batch["lm_bg_indices"],
+        # batch["foreground_start_coord"],
+        # batch["foreground_end_coord"],
+    )
+    image, lm,fg_ind,bg_ind = images[0],lms[0],fg_inds[0],bg_inds[0]
+    assert image.shape == lm.shape, "mismatch in shape".format(
+            image.shape, lm.shape
+        )
+    assert image.dim() == 4, "images should be cxhxwxd"
+    inds = {
+            "lm_fg_indices": fg_ind,
+            "lm_bg_indices": bg_ind,
+            # "foreground_start_coord": foreground_start_coord,
+            # "foreground_end_coord": foreground_end_coord,
+            "meta": image.meta,
+        }
 
 
+    os.makedirs("/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/tmp")
+    F.save_indices(inds, "tmp")
+    inds = inds.contiguous(inds)
+    inds['lm_fg_indices']= inds['lm_fg_indices'].contiguous()
+    inds['lm_bg_indices']= inds['lm_bg_indices'].contiguous()
+    inds['lm_bg_indices'].numel()
+    torch.save(inds,"tmp.pt")
 
 
+    fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/indices/lits_50.pt"
+    inds2 = torch.load(fn)
+    inds2['lm_fg_indices'].numel()
 # %%
     L = LabelBoundedDataGenerator(
         project=P,

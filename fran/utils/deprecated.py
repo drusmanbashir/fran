@@ -1,46 +1,32 @@
-# NOTE: UTILITY functions to reconcile previous version with new.
 # %%
+# NOTE: UTILITY functions to reconcile previous version with new.
 
-import ast
 import itertools as il
-from collections.abc import Callable, Sequence
 from pathlib import Path
 
-import itk
 from label_analysis.overlap import pbar
 import numpy as np
 import SimpleITK as sitk
 import torch
-from fastcore.all import listify, store_attr
-from fastcore.foundation import GetAttr
-from lightning.fabric import Fabric
-from lightning.pytorch import LightningModule
-from monai.data.dataloader import DataLoader
-from monai.data.dataset import Dataset, PersistentDataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
-from monai.data.utils import decollate_batch
-from monai.inferers.inferer import SlidingWindowInferer
-from monai.transforms.compose import Compose
-from monai.transforms.io.dictionary import LoadImaged, SaveImaged
-from monai.transforms.post.dictionary import Activationsd, AsDiscreted, Invertd
-from monai.transforms.spatial.dictionary import Orientationd, Spacingd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, SqueezeDimd
-from prompt_toolkit.shortcuts import input_dialog
 
-from fran.data.dataset import (
-    InferenceDatasetNii,
-    InferenceDatasetPersistent,
-    NormaliseClipd,
-)
 from fran.managers.training import UNetTrainer, checkpoint_from_model_id
-from fran.transforms.imageio import LoadSITKd
-from fran.transforms.inferencetransforms import SaveMultiChanneld, ToCPUd
-from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
-from fran.utils.dictopts import DictToAttr
-from fran.utils.fileio import maybe_makedirs
 from fran.utils.helpers import pp, slice_list
 from fran.utils.imageviewers import ImageMaskViewer, view_sitk
-from fran.utils.itk_sitk import ConvertSimpleItkImageToItkImage
+
+
+
+def insert_plan_key(ckpt_fn):
+
+    dic_tmp = torch.load(ckpt_fn)
+    pp(dic_tmp.keys())
+    if not 'plan' in dic_tmp['datamodule_hyper_parameters'].keys():
+        print("No plan key. Adding")
+        spacing  =dic_tmp['datamodule_hyper_parameters']['dataset_params']['spacing']
+        dic_tmp['datamodule_hyper_parameters']['plan']= {'spacing':spacing}
+        torch.save(dic_tmp, ckpt)
+    else:
+        print("Found plan key. No change")
 
 
 def list_to_chunks(input_list: list, chunksize: int):
@@ -75,11 +61,11 @@ def remove_loss_key_state_dict(model_id):
     
 # %%
 if __name__ == "__main__":
-    model_id = "LITS-957"
 
-    run_w = "LIT-145"
+    run_w = "LITS-860"
     ckpt = checkpoint_from_model_id(run_w)
     dic_tmp = torch.load(ckpt, map_location="cpu")
+    insert_plan_key(ckpt)
 
     keys = ['spacing']
     dici = dic_tmp['datamodule_hyper_parameters']['plan']

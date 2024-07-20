@@ -56,6 +56,11 @@ class RandRandGaussianNoised(RandomizableTransform, MapTransform):
         return d
 
 
+class MakeBinary(MonaiDictTransform):
+    def func(self,x):
+        x[x>0]=1
+        return x
+
 
 
 class _IntensityAugmentation():
@@ -189,25 +194,79 @@ def standardize(img,mn,std):
 
 # %%
 if __name__ == "__main__":
-    pass
     
-    if 'get_ipython' in globals():
-    
-        from IPython import get_ipython
-        ipython = get_ipython()
-        ipython.run_line_magic('load_ext', 'autoreload')
-        ipython.run_line_magic('autoreload', '2')
     from fran.data.dataset import *
     
+    from fran.utils.common import *
     from fran.utils.helpers import *
     from fran.utils.fileio import *
     from fran.utils.imageviewers import *
     from fran.transforms.spatialtransforms import *
-    P = Project(project_title="lits"); proj_defaults= P
-    P = Project(project_title="lits"); proj_defaults= P
-    bboxes_21= proj_defaults.bboxes_voxels_info_filename
-    train_list,valid_list = get_train_valid_test_lists_from_json(project_title=proj_defaults.project_title,fold=0, json_fname="experiments/kits21/metadata/validation_folds.pkl")
-    train_ds = ImageMaskBBoxDataset(proj_defaults,train_list,[bboxes_21],[0,1,2])
+    from matplotlib import pyplot as plt
+    P = Project(project_title="litsmc"); proj_defaults= P
+# %%
+
+
+
+    import torchvision
+    model = torchvision.models.detection.ssd300_vgg16(pretrained = True)
+    model.eval()
+# %%
+    fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/images/drli_024.pt")
+    im = torch.load(fn)
+    
+    im1 = im.mean(0)
+    im1 = im.mean(2)
+    im2 =  im.mean(1)
+    plt.imshow(im2)
+
+
+# %%
+    x = torch.tensor([1, 2, 3])
+    x.repeat(4, 2)
+    x.repeat(4, 2, 1).size()
+# %%
+    im1 = im1.repeat(3,1,1)
+
+    confidence_threshold = 0.8
+    pred = model([im1])
+    bbox,scores,labels = pred[0]['boxes'],pred[0]['scores'], pred[0]['labels']
+    indices = torch.nonzero(scores > confidence_threshold).squeeze(1)
+ 
+    filtered_bbox = bbox[indices]
+    filtered_scores = scores[indices]
+    filtered_labels = labels[indices]
+    
+# %%
+    import cv2
+
+
+    def draw_boxes_and_labels(image, bbox, labels ):
+        img_copy = image.copy()
+     
+        for i in range(len(bbox)):
+            x, y, w, h = bbox[i].astype('int')
+            cv2.rectangle(img_copy, (x, y), (w, h), (0, 0, 255), 5)
+     
+            class_index = labels[i].numpy().astype('int')
+            # class_detected = class_names[class_index - 1]
+     
+            class_index = str(class_index)
+            cv2.putText(img_copy, class_index, (x, y + 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2, cv2.LINE_AA)
+     
+        return img_copy
+
+
+# %%
+
+    plt.imshow(img)
+    im1 = im1.detach().cpu()
+    img = np.array(im1)
+    img = np.transpose(img,(1,2,0))
+    cv2_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    bbox = bbox.detach().cpu().numpy()
+    result_img = draw_boxes_and_labels(cv2_image, bbox, labels )
+    cv2.imshow('image',result_img)
 # %%
     mask_fn = Path('/home/ub/datasets/preprocessed/kits21/masks/kits21_00088.npy')
     img_fn = Path('/home/ub/datasets/preprocessed/kits21/images/kits21_00088.npy')
