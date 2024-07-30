@@ -347,6 +347,12 @@ class Project(DictToAttr):
 
     #NOTE: Later functions patch repeated case ids (e.g., LBGgenerator) so that there is 49,49a, 49b also lm_fnames have substrings 'label-' etc. Fix databases so that after LBD generates new tables are added. Consider updating case ids for repeat ids perhaps
 
+    def get_train_val_cids(self,fold):
+        ss_train = "SELECT case_id FROM datasources WHERE fold<>{}".format(fold)
+        ss_val = "SELECT case_id FROM datasources WHERE fold={}".format(fold)
+        train_cids,val_cids = self.sql_query(ss_train,True),self.sql_query(ss_val,True)
+        return train_cids,val_cids
+
     def get_train_val_files(self,fold):
         ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{}".format(fold)
         ss_val = "SELECT img_symlink FROM datasources WHERE fold={}".format(fold)
@@ -356,14 +362,6 @@ class Project(DictToAttr):
         val_files =[Path(fn).name for fn in val_files]
         return train_files,val_files
 
-    def get_train_val_cids(self,fold):
-        ss_train = "SELECT case_id FROM datasources WHERE fold<>{}".format(fold)
-        ss_val = "SELECT case_id FROM datasources WHERE fold={}".format(fold)
-
-        train_files,val_files = self.sql_query(ss_train,True),self.sql_query(ss_val,True)
-        train_files =[Path(fn).name for fn in train_files]
-        val_files =[Path(fn).name for fn in val_files]
-        return train_files,val_files
 
     @ask_proceed("Remove all project files and folders?")
     def delete(self):

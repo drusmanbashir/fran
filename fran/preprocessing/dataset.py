@@ -16,10 +16,6 @@ from fran.managers.datasource import get_ds_remapping
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import ChangeDType
-<<<<<<< HEAD
-from fran.transforms.misc_transforms import (ChangeDtyped, DictToMeta, FgBgToIndicesd2, HalfPrecisiond, LabelRemapd,
-                                             Recastd, LabelRemapSITKd)
-=======
 from fran.transforms.misc_transforms import (
     ChangeDtyped,
     DictToMeta,
@@ -29,7 +25,6 @@ from fran.transforms.misc_transforms import (
     Recastd,
     LabelRemapSITKd,
 )
->>>>>>> efc2e4fb (jj)
 from fran.transforms.spatialtransforms import ResizeToTensord
 
 
@@ -40,17 +35,12 @@ from monai.transforms.utility.dictionary import EnsureChannelFirstd
 
 from fran.transforms.imageio import LoadSITKd, LoadTorchd
 from fran.transforms.inferencetransforms import BBoxFromPTd
-<<<<<<< HEAD
-from fran.transforms.misc_transforms import (ApplyBBox, MergeLabelmapsd,
-                                             Recastd, LabelRemapSITKd)
-=======
 from fran.transforms.misc_transforms import (
     ApplyBBox,
     MergeLabelmapsd,
     Recastd,
     LabelRemapSITKd,
 )
->>>>>>> efc2e4fb (jj)
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.string import info_from_filename
 
@@ -94,14 +84,8 @@ class ResamplerDataset(GetAttr, Dataset):
     def setup(self):
         self.create_transforms()
         data = self.create_data_dicts()
-<<<<<<< HEAD
-        Dataset.__init__(self, data,self.transform)
-
-
-=======
         Dataset.__init__(self, data, self.transform)
 
->>>>>>> efc2e4fb (jj)
     #
     # def __getitem__(self, index):
     #     dici = self.data[index]
@@ -113,11 +97,7 @@ class ResamplerDataset(GetAttr, Dataset):
     #     dici = {
     #         "image": img,
     #         "lm": lm,
-<<<<<<< HEAD
-    #         "remapping": remapping,
-=======
     #         "remapping_imported": remapping,
->>>>>>> efc2e4fb (jj)
     #     }
     #     dici = self.transform(dici)
     #     return dici
@@ -133,20 +113,6 @@ class ResamplerDataset(GetAttr, Dataset):
             dici = {
                 "image": img_fname,
                 "lm": mask_fname,
-<<<<<<< HEAD
-                "remapping": remapping,
-            }
-            data.append(dici)
-        return data
-
-
-    def create_transforms(self):
-        L = LoadSITKd(keys=["image", "lm"], image_only=True)
-        R = LabelRemapd(keys=["lm"], remapping_key="remapping")
-        T = ToDeviced(keys=["image", "lm"], device=self.device)
-        Re = Recastd(keys=["image", "lm"])
-
-=======
                 "remapping_imported": remapping,
             }
             data.append(dici)
@@ -159,7 +125,6 @@ class ResamplerDataset(GetAttr, Dataset):
         T = ToDeviced(keys=["image", "lm"], device=self.device)
         Re = Recastd(keys=["image", "lm"])
 
->>>>>>> efc2e4fb (jj)
         Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
         Ai = DictToMeta(
             keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
@@ -185,11 +150,7 @@ class ResamplerDataset(GetAttr, Dataset):
         Ch = ChangeDtyped(keys=["lm"], target_dtype=torch.uint8)
 
         # tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
-<<<<<<< HEAD
-        tfms = [L, R, T, Re, Ind, E, Si, Rz,Ch]
-=======
         tfms = [L, R, T, Re, Ind, E, Si, Rz, Ch]
->>>>>>> efc2e4fb (jj)
 
         if self.clip_center == True:
             tfms.extend([N])
@@ -207,100 +168,6 @@ class ResamplerDataset(GetAttr, Dataset):
             self.std = self.global_properties["std_fg"]
 
 
-<<<<<<< HEAD
-
-class CropToLabelDataset(Dataset):
-    def __init__(
-        self,
-        expand_by,
-        case_ids,
-        data_folder,
-        spacing,
-        mask_label,
-        fg_indices_exclude=None,
-        device='gpu'
-    ):
-        """
-        mask_label: label used to crop. 
-        fg_indices_exclude: list of labels which will not count as fg in random sampling during training.
-        """
-        store_attr('expand_by,spacing,case_ids,data_folder,mask_label, device,fg_indices_exclude') # wont work with Datasetparent otherwise
-
-    def setup(self):
-        self.create_transforms()
-        data = self.create_data_dicts()
-        Dataset.__init__(self, data=data, transform=self.transform)
-
-    def create_data_dicts(self ):
-        masks_folder = self.data_folder / "lms"
-        images_folder = self.data_folder / "images"
-        lm_fns = list(masks_folder.glob("*.pt"))
-        img_fns = list(images_folder.glob("*.pt"))
-        data = []
-        for cid in self.case_ids:
-            lm_fn = self.case_id_file_match(cid, lm_fns)
-            img_fn = self.case_id_file_match(cid, img_fns)
-            dici = {
-                "lm": lm_fn,
-                "image": img_fn,
-            }
-            data.append(dici)
-        return data
-
-    def case_id_file_match(self, case_id, fileslist):
-        fns = [fn for fn in fileslist if case_id == info_from_filename(fn.name,full_caseid=True)['case_id']]
-        if len(fns) != 1:
-            tr()
-        return fns[0]
-
-    def create_transforms(self):
-        L2 = LoadTorchd(keys=["lm", "image"])
-        # En = EnsureTyped(keys = ["lm","image"])
-        D = ToDeviced(device =self.device,keys=["lm","image"])
-
-        E = EnsureChannelFirstd(
-            keys=[ "image", "lm"], channel_dim="no_channel")
-        
-        margin= [int(self.expand_by / sp) for sp in self.spacing]
-        C = CropForegroundd(keys = ["image","lm"], source_key = "lm", select_fn = lambda lm: lm==self.mask_label,margin = margin)
-        Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", ignore_labels = self.fg_indices_exclude,image_threshold=-2600)
-        Am = DictToMeta(
-            keys=["lm"],
-            meta_keys=[ "lm_fg_indices", "lm_bg_indices"],
-            renamed_keys=[ "lm_fg_indices", "lm_bg_indices"],
-        )
-
-
-        tfms = [L2,D,E,C,Ind]
-        C = Compose(tfms)
-        self.transform = C
-
-class FGBGIndicesDataset(CropToLabelDataset):
-
-    '''
-    This dataset will only load labelmaps, retrieve indices, and output them.
-    '''
-
-    def __init__(self,  case_ids, data_folder, fg_indices_exclude=None, device='gpu'):
-        store_attr('case_ids,data_folder,fg_indices_exclude, device')
-
-    def create_transforms(self):
-        L2 = LoadTorchd(keys=["lm", "image"])
-        # En = EnsureTyped(keys = ["lm","image"])
-        D = ToDeviced(device =self.device,keys=["lm","image"])
-
-        E = EnsureChannelFirstd(
-            keys=[ "image", "lm"], channel_dim="no_channel")
-        
-        Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", ignore_labels = self.fg_indices_exclude,image_threshold=-2600)
-       
-        tfms = [L2,D,E,Ind]
-        C = Compose(tfms)
-        self.transform = C
-    
-
-=======
->>>>>>> efc2e4fb (jj)
 class ImporterDataset(Dataset):
     def __init__(
         self,
@@ -366,16 +233,9 @@ class ImporterDataset(Dataset):
 
     def create_transforms(self):
 
-<<<<<<< HEAD
-        R = LabelRemapSITKd(keys=["lm_imported"], remapping_key="remapping")
-        L1 = LoadSITKd(keys=["lm_imported"], image_only=True)
-        L2 = LoadTorchd(keys=["lm", "image"])
-        Re = Recastd(keys=["lm_imported"])
-=======
         image_key = "image"
         lm_key = "lm"
         lm_imported_key = "lm_imported"
->>>>>>> efc2e4fb (jj)
 
         self.R = LabelRemapSITKd(keys=[lm_imported_key], remapping_key="remapping_imported")
         self.LS = LoadSITKd(keys=[lm_imported_key], image_only=True)

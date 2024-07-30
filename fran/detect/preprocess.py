@@ -20,10 +20,6 @@ from monai.transforms.croppad.dictionary import BoundingRectd
 from monai.transforms.io.array import SaveImage
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
-<<<<<<< HEAD
-from monai.transforms.utils import generate_spatial_bounding_box
-=======
->>>>>>> efc2e4fb (jj)
 import matplotlib.patches as patches
 import torch.nn.functional as F
 from pathlib import Path

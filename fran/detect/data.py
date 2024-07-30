@@ -25,10 +25,7 @@ from monai.transforms.utility.dictionary import (
     DeleteItemsd,
     EnsureChannelFirstd,
     EnsureTyped,
-<<<<<<< HEAD
-=======
     RepeatChanneld,
->>>>>>> efc2e4fb (jj)
 )
 from monai.transforms.utils import generate_spatial_bounding_box
 import matplotlib.patches as patches
@@ -44,11 +41,7 @@ from monai.transforms.intensity.dictionary import (
     RandScaleIntensityd,
     RandShiftIntensityd,
 )
-<<<<<<< HEAD
-from monai.transforms.spatial.dictionary import RandRotated, Resized, Resize
-=======
 from monai.transforms.spatial.dictionary import RandFlipd, RandRotated, RandZoomd, Resized, Resize
->>>>>>> efc2e4fb (jj)
 from torchvision.datasets.folder import is_image_file
 
 from fran.transforms.imageio import LoadSITKd
@@ -103,10 +96,6 @@ class DetectDS(Dataset):
         return len(self.data_dicts)
 
 
-<<<<<<< HEAD
-# %%
-=======
->>>>>>> efc2e4fb (jj)
 
 
 class DetectDataModule(L.LightningDataModule):
@@ -145,28 +134,15 @@ class DetectDataModule(L.LightningDataModule):
         image_key = "image"
         label_key = "lm"
         box_key = "lm_bbox"
-<<<<<<< HEAD
-=======
         probs= 1.0
         outputsize = [512,512]
     
         prob_int = .3
->>>>>>> efc2e4fb (jj)
 
         L = LoadTorchd([image_key, label_key])
         E = EnsureChannelFirstd(keys=[image_key])
 
         MkB = MakeBinary([label_key])
-<<<<<<< HEAD
-        Et = EnsureTyped(keys=[image_key, box_key], dtype=torch.float32)
-        Et2 = EnsureTyped(keys=[label_key], dtype=torch.long)
-        E2 = EnsureTyped(keys=[image_key], dtype=torch.float16)
-        B = BoundingRectd(keys=[label_key])
-        Y = BoundingBoxYOLOd(
-            [box_key], 2, key_template_tensor=label_key, output_keys=["bbox_yolo"]
-        )
-        CB = ConvertBoxToStandardModed(mode="xxyy", box_keys=[box_key])
-=======
         Et = EnsureTyped(keys=[image_key ], dtype=torch.float32)
         Et2 = EnsureTyped(keys=[label_key], dtype=torch.long)
         E2 = EnsureTyped(keys=[image_key], dtype=torch.float16)
@@ -175,7 +151,6 @@ class DetectDataModule(L.LightningDataModule):
         Y = BoundingBoxYOLOd(
             [box_key], 2, key_template_tensor=label_key, output_keys=["bbox_yolo"]
         )
->>>>>>> efc2e4fb (jj)
 
         R0 = RandRotated(
             keys=[image_key, label_key],
@@ -183,58 +158,16 @@ class DetectDataModule(L.LightningDataModule):
             keep_size=True,
             mode=["bilinear", "nearest"],
             range_x=[0.4, 0.4],
-<<<<<<< HEAD
-        )
-        N = NormalizeIntensityd(keys=[image_key])
-        Z = RandZoomBoxd(
-            image_keys=[image_key],
-            box_keys=[box_key],
-            box_ref_image_keys=[image_key],
-=======
             lazy=True
         )
         Z = RandZoomd(
             keys=[image_key, label_key],
             mode = ['bilinear','nearest'],
->>>>>>> efc2e4fb (jj)
             prob=probs,
             min_zoom=0.7,
             max_zoom=1.4,
             padding_mode="constant",
             keep_size=True,
-<<<<<<< HEAD
-        )
-        F1 = RandFlipBoxd(
-            image_keys=[image_key],
-            box_keys=[box_key],
-            box_ref_image_keys=[image_key],
-            prob=probs,
-            spatial_axis=0,
-        )
-        F2 = RandFlipBoxd(
-            image_keys=[image_key],
-            box_keys=[box_key],
-            box_ref_image_keys=[image_key],
-            prob=probs,
-            spatial_axis=1,
-        )
-        R1 = RandRotateBox90d(
-            image_keys=[image_key],
-            box_keys=[box_key],
-            box_ref_image_keys=[image_key],
-            prob=0.75,
-            max_k=3,
-            spatial_axes=(0, 1),
-        )
-        C = ClipBoxToImaged(
-            box_keys=box_key,
-            label_keys=[label_key],
-            box_ref_image_keys=image_key,
-            remove_empty=True,
-        )
-
-        
-=======
             lazy=True
         )
         F1 = RandFlipd(
@@ -259,7 +192,6 @@ class DetectDataModule(L.LightningDataModule):
         )
 
         N = NormalizeIntensityd(keys=[image_key])
->>>>>>> efc2e4fb (jj)
         int_augs = [
             RandGaussianSmoothd(
                 keys=[image_key],
@@ -273,11 +205,8 @@ class DetectDataModule(L.LightningDataModule):
             RandShiftIntensityd(keys="image", offsets=0.1, prob=prob_int),
             RandAdjustContrastd(["image"], gamma=(0.7, 1.5)),
         ]
-<<<<<<< HEAD
-=======
         Rp = RepeatChanneld(keys = [image_key],repeats=3)
         DelI = DeleteItemsd(keys = [label_key])
->>>>>>> efc2e4fb (jj)
         self.transforms_dict = {
             "N": N,
             "L": L,
@@ -288,25 +217,17 @@ class DetectDataModule(L.LightningDataModule):
             "E2": E2,
             "B": B,
             "Y": Y,
-<<<<<<< HEAD
-=======
             "DelI": DelI,
->>>>>>> efc2e4fb (jj)
             "CB": CB,
             "R0": R0,
             "Z": Z,
             "I": int_augs,
             "F1": F1,
             "F2": F2,
-<<<<<<< HEAD
-            "R1": R1,
-            "C": C,
-=======
             "Rs":Rs,
             "Rp":Rp,
             # "R1": R1,
             # "C": C,
->>>>>>> efc2e4fb (jj)
         }
 
     def set_transforms(self, keys_tr: str, keys_val: str):
@@ -330,21 +251,11 @@ class DetectDataModule(L.LightningDataModule):
 
     def setup(self, stage: str):
 
-<<<<<<< HEAD
-        tfms_train = Compose([L, MkB, R0, B, CB, Et, Et2, Z, F1, F2, R1, C, Y])
-        tfms_val = Compose([L, MkB, B, CB, Et, Et2, C, Y])
-        # Assign train/val datasets for use in dataloaders
-        self.create_transforms()
-        self.set_transforms(
-            keys_tr="L,MkB, R0, B, CB, Et, Et2, Z, F1, F2, R1, C, Y",
-            keys_val="L,MkB,B, CB, Et, Et2, C, Y",
-=======
         # Assign train/val datasets for use in dataloaders
         self.create_transforms()
         self.set_transforms(
             keys_tr="L,MkB,  Et, Et2, N,I, F1, F2, R0,Z, Rs, B, CB,Y, DelI,Rp ",
             keys_val="L,MkB,Et, Et2, N, Rs,B, CB,Y,DelI, Rp",
->>>>>>> efc2e4fb (jj)
         )
         if stage == "fit":
             self.ds_train = Dataset(data=self.train_dicts, transform=self.tfms_train)
@@ -353,17 +264,10 @@ class DetectDataModule(L.LightningDataModule):
             raise NotImplementedError
 
     def train_dataloader(self):
-<<<<<<< HEAD
-        return DataLoader(self.ds_train, batch_size=32)
-
-    def val_dataloader(self):
-        return DataLoader(self.ds_val, batch_size=32)
-=======
         return DataLoader(self.ds_train, batch_size=32,num_workers=32,pin_memory=True)
 
     def val_dataloader(self):
         return DataLoader(self.ds_val, batch_size=32,num_workers=32,pin_memory=True)
->>>>>>> efc2e4fb (jj)
 
 
 # %%
@@ -372,18 +276,6 @@ if __name__ == "__main__":
     D = DetectDataModule(fldr)
     D.prepare_data()
     D.setup("fit")
-<<<<<<< HEAD
-# %%
-
-    dici2 = D.ds_train[239]
-    im = dici2['image'][0]
-    lm = dici2['lm'][0]
-    bb = dici2['lm_bbox'].clone()
-    bb = bb[0].tolist()
-    imv= torch.permute(im, (1, 0))
-    lmv= torch.permute(lm, (1, 0))
-    draw_image_bbox(lmv,*bb)
-=======
     dl = D.train_dataloader()
     iteri = iter(dl)
     aa = next(iteri)
@@ -431,7 +323,6 @@ if __name__ == "__main__":
     imv= torch.permute(im, (1, 0))
     lmv= torch.permute(lm, (1, 0))
     draw_image_bbox(imv,*bb)
->>>>>>> efc2e4fb (jj)
 # %%
     L = LoadTorchd(["image", "lm"])
     B = BoundingRectd(keys=["lm"])

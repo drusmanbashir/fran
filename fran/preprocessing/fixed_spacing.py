@@ -23,19 +23,11 @@ from monai.transforms.utility.dictionary import (
 )
 
 from fran.data.dataloader import dict_list_collated, img_lm_metadata_lists_collated
-<<<<<<< HEAD
-from fran.data.dataset import NormaliseClipd
-=======
->>>>>>> efc2e4fb (jj)
 from fran.managers.datasource import get_ds_remapping
 from fran.preprocessing.dataset import ResamplerDataset
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
-<<<<<<< HEAD
-from fran.transforms.inferencetransforms import ChangeDType
-=======
 from fran.transforms.inferencetransforms import ChangeDType, ToCPUd
->>>>>>> efc2e4fb (jj)
 from fran.transforms.misc_transforms import (
     ChangeDtyped,
     DictToMeta,
@@ -78,12 +70,6 @@ class _Preprocessor(GetAttr):
     ) -> None:
         store_attr("project,spacing,device")
 
-<<<<<<< HEAD
-    def save_pt(self, tnsr, subfolder):
-        tnsr = tnsr.contiguous()
-        fn = Path(tnsr.meta["filename_or_obj"])
-        fn_name = strip_extension(fn.name) + ".pt"
-=======
     def save_pt(self, tnsr, subfolder,contiguous=True,suffix:str=None):
         if contiguous==True:
             tnsr = tnsr.contiguous()
@@ -94,17 +80,8 @@ class _Preprocessor(GetAttr):
         else:
             fn_name =  fn_name + ".pt"
 
->>>>>>> efc2e4fb (jj)
         fn = self.output_folder / subfolder / fn_name
         torch.save(tnsr, fn)
-    def save_indices(self, indices_dict, subfolder):
-        fn = Path(indices_dict["meta"]["filename_or_obj"])
-        # except:
-        #     fn = Path(indices_dict["meta"]["filename"])
-        fn_name = strip_extension(fn.name) + ".pt"
-        fn = self.output_folder / subfolder / fn_name
-        torch.save(indices_dict, fn)
-
 
     def save_indices(self, indices_dict, subfolder,suffix:str=None):
         fn = Path(indices_dict["meta"]["filename_or_obj"])
@@ -161,25 +138,9 @@ class _Preprocessor(GetAttr):
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
 
-    #
-    # def process_batch(self, batch):
-    #         images, lms = batch["image"], batch["lm"]
-    #         for image, lm in zip(images, lms):
-    #             assert image.shape == lm.shape, "mismatch in shape".format(
-    #                 image.shape, lm.shape
-    #             )
-    #             assert image.dim() == 4, "images should be cxhxwxd"
-    #             self.save_pt(image[0], "images")
-    #             self.save_pt(lm[0], "lms")
-    #             self.extract_image_props(image)
-    #
-
     def process_batch(self, batch):
-<<<<<<< HEAD
-=======
         U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
         batch = U(batch)
->>>>>>> efc2e4fb (jj)
         images, lms, fg_inds, bg_inds=(
             batch["image"],
             batch["lm"],
@@ -198,12 +159,9 @@ class _Preprocessor(GetAttr):
                 image.shape, lm.shape
             )
             assert image.dim() == 4, "images should be cxhxwxd"
-<<<<<<< HEAD
-=======
 
 
 
->>>>>>> efc2e4fb (jj)
             inds = {
                 "lm_fg_indices": fg_ind,
                 "lm_bg_indices": bg_ind,
@@ -260,15 +218,12 @@ class _Preprocessor(GetAttr):
                 self.indices_subfolder,
             ]
         )
-<<<<<<< HEAD
-=======
 
 
     @property
     def indices_subfolder(self):
         indices_subfolder =self.output_folder/ ( "indices")
         return indices_subfolder
->>>>>>> efc2e4fb (jj)
 
 
 class ResampleDatasetniftiToTorch(_Preprocessor):
@@ -276,12 +231,9 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
         super().__init__(project, spacing, device=device)
         self.half_precision = half_precision
 
-<<<<<<< HEAD
-=======
 
 
 
->>>>>>> efc2e4fb (jj)
     def setup(self, overwrite=False):
         self.register_existing_files()
         if overwrite == False:
@@ -381,11 +333,6 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
         self._store_dataset_properties()
 
     @property
-<<<<<<< HEAD
-    def indices_subfolder(self):
-        indices_subfolder =self.output_folder/ ( "indices")
-        return indices_subfolder
-=======
     def output_folder(self):
         self._output_folder = folder_name_from_list(
             prefix="spc",
@@ -394,7 +341,6 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
         )
         return self._output_folder
 
->>>>>>> efc2e4fb (jj)
 
 
 def get_tensorfile_stats(filename):
@@ -410,52 +356,6 @@ def get_tensor_stats(tnsr):
         "shape":[*tnsr.shape]
     }
     return dic
-
-class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
-    def __init__(self, project, spacing, device="cpu", half_precision=False):
-        super().__init__(project, spacing, device, half_precision)
-
-    def register_existing_files(self):
-        self.existing_files = list(self.indices_subfolder.glob("*"))
-
-
-    def process(
-        self,
-    ):
-        if not hasattr(self, "dl"):
-            print("No data loader created. No data to be processed")
-            return 0
-        print("resampling dataset to spacing: {0}".format(self.spacing))
-        self.create_output_folders()
-        for batch in pbar(self.dl):
-            self.process_batch(batch)
-
-    def process_batch(self, batch):
-        images, lms, fg_inds, bg_inds=(
-            batch["image"],
-            batch["lm"],
-            batch["lm_fg_indices"],
-            batch["lm_bg_indices"]
-        )
-        for (
-            image,
-            lm,
-            fg_ind,
-            bg_ind,
-        ) in zip(
-            images, lms, fg_inds, bg_inds,
-        ):
-            assert image.shape == lm.shape, "mismatch in shape".format(
-                image.shape, lm.shape
-            )
-            assert image.dim() == 4, "images should be cxhxwxd"
-            inds = {
-                "lm_fg_indices": fg_ind,
-                "lm_bg_indices": bg_ind,
-                "meta": image.meta,
-            }
-            self.save_indices(inds, self.indices_subfolder)
-
 
 
 class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
@@ -653,9 +553,5 @@ if __name__ == "__main__":
     df
     dici = load_dict()
     save_json(resampled_dataset_properties,"/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/resampled_dataset_properties.json")
-
-# %%
-    R = I.R
-    b = R.ds[0]
 
 # %%

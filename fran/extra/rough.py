@@ -1,19 +1,12 @@
 # %%
 import time
 
-<<<<<<< HEAD
-=======
 from fastcore.script import save_pickle
->>>>>>> efc2e4fb (jj)
 from fran.data.dataloader import img_lm_metadata_lists_collated
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
-<<<<<<< HEAD
-from fran.transforms.imageio import TorchWriter
-=======
 from fran.transforms.imageio import TorchWriter, save_dict
->>>>>>> efc2e4fb (jj)
 import SimpleITK as sitk
 import itertools as il
 from SimpleITK.SimpleITK import LabelShapeStatisticsImageFilter
@@ -40,10 +33,7 @@ from torchvision.datasets.folder import is_image_file
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.misc_transforms import BoundingBoxYOLOd, DictToMeta, MetaToDict
 from fran.transforms.spatialtransforms import Project2D
-<<<<<<< HEAD
-=======
 from fran.utils.config_parsers import is_excel_None
->>>>>>> efc2e4fb (jj)
 from fran.utils.helpers import match_filename_with_case_id, pbar
 import shutil, os
 import h5py
@@ -232,10 +222,6 @@ if __name__ == "__main__":
     df = pd.DataFrame(dicis)
     df.to_csv(fldr.parent/("info.csv"))
 # %%
-<<<<<<< HEAD
-    fn = "/s/fran_storage/checkpoints/litsmc/litsmc/LITS-944/checkpoints/epoch=55-step=1848.ckpt"
-    ckp = torch.load(fn)
-=======
 # %%
 #SECTION:-------------------- FIXING--------------------------------------------------------------------------------------
 
@@ -250,7 +236,6 @@ if __name__ == "__main__":
 # %%
 
 # %%
->>>>>>> efc2e4fb (jj)
     src_fn  =Path('/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_150/lms/nodes_70_20210804_ChestAbdomenPelviswithIVC1p00Hr40S3.pt')
 
     lm = torch.load(src_fn)
@@ -317,8 +302,6 @@ if __name__ == "__main__":
     take = en-sta
     print(take)
 # %%
-<<<<<<< HEAD
-=======
     bbox_fn = Path("/r/datasets/preprocessed/litsmc/patches/spc_080_080_150_plan5/dim_320_320_192/bboxes_info.pkl")
     bboxes = load_dict(bbox_fn)
     bboxes_out = []
@@ -331,7 +314,6 @@ for bbox in bboxes:
     bboxes_out.append(bbox)
     save_pickle(bbox_fn,bboxes_out)
 # %%
->>>>>>> efc2e4fb (jj)
     imgs_fldr = Path("/s/fran_storage/predictions/litsmc/LITS-933")
     img = [fn for fn in imgs_fldr.glob("*") if "CRC164" in fn.name][0]
     lm = sitk.ReadImage(str(img))
@@ -372,11 +354,7 @@ for bbox in bboxes:
 
     cid =     list(set(df.case_id))
 
-<<<<<<< HEAD
-    cids =  [cid for cid in cid if not is_excel_nan(cid) ]
-=======
     cids =  [cid for cid in cid if not is_excel_None(cid) ]
->>>>>>> efc2e4fb (jj)
 
 
 

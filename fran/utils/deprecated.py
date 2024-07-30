@@ -29,8 +29,6 @@ def insert_plan_key(ckpt_fn):
         print("Found plan key. No change")
 
 
-<<<<<<< HEAD
-=======
 
 def remove_plan_key_add_config(ckpt_fn, config):
 
@@ -45,7 +43,6 @@ def remove_plan_key_add_config(ckpt_fn, config):
 # %%
 
 
->>>>>>> efc2e4fb (jj)
 def list_to_chunks(input_list: list, chunksize: int):
     n_lists = int(np.ceil(len(input_list) / chunksize))
 
@@ -108,11 +105,7 @@ if __name__ == "__main__":
 #SECTION:-------------------- filename_or_obj--------------------------------------------------------------------------------------
 
 # %%
-<<<<<<< HEAD
-    fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150")
-=======
     fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/lidc2/spc_080_080_150")
->>>>>>> efc2e4fb (jj)
     fns = list(fldr.rglob("*.pt"))
     for fn in pbar( fns):
         lm = torch.load(fn)

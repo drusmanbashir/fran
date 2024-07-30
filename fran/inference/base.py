@@ -347,11 +347,8 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
 
-<<<<<<< HEAD
-=======
     from fran.managers.datasource import Datasource, _DS
     D = _DS()
->>>>>>> efc2e4fb (jj)
     proj = Project(project_title="totalseg")
     run_tot= ["LITS-860"]
     safe_mode = True
@@ -366,14 +363,11 @@ if __name__ == "__main__":
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/")
     img_nodes = list(fldr_nodes.glob("*"))
-<<<<<<< HEAD
-=======
     fldr_litsmc = Path(D.litq['folder']),Path( D.drli['folder']), Path(D.lits['folder']), Path(D.litqsmall['folder'])
     imgs_litsmc = [list((fld/("images")).glob("*")) for fld in fldr_litsmc]
     imgs_litsmc = list(il.chain.from_iterable(imgs_litsmc))
 
 
->>>>>>> efc2e4fb (jj)
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
@@ -398,17 +392,11 @@ if __name__ == "__main__":
 # %%
     data = P.ds.data[0]
 # %%
-<<<<<<< HEAD
-# %%
-#SECTION:-------------------- TOTALSEG--------------------------------------------------------------------------------------
-
-=======
 
 
 # %%
 #SECTION:-------------------- TOTALSEG--------------------------------------------------------------------------------------
     
->>>>>>> efc2e4fb (jj)
     safe_mode = True
     bs = 4
     save_channels = False
@@ -426,11 +414,7 @@ if __name__ == "__main__":
     )
 # %%
 
-<<<<<<< HEAD
-    preds = T.run(imgs_lidc, chunksize=1)
-=======
     preds = T.run(imgs_litsmc, chunksize=4)
->>>>>>> efc2e4fb (jj)
 
 # %%
 

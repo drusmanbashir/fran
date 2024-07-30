@@ -22,17 +22,6 @@ from fran.utils.fileio import load_dict, maybe_makedirs, save_dict
 from fran.utils.helpers import multiprocess_multiarg
 from fran.utils.string import info_from_filename, strip_extension
 
-<<<<<<< HEAD
-# %%
-if "get_ipython" in globals():
-    print("setting autoreload")
-    from IPython import get_ipython
-
-    ipython = get_ipython()
-    ipython.run_line_magic("load_ext", "autoreload")
-    ipython.run_line_magic("autoreload", "2")
-=======
->>>>>>> efc2e4fb (jj)
 from pathlib import Path
 
 import ipdb
@@ -45,11 +34,7 @@ import ipdb
 tr = ipdb.set_trace
 
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
-<<<<<<< HEAD
-# %%
-=======
 from fran.preprocessing.fixed_spacing import _Preprocessor
->>>>>>> efc2e4fb (jj)
 
 
 class PatchGenerator(DictToAttr,_Preprocessor):

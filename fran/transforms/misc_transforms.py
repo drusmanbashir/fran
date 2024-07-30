@@ -82,14 +82,6 @@ class BoundingBoxYOLOd(MonaiDictTransform):
         if self.dim == 3:
             raise NotImplementedError
         yolo_box = box_converter(bb)
-<<<<<<< HEAD
-        centres = yolo_box[:2]
-        xmax = shape[0]
-        ymax = shape[1]
-
-        xscaled = yolo_box[0][::2] / xmax
-        yscaled = yolo_box[0][1::2] / ymax
-=======
         yolo_box_pt = torch.tensor(yolo_box)
         centres = yolo_box_pt[:2]
         xmax = shape[0]
@@ -97,7 +89,6 @@ class BoundingBoxYOLOd(MonaiDictTransform):
 
         xscaled = yolo_box_pt[0][::2] / xmax
         yscaled = yolo_box_pt[0][1::2] / ymax
->>>>>>> efc2e4fb (jj)
 
         yolo_box_scaled = torch.zeros(4)
         yolo_box_scaled[::2] = xscaled
@@ -109,11 +100,7 @@ class BoundingBoxYOLOd(MonaiDictTransform):
             dat = {"class": 0, "centers": centres, "size": sizes}
             return dat
         else:
-<<<<<<< HEAD
-            yolo_box_scaled = yolo_box_scaled.unsqueeze(0)
-=======
             # yolo_box_scaled = yolo_box_scaled.unsqueeze(0)
->>>>>>> efc2e4fb (jj)
             return yolo_box_scaled
 
 

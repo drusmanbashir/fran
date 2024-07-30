@@ -410,7 +410,7 @@ class TrainingManager:
 
 
     def maybe_alter_config(self,batch_size,batchsize_finder,compiled):
-        if batch_size :
+        if batch_size:
             self.config["dataset_params"]["batch_size"] = batch_size
             # batch_size = self.config["dataset_params"]["batch_size"]
         if batchsize_finder == True: # note even if you set a batchsize, that will be overridden by this.
@@ -428,21 +428,6 @@ class TrainingManager:
             assert(a:=(len(ratios))==(b:=len(labels))), "Class ratios {0} do not match number of labels in dataset {1}".format(a,b)
         else:
             assert  isinstance(ratios, int), "If no list is provided, fgbg_ratio must be an integer"
-<<<<<<< HEAD
-
-        self.configs = self.select_plan(configs)
-
-    def select_plan(self,configs):
-        plan = configs['dataset_params']['plan']
-        plan_keys = [key for key in configs.keys() if 'plan' in key]
-        plan_selected = configs['plan'+str(plan)]
-        configs['plan']=plan_selected
-        for key in plan_keys:
-            configs.pop(key)
-        return configs
-
-=======
->>>>>>> efc2e4fb (jj)
 
     def heuristic_batch_size(self):
         ram = psutil.virtual_memory()[3] / 1e9
@@ -456,18 +441,6 @@ class TrainingManager:
             return 48
 
     def init_dm(self):
-<<<<<<< HEAD
-        cache_rate= self.configs['dataset_params']['cache_rate']
-        ds_type = self.configs['dataset_params']['ds_type']
-        DMClass = self.resolve_datamanager(self.configs["plan"]["mode"])
-        D = DMClass(
-            self.project,
-            dataset_params=self.configs["dataset_params"],
-            plan=self.configs["plan"],
-            transform_factors=self.configs["transform_factors"],
-            affine3d=self.configs["affine3d"],
-            batch_size=self.configs["dataset_params"]["batch_size"],
-=======
         cache_rate= self.config['dataset_params']['cache_rate']
         ds_type = self.config['dataset_params']['ds_type']
         DMClass = self.resolve_datamanager(self.config["plan"]["mode"])
@@ -478,7 +451,6 @@ class TrainingManager:
             transform_factors=self.config["transform_factors"],
             affine3d=self.config["affine3d"],
             batch_size=self.config["dataset_params"]["batch_size"],
->>>>>>> efc2e4fb (jj)
             cache_rate =cache_rate,
             ds_type=ds_type
         )
@@ -501,11 +473,7 @@ class TrainingManager:
     def load_trainer(self,**kwargs):
         try:
             N = UNetTrainer.load_from_checkpoint(
-<<<<<<< HEAD
-                self.ckpt, project=self.project, dataset_params=self.configs['dataset_params'], lr=self.lr,**kwargs     )
-=======
                 self.ckpt, project=self.project, dataset_params=self.config['dataset_params'], lr=self.lr,**kwargs     )
->>>>>>> efc2e4fb (jj)
             print("Model loaded from checkpoint: ",self.ckpt)
         except:
             tr()
@@ -527,11 +495,7 @@ class TrainingManager:
 
     def load_dm(self):
         DMClass = self.resolve_datamanager(
-<<<<<<< HEAD
-            self.state_dict['datamodule_hyper_parameters']['plan']['mode']
-=======
             self.state_dict['datamodule_hyper_parameters']['config']['plan']['mode']
->>>>>>> efc2e4fb (jj)
            
         )
         D = DMClass.load_from_checkpoint(self.ckpt, project=self.project)
@@ -577,11 +541,8 @@ class TrainingManager:
 
 
 if __name__ == "__main__":
-<<<<<<< HEAD
-=======
 # %%
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
->>>>>>> efc2e4fb (jj)
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -606,33 +567,21 @@ if __name__ == "__main__":
 
 
 # %%
-    device_id = 1
-    bs = 5# 5 is good if LBD with 2 samples per case
-<<<<<<< HEAD
-    run_name ='LITS-988'
-=======
->>>>>>> efc2e4fb (jj)
-    run_name = None
+    device_id = 0
+    bs = 12# 5 is good if LBD with 2 samples per case
+    # run_name ='LITS-1003'
     run_name ='LITS-999'
+    run_name = None
     compiled = False
     profiler=False
-<<<<<<< HEAD
-    #NOTE: if Neptune = False, should store checkpoint locally
-=======
 #NOTE: if Neptune = False, should store checkpoint locally
->>>>>>> efc2e4fb (jj)
-
     batch_finder = False
     neptune =True
     tags = []
     conf['dataset_params']['ds_type']= 'lmdb'
-<<<<<<< HEAD
-    description = f"From Src. First time"
-=======
     description = f""
 # %%
 
->>>>>>> efc2e4fb (jj)
     Tm = TrainingManager(proj, conf, run_name)
 # %%
     Tm.setup(
@@ -654,11 +603,8 @@ if __name__ == "__main__":
         # model(inputs)
 # %%
 
-<<<<<<< HEAD
-=======
 # %%
 #SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
->>>>>>> efc2e4fb (jj)
 
 
     Tm.D.setup()

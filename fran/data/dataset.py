@@ -11,6 +11,7 @@ from functools import reduce
 from random import choice
 
 import ipdb
+from monai.transforms.croppad.dictionary import RandCropByPosNegLabeld
 import numpy as np
 from fastcore.basics import Dict
 from monai.data.meta_tensor import MetaTensor
@@ -18,14 +19,9 @@ from monai.transforms import Compose, MapTransform
 from monai.transforms.io.array import SaveImage
 from monai.transforms.transform import Transform
 
-# %%
 from fran.preprocessing.patch import contains_bg_only
 from fran.transforms.imageio import LoadSITKd
-<<<<<<< HEAD
-from fran.transforms.intensitytransforms import standardize
-=======
 from fran.transforms.intensitytransforms import NormaliseClipd, standardize
->>>>>>> efc2e4fb (jj)
 from fran.transforms.spatialtransforms import *
 from fran.utils.helpers import *
 from fran.utils.imageviewers import ImageMaskViewer
@@ -35,7 +31,6 @@ tr = ipdb.set_trace
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-# %%
 import itk
 import numpy as np
 import SimpleITK as sitk
@@ -235,8 +230,7 @@ class SimpleDataset(Dataset):
             dici = self.transform(dici)
         return dici
 
-
-class ImageMaskBBoxDataset(Dataset):
+class ImageMaskBBoxDatasetLegacy(Dataset):
     """
     takes a list of case_ids and returns bboxes image and label
     """
@@ -405,25 +399,168 @@ class ImageMaskBBoxDataset(Dataset):
             return True
 
 
-class ImageMaskBBoxDatasetd(ImageMaskBBoxDataset):
+
+class PatchFGBGDataset(Dataset):
+    """
+    takes a list of case_ids and returns bboxes image and label
+    """
+
+    def __init__(self, case_ids, bbox_fn,  transform=None):
+        """
+        ratios decide the proportionate guarantee of each class in the output including background. While that class is guaranteed to be present at that frequency, others may still be present if they coexist. However, the exception to this is label 0. This allows some patches which have no foreground voxels to participate in trianing too.
+        """
+        self.transform = transform
+        print("Loading dataset from BBox file {}".format(bbox_fn))
+        bboxes_unsorted = load_dict(bbox_fn)
+        self.bboxes_per_id = []
+        for cid in case_ids:
+            bboxes = self.get_patch_files(bboxes_unsorted, cid)
+            bboxes.append(self.get_label_info(bboxes))
+            self.bboxes_per_id.append(bboxes)
+
+
+    def get_patch_files(self, bboxes, case_id: str):
+        bboxes_out = []
+        for bb in bboxes:
+            fn = bb["filename"]
+            fn = Path(fn)
+            fn_name = fn.name
+            cid = info_from_filename(fn_name,True)['case_id']
+            if cid == case_id:
+                bboxes_out.append(bb)
+        if len(bboxes_out) == 0:
+            print("Missing filename {0} from bboxfile".format(case_id))
+            tr()
+        return bboxes_out
+
+    def __len__(self):
+        return len(self.bboxes_per_id)
+
+    def __getitem__(self, idx):
+        self.set_bboxes_labels(idx)
+        lm_fn, bbox = self.randomize_patch()
+        img_fn = lm_fn.str_replace("lms","images")
+        indices_fn = lm_fn.str_replace("lms","indices")
+        dici = {'image':img_fn, 'lm':lm_fn, 'indices': indices_fn ,'bbox':bbox}
+
+        if self.transform is not None:
+            dici = self.transform(dici)
+        return dici
+
+    def set_bboxes_labels(self, idx):
+        self.bboxes = self.bboxes_per_id[idx][:-1]
+        self.label_info = self.bboxes_per_id[idx][-1]
+
+    def randomize_patch(self):
+        candidate_indices = range(0, len(self.bboxes))
+        sub_idx = choice(candidate_indices)
+        bbox = self.bboxes[sub_idx]
+        fn = bbox["filename"]
+        return fn, bbox
+
+
+    def get_inds_with_label(self):
+        labels_per_file = self.label_info["labels_per_file"]
+        inds_label_status = [
+            self.mandatory_label in labels for labels in labels_per_file
+        ]
+        indices = self.label_info["file_indices"]
+        inds_with_label = list(itertools.compress(indices, inds_label_status))
+        return inds_with_label
+
+    def randomize_label(self):
+        mandatory = np.random.multinomial(1, self.class_ratios, 1)
+        _, mandatory_label = np.where(mandatory == 1)
+        return mandatory_label.item()
+
+    def shape_per_id(self, id):
+        bb = self.bboxes_per_id[id]
+        bb_stats = bb[0]["bbox_stats"]
+        bb_any = bb_stats[0]["bounding_boxes"][0]
+        shape = [sl.stop for sl in bb_any]
+        return shape
+
+    def get_label_info(self, case_bboxes):
+        indices = []
+        labels_per_file = []
+        for indx, bb in enumerate(case_bboxes):
+            bbox_stats = bb["bbox_stats"]
+            labels = [(a["label"]) for a in bbox_stats if not a["label"] == "all_fg"]
+            if contains_bg_only(bbox_stats) == True:
+                labels = [0]
+            else:
+                labels = [0]+labels
+            # if len(labels) == 0:
+            #     tr()
+            #     labels = [0]  # background class only by exclusion
+            indices.append(indx)
+            labels_per_file.append(labels)
+        labels_this_case = list(set(reduce(operator.add, labels_per_file)))
+        return {
+            "file_indices": indices,
+            "labels_per_file": labels_per_file,
+            "labels_this_case": labels_this_case,
+        }
+
+    @property
+    def class_ratios(self):
+        """The ratios property."""
+        return self._ratios
+
+    @class_ratios.setter
+    def class_ratios(self, raw_ratios):
+        denom = reduce(operator.add, raw_ratios)
+        self._ratios = [x / denom for x in raw_ratios]
+
+    @property
+    @maybe_set_property
+    def median_shape(self):
+        aa = []
+        for i in range(len(self)):
+            aa.append(self.shape_per_id(i))
+        return np.median(aa, 0).astype(int)
+
+    @property
+    @maybe_set_property
+    def parent_folder(self):
+        fn, _ = self.randomize_patch(0)
+        return fn.parent.parent
+
+    @property
+    @maybe_set_property
+    def dataset_min(self):
+        try:
+            data_properties = load_dict(
+                self.parent_folder.parent / ("resampled_dataset_properties")
+            )
+        except:
+            raise FileNotFoundError
+        return data_properties["dataset_min"]
+
+    def contains_bg(self, bbox_stats):
+        all_fg_bbox = [bb for bb in bbox_stats if bb["label"] == "all_fg"][0]
+        bboxes = all_fg_bbox["bounding_boxes"]
+        if len(bboxes) == 1:
+            return True
+        if bboxes[0] != bboxes[1]:
+            return True
+
+
+# %%
+class ImageMaskBBoxDatasetd(PatchFGBGDataset):
     def __getitem__(self, idx):
         self.set_bboxes_labels(idx)
         if self.enforce_ratios == True:
             self.mandatory_label = self.randomize_label()
             self.maybe_randomize_idx()
 
-        filename, bbox = self.get_filename_bbox()
+        filename, bbox = self.randomize_patch()
         img, lm = self.load_tensors(filename)
         dici = {"image": img, "lm": lm, "bbox": bbox}
         if self.transform is not None:
             dici = self.transform(dici)
 
         return dici
-
-
-class PatchFGBGDataset(ImageMaskBBoxDataset):
-
-
 
 
 class SavePatchd(MapTransform):
@@ -602,12 +739,119 @@ class MaskLabelRemapd(MapTransform):
         return mask_out
 
 
+def fg_in_bboxes(bboxes_unsorted):
+        '''
+        proportion of bboxes containing fg label
+        '''
+        total = len(bboxes_unsorted)
+        fg_count = 0
+        labels_all = []
+        for bbox in bboxes_unsorted:
+            bstats = bbox['bbox_stats']
+            labels = [b['label'] for b in bstats if not b['label']== "all_fg"]
+            labels_all.append(labels)
+            if len(labels)>0:
+                fg_count+=1
+        return fg_count/total
+
 # %%
 if __name__ == "__main__":
+# %%
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+
     from fran.inference.base import load_dataset_params
     from fran.utils.common import *
 
-    P = Project(project_title="lidc2")
+    P = Project(project_title="litsmc")
 
     global_properties = load_dict(P.global_properties_filename)
+# %%
+    cids,_ = P.get_train_val_cids(0)
+    bbox_fn= "/r/datasets/preprocessed/litsmc/patches/spc_080_080_150/dim_320_320_192_plan5/bboxes_info.pkl"
+    I = PatchFGBGDataset(case_ids = cids,bbox_fn =bbox_fn)
+    bbox = I.bboxes_per_id[10]
+    I.bboxes_per_id
+    bbox[0]
+    bboxes_unsorted = load_dict(bbox_fn)
+# %%
+    total = len(bboxes_unsorted)
+    fg_count=0
+# %%
+   
+
+    total = len(bboxes_unsorted)
+    fg_count = 0
+    labels_all = []
+    for bbox in bboxes_unsorted:
+        bstats = bbox['bbox_stats']
+        labels = [b['label'] for b in bstats if not b['label']== "all_fg"]
+        labels_all.append(labels)
+
+        if len(labels)==0:
+            tr()
+# %%
+    fn = bbox['filename']
+    indices= fn.str_replace("lms","indices")
+    inds= torch.load(indices)
+
+    img_fn = fn.str_replace("lms","images")
+    img = torch.load(img_fn).unsqueeze(0)
+    lm = torch.load(fn).unsqueeze(0)
+
+    dici = {'image':img, 'lm':lm, 'indices':indices, 'lm_fg_indices':inds['lm_fg_indices'], 'lm_bg_indices':inds['lm_bg_indices']}
+
+
+# %%
+    # bbox = bboxes_unsorted[0]
+
+    Rtr = RandCropByPosNegLabeld(
+        keys=["image", "lm"],
+        label_key="lm",
+        image_key="image",
+        fg_indices_key="lm_fg_indices",
+        bg_indices_key="lm_bg_indices",
+        image_threshold=-2600,
+        spatial_size=[96,96,96],
+        pos=3,
+        neg=1,
+        num_samples=2,
+        lazy=True,
+        allow_smaller=True,
+    )
+
+    dici = Rtr(dici)
+    image = dici[0]['image']
+    lm = dici[0]['lm']
+# %%
+    lm_fn =  Path(bb['filename'])
+    img_fn = lm_fn.str_replace("lms","images")
+
+    img = torch.load(img_fn)
+    lm = torch.load(lm_fn)
+    ImageMaskViewer([img[0],lm[0]])
+
+# %%
+
+    bbox = I.bboxes_per_id[10]
+# %%
+    bbox = bboxes_unsorted[9]
+    bstats = bb['bbox_stats']
+    labels = [b['label'] for b in bstats if not b['label']== "all_fg"]
+    lm_fn =  Path(bbox['filename'])
+    img_fn = lm_fn.str_replace("lms","images")
+
+    img = torch.load(img_fn)
+    lm = torch.load(lm_fn)
+    ImageMaskViewer([img,lm])
+# %%
+
+
+    
+
+
+
+
+    
+
+
 # %%

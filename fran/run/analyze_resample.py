@@ -7,11 +7,7 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
-<<<<<<< HEAD
-from fran.preprocessing.labelbounded import FGBGIndicesLBD, LabelBoundedDataGenerator
-=======
 from fran.preprocessing.labelbounded import FGBGIndicesLBD, LabelBoundedDataGenerator, LabelBoundedDataGeneratorImported
->>>>>>> efc2e4fb (jj)
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from fran.utils.fileio import *
 from fran.utils.helpers import *
