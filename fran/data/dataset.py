@@ -421,6 +421,11 @@ class ImageMaskBBoxDatasetd(ImageMaskBBoxDataset):
         return dici
 
 
+class PatchFGBGDataset(ImageMaskBBoxDataset):
+
+
+
+
 class SavePatchd(MapTransform):
     """
     input data must be a dictionary, Must contain a bbox key to create a full-sized image from
