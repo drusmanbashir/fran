@@ -119,11 +119,13 @@ def to_cuda(data, non_blocking=True, gpu_id=0):
     return data
 
 
-def folder_name_from_list(prefix:str,parent_folder:Path,values_list=None):
+def folder_name_from_list(prefix:str,parent_folder:Path,values_list=None, suffix=None):
         assert prefix in ("spc","dim"), "Choose a valid prefix between spc(for spacings) and dim(for patch size)"
         add_zeros=3 if prefix=='spc' else 0
         output= [dec_to_str(val,add_zeros) for val in values_list]
         subfolder =  "_".join([prefix]+output)
+        if suffix:
+            subfolder += "_"+suffix
         return parent_folder/subfolder
 
 def spacing_from_folder_name(prefix:str,folder_name:str):
@@ -238,9 +240,9 @@ def get_available_device(max_memory=0.8)->int:
     return available 
 
 def resolve_device (device):
-    assert device in ['gpu', 'cpu',0,1], "Device has to be either 'cpu' , 'gpu' or an integer"
+    assert device in ['cuda', 'cpu',0,1], "Device has to be either 'cpu' , 'gpu' or an integer"
     if device == 'cpu': return 'cpu'
-    if device == 'gpu': device = 0
+    if device == 'cuda': device = 0
     device = torch.device('cuda:{}'.format(device))
     return device
 

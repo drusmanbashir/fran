@@ -13,6 +13,32 @@ from fastcore.transform import Transform
 from fran.transforms.base import *
 
 
+
+class NormaliseClip(Transform):
+    def __init__(self, clip_range, mean, std):
+        # super().__init__(keys, allow_missing_keys)
+
+        store_attr("clip_range,mean,std")
+
+    def __call__(self, data: Mapping[Hashable, torch.Tensor]):
+        d = self.clipper(data)
+        return d
+
+    def clipper(self, img):
+        img = torch.clip(img, self.clip_range[0], self.clip_range[1])
+        img = standardize(img, self.mean, self.std)
+        return img
+
+
+class NormaliseClipd(MapTransform):
+    def __init__(self, keys, clip_range, mean, std, allow_missing_keys=False):
+        MapTransform.__init__(self, keys, allow_missing_keys)
+        self.N = NormaliseClip(clip_range=clip_range, mean=mean, std=std)
+
+    def __call__(self, d):
+        for key in self.key_iterator(d):
+            d[key] = self.N(d[key])
+        return d
 class RandRandGaussianNoised(RandomizableTransform, MapTransform):
     def __init__(
         self,

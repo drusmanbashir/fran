@@ -2,7 +2,6 @@
 from lightning.pytorch.callbacks import ModelCheckpoint
 import shutil
 from monai.transforms.io.dictionary import LoadImaged
-from torchinfo import summary
 from fran.transforms.imageio import TorchReader
 from fran.transforms.misc_transforms import LoadDict
 from fran.utils.common import common_vars_filename
@@ -284,10 +283,10 @@ def maybe_ddp(devices):
 
 
 class TrainingManager:
-    def __init__(self, project, configs, run_name=None):
+    def __init__(self, project, config, run_name=None):
         store_attr()
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
-        self.qc_configs(configs,project)
+        self.qc_config(config,project)
 
     def setup(
         self,
@@ -303,14 +302,14 @@ class TrainingManager:
         epochs=600,
         batchsize_finder=False,
     ):
-        self.maybe_alter_configs(batch_size,batchsize_finder,compiled)
+        self.maybe_alter_config(batch_size,batchsize_finder,compiled)
         self.set_lr(lr)
         self.set_strategy(devices)
         self.init_dm_unet(epochs)
         cbs, logger, profiler = self.init_cbs(neptune,profiler,tags, description)
         self.D.prepare_data()
 
-        if self.configs["model_params"]["compiled"] == True:
+        if self.config["model_params"]["compiled"] == True:
             self.N = torch.compile(self.N)
 
         self.trainer = Trainer(
@@ -332,7 +331,7 @@ class TrainingManager:
     def init_dm_unet(self,epochs):
         if self.ckpt:
             self.D = self.load_dm()
-            self.configs['dataset_params'] = self.D.dataset_params
+            self.config['dataset_params'] = self.D.dataset_params
             self.N = self.load_trainer()
         
         else:
@@ -353,7 +352,7 @@ class TrainingManager:
             self.state_dict = torch.load(self.ckpt)
             self.lr = self.state_dict["lr_schedulers"][0]["_last_lr"][0]
         else:
-            self.lr  = self.configs["model_params"]["lr"]
+            self.lr  = self.config["model_params"]["lr"]
     
 
     def init_cbs(self,neptune,profiler,tags,description):
@@ -381,8 +380,8 @@ class TrainingManager:
                 capture_hardware_metrics=True,
             )
             N = NeptuneImageGridCallback(
-                classes=self.configs["model_params"]["out_channels"],
-                patch_size=self.configs["dataset_params"]["patch_size"],
+                classes=self.config["model_params"]["out_channels"],
+                patch_size=self.config["dataset_params"]["patch_size"],
             )
 
             cbs += [
@@ -410,25 +409,26 @@ class TrainingManager:
 
 
 
-    def maybe_alter_configs(self,batch_size,batchsize_finder,compiled):
+    def maybe_alter_config(self,batch_size,batchsize_finder,compiled):
         if batch_size :
-            self.configs["dataset_params"]["batch_size"] = batch_size
-            # batch_size = self.configs["dataset_params"]["batch_size"]
+            self.config["dataset_params"]["batch_size"] = batch_size
+            # batch_size = self.config["dataset_params"]["batch_size"]
         if batchsize_finder == True: # note even if you set a batchsize, that will be overridden by this.
             batch_size = self.heuristic_batch_size()
-            self.configs["dataset_params"]["batch_size"] = batch_size
+            self.config["dataset_params"]["batch_size"] = batch_size
         if compiled:
-            self.configs["model_params"]["compiled"] = compiled
+            self.config["model_params"]["compiled"] = compiled
 
 
-    def qc_configs(self, configs,project):
-        ratios = configs['dataset_params']["fgbg_ratio"]
+    def qc_config(self, config,project):
+        ratios = config['dataset_params']["fgbg_ratio"]
         labels_fg = project.global_properties['labels_all']
         labels = [0]+labels_fg
         if isinstance(ratios,list):
             assert(a:=(len(ratios))==(b:=len(labels))), "Class ratios {0} do not match number of labels in dataset {1}".format(a,b)
         else:
             assert  isinstance(ratios, int), "If no list is provided, fgbg_ratio must be an integer"
+<<<<<<< HEAD
 
         self.configs = self.select_plan(configs)
 
@@ -441,6 +441,8 @@ class TrainingManager:
             configs.pop(key)
         return configs
 
+=======
+>>>>>>> efc2e4fb (jj)
 
     def heuristic_batch_size(self):
         ram = psutil.virtual_memory()[3] / 1e9
@@ -454,6 +456,7 @@ class TrainingManager:
             return 48
 
     def init_dm(self):
+<<<<<<< HEAD
         cache_rate= self.configs['dataset_params']['cache_rate']
         ds_type = self.configs['dataset_params']['ds_type']
         DMClass = self.resolve_datamanager(self.configs["plan"]["mode"])
@@ -464,6 +467,18 @@ class TrainingManager:
             transform_factors=self.configs["transform_factors"],
             affine3d=self.configs["affine3d"],
             batch_size=self.configs["dataset_params"]["batch_size"],
+=======
+        cache_rate= self.config['dataset_params']['cache_rate']
+        ds_type = self.config['dataset_params']['ds_type']
+        DMClass = self.resolve_datamanager(self.config["plan"]["mode"])
+        D = DMClass(
+            self.project,
+            dataset_params=self.config["dataset_params"],
+            config=self.config,
+            transform_factors=self.config["transform_factors"],
+            affine3d=self.config["affine3d"],
+            batch_size=self.config["dataset_params"]["batch_size"],
+>>>>>>> efc2e4fb (jj)
             cache_rate =cache_rate,
             ds_type=ds_type
         )
@@ -473,9 +488,9 @@ class TrainingManager:
     def init_trainer(self,epochs):
         N = UNetTrainer(
             self.project,
-            self.configs["dataset_params"],
-            self.configs["model_params"],
-            self.configs["loss_params"],
+            self.config["dataset_params"],
+            self.config["model_params"],
+            self.config["loss_params"],
             lr=self.lr,
             max_epochs=epochs,
             sync_dist=self.sync_dist,
@@ -486,7 +501,11 @@ class TrainingManager:
     def load_trainer(self,**kwargs):
         try:
             N = UNetTrainer.load_from_checkpoint(
+<<<<<<< HEAD
                 self.ckpt, project=self.project, dataset_params=self.configs['dataset_params'], lr=self.lr,**kwargs     )
+=======
+                self.ckpt, project=self.project, dataset_params=self.config['dataset_params'], lr=self.lr,**kwargs     )
+>>>>>>> efc2e4fb (jj)
             print("Model loaded from checkpoint: ",self.ckpt)
         except:
             tr()
@@ -501,14 +520,18 @@ class TrainingManager:
             shutil.move(self.ckpt, ckpt_old)
 
             N = UNetTrainer.load_from_checkpoint(
-                self.ckpt, project=self.project, dataset_params=self.configs['dataset_params'], lr=self.lr,**kwargs
+                self.ckpt, project=self.project, dataset_params=self.config['dataset_params'], lr=self.lr,**kwargs
             )
         return  N
 
 
     def load_dm(self):
         DMClass = self.resolve_datamanager(
+<<<<<<< HEAD
             self.state_dict['datamodule_hyper_parameters']['plan']['mode']
+=======
+            self.state_dict['datamodule_hyper_parameters']['config']['plan']['mode']
+>>>>>>> efc2e4fb (jj)
            
         )
         D = DMClass.load_from_checkpoint(self.ckpt, project=self.project)
@@ -554,6 +577,11 @@ class TrainingManager:
 
 
 if __name__ == "__main__":
+<<<<<<< HEAD
+=======
+# %%
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+>>>>>>> efc2e4fb (jj)
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -565,9 +593,9 @@ if __name__ == "__main__":
     proj = Project(project_title=project_title)
 
     configuration_filename = (
-        "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
+        "/s/fran_storage/projects/lits32/experiment_config_wholeimage.xlsx"
     )
-    configuration_filename = "/s/fran_storage/projects/litsmc/experiment_configs.xlsx"
+    configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
     configuration_filename = None
 
     conf = ConfigMaker(
@@ -580,18 +608,33 @@ if __name__ == "__main__":
 # %%
     device_id = 1
     bs = 5# 5 is good if LBD with 2 samples per case
+<<<<<<< HEAD
     run_name ='LITS-988'
+=======
+>>>>>>> efc2e4fb (jj)
     run_name = None
+    run_name ='LITS-999'
     compiled = False
     profiler=False
+<<<<<<< HEAD
     #NOTE: if Neptune = False, should store checkpoint locally
+=======
+#NOTE: if Neptune = False, should store checkpoint locally
+>>>>>>> efc2e4fb (jj)
 
     batch_finder = False
     neptune =True
     tags = []
     conf['dataset_params']['ds_type']= 'lmdb'
+<<<<<<< HEAD
     description = f"From Src. First time"
+=======
+    description = f""
+# %%
+
+>>>>>>> efc2e4fb (jj)
     Tm = TrainingManager(proj, conf, run_name)
+# %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -611,6 +654,11 @@ if __name__ == "__main__":
         # model(inputs)
 # %%
 
+<<<<<<< HEAD
+=======
+# %%
+#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
+>>>>>>> efc2e4fb (jj)
 
 
     Tm.D.setup()

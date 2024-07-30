@@ -168,6 +168,7 @@ class ConfigMaker():
             }
             self.config["model_params"].update(config)
         self.add_further_keys()
+        self.set_active_plan()
       
     def resolve_configuration_filename(self,configuration_filename,configuration_mnemonic):
 
@@ -220,7 +221,13 @@ class ConfigMaker():
                         self.config['dataset_params']["patch_dim0"], self.config['dataset_params']["patch_dim1"]
                     )
                     
+    def set_active_plan(self):
+        plan = self.config['dataset_params']['plan']
+        plan_selected = self.config['plan'+str(plan)]
+        self.config['plan']=plan_selected
 
+
+ 
 
 def load_config_from_workbook(settingsfilename, raytune):
     wb = load_workbook(settingsfilename)

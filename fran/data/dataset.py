@@ -21,7 +21,11 @@ from monai.transforms.transform import Transform
 # %%
 from fran.preprocessing.patch import contains_bg_only
 from fran.transforms.imageio import LoadSITKd
+<<<<<<< HEAD
 from fran.transforms.intensitytransforms import standardize
+=======
+from fran.transforms.intensitytransforms import NormaliseClipd, standardize
+>>>>>>> efc2e4fb (jj)
 from fran.transforms.spatialtransforms import *
 from fran.utils.helpers import *
 from fran.utils.imageviewers import ImageMaskViewer
@@ -128,7 +132,7 @@ class InferenceDatasetNii(Dataset):
         # tfms += [E,S,N]
 
         # self.transform=Compose(tfms)
-
+    #CODE: match set_transforms function thoughout project
     def set_transforms(self, tfms: str = ""):
         tfms_final = []
         for tfm in tfms:
@@ -152,7 +156,7 @@ class InferenceDatasetNii(Dataset):
 #         super().__init__(project, imgs,dataset_params_p)
 #         self.dataset_params_w= dataset_params_w
 #
-#     def set_transforms(self):
+#     def set_transforms(I):
 #         super().set_transforms()
 #         self.transform_w = Resize(spatial_size=self.dataset_params_w["patch_size"])
 #
@@ -531,31 +535,6 @@ class Affine3D(MapTransform):
 
 
 #
-class NormaliseClip(Transform):
-    def __init__(self, clip_range, mean, std):
-        # super().__init__(keys, allow_missing_keys)
-
-        store_attr("clip_range,mean,std")
-
-    def __call__(self, data: Mapping[Hashable, torch.Tensor]):
-        d = self.clipper(data)
-        return d
-
-    def clipper(self, img):
-        img = torch.clip(img, self.clip_range[0], self.clip_range[1])
-        img = standardize(img, self.mean, self.std)
-        return img
-
-
-class NormaliseClipd(MapTransform):
-    def __init__(self, keys, clip_range, mean, std, allow_missing_keys=False):
-        MapTransform.__init__(self, keys, allow_missing_keys)
-        self.N = NormaliseClip(clip_range=clip_range, mean=mean, std=std)
-
-    def __call__(self, d):
-        for key in self.key_iterator(d):
-            d[key] = self.N(d[key])
-        return d
 
 
 def fill_bbox(bbox, cropped_tensor):

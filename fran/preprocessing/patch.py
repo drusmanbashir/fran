@@ -1,13 +1,28 @@
 # %%
+# %%
+import torch
+from fastcore.all import Union, store_attr
+from fastcore.foundation import GetAttr
+from fran.preprocessing.datasetanalyzers import bboxes_function_version
+from fran.transforms.misc_transforms import FgBgToIndicesd2
+from fran.utils.string import info_from_filename
+from pathlib import Path
+import SimpleITK as sitk
+from fastcore.basics import GetAttr, store_attr
+
+from fran.utils.fileio import *
+from fran.utils.helpers import *
+from fran.utils.imageviewers import *
+from label_analysis.totalseg import TotalSegmenterLabels
 import torch
 from fran.utils.dictopts import DictToAttr
 import torchio as tio
-# from label_analysis.totalseg import TotalSegmenterLabels
 from fran.transforms.spatialtransforms import PadDeficitImgMask
 from fran.utils.fileio import load_dict, maybe_makedirs, save_dict
 from fran.utils.helpers import multiprocess_multiarg
 from fran.utils.string import info_from_filename, strip_extension
 
+<<<<<<< HEAD
 # %%
 if "get_ipython" in globals():
     print("setting autoreload")
@@ -16,145 +31,28 @@ if "get_ipython" in globals():
     ipython = get_ipython()
     ipython.run_line_magic("load_ext", "autoreload")
     ipython.run_line_magic("autoreload", "2")
+=======
+>>>>>>> efc2e4fb (jj)
 from pathlib import Path
 
 import ipdb
 import numpy as np
 import SimpleITK as sitk
-from fastcore.basics import GetAttr,  store_attr
+from fastcore.basics import GetAttr, store_attr
 
 import ipdb
+
 tr = ipdb.set_trace
 
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
+<<<<<<< HEAD
 # %%
+=======
+from fran.preprocessing.fixed_spacing import _Preprocessor
+>>>>>>> efc2e4fb (jj)
 
 
-def contains_bg_only( bbox_stats):
-        all_fg_bbox = [bb for bb in bbox_stats if bb["label"] == "all_fg"][0]
-        bboxes = all_fg_bbox["bounding_boxes"]
-        if len(bboxes) == 1:
-            return True
-        elif bboxes[0] != bboxes[1]:
-            return False
-        else:
-            tr()
-
-
-class PatchDataGenerator(GetAttr):
-    _default = "project"
-
-    def __init__(
-        self, project, fixed_spacing_folder, patch_size, patch_overlap=0.25, expand_by=None,mode='fgbg'
-    ):
-        store_attr()
-        patches_fldr_name = "dim_{0}_{1}_{2}".format(*self.patch_size)
-        self.output_folder = (
-                self.patches_folder
-                / self.fixed_spacing_folder.name
-                / patches_fldr_name
-            )
-
-
-        fixed_sp_bboxes_fn = fixed_spacing_folder / ("bboxes_info")
-        self.fixed_sp_bboxes = load_dict(fixed_sp_bboxes_fn)
-
-        dataset_properties_fn = self.fixed_spacing_folder/ (
-            "resampled_dataset_properties.json"
-        )
-        assert (
-            dataset_properties_fn.exists()
-        ), "Dataset properties file does not exist. Has the Resampling been run to create folder {}?".format(
-            self.fixed_spacing_folder
-        )
-        self.dataset_properties = load_dict(dataset_properties_fn)
-        self.create_output_folders()
-        self.register_existing_files()
-
-        self.patches_config_fn = self.output_folder / ("patches_config.json")
-
-        if self.patches_config_fn.exists():
-            print(
-                "Patches configs already exist. Overriding given values with those from file"
-            )
-            patches_config = load_dict(self.patches_config_fn)
-            print(patches_config)
-            self.patch_overlap = patches_config["patch_overlap"]
-            self.expand_by = patches_config["expand_by"]
-
-    def register_existing_files(self):
-        self.existing_files = list((self.output_folder / ("lms")).glob("*pt"))
-        self.existing_case_ids = [
-            info_from_filename(f.name, full_caseid=True)["case_id"]
-            for f in self.existing_files
-        ]
-        self.existing_case_ids = set(self.existing_case_ids)
-        print("Case ids processed in a previous session: ",len(self.existing_case_ids))
-
-    def remove_completed_cases(self):
-        all_cases = set([bb["case_id"] for bb in self.fixed_sp_bboxes])
-        new_case_ids = all_cases.difference(self.existing_case_ids)
-        print(
-            "Total cases {0}.Found {1} new cases".format(
-                len(all_cases), len(new_case_ids)
-            )
-        )
-        self.fixed_sp_bboxes = [
-            bb for bb in self.fixed_sp_bboxes if bb["case_id"] in new_case_ids
-        ]
-
-    def create_patches(self, overwrite=True, debug=False):
-        patch_overlap = [int(self.patch_overlap * ps) for ps in self.patch_size]
-        patch_overlap = [to_even(ol) for ol in patch_overlap]
-        maybe_makedirs(self.output_folder)
-        self.save_patches_config()
-        if overwrite == False:
-            self.remove_completed_cases()
-        args = [
-            [
-                self.dataset_properties,
-                self.output_folder,
-                self.patch_size,
-                bb,
-                patch_overlap,
-                self.expand_by,
-                self.mode
-            ]
-            for bb in self.fixed_sp_bboxes
-        ]
-
-        res = multiprocess_multiarg(
-            patch_generator_wrapper, args, debug=debug, progress_bar=True
-        )
-
-    def generate_bboxes(self, num_processes=24, debug=False):
-        lms_folder = self.output_folder / "lms"
-        lm_filenames = list(lms_folder.glob("*pt"))
-        bg_label = 0
-        arguments = [[x, bg_label] for x in lm_filenames]
-        res_cropped = multiprocess_multiarg(
-            func=bboxes_function_version,
-            arguments=arguments,
-            num_processes=num_processes,
-            debug=debug,
-        )
-
-        stats_outfilename = (lms_folder.parent) / ("bboxes_info.json")
-        print("Saving bbox stats to {}".format(stats_outfilename))
-        save_dict(res_cropped, stats_outfilename)
-
-    def save_patches_config(self):
-        patches_config = {
-            "patch_overlap": self.patch_overlap,
-            "expand_by": self.expand_by,
-        }
-        save_dict(patches_config, self.patches_config_fn)
-
-    def create_output_folders(self):
-        maybe_makedirs([self.output_folder / ("lms"), self.output_folder / ("images")])
-
-
-class PatchGenerator(DictToAttr):
+class PatchGenerator(DictToAttr,_Preprocessor):
     def __init__(
         self,
         dataset_properties: dict,
@@ -163,19 +61,20 @@ class PatchGenerator(DictToAttr):
         info,
         patch_overlap=(0, 0, 0),
         expand_by=None,
-        mode:str='fg'
+        mode: str = "fg",
     ):
         """
         generates function from 'fg' bbox associated with the given case
         expand_by is specified in mm, i.e., 30 = 30mm.
         spacings are essential to compute number of array elements to add in case expand_by is required. Default: None
         """
-        assert mode in ['fg','fgbg'], "Labels should be fg or fgbg"
-        if mode == 'fgbg':
-            assert expand_by in [0,None], "Cannot expand bbox if entire image is being patched"
+        assert mode in ["fg", "fgbg"], "Labels should be fg or fgbg"
+        if mode == "fgbg":
+            assert expand_by in [
+                0,
+                None,
+            ], "Cannot expand bbox if entire image is being patched"
         store_attr("output_folder,output_patch_size,info,patch_overlap")
-        self.output_masks_folder = output_folder / ("lms")
-        self.output_imgs_folder = output_folder / ("images")
         self.lm_fn = info["filename"]
         self.img_fn = Path(str(self.lm_fn).replace("lms", "images"))
         self.assimilate_dict(dataset_properties)
@@ -183,7 +82,7 @@ class PatchGenerator(DictToAttr):
 
         b = [b for b in bbs if b["label"] == "all_fg"][0]
 
-        if mode=='fg':
+        if mode == "fg":
             self.bboxes = b["bounding_boxes"][1:]
         else:
             self.bboxes = b["bounding_boxes"][0]
@@ -246,18 +145,33 @@ class PatchGenerator(DictToAttr):
         )
 
     def create_patches_from_grid_sampler(self):
+        print("Processing filepair : ", self.lm_fn)
+        print("Number of patches: ", len(self.grid_sampler))
         for i, a in enumerate(self.grid_sampler):
-            nm = strip_extension(self.lm_fn.name)
-            out_fname = nm + "_" + str(i) + ".pt"
-            out_mask_fname = self.output_masks_folder / out_fname
-            out_img_fname = self.output_imgs_folder / out_fname
-            print("Saving to files {0} and {1}".format(out_img_fname, out_mask_fname))
-            img = a["image"][tio.DATA].squeeze(0)
-            lm = a["lm"][tio.DATA].squeeze(0)
-            img = img.contiguous()
-            lm = lm.contiguous().to(torch.uint8)
-            torch.save(img, out_img_fname)
-            torch.save(lm, out_mask_fname)
+            img = a["image"][tio.DATA]#.squeeze(0)
+            lm = a["lm"][tio.DATA]#.squeeze(0)
+            Ind = FgBgToIndicesd2(keys=['lm'], image_key="image", image_threshold=-2600)
+            dici = {'image':img,'lm':lm}
+            dici = Ind(dici)
+
+            fg_ind = dici['lm_fg_indices']
+            bg_ind = dici['lm_bg_indices']
+            image= dici['image']
+            lm = dici['lm']
+            inds = {
+                "lm_fg_indices": fg_ind,
+                "lm_bg_indices": bg_ind,
+                "meta": image.meta,
+            }
+
+            self.save_indices(inds, self.indices_subfolder,suffix=str(i))
+            # self.save_in(inds, self.indices_subfolder,contiguous=False,suffix=str(i))
+            self.save_pt(image[0], "images",suffix=str(i))
+            self.save_pt(lm[0], "lms",suffix=str(i))
+
+    def process(self):
+        self.create_output_folders()
+        self.create_patches_from_all_bboxes()
 
     def create_patches_from_all_bboxes(self):
         self.load_img_lm_padding()
@@ -277,42 +191,300 @@ def patch_generator_wrapper(
     dataset_properties, output_folder, patch_size, info, patch_overlap, expand_by, mode
 ):
     P = PatchGenerator(
-        dataset_properties, output_folder, patch_size, info, patch_overlap, expand_by, mode
+        dataset_properties,
+        output_folder,
+        patch_size,
+        info,
+        patch_overlap,
+        expand_by,
+        mode,
     )
     P.create_patches_from_all_bboxes()
     return 1, info["filename"]
 
 
+def contains_bg_only(bbox_stats):
+    all_fg_bbox = [bb for bb in bbox_stats if bb["label"] == "all_fg"][0]
+    bboxes = all_fg_bbox["bounding_boxes"]
+    if len(bboxes) == 1:
+        return True
+    elif bboxes[0] != bboxes[1]:
+        return False
+    else:
+        tr()
+
+
+class PatchDataGenerator(_Preprocessor):
+    _default = "project"
+
+    def __init__(
+        self,
+        project,
+        data_folder,
+        patch_size,
+        patch_overlap=0.25,
+        expand_by=None,
+        mode="fgbg",
+        output_suffix=None,
+    ):
+        store_attr()
+        fixed_sp_bboxes_fn = data_folder / ("bboxes_info")
+        self.fixed_sp_bboxes = load_dict(fixed_sp_bboxes_fn)
+
+        dataset_properties_fn = self.data_folder / ("resampled_dataset_properties.json")
+        assert (
+            dataset_properties_fn.exists()
+        ), "Dataset properties file does not exist. Has the Resampling been run to create folder {}?".format(
+            self.data_folder
+        )
+        self.dataset_properties = load_dict(dataset_properties_fn)
+        self.dataset_properties['data_folder'] = str(data_folder)
+
+        self.patches_config_fn = self.output_folder / ("patches_config.json")
+
+        if self.patches_config_fn.exists():
+            print(
+                "Patches configs already exist. Overriding given values with those from file"
+            )
+            patches_config = load_dict(self.patches_config_fn)
+            print(patches_config)
+            self.patch_overlap = patches_config["patch_overlap"]
+            self.expand_by = patches_config["expand_by"]
+
+    def setup(self, overwrite=False):
+        self.register_existing_files()
+        if overwrite == False:
+            self.remove_completed_cases()
+    def process(self, debug=False):
+        self.create_output_folders()
+        self.create_patches(debug)
+
+    def register_existing_files(self):
+        self.existing_files = list((self.output_folder / ("lms")).glob("*pt"))
+        self.existing_case_ids = [
+            info_from_filename(f.name, full_caseid=True)["case_id"]
+            for f in self.existing_files
+        ]
+        self.existing_case_ids = set(self.existing_case_ids)
+        print("Case ids processed in a previous session: ", len(self.existing_case_ids))
+
+    def remove_completed_cases(self):
+        all_cases = set([bb["case_id"] for bb in self.fixed_sp_bboxes])
+        new_case_ids = all_cases.difference(self.existing_case_ids)
+        print(
+            "Total cases {0}.Found {1} new cases".format(
+                len(all_cases), len(new_case_ids)
+            )
+        )
+        self.fixed_sp_bboxes = [
+            bb for bb in self.fixed_sp_bboxes if bb["case_id"] in new_case_ids
+        ]
+
+    def create_patches(self,  debug=False):
+        patch_overlap = [int(self.patch_overlap * ps) for ps in self.patch_size]
+        patch_overlap = [to_even(ol) for ol in patch_overlap]
+        maybe_makedirs(self.output_folder)
+        self.save_patches_config()
+        args = [
+            [
+                self.dataset_properties,
+                self.output_folder,
+                self.patch_size,
+                bb,
+                patch_overlap,
+                self.expand_by,
+                self.mode,
+            ]
+            for bb in self.fixed_sp_bboxes
+        ]
+
+        res = multiprocess_multiarg(
+            patch_generator_wrapper, args, debug=debug, progress_bar=True
+        )
+        self.generate_bboxes(debug=debug)
+
+    def generate_bboxes(self, num_processes=24, debug=False):
+        lms_folder = self.output_folder / "lms"
+        lm_filenames = list(lms_folder.glob("*pt"))
+        bg_label = 0
+        arguments = [[x, bg_label] for x in lm_filenames]
+        res_cropped = multiprocess_multiarg(
+            func=bboxes_function_version,
+            arguments=arguments,
+            num_processes=num_processes,
+            debug=debug,
+        )
+
+        stats_outfilename = (lms_folder.parent) / ("bboxes_info.json")
+        print("Saving bbox stats to {}".format(stats_outfilename))
+        save_dict(res_cropped, stats_outfilename)
+
+    def save_patches_config(self):
+        patches_config = {
+            "data_folder": str(self.data_folder),
+            "patch_overlap": self.patch_overlap,
+            "expand_by": self.expand_by,
+        }
+        save_dict(patches_config, self.patches_config_fn)
+
+
+    @property
+    def output_folder(self):
+        data_folder_name = self.data_folder.name
+        pat = re.compile("_plan\d+")
+        data_folder_name = pat.sub("",data_folder_name)
+
+        patches_fldr_name = "dim_{0}_{1}_{2}".format(*self.patch_size)
+        if self.output_suffix:
+            patches_fldr_name+="_"+self.output_suffix
+
+        self._output_folder = (
+            self.patches_folder / data_folder_name/ patches_fldr_name
+        )
+        return self._output_folder
+
+
 # %%
 if __name__ == "__main__":
+# %%
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
 
     from fran.utils.common import *
+    from fran.preprocessing.labelbounded import ImporterDataset
 
-    P = Project(project_title="lidc2")
+    P = Project(project_title="litsmc")
     P.maybe_store_projectwide_properties()
+    
 # %%
+#SECTION:-------------------- PATCHGENERATOR--------------------------------------------------------------------------------------
+
+    conf = ConfigMaker(
+        P, raytune=False
+    ).config
+    plan = conf['plan']
+    plan_name = "plan"+str(conf['dataset_params']['plan'])
+
+    source_plan_name = plan['source_plan']
+    source_plan = conf[source_plan_name]
+    spacing = ast.literal_eval(source_plan['spacing'])
+    src_data_mode= source_plan['mode']
+    P.lbd_folder
+    patch_size = ast.literal_eval(plan['patch_size'])
+    patch_overlap = plan['patch_overlap']
+
+    deb=False
+# %%
+    data_folder  = folder_name_from_list(
+            prefix="spc",
+            parent_folder=P.lbd_folder,
+            values_list=spacing,
+        suffix=source_plan_name
+        )
+
+
+
+# %%
+    PG = PatchDataGenerator(
+        P, data_folder, patch_size=patch_size, patch_overlap=patch_overlap, expand_by=0,output_suffix=plan_name
+    )
+# %%
+
+# %%
+    PG.setup(overwrite=True)
+    PG.process(debug=deb)
+# %%
+    # PG.create_patches(overwrite=overwrite,debug=debug)
     lmg = "lm_group1"
+
     P.global_properties[lmg]
 
     imported_folder = Path("/s/fran_storage/predictions/totalseg/LITS-827/")
     TSL = TotalSegmenterLabels()
     imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
+    imported_labelsets = TSL.labels("all")
     P.imported_labels(lmg, imported_folder, imported_labelsets)
-    remapping = TSL.create_remapping(imported_labelsets, [8, 9])
+    # remapping = TSL.create_remapping(imported_labelsets, [8, 9])
+# %%
+#SECTION:-------------------- PATCHGENERATOR Single module--------------------------------------------------------------------------------------
 # %%
 
-    from fran.preprocessing.labelbounded import ImporterDataset
+    patch_overlap = .25
+    args = [
+        [
+            PG.dataset_properties,
+            PG.output_folder,
+            PG.patch_size,
+            bb,
+            patch_overlap,
+            PG.expand_by,
+            PG.mode,
+        ]
+        for bb in PG.fixed_sp_bboxes
+    ]
+# %%
+    argi = args[0]
+    info =argi[3]
 
-    I = ImporterDataset(
-        expand_by=20,
-        imported_folder=imported_folder,
-        imported_labelsets=imported_labelsets,
-        keep_imported_labels=False,
-        remapping=remapping,
+    patch_overlap = [int(PG.patch_overlap * ps) for ps in PG.patch_size]
+    patch_overlap = [to_even(ol) for ol in patch_overlap]
+    expand_by = PG.expand_by
+    mode = PG.mode
+# %%
+    output_folder = Path("/r/datasets/tmp")
+    dataset_properties = PG.dataset_properties
+    maybe_makedirs(output_folder)
+    Pr = PatchGenerator(
+        dataset_properties,
+        output_folder,
+        patch_size,
+        info,
+        patch_overlap,
+        expand_by,
+        mode,
     )
-    I.setup()
+# %%
+    Pr.process()
+
 # %%
 
+# %%
+#SECTION:-------------------- ROUGH--------------------------------------------------------------------------------------
+    img_fn = "/r/datasets/tmp/images/lits_108_0.pt"
+    lm_fn = "/r/datasets/tmp/lms/lits_108_0.pt"
+
+    img = torch.load(img_fn)
+    lm = torch.load(lm_fn)
+
+    ImageMaskViewer([img, lm])
+
+    inds_fldr = Path("/r/datasets/tmp/indices/")
+    indices_fn = list(inds_fldr.glob("*pt"))
+# %%
+    for fn in indices_fn:
+        inds = torch.load(fn)
+        print(fn)
+        print("FG", len(inds['lm_fg_indices']))
+# %%
+    #
+    # case_ids=PG.case_ids,
+    # expand_by=20,
+    # spacing=PG.spacing,
+    # data_folder=PG.fixed_spacing_subfolder,
+    # imported_folder=imported_folder,
+    # remapping=self.remapping,
+# %%
+    # def set_transforms(self, keys_tr: str = "R,L1,L2,Re,E,Rz,M,B,A"):
+    I.setup()
+    dici = I[2]
+    print(dici.keys())
+
+# %%
+    im = dici["image"]
+    lm = dici["lm_imported"]
+    ImageMaskViewer([im[0], lm[0]])
+# %%
+
+# %%
     dsrcs = P.global_properties[lmg]["ds"]
     ind = 0
     dsrc = dsrcs[ind]
@@ -340,13 +512,17 @@ if __name__ == "__main__":
 
 # %%
 # %%
-    fixed_spacing_folder = Path("/home/ub/datasets/preprocessed/lidc2/fixed_spacing/spc_080_080_150")
-    patch_size= [192,192,120]
+    fixed_spacing_folder = Path(
+        "/home/ub/datasets/preprocessed/lidc2/fixed_spacing/spc_080_080_150"
+    )
+    patch_size = [192, 192, 120]
     patch_overlap = 0.2
 
-    PG = PatchDataGenerator(P,fixed_spacing_folder, patch_size,patch_overlap,expand_by=10)
+    PG = PatchDataGenerator(
+        P, fixed_spacing_folder, patch_size, patch_overlap, expand_by=10
+    )
 # %%
-    
+
     patch_overlap = [int(PG.patch_overlap * ps) for ps in PG.patch_size]
     patch_overlap = [to_even(ol) for ol in patch_overlap]
     maybe_makedirs(PG.output_folder)
@@ -364,7 +540,6 @@ if __name__ == "__main__":
         ]
         for bb in PG.fixed_sp_bboxes
     ]
-
 
 # %%
     dici = C(dici)
@@ -425,7 +600,7 @@ if __name__ == "__main__":
     dici = R(dici)
     dici = L1(dici)
     dici = L2(dici)
-    dici = Re(dici)
+    dici = e(dici)
     dici = E(dici)
 # %%
     bb = dici["bounding_box"]

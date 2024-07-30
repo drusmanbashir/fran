@@ -7,7 +7,11 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
+<<<<<<< HEAD
 from fran.preprocessing.labelbounded import FGBGIndicesLBD, LabelBoundedDataGenerator
+=======
+from fran.preprocessing.labelbounded import FGBGIndicesLBD, LabelBoundedDataGenerator, LabelBoundedDataGeneratorImported
+>>>>>>> efc2e4fb (jj)
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from fran.utils.fileio import *
 from fran.utils.helpers import *
@@ -117,7 +121,7 @@ class PreprocessingManager():
         if organ=="lungs":
             imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
             remapping = TSL.create_remapping(imported_labelsets, [8, 9])
-        self.L = LabelBoundedDataGenerator(
+        self.L = LabelBoundedDataGeneratorImported(
             project=self.project,
             expand_by=self.plan['expand_by_lbd'],
             spacing=self.plan['spacing'],

@@ -1,5 +1,10 @@
 # %%
 from pathlib import Path
+import ipdb
+
+tr = ipdb.set_trace
+
+from fran.transforms.intensitytransforms import NormaliseClipd
 
 import numpy as np
 import pandas as pd
@@ -18,12 +23,19 @@ from monai.transforms.utility.dictionary import (
 )
 
 from fran.data.dataloader import dict_list_collated, img_lm_metadata_lists_collated
+<<<<<<< HEAD
 from fran.data.dataset import NormaliseClipd
+=======
+>>>>>>> efc2e4fb (jj)
 from fran.managers.datasource import get_ds_remapping
 from fran.preprocessing.dataset import ResamplerDataset
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
+<<<<<<< HEAD
 from fran.transforms.inferencetransforms import ChangeDType
+=======
+from fran.transforms.inferencetransforms import ChangeDType, ToCPUd
+>>>>>>> efc2e4fb (jj)
 from fran.transforms.misc_transforms import (
     ChangeDtyped,
     DictToMeta,
@@ -36,16 +48,6 @@ from fran.utils.common import *
 from fran.utils.fileio import load_dict, maybe_makedirs, save_dict, save_json
 from fran.utils.helpers import folder_name_from_list, multiprocess_multiarg, pbar
 from fran.utils.string import info_from_filename, strip_extension
-
-
-def get_tensor_stats(tnsr):
-    dic = {
-        "max": tnsr.max().item(),
-        "min": tnsr.min().item(),
-        "median": np.median(tnsr),
-    }
-    return dic
-
 
 def generate_bboxes_from_lms_folder(
     masks_folder, bg_label=0, debug=False, num_processes=16
@@ -76,10 +78,23 @@ class _Preprocessor(GetAttr):
     ) -> None:
         store_attr("project,spacing,device")
 
+<<<<<<< HEAD
     def save_pt(self, tnsr, subfolder):
         tnsr = tnsr.contiguous()
         fn = Path(tnsr.meta["filename_or_obj"])
         fn_name = strip_extension(fn.name) + ".pt"
+=======
+    def save_pt(self, tnsr, subfolder,contiguous=True,suffix:str=None):
+        if contiguous==True:
+            tnsr = tnsr.contiguous()
+        fn = Path(tnsr.meta["filename_or_obj"])
+        fn_name = strip_extension(fn.name) 
+        if suffix:
+            fn_name = fn_name+"_"+suffix+".pt"
+        else:
+            fn_name =  fn_name + ".pt"
+
+>>>>>>> efc2e4fb (jj)
         fn = self.output_folder / subfolder / fn_name
         torch.save(tnsr, fn)
     def save_indices(self, indices_dict, subfolder):
@@ -87,6 +102,18 @@ class _Preprocessor(GetAttr):
         # except:
         #     fn = Path(indices_dict["meta"]["filename"])
         fn_name = strip_extension(fn.name) + ".pt"
+        fn = self.output_folder / subfolder / fn_name
+        torch.save(indices_dict, fn)
+
+
+    def save_indices(self, indices_dict, subfolder,suffix:str=None):
+        fn = Path(indices_dict["meta"]["filename_or_obj"])
+        fn_name = strip_extension(fn.name) 
+        if suffix:
+            fn_name = fn_name+"_"+suffix+".pt"
+        else:
+            fn_name =  fn_name + ".pt"
+        # fn_name = strip_extension(fn.name) + ".pt"
         fn = self.output_folder / subfolder / fn_name
         torch.save(indices_dict, fn)
 
@@ -131,7 +158,7 @@ class _Preprocessor(GetAttr):
             generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
         else:
             print(
-                "since some files skipped, dataset stats are not being stored. run resampledatasetniftitotorch.get_tensor_folder_stats separately"
+                "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
 
     #
@@ -148,6 +175,11 @@ class _Preprocessor(GetAttr):
     #
 
     def process_batch(self, batch):
+<<<<<<< HEAD
+=======
+        U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
+        batch = U(batch)
+>>>>>>> efc2e4fb (jj)
         images, lms, fg_inds, bg_inds=(
             batch["image"],
             batch["lm"],
@@ -166,6 +198,12 @@ class _Preprocessor(GetAttr):
                 image.shape, lm.shape
             )
             assert image.dim() == 4, "images should be cxhxwxd"
+<<<<<<< HEAD
+=======
+
+
+
+>>>>>>> efc2e4fb (jj)
             inds = {
                 "lm_fg_indices": fg_ind,
                 "lm_bg_indices": bg_ind,
@@ -184,7 +222,9 @@ class _Preprocessor(GetAttr):
         img_filenames = (self.output_folder / ("images")).glob("*")
         args = [[img_fn] for img_fn in img_filenames]
         results = multiprocess_multiarg(get_tensorfile_stats, args, debug=debug)
-        self.results = pd.DataFrame(results).values
+        self.shapes= [a['shape'] for a in results]
+        self.results = pd.DataFrame(results)#.values
+        self.results = self.results[['max','min','median']]
         self._store_dataset_properties()
 
     def _store_dataset_properties(self):
@@ -198,7 +238,7 @@ class _Preprocessor(GetAttr):
                 resampled_dataset_properties_fname
             )
         )
-        save_dict(resampled_dataset_properties, resampled_dataset_properties_fname)
+        save_json(resampled_dataset_properties, resampled_dataset_properties_fname)
 
     def create_properties_dict(self):
         self.shapes = np.array(self.shapes)
@@ -207,10 +247,9 @@ class _Preprocessor(GetAttr):
             self.shapes, 0
         ).tolist()
         resampled_dataset_properties["dataset_spacing"] = self.spacing
-        resampled_dataset_properties["dataset_max"] = self.results[:, 0].max().item()
-        resampled_dataset_properties["dataset_min"] = self.results[:, 1].min().item()
-        resampled_dataset_properties["dataset_std"] = self.results[:, 1].std().item()
-        resampled_dataset_properties["dataset_median"] = np.median(self.results[:, 2])
+        resampled_dataset_properties["dataset_max"] = self.results['max'].max().item()
+        resampled_dataset_properties["dataset_min"] = self.results['min'].min().item()
+        resampled_dataset_properties["dataset_median"] = np.median(L.results['median']).item()
         return resampled_dataset_properties
 
     def create_output_folders(self):
@@ -221,18 +260,28 @@ class _Preprocessor(GetAttr):
                 self.indices_subfolder,
             ]
         )
+<<<<<<< HEAD
+=======
+
+
+    @property
+    def indices_subfolder(self):
+        indices_subfolder =self.output_folder/ ( "indices")
+        return indices_subfolder
+>>>>>>> efc2e4fb (jj)
 
 
 class ResampleDatasetniftiToTorch(_Preprocessor):
     def __init__(self, project, spacing, device="cpu", half_precision=False):
         super().__init__(project, spacing, device=device)
-        self.output_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=self.fixed_spacing_folder,
-            values_list=spacing,
-        )
         self.half_precision = half_precision
 
+<<<<<<< HEAD
+=======
+
+
+
+>>>>>>> efc2e4fb (jj)
     def setup(self, overwrite=False):
         self.register_existing_files()
         if overwrite == False:
@@ -332,9 +381,20 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
         self._store_dataset_properties()
 
     @property
+<<<<<<< HEAD
     def indices_subfolder(self):
         indices_subfolder =self.output_folder/ ( "indices")
         return indices_subfolder
+=======
+    def output_folder(self):
+        self._output_folder = folder_name_from_list(
+            prefix="spc",
+            parent_folder=self.fixed_spacing_folder,
+            values_list=self.spacing,
+        )
+        return self._output_folder
+
+>>>>>>> efc2e4fb (jj)
 
 
 def get_tensorfile_stats(filename):
@@ -347,8 +407,56 @@ def get_tensor_stats(tnsr):
         "max": tnsr.max().item(),
         "min": tnsr.min().item(),
         "median": np.median(tnsr),
+        "shape":[*tnsr.shape]
     }
     return dic
+
+class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
+    def __init__(self, project, spacing, device="cpu", half_precision=False):
+        super().__init__(project, spacing, device, half_precision)
+
+    def register_existing_files(self):
+        self.existing_files = list(self.indices_subfolder.glob("*"))
+
+
+    def process(
+        self,
+    ):
+        if not hasattr(self, "dl"):
+            print("No data loader created. No data to be processed")
+            return 0
+        print("resampling dataset to spacing: {0}".format(self.spacing))
+        self.create_output_folders()
+        for batch in pbar(self.dl):
+            self.process_batch(batch)
+
+    def process_batch(self, batch):
+        images, lms, fg_inds, bg_inds=(
+            batch["image"],
+            batch["lm"],
+            batch["lm_fg_indices"],
+            batch["lm_bg_indices"]
+        )
+        for (
+            image,
+            lm,
+            fg_ind,
+            bg_ind,
+        ) in zip(
+            images, lms, fg_inds, bg_inds,
+        ):
+            assert image.shape == lm.shape, "mismatch in shape".format(
+                image.shape, lm.shape
+            )
+            assert image.dim() == 4, "images should be cxhxwxd"
+            inds = {
+                "lm_fg_indices": fg_ind,
+                "lm_bg_indices": bg_ind,
+                "meta": image.meta,
+            }
+            self.save_indices(inds, self.indices_subfolder)
+
+
 
 class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
     def __init__(self, project, spacing, device="cpu", half_precision=False):
@@ -528,6 +636,23 @@ if __name__ == "__main__":
             df.drop([i], inplace=True)
             # rows_new.append(row)
 
+# %%
+        L.shapes = np.array(L.shapes)
+        resampled_dataset_properties = dict()
+        resampled_dataset_properties["median_shape"] = np.median(
+            L.shapes, 0
+        ).tolist()
+        resampled_dataset_properties["dataset_spacing"] = L.spacing
+        resampled_dataset_properties["dataset_max"] = L.results['max'].max().item()
+        resampled_dataset_properties["dataset_min"] = L.results['min'].min().item()
+        resampled_dataset_properties["dataset_median"] = np.median(L.results['median']).item()
+
+# %%
+    df = pd.DataFrame(np.arange(12).reshape(3, 4),                  columns=['A', 'B', 'C', 'D'])
+    df.drop(['A','B'],axis=1)
+    df
+    dici = load_dict()
+    save_json(resampled_dataset_properties,"/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/resampled_dataset_properties.json")
 
 # %%
     R = I.R

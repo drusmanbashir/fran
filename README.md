@@ -115,6 +115,10 @@ b) Use own labelmap label
 Note: if you want to generate a new set of FGBG indices, use FGBGIndicesGenerator.
 
 
+### 3: PatchDataGenerator
+This works differently from LBD generator. It takes any input folder.
+
+
 
 
 

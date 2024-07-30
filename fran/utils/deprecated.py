@@ -29,6 +29,23 @@ def insert_plan_key(ckpt_fn):
         print("Found plan key. No change")
 
 
+<<<<<<< HEAD
+=======
+
+def remove_plan_key_add_config(ckpt_fn, config):
+
+    # fn = '/s/fran_storage/checkpoints/litsmc/litsmc/LITS-999/checkpoints/epoch=106-val_loss=0.78.ckpt'
+    ckp = torch.load(ckpt_fn)
+    print(ckp.keys())
+    config['plan'] =ckp['datamodule_hyper_parameters']['plan']
+    ckp['datamodule_hyper_parameters']['plan']
+    ckp['datamodule_hyper_parameters'].pop('plan')
+    ckp['datamodule_hyper_parameters']['config'] = config
+    torch.save(ckp,ckpt_fn)
+# %%
+
+
+>>>>>>> efc2e4fb (jj)
 def list_to_chunks(input_list: list, chunksize: int):
     n_lists = int(np.ceil(len(input_list) / chunksize))
 
@@ -91,7 +108,11 @@ if __name__ == "__main__":
 #SECTION:-------------------- filename_or_obj--------------------------------------------------------------------------------------
 
 # %%
+<<<<<<< HEAD
     fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150")
+=======
+    fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/lidc2/spc_080_080_150")
+>>>>>>> efc2e4fb (jj)
     fns = list(fldr.rglob("*.pt"))
     for fn in pbar( fns):
         lm = torch.load(fn)

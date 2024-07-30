@@ -356,6 +356,14 @@ class Project(DictToAttr):
         val_files =[Path(fn).name for fn in val_files]
         return train_files,val_files
 
+    def get_train_val_cids(self,fold):
+        ss_train = "SELECT case_id FROM datasources WHERE fold<>{}".format(fold)
+        ss_val = "SELECT case_id FROM datasources WHERE fold={}".format(fold)
+
+        train_files,val_files = self.sql_query(ss_train,True),self.sql_query(ss_val,True)
+        train_files =[Path(fn).name for fn in train_files]
+        val_files =[Path(fn).name for fn in val_files]
+        return train_files,val_files
 
     @ask_proceed("Remove all project files and folders?")
     def delete(self):

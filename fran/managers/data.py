@@ -66,7 +66,7 @@ class DataManager(LightningDataModule):
         self,
         project,
         dataset_params: dict,
-        plan: dict,
+        config: dict,
         transform_factors: dict,
         affine3d: dict,
         batch_size=8,
@@ -75,6 +75,7 @@ class DataManager(LightningDataModule):
     ):
         super().__init__()
         self.save_hyperparameters()
+        self.plan = config['plan']
         store_attr(but="transform_factors")
         global_properties = load_dict(project.global_properties_filename)
         self.dataset_params["intensity_clip_range"] = global_properties[
@@ -174,14 +175,14 @@ class DataManager(LightningDataModule):
         self.train_nii, self.valid_nii = self.project.get_train_val_files(
             self.dataset_params["fold"]
         )
-        self.dataset_folder = self.derive_dataset_folder()
+        self.data_folder = self.derive_data_folder()
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
         fnames = [fn + ".pt" for fn in fnames]
         fnames = fnames
-        images_fldr = self.dataset_folder / ("images")
-        lms_fldr = self.dataset_folder / ("lms")
+        images_fldr = self.data_folder / ("images")
+        lms_fldr = self.data_folder / ("lms")
         inds_fldr = self.infer_inds_fldr(self.plan)
         images = list(images_fldr.glob("*.pt"))
         data = []
@@ -208,9 +209,9 @@ class DataManager(LightningDataModule):
             indices_subfolder = "indices_fg_exclude_{}".format(
                 "".join([str(x) for x in fg_indices_exclude])
             )
-        return self.dataset_folder / (indices_subfolder)
+        return self.data_folder / (indices_subfolder)
 
-    def derive_dataset_folder(self):
+    def derive_data_folder(self):
         raise NotImplementedError
 
     def train_dataloader(self):
@@ -266,7 +267,7 @@ class DataManagerSource(DataManager):
         self,
         project,
         dataset_params: dict,
-        plan: dict,
+        config: dict,
         transform_factors: dict,
         affine3d: dict,
         batch_size=8,
@@ -275,7 +276,7 @@ class DataManagerSource(DataManager):
         super().__init__(
             project,
             dataset_params,
-            plan,
+            config,
             transform_factors,
             affine3d,
             batch_size,
@@ -283,12 +284,12 @@ class DataManagerSource(DataManager):
         )
         self.collate_fn = simple_collated
 
-    def derive_dataset_folder(self):
+    def derive_data_folder(self):
         prefix = "spc"
         spacing = ast.literal_eval(self.plan["spacing"])
         parent_folder = self.project.fixed_spacing_folder
-        dataset_folder = folder_name_from_list(prefix, parent_folder, spacing)
-        return dataset_folder
+        data_folder = folder_name_from_list(prefix, parent_folder, spacing)
+        return data_folder
 
     def prepare_data(self):
         super().prepare_data()
@@ -380,16 +381,17 @@ class DataManagerSource(DataManager):
 
 
 class DataManagerLBD(DataManagerSource):
-    def derive_dataset_folder(self, dataset_mode=None):
-        spacing = self.dataset_params["spacing"]
+    def derive_data_folder(self, dataset_mode=None):
+        spacing = ast.literal_eval(self.plan["spacing"])
         parent_folder = self.project.lbd_folder
-        dataset_folder = folder_name_from_list(
-            prefix="spc", parent_folder=parent_folder, values_list=spacing
+        folder_suffix = "plan"+str(self.dataset_params["plan"])
+        data_folder = folder_name_from_list(
+            prefix="spc", parent_folder=parent_folder, values_list=spacing,suffix=folder_suffix
         )
-        assert dataset_folder.exists(), "Dataset folder {} does not exists".format(
-            dataset_folder
+        assert data_folder.exists(), "Dataset folder {} does not exists".format(
+            data_folder
         )
-        return dataset_folder
+        return data_folder
 
     def prepare_data(self):
         super().prepare_data()
@@ -406,12 +408,16 @@ class DataManagerShort(DataManager):
         return super().train_dataloader(num_workers, **kwargs)
 
 
-class DataManagerPatch(DataManager):
+class DataManagerPatchLegacy(DataManager):
+    '''
+    Uses bboxes to randonly select fg bg labels. New version(below) uses monai fgbgindices instead
+    '''
+    
     def __init__(
         self,
         project,
         dataset_params: dict,
-        plan: dict,
+        config: dict,
         transform_factors: dict,
         affine3d: dict,
         batch_size=8,
@@ -420,7 +426,7 @@ class DataManagerPatch(DataManager):
         super().__init__(
             project,
             dataset_params,
-            plan,
+            config,
             transform_factors,
             affine3d,
             batch_size,
@@ -428,12 +434,16 @@ class DataManagerPatch(DataManager):
         )
         self.collate_fn = img_lm_bbox_collated
 
-    def derive_dataset_folder(self):
+    def derive_data_folder(self):
         parent_folder = self.project.patches_folder
-        spacing = self.dataset_params["spacing"]
+        plan_name = "plan"+str(self.dataset_params["plan"])
+        source_plan_name = self.plan['source_plan']
+        source_plan = self.config[source_plan_name]
+        spacing = ast.literal_eval(source_plan['spacing'])
+        # spacing = self.dataset_params["spacing"]
         subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
         src_dims = self.src_dims
-        subfldr2 = folder_name_from_list("dim", subfldr1, src_dims)
+        subfldr2 = folder_name_from_list("dim", subfldr1, src_dims,plan_name)
         return subfldr2
 
     def setup(self, stage: str = None):
@@ -451,7 +461,7 @@ class DataManagerPatch(DataManager):
         else:
             class_ratios = fgbg_ratio
 
-        bboxes_fname = self.dataset_folder / "bboxes_info"
+        bboxes_fname = self.data_folder / "bboxes_info"
         self.train_ds = ImageMaskBBoxDatasetd(
             self.train_nii,
             bboxes_fname,
@@ -461,6 +471,82 @@ class DataManagerPatch(DataManager):
         self.valid_ds = ImageMaskBBoxDatasetd(
             self.valid_nii, bboxes_fname, transform=self.tfms_valid
         )
+
+    @property
+    def src_dims(self):
+        return ast.literal_eval(self.plan["patch_size"])
+
+class DataManagerPatch(DataManager):
+    def __init__(
+        self,
+        project,
+        dataset_params: dict,
+        config: dict,
+        transform_factors: dict,
+        affine3d: dict,
+        batch_size=8,
+        **kwargs
+    ):
+        super().__init__(
+            project,
+            dataset_params,
+            config,
+            transform_factors,
+            affine3d,
+            batch_size,
+            **kwargs
+        )
+        self.collate_fn = img_lm_bbox_collated
+
+    def prepare_data(self):
+        # getting the right folders
+        dataset_mode = self.plan["mode"]
+        self.train_cids, self.valid_cids = self.project.get_train_val_cids(
+            self.dataset_params["fold"]
+        )
+        self.data_folder = self.derive_data_folder()
+
+    def derive_data_folder(self):
+        parent_folder = self.project.patches_folder
+        plan_name = "plan"+str(self.dataset_params["plan"])
+        source_plan_name = self.plan['source_plan']
+        source_plan = self.config[source_plan_name]
+        spacing = ast.literal_eval(source_plan['spacing'])
+        # spacing = self.dataset_params["spacing"]
+        subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
+        src_dims = self.src_dims
+        subfldr2 = folder_name_from_list("dim", subfldr1, src_dims,plan_name)
+        return subfldr2
+
+    def setup(self, stage: str = None):
+        self.create_transforms()
+        if not math.isnan(self.dataset_params["src_dest_labels"]):
+            keys_tr = "P,E,F1,F2,A,Re,N,I"
+        else:
+            keys_tr = "E,F1,F2,A,Re,N,I"
+        keys_val = "E,Re,N"
+        self.set_transforms(keys_tr=keys_tr, keys_val=keys_val)
+        fgbg_ratio = self.dataset_params["fgbg_ratio"]
+        if isinstance(fgbg_ratio, int):
+            n_fg_labels = len(self.project.global_properties["labels_all"])
+            class_ratios = int_to_ratios(n_fg_labels=n_fg_labels, fgbg_ratio=fgbg_ratio)
+        else:
+            class_ratios = fgbg_ratio
+
+        bboxes_fname = self.data_folder / "bboxes_info"
+        self.train_ds = ImageMaskBBoxDatasetd(
+            self.train_nii,
+            bboxes_fname,
+            class_ratios,
+            transform=self.tfms_train,
+        )
+        self.valid_ds = ImageMaskBBoxDatasetd(
+            self.valid_nii, bboxes_fname, transform=self.tfms_valid
+        )
+
+    @property
+    def src_dims(self):
+        return ast.literal_eval(self.plan["patch_size"])
 
 
 class DataManagerShort(DataManagerPatch):
@@ -482,7 +568,11 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
+<<<<<<< HEAD
     project_title = "nodes"
+=======
+    project_title = "litsmc"
+>>>>>>> efc2e4fb (jj)
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -490,18 +580,22 @@ if __name__ == "__main__":
     )
     configuration_filename = None
 
-    configs = ConfigMaker(
+    config = ConfigMaker(
         proj, raytune=False, configuration_filename=configuration_filename
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
 # %%
+# %%
+#SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------
+
     batch_size = 2
     D = DataManagerSource(
         proj,
-        dataset_params=configs["dataset_params"],
-        transform_factors=configs["transform_factors"],
-        affine3d=configs["affine3d"],
+        config = config,
+        dataset_params=config["dataset_params"],
+        transform_factors=config["transform_factors"],
+        affine3d=config["affine3d"],
         batch_size=batch_size,
         plan = configs["plan2"]
     )
@@ -509,10 +603,33 @@ if __name__ == "__main__":
     D.prepare_data()
 
     D.setup()
+<<<<<<< HEAD
     D.dataset_folder
+=======
+    D.data_folder
+>>>>>>> efc2e4fb (jj)
 # %%
 
+# %%
+#SECTION:-------------------- Patch--------------------------------------------------------------------------------------
 
+
+    batch_size = 2
+    D = DataManagerPatch(
+        proj,
+        config = config,
+        dataset_params=config["dataset_params"],
+        transform_factors=config["transform_factors"],
+        affine3d=config["affine3d"],
+        batch_size=batch_size,
+    )
+
+# %%
+
+    D.prepare_data()
+
+    D.setup()
+    D.data_folder
 # %%
 
     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
