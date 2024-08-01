@@ -1,4 +1,7 @@
 # %%
+from lightning import LightningDataModule
+from monai.transforms.transform import RandomizableTransform
+from fran.preprocessing.patch import bbox_bg_only
 import ast
 import math
 from functools import reduce
@@ -8,8 +11,7 @@ from pathlib import Path
 import ipdb
 import numpy as np
 import torch
-from fastcore.basics import listify, store_attr, warnings
-from lightning.pytorch import LightningDataModule
+from fastcore.basics import listify, operator, store_attr, warnings
 from monai.data import DataLoader, Dataset
 from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
 from monai.transforms.compose import Compose
@@ -35,7 +37,6 @@ from fran.data.dataset import (
     ImageMaskBBoxDatasetd,
     MaskLabelRemapd,
     NormaliseClipd,
-    PatchFGBGDataset,
     fg_in_bboxes,
 )
 from fran.transforms.imageio import LoadTorchd, TorchReader
@@ -46,6 +47,7 @@ from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
 from fran.utils.imageviewers import ImageMaskViewer
 from fran.utils.string import strip_extension
+import re
 
 
 tr = ipdb.set_trace
@@ -72,6 +74,27 @@ def simple_collated(batch):
             labels.append(ita["lm"])
     output = {"image": torch.stack(imgs, 0), "lm": torch.stack(labels, 0)}
     return output
+
+
+
+class RandomPatch(RandomizableTransform):
+    '''
+    to be used by DataManagerPatch
+    '''
+    
+    def randomize(self, data=None):
+        n_patches = data['n_patches']
+        self.indx = self.R.randint(0,n_patches)
+        self.indx = str(self.indx)
+
+
+    def __call__(self, data: list):
+        self.randomize(data)
+        image_key = 'image_'+self.indx
+        lm_key = 'lm_'+self.indx
+        indices_key = 'indices_'+self.indx
+        dici = {'image':data[image_key], "lm":data[lm_key], "indices":data[indices_key]}
+        return dici
 
 
 class DataManager(LightningDataModule):
@@ -109,7 +132,9 @@ class DataManager(LightningDataModule):
             )
             print(
                 "Given {0} Samples per file and {1} batch_size on the GPU, effective batch size (number of file tensors loaded then sampled for for training is:\n {2} ".format(
-                    self.plan['samples_per_file'],self.batch_size, self.effective_batch_size
+                    self.plan["samples_per_file"],
+                    self.batch_size,
+                    self.effective_batch_size,
                 )
             )
 
@@ -329,7 +354,7 @@ class DataManager(LightningDataModule):
     def forward(self, inputs, target):
         return self.model(inputs)
 
-    def setup(self, stage: str) -> None:
+    def setup(self, stage: str = None) -> None:
         raise NotImplementedError
 
     @property
@@ -437,6 +462,7 @@ class DataManagerShort(DataManager):
         return super().train_dataloader(num_workers, **kwargs)
 
 
+# CODE: in the below class move Rtr after A and get rid of Re to see if it affects training speed / model accuracy
 class DataManagerPatchLegacy(DataManager):
     """
     Uses bboxes to randonly select fg bg labels. New version(below) uses monai fgbgindices instead
@@ -506,6 +532,7 @@ class DataManagerPatchLegacy(DataManager):
         return ast.literal_eval(self.plan["patch_size"])
 
 
+# %%
 class DataManagerPatch(DataManager):
     def __init__(
         self,
@@ -517,6 +544,7 @@ class DataManagerPatch(DataManager):
         batch_size=8,
         **kwargs
     ):
+        self.collate_fn = simple_collated
         super().__init__(
             project,
             dataset_params,
@@ -526,16 +554,86 @@ class DataManagerPatch(DataManager):
             batch_size,
             **kwargs
         )
-        self.collate_fn = simple_collated
+        self.derive_data_folder()
+        self.load_bboxes()
+        self.fg_bg_prior = fg_in_bboxes(self.bboxes)
+
+    def get_patch_files(self, bboxes, case_id: str):
+        cids = np.array([bb["case_id"] for bb in bboxes])
+        cid_inds = np.where(cids == case_id)[0]
+        assert len(cid_inds) > 0, "No bboxes for case {0}".format(case_id)
+        n_patches = len(cid_inds)
+        bboxes_out = {"n_patches": n_patches}
+        for ind in cid_inds:
+            bb = bboxes[ind]
+            pat = re.compile(r"_(\d+)\.pt")
+
+            fn = bb["filename"]
+            matched = pat.search(fn.name)
+            indx = matched.groups()[0]
+            fn_name = strip_extension(fn.name) + "_" + str(indx) + ".pt"
+            lm_fn = Path(fn)
+            img_fn = lm_fn.str_replace("lms", "images")
+            indices_fn = lm_fn.str_replace("lms", "indices")
+            # assert(bb['case_id'] == case_id),"Strange error: {} not in bb".format(case_id)
+            assert all(
+                [fn.exists() for fn in [lm_fn, img_fn, indices_fn]]
+            ), "Image of LM file does not exists {0}, {1}, {2}".format(
+                lm_fn, img_fn, indices_fn
+            )
+            bb_out = {
+                "lm_" + indx: lm_fn,
+                "image_" + indx: img_fn,
+                "indices_" + indx: indices_fn,
+                "bbox_stats_" + indx: bb["bbox_stats"],
+            }
+            # bb.pop("filename")
+            bboxes_out.update(bb_out)
+        return bboxes_out
+
+    def load_bboxes(self):
+        bbox_fn = self.data_folder / "bboxes_info"
+        self.bboxes = load_dict(bbox_fn)
 
     def prepare_data(self):
-        # getting the right folders
-        dataset_mode = self.plan["mode"]
-        assert dataset_mode == "patch", "Set a value for mode = 'patch'"
         self.train_cids, self.valid_cids = self.project.get_train_val_cids(
             self.dataset_params["fold"]
         )
-        self.data_folder = self.derive_data_folder()
+        self.data_train = self.create_data_dicts(self.train_cids)
+        self.data_valid = self.create_data_dicts(self.valid_cids)
+
+    def get_label_info(self, case_patches):
+        indices = []
+        labels_per_file = []
+        for indx, bb in enumerate(case_patches):
+            bbox_stats = bb["bbox_stats"]
+            labels = [(a["label"]) for a in bbox_stats if not a["label"] == "all_fg"]
+            if bbox_bg_only(bbox_stats) == True:
+                labels = [0]
+            else:
+                labels = [0] + labels
+            indices.append(indx)
+            labels_per_file.append(labels)
+        labels_this_case = list(set(reduce(operator.add, labels_per_file)))
+        return {
+            "file_indices": indices,
+            "labels_per_file": labels_per_file,
+            "labels_this_case": labels_this_case,
+        }
+
+    def create_data_dicts(self, cids):
+        patches = []
+        for cid in cids:
+            dici = {"case_id": cid}
+            patch_fns = self.get_patch_files(self.bboxes, cid)
+            dici.update(patch_fns)
+            patches.append(dici)
+        return patches
+
+    def create_transforms(self):
+        super().create_transforms()
+        self.RP = RandomPatch()
+        self.transforms_dict.update({ "RP": self.RP})
 
     def derive_data_folder(self):
         parent_folder = self.project.patches_folder
@@ -545,33 +643,34 @@ class DataManagerPatch(DataManager):
         spacing = ast.literal_eval(source_plan["spacing"])
         # spacing = self.dataset_params["spacing"]
         subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
-        src_dims = self.src_dims
-        subfldr2 = folder_name_from_list("dim", subfldr1, src_dims, plan_name)
-        return subfldr2
+        patch_size = ast.literal_eval(
+            self.plan["patch_size"]
+        )  # self.plan['patch_size']
+        subfldr2 = folder_name_from_list("dim", subfldr1, patch_size, plan_name)
+        self.data_folder = subfldr2
 
     def setup(self, stage: str = None):
-
         self.create_transforms()
-        bbox_fn = self.data_folder / "bboxes_info"
-        bboxes = load_dict(bbox_fn)
-        fg_bg_prior = fg_in_bboxes(bboxes)
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
-        fgbg_ratio_adjusted = fgbg_ratio / fg_bg_prior
+        fgbg_ratio_adjusted = fgbg_ratio / self.fg_bg_prior
         self.dataset_params["fgbg_ratio"] = fgbg_ratio_adjusted
-
         if not math.isnan(self.dataset_params["src_dest_labels"]):
-            keys_tr = "L,Ld,P,E,Rtr,F1,F2,A,Re,N,I"
+            keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,A,Re,N,I"
         else:
-            keys_tr = "L,Ld,E,Rva,F1,F2,A,Re,N,I"
-        keys_val = "L,Ld,E,Rva,Re,N"
+            keys_tr = "RP,L,Ld,E,Rva,F1,F2,A,Re,N,I"
+        keys_val = "RP,L,Ld,E,Rva,Re,N"
         self.set_transforms(keys_tr=keys_tr, keys_val=keys_val)
-        self.train_ds = PatchFGBGDataset(
-            self.train_cids,
-            bbox_fn,
+        self.train_ds = LMDBDataset(
+            data=self.data_train,
             transform=self.tfms_train,
+            cache_dir=self.project.cache_folder,
+            db_name="training_cache",
         )
-        self.valid_ds = PatchFGBGDataset(
-            self.valid_cids, bbox_fn, transform=self.tfms_valid
+        self.valid_ds = LMDBDataset(
+            data=self.data_valid,
+            transform=self.tfms_valid,
+            cache_dir=self.project.cache_folder,
+            db_name="valid_cache",
         )
 
     @property
@@ -591,7 +690,7 @@ class DataManagerShort(DataManagerPatch):
 # %%
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     import torch
 
@@ -615,7 +714,7 @@ if __name__ == "__main__":
     global_props = load_dict(proj.global_properties_filename)
 
 # %%
-# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR>
+# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR>
 
     batch_size = 2
     D = DataManagerSource(
@@ -632,10 +731,11 @@ if __name__ == "__main__":
 
     D.setup()
     D.data_folder
+    D.train_ds[0]
 # %%
 
 # %%
-# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     batch_size = 2
     D = DataManagerPatch(
@@ -646,13 +746,35 @@ if __name__ == "__main__":
         affine3d=config["affine3d"],
         batch_size=batch_size,
     )
-#of  %%
+
     D.prepare_data()
     D.setup()
+    D.train_ds[0]
+# %%
+    cids = D.train_cids
+    patches_per_id = []
 
 # %%
+    dici = D.data_train[0]
+    D.transforms_dict.keys()
+    D.transforms_dict[""](dici)
+    dici = RD(dici)
+    D.tfms_train
+    dici = DP(dici)
 # %%
-# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR>
+    RD = RandomPatch()
+    dici2 = RD(dici)
+    D.setup()
+# %%
+
+    cid = D.train_cids[0]
+
+    bboxes = D.get_patch_files(D.bboxes, cid)
+    bboxes.append(D.get_label_info(bboxes))
+    D.bboxes_per_id.append(bboxes)
+# %%
+# %%
+# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
 # %%
 
@@ -724,7 +846,4 @@ if __name__ == "__main__":
     img = b["image"][ind][0]
     lab = b["lm"][ind][0]
     ImageMaskViewer([img, lab])
-# %
-
-
 # %%

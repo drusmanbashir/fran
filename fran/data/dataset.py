@@ -19,7 +19,6 @@ from monai.transforms import Compose, MapTransform
 from monai.transforms.io.array import SaveImage
 from monai.transforms.transform import Transform
 
-from fran.preprocessing.patch import contains_bg_only
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import NormaliseClipd, standardize
 from fran.transforms.spatialtransforms import *
@@ -35,7 +34,7 @@ import itk
 import numpy as np
 import SimpleITK as sitk
 from fastcore.all import listify, store_attr
-from monai.data.dataset import Dataset, PersistentDataset
+from monai.data.dataset import Dataset, LMDBDataset, PersistentDataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import LoadImaged, SaveImaged
@@ -418,21 +417,6 @@ class PatchFGBGDataset(Dataset):
             bboxes.append(self.get_label_info(bboxes))
             self.bboxes_per_id.append(bboxes)
 
-
-    def get_patch_files(self, bboxes, case_id: str):
-        bboxes_out = []
-        for bb in bboxes:
-            fn = bb["filename"]
-            fn = Path(fn)
-            fn_name = fn.name
-            cid = info_from_filename(fn_name,True)['case_id']
-            if cid == case_id:
-                bboxes_out.append(bb)
-        if len(bboxes_out) == 0:
-            print("Missing filename {0} from bboxfile".format(case_id))
-            tr()
-        return bboxes_out
-
     def __len__(self):
         return len(self.bboxes_per_id)
 
@@ -480,28 +464,6 @@ class PatchFGBGDataset(Dataset):
         shape = [sl.stop for sl in bb_any]
         return shape
 
-    def get_label_info(self, case_bboxes):
-        indices = []
-        labels_per_file = []
-        for indx, bb in enumerate(case_bboxes):
-            bbox_stats = bb["bbox_stats"]
-            labels = [(a["label"]) for a in bbox_stats if not a["label"] == "all_fg"]
-            if contains_bg_only(bbox_stats) == True:
-                labels = [0]
-            else:
-                labels = [0]+labels
-            # if len(labels) == 0:
-            #     tr()
-            #     labels = [0]  # background class only by exclusion
-            indices.append(indx)
-            labels_per_file.append(labels)
-        labels_this_case = list(set(reduce(operator.add, labels_per_file)))
-        return {
-            "file_indices": indices,
-            "labels_per_file": labels_per_file,
-            "labels_this_case": labels_this_case,
-        }
-
     @property
     def class_ratios(self):
         """The ratios property."""
@@ -544,7 +506,7 @@ class PatchFGBGDataset(Dataset):
             return True
         if bboxes[0] != bboxes[1]:
             return True
-
+ 
 
 # %%
 class ImageMaskBBoxDatasetd(PatchFGBGDataset):
@@ -765,7 +727,7 @@ if __name__ == "__main__":
     P = Project(project_title="litsmc")
 
     global_properties = load_dict(P.global_properties_filename)
-# %%
+# %%        LMDBDataset.__init__(self, cache_dir, db_name)t
     cids,_ = P.get_train_val_cids(0)
     bbox_fn= "/r/datasets/preprocessed/litsmc/patches/spc_080_080_150/dim_320_320_192_plan5/bboxes_info.pkl"
     I = PatchFGBGDataset(case_ids = cids,bbox_fn =bbox_fn)

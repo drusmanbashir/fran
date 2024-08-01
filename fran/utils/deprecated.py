@@ -4,7 +4,7 @@
 import itertools as il
 from pathlib import Path
 
-from label_analysis.overlap import pbar
+from label_analysis.overlap import pbaconfigr
 import numpy as np
 import SimpleITK as sitk
 import torch
@@ -32,7 +32,6 @@ def insert_plan_key(ckpt_fn):
 
 def remove_plan_key_add_config(ckpt_fn, config):
 
-    # fn = '/s/fran_storage/checkpoints/litsmc/litsmc/LITS-999/checkpoints/epoch=106-val_loss=0.78.ckpt'
     ckp = torch.load(ckpt_fn)
     print(ckp.keys())
     config['plan'] =ckp['datamodule_hyper_parameters']['plan']
@@ -41,7 +40,14 @@ def remove_plan_key_add_config(ckpt_fn, config):
     ckp['datamodule_hyper_parameters']['config'] = config
     torch.save(ckp,ckpt_fn)
 # %%
-
+def move_key_plan_to_dataset_params(ckpt_fn,key):
+    # ckpt_fn = '/s/fran_storage/checkpoints/litsmc/litsmc/LITS-999/checkpoints/epoch=106-val_loss=0.78.ckpt'
+    ckp = torch.load(ckpt_fn)
+    ckp['datamodule_hyper_parameters'].keys()
+    config= ckp['datamodule_hyper_parameters']['config']
+    value = config['dataset_params'][key]
+    ckp['datamodule_hyper_parameters']['config']['plan'][key]=value
+    torch.save(ckp,ckpt_fn)
 
 def list_to_chunks(input_list: list, chunksize: int):
     n_lists = int(np.ceil(len(input_list) / chunksize))

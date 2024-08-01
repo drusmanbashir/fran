@@ -578,7 +578,6 @@ if __name__ == "__main__":
     batch_finder = False
     neptune =True
     tags = []
-    conf['dataset_params']['ds_type']= 'lmdb'
     description = f""
 # %%
 
