@@ -648,7 +648,7 @@ class DataManagerPatch(DataManager):
         )  # self.plan['patch_size']
         subfldr2 = folder_name_from_list("dim", subfldr1, patch_size, plan_name)
         self.data_folder = subfldr2
-
+#CODE: use same validation dataloader in all flavours of training to make it comparable
     def setup(self, stage: str = None):
         self.create_transforms()
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
