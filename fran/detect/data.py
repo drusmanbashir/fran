@@ -315,6 +315,7 @@ if __name__ == "__main__":
             "Rs":Rs,
             "Rp":Rp,
             # "R1": R1,
+    }
 # %%
     im = dici2['image'][0]
     lm = dici2['lm'][0]

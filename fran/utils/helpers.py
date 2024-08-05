@@ -25,6 +25,14 @@ import gc
 # from fran.utils.fileio import *
 
 
+def set_autoreload():
+    if "get_ipython" in globals():
+        print("setting autoreload")
+        from IPython import get_ipython
+        ipython = get_ipython()
+        ipython.run_line_magic("load_ext", "autoreload")
+        ipython.run_line_magic("autoreload", "2")
+
 def test_modified(filename,ndays:int= 1):
     '''
     returns true if file was modified in last ndays
@@ -369,8 +377,8 @@ def find_matching_fn(src_fn:Path,mask_fnames:Union[list,Path],use_cid=False):
                 if cid_mask == cid:
                     matching_mask_fns.append(mask_fn)
         if len(matching_mask_fns)==1: return matching_mask_fns[0]
-        elif len(matching_mask_fns)==0: return None
-        else: raise Exception("Multiple files matching {} found".format(src_fn))
+        # elif len(matching_mask_fns)==0: return None
+        else: raise Exception("Multiple or None files matching {} found".format(src_fn))
 
 
 def get_fileslist_from_path(path:Path, ext:str = ".pt"):

@@ -1,5 +1,6 @@
 # %%
 # NOTE: UTILITY functions to reconcile previous version with new.
+from fran.managers.training import UNetTrainer, checkpoint_from_model_id
 
 import itertools as il
 from pathlib import Path
@@ -10,10 +11,8 @@ import SimpleITK as sitk
 import torch
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 
-from fran.managers.training import UNetTrainer, checkpoint_from_model_id
 from fran.utils.helpers import pp, slice_list
 from fran.utils.imageviewers import ImageMaskViewer, view_sitk
-
 
 
 def insert_plan_key(ckpt_fn):
@@ -91,6 +90,19 @@ if __name__ == "__main__":
     dici = dic_tmp['datamodule_hyper_parameters']['plan']
     dici['spacing'] = '.8,.8,1.5'
 
+# %%
+
+# %%
+#SECTION:-------------------- CKPT manual fix--------------------------------------------------------------------------------------
+
+    ckpt_fn = "/s/fran_storage/checkpoints/litsmc/litsmc/LITS-999/checkpoints/last.ckpt"
+# %%
+    ckp = torch.load(ckpt_fn)
+    ckp.keys()
+    ckp['datamodule_hyper_parameters']['dataset_params']['batch_size']=12
+    ckp['datamodule_hyper_parameters']['batch_size']=12
+    ckp['datamodule_hyper_parameters']['config'] 
+    torch.save(ckp,ckpt_fn)
 # %%
     fn = "/s/fran_storage/checkpoints/lidc2/lidc2/LITS-911/checkpoints/epoch=499-step=8000.ckpt"
     std =  torch.load(fn)

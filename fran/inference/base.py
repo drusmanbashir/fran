@@ -1,7 +1,6 @@
 # %%
-import ast
+from fran.managers.training import UNetTrainer, checkpoint_from_model_id
 import itertools as il
-from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import itk
@@ -11,7 +10,6 @@ import torch
 from fastcore.all import listify, store_attr
 from fastcore.foundation import GetAttr
 from lightning.fabric import Fabric
-from lightning.pytorch import LightningModule
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset, PersistentDataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
@@ -26,7 +24,6 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
 
 from fran.data.dataset import (InferenceDatasetNii, InferenceDatasetPersistent,
                                NormaliseClipd)
-from fran.managers.training import UNetTrainer, checkpoint_from_model_id
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import SaveMultiChanneld, ToCPUd
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
@@ -55,7 +52,7 @@ def load_params(model_id):
     dic_tmp = torch.load(ckpt, map_location="cpu")
     dic_relevant = dic_tmp["datamodule_hyper_parameters"]
     # dic_tmp['datamodule_hyper_parameters']['plan']['spacing']= '.8,.8,1.5'# = fix_ast(dic_tmp, keys=['spacing'])
-    dic_relevant['plan']=fix_ast(dic_relevant['plan'], keys = ['spacing'])# = fix_ast(dic_tmp, keys=['spacing'])
+    # dic_relevant['plan']=fix_ast(dic_relevant['plan'], keys = ['spacing'])# = fix_ast(dic_tmp, keys=['spacing'])
     return dic_relevant
 
 
@@ -92,6 +89,7 @@ class BaseInferer(GetAttr, DictToAttr):
             self.params = load_params(run_name)
         else:
             self.params = params
+        self.plan = fix_ast(self.params['config']['plan'],["spacing"])
 
         if safe_mode == True:
             print(
@@ -171,7 +169,7 @@ class BaseInferer(GetAttr, DictToAttr):
             keys=["image"], channel_dim="no_channel"
         )  
 
-        self.S = Spacingd(keys=["image"], pixdim= self.params['plan']["spacing"])
+        self.S = Spacingd(keys=["image"], pixdim= self.plan["spacing"])
         self.N = NormaliseClipd(
             keys=["image"],
             clip_range=self.params["dataset_params"]["intensity_clip_range"],
@@ -356,6 +354,8 @@ if __name__ == "__main__":
     proj_nodes = Project(project_title="nodes")
     run_nodes= ["LITS-966"]
 
+    proj_litsmc= Project(project_title="litsmc")
+    run_litsmc= ["LITS-1007"]
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
@@ -393,13 +393,33 @@ if __name__ == "__main__":
     data = P.ds.data[0]
 # %%
 
+# %%
+#SECTION:-------------------- LITSMC--------------------------------------------------------------------------------------
 
+    safe_mode = False
+    bs = 5
+    save_channels = False
+    overwrite = False
+    devices = [1]
+    L = BaseInferer(
+        proj_litsmc,
+        run_litsmc[0],
+        overwrite=overwrite,
+        save_channels=save_channels,
+        safe_mode=safe_mode,
+        devices=devices,
+    )
+
+# %%
+    preds = L.run(imgs_crc, chunksize=1)
+# %%
+    data = P.ds.data[0]
 # %%
 #SECTION:-------------------- TOTALSEG--------------------------------------------------------------------------------------
     
+    save_channels = False
     safe_mode = True
     bs = 4
-    save_channels = False
     overwrite = False
     devices = [0]
     

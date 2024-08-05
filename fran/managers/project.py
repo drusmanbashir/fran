@@ -1,6 +1,5 @@
 # %%
 import sqlite3
-from label_analysis.totalseg import TotalSegmenterLabels
 from fastcore.basics import listify
 import ipdb
 from fastcore.basics import GetAttr
@@ -35,7 +34,6 @@ common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 from contextlib import contextmanager
 
 
-DS= _DS()
 
 def val_indices(a, n):
     a = a - 1
@@ -486,6 +484,7 @@ class Project(DictToAttr):
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
+    DS= _DS()
 
     P= Project(project_title="nodes")
 

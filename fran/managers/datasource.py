@@ -1,16 +1,13 @@
 
 # %%
 import shutil
-import sqlite3
 import string
-from enum import Enum
 
 import ipdb
 import SimpleITK as sitk
 from fastcore.basics import GetAttr, Union
 from label_analysis.helpers import (get_labels, single_label, to_binary,
                                     to_int, to_label)
-from label_analysis.totalseg import TotalSegmenterLabels, relabel
 from monai.utils.enums import StrEnum
 
 from fran.preprocessing.datasetanalyzers import (case_analyzer_wrapper,
@@ -95,6 +92,15 @@ class _DS():
     def get_folder(self, ds:str):
         ds_dict = getattr(self,ds)
         return ds_dict['folder']
+    def __str__(self):
+        datasrcs = self.__dict__.keys()
+        datasrcs = ",".join([k for k in datasrcs])
+        return "Datasources: "+datasrcs
+
+    def __repr__(self):
+        datasrcs = self.__dict__.keys()
+        datasrcs = ",".join([k for k in datasrcs])
+        return "Datasources: "+datasrcs
 
 class Datasource(GetAttr):
     def __init__(self, folder: Union[str, Path],name:str=None,alias=None, bg_label=0, test=False) -> None:
@@ -308,6 +314,7 @@ def get_ds_remapping(ds:str,global_properties):
 
 # %%
 if __name__ == "__main__":
+    from label_analysis.totalseg import TotalSegmenterLabels, relabel
     debug=False
     # D2 = Datasource(DS.drli)
     DS= _DS()
