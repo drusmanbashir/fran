@@ -58,9 +58,12 @@ if __name__ == "__main__":
     fldr = Path("/s/xnat_shadow/tcianode/lms/")
 
 
-    lm_fn = Path("/s/fran_storage/predictions/totalseg/LITS-860/lidc2_0009.nii.gz")
-    img_fn = Path("/s/xnat_shadow/lidc2/images/lidc2_0009.nii.gz")
+    lm_fn = Path("/r/datasets/preprocessed/litsmc/pbd/spc_080_080_150/images/drli_007.pt")
+    img_fn = Path("/r/datasets/preprocessed/litsmc/pbd/spc_080_080_150/lms/drli_007.pt")
 
+    img = torch.load(img_fn)
+    lm = torch.load(lm_fn)
+    ImageMaskViewer([img,lm])
 
 # %%
 

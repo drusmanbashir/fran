@@ -25,7 +25,7 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
 from fran.data.dataset import (InferenceDatasetNii, InferenceDatasetPersistent,
                                NormaliseClipd)
 from fran.transforms.imageio import LoadSITKd
-from fran.transforms.inferencetransforms import SaveMultiChanneld, ToCPUd
+from fran.transforms.inferencetransforms import KeepLargestConnectedComponentWithMetad, SaveMultiChanneld, ToCPUd
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 from fran.utils.dictopts import DictToAttr
 from fran.utils.fileio import maybe_makedirs
@@ -72,7 +72,7 @@ class BaseInferer(GetAttr, DictToAttr):
         # reader=None,
         save_channels=True,
         save=True,
-        overwrite=True,
+        k_largest=None,  # assign a number if there are organs involved
     ):
         """
         data is a dataset from Ensemble in this base class
@@ -80,7 +80,7 @@ class BaseInferer(GetAttr, DictToAttr):
         """
         torch.cuda.empty_cache()
 
-        store_attr("project,run_name,devices,save_channels, overwrite,save,safe_mode")
+        store_attr("project,run_name,devices,save_channels, save,safe_mode, k_largest")
         if ckpt is None:
             self.ckpt = checkpoint_from_model_id(run_name)
         else:
@@ -114,13 +114,13 @@ class BaseInferer(GetAttr, DictToAttr):
             self.prepare_model()
         # self.create_postprocess_transforms()
 
-    def run(self, imgs, chunksize=12):
+    def run(self, imgs,chunksize=12, overwrite=True):
         """
         chunksize is necessary in large lists to manage system ram
         """
         self.setup()
 
-        if self.overwrite == False and (
+        if overwrite == False and (
             isinstance(imgs[0], str) or isinstance(imgs[0], Path)
         ):
             imgs = self.filter_existing_preds(imgs)
@@ -278,10 +278,17 @@ class BaseInferer(GetAttr, DictToAttr):
             separate_folder=False,
         )
         I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
+       
+        out_final = []
         if self.save_channels == True:
             tfms = [Sq, Sa, A, D, I]
         else:
             tfms = [Sq, A, D, I]
+        if self.k_largest:
+            K = KeepLargestConnectedComponentWithMetad(
+                    keys=["pred"], independent=False, num_components=self.k_largest
+                )  # label=1 is the organ
+            tfms.insert(-1, K)
         if self.safe_mode == True:
             tfms.insert(0, U)
         else:
@@ -355,7 +362,6 @@ if __name__ == "__main__":
     run_nodes= ["LITS-966"]
 
     proj_litsmc= Project(project_title="litsmc")
-    run_litsmc= ["LITS-1007"]
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
@@ -381,14 +387,13 @@ if __name__ == "__main__":
     N = BaseInferer(
         proj_nodes,
         run_nodes[0],
-        overwrite=overwrite,
         save_channels=save_channels,
         safe_mode=safe_mode,
         devices=devices,
     )
 
 # %%
-    preds = N.run(img_nodes, chunksize=1)
+    preds = N.run(img_nodes, chunksize=1,overwrite=overwrite)
 # %%
     data = P.ds.data[0]
 # %%
@@ -396,22 +401,25 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- LITSMC--------------------------------------------------------------------------------------
 
+    run_litsmc= ["LITS-1007"]
+    run_litsmc= ["LITS-999"]
     safe_mode = False
     bs = 5
     save_channels = False
-    overwrite = False
+    overwrite = True
     devices = [1]
     L = BaseInferer(
         proj_litsmc,
         run_litsmc[0],
-        overwrite=overwrite,
+   
         save_channels=save_channels,
         safe_mode=safe_mode,
         devices=devices,
+        k_largest=1,
     )
 
 # %%
-    preds = L.run(imgs_crc, chunksize=1)
+    preds = L.run(imgs_crc, chunksize=1,     overwrite=overwrite,)
 # %%
     data = P.ds.data[0]
 # %%

@@ -260,6 +260,7 @@ class Project(DictToAttr):
         self.patches_folder = rapid_access_folder / ("patches")
         self.cache_folder= rapid_access_folder / ("cache")
         self.lbd_folder= rapid_access_folder / ("lbd")
+        self.pbd_folder= rapid_access_folder / ("pbd")
         self.patches_folder= rapid_access_folder / ("patches")
         self.raw_dataset_properties_filename = (
             self.project_folder / "raw_dataset_properties.pkl"

@@ -4,7 +4,7 @@ import shutil
 from lightning.pytorch.profilers import AdvancedProfiler
 from monai.transforms.io.dictionary import LoadImaged
 from fran.transforms.imageio import TorchReader
-from fran.transforms.misc_transforms import LoadDict
+from fran.transforms.misc_transforms import LoadDict, MetaToDict
 from fran.utils.common import common_vars_filename
 import ipdb
 
@@ -28,7 +28,7 @@ import torch._dynamo
 from fran.callback.nep import NeptuneImageGridCallback
 
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
-from fran.managers.data import DataManagerLBD, DataManagerPatch, DataManagerSource
+from fran.managers.data import DataManagerLBD, DataManagerPBD, DataManagerPatch, DataManagerSource
 from fran.utils.fileio import load_yaml
 from fran.utils.imageviewers import ImageMaskViewer
 
@@ -521,14 +521,17 @@ class TrainingManager:
             "patch",
             "whole",
             "lbd",
+            "pbd",
             "source",
-        ], "mode must be 'patch', 'whole' or 'source'"
+        ], "mode must be 'patch', 'whole' , 'lbd', 'pbd' or 'source'"
         if mode == "patch":
             DMClass = DataManagerPatch
         elif mode == "source":
             DMClass = DataManagerSource
         elif mode == "lbd":
             DMClass = DataManagerLBD
+        elif mode == "pbd":
+            DMClass = DataManagerPBD
         else:
             raise NotImplementedError(
                 "lowres whole image transforms not yet supported."
@@ -556,8 +559,9 @@ class TrainingManager:
 
 
 if __name__ == "__main__":
-# %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+    # from fran.utils.common import *
+
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -579,13 +583,14 @@ if __name__ == "__main__":
 
     # conf['model_params']['lr']=1e-3
 
+    # conf['dataset_params']['plan']=5
 # %%
-    run_name = None
     # run_name = "LITS-1007"
     # device_id = 1
-    run_name ='LITS-999'
     device_id = 0
-    bs = 12  # 5 is good if LBD with 2 samples per case
+    # run_name ='LITS-999'
+    run_name = None
+    bs = 10# 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
     profiler = False
@@ -654,7 +659,7 @@ if __name__ == "__main__":
         spatial_size=D.src_dims,
         pos=3,
         neg=1,
-        num_samples=D.dataset_params["samples_per_file"],
+        num_samples=D.plan["samples_per_file"],
         lazy=True,
         allow_smaller=False,
     )
@@ -670,7 +675,7 @@ if __name__ == "__main__":
         spatial_size=D.dataset_params["patch_size"],
         pos=3,
         neg=1,
-        num_samples=D.dataset_params["samples_per_file"],
+        num_samples=D.plan["samples_per_file"],
         lazy=False,
         allow_smaller=True,
     )
@@ -680,15 +685,18 @@ if __name__ == "__main__":
         lazy=False,
     )
 
+    Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
 # %%
     D.prepare_data()
     D.setup(None)
 # %%
-    D.valid_ds[7]
+    dici = D.data_train[0]
+    D.valid_ds.data[0]
 
 # %%
     dici = D.valid_ds.data[7]
     dici = L(dici)
+    dici = Ind(dici)
     dici = Ld(dici)
     dici = D.transforms_dict["E"](dici)
     dici = D.transforms_dict["Rva"](dici)

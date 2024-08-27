@@ -19,8 +19,7 @@ To quickly install all pre-requisites in a new environment, I run the commands i
 ## 1. Setting common variables
 Once you have installed neptune client, and created a new empty project, open the project and you will find instructions to initialize a project like so:
 ```
-run = neptune.init_run(
-    project="{workspacename}/{projectname}",
+run = neptune.init_run( project="{workspacename}/{projectname}",
     api_token="abc ......")  # your credentials
 ```
 Note the workspace name and api token. Then open `nbs/config-test.yaml`. The file provided here has my directory structure which you may emulate if you like. Among other paths, you will need to assign a `{fast_storage}` (used by the library for DL) and a `{slow_storage}`folder (where you download your dataset nifty files). After setting folder paths, you need to store both the api token and project workspacename (NOT project name) inside `config.yaml` provided.
@@ -101,10 +100,19 @@ All datasources within a single lm_group are indexed continuously. Subsequent lm
 I have provided 2 folders as datasets for  this project in the example above. Typically, most projects will be based on a single datafolder but this provides flexibility to add more data to a project as it becomes available. After the project is initialised, look inside the project folder. You will find a mask_labels.json file. This file sets rules for postprocessing each label after running predictions. 
 
 ## 4.Analyze resample
+
+Datatypes can be:
+* source
+* lbd
+* pbd
+* patch
+
+These are mentioned in the 'plan{n}' sheet of the configuration file. Before any plan can be executed, you have to generate fixed spacings.
+
 ### 1.Generate fixed spacings
 
+#### Generate LBD (Labelbounded) dataset
 ### 2. Generate LBD (Labelbounded) dataset
-This creates variable shape volumes cropped to designated label.
 There are two ways to define the label:
 a) Use imported labels
 b) Use own labelmap label

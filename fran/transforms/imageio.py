@@ -33,7 +33,6 @@ from monai.utils import (OptionalImportError, convert_to_dst_type,
                          ensure_tuple, look_up_option, optional_import)
 from monai.utils.enums import MetaKeys, SpaceKeys
 from monai.utils.module import optional_import, require_pkg
-from torchvision.utils import Any
 
 from fran.transforms.totensor import ToTensorT
 from fran.utils.fileio import load_dict

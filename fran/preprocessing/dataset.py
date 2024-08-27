@@ -307,8 +307,8 @@ class CropToLabelDataset(ImporterDataset):
     def setup(self):
         self.create_transforms()
         self.set_transforms("LT,D,E,C,Ind")
-        Dataset.__init__(self, data=data, transform=self.transform)
         data = self.create_data_dicts()
+        Dataset.__init__(self, data=data, transform=self.transform)
 
     def create_data_dicts(self):
         masks_folder = self.data_folder / "lms"

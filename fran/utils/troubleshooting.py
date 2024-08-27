@@ -854,7 +854,12 @@ if __name__ == "__main__":
     ).config
 # configs = ConfigMaker(project, raytune=False).config
 
+    fn = "/r/datasets/preprocessed/litsmc/pbd/spc_080_080_150_plan6/indices/drli_001ub.pt"
     global_props = load_dict(proj.global_properties_filename)
+    im = torch.load(fn)
+    im.meta
+    wrong  =im.meta['filename_or_obj']
+    rt = wrong.replace("_080_150","_080_150_plan6")
 # %%
     ckpt=None
 

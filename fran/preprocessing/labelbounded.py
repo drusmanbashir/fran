@@ -1,4 +1,5 @@
 # %%
+from fastcore.basics import listify
 from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import CropForegroundd
@@ -45,11 +46,15 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         lm_group,
         mask_label=None,
         fg_indices_exclude: list = None,
+        output_suffix:str =None,
     ) -> None:
         """
         mask_label: this label is used to apply mask, i.e., crop the image and lm
         """
 
+        tr()
+        fg_indices_exclude=listify (fg_indices_exclude)
+        # self.fg_indices_exclude=listify (self.fg_indices_exclude)
         store_attr()  # WARN: leave this as top line otherwise getattr fails
         if is_excel_None(self.lm_group):
             self.lm_group = "lm_group1"
@@ -65,6 +70,10 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             parent_folder=self.fixed_spacing_folder,
             values_list=spacing,
         )
+
+
+    def process(self):
+        _Preprocessor.process(self)
 
     def create_output_folders(self):
         maybe_makedirs(
@@ -188,23 +197,25 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         indices_subfolder = self.output_folder / indices_subfolder
         return indices_subfolder
 
-    # def create_output_folders(self):
-    #     super().create_output_folders()
-
-
     @property
     def output_folder(self):
         self._output_folder = folder_name_from_list(
             prefix="spc",
             parent_folder=self.lbd_folder,
-            values_list=spacing,
+            values_list=self.spacing,
         )
+        if self.output_suffix:
+            output_name = "_".join([self._output_folder.name , self.output_suffix])
+            self._output_folder= Path(self._output_folder.parent / output_name)#.name = self.output_folder.name + self.output_suffix
         return self._output_folder
+
+
 
 class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
     """
     works on fixed_spacing_folder, uses imported_folder which has lms with extra labels. Uses the extra labels to define image boundaries and crops each image accordingly. 
     A single image / lm  pair is generated per case.
+    params: imported_labelsets: list of lists
     """
 
     _default = "project"
@@ -222,12 +233,11 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         output_suffix:str =None,
         fg_indices_exclude: list = None,
     ) -> None:
-        store_attr()
-        self.case_ids = self.get_case_ids_lm_group(lm_group)
-        configs = self.get_resampling_config(spacing)
-        self.set_folders_from_spacing(self.spacing)
-        # self.fixed_spacing_subfolder = Path(configs["resampling_output_folder"])
-        # self.output_folder = Path(configs["lbd_output_folder"])
+
+        super().__init__(project, expand_by, spacing, lm_group, fg_indices_exclude=fg_indices_exclude,output_suffix=output_suffix)
+        store_attr('imported_folder,imported_labelsets,remapping,merge_imported')
+
+
 
     def set_folders_from_spacing(self, spacing):
         self.fixed_spacing_subfolder = folder_name_from_list(
@@ -235,15 +245,6 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             parent_folder=self.fixed_spacing_folder,
             values_list=spacing,
         )
-        self.output_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=self.lbd_folder,
-            values_list=spacing,
-        )
-        if self.output_suffix:
-            output_name = "_".join([self.output_folder.name , self.output_suffix])
-            self.output_folder= Path(self.output_folder.parent / output_name)#.name = self.output_folder.name + self.output_suffix
-
     def get_resampling_config(self, spacing):
         resamping_config_fn = self.project.fixed_spacing_folder / (
             "resampling_configs.json"
@@ -341,7 +342,6 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             "merge_imported": self.merge_imported,
         }
         return resampled_dataset_properties | additional_props
-
 
 class FGBGIndicesLBD(LabelBoundedDataGenerator):
     """
@@ -504,59 +504,6 @@ if __name__ == "__main__":
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 # %%
-
-    F = FGBGIndicesLBD(
-        project=P,
-        data_folder="/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/",
-    )
-
-# %%
-    F.process()
-
-# %%
-    batch = next(iter(F.dl))
-    F.process_batch(batch)
-
-# %%
-    batch = F.make_contiguous(batch)
-    (
-        images,
-        lms,
-        fg_inds,
-        bg_inds,
-    ) = (
-        batch["image"],
-        batch["lm"],
-        batch["lm_fg_indices"],
-        batch["lm_bg_indices"],
-        # batch["foreground_start_coord"],
-        # batch["foreground_end_coord"],
-    )
-    image, lm, fg_ind, bg_ind = images[0], lms[0], fg_inds[0], bg_inds[0]
-    assert image.shape == lm.shape, "mismatch in shape".format(image.shape, lm.shape)
-    assert image.dim() == 4, "images should be cxhxwxd"
-    inds = {
-        "lm_fg_indices": fg_ind,
-        "lm_bg_indices": bg_ind,
-        # "foreground_start_coord": foreground_start_coord,
-        # "foreground_end_coord": foreground_end_coord,
-        "meta": image.meta,
-    }
-
-    os.makedirs(
-        "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/tmp"
-    )
-    F.save_indices(inds, "tmp")
-    inds = inds.contiguous(inds)
-    inds["lm_fg_indices"] = inds["lm_fg_indices"].contiguous()
-    inds["lm_bg_indices"] = inds["lm_bg_indices"].contiguous()
-    inds["lm_bg_indices"].numel()
-    torch.save(inds, "tmp.pt")
-
-    fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/indices/lits_50.pt"
-    inds2 = torch.load(fn)
-    inds2["lm_fg_indices"].numel()
-# %%
     L = LabelBoundedDataGenerator(
         project=P,
         expand_by=40,
@@ -567,8 +514,9 @@ if __name__ == "__main__":
     )
     L.indices_subfolder
 # %%
-    L.create_dl(overwrite=False, device="cpu", batch_size=4)
+    L.setup()
     L.process()
+    # L.create_dl(overwrite=False, device="cpu", batch_size=4)
 # %%
     fldr = Path(
         "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/indices_fg_exclude_1"
@@ -627,6 +575,61 @@ if __name__ == "__main__":
         remapping=remapping,
         output_suffix="plan3"
     )
+# %%
+#SECTION:-------------------- FGBG indices--------------------------------------------------------------------------------------
+
+    F = FGBGIndicesLBD(
+        project=P,
+        data_folder="/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/",
+    )
+
+# %%
+    F.process()
+
+# %%
+    batch = next(iter(F.dl))
+    F.process_batch(batch)
+
+# %%
+    batch = F.make_contiguous(batch)
+    (
+        images,
+        lms,
+        fg_inds,
+        bg_inds,
+    ) = (
+        batch["image"],
+        batch["lm"],
+        batch["lm_fg_indices"],
+        batch["lm_bg_indices"],
+        # batch["foreground_start_coord"],
+        # batch["foreground_end_coord"],
+    )
+    image, lm, fg_ind, bg_ind = images[0], lms[0], fg_inds[0], bg_inds[0]
+    assert image.shape == lm.shape, "mismatch in shape".format(image.shape, lm.shape)
+    assert image.dim() == 4, "images should be cxhxwxd"
+    inds = {
+        "lm_fg_indices": fg_ind,
+        "lm_bg_indices": bg_ind,
+        # "foreground_start_coord": foreground_start_coord,
+        # "foreground_end_coord": foreground_end_coord,
+        "meta": image.meta,
+    }
+
+    os.makedirs(
+        "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/tmp"
+    )
+    F.save_indices(inds, "tmp")
+    inds = inds.contiguous(inds)
+    inds["lm_fg_indices"] = inds["lm_fg_indices"].contiguous()
+    inds["lm_bg_indices"] = inds["lm_bg_indices"].contiguous()
+    inds["lm_bg_indices"].numel()
+    torch.save(inds, "tmp.pt")
+
+    fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/indices/lits_50.pt"
+    inds2 = torch.load(fn)
+    inds2["lm_fg_indices"].numel()
+
 
 # %%
 #SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------

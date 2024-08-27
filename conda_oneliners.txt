@@ -1,12 +1,10 @@
-mamba install -c conda-forge ipython ipywidgets pandas matplotlib medpy numpy openpyxl pillow pygments jupyterlab pyyaml scikit-image scipy SimpleITK timm torchio tqdm einops monai ipdb gputil ray-tune ipympl lxml seaborn tensorboard
+mamba install -c conda-forge ipython ipywidgets pandas matplotlib medpy numpy openpyxl pillow pygments jupyterlab pyyaml scikit-image scipy SimpleITK timm torchio tqdm einops monai ipdb gputil ray-tune ipympl lxml seaborn tensorboard lightning black
 mamba install -c pytorch ignite
-pip install nnunet neptune pipe connected-components-3d h5py torchinfo lmdb
-mamba install -c fastchan fastai torchinfo
+pip install batchgenerators nnunet neptune pipe connected-components-3d h5py torchinfo lmdb itk
+mamba install -c fastchan fastcore torchinfo
 
 # -----------others --------------------
-pip install ipympl ipdb
-mamba install -c radiomics pyradiomics
-mamba install -c conda-forge black
+pip install ipympl ipdb pyradiomics paramiko
 #note some of these will downgrade your pytorch copy so re-install it after
 
 
@@ -15,14 +13,17 @@ mamba install -c conda-forge black
 #pytorch, torchvision, confirm version remains intact AFTER running above installs and esp after fastai installation 
 
 # note: h5py installation is incompatible with monai inside slicer
+FRAN_COMMON_PATH and PYTHON_PATH variables should be stored in ~/.profile so that slicer can access them
 Inside slicer:
 import pip
-mods="lightning","monai","ipdb" "lxml","seaborn","nnunet","bs4", "ipywidgets",
-modules= "torch", "torchvision","lightning","monai", "torchio","tensorboard","fastcore","fastai", ipython","ipywidgets","pandas","matplotlib","openpyxl","pillow","pygments","jupyterlab","pyyaml","scikit-image","scipy","timm","einops","ipdb","gputil","ipympl","lxml","seaborn","nnunet","pyxnat", "paramiko","itk", "neptune"
-def install(modules):
-    for mod in modules:
+nonai ="pydicom-seg", "pyradiomics", "connected-components-3d",  "fastcore", "ipython","ipywidgets","pandas","matplotlib","openpyxl","pillow","pygments","jupyterlab","pyyaml","scikit-image","scipy","timm","einops","ipdb","gputil","ipympl","lxml","seaborn","pyxnat", "paramiko","itk", "neptune"
+mods="lightning","monai", "lxml","seaborn","nnunet","bs4", "ipywidgets", "ray[tune]"
+modules= "torch", "torchvision","lightning","monai", "torchio","tensorboard","nnunet",
+def install(modules): # it freezes but is working. print statements dont work
+    for mod in tqdm(modules):
       pip.main(['install',mod])
 
+install(nonai)
 install(modules)
 install(mods)
-
+pip.main(['install' ,'torch'  ,'--index-url',  'https://download.pytorch.org/whl/cu124'])

@@ -122,7 +122,6 @@ class _Preprocessor(GetAttr):
         if not hasattr(self, "dl"):
             print("No data loader created. No data to be processed")
             return 0
-        print("resampling dataset to spacing: {0}".format(self.spacing))
         self.create_output_folders()
         self.results = []
         self.shapes = []

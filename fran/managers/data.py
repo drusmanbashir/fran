@@ -274,6 +274,7 @@ class DataManager(LightningDataModule):
             "whole",
             "patch",
             "source",
+            "pbd",
             "lbd",
         ], "Set a value for mode in 'whole', 'patch' or 'source' "
         self.train_cases, self.valid_cases = self.project.get_train_val_files(
@@ -424,6 +425,8 @@ class DataManagerSource(DataManager):
                 cache_dir=self.project.cache_folder,
                 db_name="training_cache",
             )
+        else:
+            raise NotImplementedError
         self.valid_ds = PersistentDataset(
             data=self.data_valid,
             transform=self.tfms_valid,
@@ -451,6 +454,23 @@ class DataManagerLBD(DataManagerSource):
         super().prepare_data()
         self.data_train = self.create_data_dicts(self.train_cases)
         self.data_valid = self.create_data_dicts(self.valid_cases)
+
+
+class DataManagerPBD(DataManagerLBD):
+    def derive_data_folder(self, dataset_mode=None):
+        spacing = ast.literal_eval(self.plan["spacing"])
+        parent_folder = self.project.pbd_folder
+        folder_suffix = "plan" + str(self.dataset_params["plan"])
+        data_folder = folder_name_from_list(
+            prefix="spc",
+            parent_folder=parent_folder,
+            values_list=spacing,
+            suffix=folder_suffix,
+        )
+        assert data_folder.exists(), "Dataset folder {} does not exists".format(
+            data_folder
+        )
+        return data_folder
 
 
 class DataManagerShort(DataManager):

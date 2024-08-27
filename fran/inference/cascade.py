@@ -376,7 +376,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         else:
             MR = MeanEnsembled(output_key="pred", keys=keys)
         if self.k_largest:
-
             K = KeepLargestConnectedComponentWithMetad(
                 keys=["pred"], independent=False, num_components=self.k_largest
             )  # label=1 is the organ
