@@ -58,8 +58,8 @@ if __name__ == "__main__":
     fldr = Path("/s/xnat_shadow/tcianode/lms/")
 
 
-    lm_fn = Path("/r/datasets/preprocessed/litsmc/pbd/spc_080_080_150/images/drli_007.pt")
-    img_fn = Path("/r/datasets/preprocessed/litsmc/pbd/spc_080_080_150/lms/drli_007.pt")
+    lm_fn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_liver_only/lms/drli_001ub.pt")
+    img_fn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_liver_only/images/drli_001ub.pt")
 
     img = torch.load(img_fn)
     lm = torch.load(lm_fn)

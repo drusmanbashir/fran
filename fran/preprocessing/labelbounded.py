@@ -18,7 +18,7 @@ from fran.preprocessing.fixed_spacing import (
 )
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd
-from fran.utils.config_parsers import is_excel_None
+from fran.utils.config_parsers import is_excel_None, parse_excel_plan
 from fran.utils.string import info_from_filename
 from pathlib import Path
 
@@ -44,15 +44,15 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         expand_by,
         spacing,
         lm_group,
+        folder_suffix:str ,
         mask_label=None,
         fg_indices_exclude: list = None,
-        output_suffix:str =None,
     ) -> None:
         """
         mask_label: this label is used to apply mask, i.e., crop the image and lm
         """
 
-        tr()
+
         fg_indices_exclude=listify (fg_indices_exclude)
         # self.fg_indices_exclude=listify (self.fg_indices_exclude)
         store_attr()  # WARN: leave this as top line otherwise getattr fails
@@ -188,7 +188,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
 
     @property
     def indices_subfolder(self):
-        if self.fg_indices_exclude is not None:
+        if len(self.fg_indices_exclude) >0:
             indices_subfolder = "indices_fg_exclude_{}".format(
                 "".join([str(x) for x in self.fg_indices_exclude])
             )
@@ -204,9 +204,9 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             parent_folder=self.lbd_folder,
             values_list=self.spacing,
         )
-        if self.output_suffix:
-            output_name = "_".join([self._output_folder.name , self.output_suffix])
-            self._output_folder= Path(self._output_folder.parent / output_name)#.name = self.output_folder.name + self.output_suffix
+        if self.folder_suffix:
+            output_name = "_".join([self._output_folder.name , self.folder_suffix])
+            self._output_folder= Path(self._output_folder.parent / output_name)#.name = self.output_folder.name + self.folder_suffix
         return self._output_folder
 
 
@@ -230,11 +230,11 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         imported_labelsets,
         remapping,
         merge_imported=False,
-        output_suffix:str =None,
+        folder_suffix:str =None,
         fg_indices_exclude: list = None,
     ) -> None:
 
-        super().__init__(project, expand_by, spacing, lm_group, fg_indices_exclude=fg_indices_exclude,output_suffix=output_suffix)
+        super().__init__(project, expand_by, spacing, lm_group, fg_indices_exclude=fg_indices_exclude,folder_suffix=folder_suffix)
         store_attr('imported_folder,imported_labelsets,remapping,merge_imported')
 
 
@@ -503,15 +503,20 @@ if __name__ == "__main__":
     P.maybe_store_projectwide_properties()
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+    plan_str = "plan7"
+    plan = conf[plan_str]
+    plan = parse_excel_plan(plan)
 # %%
     L = LabelBoundedDataGenerator(
         project=P,
-        expand_by=40,
-        spacing=[0.8, 0.8, 1.5],
-        lm_group="lm_group1",
-        mask_label=1,
-        fg_indices_exclude=None,
+        expand_by=plan['expand_by'],
+        spacing=plan['spacing'],
+        lm_group=plan["lm_groups"],
+        mask_label=None,
+        fg_indices_exclude=plan['fg_indices_exclude'],
+        folder_suffix=plan_str
     )
+# %%
     L.indices_subfolder
 # %%
     L.setup()
@@ -573,7 +578,7 @@ if __name__ == "__main__":
         imported_labelsets=imported_labelsets,
         merge_imported=merge_imported,
         remapping=remapping,
-        output_suffix="plan3"
+        folder_suffix="plan3"
     )
 # %%
 #SECTION:-------------------- FGBG indices--------------------------------------------------------------------------------------

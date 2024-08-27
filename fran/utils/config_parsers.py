@@ -24,6 +24,14 @@ def is_excel_None(input):
     else:
         return False
 
+def parse_excel_plan(plan):
+    keys_maybe_nan = "fg_indices_exclude", "lm_groups"
+    for k in keys_maybe_nan:
+        if is_excel_None(plan['fg_indices_exclude']):
+            plan[k]=None
+    plan['spacing'] = ast.literal_eval(plan['spacing'])
+    return plan
+
 BOOL_ROWS='patch_based,one_cycles,heavy,deep_supervision,self_attention,fake_tumours,square_in_union,apply_activation'
 def check_bool(row):
     if row['var_name'] in BOOL_ROWS.split(','):
