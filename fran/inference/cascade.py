@@ -4,6 +4,7 @@ import gc
 import ipdb
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.utility.dictionary import SqueezeDimd
+import itertools as il
 
 from fran.transforms.misc_transforms import SelectLabels
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
@@ -39,7 +40,6 @@ from fran.transforms.imageio import LoadSITKd, SITKReader
 from fran.transforms.inferencetransforms import (
     BBoxFromPTd, KeepLargestConnectedComponentWithMetad, RenameDictKeys,
     SaveMultiChanneld, ToCPUd, TransposeSITKd)
-from fran.utils.common import *
 from fran.utils.itk_sitk import *
 
 sys.path += ["/home/ub/code"]
@@ -85,7 +85,6 @@ class WholeImageInferer(BaseInferer):
         devices=[1],
         save_channels=True,
         save=True,
-        overwrite=False,
         **kwargs
     ):
 
@@ -94,7 +93,6 @@ class WholeImageInferer(BaseInferer):
             run_name=run_name,
             devices=devices,
             save_channels=save_channels,
-            overwrite=overwrite,
             save=save,
             **kwargs
         )
@@ -114,7 +112,6 @@ class PatchInferer(BaseInferer):
         grid_mode="gaussian",
         devices=[1],
         save_channels=True,
-        overwrite=False,
         **kwargs
     ):
         super().__init__(
@@ -122,7 +119,6 @@ class PatchInferer(BaseInferer):
             run_name=run_name,
             devices=devices,
             save_channels=save_channels,
-            overwrite=overwrite,
             save=False,
             **kwargs
         )
@@ -181,7 +177,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
                 run_name=run,
                 devices=devices,
                 save_channels=save_channels,
-                overwrite=overwrite,
                 safe_mode=safe_mode,
             )
             for run in runs_p
@@ -193,7 +188,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             run_name=run_name_w,
             save_channels=save_channels,
             devices=devices,
-            overwrite=overwrite,
             safe_mode=safe_mode,
         )
         store_attr()
@@ -388,16 +382,15 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         output = C(patch_bundle)
         return output
 
-
-class CascadeFew(CascadeInferer):
-    pass
-
-
 # %%
 
 
 if __name__ == "__main__":
+# %%
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+
     # ... run your application ...
+    from fran.utils.common import *
     project = Project(project_title="litsmc")
 
     run_w = "LIT-145"
@@ -406,8 +399,9 @@ if __name__ == "__main__":
     run_lidc2 = ["LITS-913"]
     run_lidc2 = ["LITS-911"]
     run_litsmc= ["LITS-933"]
+    run_litsmc2= ["LITS-1018"]
     run_ts = ["LITS-827"]
-# %%
+
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
     img_fldr = Path("/s/xnat_shadow/lidc2/images/")
@@ -421,7 +415,6 @@ if __name__ == "__main__":
     litq_imgs = list(Path(litq_fldr).glob("*"))
     t6_fldr = Path("/s/datasets_bkp/Task06Lung/images")
     imgs_t6 = list(t6_fldr.glob("*"))
-# %%
     react_fldr = Path("/s/insync/react/sitk/images")
     imgs_react = list(react_fldr.glob("*"))
     imgs_crc = list(fldr_crc.glob("*"))
@@ -430,14 +423,15 @@ if __name__ == "__main__":
     localiser_labels = [45, 46, 47, 48, 49]
     localiser_labels_litsmc = [1]
 # %%
-# %%
-# %%
 #SECTION:-------------------- LITSMC predictions--------------------------------------------------------------------------------------
 
+    run = run_litsmc2
+    localiser_labels_litsmc = [44]
+    run_w = "LITS-860"
     devices = [1]
-    overwrite=True
-    safe_mode=False
-    save_channels=True
+    overwrite=False
+    safe_mode=True
+    save_channels=False
     project = Project(project_title="litsmc")
     if project.project_title=="litsmc":
         k_largest= 1
@@ -445,8 +439,9 @@ if __name__ == "__main__":
         k_largest= None
     En = CascadeInferer(
         project,
+
         run_w,
-        run_litsmc,
+        run,
         save_channels=save_channels,
         devices=devices ,
         overwrite=overwrite,
@@ -457,12 +452,14 @@ if __name__ == "__main__":
 
 # %%
 # img_fns = list(img_fldr.glob("*"))[20:50]
-    case_id = "crc_CRC089"
-    imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
-    preds = En.run(imgs_crc)
+    # case_id = "crc_CRC089"
+    # imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
+    preds = En.run(imgs_crc,chunksize=4)
 
 # %%
 
+    preds = End.W.postprocess(p)
+    bboxes = []
 # %%
 #SECTION:-------------------- TROUBLESHOOTING En.run--------------------------------------------------------------------------------------
 
@@ -486,10 +483,13 @@ if __name__ == "__main__":
                 output = En.process_imgs_sublist(imgs_sublist)
 
 # %%
+
 #SECTION:-------------------- extract_fg_bboxes--------------------------------------------------------------------------------------
+
+
         Sel = SelectLabels(keys=["pred"], labels=En.localiser_labels)
         B = BBoxFromPTd(
-            keys=["pred"], spacing=En.W.params["spacing"], expand_by=10
+            keys=["pred"], spacing=En.W.params['plan']["spacing"], expand_by=10
         )
         if En.overwrite == False:
             print("Bbox overwrite not implemented yet")
@@ -498,6 +498,9 @@ if __name__ == "__main__":
         En.W.prepare_data(data, tfms="ESN")
         p = En.W.predict()
         preds = En.W.postprocess(p)
+# %%
+        preds[0]['pred'].shape
+        ImageMaskViewer([preds[0]['pred'].detach(),preds[0]['pred'].detach()])
         bboxes = []
         for pred in preds:
             pred = Sel(pred)
@@ -512,6 +515,8 @@ if __name__ == "__main__":
         data = En.load_images(imgs_sublist)
         En.bboxes = En.extract_fg_bboxes(data)
         data = En.apply_bboxes(data, En.bboxes)
+        data[0].keys()
+        ImageMaskViewer([data[0]['image'],data[0]['image']])
 # %%
 #SECTION:--------------------Patch predictor --------------------------------------------------------------------------------------
 

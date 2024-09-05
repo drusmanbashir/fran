@@ -224,6 +224,9 @@ class _Preprocessor(GetAttr):
         indices_subfolder =self.output_folder/ ( "indices")
         return indices_subfolder
 
+    @property
+    def output_folder(self):
+        raise NotImplementedError
 
 class ResampleDatasetniftiToTorch(_Preprocessor):
     def __init__(self, project, spacing, device="cpu", half_precision=False):

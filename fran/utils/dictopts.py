@@ -17,6 +17,14 @@ class DictToAttr(dict):
         else:
             return cls({key: cls.from_nested_dicts(data[key]) for key in data})
 
+
+def key_from_value(dici:dict, value):
+    keys = []
+    for k,v in dici.items():
+        if v == value:
+            keys.append(k)
+    return keys
+
 def assimilate_dict(cls,dic:dict):
         objectified_dic = DictToAttr.from_nested_dicts(dic)
         for key,val in objectified_dic.items():

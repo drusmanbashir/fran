@@ -3,6 +3,7 @@ import time
 
 from fastcore.script import save_pickle
 from fran.data.dataloader import img_lm_metadata_lists_collated
+from label_analysis.overlap import fk_generator
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
@@ -58,8 +59,13 @@ if __name__ == "__main__":
     fldr = Path("/s/xnat_shadow/tcianode/lms/")
 
 
-    lm_fn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_liver_only/lms/drli_001ub.pt")
+    lm_fn = Path("/s/xnat_shadow/crc/lms/crc_CRC278_20141029_Abdomen3p0I30f3.nrrd")
+    lm = sitk.ReadImage(str(lm_fn))
+    get_labels(lm)
+    lm = relabel(lm,{1:2})
+    sitk.WriteImage(lm,lm_fn)
     img_fn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_liver_only/images/drli_001ub.pt")
+
 
     img = torch.load(img_fn)
     lm = torch.load(lm_fn)
@@ -347,20 +353,37 @@ for bbox in bboxes:
         fn_out = out_fldr/fn.name
         shutil.move(fn,fn_out)
 # %%
-    fn = "/home/ub/Dropbox/AIscreening/data/metadata_published.xlsx"
-    df = pd.read_excel(fn)
-    cids = df.case_id.to_list()
+    # fn = "/home/ub/Dropbox/AIscreening/data/metadata_published.xlsx"
+    ind = next(fk)
+
+    ind = 0
+
+    fn = "/s/datasets_bkp/totalseg/meta.xlsx"
+    df = pd.read_excel(fn,sheet_name="labels")
+    df.location_localiser
 
 
 
-    cids = df.loc[df['REDO']=='yes','case_id']
+    row  = df.iloc[ind]
 
-    cid =     list(set(df.case_id))
+# %%
+    localisers_done = []
+    labels_short=[]
+    fk = fk_generator(0)
+    for row in df.iterrows():
+        lab_loc = row[1]['location_localiser']
+        if not lab_loc in localisers_done:
+            ind = next(fk)
+            localisers_done.append(lab_loc)
+        else:
+            ind = localisers_done.index(lab_loc)
 
-    cids =  [cid for cid in cid if not is_excel_None(cid) ]
+        labels_short.append(ind)
 
+# %%
 
-
+    df['labels_short']= labels_short
+    df.to_excel("/s/datasets_bkp/totalseg/meta2.xlsx", index=False)
 # %%
     fldr  = Path("/s/xnat_shadow/crc/lms")
 

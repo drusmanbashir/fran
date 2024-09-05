@@ -1,6 +1,8 @@
 # %%
+
 # NOTE: UTILITY functions to reconcile previous version with new.
 from fran.managers.training import UNetTrainer, checkpoint_from_model_id
+from fran.utils.helpers import pbar
 
 import itertools as il
 from pathlib import Path
@@ -38,7 +40,7 @@ def remove_plan_key_add_config(ckpt_fn, config):
     ckp['datamodule_hyper_parameters'].pop('plan')
     ckp['datamodule_hyper_parameters']['config'] = config
     torch.save(ckp,ckpt_fn)
-# %%
+
 def move_key_plan_to_dataset_params(ckpt_fn,key):
     # ckpt_fn = '/s/fran_storage/checkpoints/litsmc/litsmc/LITS-999/checkpoints/epoch=106-val_loss=0.78.ckpt'
     ckp = torch.load(ckpt_fn)
@@ -83,8 +85,18 @@ if __name__ == "__main__":
 
     run_w = "LITS-860"
     ckpt = checkpoint_from_model_id(run_w)
+
+
+# %%
     dic_tmp = torch.load(ckpt, map_location="cpu")
+    dic_tmp['datamodule_hyper_parameters'].keys()
+    dic_tmp['datamodule_hyper_parameters']['config'] = {'plan':dic_tmp['datamodule_hyper_parameters']['plan'].copy()}
+    torch.save(dic_tmp,ckpt)
+# %%
     insert_plan_key(ckpt)
+# %%
+#SECTION:-------------------- Spacing to config key--------------------------------------------------------------------------------------
+
 
     keys = ['spacing']
     dici = dic_tmp['datamodule_hyper_parameters']['plan']
@@ -123,7 +135,7 @@ if __name__ == "__main__":
 #SECTION:-------------------- filename_or_obj--------------------------------------------------------------------------------------
 
 # %%
-    fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/lidc2/spc_080_080_150")
+    fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150")
     fns = list(fldr.rglob("*.pt"))
     for fn in pbar( fns):
         lm = torch.load(fn)

@@ -519,7 +519,7 @@ if __name__ == "__main__":
 # %%
     L.indices_subfolder
 # %%
-    L.setup()
+    L.setup(overwrite=False)
     L.process()
     # L.create_dl(overwrite=False, device="cpu", batch_size=4)
 # %%

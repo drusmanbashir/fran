@@ -11,7 +11,6 @@ import pandas as pd
 import ast,re
 from ray import tune
 from fran.utils.config_parsers import load_metadata
-from fran.managers.base import load_checkpoint
 from fran.utils.fileio import load_json
 from fran.utils.helpers import make_channels
 # from fran.architectures.unet3d.model import  *

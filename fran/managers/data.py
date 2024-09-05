@@ -180,7 +180,7 @@ class DataManager(LightningDataModule):
             RandAdjustContrastd(
                 ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
             ),
-            self.create_affine_tfm(),
+            # self.create_affine_tfm(),
         ]
 
         A = self.create_affine_tfm()
@@ -241,7 +241,7 @@ class DataManager(LightningDataModule):
             "N": N,
             "F1": F1,
             "F2": F2,
-            "I": int_augs,
+            "IntensityTfms": int_augs,
             "Re": Re,
             "P": P,
             "Ld": Ld,
@@ -260,7 +260,7 @@ class DataManager(LightningDataModule):
         tfms = []
         for key in keys:
             tfm = self.transforms_dict[key]
-            if key == "I":
+            if key == "IntensityTfms":
                 tfms.extend(tfm)
             else:
                 tfms.append(tfm)
@@ -407,7 +407,7 @@ class DataManagerSource(DataManager):
     def setup(self, stage: str = None):
         self.create_transforms()
         self.set_transforms(
-            keys_tr="L,Ld,E,Rtr,F1,F2,A,Re,N,I", keys_val="L,Ld,E,Rva,Re,N"
+            keys_tr="L,Ld,E,Rtr,F1,F2,A,Re,N,IntensityTfms", keys_val="L,Ld,E,Rva,Re,N"
         )
         print("Setting up datasets. Training ds type is: ", self.ds_type)
         if is_excel_None(self.ds_type):
@@ -432,6 +432,16 @@ class DataManagerSource(DataManager):
             transform=self.tfms_valid,
             cache_dir=self.project.cache_folder,
         )
+
+class DataManagerWhole(DataManagerSource):
+    def derive_data_folder(self):
+        prefix = "sze"
+        spacing = ast.literal_eval(self.plan["spatial_size"])
+        parent_folder = self.project.fixed_size_folder
+        data_folder = folder_name_from_list(prefix, parent_folder, spacing)
+        return data_folder
+        
+
 
 
 class DataManagerLBD(DataManagerSource):
@@ -552,7 +562,7 @@ class DataManagerPatchLegacy(DataManager):
         return ast.literal_eval(self.plan["patch_size"])
 
 
-# %%
+
 class DataManagerPatch(DataManager):
     def __init__(
         self,
@@ -751,7 +761,7 @@ if __name__ == "__main__":
 
     D.setup()
     D.data_folder
-    D.train_ds[0]
+    b = D.train_ds[0]
 # %%
 
 # %%

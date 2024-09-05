@@ -21,12 +21,14 @@ from fran.utils.string import cleanup_fname, dec_to_str, info_from_filename, pat
 from functools import wraps
 from time import time
 tr = ipdb.set_trace
-import gc
+import gc, ray
 # from fran.utils.fileio import *
 
 
 def set_autoreload():
-    if "get_ipython" in globals():
+    # gals = globals()
+    # print(gals.keys)
+    if "get_ipython" in globals() and not any(['APPLAUNCHER_0_PATH' in os.environ, ray.is_initialized()]): 
         print("setting autoreload")
         from IPython import get_ipython
         ipython = get_ipython()
@@ -128,7 +130,7 @@ def to_cuda(data, non_blocking=True, gpu_id=0):
 
 
 def folder_name_from_list(prefix:str,parent_folder:Path,values_list=None, suffix=None):
-        assert prefix in ("spc","dim"), "Choose a valid prefix between spc(for spacings) and dim(for patch size)"
+        assert prefix in ("spc","dim", "sze"), "Choose a valid prefix between spc(for spacings) and dim(for patch size)"
         add_zeros=3 if prefix=='spc' else 0
         output= [dec_to_str(val,add_zeros) for val in values_list]
         subfolder =  "_".join([prefix]+output)

@@ -344,7 +344,6 @@ if __name__ == "__main__":
     TSL = TotalSegmenterLabels()
     lr= TSL.labels("lung","right")
     ll = TSL.labels("lung","left")
-
     remapping  = {l:0 for l in TSL.all}
     for l in lr:
         remapping[l]= 8

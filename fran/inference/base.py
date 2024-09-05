@@ -27,7 +27,7 @@ from fran.data.dataset import (InferenceDatasetNii, InferenceDatasetPersistent,
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import KeepLargestConnectedComponentWithMetad, SaveMultiChanneld, ToCPUd
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
-from fran.utils.dictopts import DictToAttr
+from fran.utils.dictopts import DictToAttr, fix_ast
 from fran.utils.fileio import maybe_makedirs
 from fran.utils.helpers import slice_list
 from fran.utils.imageviewers import ImageMaskViewer, view_sitk
@@ -435,14 +435,15 @@ if __name__ == "__main__":
     T = BaseInferer(
         proj,
         run_tot[0],
-        overwrite=overwrite,
         save_channels=save_channels,
         safe_mode=safe_mode,
         devices=devices
     )
 # %%
 
-    preds = T.run(imgs_litsmc, chunksize=4)
+    case_id = "crc_CRC089"
+    imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
+    preds = T.run(imgs_crc, chunksize=1)
 
 # %%
 

@@ -369,6 +369,7 @@ if __name__ == "__main__":
 
 
 # %%
+    data_folder = "/s/xnat_shadow/lidc2"
     PG = PatchDataGenerator(
         P, data_folder, patch_size=patch_size, patch_overlap=patch_overlap, expand_by=0,output_suffix=plan_name
     )

@@ -245,6 +245,7 @@ class Project(DictToAttr):
             Path(common_paths["cold_storage_folder"]) / "datasets"
         )
         self.fixed_spacing_folder = self.cold_datasets_folder/("preprocessed/fixed_spacing")/self.project_title
+        self.fixed_size_folder = self.cold_datasets_folder/("preprocessed/fixed_size")/self.project_title
         self.predictions_folder = Path(common_paths["cold_storage_folder"]) / (
             "predictions/" + self.project_title
         )

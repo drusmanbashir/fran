@@ -766,23 +766,6 @@ def get_bboxes_matching_labels(labels_list, bboxes):
             bboxes_output.append(bbox[0])
     return bboxes_output
 
-
-class WholeImageBinaryMask_skimage(ItemTransform):
-    """
-    resizes entire image and mask. Beware and do not pass mask as any other than binary
-    """
-
-    def __init__(self, output_size):
-        store_attr()
-
-    def encodes(self, x):
-        img, mask = x[0], x[1]
-        img = tf.resize(img, self.output_size, preserve_range=True)
-        mask = tf.resize(mask.astype(bool), self.output_size)
-        mask = mask.astype(np.uint8)
-        return img, mask
-
-
 class WholeImageBinaryMask(ItemTransform):
     """
     takes 3d image/mask, converts them to tensors and then adds channel dimension before sending out

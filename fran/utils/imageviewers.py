@@ -58,7 +58,7 @@ def fix_labels(x):
 def view_sitk(img,mask,dtypes='im',**kwargs):
     img = fix_labels(img)
     mask = fix_labels(mask)
-    img,mask=map(sitk.GetArrayFromImage,[img,mask])
+    img,mask=list(map(sitk.GetArrayFromImage,[img,mask]))
     ImageMaskViewer([img,mask],dtypes,**kwargs)
 
 
@@ -95,9 +95,9 @@ def get_window_level_numpy_array(
 ):
     # to the original images. If they are deleted outside the view would become
     # invalid, so we use a copy wich guarentees that the gui is consistent.
-    if type(image_list[0] == np.ndarray):  # if images are already np_array..
+    if isinstance(image_list[0] ,np.ndarray):  # if images are already np_array..
         npa_list = image_list
-    elif type(image_list[0]) == torch.Tensor:
+    elif isinstance(image_list[0], torch.Tensor):
         image_list = [a.detach().cpu() for a in image_list]
         npa_list = [image_list[0].numpy(), image_list[1].numpy()]
 
@@ -303,9 +303,9 @@ def get_window_level_numpy_array(
 ):
     # to the original images. If they are deleted outside the view would become
     # invalid, so we use a copy wich guarentees that the gui is consistent.
-    if type(image_list[0] == np.ndarray):  # if images are already np_array..
+    if isinstance(image_list[0] ,np.ndarray):  # if images are already np_array..
         npa_list = image_list
-    elif type(image_list[0]) == torch.Tensor:
+    elif isinstance(image_list[0] ,torch.Tensor):  # if images are already np_array..type(image_list[0]) == torch.Tensor:
         npa_list = [image_list[0].numpy(), image_list[1].numpy()]
 
     else:

@@ -1,5 +1,4 @@
 # from fastai.torch_core import get_model
-from fastai.data.core import get_model
 import torch
 import ipdb
 from pathlib import Path

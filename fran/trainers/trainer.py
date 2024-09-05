@@ -287,7 +287,7 @@ def maybe_ddp(devices):
         return "ddp"
 
 
-class TrainingManager:
+class Trainer:
     def __init__(self, project, config, run_name=None):
         store_attr()
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
@@ -517,24 +517,19 @@ class TrainingManager:
         return D
 
     def resolve_datamanager(self, mode: str):
-        assert mode in [
-            "patch",
-            "whole",
-            "lbd",
-            "pbd",
-            "source",
-        ], "mode must be 'patch', 'whole' , 'lbd', 'pbd' or 'source'"
         if mode == "patch":
             DMClass = DataManagerPatch
         elif mode == "source":
             DMClass = DataManagerSource
+        elif mode =="whole":
+            DMClass = DataManagerWhole
         elif mode == "lbd":
             DMClass = DataManagerLBD
         elif mode == "pbd":
             DMClass = DataManagerPBD
         else:
             raise NotImplementedError(
-                "lowres whole image transforms not yet supported."
+                "Mode {} is not supported for datamanager".format(mode)
             )
         return DMClass
 
@@ -570,7 +565,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
 
-    project_title = "litsmc"
+    project_title = "totalseg"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -588,8 +583,8 @@ if __name__ == "__main__":
     # run_name = "LITS-1007"
     # device_id = 1
     device_id = 0
-    # run_name ='LITS-999'
-    run_name = None
+    run_name ='LITS-1018'
+    # run_name = None
     bs = 10# 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
@@ -601,7 +596,7 @@ if __name__ == "__main__":
     description = f""
 # %%
 
-    Tm = TrainingManager(proj, conf, run_name)
+    Tm = Trainer(proj, conf, run_name)
 # %%
     Tm.setup(
         compiled=compiled,

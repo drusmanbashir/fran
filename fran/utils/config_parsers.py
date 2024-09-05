@@ -180,7 +180,7 @@ class ConfigMaker():
       
     def resolve_configuration_filename(self,configuration_filename,configuration_mnemonic):
 
-        _mnemonics = ["liver", "lungs", "nodes", "bones", "lilu"]
+        _mnemonics = ["liver", "lungs", "nodes", "bones", "lilu", "totalseg"]
         if configuration_filename: return configuration_filename
         assert configuration_filename or configuration_mnemonic, "Provide either a configuration filename or a configuration mnemonic"
 
@@ -197,6 +197,8 @@ class ConfigMaker():
             return configurations_folder/("experiment_configs_lungs.xlsx")
         elif configuration_mnemonic == "nodes":
             return configurations_folder/("experiment_configs_nodes.xlsx")
+        elif configuration_mnemonic == "totalseg":
+            return configurations_folder/("experiment_configs_totalseg.xlsx")
 
     def add_further_keys(self):
         if not 'out_channels' in self.config["model_params"]:

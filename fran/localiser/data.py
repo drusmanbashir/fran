@@ -5,7 +5,7 @@ from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
 from fran.data.dataloader import as_is_collated
-from fran.detect.preprocess import draw_image_bbox
+from fran.localizer.helpers import draw_image_bbox, draw_image_lm_bbox
 from fran.transforms.imageio import LoadTorchd, TorchWriter
 import SimpleITK as sitk
 import itertools as il
@@ -99,8 +99,9 @@ class DetectDS(Dataset):
 
 
 class DetectDataModule(L.LightningDataModule):
-    def __init__(self, data_dir: str = "./"):
+    def __init__(self, data_dir: str = "./", batch_size: int = 4):
         super().__init__()
+        self.batch_size = batch_size
         self.data_dir = Path(data_dir)
         self.fldr_imgs = self.data_dir / "images"
         self.fldr_lms = self.data_dir / "lms"
@@ -130,14 +131,14 @@ class DetectDataModule(L.LightningDataModule):
             data_dicts.append(dici)
         return data_dicts
 
-    def create_transforms(self):
+    def create_transforms(self, probs=.3, probs_intensity=.3):
         image_key = "image"
         label_key = "lm"
         box_key = "lm_bbox"
-        probs= 1.0
+        probs= probs
         outputsize = [512,512]
     
-        prob_int = .3
+        probs_int =probs_intensity
 
         L = LoadTorchd([image_key, label_key])
         E = EnsureChannelFirstd(keys=[image_key])
@@ -146,13 +147,13 @@ class DetectDataModule(L.LightningDataModule):
         Et = EnsureTyped(keys=[image_key ], dtype=torch.float32)
         Et2 = EnsureTyped(keys=[label_key], dtype=torch.long)
         E2 = EnsureTyped(keys=[image_key], dtype=torch.float16)
-        B = BoundingRectd(keys=[label_key])
+        ExtractBbox = BoundingRectd(keys=[label_key])
         CB = ConvertBoxToStandardModed(mode="xxyy", box_keys=[box_key])
-        Y = BoundingBoxYOLOd(
+        YoloBbox = BoundingBoxYOLOd(
             [box_key], 2, key_template_tensor=label_key, output_keys=["bbox_yolo"]
         )
 
-        R0 = RandRotated(
+        Rotate = RandRotated(
             keys=[image_key, label_key],
             prob=probs,
             keep_size=True,
@@ -160,7 +161,7 @@ class DetectDataModule(L.LightningDataModule):
             range_x=[0.4, 0.4],
             lazy=True
         )
-        Z = RandZoomd(
+        Zoom = RandZoomd(
             keys=[image_key, label_key],
             mode = ['bilinear','nearest'],
             prob=probs,
@@ -170,20 +171,20 @@ class DetectDataModule(L.LightningDataModule):
             keep_size=True,
             lazy=True
         )
-        F1 = RandFlipd(
+        Flip1 = RandFlipd(
             keys=[image_key,label_key],
             prob=probs,
             spatial_axis=0,
             lazy=True
         )
 
-        F2 = RandFlipd(
+        Flip2 = RandFlipd(
             keys=[image_key,label_key],
             prob=probs,
             spatial_axis=1,
             lazy=True
         )
-        Rs = Resized(
+        Resize = Resized(
             keys=[image_key,label_key],
             spatial_size = outputsize,
             mode= ['bilinear','nearest'],
@@ -195,14 +196,14 @@ class DetectDataModule(L.LightningDataModule):
         int_augs = [
             RandGaussianSmoothd(
                 keys=[image_key],
-                prob=prob_int,
+                prob=probs_int,
                 sigma_x=(0.5, 1.0),
                 sigma_y=(0.5, 1.0),
                 sigma_z=(0.5, 1.0),
             ),
-            RandScaleIntensityd(keys="image", factors=0.25, prob=prob_int),
-            RandGaussianNoised(keys=["image"], mean=0, prob=prob_int, std=0.1),
-            RandShiftIntensityd(keys="image", offsets=0.1, prob=prob_int),
+            RandScaleIntensityd(keys="image", factors=0.25, prob=probs_int),
+            RandGaussianNoised(keys=["image"], mean=0, prob=probs_int, std=0.1),
+            RandShiftIntensityd(keys="image", offsets=0.1, prob=probs_int),
             RandAdjustContrastd(["image"], gamma=(0.7, 1.5)),
         ]
         Rp = RepeatChanneld(keys = [image_key],repeats=3)
@@ -215,19 +216,19 @@ class DetectDataModule(L.LightningDataModule):
             "MkB": MkB,
             "Et2": Et2,
             "E2": E2,
-            "B": B,
-            "Y": Y,
+            "ExtractBbox": ExtractBbox,
+            "YoloBbox": YoloBbox,
             "DelI": DelI,
             "CB": CB,
-            "R0": R0,
-            "Z": Z,
-            "I": int_augs,
-            "F1": F1,
-            "F2": F2,
-            "Rs":Rs,
+            "Rotate": Rotate,
+            "Zoom": Zoom,
+            "IntensityTfms": int_augs,
+            "Flip1": Flip1,
+            "Flip2": Flip2,
+            "Resize":Resize,
             "Rp":Rp,
-            # "R1": R1,
-            # "C": C,
+            # "RotBbox": RotBbox,
+            # "ClipoBbox": ClipoBbox,
         }
 
     def set_transforms(self, keys_tr: str, keys_val: str):
@@ -239,23 +240,23 @@ class DetectDataModule(L.LightningDataModule):
         tfms = []
         for key in keys:
             tfm = self.transforms_dict[key]
-            if key == "I":
+            if key == "IntensityTfms":
                 tfms.extend(tfm)
             else:
                 tfms.append(tfm)
         tfms = Compose(tfms)
         return tfms
 
-        tfms_train = Compose([L, MkB, R0, B, CB, Et, Et2, Z, F1, F2, R1, C, Y])
-        tfms_val = Compose([L, MkB, B, CB, Et, Et2, C, Y])
+        tfms_train = Compose([L, MkB, Rotate, ExtractBbox, CB, Et, Et2, Z, Flip1, Flip2, RotBbox, ClipoBbox, YoloBbox])
+        tfms_val = Compose([L, MkB, ExtractBbox, CB, Et, Et2, ClipoBbox, YoloBbox])
 
     def setup(self, stage: str):
-
         # Assign train/val datasets for use in dataloaders
         self.create_transforms()
         self.set_transforms(
-            keys_tr="L,MkB,  Et, Et2, N,I, F1, F2, R0,Z, Rs, B, CB,Y, DelI,Rp ",
-            keys_val="L,MkB,Et, Et2, N, Rs,B, CB,Y,DelI, Rp",
+            # keys_tr="L,MkB,  Et, Et2, N,I, Flip1, Flip2, Rotate,Z, Resize, ExtractBbox, CB,YoloBbox, DelI,Rp ",
+            keys_tr="L,MkB,  Et, Et2, N,IntensityTfms, Flip1, Flip2, Zoom, Resize, ExtractBbox, CB,YoloBbox, Rp ", # NO ROTATION, No Del
+            keys_val="L,MkB,Et, Et2, N, Resize,ExtractBbox, CB,YoloBbox,DelI, Rp",
         )
         if stage == "fit":
             self.ds_train = Dataset(data=self.train_dicts, transform=self.tfms_train)
@@ -264,69 +265,62 @@ class DetectDataModule(L.LightningDataModule):
             raise NotImplementedError
 
     def train_dataloader(self):
-        return DataLoader(self.ds_train, batch_size=32,num_workers=32,pin_memory=True)
+        return DataLoader(self.ds_train, batch_size=self.batch_size,num_workers=16,pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(self.ds_val, batch_size=32,num_workers=32,pin_memory=True)
+        return DataLoader(self.ds_val, batch_size=self.batch_size,num_workers=16,pin_memory=True)
 
 
 # %%
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    fldr = "/s/xnat_shadow/lidc2d/"
-    D = DetectDataModule(fldr)
-    D.prepare_data()
-    D.setup("fit")
-    dl = D.train_dataloader()
-    iteri = iter(dl)
-    aa = next(iteri)
+    dm = DetectDataModule(data_dir = "/s/xnat_shadow/lidc2d/")
+    dm.prepare_data()
+    dm.setup(stage="fit")
+    dl = dm.train_dataloader()
 
 
-    cals = torch.zeros(32,1,1)
-    torch.cat([bb,cals],2)
 # %%
 
-    dici2 = D.ds_train[0]
-    dici2 = D.data_dicts[0]
-    dici2['image'].shape
+
+
 
 # %%
-    dici = D.train_dicts[0]
-    dici  = D.transforms_dict['N'](dici)
-    dici = D.transforms_dict['B'](dici)
+    dici = dm.train_dicts[0]
+    dici  = dm.transforms_dict['N'](dici)
+    dici = dm.transforms_dict['ExtractBbox'](dici)
 # %%
 
-    transforms_dict = {
-            "N": N,
-            "L": L,
-            "E": E,
-            "Et": Et,
-            "MkB": MkB,
-            "Et2": Et2,
-            "E2": E2,
-            "B": B,
-            "Y": Y,
-            "DelI": DelI,
-            "CB": CB,
-            "R0": R0,
-            "Z": Z,
-            "I": int_augs,
-            "F1": F1,
-            "F2": F2,
-            "Rs":Rs,
-            "Rp":Rp,
-            # "R1": R1,
-    }
-# %%
+    dici2 = dm.ds_train[153]
+    dici2.keys()
+
     im = dici2['image'][0]
     lm = dici2['lm'][0]
     bb = dici2['lm_bbox'].copy()
     bb = bb[0].tolist()
     imv= torch.permute(im, (1, 0))
     lmv= torch.permute(lm, (1, 0))
-    draw_image_bbox(imv,*bb)
+    draw_image_lm_bbox(imv,lmv,*bb)
+# %%
+
+    start_x,start_y,stop_x,stop_y = bb
+    # img= torch.load(fn_img)
+    size_x = stop_x-start_x
+    size_y = stop_y-start_y
+    fig,(ax1, ax2) = plt.subplots(1,2)
+    ax1.imshow(imv)
+    rect = patches.Rectangle((start_x,start_y),size_x,size_y, linewidth=1,edgecolor='r',facecolor='none')
+    ax1.add_patch(rect)
+
+    ax2.imshow(lmv)
+    rect = patches.Rectangle((start_x,start_y),size_x,size_y, linewidth=1,edgecolor='r',facecolor='none')
+    ax2.add_patch(rect)
+
+
 # %%
     L = LoadTorchd(["image", "lm"])
-    B = BoundingRectd(keys=["lm"])
+    ExtractBbox = BoundingRectd(keys=["lm"])
     MkB = MakeBinary(["lm"])
 # %%
 # %%
@@ -339,93 +333,114 @@ if __name__ == "__main__":
     patch_size = 92
     samples = 3
 # %%
+# %%
+#SECTION:-------------------- TROUBLESHOOT--------------------------------------------------------------------------------------
 
-    probs = 1
-    prob_int = 1
 
+    image_key = "image"
+    label_key = "lm"
+    box_key = "lm_bbox"
+    probs= 1.0
+    outputsize = [512,512]
+    probs_int =1.0
     L = LoadTorchd([image_key, label_key])
     E = EnsureChannelFirstd(keys=[image_key])
 
     MkB = MakeBinary([label_key])
-    Et = EnsureTyped(keys=[image_key, box_key], dtype=torch.float32)
+    Et = EnsureTyped(keys=[image_key ], dtype=torch.float32)
     Et2 = EnsureTyped(keys=[label_key], dtype=torch.long)
     E2 = EnsureTyped(keys=[image_key], dtype=torch.float16)
-    B = BoundingRectd(keys=[label_key])
-    Y = BoundingBoxYOLOd(
+    ExtractBbox = BoundingRectd(keys=[label_key])
+    CB = ConvertBoxToStandardModed(mode="xxyy", box_keys=[box_key])
+    YoloBbox = BoundingBoxYOLOd(
         [box_key], 2, key_template_tensor=label_key, output_keys=["bbox_yolo"]
     )
-    CB = ConvertBoxToStandardModed(mode="xxyy", box_keys=[box_key])
 
-    R0 = RandRotated(
+    Rotate = RandRotated(
         keys=[image_key, label_key],
         prob=probs,
         keep_size=True,
         mode=["bilinear", "nearest"],
         range_x=[0.4, 0.4],
+        lazy=True
     )
-    N = NormalizeIntensityd(keys=[image_key])
-    Z = RandZoomBoxd(
-        image_keys=[image_key],
-        box_keys=[box_key],
-        box_ref_image_keys=[image_key],
+    Zoom = RandZoomd(
+        keys=[image_key, label_key],
+        mode = ['bilinear','nearest'],
         prob=probs,
         min_zoom=0.7,
         max_zoom=1.4,
         padding_mode="constant",
         keep_size=True,
+        lazy=True
     )
-    F1 = RandFlipBoxd(
-        image_keys=[image_key],
-        box_keys=[box_key],
-        box_ref_image_keys=[image_key],
+    Flip1 = RandFlipd(
+        keys=[image_key,label_key],
         prob=probs,
         spatial_axis=0,
+        lazy=True
     )
-    F2 = RandFlipBoxd(
-        image_keys=[image_key],
-        box_keys=[box_key],
-        box_ref_image_keys=[image_key],
+
+    Flip2 = RandFlipd(
+        keys=[image_key,label_key],
         prob=probs,
         spatial_axis=1,
+        lazy=True
     )
-    R1 = RandRotateBox90d(
-        image_keys=[image_key],
-        box_keys=[box_key],
-        box_ref_image_keys=[image_key],
-        prob=0.75,
-        max_k=3,
-        spatial_axes=(0, 1),
-    )
-    C = ClipBoxToImaged(
-        box_keys=box_key,
-        label_keys=[label_key],
-        box_ref_image_keys=image_key,
-        remove_empty=True,
+    Resize = Resized(
+        keys=[image_key,label_key],
+        spatial_size = outputsize,
+        mode= ['bilinear','nearest'],
+        lazy=True
+        
     )
 
+    N = NormalizeIntensityd(keys=[image_key])
+    IntensityTfms= Compose([
+        RandGaussianSmoothd(
+            keys=[image_key],
+            prob=probs_int,
+            sigma_x=(0.5, 1.0),
+            sigma_y=(0.5, 1.0),
+            sigma_z=(0.5, 1.0),
+        ),
+        RandScaleIntensityd(keys="image", factors=0.25, prob=probs_int),
+        RandGaussianNoised(keys=["image"], mean=0, prob=probs_int, std=0.1),
+        RandShiftIntensityd(keys="image", offsets=0.1, prob=probs_int),
+        RandAdjustContrastd(["image"], gamma=(0.7, 1.5)),
+    ])
+    Rp = RepeatChanneld(keys = [image_key],repeats=3)
+    DelI = DeleteItemsd(keys = [label_key])
 
-    tfms_train = Compose([L, MkB, R0, B, CB, Et, Et2, Z, F1, F2, R1, C, Y])
-    tfms_val = Compose([L, MkB, B, CB, Et, Et2, C, Y])
+# %%
+    tfms_train = Compose([L,MkB,  Et, Et2, N,IntensityTfms, Flip1, Flip2, Zoom, Resize, ExtractBbox, CB,YoloBbox, DelI,Rp ])
+    # tfms_val = Compose([L, MkB, ExtractBbox, CB, Et, Et2, ClipoBbox, YoloBbox])
 # %%
 # %%
 
-    # ds = DetectDS("/s/xnat_shadow/lidc2d/")
-    dici = D.ds_train.data[13]
+    dm = DetectDataModule(data_dir = "/s/xnat_shadow/lidc2d/")
+    dm.prepare_data()
+    dm.setup(stage="fit")
+    dl = dm.train_dataloader()
+    dici = ds[0]
+    dici = dm.ds_train.data[10]
     dici  =tfms_train(dici)
 # %%
     dici = L(dici)
     dici = MkB(dici)
-    dici = R0(dici)
-    dici = B(dici)
-    dici = CB(dici)
     dici = Et(dici)
     dici = Et2(dici)
+    dici = N(dici)
+    dici = IntensityTfms(dici)
+    dici = Rotate(dici)
+    dici = ExtractBbox(dici)
+    dici = CB(dici)
     dici = Z(dici)
-    dici = F1(dici)
-    dici = F2(dici)
-    dici = R1(dici)
-    dici = C(dici)
-    dici = Y(dici)
+    dici = Flip1(dici)
+    dici = Flip2(dici)
+    dici = RotBbox(dici)
+    dici = ClipoBbox(dici)
+    dici = YoloBbox(dici)
 
 # %%
 

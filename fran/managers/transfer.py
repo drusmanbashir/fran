@@ -33,12 +33,12 @@ except:
 import torch
 import torch
 from fastcore.basics import store_attr
-from fran.managers.training import TrainingManager, UNetTrainer, checkpoint_from_model_id
+from fran.managers.training import Trainer, UNetTrainer, checkpoint_from_model_id
 
 #TODO: fix LR  setup in Tranfer learning
 
 
-class TrainingManagerTransfer(TrainingManager):
+class TrainingManagerTransfer(Trainer):
     def __init__(self, project, configs, run_name, freeze=None):
         assert freeze in [None,'encoder'],"Freeze either None or encoder"
         assert run_name is not None, "Please specificy a run to transfer learning from"

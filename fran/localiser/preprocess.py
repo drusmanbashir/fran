@@ -49,18 +49,6 @@ from monai.data import dataset_summary, register_writer
 import pandas as pd
 import numpy as np
 
-def draw_image_bbox(img, start_x,start_y,stop_x,stop_y):
-        # img= torch.load(fn_img)
-        size_x = stop_x-start_x
-        size_y = stop_y-start_y
-        fig,ax = plt.subplots()
-        ax.imshow(img)
-
-        rect = patches.Rectangle((start_x,start_y),size_x,size_y, linewidth=1,edgecolor='r',facecolor='none')
-        ax.add_patch(rect)
-
-
-
 
 class Project2DProcessor():
     def __init__(self,fldr_imgs,fldr_lms, output_fldr):
@@ -172,6 +160,5 @@ if __name__ == "__main__":
 # %%
 
 # %%
-    fn_img = "/home/u/code/fran/fran/tmp/images/lidc2_0140_3.pt"
-    draw_image_bbox(fn_img)
+
 
