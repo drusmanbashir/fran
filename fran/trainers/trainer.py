@@ -4,7 +4,7 @@ import shutil
 from lightning.pytorch.profilers import AdvancedProfiler
 from monai.transforms.io.dictionary import LoadImaged
 from fran.transforms.imageio import TorchReader
-from fran.transforms.misc_transforms import LoadDict, MetaToDict
+from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
 from fran.utils.common import common_vars_filename
 import ipdb
 
@@ -28,7 +28,7 @@ import torch._dynamo
 from fran.callback.nep import NeptuneImageGridCallback
 
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
-from fran.managers.data import DataManagerLBD, DataManagerPBD, DataManagerPatch, DataManagerSource
+from fran.managers.data import DataManagerLBD, DataManagerPBD, DataManagerPatch, DataManagerSource, DataManagerWhole
 from fran.utils.fileio import load_yaml
 from fran.utils.imageviewers import ImageMaskViewer
 
@@ -37,7 +37,8 @@ from fran.managers.nep import NeptuneManager
 import itertools as il
 import operator
 import warnings
-from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch import LightningModule
+from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     TQDMProgressBar,
@@ -127,7 +128,15 @@ class UNetTrainer(LightningModule):
             inputs
         )  # self.pred so that NeptuneImageGridCallback can use it
 
-        pred, target = self.maybe_apply_ds_scales(pred, target)
+        # tr()
+        # pred, target = self.maybe_apply_ds_scales(pred, target)
+        # [print(a.shape) for a in pred]
+        # print(target.shape)
+        # if torch.isnan(inputs).any() or torch.isnan(target).any():
+        #     print("NaN detected in input or target!")
+        # if torch.isinf(inputs).any() or torch.isinf(target).any():
+            # print("inf detected in input or target!")
+
         loss = self.loss_fnc(pred, target)
         loss_dict = self.loss_fnc.loss_dict
         self.maybe_store_preds(pred)
@@ -163,6 +172,11 @@ class UNetTrainer(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        # print(batch['lm'].unique())
+        # batch['lm'].meta
+        # print(batch_idx)
+        # if batch_idx>6:
+        #     tr()
         loss, loss_dict = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="val")
         return loss
@@ -317,7 +331,7 @@ class Trainer:
         if self.config["model_params"]["compiled"] == True:
             self.N = torch.compile(self.N)
 
-        self.trainer = Trainer(
+        self.trainer = TrainerL(
             callbacks=cbs,
             accelerator="gpu",
             devices=devices,
@@ -565,7 +579,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
 
-    project_title = "totalseg"
+    project_title = "litsmc"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -581,17 +595,18 @@ if __name__ == "__main__":
     # conf['dataset_params']['plan']=5
 # %%
     # run_name = "LITS-1007"
-    # device_id = 1
-    device_id = 0
-    run_name ='LITS-1018'
-    # run_name = None
+    # device_id = 0
+    device_id = 1
+    run_name = None
+    run_totalseg='LITS-1025'
+    run_litsmc= 'LITS-1018'
     bs = 10# 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
-    neptune = True
+    neptune = False
     tags = []
     description = f""
 # %%
@@ -616,19 +631,64 @@ if __name__ == "__main__":
     Tm.fit()
     # model(inputs)
 # %%
+#SECTION:-------------------- IMPORTANCE SAMPLING--------------------------------------------------------------------------------------
+    model = Tm.trainer.model
 
+# %%
+#     pred = torch.load("pred.pt")
+#     target = torch.load("target.pt")
+# # %%
+#
+#     Tm.trainer.model.to('cpu')
+#     pred = [a.cpu() for a in pred]
+#     loss = Tm.trainer.model.loss_fnc(pred.cpu(), target.cpu())
+#     loss_dict = Tm.trainer.loss_fnc.loss_dict
+#     Tm.trainer.maybe_store_preds(pred)
+#     # preds = [pred.tensor() if hasattr(pred, 'tensor') else pred for pred in preds]
+#     torch.save(preds, 'new_pred.pt')
+#     torch.save(targ.tensor(),'new_target.pt')
+#
+#     tt = torch.tensor(targ.clone().detach())
+#     torch.save(tt,"new_target.pt")
+#
+# %%
 # %%
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
 
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.valid_ds
-    ds = Tm.D.train_ds
 # %%
-    i = ds[12]
 
+
+    dl = Tm.D.train_dataloader()
+    # iteri = iter(dl)
+    # batch = next(iteri)
+# %%
+    dl2 = Tm.D.val_dataloader()
+    iteri2 = iter(dl)
+# %%
+    while iteri2:
+        bb = next(iteri2)
+        # pred = Tm.trainer.model(bb['image'].cuda())
+        print(bb['lm'].unique())
+
+
+    dicis=[]
+# %%
     for i, id in enumerate(ds):
-        print(i)
+        
+        lm = id['lm']
+        vals = lm.unique()
+        print(vals)
+        # print(vals)
+        if vals.max()>8:
+            tr()
+            # print("Rat")
+            dici = {'lm':lm.meta['filename_or_obj'], 'vals':vals}
+            dicis.append(dici) 
+#
+            # vals = [  0.,   1.,   2.,   3.,   4.,   5.,   6.,   7.,   8., 118.]
 # %%
     dici = ds[7]
     dici = ds.data[7]
@@ -658,7 +718,7 @@ if __name__ == "__main__":
         lazy=True,
         allow_smaller=False,
     )
-    Ld = LoadDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
 
     Rva = RandCropByPosNegLabeld(
         keys=["image", "lm"],
@@ -701,7 +761,7 @@ if __name__ == "__main__":
     ImageMaskViewer([dici[0]["image"][0], dici[0]["lm"][0]])
 
 # %%
-    Ld = LoadDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
     dici = Ld(dici)
 # %%
 
@@ -712,13 +772,6 @@ if __name__ == "__main__":
     tt = torch.load(fn)
     tt2 = torch.load(fn2)
     ImageMaskViewer([tt, tt2])
-
-# %%
-    dl = Tm.D.train_dataloader()
-    dl2 = Tm.D.val_dataloader()
-    iteri = iter(dl)
-    iteri2 = iter(dl2)
-    batch = next(iteri2)
 # %%
 
     Re = ResizeWithPadOrCropd(

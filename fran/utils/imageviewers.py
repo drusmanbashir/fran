@@ -189,7 +189,7 @@ class ImageMaskViewer(object):
     def update_fig_fast(self,val):
         for i, img in enumerate(self.npa_list):
             img_slice = img[val,:,:]
-            self.ax_imgs[i].set_array(img_slice)
+            self.ax_imgs[i].set_autoreloadray(img_slice)
 
 # %%
 class ImageMaskViewer_J():

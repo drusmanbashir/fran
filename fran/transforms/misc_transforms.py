@@ -214,7 +214,7 @@ class SelectLabels(MonaiDictTransform):
         return lm_neo
 
 
-class LoadDict(MonaiDictTransform):
+class LoadTorchDict(MonaiDictTransform):
     """
     when a tensor us just a dictionary stored in pt format, this returns the stored keys
     """

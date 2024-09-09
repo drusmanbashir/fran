@@ -1,5 +1,6 @@
 # %%
 from lightning import LightningDataModule
+from fran.utils.helpers import pbar
 from monai.transforms.transform import RandomizableTransform
 from fran.preprocessing.patch import bbox_bg_only
 import ast
@@ -25,14 +26,14 @@ from monai.transforms.intensity.dictionary import (
     RandShiftIntensityd,
 )
 from monai.transforms.io.dictionary import LoadImaged
-from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
+from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
 from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
     FgBgToIndicesd,
     ToDeviced,
 )
 
-from fran.data.dataloader import img_lm_bbox_collated
+from fran.data.collate import img_lm_bbox_collated, source_collated
 from fran.data.dataset import (
     ImageMaskBBoxDatasetd,
     MaskLabelRemapd,
@@ -41,7 +42,7 @@ from fran.data.dataset import (
 )
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
-from fran.transforms.misc_transforms import LoadDict, MetaToDict
+from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
 from fran.utils.config_parsers import is_excel_None
 from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
@@ -65,35 +66,26 @@ def list_to_fgbg(class_ratios):
     return fg, bg
 
 
-def simple_collated(batch):
-    imgs = []
-    labels = []
-    for i, item in enumerate(batch):
-        for ita in item:
-            imgs.append(ita["image"])
-            labels.append(ita["lm"])
-    output = {"image": torch.stack(imgs, 0), "lm": torch.stack(labels, 0)}
-    return output
-
-
-
 class RandomPatch(RandomizableTransform):
-    '''
+    """
     to be used by DataManagerPatch
-    '''
-    
-    def randomize(self, data=None):
-        n_patches = data['n_patches']
-        self.indx = self.R.randint(0,n_patches)
-        self.indx = str(self.indx)
+    """
 
+    def randomize(self, data=None):
+        n_patches = data["n_patches"]
+        self.indx = self.R.randint(0, n_patches)
+        self.indx = str(self.indx)
 
     def __call__(self, data: list):
         self.randomize(data)
-        image_key = 'image_'+self.indx
-        lm_key = 'lm_'+self.indx
-        indices_key = 'indices_'+self.indx
-        dici = {'image':data[image_key], "lm":data[lm_key], "indices":data[indices_key]}
+        image_key = "image_" + self.indx
+        lm_key = "lm_" + self.indx
+        indices_key = "indices_" + self.indx
+        dici = {
+            "image": data[image_key],
+            "lm": data[lm_key],
+            "indices": data[indices_key],
+        }
         return dici
 
 
@@ -154,9 +146,9 @@ class DataManager(LightningDataModule):
             mean=self.dataset_params["mean_fg"],
             std=self.dataset_params["std_fg"],
         )
-        P = MaskLabelRemapd(
-            keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
-        )
+        # P = MaskLabelRemapd(
+        #     keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
+        # )
 
         F1 = RandFlipd(
             keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
@@ -164,7 +156,7 @@ class DataManager(LightningDataModule):
         F2 = RandFlipd(
             keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
         )
-        int_augs = [
+        IntensityTfms = [
             RandScaleIntensityd(
                 keys="image", factors=self.scale["value"], prob=self.scale["prob"]
             ),
@@ -183,7 +175,15 @@ class DataManager(LightningDataModule):
             # self.create_affine_tfm(),
         ]
 
-        A = self.create_affine_tfm()
+        Affine = RandAffined(
+            keys=["image", "lm"],
+            mode=["bilinear", "nearest"],
+            prob=self.affine3d["p"],
+            # spatial_size=self.dataset_params['src_dims'],
+            rotate_range=self.affine3d["rotate_range"],
+            scale_range=self.affine3d["scale_range"],
+        )
+
         Re = ResizeWithPadOrCropd(
             keys=["image", "lm"],
             spatial_size=self.dataset_params["patch_size"],
@@ -204,7 +204,9 @@ class DataManager(LightningDataModule):
             simple_keys=True,
         )
         L.register(TorchReader())
-        Ld = LoadDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+        Ld = LoadTorchDict(
+            keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
+        )
         Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
         Rtr = RandCropByPosNegLabeld(
             keys=["image", "lm"],
@@ -236,14 +238,14 @@ class DataManager(LightningDataModule):
         )
 
         self.transforms_dict = {
-            "A": A,
+            "Affine": Affine,
             "E": E,
             "N": N,
             "F1": F1,
             "F2": F2,
-            "IntensityTfms": int_augs,
+            "IntensityTfms": IntensityTfms,
             "Re": Re,
-            "P": P,
+            # "P": P,
             "Ld": Ld,
             "L": L,
             "Ind": Ind,
@@ -291,7 +293,8 @@ class DataManager(LightningDataModule):
         inds_fldr = self.infer_inds_fldr(self.plan)
         images = list(images_fldr.glob("*.pt"))
         data = []
-        for fn in fnames:
+
+        for fn in pbar(fnames):
             fn = Path(fn)
             img_fn = find_matching_fn(fn.name, images, True)
             lm_fn = find_matching_fn(fn.name, lms_fldr, True)
@@ -329,7 +332,6 @@ class DataManager(LightningDataModule):
             pin_memory=True,
         )
         return train_dl
-
     def val_dataloader(self):
         valid_dl = DataLoader(
             self.valid_ds,
@@ -340,17 +342,6 @@ class DataManager(LightningDataModule):
             pin_memory=True,
         )
         return valid_dl
-
-    def create_affine_tfm(self):
-        affine = RandAffined(
-            keys=["image", "lm"],
-            mode=["bilinear", "nearest"],
-            prob=self.affine3d["p"],
-            # spatial_size=self.dataset_params['src_dims'],
-            rotate_range=self.affine3d["rotate_range"],
-            scale_range=self.affine3d["scale_range"],
-        )
-        return affine
 
     def forward(self, inputs, target):
         return self.model(inputs)
@@ -387,7 +378,9 @@ class DataManagerSource(DataManager):
             batch_size,
             **kwargs
         )
-        self.collate_fn = simple_collated
+        self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
+        self.keys_val = "L,Ld,E,Rva,Re,N"
+        self.collate_fn = source_collated
 
     def derive_data_folder(self):
         prefix = "spc"
@@ -406,9 +399,7 @@ class DataManagerSource(DataManager):
 
     def setup(self, stage: str = None):
         self.create_transforms()
-        self.set_transforms(
-            keys_tr="L,Ld,E,Rtr,F1,F2,A,Re,N,IntensityTfms", keys_val="L,Ld,E,Rva,Re,N"
-        )
+        self.set_transforms(keys_tr=self.keys_tr, keys_val=self.keys_val)
         print("Setting up datasets. Training ds type is: ", self.ds_type)
         if is_excel_None(self.ds_type):
             self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
@@ -433,16 +424,69 @@ class DataManagerSource(DataManager):
             cache_dir=self.project.cache_folder,
         )
 
+
+
 class DataManagerWhole(DataManagerSource):
+
+    def __init__(
+        self,
+        project,
+        dataset_params: dict,
+        config: dict,
+        transform_factors: dict,
+        affine3d: dict,
+        batch_size=8,
+        **kwargs
+    ):
+        super().__init__(
+            project,
+            dataset_params,
+            config,
+            transform_factors,
+            affine3d,
+            batch_size,
+            **kwargs
+        )
+        self.keys_tr = "L,E,F1,F2,Affine,Resize,N,IntensityTfms"
+        self.keys_val = "L,E,Resize,N"
+        self.collate_fn = whole_collated
+
     def derive_data_folder(self):
         prefix = "sze"
-        spacing = ast.literal_eval(self.plan["spatial_size"])
+        spatial_size = ast.literal_eval(self.plan["spatial_size"])
         parent_folder = self.project.fixed_size_folder
-        data_folder = folder_name_from_list(prefix, parent_folder, spacing)
+        data_folder = folder_name_from_list(prefix, parent_folder, spatial_size)
         return data_folder
-        
+
+    def create_transforms(self):
+        super().create_transforms()
+        Resize = Resized(
+            keys=["image", "lm"],
+            spatial_size=ast.literal_eval(self.plan["spatial_size"]),
+            mode=["linear", "nearest"],
+            lazy=True,
+        )
+        self.transforms_dict.update({"Resize": Resize})
 
 
+    def create_data_dicts(self, fnames):
+        fnames = [strip_extension(fn) for fn in fnames]
+        fnames = [fn + ".pt" for fn in fnames]
+        fnames = fnames
+        images_fldr = self.data_folder / ("images")
+        lms_fldr = self.data_folder / ("lms")
+        images = list(images_fldr.glob("*.pt"))
+        data = []
+        # for fn in fnames[400:432]:
+        for fn in fnames:
+            fn = Path(fn)
+            img_fn = find_matching_fn(fn.name, images, True)
+            lm_fn = find_matching_fn(fn.name, lms_fldr, True)
+            assert img_fn.exists(), "Missing image {}".format(img_fn)
+            assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
+            dici = {"image": img_fn, "lm": lm_fn}
+            data.append(dici)
+        return data
 
 class DataManagerLBD(DataManagerSource):
     def derive_data_folder(self, dataset_mode=None):
@@ -462,8 +506,8 @@ class DataManagerLBD(DataManagerSource):
 
     def prepare_data(self):
         super().prepare_data()
-        self.data_train = self.create_data_dicts(self.train_cases)
-        self.data_valid = self.create_data_dicts(self.valid_cases)
+        self.data_train = self.create_data_dicts(self.train_cases[:32])
+        self.data_valid = self.create_data_dicts(self.valid_cases[:16])
 
 
 class DataManagerPBD(DataManagerLBD):
@@ -492,7 +536,7 @@ class DataManagerShort(DataManager):
         return super().train_dataloader(num_workers, **kwargs)
 
 
-# CODE: in the below class move Rtr after A and get rid of Re to see if it affects training speed / model accuracy
+# CODE: in the below class move Rtr after Affine and get rid of Re to see if it affects training speed / model accuracy
 class DataManagerPatchLegacy(DataManager):
     """
     Uses bboxes to randonly select fg bg labels. New version(below) uses monai fgbgindices instead
@@ -534,9 +578,9 @@ class DataManagerPatchLegacy(DataManager):
     def setup(self, stage: str = None):
         self.create_transforms()
         if not math.isnan(self.dataset_params["src_dest_labels"]):
-            keys_tr = "P,E,F1,F2,A,Re,N,I"
+            keys_tr = "P,E,F1,F2,Affine,Re,N,I"
         else:
-            keys_tr = "E,F1,F2,A,Re,N,I"
+            keys_tr = "E,F1,F2,Affine,Re,N,I"
         keys_val = "E,Re,N"
         self.set_transforms(keys_tr=keys_tr, keys_val=keys_val)
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
@@ -562,7 +606,6 @@ class DataManagerPatchLegacy(DataManager):
         return ast.literal_eval(self.plan["patch_size"])
 
 
-
 class DataManagerPatch(DataManager):
     def __init__(
         self,
@@ -574,7 +617,7 @@ class DataManagerPatch(DataManager):
         batch_size=8,
         **kwargs
     ):
-        self.collate_fn = simple_collated
+        self.collate_fn = source_collated
         super().__init__(
             project,
             dataset_params,
@@ -629,7 +672,9 @@ class DataManagerPatch(DataManager):
         self.train_cids, self.valid_cids = self.project.get_train_val_cids(
             self.dataset_params["fold"]
         )
+        print("Creating train data dicts")
         self.data_train = self.create_data_dicts(self.train_cids)
+        print("Creating val data dicts")
         self.data_valid = self.create_data_dicts(self.valid_cids)
 
     def get_label_info(self, case_patches):
@@ -653,7 +698,7 @@ class DataManagerPatch(DataManager):
 
     def create_data_dicts(self, cids):
         patches = []
-        for cid in cids:
+        for cid in pbar(cids):
             dici = {"case_id": cid}
             patch_fns = self.get_patch_files(self.bboxes, cid)
             dici.update(patch_fns)
@@ -663,7 +708,7 @@ class DataManagerPatch(DataManager):
     def create_transforms(self):
         super().create_transforms()
         self.RP = RandomPatch()
-        self.transforms_dict.update({ "RP": self.RP})
+        self.transforms_dict.update({"RP": self.RP})
 
     def derive_data_folder(self):
         parent_folder = self.project.patches_folder
@@ -678,16 +723,17 @@ class DataManagerPatch(DataManager):
         )  # self.plan['patch_size']
         subfldr2 = folder_name_from_list("dim", subfldr1, patch_size, plan_name)
         self.data_folder = subfldr2
-#CODE: use same validation dataloader in all flavours of training to make it comparable
+
+    # CODE: use same validation dataloader in all flavours of training to make it comparable
     def setup(self, stage: str = None):
         self.create_transforms()
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
         fgbg_ratio_adjusted = fgbg_ratio / self.fg_bg_prior
         self.dataset_params["fgbg_ratio"] = fgbg_ratio_adjusted
         if not math.isnan(self.dataset_params["src_dest_labels"]):
-            keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,A,Re,N,I"
+            keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,I"
         else:
-            keys_tr = "RP,L,Ld,E,Rva,F1,F2,A,Re,N,I"
+            keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,I"
         keys_val = "RP,L,Ld,E,Rva,Re,N"
         self.set_transforms(keys_tr=keys_tr, keys_val=keys_val)
         self.train_ds = LMDBDataset(
@@ -720,7 +766,7 @@ class DataManagerShort(DataManagerPatch):
 # %%
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     import torch
 
@@ -729,7 +775,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "litsmc"
+    project_title = "totalseg"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -743,9 +789,40 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj.global_properties_filename)
 
-# %%
-# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR>
 
+# SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR>
+# %%
+    D = DataManagerWhole(
+        project=proj,
+        dataset_params = config["dataset_params"],
+        affine3d=config["affine3d"],
+        batch_size=4,
+        transform_factors=config["transform_factors"],
+        config=config,
+    )
+
+# %%
+    D.prepare_data()
+    D.setup()
+    D.data_folder
+    dl = D.train_dataloader()
+    bb = D.train_ds[0]
+# %%
+    iteri = iter(dl)
+    b = next(iteri)
+    b = D.train_ds[0]
+    im = b['image']
+    lm = b['lm']
+
+    ImageMaskViewer([im[0], lm[0]])
+
+
+# %%
+# %%
+
+# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR> <CR>
+
+# %%
     batch_size = 2
     D = DataManagerSource(
         proj,
@@ -757,6 +834,7 @@ if __name__ == "__main__":
     )
     D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
 # %%
+# %%
     D.prepare_data()
 
     D.setup()
@@ -765,7 +843,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     batch_size = 2
     D = DataManagerPatch(
@@ -804,7 +882,7 @@ if __name__ == "__main__":
     D.bboxes_per_id.append(bboxes)
 # %%
 # %%
-# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
 # %%
 
@@ -823,7 +901,7 @@ if __name__ == "__main__":
         lazy=True,
         allow_smaller=False,
     )
-    Ld = LoadDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
 
     Rva = RandCropByPosNegLabeld(
         keys=["image", "lm"],

@@ -2,7 +2,7 @@
 import time
 
 from fastcore.script import save_pickle
-from fran.data.dataloader import img_lm_metadata_lists_collated
+from fran.data.collate import img_lm_metadata_lists_collated
 from label_analysis.overlap import fk_generator
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
@@ -66,10 +66,27 @@ if __name__ == "__main__":
     sitk.WriteImage(lm,lm_fn)
     img_fn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_liver_only/images/drli_001ub.pt")
 
+    im_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/images/totalseg_s0994.pt")
+    lm_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0726.pt")
+    lm_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0928.pt")
+    lm_fn = Path('/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0928.pt')
+    lm_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_300_300_300/lms/totalseg_s0928.pt")
+    im_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150/images/totalseg_s0928.pt")
+    lm = torch.load(lm_fn)
+    lm[lm==115]=0
+    lm.unique()
+    # lm[lm==118]=4
+    lm[lm==116]=115
+    lm[lm==117]=116
+    lm[lm==118]=117
+    torch.save(lm, lm_fn)
+    im = torch.load(im_fn)
+    ImageMaskViewer([im,lm],'im')
 
+    lm[lm!=115]=0
     img = torch.load(img_fn)
     lm = torch.load(lm_fn)
-    ImageMaskViewer([img,lm])
+    ImageMaskViewer([lm,lm])
 
 # %%
 
@@ -234,11 +251,11 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- FIXING--------------------------------------------------------------------------------------
 
-    fn = '/s/fran_storage/checkpoints/litsmc/litsmc/LITS-999/checkpoints/epoch=106-val_loss=0.78.ckpt'
+    fn = '/s/fran_storage/checkpoints/totalseg/totalseg/LITS-1025/checkpoints/last.ckpt'
     ckp = torch.load(fn)
     print(ckp.keys())
     conf['plan'] =ckp['datamodule_hyper_parameters']['plan']
-    ckp['datamodule_hyper_parameters']['plan']
+    ckp['datamodule_hyper_parameters']['config']['plan']['spacing']= [1.5,1.5,1.5]
     ckp['datamodule_hyper_parameters'].pop('plan')
     ckp['datamodule_hyper_parameters']['config'] = conf
     torch.save(ckp,fn)

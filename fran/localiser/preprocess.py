@@ -4,7 +4,7 @@ import time
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
-from fran.data.dataloader import as_is_collated
+from fran.data.collate import as_is_collated
 from fran.transforms.imageio import TorchWriter
 import SimpleITK as sitk
 import itertools as il

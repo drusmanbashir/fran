@@ -4,7 +4,7 @@ from monai.transforms.io.array import SaveImage
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
-from fran.data.dataloader import as_is_collated
+from fran.data.collate import as_is_collated
 from fran.localizer.helpers import draw_image_bbox, draw_image_lm_bbox
 from fran.transforms.imageio import LoadTorchd, TorchWriter
 import SimpleITK as sitk

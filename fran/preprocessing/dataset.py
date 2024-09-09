@@ -184,8 +184,6 @@ class ImporterDataset(Dataset):
         """
         data_folder: Folder containing torch "images" and "lms".  Given an importer folder of sitk labelmaps (matching case_ids), it uses imported labelmaps to create bboxes which are applied to both the images and labelmaps.
         you can remap imported labels, e.g., to ignore some  of them while applying the bbox. images and lms cropped to bboxes are the final output.
-
-
         data_folder: Folder containing torch images:
         imported_folder: Folder containing sitk Labelmaps
         """

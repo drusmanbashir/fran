@@ -22,7 +22,7 @@ from monai.transforms.utility.dictionary import (
     ToDeviced,
 )
 
-from fran.data.dataloader import dict_list_collated, img_lm_metadata_lists_collated
+from fran.data.collate import dict_list_collated, img_lm_metadata_lists_collated
 from fran.managers.datasource import get_ds_remapping
 from fran.preprocessing.dataset import ResamplerDataset
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
