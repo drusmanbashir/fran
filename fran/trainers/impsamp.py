@@ -16,7 +16,6 @@ from fran.utils.helpers import pp
 
 tr = ipdb.set_trace
 
-from label_analysis.overlap import get_ipython
 import numpy as np
 from typing import Any, Union
 from pathlib import Path
@@ -32,7 +31,13 @@ import torch._dynamo
 from fran.callback.nep import NeptuneImageGridCallback
 
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
-from fran.managers.data import DataManagerLBD, DataManagerPBD, DataManagerPatch, DataManagerSource, DataManagerWhole
+from fran.managers.data import (
+    DataManagerLBD,
+    DataManagerPBD,
+    DataManagerPatch,
+    DataManagerSource,
+    DataManagerWhole,
+)
 from fran.utils.fileio import load_yaml
 from fran.utils.imageviewers import ImageMaskViewer
 
@@ -94,13 +99,37 @@ def checkpoint_from_model_id(model_id, sort_method="last"):
         tr()
     return ckpt
 
+
 class StoreInfo(Callback):
-    def on_train_epoch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+    def on_fit_start(
+        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+    ) -> None:
         self.dicis = []
         return super().on_train_epoch_start(trainer, pl_module)
-    def on_train_batch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: STEP_OUTPUT, batch: Any, batch_idx: int) -> None:
 
+    def on_train_batch_end(
+        self,
+        trainer: "pl.Trainer",
+        pl_module: "pl.LightningModule",
+        outputs: STEP_OUTPUT,
+        batch: Any,
+        batch_idx: int,
+    ) -> None:
+        model = trainer.model.model
+
+        Gi_inside = model.grad_L_x*model.grad_sigma_z
+        Gi_inside_normed_batch = [torch.linalg.norm(G) for G in Gi_inside]
+        # Gi_inside_normed = torch.stack(Gi_inside_normed_batch)
+        # Gi_inside_normed.shape
+        L_rho = 5
+
+        Gi = Gi_inside_normed_batch*L_rho
+        ks = batch['image'].meta['filename_or_obj']
+        dici = {k:G.item() for k,G in zip(ks,Gi)}
+        self.dicis.append(dici)
         return super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx)
+
+
 # from fran.managers.base import *
 
 
@@ -109,7 +138,6 @@ class StoreInfo(Callback):
 #     trainer.logger.experiment["training/epoch"] = trainer.current_epoch
 
 
-# %%
 class UNetTrainer(LightningModule):
     def __init__(
         self,
@@ -126,8 +154,7 @@ class UNetTrainer(LightningModule):
         store_attr()
         self.save_hyperparameters("model_params", "loss_params", "lr")
         self.model = self.create_model()
-        self.grad_z_l=None
-
+        self.grad_z_l = None
 
     def on_fit_start(self):
         self.loss_fnc = self.create_loss_fnc()
@@ -141,19 +168,17 @@ class UNetTrainer(LightningModule):
             inputs
         )  # self.pred so that NeptuneImageGridCallback can use it
 
-
         loss = self.loss_fnc(pred, target)
         loss_dict = self.loss_fnc.loss_dict
         self.maybe_store_preds(pred)
         return loss, loss_dict
 
-
     def compute_gradient_norm(self):
         """
         Computes the norm of the stored gradient of the pre-activation tensor z_L.
         """
-        if self.grad_z_l is not None:
-            grad_norm = torch.norm(self.grad_z_l, p=2, dim=1)
+        if self.model.grad_L_x is not None:
+            grad_norm = torch.norm(self.model.grad_L_x, p=2, dim=1)
             return grad_norm
         return None
 
@@ -331,6 +356,7 @@ class Trainer:
         lr=None,
         devices=1,
         compiled=None,
+        cbs=[],
         neptune=True,
         profiler=False,
         tags=[],
@@ -342,7 +368,7 @@ class Trainer:
         self.set_lr(lr)
         self.set_strategy(devices)
         self.init_dm_unet(epochs)
-        cbs, logger, profiler = self.init_cbs(neptune, profiler, tags, description)
+        cbs, logger, profiler = self.init_cbs(neptune, profiler, cbs, tags, description)
         self.D.prepare_data()
 
         if self.config["model_params"]["compiled"] == True:
@@ -389,8 +415,8 @@ class Trainer:
         else:
             self.lr = self.config["model_params"]["lr"]
 
-    def init_cbs(self, neptune, profiler, tags, description):
-        cbs = [
+    def init_cbs(self, neptune, profiler, cbs, tags, description):
+        cbs += [
             ModelCheckpoint(
                 save_last=True,
                 monitor="val_loss",
@@ -552,7 +578,7 @@ class Trainer:
             DMClass = DataManagerPatch
         elif mode == "source":
             DMClass = DataManagerSource
-        elif mode =="whole":
+        elif mode == "whole":
             DMClass = DataManagerWhole
         elif mode == "lbd":
             DMClass = DataManagerLBD
@@ -582,12 +608,9 @@ class Trainer:
 
 
 # %%
-
-
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     # from fran.utils.common import *
-
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -611,13 +634,13 @@ if __name__ == "__main__":
 
     # conf['dataset_params']['plan']=5
 # %%
+    device_id = 0
     # run_name = "LITS-1007"
     # device_id = 0
-    device_id = 0
+    run_totalseg = "LITS-1025"
+    run_litsmc = "LITS-1018"
     run_name = None
-    run_totalseg='LITS-1025'
-    run_litsmc= 'LITS-1018'
-    bs = 10# 5 is good if LBD with 2 samples per case
+    bs = 10  # 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
     profiler = False
@@ -625,9 +648,11 @@ if __name__ == "__main__":
     batch_finder = False
     neptune = False
     tags = []
+    cbs=[]
+    cbs = [StoreInfo()]
     description = f""
 # %%
-#SECTION:-------------------- IMPORTANCE SAMPLING--------------------------------------------------------------------------------------
+# SECTION:-------------------- IMPORTANCE SAMPLING-------------------------------------------------------------------------------------- <CR> <CR>
 
 # %%
     Tm = Trainer(proj, conf, run_name)
@@ -635,9 +660,10 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=1 if profiler == False else 1,
+        epochs=50 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
+        cbs=cbs,
         neptune=neptune,
         tags=tags,
         description=description,
@@ -647,14 +673,27 @@ if __name__ == "__main__":
     Tm.N.compiled = compiled
 # %%
     Tm.fit()
+
     # model(inputs)
 # %%
+    Tm.trainer.callbacks[0].dicis
 
-    patch_size = [128,96,96]
-    summ = summary(Tm.N, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cpu')
+    import pandas as pd
+    df = pd.DataFrame(Tm.trainer.callbacks[0].dicis)
+    df.to_csv("df.csv")
+# %%
+    
+    patch_size = [128, 96, 96]
+    summ = summary(
+        Tm.N,
+        input_size=tuple([1, 1] + patch_size),
+        col_names=["input_size", "output_size", "kernel_size"],
+        depth=4,
+        verbose=0,
+        device="cpu",
+    )
 
-
-# Redirect the output of summary() to a file
+    # Redirect the output of summary() to a file
 # %%
     output_file_path = "model_summary.txt"
     with open(output_file_path, "w") as f:
@@ -662,102 +701,143 @@ if __name__ == "__main__":
             print(summ)
 
 # %%
-#     pred = torch.load("pred.pt")
-#     target = torch.load("target.pt")
-# # %%
-#
-#     Tm.trainer.model.to('cpu')
-#     pred = [a.cpu() for a in pred]
-#     loss = Tm.trainer.model.loss_fnc(pred.cpu(), target.cpu())
-#     loss_dict = Tm.trainer.loss_fnc.loss_dict
-#     Tm.trainer.maybe_store_preds(pred)
-#     # preds = [pred.tensor() if hasattr(pred, 'tensor') else pred for pred in preds]
-#     torch.save(preds, 'new_pred.pt')
-#     torch.save(targ.tensor(),'new_target.pt')
-#
-#     tt = torch.tensor(targ.clone().detach())
-#     torch.save(tt,"new_target.pt")
-#
+    #     pred = torch.load("pred.pt")
+    #     target = torch.load("target.pt")
+# %%
+    #
+    #     Tm.trainer.model.to('cpu')
+    #     pred = [a.cpu() for a in pred]
+    #     loss = Tm.trainer.model.loss_fnc(pred.cpu(), target.cpu())
+    #     loss_dict = Tm.trainer.loss_fnc.loss_dict
+    #     Tm.trainer.maybe_store_preds(pred)
+    #     # preds = [pred.tensor() if hasattr(pred, 'tensor') else pred for pred in preds]
+    #     torch.save(preds, 'new_pred.pt')
+    #     torch.save(targ.tensor(),'new_target.pt')
+    #
+    #     tt = torch.tensor(targ.clone().detach())
+    #     torch.save(tt,"new_target.pt")
+    #
 # %%
 # %%
-#SECTION:-------------------- HOOKS--------------------------------------------------------------------------------------
+# SECTION:-------------------- HOOKS-------------------------------------------------------------------------------------- <CR> <CR>
 
-
-
-    def c_hook(module, inp,outp):
-        print(inp)
-        tr()
 # %%
-    a = torch.tensor(2.0,requires_grad=True)
-    b = torch.tensor(3.0,requires_grad=True)
-    c = a*b
+    def c_hook(grad):
+        print(grad)
+        return grad + 2
 
-    c.register_backward_hook(c_hook)
-    # c.register_hook(lambda grad: print(grad))
-    c.retain_grad()
-    # c.backward()
+# %%
+    a = torch.tensor(2.0, requires_grad=True)
+    b = torch.tensor(3.0, requires_grad=True)
+    c = a * b
+
+    j = a**2
+    j.retain_grad()
+    j.backward()
+    # c.register_hook(c_hook)
+    c.register_hook(lambda grad: print(grad))
+    # c.retain_grad()
+
+    d = torch.tensor(4.0, requires_grad=True)
+    e = d * c
+    e.register_hook(lambda grad: grad * 1)
+    e.retain_grad()
+
+# %%
+    e.backward()
+    print(c.grad)
+
+# %%
+# %%
+# SECTION:-------------------- Backward hooks-------------------------------------------------------------------------------------- <CR> <CR>
+
+    def c_hook(module, inp, outp):
+        print("=" * 50)
+        print("Module:", module)
+        print(module.mult)
+        print("inp:", inp)
+        print("outp:", outp)
 
     from torch import nn
-# %%
+
     class Func(nn.Module):
-        def __init__(self, mult:int) -> None:
+        def __init__(self, mult: int) -> None:
             super().__init__()
             self.mult = mult
-        def forward(self,x):
-            return self.mult*x
+
+        def forward(self, x):
+            return self.mult * x
+
+    class Pow(nn.Module):
+        def __init__(self, mult: int) -> None:
+            super().__init__()
+            self.mult = mult
+
+        def forward(self, x):
+            return x**self.mult
+
+# %%
 
     # def f2(x):
     #     return x * 3  # Multiplication by 3
 
+    j1 = Func(10)
     f2 = Func(2)
-    f3=Func(3)
+    f3 = Func(3)
+    f4 = Pow(2)
 # %%
-    hh= f2.register_full_backward_hook(c_hook)
+    h2 = f2.register_full_backward_hook(c_hook)
+    h3 = f3.register_full_backward_hook(c_hook)
+    h4 = f4.register_full_backward_hook(c_hook)
+    j1.register_full_backward_hook(c_hook)
     x = torch.tensor(2.0, requires_grad=True)
-    y2= f2(x)
+    y2 = f2(x)
+    j2 = j1(y2)
     y3 = f3(y2)
-    y3.backward()
+    y4 = f4(y3)
+# %%
+    j2.backward(retain_graph=True)
+    y4.backward()
 # %%
 
     y2.backward()
-# Define a tensor with requires_grad=True to track operations on it
+    # Define a tensor with requires_grad=True to track operations on it
 
-# Forward pass through the composed functions
+    # Forward pass through the composed functions
 
-# Define a backward hook function
+    # Define a backward hook function
     def backward_hook(module, grad_input, grad_output):
         print(f"Grad Input: {grad_input}")
         print(f"Grad Output: {grad_output}")
 
-# Register backward hook on y1 (the output of f1)
+    # Register backward hook on y1 (the output of f1)
     y2.retain_grad()  # Ensure we keep the gradient for intermediate tensor y1
     y2_hook = y2.register_hook(backward_hook)
 
-# Perform backward pass (compute gradients)
+    # Perform backward pass (compute gradients)
     y2.backward()
 
-# Check gradients
+    # Check gradients
     print(f"x.grad: {x.grad}")
 
-# Remove the hook after use
+    # Remove the hook after use
     y1_hook.remove()
 # %%
-    d = torch.tensor(4.0,requires_grad=True)
+    d = torch.tensor(4.0, requires_grad=True)
     d.register_hook(lambda grad: print(grad))
-    e = d*c
+    e = d * c
     e.register_hook(lambda grad: print(grad))
     e.retain_grad()
     e.backward()
 
 # %%
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.valid_ds
 # %%
-
 
     dl = Tm.D.train_dataloader()
     iteri2 = iter(dl)
@@ -768,24 +848,23 @@ if __name__ == "__main__":
     while iteri2:
         bb = next(iteri2)
         # pred = Tm.trainer.model(bb['image'].cuda())
-        print(bb['lm'].unique())
+        print(bb["lm"].unique())
 
-
-    dicis=[]
+    dicis = []
 # %%
     for i, id in enumerate(ds):
-        
-        lm = id['lm']
+
+        lm = id["lm"]
         vals = lm.unique()
         print(vals)
         # print(vals)
-        if vals.max()>8:
+        if vals.max() > 8:
             tr()
             # print("Rat")
-            dici = {'lm':lm.meta['filename_or_obj'], 'vals':vals}
-            dicis.append(dici) 
-#
-            # vals = [  0.,   1.,   2.,   3.,   4.,   5.,   6.,   7.,   8., 118.]
+            dici = {"lm": lm.meta["filename_or_obj"], "vals": vals}
+            dicis.append(dici)
+    #
+    # vals = [  0.,   1.,   2.,   3.,   4.,   5.,   6.,   7.,   8., 118.]
 # %%
     dici = ds[7]
     dici = ds.data[7]
@@ -993,3 +1072,49 @@ if __name__ == "__main__":
     kk.keys()
     kk["datamodule_hyper_parameters"]
 
+# %%
+    model = trainer.model.model
+    model.grad_L_x.shape
+    model.grad_sigma_z.shape
+
+
+# %%
+
+    # Example logits (input to softmax)
+    z = torch.tensor([2.0, 1.0, 0.1], requires_grad=True)
+
+    # Example logits (larger and more complex)
+    z = torch.tensor([2.5, 1.0, -0.5, 3.0, 4.5], requires_grad=True)
+
+    # Compute softmax using PyTorch
+    softmax = torch.nn.functional.softmax(z, dim=0)
+
+    # Method 1: Compute gradient using autograd
+    dummy_output = softmax.sum()  # Dummy output for backward pass
+    dummy_output.backward()
+
+    # Gradient from autograd
+    grad_autograd = z.grad.clone()  # Clone to keep for comparison
+
+    # Reset gradients for manual calculation
+    z.grad.zero_()
+
+    # Method 2: Manual softmax gradient calculation
+    softmax_manual_grad = torch.zeros(len(z), len(z))
+
+    for i in range(len(z)):
+        for j in range(len(z)):
+            if i == j:
+                softmax_manual_grad[i, j] = softmax[i] * (1 - softmax[i])
+            else:
+                softmax_manual_grad[i, j] = -softmax[i] * softmax[j]
+
+    # Calculate the gradient w.r.t. logits manually
+    grad_manual = softmax_manual_grad @ torch.ones(len(z))
+
+    # Print results
+    print("Softmax:", softmax)
+    print("Autograd Gradient:", grad_autograd)
+    print("Manual Gradient:", grad_manual)
+    print("Difference:", torch.abs(grad_autograd - grad_manual))
+# %%
