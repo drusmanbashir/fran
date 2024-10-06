@@ -80,8 +80,27 @@ if __name__ == "__main__":
     lm[lm==117]=116
     lm[lm==118]=117
     torch.save(lm, lm_fn)
+# %%
+    im_fn = "/s/fran_storage/grads/neo/litq_60_20190729_0_0.pt"
+    im2_fn = "/s/fran_storage/grads/neo/litq_60_20190729_grad_0_0.pt"
+# %%
+    im_fn = "/s/fran_storage/grads/LITS-1018/litq_60_20190729_0_0.pt"
+    im2_fn = "/s/fran_storage/grads/LITS-1018/litq_60_20190729_grad_0_0.pt"
+# %%
     im = torch.load(im_fn)
-    ImageMaskViewer([im,lm],'im')
+    im = im[0]
+    im2 = torch.load(im2_fn)
+    ind =2
+    im23=  im2[ind,ind,:]
+    mn = im23.mean()
+    print(mn)
+# %%
+    im23 = im23/mn
+
+    # im3 = torch.linalg.norm(im2,dim= (0,1))
+    # im3_cen = im3/im3.mean()
+    ImageMaskViewer([im,im23],'ii')
+# %%
 
     lm[lm!=115]=0
     img = torch.load(img_fn)
@@ -248,6 +267,16 @@ if __name__ == "__main__":
     df = pd.DataFrame(dicis)
     df.to_csv(fldr.parent/("info.csv"))
 # %%
+    # %%
+#SECTION:-------------------- Hutchinsons--------------------------------------------------------------------------------------
+    n = 1000 # the matrix size
+
+# generate the matrix
+    A = np.random.randn(n, n)
+    B = A @ A.T
+    trace_B_np = np.matrix.trace(B)
+    print("The trace of B is: %.4f"%trace_B_np)
+    
 # %%
 #SECTION:-------------------- FIXING--------------------------------------------------------------------------------------
 

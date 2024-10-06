@@ -108,16 +108,12 @@ def source_collated(batch):
         labels.extend(labels_)
         fns_imgs.extend(fns_imgs_)
         fns_labels.extend(fns_labels_)
-        # for ita in item:
-        #     imgs.append(ita["image"])
-        #     fns_imgs.append(ita["image"].meta['filename_or_obj'])
-        #     labels.append(ita["lm"])
-        #     fns_labels.append(ita["lm"].meta['filename_or_obj'])
     if len(batch) == 1:
         fns_imgs = fns_imgs[0]
         fns_labels = fns_labels[0]
     imgs_out = torch.stack(imgs, 0)
     lms_out= torch.stack(labels, 0)
+
     imgs_out.meta['filename_or_obj']=fns_imgs
     lms_out.meta['filename_or_obj']=fns_labels
     output = {"image": imgs_out , "lm": lms_out}

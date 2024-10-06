@@ -1,5 +1,11 @@
 # %%
 import lightning as pl
+from torch.utils.data import DataLoader, Subset
+from fran.extra.deepcore.deepcore.met.met_utils import (
+    FacilityLocation,
+    submodular_optimizer,
+)
+from fran.extra.deepcore.deepcore.met.met_utils.euclidean import euclidean_dist_pair_np
 from fastcore.net import contextlib
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint
 import shutil
@@ -7,6 +13,7 @@ from lightning.pytorch.profilers import AdvancedProfiler
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from monai.transforms.io.dictionary import LoadImaged
 from torchinfo import summary
+from fran.trainers.trainer import UNetTrainer
 from fran.transforms.imageio import TorchReader
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
 from fran.utils.common import common_vars_filename
@@ -57,6 +64,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from fran.architectures.create_network import (
     create_model_from_conf,
+    create_model_from_conf_nnUNetCraig,
     pool_op_kernels_nnunet,
 )
 import torch.nn.functional as F
@@ -100,6 +108,50 @@ def checkpoint_from_model_id(model_id, sort_method="last"):
     return ckpt
 
 
+
+def resolve_datamanager(mode: str):
+        if mode == "patch":
+            DMClass = DataManagerPatch
+        elif mode == "source":
+            DMClass = DataManagerSource
+        elif mode == "whole":
+            DMClass = DataManagerWhole
+        elif mode == "lbd":
+            DMClass = DataManagerLBD
+        elif mode == "pbd":
+            DMClass = DataManagerPBD
+        else:
+            raise NotImplementedError(
+                "Mode {} is not supported for datamanager".format(mode)
+            )
+        return DMClass
+
+class CRAIGCallback(Callback):
+
+    def __init__(self, selection_batch, num_workers=6):
+        super().__init__()
+        self.selection_batch = selection_batch
+        self.num_workers = num_workers
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        """
+        Runs CRAIG-based subset selection at the start of each training epoch.
+        The model is temporarily set to eval mode during gradient computation,
+        and Lightning ensures it is set back to train mode automatically.
+        """
+        # Temporarily set the model to evaluation mode to compute gradients
+        pl_module.model.eval()
+        # Perform subset selection using CRAIG
+        selected_subset = pl_module.select_subset_with_craig()
+        # Replace the train dataloader with the subset dataloader
+        trainer.train_dataloader = DataLoader(
+            dataset=Subset(trainer.train_dataloader.datasetq, selected_subset),
+            batch_size=self.selection_batch,
+            shuffle=True,
+            num_workers=self.num_workers,
+        )
+
+
 class StoreInfo(Callback):
     def on_fit_start(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
@@ -115,17 +167,19 @@ class StoreInfo(Callback):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        model = trainer.model.model
+        model = pl_module.model
 
-        Gi_inside = model.grad_L_x*model.grad_sigma_z
-        Gi_inside_normed_batch = [torch.linalg.norm(G) for G in Gi_inside]
-        # Gi_inside_normed = torch.stack(Gi_inside_normed_batch)
+        tr()
+        grad_z_normed = pl_module.loss_fnc.grad_L_z_normed
+        # Gi_inside = model.grad_L_x * model.grad_sigma_z[0]
+        # Gi_inside_normed_batch = [torch.linalg.norm(G) for G in Gi_inside]
+        # # Gi_inside_normed = torch.stack(Gi_inside_normed_batch)
         # Gi_inside_normed.shape
         L_rho = 5
 
-        Gi = Gi_inside_normed_batch*L_rho
-        ks = batch['image'].meta['filename_or_obj']
-        dici = {k:G.item() for k,G in zip(ks,Gi)}
+        Gi = Gi_inside_normed_batch * L_rho
+        ks = batch["image"].meta["filename_or_obj"]
+        dici = {k: G.item() for k, G in zip(ks, Gi)}
         self.dicis.append(dici)
         return super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx)
 
@@ -138,27 +192,24 @@ class StoreInfo(Callback):
 #     trainer.logger.experiment["training/epoch"] = trainer.current_epoch
 
 
-class UNetTrainer(LightningModule):
+class UNetTrainer2(LightningModule):
     def __init__(
         self,
         project,
         dataset_params,
         model_params,
         loss_params,
-        max_epochs=1000,
         lr=None,
-        sync_dist=False,
     ):
         super().__init__()
         self.lr = lr if lr else model_params["lr"]
         store_attr()
         self.save_hyperparameters("model_params", "loss_params", "lr")
         self.model = self.create_model()
-        self.grad_z_l = None
-
-    def on_fit_start(self):
         self.loss_fnc = self.create_loss_fnc()
-        super().on_fit_start()
+
+    # def on_fit_start(self):
+    #     super().on_fit_start()
 
     def _common_step(self, batch, batch_idx):
         if not hasattr(self, "batch_size"):
@@ -168,19 +219,11 @@ class UNetTrainer(LightningModule):
             inputs
         )  # self.pred so that NeptuneImageGridCallback can use it
 
-        loss = self.loss_fnc(pred, target)
-        loss_dict = self.loss_fnc.loss_dict
+        loss_dict = self.loss_fnc(pred, target)
+        # loss = loss_dict['loss_mean']
+        # loss_logging= loss_dict ['ds_tuple0']
         self.maybe_store_preds(pred)
-        return loss, loss_dict
-
-    def compute_gradient_norm(self):
-        """
-        Computes the norm of the stored gradient of the pre-activation tensor z_L.
-        """
-        if self.model.grad_L_x is not None:
-            grad_norm = torch.norm(self.model.grad_L_x, p=2, dim=1)
-            return grad_norm
-        return None
+        return loss_dict
 
     def on_after_backward(self) -> None:
         self.grad_norm = self.compute_gradient_norm()
@@ -212,17 +255,17 @@ class UNetTrainer(LightningModule):
         return pred, target
 
     def training_step(self, batch, batch_idx):
-        loss, loss_dict = self._common_step(batch, batch_idx)
+        loss_dict = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="train")
-        return loss
+        return  loss_dict
 
     def validation_step(self, batch, batch_idx):
-
-        loss, loss_dict = self._common_step(batch, batch_idx)
+        loss, loss_dict= self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="val")
-        return loss
+        return loss_dict
 
     def log_losses(self, loss_dict, prefix):
+        losses_logging = loss_dict['losses_for_logging']
         metrics = [
             "loss",
             "loss_ce",
@@ -230,16 +273,15 @@ class UNetTrainer(LightningModule):
             "loss_dice_label1",
             "loss_dice_label2",
         ]
-        metrics = [me for me in metrics if me in loss_dict.keys()]
+        metrics = [me for me in metrics if me in losses_logging.keys()]
         renamed = [prefix + "_" + nm for nm in metrics]
         logger_dict = {
-            neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
+            neo_key: losses_logging[key] for neo_key, key in zip(renamed, metrics)
         }
         self.log_dict(
             logger_dict,
             logger=True,
             batch_size=self.batch_size,
-            sync_dist=self.sync_dist,
         )
         # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
@@ -253,6 +295,7 @@ class UNetTrainer(LightningModule):
                 "scheduler": scheduler,
                 "monitor": "train_loss_dice",
                 "frequency": 2,
+                "interval":"epoch",
                 # If "monitor" references validation metrics, then "frequency" should be set to a
                 # multiple of "trainer.check_val_every_n_epoch".
             },
@@ -282,6 +325,7 @@ class UNetTrainer(LightningModule):
                 levels=num_pool,
                 deep_supervision_scales=self.deep_supervision_scales,
                 fg_classes=self.model_params["out_channels"] - 1,
+                softmax=True,
             )
             return loss_func
 
@@ -343,6 +387,185 @@ def maybe_ddp(devices):
         return "ddp"
 
 
+class UNetTrainerCraig(UNetTrainer):
+    def __init__(
+        self,
+        project,
+        dataset_params,
+        model_params,
+        loss_params,
+        lr=None,
+    ):
+        self.grad_z_l = None
+        self.capture_grads = True
+        super().__init__(
+            project,
+            dataset_params,
+            model_params,
+            loss_params,
+            lr,
+        )
+
+    # def on_validation_model_eval(self) -> None:
+        # self.model.train()
+        # return super().on_validation_model_eval()
+
+    def create_loss_fnc(self):
+        if self.model_params["arch"] == "nnUNet":
+            num_pool = 5
+            self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
+                self.dataset_params["patch_size"]
+            )
+            self.deep_supervision_scales = [[1, 1, 1]] + list(
+                list(i)
+                for i in 1
+                / np.cumprod(np.vstack(self.net_num_pool_op_kernel_sizes), axis=0)
+            )[:-1]
+            loss_func = DeepSupervisionLoss(
+                levels=num_pool,
+                deep_supervision_scales=self.deep_supervision_scales,
+                fg_classes=self.model_params["out_channels"] - 1,
+                softmax=True,
+                compute_grad=True, # i want to capture grad in the model
+
+            )
+            return loss_func
+
+        elif (
+            self.model_params["arch"] == "DynUNet"
+            or self.model_params["arch"] == "DynUNet_UB"
+        ):
+            num_pool = 4  # this is a hack i am not sure if that's the number of pools . this is just to equalize len(mask) and len(pred)
+            ds_factors = list(
+                il.accumulate(
+                    [1]
+                    + [
+                        2,
+                    ]
+                    * (num_pool - 1),
+                    operator.truediv,
+                )
+            )
+            ds = [1, 1, 1]
+            self.deep_supervision_scales = list(
+                map(
+                    lambda list1, y: [x * y for x in list1],
+                    [
+                        ds,
+                    ]
+                    * num_pool,
+                    ds_factors,
+                )
+            )
+            loss_func = DeepSupervisionLoss(
+                levels=num_pool,
+                deep_supervision_scales=self.deep_supervision_scales,
+                fg_classes=self.model_params["out_channels"] - 1,
+                compute_grad=self.capture_grads
+
+            )
+            return loss_func
+
+        else:
+            loss_func = CombinedLoss(
+                **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
+            )
+            return loss_func
+
+
+
+    def compute_gradient_norm(self):
+        """
+        Computes the norm of the stored gradient of the pre-activation tensor z_L.
+        """
+        if self.model.grad_L_x is not None:
+            grad_norm = torch.norm(self.model.grad_L_x, p=2, dim=1)
+            return grad_norm
+        return None
+
+    def calc_gradient(self, index=None):
+        """
+        This function calculates the gradients for the data points.
+        """
+        self.model.eval()  # Set the model to evaluation mode
+
+        batch_loader = DataLoader(
+            (
+                self.dataset_params
+                if index is None
+                else Subset(self.dataset_params, index)
+            ),
+            batch_size=5,
+            num_workers=5,
+        )
+
+        gradients = []
+        self.embedding_dim = self.model.get_last_layer().in_channels
+
+        for inputs, targets in batch_loader:
+            self.model_optimizer.zero_grad()  # Reset gradients
+            outputs = self.model(inputs.to(self.args.device))
+            loss = self.criterion(
+                outputs.requires_grad_(True), targets.to(self.args.device)
+            ).sum()
+            batch_num = targets.shape[0]
+
+            with torch.no_grad():
+                # Compute bias and weight gradients
+                bias_parameters_grads = torch.autograd.grad(loss, outputs)[0]
+                tr()
+                weight_parameters_grads = self.model.embedding_recorder.embedding.view(
+                    batch_num, 1, self.embedding_dim
+                ).repeat(1, self.args.num_classes, 1) * bias_parameters_grads.view(
+                    batch_num, self.args.num_classes, 1
+                ).repeat(
+                    1, 1, self.embedding_dim
+                )
+                gradients.append(
+                    torch.cat(
+                        [bias_parameters_grads, weight_parameters_grads.flatten(1)],
+                        dim=1,
+                    )
+                    .cpu()
+                    .numpy()
+                )
+
+        gradients = np.concatenate(gradients, axis=0)
+        self.model.train()  # Switch back to training mode
+        return euclidean_dist_pair_np(gradients)
+
+    def select_subset_with_craig(self):
+        """
+        Select a subset of the training data using CRAIG.
+        """
+        selected_subset = submodular_optimizer(
+            model=self.model,
+            dst_train=self.dataset_params,
+            dst_val=self.val_dataloader.dataset,
+            args=self.args,
+            greedy=self.args.greedy,
+            balance=self.args.balance,
+        )
+        return selected_subset
+
+    def create_model(self):
+        print("*" * 100)
+        print("Fixing CRAIG model temporarily. Alter code when CRAIG is implemented")
+        model = create_model_from_conf_nnUNetCraig(
+            self.model_params, self.dataset_params
+        )
+        return model
+
+def init_unet_trainer(project,config, lr):
+        N = UNetTrainerCraig(
+            project,
+            config["dataset_params"],
+            config["model_params"],
+            config["loss_params"],
+            lr=lr,
+        )
+        return N
+
 class Trainer:
     def __init__(self, project, config, run_name=None):
         store_attr()
@@ -398,7 +621,7 @@ class Trainer:
 
         else:
             self.D = self.init_dm()
-            self.N = self.init_trainer(epochs)
+            self.N = self.init_unet_trainer(epochs)
 
     def set_lr(self, lr):
         if lr and not self.ckpt:
@@ -509,7 +732,7 @@ class Trainer:
     def init_dm(self):
         cache_rate = self.config["dataset_params"]["cache_rate"]
         ds_type = self.config["dataset_params"]["ds_type"]
-        DMClass = self.resolve_datamanager(self.config["plan"]["mode"])
+        DMClass = resolve_datamanager(self.config["plan"]["mode"])
         D = DMClass(
             self.project,
             dataset_params=self.config["dataset_params"],
@@ -523,21 +746,19 @@ class Trainer:
 
         return D
 
-    def init_trainer(self, epochs):
-        N = UNetTrainer(
+    def init_unet_trainer(self, epochs):
+        N = UNetTrainerCraig(
             self.project,
             self.config["dataset_params"],
             self.config["model_params"],
             self.config["loss_params"],
             lr=self.lr,
-            max_epochs=epochs,
-            sync_dist=self.sync_dist,
         )
         return N
 
     def load_trainer(self, **kwargs):
         try:
-            N = UNetTrainer.load_from_checkpoint(
+            N = UNetTrainerCraig.load_from_checkpoint(
                 self.ckpt,
                 project=self.project,
                 dataset_params=self.config["dataset_params"],
@@ -567,7 +788,7 @@ class Trainer:
         return N
 
     def load_dm(self):
-        DMClass = self.resolve_datamanager(
+        DMClass = resolve_datamanager(
             self.state_dict["datamodule_hyper_parameters"]["config"]["plan"]["mode"]
         )
         D = DMClass.load_from_checkpoint(self.ckpt, project=self.project)
@@ -609,8 +830,10 @@ class Trainer:
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     # from fran.utils.common import *
+
+    import torch
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -634,13 +857,13 @@ if __name__ == "__main__":
 
     # conf['dataset_params']['plan']=5
 # %%
-    device_id = 0
+    device_id = 1
     # run_name = "LITS-1007"
     # device_id = 0
     run_totalseg = "LITS-1025"
     run_litsmc = "LITS-1018"
     run_name = None
-    bs = 10  # 5 is good if LBD with 2 samples per case
+    bs = 2  # 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
     profiler = False
@@ -648,11 +871,11 @@ if __name__ == "__main__":
     batch_finder = False
     neptune = False
     tags = []
-    cbs=[]
     cbs = [StoreInfo()]
+    cbs = []
     description = f""
 # %%
-# SECTION:-------------------- IMPORTANCE SAMPLING-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- IMPORTANCE SAMPLING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
 # %%
     Tm = Trainer(proj, conf, run_name)
@@ -669,20 +892,23 @@ if __name__ == "__main__":
         description=description,
     )
 # %%
-    # Tm.D.batch_size=8
+    # Tm.D.setup()
+
     Tm.N.compiled = compiled
-# %%
     Tm.fit()
 
     # model(inputs)
 # %%
+
+# %%
     Tm.trainer.callbacks[0].dicis
 
     import pandas as pd
+
     df = pd.DataFrame(Tm.trainer.callbacks[0].dicis)
     df.to_csv("df.csv")
 # %%
-    
+
     patch_size = [128, 96, 96]
     summ = summary(
         Tm.N,
@@ -719,7 +945,7 @@ if __name__ == "__main__":
     #
 # %%
 # %%
-# SECTION:-------------------- HOOKS-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- HOOKS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
 # %%
     def c_hook(grad):
@@ -749,7 +975,7 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- Backward hooks-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- Backward hooks-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     def c_hook(module, inp, outp):
         print("=" * 50)
@@ -832,7 +1058,7 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm.D.setup()
     D = Tm.D
@@ -1029,7 +1255,7 @@ if __name__ == "__main__":
             print(casei[a]["image"].shape)
 # %%
     for i, b in enumerate(dl):
-        print("\----------------------------")
+        print("----------------------------")
         print(b["image"].shape)
         print(b["label"].shape)
 # %%
@@ -1076,7 +1302,6 @@ if __name__ == "__main__":
     model = trainer.model.model
     model.grad_L_x.shape
     model.grad_sigma_z.shape
-
 
 # %%
 

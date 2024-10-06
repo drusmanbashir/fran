@@ -11,7 +11,7 @@ from monai.apps.detection.transforms.array import ConvertBoxMode
 from monai.data.meta_tensor import MetaTensor
 import torch
 from label_analysis.helpers import listify, relabel
-from label_analysis.merge import merge_pt
+# from label_analysis.merge import merge_pt
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
 from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
@@ -34,6 +34,22 @@ import fran.transforms.spatialtransforms as spatial
 #     def func(self,data):
 #
 
+
+def merge_pt(lm_base_arr, lm_arrs:Union[sitk.Image,list],labels_lol:list =None):
+
+    #labels_lol:i.e.., list of lists. One set of labels per lm. If not provided, all labels in each lm are used. This is necessary as a uniform template. Some lm may not have full compliment of labels. note lm_base labels are not required
+    # those earlier in order get overwritten by those later. So lesions should be last
+    if not isinstance(lm_arrs,Union[tuple,list]): lm_arrs = [lm_arrs]
+    def _inner(lm2_ar,labels):
+        for label in labels:
+            lm_base_arr[lm2_ar==label]=label
+        return lm_base_arr
+
+    if labels_lol is None:
+        labels_lol  = [lm.unique()[1:] for lm in lm_arrs]
+
+    lm_final = [_inner(lm_arr,labels) for lm_arr,labels in zip (lm_arrs,labels_lol)][0]
+    return lm_final
 
 class BoundingBoxYOLOd(MonaiDictTransform):
     """

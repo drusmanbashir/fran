@@ -189,7 +189,7 @@ class ImageMaskViewer(object):
     def update_fig_fast(self,val):
         for i, img in enumerate(self.npa_list):
             img_slice = img[val,:,:]
-            self.ax_imgs[i].set_autoreloadray(img_slice)
+            self.ax_imgs[i].set_array(img_slice)
 
 # %%
 class ImageMaskViewer_J():
@@ -303,13 +303,20 @@ def get_window_level_numpy_array(
 ):
     # to the original images. If they are deleted outside the view would become
     # invalid, so we use a copy wich guarentees that the gui is consistent.
-    if isinstance(image_list[0] ,np.ndarray):  # if images are already np_array..
-        npa_list = image_list
-    elif isinstance(image_list[0] ,torch.Tensor):  # if images are already np_array..type(image_list[0]) == torch.Tensor:
-        npa_list = [image_list[0].numpy(), image_list[1].numpy()]
+    npa_list=[]
+    for img in image_list:
+        if isinstance(img ,np.ndarray):  # if images are already np_array..
+            npa_list.append(img)
+        elif isinstance(img ,torch.Tensor):  # if images are already np_array..type(image_list[0]) == torch.Tensor:
+            if img.device.type=='cuda':
+                img = img.cpu().detach().numpy()
+            else:
+                img = img.numpy()
+            npa_list.append(img)
+        else:
+            img = sitk.GetImageFromArray(img)
+            npa_list.append(img)
 
-    else:
-        npa_list = list(map(sitk.GetArrayFromImage, image_list))
 
     wl_range = []
     wl_init = []

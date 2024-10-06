@@ -115,12 +115,12 @@ class UNetTrainer(LightningModule):
         store_attr()
         self.save_hyperparameters("model_params", "loss_params", "lr")
         self.model = self.create_model()
-
-    def on_fit_start(self):
         self.loss_fnc = self.create_loss_fnc()
-        super().on_fit_start()
 
-    def _common_step(self, batch, batch_idx):
+    # def on_fit_start(self):
+    #     super().on_fit_start()
+
+    def _common_step(self, batch, batch_idx,prefix:str):
         if not hasattr(self, "batch_size"):
             self.batch_size = batch["image"].shape[0]
         inputs, target = batch["image"], batch["lm"]
@@ -128,19 +128,12 @@ class UNetTrainer(LightningModule):
             inputs
         )  # self.pred so that NeptuneImageGridCallback can use it
 
-        # tr()
-        # pred, target = self.maybe_apply_ds_scales(pred, target)
-        # [print(a.shape) for a in pred]
-        # print(target.shape)
-        # if torch.isnan(inputs).any() or torch.isnan(target).any():
-        #     print("NaN detected in input or target!")
-        # if torch.isinf(inputs).any() or torch.isinf(target).any():
-            # print("inf detected in input or target!")
-
-        loss = self.loss_fnc(pred, target)
-        loss_dict = self.loss_fnc.loss_dict
+        loss_dict = self.loss_fnc(pred, target)
+        self.log_losses(loss_dict['losses_for_logging'], prefix=prefix)
         self.maybe_store_preds(pred)
-        return loss, loss_dict
+        # loss = loss_dict['loss']
+        return loss_dict
+
 
     def maybe_store_preds(self, pred):
         if hasattr(self.trainer, "store_preds") and self.trainer.store_preds == True:
@@ -167,19 +160,10 @@ class UNetTrainer(LightningModule):
         return pred, target
 
     def training_step(self, batch, batch_idx):
-        loss, loss_dict = self._common_step(batch, batch_idx)
-        self.log_losses(loss_dict, prefix="train")
-        return loss
+        return self._common_step(batch, batch_idx,"train")
 
     def validation_step(self, batch, batch_idx):
-        # print(batch['lm'].unique())
-        # batch['lm'].meta
-        # print(batch_idx)
-        # if batch_idx>6:
-        #     tr()
-        loss, loss_dict = self._common_step(batch, batch_idx)
-        self.log_losses(loss_dict, prefix="val")
-        return loss
+        return self._common_step(batch, batch_idx,"val")
 
     def log_losses(self, loss_dict, prefix):
         metrics = [
@@ -189,6 +173,7 @@ class UNetTrainer(LightningModule):
             "loss_dice_label1",
             "loss_dice_label2",
         ]
+        assert "loss_dice" in loss_dict.keys(), "loss_dice not in loss_dict. This is essential for monitoring."
         metrics = [me for me in metrics if me in loss_dict.keys()]
         renamed = [prefix + "_" + nm for nm in metrics]
         logger_dict = {
@@ -212,6 +197,8 @@ class UNetTrainer(LightningModule):
                 "scheduler": scheduler,
                 "monitor": "train_loss_dice",
                 "frequency": 2,
+                "interval":'epoch',
+                "strict":True,
                 # If "monitor" references validation metrics, then "frequency" should be set to a
                 # multiple of "trainer.check_val_every_n_epoch".
             },
@@ -335,7 +322,7 @@ class Trainer:
             callbacks=cbs,
             accelerator="gpu",
             devices=devices,
-            precision="bf16-mixed",
+            precision="16-true",
             profiler=profiler,
             logger=logger,
             max_epochs=epochs,
@@ -597,9 +584,9 @@ if __name__ == "__main__":
     # run_name = "LITS-1007"
     # device_id = 0
     device_id = 1
-    run_name = None
     run_totalseg='LITS-1025'
     run_litsmc= 'LITS-1018'
+    run_name = None
     bs = 10# 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
@@ -662,8 +649,10 @@ if __name__ == "__main__":
 
 
     dl = Tm.D.train_dataloader()
-    # iteri = iter(dl)
-    # batch = next(iteri)
+    iteri = iter(dl)
+    batch = next(iteri)
+    batch['image'].meta['filename_or_obj']
+
 # %%
     dl2 = Tm.D.val_dataloader()
     iteri2 = iter(dl)
@@ -853,7 +842,7 @@ if __name__ == "__main__":
             print(casei[a]["image"].shape)
 # %%
     for i, b in enumerate(dl):
-        print("\----------------------------")
+        print("----------------------------")
         print(b["image"].shape)
         print(b["label"].shape)
 # %%

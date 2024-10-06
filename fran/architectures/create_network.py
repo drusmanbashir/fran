@@ -17,6 +17,7 @@ from fran.architectures.unet3d.model import UNet3D
 tr = ipdb.set_trace
 
 
+from fran.extra.deepcore.deepcore.nets.nets_utils.recorder import EmbeddingRecorder
 from fran.utils.config_parsers import make_patch_size
 
 
@@ -61,6 +62,36 @@ def get_batch_size(
 
 
 class Generic_UNet_PL(Generic_UNet, LightningModule):
+    def forward(self, x):
+        skips = []
+        x_l = []
+        for d in range(len(self.conv_blocks_context) - 1):
+            x = self.conv_blocks_context[d](x)
+            skips.append(x)
+            if not self.convolutional_pooling:
+                x = self.td[d](x)
+        x = self.conv_blocks_context[-1](x)
+
+        for u in range(len(self.tu)):
+            x = self.tu[u](x)
+            x = torch.cat((x, skips[-(u + 1)]), dim=1)
+            x = self.conv_blocks_localization[u](x)
+
+            z_l = self.seg_outputs[u](x)
+            x_l.append(self.final_nonlin(z_l))
+        if self._deep_supervision and self.do_ds:
+            return tuple(
+                [x_l[-1]]
+                + [
+                    i(j)
+                    for i, j in zip(list(self.upscale_logits_ops)[::-1], x_l[:-1][::-1])
+                ]
+            )
+        else:
+            return x_l[-1]
+
+
+class nnUNetCraig(Generic_UNet_PL):
     def __init__(
         self,
         input_channels,
@@ -88,9 +119,9 @@ class Generic_UNet_PL(Generic_UNet, LightningModule):
         max_num_features=None,
         basic_block=...,
         seg_output_use_bias=False,
-        register_hook=True,
+        capture_grads=True,
+        record_embedding=True,
     ):
-        super(LightningModule, self).__init__()
         super().__init__(
             input_channels,
             base_num_features,
@@ -118,13 +149,17 @@ class Generic_UNet_PL(Generic_UNet, LightningModule):
             basic_block,
             seg_output_use_bias,
         )
-        self.grad_L_x = None
-        self.register_hook = register_hook
+        # self.grad_L_x = None
+        self.capture_grads = capture_grads
         self.final_final_nonlin = final_nonlin
-        if self.register_hook == True:
-            final_conv = self.seg_outputs[-1] # this is convblock
+        self.embedding_recorder = EmbeddingRecorder(record_embedding)
+        if self.capture_grads == True:
+            final_conv = self.seg_outputs[-1]  # this is convblock
             final_conv.register_full_backward_hook(self.capture_grad_L_x)
-            # self.final_final_nonlin.register_forward_hook(self.capture_grad_sigma)
+            # self.final_final_nonlin.register_full_backward_hook(self.capture_grad_sigma)
+
+    def get_last_layer(self):
+        return self.tu[0]
 
     def capture_grad_L_x(self, module, grad_input, grad_output):
         self.grad_L_x = grad_output[0]
@@ -137,9 +172,21 @@ class Generic_UNet_PL(Generic_UNet, LightningModule):
         self.grad_sigma_z = x_l.grad
 
 
+    def contract(self, level:int,x:torch.Tensor,skip:torch.Tensor,capture_grad=False):
+            x = self.tu[level](x)
+            # skip = skips[-(u + 1)]
+            x = torch.cat((x, skip), dim=1)
+            x = self.conv_blocks_localization[level](x)
+
+            # x = self.tu[level](x)
+            # x = torch.cat((x, skip), dim=1)
+            # x = self.conv_blocks_localization[level](x)
+
+            return x
+
     def forward(self, x):
         skips = []
-        x_l = []
+        x_ls = []
         for d in range(len(self.conv_blocks_context) - 1):
             x = self.conv_blocks_context[d](x)
             skips.append(x)
@@ -147,28 +194,28 @@ class Generic_UNet_PL(Generic_UNet, LightningModule):
                 x = self.td[d](x)
 
         x = self.conv_blocks_context[-1](x)
+        x = self.embedding_recorder(x)
 
-        for u in range(len(self.tu)):
-            x = self.tu[u](x)
-            x = torch.cat((x, skips[-(u + 1)]), dim=1)
-            x = self.conv_blocks_localization[u](x)
-
-            z_l = self.seg_outputs[u](x)
-            x_l.append(self.final_nonlin(z_l))
-            if u==len(self.tu)-1 and z_l.requires_grad==True: # requires_grad is False during inference or validation
-                self.compute_grad_sigma_z(self.final_nonlin, z_l)
+        for uplevel in range(n_levels:=(len(self.tu))):
+            if self.capture_grads==True and uplevel==(n_levels-1):
+                capture_grad=True
+            else:
+                capture_grad=False
+            skip=skips[-(uplevel+1)]
+            x= self.contract(uplevel,x,skip,capture_grad)
+            z_l = self.seg_outputs[uplevel](x)
+            x_l = self.final_nonlin(z_l)
+            x_ls.append(x_l)
         if self._deep_supervision and self.do_ds:
             return tuple(
-                [x_l[-1]]
+                [x_ls[-1]]
                 + [
                     i(j)
-                    for i, j in zip(
-                        list(self.upscale_logits_ops)[::-1], x_l[:-1][::-1]
-                    )
+                    for i, j in zip(list(self.upscale_logits_ops)[::-1], x_ls[:-1][::-1])
                 ]
             )
         else:
-            return x_l[-1]
+            return x_ls[-1]
 
 
 def create_model_from_conf(
@@ -186,8 +233,12 @@ def create_model_from_conf(
         model = create_model_from_conf_unet(model_params, dataset_params)
     elif arch == "nnUNet":
         model = create_model_from_conf_nnUNet(
-            model_params, dataset_params, deep_supervision
+            model_params,  deep_supervision
         )
+
+    elif arch== "nnUNetCraig":
+        model = create_model_from_conf_nnUNetCraig(
+            model_params,  deep_supervision)
     elif arch == "SwinUNETR":
         model = create_model_from_conf_swinunetr(
             model_params, dataset_params, deep_supervision
@@ -250,7 +301,7 @@ def pool_op_kernels_nnunet(patch_size):
     return pool_op_kernel_sizes
 
 
-def create_model_from_conf_nnUNet(model_params, dataset_params, deep_supervision):
+def create_model_from_conf_nnUNet(model_params,  deep_supervision):
     # pool_op_kernel_sizes = pool_op_kernels_nnunet(dataset_params['patch_size'])
     pool_op_kernel_sizes = None
     in_channels, out_channels = (
@@ -295,6 +346,54 @@ def create_model_from_conf_nnUNet(model_params, dataset_params, deep_supervision
         max_num_features=None,
         basic_block=ConvDropoutNormNonlin,
         seg_output_use_bias=False,
+    )
+    return model
+
+def create_model_from_conf_nnUNetCraig(model_params,  deep_supervision):
+    pool_op_kernel_sizes = None
+    in_channels, out_channels = (
+        model_params["in_channels"],
+        model_params["out_channels"],
+    )
+
+    model = nnUNetCraig(
+        in_channels,
+        base_num_features=32,
+        num_classes=out_channels,
+        num_pool=5,
+        num_conv_per_stage=2,
+        feat_map_mul_on_downscale=2,
+        conv_op=nn.Conv3d,
+        norm_op=nn.InstanceNorm3d,
+        norm_op_kwargs={"eps": 1e-5, "affine": True},
+        dropout_op=nn.Dropout3d,
+        dropout_op_kwargs={"p": 0, "inplace": True},
+        nonlin=nn.LeakyReLU,
+        nonlin_kwargs={"negative_slope": 0.01, "inplace": True},
+        deep_supervision=deep_supervision,
+        dropout_in_localization=False,
+        final_nonlin=lambda x: x,
+        weightInitializer=InitWeights_He(1e-2),
+        pool_op_kernel_sizes=(
+            [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]]
+            if pool_op_kernel_sizes is None
+            else pool_op_kernel_sizes
+        ),
+        conv_kernel_sizes=[
+            [3, 3, 3],
+            [3, 3, 3],
+            [3, 3, 3],
+            [3, 3, 3],
+            [3, 3, 3],
+            [3, 3, 3],
+        ],
+        upscale_logits=False,
+        convolutional_pooling=True,
+        convolutional_upsampling=True,
+        max_num_features=None,
+        basic_block=ConvDropoutNormNonlin,
+        seg_output_use_bias=False,
+        record_embedding=True
     )
     return model
 
@@ -384,14 +483,15 @@ if __name__ == "__main__":
     pool_op_kernel_sizes = [[2, 2, 1], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     pool_op_kernel_sizes = [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     # net = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
-    net2 = create_model_from_conf_nnUNet(model_params, dataset_params, deep_supervision)
-    x = x.to("cuda")
+    net2 = create_model_from_conf_nnUNetCraig(model_params,  deep_supervision)
     net2.to("cuda")
-    out = net2(x)
 # %%
     x = torch.rand(1, 1, 128, 128, 96)
     x = x.to("cuda")
     print(x.shape)
+    y= net2(x)
+# %%
+#SECTION:-------------------- DOwnsampling--------------------------------------------------------------------------------------
 
     skips = []
     seg_outputs = []
@@ -407,15 +507,16 @@ if __name__ == "__main__":
 
     x = net2.conv_blocks_context[-1](x)
     print(x.shape)
-
     net2.conv_blocks_context.parameters()
 # %%
-    for u in range(len(net2.tu)):
+    for u in range(len(net2.tu)-1):
         x = net2.tu[u](x)
+        if u == 1:
+            tr()
         print(x.shape)
-        y = skips[-(u + 1)]
-        print(y.shape)
-        x = torch.cat((x, y), dim=1)
+        skip = skips[-(u + 1)]
+        print(skip.shape)
+        x = torch.cat((x, skip), dim=1)
         print(x.shape)
         x = net2.conv_blocks_localization[u](x)
         print(x.shape)
@@ -425,6 +526,25 @@ if __name__ == "__main__":
         print(z.shape)
         print("==" * 20)
         seg_outputs.append(z)
+
+# %%
+    u=-1
+    x = net2.tu[u](x)
+    print(x.shape)
+    skip = skips[-(u + 1)]
+    print(skip.shape)
+    x = torch.cat((x, skip), dim=1)
+    print(x.shape)
+    x = net2.conv_blocks_localization[u](x)
+    print(x.shape)
+
+    print("--" * 20)
+    x_out = net2.final_nonlin(net2.seg_outputs[u](x))
+    grad_sigma_z = torch.autograd.grad(x_out,x,grad_outputs = torch.ones_like(x_out))
+    print(x_out.shape)
+    print("==" * 20)
+    seg_outputs.append(x_out)
+
 
 # %%
     outs = tuple(
@@ -440,7 +560,7 @@ if __name__ == "__main__":
         print("**" * 20)
 # %%
 # %%
-# SECTION:-------------------- Model parts-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- Model parts-------------------------------------------------------------------------------------- <CR> <CR>
     # NOTE: TD
 
     cc = net2.td.children()
