@@ -910,7 +910,6 @@ if __name__ == "__main__":
             return output_tumour.sum()
 
 # %%
-# %%
 
     iteri = iter(val_dl)
     batch = next(iteri)
