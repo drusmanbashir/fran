@@ -119,9 +119,9 @@ class DataManager(LightningDataModule):
 
     def set_effective_batch_size(self):
         if "samples_per_file" in self.plan:
-            self.effective_batch_size = int(
+            self.effective_batch_size = int(np.maximum(1, 
                 self.batch_size / self.plan["samples_per_file"]
-            )
+            ))
             print(
                 "Given {0} Samples per file and {1} batch_size on the GPU, effective batch size (number of file tensors loaded then sampled for for training is:\n {2} ".format(
                     self.plan["samples_per_file"],

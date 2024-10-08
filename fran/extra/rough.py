@@ -40,7 +40,7 @@ import shutil, os
 import h5py
 import torch
 from torch.utils.tensorboard.writer import SummaryWriter
-from fran.utils.fileio import is_sitk_file, load_dict
+from fran.utils.fileio import filter_files_by_creation_date, is_sitk_file, load_dict
 from fran.utils.helpers import find_matching_fn
 import ipdb
 tr = ipdb.set_trace
@@ -56,9 +56,14 @@ import numpy as np
 
 # %%
 if __name__ == "__main__":
+# %%
+#SECTION:-------------------- MAT MUL--------------------------------------------------------------------------------------
+
+# %%
+#SECTION:-------------------- --------------------------------------------------------------------------------------
+
+
     fldr = Path("/s/xnat_shadow/tcianode/lms/")
-
-
     lm_fn = Path("/s/xnat_shadow/crc/lms/crc_CRC278_20141029_Abdomen3p0I30f3.nrrd")
     lm = sitk.ReadImage(str(lm_fn))
     get_labels(lm)
@@ -66,12 +71,12 @@ if __name__ == "__main__":
     sitk.WriteImage(lm,lm_fn)
     img_fn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_liver_only/images/drli_001ub.pt")
 
-    im_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/images/totalseg_s0994.pt")
+    im_grad_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/images/totalseg_s0994.pt")
     lm_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0726.pt")
     lm_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0928.pt")
     lm_fn = Path('/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0928.pt')
     lm_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_300_300_300/lms/totalseg_s0928.pt")
-    im_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150/images/totalseg_s0928.pt")
+    im_grad_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150/images/totalseg_s0928.pt")
     lm = torch.load(lm_fn)
     lm[lm==115]=0
     lm.unique()
@@ -81,25 +86,78 @@ if __name__ == "__main__":
     lm[lm==118]=117
     torch.save(lm, lm_fn)
 # %%
-    im_fn = "/s/fran_storage/grads/neo/litq_60_20190729_0_0.pt"
-    im2_fn = "/s/fran_storage/grads/neo/litq_60_20190729_grad_0_0.pt"
+    # fldr = Path("/s/fran_storage/grads/LITS-1018")
+    fldr = Path("/s/fran_storage/grads/neo")
+    im_fn = "/s/fran_storage/grads/LITS-1018/lits_15ub_5_0.pt"
+    im_grad_fn = "/s/fran_storage/grads/LITS-1018/lits_15ub_grad_5_0.pt"
 # %%
-    im_fn = "/s/fran_storage/grads/LITS-1018/litq_60_20190729_0_0.pt"
-    im2_fn = "/s/fran_storage/grads/LITS-1018/litq_60_20190729_grad_0_0.pt"
+    # im_fn = "/s/fran_storage/grads/LITS-1018/litq_60_20190729_0_0.pt"
+    # im2_fn = "/s/fran_storage/grads/LITS-1018/litq_60_20190729_grad_0_0.pt"
+    import torch
+    import pandas as pd
+
+    def calculate_tensor_statistics(file_list):
+        """Calculates min, max, and mean for tensors from a list of filenames.
+
+        Args:
+            file_list (list of str): List of file paths to tensors saved using torch.
+
+        Returns:
+            pd.DataFrame: DataFrame containing min, max, and mean for each tensor.
+        """
+        # List to hold the statistics for each tensor
+        stats_list = []
+
+        for file in file_list:
+            # Load the tensor
+            tensor = torch.load(file)
+
+            # Compute statistics
+            tensor_min = torch.min(tensor).item()
+            tensor_max = torch.max(tensor).item()
+            tensor_mean = torch.mean(tensor).item()
+
+            # Append the results as a dictionary
+            stats_list.append({
+                'filename': file,
+                'min': tensor_min,
+                'max': tensor_max,
+                'mean': tensor_mean
+            })
+
+        # Create a dataframe from the list of dictionaries
+        df = pd.DataFrame(stats_list)
+
+        return df
+
+# Example usage
+
+# Calculate the statistics and store them in a DataFrame
+    im_fns = filter_files_by_creation_date(fldr,"*pt", "081024")
+    file_list = [fn for fn in im_fns if 'grad' in fn.name]
+    df_statistics = calculate_tensor_statistics(file_list)
+
+
 # %%
+    im_grad = im_fns[0]
+
+    grad_means = []
+
+    case_id = info_from_filename(im_grad.name,full_caseid=True)['case_id']
+    im_fn = [fn for fn in im_fns if case_id in fn.name and 'grad' not in fn.name][1]
     im = torch.load(im_fn)
     im = im[0]
-    im2 = torch.load(im2_fn)
-    ind =2
-    im23=  im2[ind,ind,:]
-    mn = im23.mean()
-    print(mn)
+    im_grad= im_grad/im_grad.mean()
+    im_grad.shape
+
+
+    
 # %%
-    im23 = im23/mn
 
     # im3 = torch.linalg.norm(im2,dim= (0,1))
     # im3_cen = im3/im3.mean()
-    ImageMaskViewer([im,im23],'ii')
+    ind = 1
+    ImageMaskViewer([im,im_grad[ind,0]],'ii',sync=True)
 # %%
 
     lm[lm!=115]=0
@@ -588,11 +646,11 @@ for bbox in bboxes:
 
     fn = "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150/images/nodesthick_110_20190508_CAP1p5_thick.pt"
     fn2 = "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150/lms/nodesthick_110_20190508_CAP1p5_thick.pt"
-    im = torch.load(fn)
-    im2= torch.load(fn2)
+    im_grad = torch.load(fn)
+    im= torch.load(fn2)
+    im_grad = torch.permute(im_grad,[2,1,0])
     im = torch.permute(im,[2,1,0])
-    im2 = torch.permute(im2,[2,1,0])
-    ImageMaskViewer([im,im2],dtypes=['image','mask'])
+    ImageMaskViewer([im_grad,im],dtypes=['image','mask'])
 
 
     def add_dataset_params_key(fn,key,val):
@@ -698,16 +756,16 @@ for bbox in bboxes:
     ind = 1
 
     pred = torch.load("pred_prefix.pt")
-    plt.imshow(im[ind,0])
+    plt.imshow(im_grad[ind,0])
     plt.imshow(pred[ind,0])
-    im= torch.load("image.pt")
-    im = im.cpu()
+    im_grad= torch.load("image.pt")
+    im_grad = im_grad.cpu()
     pred = torch.load("pred.pt")
     pred =pred[0].float()
     pred = pred.cpu()
     ind = 2
     pred = F.softmax(pred,dim=1)
-    ImageMaskViewer([im[ind,0],pred[ind,1]])
+    ImageMaskViewer([im_grad[ind,0],pred[ind,1]])
 # %%
 # %%
 

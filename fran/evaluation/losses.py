@@ -158,9 +158,7 @@ class _DiceCELossMultiOutput(DiceCELoss):
                 total_loss, input_activated, retain_graph=True
             )[0]
             grad_L_sigma = grad_L_sigma.unsqueeze(2)
-            grad_L_z = grad_L_sigma * grad_sigma_z
-            bs = grad_L_z.shape[0]
-            grad_L_z_flat = grad_L_z.view(bs, -1)
+            grad_L_z = torch.einsum('ijk..., ijl...->ilk...', grad_L_sigma,grad_sigma_z)
             # grad_L_z_normed = torch.linalg.norm(grad_L_z_flat, dim=1)
             # self.grad_prod = self.grad_L_x * self.model.grad_sigma_z[0]
 
@@ -168,7 +166,6 @@ class _DiceCELossMultiOutput(DiceCELoss):
                 "grad_L_z": grad_L_z,
             }
             dici_out.update(dici_grad)
-
         return dici_out
 
 

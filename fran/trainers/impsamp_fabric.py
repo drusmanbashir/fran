@@ -1,5 +1,4 @@
 # %%
-
 from pytorch_grad_cam import (
     GradCAM,
     HiResCAM,
@@ -55,7 +54,7 @@ def init_unet_trainer(project, config, lr):
         lr=lr,
     )
     return N
-
+ 
 
 def load_unet_trainer(ckpt, project, config, lr, **kwargs):
     try:
@@ -129,15 +128,13 @@ class StoreInfo:
 
     def _common(self, outputs, batch):
         grad_L_z = outputs["grad_L_z"]
-        grad_L_z_flat = grad_L_z.view(grad_L_z.shape[0], -1)
         # Gi_inside = model.grad_L_x * model.grad_sigma_z[0]
         # Gi_inside_normed_batch = [torch.linalg.norm(G) for G in Gi_inside]
         # # Gi_inside_normed = torch.stack(Gi_inside_normed_batch)
         # Gi_inside_normed.shape
         # L_rho = 5
-
-        # Gi = Gi_inside_normed_batch * L_rho
         ks = batch["image"].meta["filename_or_obj"]
+        # Gi = Gi_inside_normed_batch * L_rho
         if isinstance(ks, str):
             bs = 1
         else:
@@ -145,11 +142,10 @@ class StoreInfo:
         if self.output_fldr is not None:
             batch["grad"] = grad_L_z
             self._save_tensors(batch)
-        grad_L_z_batched = grad_L_z.view(bs, -1)
+        grad_L_z_batched = grad_L_z.reshape(bs, -1)
         grad_L_z_normed = torch.linalg.norm(grad_L_z_batched, dim=1)
         grads_listed = grad_L_z_normed.tolist()
         fns = batch["image"].meta["filename_or_obj"]
-
         dici = {"grad_norm": grads_listed, "fns": fns}
         df = pd.DataFrame(dici)
         return df
@@ -855,10 +851,13 @@ if __name__ == "__main__":
     run_totalseg = "LITS-1025"
     run_litsmc = "LITS-1018"
     run_empty = None
-    run_name = run_litsmc
+    run_name = run_empty
     bs = 1  # 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
-    ckpt = checkpoint_from_model_id(run_name, sort_method="last")
+    if run_name is not None:
+        ckpt = checkpoint_from_model_id(run_name, sort_method="last")
+    else:
+        ckpt = None
     cbs = []
     cbs = [StoreInfo(run_name="neo" if run_name is None else run_name, freq=5)]
     compiled = False
@@ -873,32 +872,35 @@ if __name__ == "__main__":
 # SECTION:-------------------- Dataloaders-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     DMClass = resolve_datamanager(config["plan"]["mode"])
-    D = DMClass.load_from_checkpoint(ckpt, project=proj)
-    # D = DMClass(
-    #     proj,
-    #     dataset_params=config["dataset_params"],
-    #     config=config,
-    #     transform_factors=config["transform_factors"],
-    #     affine3d=config["affine3d"],
-    #     batch_size=config["dataset_params"]["batch_size"],
-    #     cache_rate=0,
-    #     ds_type=config["dataset_params"]["ds_type"],
-    # )
+    if ckpt:
+        D = DMClass.load_from_checkpoint(ckpt, project=proj)
+        N = load_unet_trainer(ckpt=ckpt, project=proj, config=config, lr=1e-2)
+    else:
+        D = DMClass(
+            proj,
+            dataset_params=config["dataset_params"],
+            config=config,
+            transform_factors=config["transform_factors"],
+            affine3d=config["affine3d"],
+            batch_size=config["dataset_params"]["batch_size"],
+            cache_rate=0,
+            ds_type=config["dataset_params"]["ds_type"],
+        )
+        N = init_unet_trainer(proj, config, lr=config["model_params"]["lr"])
 # %%
     D.prepare_data()
     D.setup()
     train_dl = D.train_dataloader()
     val_dl = D.val_dataloader()
 
-    # N = init_unet_trainer(proj, config, lr=config["model_params"]["lr"])
-    N = load_unet_trainer(ckpt=ckpt, project=proj, config=config, lr=1e-2)
     N.lr = 1e-2
+    devices=[1]
 # %%
 
 # SECTION:-------------------- Train-------------------------------------------------------------------------------------- <CR>
-    Tm = Trainer(callbacks=cbs, precision="16-true", should_train=False)
+    Tm = Trainer(callbacks=cbs, precision="16-true", should_train=False,devices = devices)
 # %%
-    # Tm.fit(model=N, train_loader=train_dl, val_loader=val_dl)
+    Tm.fit(model=N, train_loader=train_dl, val_loader=val_dl)
 # SECTION:-------------------- GRADCAM-------------------------------------------------------------------------------------- <CR>
 
 # %%
@@ -971,5 +973,12 @@ if __name__ == "__main__":
 
         Tm._format_iterable(iterable, Tm._current_val_return, "val")
 # %%
+    A = np.array([[1, 2, 3]])  # 1x3 matrix
+    B = np.array([[4, 5, 6],   # 3x3 matrix
+                  [7, 8, 9],
+                  [10, 11, 12]])
 
+# Performing the matrix multiplication
+    A*B
+    result = np.matmul(A, B)
 # %%
