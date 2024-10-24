@@ -1,8 +1,6 @@
 # %%
 import sqlite3
-from batchgenerators.utilities.file_and_folder_operations import List
 from fastcore.basics import listify
-from fastcore.script import tuplify
 import ipdb
 from fastcore.basics import GetAttr
 from monai.utils.enums import StrEnum
@@ -33,7 +31,6 @@ from fran.utils.fileio import *
 if "XNAT_CONFIG_PATH" in os.environ:
     from xnat.object_oriented import *
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
-COMMON_PATHS = load_yaml(common_vars_filename)
 from contextlib import contextmanager
 
 
@@ -241,21 +238,22 @@ class Project(DictToAttr):
         return ds
 
     def set_folder_file_names(self):
-        rapid_access_folder = Path(COMMON_PATHS["rapid_access_folder"])/self.project_title
-        self.project_folder = Path(COMMON_PATHS["projects_folder"]) / self.project_title
+        common_paths = load_yaml(common_vars_filename)
+        rapid_access_folder = Path(common_paths["rapid_access_folder"])/self.project_title
+        self.project_folder = Path(common_paths["projects_folder"]) / self.project_title
         self.cold_datasets_folder = (
-            Path(COMMON_PATHS["cold_storage_folder"]) / "datasets"
+            Path(common_paths["cold_storage_folder"]) / "datasets"
         )
         self.fixed_spacing_folder = self.cold_datasets_folder/("preprocessed/fixed_spacing")/self.project_title
         self.fixed_size_folder = self.cold_datasets_folder/("preprocessed/fixed_size")/self.project_title
-        self.predictions_folder = Path(COMMON_PATHS["cold_storage_folder"]) / (
+        self.predictions_folder = Path(common_paths["cold_storage_folder"]) / (
             "predictions/" + self.project_title
         )
         self.raw_data_folder = self.cold_datasets_folder / (
             "raw_data/" + self.project_title
         )
         self.checkpoints_parent_folder = (
-            Path(COMMON_PATHS["checkpoints_parent_folder"]) / self.project_title
+            Path(common_paths["checkpoints_parent_folder"]) / self.project_title
         )
         self.configuration_filename = self.project_folder / ("experiment_configs.xlsx")
 
@@ -348,116 +346,22 @@ class Project(DictToAttr):
 
 
     #NOTE: Later functions patch repeated case ids (e.g., LBGgenerator) so that there is 49,49a, 49b also lm_fnames have substrings 'label-' etc. Fix databases so that after LBD generates new tables are added. Consider updating case ids for repeat ids perhaps
-    def get_train_val_files(self, fold: int = None, ds: Union[str, List[str]] = None):
-        """
-        Retrieves the file paths (img_symlink) for training and validation sets based on the given fold,
-        optionally filtering by the provided datasource(s).
 
-        Parameters
-        ----------
-        fold : int, optional
-            The fold number used to split the data into training and validation sets. 
-            If None, all folds are returned.
-            
-        ds : str or list of str, optional
-            A string or list representing one or more datasources. If it contains commas, 
-            it is treated as a list of datasources.
+    def get_train_val_cids(self,fold):
+        ss_train = "SELECT case_id FROM datasources WHERE fold<>{}".format(fold)
+        ss_val = "SELECT case_id FROM datasources WHERE fold={}".format(fold)
+        train_cids,val_cids = self.sql_query(ss_train,True),self.sql_query(ss_val,True)
+        return train_cids,val_cids
 
-        Returns
-        -------
-        tuple of lists
-            - train_files: A list of file paths (img_symlink) assigned to training.
-            - val_files: A list of file paths (img_symlink) assigned to validation.
-        """
+    def get_train_val_files(self,fold,ds=None):
+        ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{}".format(fold)
+        ss_val = "SELECT img_symlink FROM datasources WHERE fold={}".format(fold)
 
-        # Build SQL queries
-        ss_train = self.build_sql_query(fold, ds, is_validation=False)
-        ss_val = self.build_sql_query(fold, ds, is_validation=True)
+        train_files,val_files = self.sql_query(ss_train,True),self.sql_query(ss_val,True)
+        train_files =[Path(fn).name for fn in train_files]
+        val_files =[Path(fn).name for fn in val_files]
+        return train_files,val_files
 
-        # Execute SQL queries
-        train_files = self.fetch_files(ss_train)
-        val_files = self.fetch_files(ss_val)
-
-        return train_files, val_files
-
-
-    def build_sql_query(self, fold: int, ds: Union[str, List[str]], is_validation: bool) -> str:
-        """
-        Builds the SQL query for fetching files based on the fold and datasource.
-
-        Parameters
-        ----------
-        fold : int, optional
-            The fold number. If None, the fold condition is ignored.
-        ds : str or list of str, optional
-            Datasource(s) to filter by. If None, all datasources are selected.
-        is_validation : bool
-            Whether to build the query for the validation set (True) or training set (False).
-
-        Returns
-        -------
-        str
-            The constructed SQL query.
-        """
-        query = "SELECT img_symlink FROM datasources"
-        
-        conditions = []
-
-        # Add fold condition
-        if isinstance(fold, int):
-            fold_condition = "fold = {}".format(fold) if is_validation else "fold <> {}".format(fold)
-            conditions.append(fold_condition)
-
-        # Add datasource condition
-        if ds:
-            ds_condition = self.build_ds_condition(ds)
-            conditions.append(ds_condition)
-
-        # Append conditions to the query
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-
-        return query
-
-
-    def build_ds_condition(self, ds: Union[str, List[str]]) -> str:
-        """
-        Builds the datasource condition for the SQL query.
-
-        Parameters
-        ----------
-        ds : str or list of str
-            Datasource(s) to filter by.
-
-        Returns
-        -------
-        str
-            The datasource condition for the SQL query.
-        """
-        if isinstance(ds, str) and "," in ds:
-            ds_list = [d.strip() for d in ds.split(",")]
-        else:
-            ds_list = [ds] if isinstance(ds, str) else ds
-
-        return "ds IN ({})".format(", ".join("'{}'".format(d) for d in ds_list))
-
-
-    def fetch_files(self, query: str) -> List[str]:
-        """
-        Executes the SQL query and returns the list of file names.
-
-        Parameters
-        ----------
-        query : str
-            The SQL query to execute.
-
-        Returns
-        -------
-        list of str
-            The list of file names (img_symlink) extracted from the query result.
-        """
-        result = self.sql_query(query, True)
-        return [Path(fn).name for fn in result]
 
     @ask_proceed("Remove all project files and folders?")
     def delete(self):
@@ -469,37 +373,6 @@ class Project(DictToAttr):
 
 
     def set_lm_groups(self,lm_groups:list= None):
-        """
-        Defines and assigns label groups (lm_groups) to the project. The idea behind lm_groups is that labels in each group are treated uniquely and any overlapping labels with another (preceding) gruops are relabelled serially starting at the last label of the previous lm_group
-
-        Parameters
-        ----------
-        lm_groups : list, optional
-            A list defining groups of datasets for label management. The groups can be either:
-            - `None` or a single list, which will create a default group using all datasets.
-            - A list of lists/tuples, where each inner list represents a group of datasets.
-            - A single list containing all datasets, which assigns all datasets to a single group.
-            
-            For example:
-            - If `lm_groups` is `None`, all datasets are assigned to a single group (`lm_group1`).
-            - If `lm_groups` contains lists like `[['group1', 'group2'], ['group3']]`, 
-              the datasets will be split across multiple groups (`lm_group1`, `lm_group2`, etc.).
-
-        Raises
-        ------
-        AssertionError
-            If the datasets in `lm_groups` do not match the datasets registered in the project.
-
-        Notes
-        -----
-        - This function organizes datasets into label groups for training and validation purposes.
-        - The label groups are saved to the project's global properties and can be retrieved later for use in different stages of the project, such as data preprocessing or model training.
-
-        Example
-        -------
-        >>> project.set_lm_groups([['ds1', 'ds2'], ['ds3']])
-        This will assign `ds1` and `ds2` to `lm_group1`, and `ds3` to `lm_group2`.
-        """
         if not lm_groups  or isinstance(lm_groups,float):
             self.global_properties['lm_group1']= {'ds': self.datasources}
         elif isinstance(lm_groups[0],Union[list,tuple]):  # list of list
@@ -534,17 +407,6 @@ class Project(DictToAttr):
             self.G.collate_lm_labels()
 
     def add_plan(self,plan:dict, overwrite_global_properties=False):
-        """
-        Adds a plan to the project, which defines datasets, label groups, and preprocessing steps.
-
-        Parameters:
-        ----------
-        plan : dict
-            A dictionary defining the project plan, typically loaded from an Excel sheet.
-            Must include 'datasources' (list of dataset names) and 'lm_groups' (list of label groups).
-        overwrite_global_properties : bool, optional
-            Whether to overwrite existing global properties (default is False).
-        """
         dss = plan['datasources']
         dss= dss.split(",")
         datasources = [getattr(DS,g) for g in dss]
@@ -628,20 +490,17 @@ if __name__ == "__main__":
 
     P= Project(project_title="nodes")
 
-    # P.create(mnemonic='nodes')
+    P.create(mnemonic='nodes')
 # %%
     conf = ConfigMaker(
         P, raytune=False, configuration_filename=None
 
     ).config
 # %%
-    P.get_train_val_files(0,conf['plan']['datasources'])
-    P.get_train_val_files(None,"nodesthick,nodes")
 
 
 # %%
     plans = conf['plan1']
-    planb= conf['plan3']
     P.add_plan(plans, overwrite_global_properties=False)
 # %%
     # P.set_lm_groups([['litq','litqsmall','drli','lits'],['lidc2']])
@@ -658,62 +517,15 @@ if __name__ == "__main__":
 
 # %%
     import sqlite3
-    db_name = "/s/fran_storage/projects/nodes/cases.db"
+    db_name = "/s/fran_storage/projects/litsmc/cases.db"
+
     conn = sqlite3.connect(db_name)
     
     ss = """ALTER TABLE datasources RENAME COLUMN lm to lm"""
     ss = """DELETE FROM datasources WHERE case_id='lits_115'"""
-
     cur = conn.cursor()
-    ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{} ".format(1)
-    dss = conf['plan']['datasources']
-    dss = ("nodesthick","nodes")
-
-
-# %%
-    ds = plans['datasources']
-    fold=0
-    ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{}".format(fold)
-    # ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{} AND ds = 'nodes' ".format(fold)
-    ss_val = "SELECT img_symlink FROM datasources WHERE fold={}".format(fold)
-    if isinstance(ds,str) and "," not in ds:
-        # Convert the list of datasources into a SQL-friendly string format
-        # ds_filter = ds
-        ss_train += " AND ds IN ({})".format(ds)
-        ss_val += " AND ds IN ({})".format(ds)
-    elif isinstance(ds,str):
-        ss_train += " AND ds = '{}'".format(ds)
-        ss_val += " AND ds = '{}'".format(ds)
-        # ds = "('{}')".format(ds)
-    # else:
-        # Append the datasource filter to the SQL queries
-        # ss_train += " AND ds IN ({})".format(ds_filter)
-        # ss_val += " AND ds IN ({})".format(ds_filter)
-    train_files,val_files = P.sql_query(ss_train,True),P.sql_query(ss_val,True)
-    train_files =[Path(fn).name for fn in train_files]
-    val_files =[Path(fn).name for fn in val_files]
-
-
-    # ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{} AND ds in  ('nodesthick', 'nodes') ".format(10)
-
-# %%
-    fold = 0
-    ss_train = """
-    SELECT img_symlink 
-    FROM datasources 
-    WHERE fold <> {} 
-    AND LOWER(TRIM(ds)) IN ('nodesthick', 'nodes')
-    """.format(fold)
-# %%
-    dss = None
-    ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{0} AND ds in  ('{1}')".format(10,dss)
-    aa = cur.execute(ss_train)
-    bb= pd.DataFrame(aa)
-    bb
-# %%
+    cur.execute(ss)
     conn.commit()
-    aa = conn.execute(ss_train)
-
 
 # %%
 

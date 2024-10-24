@@ -678,7 +678,7 @@ class MaskLabelRemapd(MapTransform):
         super().__init__(keys, allow_missing_keys)
         if isinstance(src_dest_labels, str):
             src_dest_labels = ast.literal_eval(src_dest_labels)
-        if use_sitk==True and isinstance(src_dest_labels, list):
+        if use_sitk==True:
             self.src_dest_labels = {x: y for x, y in src_dest_labels}
             self.remapper = self.remapper_sitk
         else:

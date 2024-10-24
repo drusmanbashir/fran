@@ -6,14 +6,6 @@ import ipdb
 import numpy as np
 
 tr = ipdb.set_trace
-import ast
-
-
-def ast_literal_eval(str_list):
-    if isinstance(str_list, str):
-        str_list = ast.literal_eval(str_list)
-    return str_list
-
 
 def regex_matcher(indx=0):
     def _outer(func):

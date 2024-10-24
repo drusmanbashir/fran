@@ -1,5 +1,5 @@
 # %%
-from fran.trainers.trainer import UNetTrainer, checkpoint_from_model_id
+from fran.managers.training import UNetTrainer, checkpoint_from_model_id
 import itertools as il
 from pathlib import Path
 
@@ -19,25 +19,21 @@ from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import LoadImaged, SaveImaged
 from monai.transforms.post.dictionary import Activationsd, AsDiscreted, Invertd
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, SqueezeDimd
+from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
+                                                 SqueezeDimd)
 
-from fran.data.dataset import (
-    InferenceDatasetNii,
-    InferenceDatasetPersistent,
-    NormaliseClipd,
-)
+from fran.data.dataset import (InferenceDatasetNii, InferenceDatasetPersistent,
+                               NormaliseClipd)
 from fran.transforms.imageio import LoadSITKd
-from fran.transforms.inferencetransforms import (
-    KeepLargestConnectedComponentWithMetad,
-    SaveMultiChanneld,
-    ToCPUd,
-)
+from fran.transforms.inferencetransforms import KeepLargestConnectedComponentWithMetad, SaveMultiChanneld, ToCPUd
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 from fran.utils.dictopts import DictToAttr, fix_ast
 from fran.utils.fileio import maybe_makedirs
 from fran.utils.helpers import slice_list
 from fran.utils.imageviewers import ImageMaskViewer, view_sitk
 from fran.utils.itk_sitk import ConvertSimpleItkImageToItkImage
+
+
 
 
 def list_to_chunks(input_list: list, chunksize: int):
@@ -93,8 +89,8 @@ class BaseInferer(GetAttr, DictToAttr):
             self.params = load_params(run_name)
         else:
             self.params = params
-        self.plan = fix_ast(self.params["config"]["plan"])
-        # self.params['config']['plan'] = fix_ast(self.params['config']['plan'])
+        self.plan = fix_ast(self.params['config']['plan'],["spacing"])
+
         if safe_mode == True:
             print(
                 "================================================================\nSafe mode is on. Stitching will be on CPU. Slower speed expected\n================================================="
@@ -118,7 +114,7 @@ class BaseInferer(GetAttr, DictToAttr):
             self.prepare_model()
         # self.create_postprocess_transforms()
 
-    def run(self, imgs, chunksize=12, overwrite=True):
+    def run(self, imgs,chunksize=12, overwrite=True):
         """
         chunksize is necessary in large lists to manage system ram
         """
@@ -129,8 +125,6 @@ class BaseInferer(GetAttr, DictToAttr):
         ):
             imgs = self.filter_existing_preds(imgs)
         imgs = list_to_chunks(imgs, chunksize)
-        # if self.save == True:
-        #     maybe_makedirs(self.output_folder)
         for imgs_sublist in imgs:
             output = self.process_imgs_sublist(imgs_sublist)
         return output
@@ -171,9 +165,11 @@ class BaseInferer(GetAttr, DictToAttr):
             ensure_channel_first=False,
             simple_keys=True,
         )
-        self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
+        self.E = EnsureChannelFirstd(
+            keys=["image"], channel_dim="no_channel"
+        )  
 
-        self.S = Spacingd(keys=["image"], pixdim=self.plan["spacing"])
+        self.S = Spacingd(keys=["image"], pixdim= self.plan["spacing"])
         self.N = NormaliseClipd(
             keys=["image"],
             clip_range=self.params["dataset_params"]["intensity_clip_range"],
@@ -282,7 +278,7 @@ class BaseInferer(GetAttr, DictToAttr):
             separate_folder=False,
         )
         I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
-
+       
         out_final = []
         if self.save_channels == True:
             tfms = [Sq, Sa, A, D, I]
@@ -290,8 +286,8 @@ class BaseInferer(GetAttr, DictToAttr):
             tfms = [Sq, A, D, I]
         if self.k_largest:
             K = KeepLargestConnectedComponentWithMetad(
-                keys=["pred"], independent=False, num_components=self.k_largest
-            )  # label=1 is the organ
+                    keys=["pred"], independent=False, num_components=self.k_largest
+                )  # label=1 is the organ
             tfms.insert(-1, K)
         if self.safe_mode == True:
             tfms.insert(0, U)
@@ -306,7 +302,7 @@ class BaseInferer(GetAttr, DictToAttr):
         model = UNetTrainer.load_from_checkpoint(
             self.ckpt,
             project=self.project,
-            dataset_params=self.params["dataset_params"],
+            dataset_params=self.params['dataset_params'],
             strict=False,
             map_location=device,
         )
@@ -351,21 +347,21 @@ class BaseInferer(GetAttr, DictToAttr):
 
 if __name__ == "__main__":
     # ... run your application ...
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
     from fran.utils.common import *
 
-    from fran.managers.datasource import Datasource, _DS
 
+    from fran.managers.datasource import Datasource, _DS
     D = _DS()
     proj = Project(project_title="totalseg")
-    run_tot = ["LITS-860"]
+    run_tot= ["LITS-860"]
     safe_mode = True
 
     proj_nodes = Project(project_title="nodes")
-    run_nodes = ["LITS-966"]
+    run_nodes= ["LITS-966"]
 
-    proj_litsmc = Project(project_title="litsmc")
+    proj_litsmc= Project(project_title="litsmc")
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
@@ -373,42 +369,15 @@ if __name__ == "__main__":
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/")
     img_nodes = list(fldr_nodes.glob("*"))
-    fldr_litsmc = (
-        Path(D.litq["folder"]),
-        Path(D.drli["folder"]),
-        Path(D.lits["folder"]),
-        Path(D.litqsmall["folder"]),
-    )
-    imgs_litsmc = [list((fld / ("images")).glob("*")) for fld in fldr_litsmc]
+    fldr_litsmc = Path(D.litq['folder']),Path( D.drli['folder']), Path(D.lits['folder']), Path(D.litqsmall['folder'])
+    imgs_litsmc = [list((fld/("images")).glob("*")) for fld in fldr_litsmc]
     imgs_litsmc = list(il.chain.from_iterable(imgs_litsmc))
+
 
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
-# SECTION:-------------------- LOCALISER-------------------------------------------------------------------------------------- <CR>
-    localiser = "LITS-1025"
-    save_channels = False
-    safe_mode = False
-    bs = 10
-    overwrite = False
-    devices = [0]
-
-    T = BaseInferer(
-        proj,
-        localiser,
-        save_channels=save_channels,
-        safe_mode=safe_mode,
-        devices=devices,
-    )
-# %%
-
-    case_id = "crc_CRC089"
-    imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
-    preds = T.run(imgs_crc, chunksize=1)
-
-
-# %%
-# SECTION:-------------------- NODES-------------------------------------------------------------------------------------- <CR>
+#SECTION:-------------------- NODES--------------------------------------------------------------------------------------
 
     safe_mode = False
     bs = 5
@@ -424,16 +393,16 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = N.run(img_nodes, chunksize=1, overwrite=overwrite)
+    preds = N.run(img_nodes, chunksize=1,overwrite=overwrite)
 # %%
     data = P.ds.data[0]
 # %%
 
 # %%
-# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR>
+#SECTION:-------------------- LITSMC--------------------------------------------------------------------------------------
 
-    run_litsmc = ["LITS-1007"]
-    run_litsmc = ["LITS-999"]
+    run_litsmc= ["LITS-1007"]
+    run_litsmc= ["LITS-999"]
     safe_mode = False
     bs = 5
     save_channels = False
@@ -442,6 +411,7 @@ if __name__ == "__main__":
     L = BaseInferer(
         proj_litsmc,
         run_litsmc[0],
+   
         save_channels=save_channels,
         safe_mode=safe_mode,
         devices=devices,
@@ -449,28 +419,25 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = L.run(
-        imgs_crc,
-        chunksize=1,
-        overwrite=overwrite,
-    )
+    preds = L.run(imgs_crc, chunksize=1,     overwrite=overwrite,)
 # %%
     data = P.ds.data[0]
 # %%
-# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR>
-
+#SECTION:-------------------- TOTALSEG--------------------------------------------------------------------------------------
+    
     save_channels = False
     safe_mode = True
     bs = 4
     overwrite = False
     devices = [0]
+    
 
     T = BaseInferer(
         proj,
         run_tot[0],
         save_channels=save_channels,
         safe_mode=safe_mode,
-        devices=devices,
+        devices=devices
     )
 # %%
 

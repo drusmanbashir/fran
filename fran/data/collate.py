@@ -1,4 +1,5 @@
 # %%
+from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
 from monai.transforms.spatial.dictionary import Resized
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 import torch
@@ -66,7 +67,7 @@ def as_is_collated(batch):
     for i, item in enumerate(batch):
         for k in keys:
             tnsr = item[k]
-            output_dict[k].append()
+            output_dict[k].append(tnsr)
     return output_dict
 
 
@@ -121,7 +122,6 @@ def source_collated(batch):
 
 
 def whole_collated(batch):
-
     imgs,labels,fns_imgs,fns_labels = process_items(batch)
 
     if len(batch) == 1:
@@ -137,6 +137,11 @@ def whole_collated(batch):
 
 # %%
 if __name__ == "__main__":
+
+# %%
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+
+    patch_size = [128,128,96]
     d1 = {
         "image": "/s/xnat_shadow/crc/images/crc_CRC002_20190415_CAP1p5.nii.gz",
         "lm": "/s/xnat_shadow/crc/lms/crc_CRC002_20190415_CAP1p5.nrrd",
@@ -145,11 +150,21 @@ if __name__ == "__main__":
         "image": "/s/xnat_shadow/crc/images/crc_CRC004_20190425_CAP1p5.nii.gz",
         "lm": "/s/xnat_shadow/crc/lms/crc_CRC004_20190425_CAP1p5.nii.gz",
     }
-# %%
     keys = ["image", "lm"]
     L = LoadSITKd(keys=["image", "lm"])
     E = EnsureChannelFirstd(keys=keys)
-    Res = Resized(keys=keys, spatial_size = [96,96,96])
+    Res = Resized(keys=keys, spatial_size = patch_size)
+
+    Re = ResizeWithPadOrCropd(
+            keys=["image", "lm"],
+            spatial_size=patch_size,
+            lazy=False,
+        )
+# %%
+# %%
+#SECTION:--------------------  Whole_collated--------------------------------------------------------------------------------------
+
+
     d1 =E( L(d1))
     d2 = E(L(d2))
     d3 = Res(d2)
@@ -160,3 +175,19 @@ if __name__ == "__main__":
 
     b2 = whole_collated(batch)
 # %%
+# %%
+#SECTION:-------------------- 2--------------------------------------------------------------------------------------
+
+
+    d1 =E( L(d1))
+    d2 = E(L(d2))
+    d3 = Re(d2)
+    d4 = Re(d1)
+
+# %%
+    batch = [d3,d4]
+
+    bx = whole_collated(batch)
+
+
+

@@ -12,7 +12,7 @@ from monai.transforms.utility.dictionary import (
 )
 
 from monai.data import Dataset
-from fran.managers.base import get_ds_remapping
+from fran.managers.datasource import get_ds_remapping
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import ChangeDType
@@ -184,6 +184,8 @@ class ImporterDataset(Dataset):
         """
         data_folder: Folder containing torch "images" and "lms".  Given an importer folder of sitk labelmaps (matching case_ids), it uses imported labelmaps to create bboxes which are applied to both the images and labelmaps.
         you can remap imported labels, e.g., to ignore some  of them while applying the bbox. images and lms cropped to bboxes are the final output.
+
+
         data_folder: Folder containing torch images:
         imported_folder: Folder containing sitk Labelmaps
         """

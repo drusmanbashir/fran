@@ -1,7 +1,5 @@
 import ast
-import itertools as il
-
-ast_keys = ["spacing", "spatial_size"]
+       
 class DictToAttr(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -51,25 +49,10 @@ def dic_in_list(query_dic,dic_list)->bool:
     return True if query_dic in dic_list else False
 
 
-def fix_ast(dici ):
-    keys = dici.keys()
-    # Use itertools and functools to filter keys
-    relevant_keys = list(il.compress(keys, (key in ast_keys and key in dici for key in keys)))
-    for key in relevant_keys:
+def fix_ast(dici,keys):
+    for key in keys:
         if isinstance(dici[key], str):
-            dici[key] = ast.literal_eval(dici[key])
-    
+            dici[key]= ast.literal_eval(dici[key])
     return dici
-
-
-def fix_ast_nested_dicts(data):
-    if isinstance(data, dict):
-        # Apply fix_ast to the current dictionary.
-        fix_ast(data)
-        # Recursively apply fix_ast_nested_dicts to nested dictionaries.
-        for key, value in data.items():
-            if isinstance(value, dict):
-                fix_ast_nested_dicts(value)
-    return data
 
 

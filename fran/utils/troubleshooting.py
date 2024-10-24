@@ -30,7 +30,7 @@ from fran.data.dataset import ImageMaskBBoxDatasetd, MaskLabelRemapd, NormaliseC
 from fran.transforms.spatialtransforms import one_hot
 from fran.transforms.totensor import ToTensorT
 from fran.utils.helpers import folder_name_from_list
-from fran.data.collate import img_mask_bbox_collated
+from fran.data.dataloader import img_mask_bbox_collated
 import itertools as il
 from fran.utils.helpers import *
 from fran.utils.fileio import *

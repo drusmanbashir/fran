@@ -1,6 +1,5 @@
 # %%
 from lightning import LightningDataModule
-from fran.utils.helpers import pbar
 from monai.transforms.transform import RandomizableTransform
 from fran.preprocessing.patch import bbox_bg_only
 import ast
@@ -26,14 +25,14 @@ from monai.transforms.intensity.dictionary import (
     RandShiftIntensityd,
 )
 from monai.transforms.io.dictionary import LoadImaged
-from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
+from monai.transforms.spatial.dictionary import RandAffined, RandFlipd
 from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
     FgBgToIndicesd,
     ToDeviced,
 )
 
-from fran.data.collate import img_lm_bbox_collated, source_collated, whole_collated
+from fran.data.dataloader import img_lm_bbox_collated
 from fran.data.dataset import (
     ImageMaskBBoxDatasetd,
     MaskLabelRemapd,
@@ -42,18 +41,14 @@ from fran.data.dataset import (
 )
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
-from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
+from fran.transforms.misc_transforms import LoadDict, MetaToDict
 from fran.utils.config_parsers import is_excel_None
-from fran.utils.fileio import load_dict, load_yaml
+from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
 from fran.utils.imageviewers import ImageMaskViewer
-from fran.utils.string import ast_literal_eval, strip_extension
+from fran.utils.string import strip_extension
 import re
-import os
 
-
-common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
-COMMON_PATHS = load_yaml(common_vars_filename)
 
 tr = ipdb.set_trace
 
@@ -70,26 +65,35 @@ def list_to_fgbg(class_ratios):
     return fg, bg
 
 
-class RandomPatch(RandomizableTransform):
-    """
-    to be used by DataManagerPatch
-    """
+def simple_collated(batch):
+    imgs = []
+    labels = []
+    for i, item in enumerate(batch):
+        for ita in item:
+            imgs.append(ita["image"])
+            labels.append(ita["lm"])
+    output = {"image": torch.stack(imgs, 0), "lm": torch.stack(labels, 0)}
+    return output
 
+
+
+class RandomPatch(RandomizableTransform):
+    '''
+    to be used by DataManagerPatch
+    '''
+    
     def randomize(self, data=None):
-        n_patches = data["n_patches"]
-        self.indx = self.R.randint(0, n_patches)
+        n_patches = data['n_patches']
+        self.indx = self.R.randint(0,n_patches)
         self.indx = str(self.indx)
+
 
     def __call__(self, data: list):
         self.randomize(data)
-        image_key = "image_" + self.indx
-        lm_key = "lm_" + self.indx
-        indices_key = "indices_" + self.indx
-        dici = {
-            "image": data[image_key],
-            "lm": data[lm_key],
-            "indices": data[indices_key],
-        }
+        image_key = 'image_'+self.indx
+        lm_key = 'lm_'+self.indx
+        indices_key = 'indices_'+self.indx
+        dici = {'image':data[image_key], "lm":data[lm_key], "indices":data[indices_key]}
         return dici
 
 
@@ -104,6 +108,7 @@ class DataManager(LightningDataModule):
         batch_size=8,
         cache_rate=0.0,
         ds_type=None,
+        training_aug=True,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -120,18 +125,12 @@ class DataManager(LightningDataModule):
         self.ds_type = ds_type
         self.set_effective_batch_size()
         self.assimilate_tfm_factors(transform_factors)
-        self.set_tfm_keys()
-        self.collate_fn = None # needs to be set in each inheriting class
-
-    def set_tfm_keys(self):
-        raise NotImplementedError
-
 
     def set_effective_batch_size(self):
         if "samples_per_file" in self.plan:
-            self.effective_batch_size = int(np.maximum(1, 
+            self.effective_batch_size = int(
                 self.batch_size / self.plan["samples_per_file"]
-            ))
+            )
             print(
                 "Given {0} Samples per file and {1} batch_size on the GPU, effective batch size (number of file tensors loaded then sampled for for training is:\n {2} ".format(
                     self.plan["samples_per_file"],
@@ -160,15 +159,13 @@ class DataManager(LightningDataModule):
         #     keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
         # )
 
-        
-        RP = RandomPatch()
         F1 = RandFlipd(
             keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
         )
         F2 = RandFlipd(
             keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
         )
-        IntensityTfms = [
+        int_augs = [
             RandScaleIntensityd(
                 keys="image", factors=self.scale["value"], prob=self.scale["prob"]
             ),
@@ -187,15 +184,7 @@ class DataManager(LightningDataModule):
             # self.create_affine_tfm(),
         ]
 
-        Affine = RandAffined(
-            keys=["image", "lm"],
-            mode=["bilinear", "nearest"],
-            prob=self.affine3d["p"],
-            # spatial_size=self.dataset_params['src_dims'],
-            rotate_range=self.affine3d["rotate_range"],
-            scale_range=self.affine3d["scale_range"],
-        )
-
+        A = self.create_affine_tfm()
         Re = ResizeWithPadOrCropd(
             keys=["image", "lm"],
             spatial_size=self.dataset_params["patch_size"],
@@ -216,11 +205,8 @@ class DataManager(LightningDataModule):
             simple_keys=True,
         )
         L.register(TorchReader())
-        Ld = LoadTorchDict(
-            keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
-        )
+        Ld = LoadDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
         Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
-
         Rtr = RandCropByPosNegLabeld(
             keys=["image", "lm"],
             label_key="lm",
@@ -251,13 +237,12 @@ class DataManager(LightningDataModule):
         )
 
         self.transforms_dict = {
-            "RP": RP,
-            "Affine": Affine,
+            "A": A,
             "E": E,
             "N": N,
             "F1": F1,
             "F2": F2,
-            "IntensityTfms": IntensityTfms,
+            "IntensityTfms": int_augs,
             "Re": Re,
             # "P": P,
             "Ld": Ld,
@@ -288,14 +273,13 @@ class DataManager(LightningDataModule):
         dataset_mode = self.plan["mode"]
         assert dataset_mode in [
             "whole",
-            "baseline",
             "patch",
             "source",
             "pbd",
             "lbd",
         ], "Set a value for mode in 'whole', 'patch' or 'source' "
         self.train_cases, self.valid_cases = self.project.get_train_val_files(
-            self.dataset_params["fold"],self.plan['datasources']
+            self.dataset_params["fold"]
         )
         self.data_folder = self.derive_data_folder()
 
@@ -308,11 +292,10 @@ class DataManager(LightningDataModule):
         inds_fldr = self.infer_inds_fldr(self.plan)
         images = list(images_fldr.glob("*.pt"))
         data = []
-
-        for fn in pbar(fnames):
+        for fn in fnames:
             fn = Path(fn)
-            img_fn = find_matching_fn(fn.name, images, 'all')
-            lm_fn = find_matching_fn(fn.name, lms_fldr, 'all')
+            img_fn = find_matching_fn(fn.name, images, True)
+            lm_fn = find_matching_fn(fn.name, lms_fldr, True)
             indices_fn = inds_fldr / img_fn.name
             assert img_fn.exists(), "Missing image {}".format(img_fn)
             assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
@@ -347,6 +330,7 @@ class DataManager(LightningDataModule):
             pin_memory=True,
         )
         return train_dl
+
     def val_dataloader(self):
         valid_dl = DataLoader(
             self.valid_ds,
@@ -357,6 +341,17 @@ class DataManager(LightningDataModule):
             pin_memory=True,
         )
         return valid_dl
+
+    def create_affine_tfm(self):
+        affine = RandAffined(
+            keys=["image", "lm"],
+            mode=["bilinear", "nearest"],
+            prob=self.affine3d["p"],
+            # spatial_size=self.dataset_params['src_dims'],
+            rotate_range=self.affine3d["rotate_range"],
+            scale_range=self.affine3d["scale_range"],
+        )
+        return affine
 
     def forward(self, inputs, target):
         return self.model(inputs)
@@ -372,10 +367,6 @@ class DataManager(LightningDataModule):
             src_dims = self.dataset_params["patch_size"]
         return src_dims
 
-    @property
-    def cache_folder(self):
-        parent_folder = Path(COMMON_PATHS['cache_folder'])/(self.project.project_title)
-        return parent_folder/(self.data_folder.name)
 
 class DataManagerSource(DataManager):
     def __init__(
@@ -397,15 +388,11 @@ class DataManagerSource(DataManager):
             batch_size,
             **kwargs
         )
-        self.collate_fn = source_collated
-
-    def set_tfm_keys(self):
-        self.keys_val = "L,Ld,E,Rva,Re,N"
-        self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
+        self.collate_fn = simple_collated
 
     def derive_data_folder(self):
         prefix = "spc"
-        spacing = self.plan["spacing"]
+        spacing = ast.literal_eval(self.plan["spacing"])
         parent_folder = self.project.fixed_spacing_folder
         data_folder = folder_name_from_list(prefix, parent_folder, spacing)
         return data_folder
@@ -420,7 +407,9 @@ class DataManagerSource(DataManager):
 
     def setup(self, stage: str = None):
         self.create_transforms()
-        self.set_transforms(keys_tr=self.keys_tr, keys_val=self.keys_val)
+        self.set_transforms(
+            keys_tr="L,Ld,E,Rtr,F1,F2,A,Re,N,IntensityTfms", keys_val="L,Ld,E,Rva,Re,N"
+        )
         print("Setting up datasets. Training ds type is: ", self.ds_type)
         if is_excel_None(self.ds_type):
             self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
@@ -434,7 +423,7 @@ class DataManagerSource(DataManager):
             self.train_ds = LMDBDataset(
                 data=self.data_train,
                 transform=self.tfms_train,
-                cache_dir=self.cache_folder,
+                cache_dir=self.project.cache_folder,
                 db_name="training_cache",
             )
         else:
@@ -442,76 +431,23 @@ class DataManagerSource(DataManager):
         self.valid_ds = PersistentDataset(
             data=self.data_valid,
             transform=self.tfms_valid,
-            cache_dir=self.self.cache_folder,
+            cache_dir=self.project.cache_folder,
         )
-
-
 
 class DataManagerWhole(DataManagerSource):
-
-    def __init__(
-        self,
-        project,
-        dataset_params: dict,
-        config: dict,
-        transform_factors: dict,
-        affine3d: dict,
-        batch_size=8,
-        **kwargs
-    ):
-        super().__init__(
-            project,
-            dataset_params,
-            config,
-            transform_factors,
-            affine3d,
-            batch_size,
-            **kwargs
-        )
-        self.keys_tr = "L,E,F1,F2,Affine,Resize,N,IntensityTfms"
-        self.keys_val = "L,E,Resize,N"
-        self.collate_fn = whole_collated
-
     def derive_data_folder(self):
         prefix = "sze"
-        spatial_size = self.plan["spatial_size"]
+        spacing = ast.literal_eval(self.plan["spatial_size"])
         parent_folder = self.project.fixed_size_folder
-        data_folder = folder_name_from_list(prefix, parent_folder, spatial_size)
+        data_folder = folder_name_from_list(prefix, parent_folder, spacing)
         return data_folder
-
-    def create_transforms(self):
-        super().create_transforms()
-        Resize = Resized(
-            keys=["image", "lm"],
-            spatial_size=self.plan["spatial_size"],
-            mode=["linear", "nearest"],
-            lazy=True,
-        )
-        self.transforms_dict.update({"Resize": Resize})
+        
 
 
-    def create_data_dicts(self, fnames):
-        fnames = [strip_extension(fn) for fn in fnames]
-        fnames = [fn + ".pt" for fn in fnames]
-        fnames = fnames
-        images_fldr = self.data_folder / ("images")
-        lms_fldr = self.data_folder / ("lms")
-        images = list(images_fldr.glob("*.pt"))
-        data = []
-        # for fn in fnames[400:432]:
-        for fn in fnames:
-            fn = Path(fn)
-            img_fn = find_matching_fn(fn.name, images, 'all')
-            lm_fn = find_matching_fn(fn.name, lms_fldr, 'all')
-            assert img_fn.exists(), "Missing image {}".format(img_fn)
-            assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
-            dici = {"image": img_fn, "lm": lm_fn}
-            data.append(dici)
-        return data
 
 class DataManagerLBD(DataManagerSource):
     def derive_data_folder(self, dataset_mode=None):
-        spacing = ast_literal_eval(self.plan["spacing"])
+        spacing = ast.literal_eval(self.plan["spacing"])
         parent_folder = self.project.lbd_folder
         folder_suffix = "plan" + str(self.dataset_params["plan"])
         data_folder = folder_name_from_list(
@@ -525,15 +461,15 @@ class DataManagerLBD(DataManagerSource):
         )
         return data_folder
 
-    # def prepare_data(self):
-    #     super().prepare_data()
-    #     self.data_train = self.create_data_dicts(self.train_cases[:32])
-    #     self.data_valid = self.create_data_dicts(self.valid_cases[:16])
+    def prepare_data(self):
+        super().prepare_data()
+        self.data_train = self.create_data_dicts(self.train_cases)
+        self.data_valid = self.create_data_dicts(self.valid_cases)
 
 
 class DataManagerPBD(DataManagerLBD):
     def derive_data_folder(self, dataset_mode=None):
-        spacing = self.plan["spacing"]
+        spacing = ast.literal_eval(self.plan["spacing"])
         parent_folder = self.project.pbd_folder
         folder_suffix = "plan" + str(self.dataset_params["plan"])
         data_folder = folder_name_from_list(
@@ -557,7 +493,7 @@ class DataManagerShort(DataManager):
         return super().train_dataloader(num_workers, **kwargs)
 
 
-# CODE: in the below class move Rtr after Affine and get rid of Re to see if it affects training speed / model accuracy
+# CODE: in the below class move Rtr after A and get rid of Re to see if it affects training speed / model accuracy
 class DataManagerPatchLegacy(DataManager):
     """
     Uses bboxes to randonly select fg bg labels. New version(below) uses monai fgbgindices instead
@@ -599,9 +535,9 @@ class DataManagerPatchLegacy(DataManager):
     def setup(self, stage: str = None):
         self.create_transforms()
         if not math.isnan(self.dataset_params["src_dest_labels"]):
-            keys_tr = "P,E,F1,F2,Affine,Re,N,I"
+            keys_tr = "P,E,F1,F2,A,Re,N,I"
         else:
-            keys_tr = "E,F1,F2,Affine,Re,N,I"
+            keys_tr = "E,F1,F2,A,Re,N,I"
         keys_val = "E,Re,N"
         self.set_transforms(keys_tr=keys_tr, keys_val=keys_val)
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
@@ -624,7 +560,8 @@ class DataManagerPatchLegacy(DataManager):
 
     @property
     def src_dims(self):
-        return self.plan["patch_size"]
+        return ast.literal_eval(self.plan["patch_size"])
+
 
 
 class DataManagerPatch(DataManager):
@@ -638,7 +575,7 @@ class DataManagerPatch(DataManager):
         batch_size=8,
         **kwargs
     ):
-        self.collate_fn = source_collated
+        self.collate_fn = simple_collated
         super().__init__(
             project,
             dataset_params,
@@ -693,9 +630,7 @@ class DataManagerPatch(DataManager):
         self.train_cids, self.valid_cids = self.project.get_train_val_cids(
             self.dataset_params["fold"]
         )
-        print("Creating train data dicts")
         self.data_train = self.create_data_dicts(self.train_cids)
-        print("Creating val data dicts")
         self.data_valid = self.create_data_dicts(self.valid_cids)
 
     def get_label_info(self, case_patches):
@@ -719,7 +654,7 @@ class DataManagerPatch(DataManager):
 
     def create_data_dicts(self, cids):
         patches = []
-        for cid in pbar(cids):
+        for cid in cids:
             dici = {"case_id": cid}
             patch_fns = self.get_patch_files(self.bboxes, cid)
             dici.update(patch_fns)
@@ -728,6 +663,8 @@ class DataManagerPatch(DataManager):
 
     def create_transforms(self):
         super().create_transforms()
+        self.RP = RandomPatch()
+        self.transforms_dict.update({ "RP": self.RP})
 
     def derive_data_folder(self):
         parent_folder = self.project.patches_folder
@@ -742,113 +679,49 @@ class DataManagerPatch(DataManager):
         )  # self.plan['patch_size']
         subfldr2 = folder_name_from_list("dim", subfldr1, patch_size, plan_name)
         self.data_folder = subfldr2
-
-    # CODE: use same validation dataloader in all flavours of training to make it comparable
+#CODE: use same validation dataloader in all flavours of training to make it comparable
     def setup(self, stage: str = None):
         self.create_transforms()
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
         fgbg_ratio_adjusted = fgbg_ratio / self.fg_bg_prior
         self.dataset_params["fgbg_ratio"] = fgbg_ratio_adjusted
         if not math.isnan(self.dataset_params["src_dest_labels"]):
-            keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,I"
+            keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,A,Re,N,I"
         else:
-            keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,I"
+            keys_tr = "RP,L,Ld,E,Rva,F1,F2,A,Re,N,I"
         keys_val = "RP,L,Ld,E,Rva,Re,N"
         self.set_transforms(keys_tr=keys_tr, keys_val=keys_val)
         self.train_ds = LMDBDataset(
             data=self.data_train,
             transform=self.tfms_train,
-            cache_dir=self.self.cache_folder,
+            cache_dir=self.project.cache_folder,
             db_name="training_cache",
         )
         self.valid_ds = LMDBDataset(
             data=self.data_valid,
             transform=self.tfms_valid,
-            cache_dir=self.self.cache_folder,
+            cache_dir=self.project.cache_folder,
             db_name="valid_cache",
         )
 
     @property
     def src_dims(self):
-        return self.plan["patch_size"]
-
-#
-# class DataManagerPlainLBD(DataManagerLBD):
-#     '''
-#     Small dataset of size =batchsize comprising a single batch. No augmentations. Used to get a baseline
-#     '''
-#     def __init__(self, project, dataset_params: dict, config: dict, transform_factors: dict, affine3d: dict, batch_size=8, **kwargs):
-#         super().__init__(project, dataset_params, config, transform_factors, affine3d, batch_size, **kwargs)
-#         self.keys_tr=self.keys_val
-#
-#     
-#     def prepare_data(self):
-#         super().prepare_data()
-#         self.data_train= self.data_train[:self.batch_size]
-#         self.data_valid= self.data_valid[:self.batch_size]
+        return ast.literal_eval(self.plan["patch_size"])
 
 
-
-class DataManagerBaseline(DataManagerLBD):
-    '''
-    Small dataset of size =batchsize comprising a single batch. No augmentations. Used to get a baseline
-    It has no training augmentations. Whether the flag is True or False doesnt matter.
-    Note: It inherits from LBD dataset.
-    '''
-    def __init__(self, project, dataset_params: dict, config: dict, transform_factors: dict, affine3d: dict, batch_size=8, **kwargs):
-        super().__init__(project, dataset_params, config, transform_factors, affine3d, batch_size,**kwargs)
-        self.collate_fn = whole_collated
-
-
-    def set_effective_batch_size(self):
-        self.effective_batch_size = self.batch_size
-
-    def set_tfm_keys(self):
-        self.keys_val = "L,Ld,E,Re,N"
-        self.keys_tr=self.keys_val
-
-
-    def derive_data_folder(self, dataset_mode=None):
-        # return data_folder
-        source_plan_name = self.plan["source_plan"]
-        source_plan = self.config[source_plan_name]
-
-        source_ds_type =  source_plan['mode']
-        if source_ds_type == 'lbd':
-            parent_folder = self.project.lbd_folder
-        else:
-            raise NotImplemented
-        spacing = ast_literal_eval(source_plan['spacing'])
-
-        data_folder= folder_name_from_list("spc", parent_folder, spacing, source_plan_name)
-        assert data_folder.exists(), "Dataset folder {} does not exists".format(
-            data_folder
-        )
-        return data_folder
-
-    def setup(self, stage: str = None):
-        self.create_transforms()
-        self.set_transforms(keys_tr=self.keys_tr, keys_val=self.keys_val)
-        print("Setting up datasets. Training ds type is: ", self.ds_type)
-        self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
-        self.valid_ds = Dataset(
-            data=self.data_valid,
-            transform=self.tfms_valid,
-        )
-    
+class DataManagerShort(DataManagerPatch):
     def prepare_data(self):
         super().prepare_data()
-        self.data_train= self.data_train[:self.batch_size]
-        self.data_valid= self.data_valid[:self.batch_size]
+        self.train_list = self.train_list[:32]
 
-    @property
-    def cache_folder(self):
-        parent_folder = Path(COMMON_PATHS['cache_folder'])/(self.project.project_title)
-        return parent_folder/(self.data_folder.name+"_baseline")
+    def train_dataloader(self, num_workers=4, **kwargs):
+        return super().train_dataloader(num_workers, **kwargs)
+
+
 # %%
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     import torch
 
@@ -865,7 +738,6 @@ if __name__ == "__main__":
     )
     configuration_filename = None
 
-# %%
     config = ConfigMaker(
         proj, raytune=False, configuration_filename=configuration_filename
     ).config
@@ -873,73 +745,8 @@ if __name__ == "__main__":
     global_props = load_dict(proj.global_properties_filename)
 
 # %%
-#SECTION:-------------------- DataManagerPlain--------------------------------------------------------------------------------------
-# %%
-    batch_size = 2
-    D = DataManagerBaseline(
-        proj,
-        config=config,
-        dataset_params=config["dataset_params"],
-        transform_factors=config["transform_factors"],
-        affine3d=config["affine3d"],
-        batch_size=batch_size,
-    )
-    # D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
-# %%
-    D.prepare_data()
-    D.setup()
-    b = D.train_ds[0]
-    b['image'].shape
+# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR>
 
-
-
-
-# # %%
-#    b = D.valid_ds[1]
-#    b['image'].shape
-# # %%
-#
-#    dl = D.train_dataloader()
-# # %%
-#     iteri = iter(dl)
-#     b = next(iteri)
-#     im = b['image']
-    lm = b['lm']
-# %
-
-# SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR>
-# %%
-    D = DataManagerSource(
-        project=proj,
-        dataset_params = config["dataset_params"],
-        affine3d=config["affine3d"],
-        batch_size=4,
-        transform_factors=config["transform_factors"],
-        config=config,
-    )
-
-# %%
-    D.prepare_data()
-    D.setup()
-    D.data_folder
-    dl = D.train_dataloader()
-    bb = D.train_ds[0]
-# %%
-    iteri = iter(dl)
-    b = next(iteri)
-    b = D.train_ds[0]
-    im = b['image']
-    lm = b['lm']
-
-    ImageMaskViewer([im[0], lm[0]])
-
-
-# %%
-# %%
-
-# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR> <CR>
-
-# %%
     batch_size = 2
     D = DataManagerSource(
         proj,
@@ -951,23 +758,15 @@ if __name__ == "__main__":
     )
     D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
 # %%
-# %%
     D.prepare_data()
 
     D.setup()
     D.data_folder
     b = D.train_ds[0]
-
-    dl = D.train_dataloader()
-    iteri = iter(dl)
-    b = next(iteri)
-    im = b['image']
-    lm = b['lm']
-
 # %%
 
 # %%
-# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     batch_size = 2
     D = DataManagerPatch(
@@ -1006,7 +805,7 @@ if __name__ == "__main__":
     D.bboxes_per_id.append(bboxes)
 # %%
 # %%
-# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
 # %%
 
@@ -1025,7 +824,7 @@ if __name__ == "__main__":
         lazy=True,
         allow_smaller=False,
     )
-    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+    Ld = LoadDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
 
     Rva = RandCropByPosNegLabeld(
         keys=["image", "lm"],
@@ -1078,3 +877,4 @@ if __name__ == "__main__":
     img = b["image"][ind][0]
     lab = b["lm"][ind][0]
     ImageMaskViewer([img, lab])
+# %%

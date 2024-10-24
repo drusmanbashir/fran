@@ -462,7 +462,7 @@ class TorchReader(ImageReader):
 
         filenames: Sequence[PathLike] = ensure_tuple(data)
         for name in filenames:
-            img = torch.load(f= name,weights_only=False,  **kwargs)
+            img = torch.load(name,  **kwargs)
             img_.append(img)
         return img_ if len(img_) > 1 else img_[0]
 

@@ -1,6 +1,5 @@
 import collections
 
-import time
 from bs4 import BeautifulSoup as BS
 import tqdm,yaml
 import pickle, os,json
@@ -292,36 +291,6 @@ def save_list(listi,filename:Path):
         with open(filename,'w') as f:
                     _inner_recursion(listi)
 
-
-
-
-def filter_files_by_creation_date(directory, pattern, after_date_str, date_format='%d%m%y'):
-    """
-    Filters files in a directory matching a pattern, returning only those created after a specified date.
-
-    Args:
-        directory (str or Path): The directory containing files.
-        pattern (str): A glob pattern to match file names.
-        after_date_str (str): The date as a string to filter files after in 'ddmmyy' format.
-        date_format (str): The format of the after_date_str (default is '%d%m%y').
-
-    Returns:
-        list(Path): List of file Paths created after the given date.
-    """
-
-    # Parse the after_date_str to a timestamp using ddmmyy format
-    after_date = time.mktime(time.strptime(after_date_str, date_format))
-    
-    # Create a Path object for the directory
-    fldr = Path(directory)
-    
-    # List files matching the pattern and filter by creation date
-    filtered_files = [
-        file for file in fldr.glob(pattern)
-        if os.path.getctime(file) > after_date
-    ]
-    
-    return filtered_files
 
 # %%
 if __name__ == "__main__":

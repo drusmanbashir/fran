@@ -1,11 +1,13 @@
 # %%
+from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import ModelCheckpoint
 import shutil
 from lightning.pytorch.profilers import AdvancedProfiler
 from monai.transforms.io.dictionary import LoadImaged
-from fran.transforms.imageio import TorchReader
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
-from fran.utils.common import common_vars_filename
+from fran.managers import UNetManager
+from fran.managers.unet import maybe_ddp
+from fran.transforms.imageio import TorchReader
 import ipdb
 
 from fran.utils.helpers import pp
@@ -28,7 +30,7 @@ import torch._dynamo
 from fran.callback.nep import NeptuneImageGridCallback
 
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
-from fran.managers.data import DataManagerLBD, DataManagerPBD, DataManagerPatch, DataManagerSource, DataManagerWhole
+from fran.managers.data import DataManagerBaseline, DataManagerLBD, DataManagerPBD, DataManagerPatch, DataManagerSource, DataManagerWhole
 from fran.utils.fileio import load_yaml
 from fran.utils.imageviewers import ImageMaskViewer
 
@@ -37,8 +39,7 @@ from fran.managers.nep import NeptuneManager
 import itertools as il
 import operator
 import warnings
-from lightning.pytorch import LightningModule
-from lightning.pytorch import Trainer as TrainerL
+from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     TQDMProgressBar,
@@ -51,7 +52,7 @@ from fran.architectures.create_network import (
     pool_op_kernels_nnunet,
 )
 import torch.nn.functional as F
-
+from fran.utils import COMMON_PATHS
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
 except:
@@ -70,8 +71,7 @@ def fix_dict_keys(input_dict, old_string, new_string):
 
 
 def checkpoint_from_model_id(model_id, sort_method="last"):
-    common_paths = load_yaml(common_vars_filename)
-    fldr = Path(common_paths["checkpoints_parent_folder"])
+    fldr = Path(COMMON_PATHS["checkpoints_parent_folder"])
     all_fldrs = [
         f for f in fldr.rglob("*{}/checkpoints".format(model_id)) if f.is_dir()
     ]
@@ -97,197 +97,6 @@ def checkpoint_from_model_id(model_id, sort_method="last"):
 # class NeptuneCallback(Callback):
 # def on_train_epoch_start(self, trainer, pl_module):
 #     trainer.logger.experiment["training/epoch"] = trainer.current_epoch
-
-
-class UNetTrainer(LightningModule):
-    def __init__(
-        self,
-        project,
-        dataset_params,
-        model_params,
-        loss_params,
-        max_epochs=1000,
-        lr=None,
-        sync_dist=False,
-    ):
-        super().__init__()
-        self.lr = lr if lr else model_params["lr"]
-        store_attr()
-        self.save_hyperparameters("model_params", "loss_params", "lr")
-        self.model = self.create_model()
-        self.loss_fnc = self.create_loss_fnc()
-
-    # def on_fit_start(self):
-    #     super().on_fit_start()
-
-    def _common_step(self, batch, batch_idx,prefix:str):
-        if not hasattr(self, "batch_size"):
-            self.batch_size = batch["image"].shape[0]
-        inputs, target = batch["image"], batch["lm"]
-        pred = self.forward(
-            inputs
-        )  # self.pred so that NeptuneImageGridCallback can use it
-
-        loss_dict = self.loss_fnc(pred, target)
-        self.log_losses(loss_dict['losses_for_logging'], prefix=prefix)
-        self.maybe_store_preds(pred)
-        # loss = loss_dict['loss']
-        return loss_dict
-
-
-    def maybe_store_preds(self, pred):
-        if hasattr(self.trainer, "store_preds") and self.trainer.store_preds == True:
-            if isinstance(pred, Union[tuple, list]):
-                self.pred = [p.detach().cpu() for p in pred]
-            else:
-                self.pred = pred.detach().cpu()
-
-    def maybe_apply_ds_scales(self, pred, target):
-        if isinstance(pred, list) and isinstance(target, torch.Tensor):
-            target_listed = []
-            for s in self.deep_supervision_scales:
-                if all([i == 1 for i in s]):
-                    target_listed.append(target)
-                else:
-                    size = [
-                        int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])
-                    ]
-                    target_downsampled = F.interpolate(
-                        target, size=size, mode="nearest"
-                    )
-                    target_listed.append(target_downsampled)
-            target = target_listed
-        return pred, target
-
-    def training_step(self, batch, batch_idx):
-        return self._common_step(batch, batch_idx,"train")
-
-    def validation_step(self, batch, batch_idx):
-        return self._common_step(batch, batch_idx,"val")
-
-    def log_losses(self, loss_dict, prefix):
-        metrics = [
-            "loss",
-            "loss_ce",
-            "loss_dice",
-            "loss_dice_label1",
-            "loss_dice_label2",
-        ]
-        assert "loss_dice" in loss_dict.keys(), "loss_dice not in loss_dict. This is essential for monitoring."
-        metrics = [me for me in metrics if me in loss_dict.keys()]
-        renamed = [prefix + "_" + nm for nm in metrics]
-        logger_dict = {
-            neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
-        }
-        self.log_dict(
-            logger_dict,
-            logger=True,
-            batch_size=self.batch_size,
-            sync_dist=self.sync_dist,
-        )
-        # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
-
-    def configure_optimizers(self):
-        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        scheduler = ReduceLROnPlateau(optimizer, "min", patience=30)
-        output = {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "monitor": "train_loss_dice",
-                "frequency": 2,
-                "interval":'epoch',
-                "strict":True,
-                # If "monitor" references validation metrics, then "frequency" should be set to a
-                # multiple of "trainer.check_val_every_n_epoch".
-            },
-        }
-        return output
-
-    def forward(self, inputs):
-        return self.model(inputs)
-
-    def create_model(self):
-        model = create_model_from_conf(self.model_params, self.dataset_params)
-        return model
-
-    def create_loss_fnc(self):
-        if self.model_params["arch"] == "nnUNet":
-            num_pool = 5
-            self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
-                self.dataset_params["patch_size"]
-            )
-            self.deep_supervision_scales = [[1, 1, 1]] + list(
-                list(i)
-                for i in 1
-                / np.cumprod(np.vstack(self.net_num_pool_op_kernel_sizes), axis=0)
-            )[:-1]
-            loss_func = DeepSupervisionLoss(
-                levels=num_pool,
-                deep_supervision_scales=self.deep_supervision_scales,
-                fg_classes=self.model_params["out_channels"] - 1,
-            )
-            return loss_func
-
-        elif (
-            self.model_params["arch"] == "DynUNet"
-            or self.model_params["arch"] == "DynUNet_UB"
-        ):
-            num_pool = 4  # this is a hack i am not sure if that's the number of pools . this is just to equalize len(mask) and len(pred)
-            ds_factors = list(
-                il.accumulate(
-                    [1]
-                    + [
-                        2,
-                    ]
-                    * (num_pool - 1),
-                    operator.truediv,
-                )
-            )
-            ds = [1, 1, 1]
-            self.deep_supervision_scales = list(
-                map(
-                    lambda list1, y: [x * y for x in list1],
-                    [
-                        ds,
-                    ]
-                    * num_pool,
-                    ds_factors,
-                )
-            )
-            loss_func = DeepSupervisionLoss(
-                levels=num_pool,
-                deep_supervision_scales=self.deep_supervision_scales,
-                fg_classes=self.model_params["out_channels"] - 1,
-            )
-            return loss_func
-
-        else:
-            loss_func = CombinedLoss(
-                **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
-            )
-            return loss_func
-
-
-def update_nep_run_from_config(nep_run, config):
-    for key, value in config.items():
-        nep_run[key] = value
-    return nep_run
-
-
-def maybe_ddp(devices):
-    if devices == 1 or isinstance(devices, Union[list, str, tuple]):
-        return "auto"
-    ip = get_ipython()
-    if ip:
-        print("Using interactive-shell ddp strategy")
-        return "ddp_notebook"
-    else:
-        print("Using non-interactive shell ddp strategy")
-        return "ddp"
-
-
 class Trainer:
     def __init__(self, project, config, run_name=None):
         store_attr()
@@ -322,7 +131,7 @@ class Trainer:
             callbacks=cbs,
             accelerator="gpu",
             devices=devices,
-            precision="16-true",
+            precision="bf16-mixed",
             profiler=profiler,
             logger=logger,
             max_epochs=epochs,
@@ -468,7 +277,7 @@ class Trainer:
         return D
 
     def init_trainer(self, epochs):
-        N = UNetTrainer(
+        N = UNetManager(
             self.project,
             self.config["dataset_params"],
             self.config["model_params"],
@@ -481,7 +290,7 @@ class Trainer:
 
     def load_trainer(self, **kwargs):
         try:
-            N = UNetTrainer.load_from_checkpoint(
+            N = UNetManager.load_from_checkpoint(
                 self.ckpt,
                 project=self.project,
                 dataset_params=self.config["dataset_params"],
@@ -501,7 +310,7 @@ class Trainer:
             torch.save(state_dict_neo, self.ckpt)
             shutil.move(self.ckpt, ckpt_old)
 
-            N = UNetTrainer.load_from_checkpoint(
+            N = UNetManager.load_from_checkpoint(
                 self.ckpt,
                 project=self.project,
                 dataset_params=self.config["dataset_params"],
@@ -528,6 +337,8 @@ class Trainer:
             DMClass = DataManagerLBD
         elif mode == "pbd":
             DMClass = DataManagerPBD
+        elif mode == "baseline":
+            DMClass = DataManagerBaseline
         else:
             raise NotImplementedError(
                 "Mode {} is not supported for datamanager".format(mode)
@@ -556,7 +367,6 @@ class Trainer:
 
 if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
-    # from fran.utils.common import *
 
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
@@ -566,7 +376,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from torch.profiler import profile, record_function, ProfilerActivity
 
-    project_title = "litsmc"
+    project_title = "nodes"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -582,10 +392,9 @@ if __name__ == "__main__":
     # conf['dataset_params']['plan']=5
 # %%
     # run_name = "LITS-1007"
-    # device_id = 0
+    # device_id = 1
     device_id = 1
-    run_totalseg='LITS-1025'
-    run_litsmc= 'LITS-1018'
+    run_name ='LITS-1018'
     run_name = None
     bs = 10# 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
@@ -593,7 +402,7 @@ if __name__ == "__main__":
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
-    neptune = False
+    neptune = True
     tags = []
     description = f""
 # %%
@@ -618,66 +427,19 @@ if __name__ == "__main__":
     Tm.fit()
     # model(inputs)
 # %%
-#SECTION:-------------------- IMPORTANCE SAMPLING--------------------------------------------------------------------------------------
-    model = Tm.trainer.model
 
-# %%
-#     pred = torch.load("pred.pt")
-#     target = torch.load("target.pt")
-# # %%
-#
-#     Tm.trainer.model.to('cpu')
-#     pred = [a.cpu() for a in pred]
-#     loss = Tm.trainer.model.loss_fnc(pred.cpu(), target.cpu())
-#     loss_dict = Tm.trainer.loss_fnc.loss_dict
-#     Tm.trainer.maybe_store_preds(pred)
-#     # preds = [pred.tensor() if hasattr(pred, 'tensor') else pred for pred in preds]
-#     torch.save(preds, 'new_pred.pt')
-#     torch.save(targ.tensor(),'new_target.pt')
-#
-#     tt = torch.tensor(targ.clone().detach())
-#     torch.save(tt,"new_target.pt")
-#
-# %%
 # %%
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
 
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.valid_ds
+    ds = Tm.D.train_ds
 # %%
+    i = ds[12]
 
-
-    dl = Tm.D.train_dataloader()
-    iteri = iter(dl)
-    batch = next(iteri)
-    batch['image'].meta['filename_or_obj']
-
-# %%
-    dl2 = Tm.D.val_dataloader()
-    iteri2 = iter(dl)
-# %%
-    while iteri2:
-        bb = next(iteri2)
-        # pred = Tm.trainer.model(bb['image'].cuda())
-        print(bb['lm'].unique())
-
-
-    dicis=[]
-# %%
     for i, id in enumerate(ds):
-        
-        lm = id['lm']
-        vals = lm.unique()
-        print(vals)
-        # print(vals)
-        if vals.max()>8:
-            tr()
-            # print("Rat")
-            dici = {'lm':lm.meta['filename_or_obj'], 'vals':vals}
-            dicis.append(dici) 
-#
-            # vals = [  0.,   1.,   2.,   3.,   4.,   5.,   6.,   7.,   8., 118.]
+        print(i)
 # %%
     dici = ds[7]
     dici = ds.data[7]
@@ -707,7 +469,7 @@ if __name__ == "__main__":
         lazy=True,
         allow_smaller=False,
     )
-    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+    Ld = LoadDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
 
     Rva = RandCropByPosNegLabeld(
         keys=["image", "lm"],
@@ -750,7 +512,7 @@ if __name__ == "__main__":
     ImageMaskViewer([dici[0]["image"][0], dici[0]["lm"][0]])
 
 # %%
-    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+    Ld = LoadDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
     dici = Ld(dici)
 # %%
 
@@ -761,6 +523,13 @@ if __name__ == "__main__":
     tt = torch.load(fn)
     tt2 = torch.load(fn2)
     ImageMaskViewer([tt, tt2])
+
+# %%
+    dl = Tm.D.train_dataloader()
+    dl2 = Tm.D.val_dataloader()
+    iteri = iter(dl)
+    iteri2 = iter(dl2)
+    batch = next(iteri2)
 # %%
 
     Re = ResizeWithPadOrCropd(
@@ -842,7 +611,7 @@ if __name__ == "__main__":
             print(casei[a]["image"].shape)
 # %%
     for i, b in enumerate(dl):
-        print("----------------------------")
+        print("\----------------------------")
         print(b["image"].shape)
         print(b["label"].shape)
 # %%

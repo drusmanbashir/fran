@@ -292,6 +292,25 @@ class Datasource(GetAttr):
 
 
 
+def get_ds_remapping(ds:str,global_properties):
+        key = 'lm_group'
+        keys=[]
+        for k in global_properties.keys():
+            if key in k:
+                keys.append(k)
+
+        for k in keys:
+            dses  = global_properties[k]['ds']
+            if ds in dses:
+                labs_src = global_properties[k]['labels']
+                if hasattr (global_properties[k],'labels'):
+                    labs_dest = global_properties[k]['labels_neo']
+                else:
+                    labs_dest = labs_src
+                remapping = {src:dest for src,dest in zip(labs_src,labs_dest)}
+                return remapping
+        raise Exception("No lm group for dataset {}".format(ds))
+
 # %%
 if __name__ == "__main__":
     from label_analysis.totalseg import TotalSegmenterLabels, relabel
