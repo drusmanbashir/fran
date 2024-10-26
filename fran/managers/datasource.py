@@ -16,18 +16,26 @@ from fran.utils.helpers import find_matching_fn, multiprocess_multiarg
 from fran.utils.string import info_from_filename, str_to_path
 
 tr = ipdb.set_trace
-
+from pathlib import Path
 
 def subscript_generator():
         letters = list(string.ascii_letters)
         while(letters):
             yield letters.pop(0)
 
-from pathlib import Path
 
+
+
+def change_caseid(filepair, new_cid):
+        for fn in filepair:
+            cid_old = info_from_filename(fn.name,full_caseid=True)['case_id']
+            fn_out = fn.str_replace(cid_old,new_cid)
+            print("--New filename: ",fn_out)
+            shutil.move(fn,fn_out)
 
 @str_to_path()
 def fix_repeat_caseids(parent_folder):
+        ## parent_folder mist have subfolders images and lms
         fldr_imgs = parent_folder/("images")
         fldr_lms = parent_folder/("lms")
         img_fns = list(fldr_imgs.glob("*"))
@@ -53,7 +61,7 @@ def fix_repeat_caseids(parent_folder):
             case_ids.append(cid)
         print("Files with repeat case_id which will now be given unique case_id: ", len(files_to_alter))
         for f in files_to_alter:
-            print("Fixing ",f['filepair'][0])
+            print("Fixing: ",f['filepair'][0])
             change_caseid(f['filepair'],f['new_cid'])
 
 
@@ -331,13 +339,6 @@ if __name__ == "__main__":
 
     for l in ll:
         remapping[l]= 9
-
-    def change_caseid(filepair, new_cid):
-        for fn in filepair:
-            cid_old = info_from_filename(fn.name,full_caseid=True)['case_id']
-            fn_out = fn.str_replace(cid_old,new_cid)
-            shutil.move(fn,fn_out)
-
 
 # %%
         fn ="/s/xnat_shadow/tcianodeshort/lms/tcianode_abd004.nii.gz"

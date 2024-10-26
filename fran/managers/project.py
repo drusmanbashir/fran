@@ -40,6 +40,21 @@ DS= _DS()
 
 
 def val_indices(a, n):
+    """
+    Divide `a` elements into `n` roughly equal slices.
+
+    Parameters
+    ----------
+    a : int
+        The total number of items to divide.
+    n : int
+        The number of slices to divide `a` into.
+
+    Returns
+    -------
+    list of slice
+        A list of slices, each specifying a segment of `a`.
+    """
     a = a - 1
     k, m = divmod(a, n)
     return [slice(i * k + min(i, m), (i + 1) * k + min(i + 1, m)) for i in range(n)]
@@ -47,6 +62,24 @@ def val_indices(a, n):
 
 @contextmanager
 def db_ops(db_name):
+    """
+    Context manager to open and manage a SQLite database connection.
+
+    Parameters
+    ----------
+    db_name : str
+        Path to the SQLite database file.
+
+    Yields
+    ------
+    sqlite3.Cursor
+        A cursor for executing SQL commands within the database.
+
+    Example
+    -------
+    >>> with db_ops("database.db") as cursor:
+    ...     cursor.execute("SELECT * FROM table")
+    """
     conn = sqlite3.connect(db_name)
     try:
         cur = conn.cursor()
@@ -192,6 +225,9 @@ class Project(DictToAttr):
         return cols
 
     def create_table(self):
+        """
+        Create the `datasources` table in the database if it doesn't exist.
+        """
         tbl_name = "datasources"
         if not self.table_exists(tbl_name):
             self.sql_alter(
@@ -208,6 +244,16 @@ class Project(DictToAttr):
         return True if len(aa) > 0 else False
 
     def add_data(self, datasources :List, test=False):
+        """
+        Add multiple datasources to the project database.
+
+        Parameters
+        ----------
+        datasources : list of Datasource
+            List of datasource objects to add.
+        test : bool or list of bool, optional
+            Boolean flags indicating which datasources are for testing.
+        """
         #list of DS objects, e.g., DS.nodes
         test = [False] * len(datasources) if not test else listify(test)
         assert len(datasources) == len(
@@ -231,6 +277,9 @@ class Project(DictToAttr):
             maybe_makedirs(folder)
 
     def populate_raw_data_folder(self):
+        """
+        Populate the raw data folder with symbolic links to image and label map files.
+        """
         query_imgs = "SELECT image, img_symlink FROM datasources"
         query_lms = "SELECT lm, lm_symlink FROM datasources"
         pairs = self.sql_query(query_imgs)
@@ -253,6 +302,9 @@ class Project(DictToAttr):
 
 
     def delete_duplicates(self):
+        """
+        Delete duplicate entries in the `datasources` table, keeping the first instance of each.
+        """
         ss = """DELETE FROM datasources WHERE rowid NOT IN (SELECT MIN(rowid) FROM datasources GROUP BY image)
         """
         self.sql_alter(ss)
@@ -275,6 +327,19 @@ class Project(DictToAttr):
 
 
     def paths_exist(self, paths: list):
+        """
+        Verify if all paths in a list exist.
+
+        Parameters
+        ----------
+        paths : list of Path
+            Paths to check.
+
+        Returns
+        -------
+        bool
+            True if all paths exist, False otherwise.
+        """
         paths = il.chain.from_iterable(paths)
         all_exist = [[p, p.exists()] for p in paths]
         if not all([a[1] for a in all_exist]):
@@ -286,18 +351,46 @@ class Project(DictToAttr):
             return True
 
     def populate_tbl(self, ds):
+        """
+        Populate the database with verified datasource pairs.
 
+        Parameters
+        ----------
+        ds : Datasource
+            Datasource object with verified file pairs.
+        """
         strs = [self.vars_to_sql(ds.name,ds.alias, *pair, ds.test) for pair in ds.verified_pairs]
         with db_ops(self.db) as cur:
             cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?)", strs)
 
     def add_datasources_xnat(self, xnat_proj: str):
+        """
+        Add datasources from an XNAT project.
+
+        Parameters
+        ----------
+        xnat_proj : str
+            The XNAT project name.
+        """
         proj = Proj(xnat_proj)
         rc = proj.resource("IMAGE_lm_FPATHS")
         csv_fn = rc.get("/tmp", extract=True)[0]
         pd.read_csv(csv_fn)
 
     def filter_existing_images(self, ds):
+        """
+        Filter out images that already exist in the database.
+
+        Parameters
+        ----------
+        ds : Datasource
+            Datasource to filter.
+
+        Returns
+        -------
+        Datasource
+            Filtered datasource with only new images.
+        """
         ss = "SELECT image FROM datasources WHERE ds='{}'".format(ds.name)
         with db_ops(self.db) as cur:
             res = cur.execute(ss)
@@ -412,6 +505,19 @@ class Project(DictToAttr):
             self.update_tbl_folds()
 
     def register_datasources(self, datasources):
+        """
+        Register new datasources and save to global properties.
+
+        Parameters
+        ----------
+        datasources : list of Datasource
+            List of datasource dictionaries.
+
+        Returns
+        -------
+        list of dict of new datasources.
+            
+        """
         dicis = []
         for ds in datasources:
                 fldr = Path(ds['folder'])
@@ -597,7 +703,19 @@ class Project(DictToAttr):
                 print(self.global_properties[key])
         self.save_global_properties()
 
-    def imported_labels(self, lm_group,input_fldr,labelsets):
+    def imported_labels(self, lm_group: str,input_fldr: Path,labelsets: list):
+        """
+        Save information about imported labels for a specific label group.
+
+        Parameters
+        ----------
+        lm_group : str
+            Label group identifier.
+        input_fldr : Path
+            Folder containing imported labels.
+        labelsets : list
+            List of imported label sets.
+        """
         dici = self.global_properties[lm_group]
         dici['imported_folder1']=str(input_fldr)
         dici['imported_labelsets']= labelsets
@@ -605,6 +723,18 @@ class Project(DictToAttr):
         self.save_global_properties()
 
     def maybe_store_projectwide_properties(self,clip_range=None,max_cases=250, overwrite=False):
+        """
+        Store global properties like dataset mean and standard deviation.
+
+        Parameters
+        ----------
+        clip_range : tuple, optional
+            Range for intensity clipping.
+        max_cases : int, optional
+            Maximum cases for computing properties.
+        overwrite : bool, optional
+            Whether to overwrite existing properties.
+        """
         from fran.preprocessing.globalproperties import GlobalProperties
         self._create_folds()
         self.G = GlobalProperties(self,max_cases=max_cases,clip_range=clip_range)
@@ -718,7 +848,7 @@ if __name__ == "__main__":
 
     P= Project(project_title="nodes")
     # P.delete()
-    P.create(mnemonic='nodes')
+    # P.create(mnemonic='nodes')
     P.add_data([DS.nodes,DS.nodesthick])
 
 # %%
