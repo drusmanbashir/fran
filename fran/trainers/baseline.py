@@ -5,6 +5,7 @@ from fran.managers import Project
 from fran.managers.data import DataManagerBaseline
 from fran.trainers.trainer import Trainer
 from fran.utils.config_parsers import ConfigMaker
+from fran.utils.imageviewers import ImageMaskViewer
 
 #
 # class TrainerBaseline(Trainer):
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
 
 
-    project_title = "litsmc"
+    project_title = "nodes"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -59,8 +60,8 @@ if __name__ == "__main__":
     # device_id = 0
     device_id = 0
     bs = 2# 5 is good if LBD with 2 samples per case
-    run_name='LITS-1069'
     run_name = None
+    run_name='LITS-1072'
     compiled = False
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -96,17 +97,21 @@ if __name__ == "__main__":
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.valid_ds
-    ds2 = Tm.D.train_ds
-    print(ds[0]['image'].shape)
-    print(ds2[0]['image'].shape)
+    # ds2 = Tm.D.train_ds
+    # print(ds[0]['image'].shape)
+    # print(ds2[0]['image'].shape)
 
 # %%
-    dl = Tm.D.val_dataloader()
+    dl = Tm.D.train_dataloader()
 
     iteri = iter(dl)
     bb = next(iteri)
     # len(ds)
 
+    images = bb['image']
+    lms = bb['lm']
+    ind = 1
+    ImageMaskViewer([images[ind][0],lms[ind][0]],'ii')
 # %%
 
     bb['lm'].shape

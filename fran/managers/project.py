@@ -8,7 +8,7 @@ from fastcore.basics import GetAttr
 from monai.utils.enums import StrEnum
 from fran.managers.datasource import Datasource, _DS
 from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, import_h5py
-from fran.preprocessing.globalproperties import GlobalProperties
+from fran.utils.config_parsers import ConfigMaker
 from fran.utils.string import (
     cleanup_fname,
     drop_digit_suffix,
@@ -36,6 +36,7 @@ common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 COMMON_PATHS = load_yaml(common_vars_filename)
 from contextlib import contextmanager
 
+DS= _DS()
 
 
 def val_indices(a, n):
@@ -62,6 +63,50 @@ def db_ops(db_name):
 
 
 class Project(DictToAttr):
+    """
+    Represents a project which includes managing data sources, manipulating project-wide settings, 
+    and interacting with a database. 
+
+    This class supports various operations needed to manage data workflows efficiently, using 
+    methods that simplify folder structure creation, data addition, and SQL queries.
+
+    Attributes
+    ----------
+    project_title : str
+        The title of the project.
+
+    Main Methods
+    -------
+    create(mnemonic, datasources=list, test=list)
+        Create the project structure and initialize with data.
+    add_data(datasources, test=False)
+        Adds data sources to the project.
+    maybe_store_projectwide_properties()
+
+    Example
+    -------
+    Typical use case for setting up a project and adding data:
+
+    >>> from fran.utils.common import DS
+
+    >>> P = Project(project_title="nodes")
+    >>> # Create the project structure
+    >>> P.create(mnemonic='nodes')
+
+    >>> # Add data sources
+    >>> P.add_data([DS.nodes, DS.nodesthick])
+
+    >>> # Process and store project-wide properties. This also creates  5 folds .  Has to be run atleast once
+    >>>conf = ConfigMaker(
+        P, raytune=False, configuration_filename=None
+
+    ).config
+    >>> # Now add a main plan. this creates lm_groups. Also computes dataset properties, mean, std. Vital to do this once. The plan should be the main, default plan with all datasources included.
+    >>>plans = conf['plan1']
+    >>>P.add_main_plan(plans)
+    """
+
+
     def __init__(self, project_title):
         store_attr()
         self.set_folder_file_names()
@@ -90,6 +135,37 @@ class Project(DictToAttr):
             cur.execute(sql_str)
 
     def sql_query(self, sql_str,chain_output=False):
+        """
+        Execute an SQL query and fetch all results.
+
+        This method uses a database context manager to execute the provided SQL query string and 
+        fetches the results. Optionally, it can flatten the output into a single list if the 
+        query returns a nested list of tuples.
+
+        Parameters
+        ----------
+        sql_str : str
+            The SQL query string to be executed.
+        chain_output : bool, optional
+            If True, the output list of tuples is flattened into a single list using itertools' chaining. 
+            Default is False.
+
+        Returns
+        -------
+        list
+            A list of results from the SQL query execution. If `chain_output` is set to True, the list is 
+            flattened, otherwise, it returns a list of tuples.
+
+        Examples
+        --------
+        >>> results = project.sql_query("SELECT * FROM table_name")
+        >>> results_flat = project.sql_query("SELECT id FROM table_name", chain_output=True)
+
+        Notes
+        -----
+        - This method relies on a context manager `db_ops` which is assumed to be defined within the class 
+          or accessible in the same module.
+        """
         with db_ops(self.db) as cur:
             res = cur.execute(sql_str)
             output = res.fetchall()
@@ -131,7 +207,8 @@ class Project(DictToAttr):
         aa = self.sql_query(ss)
         return True if len(aa) > 0 else False
 
-    def add_data(self, datasources, test=False):
+    def add_data(self, datasources :List, test=False):
+        #list of DS objects, e.g., DS.nodes
         test = [False] * len(datasources) if not test else listify(test)
         assert len(datasources) == len(
             test
@@ -357,7 +434,7 @@ class Project(DictToAttr):
         ----------
         fold : int, optional
             The fold number used to split the data into training and validation sets. 
-            If None, all folds are returned.
+            If None, all folds are returned in a single list
             
         ds : str or list of str, optional
             A string or list representing one or more datasources. If it contains commas, 
@@ -372,13 +449,15 @@ class Project(DictToAttr):
 
         # Build SQL queries
         ss_train = self.build_sql_query(fold, ds, is_validation=False)
-        ss_val = self.build_sql_query(fold, ds, is_validation=True)
-
-        # Execute SQL queries
         train_files = self.fetch_files(ss_train)
-        val_files = self.fetch_files(ss_val)
 
-        return train_files, val_files
+
+        if fold:
+            ss_val = self.build_sql_query(fold, ds, is_validation=True)
+            val_files = self.fetch_files(ss_val)
+            return train_files, val_files
+        else:
+            return train_files
 
 
     def build_sql_query(self, fold: int, ds: Union[str, List[str]], is_validation: bool) -> str:
@@ -526,6 +605,7 @@ class Project(DictToAttr):
         self.save_global_properties()
 
     def maybe_store_projectwide_properties(self,clip_range=None,max_cases=250, overwrite=False):
+        from fran.preprocessing.globalproperties import GlobalProperties
         self._create_folds()
         self.G = GlobalProperties(self,max_cases=max_cases,clip_range=clip_range)
         if not 'labels_all' in self.global_properties.keys() or overwrite==True:
@@ -533,9 +613,11 @@ class Project(DictToAttr):
             self.G.compute_std_mean_dataset()
             self.G.collate_lm_labels()
 
-    def add_plan(self,plan:dict, overwrite_global_properties=False):
+    def add_main_plan(self,plan:dict):
         """
-        Adds a plan to the project, which defines datasets, label groups, and preprocessing steps.
+        Adds a main plan to the project, which defines datasets, label groups, and preprocessing steps.
+        Note: This plan should have ALL datasets forming this project. All datasets should be correctly sorted in relevant lm_groups if applicable. 
+        Later plans with fewer datasets should not be used as an argument
 
         Parameters:
         ----------
@@ -543,14 +625,14 @@ class Project(DictToAttr):
             A dictionary defining the project plan, typically loaded from an Excel sheet.
             Must include 'datasources' (list of dataset names) and 'lm_groups' (list of label groups).
         overwrite_global_properties : bool, optional
-            Whether to overwrite existing global properties (default is False).
+            Whether to overwrite existing global properties (default is True). Set it to False if you already computed dataset mean, std, and now only want to add datasources
         """
         dss = plan['datasources']
         dss= dss.split(",")
         datasources = [getattr(DS,g) for g in dss]
         self.add_data(datasources)
         self.set_lm_groups(plan['lm_groups'])
-        self.maybe_store_projectwide_properties(overwrite=overwrite_global_properties)
+        self.maybe_store_projectwide_properties(overwrite=True)
 
 
 
@@ -617,32 +699,40 @@ class Project(DictToAttr):
     def lm_group_keys(self):
         lmgps = "lm_group"
         keys = [k for k in self.global_properties.keys() if lmgps in k]
+
         return keys
+    
+    @property
+    def has_folds(self):
+        ss = """SELECT fold FROM datasources"""
+        result = self.sql_query(ss, True)
+        cc =[a=='NULL' for a in result]
+        all_bool= not all(cc)
+        return all_bool
 
 
 
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
-    DS= _DS()
 
     P= Project(project_title="nodes")
+    # P.delete()
+    P.create(mnemonic='nodes')
+    P.add_data([DS.nodes,DS.nodesthick])
 
-    # P.create(mnemonic='nodes')
 # %%
     conf = ConfigMaker(
         P, raytune=False, configuration_filename=None
 
     ).config
-# %%
-    P.get_train_val_files(0,conf['plan']['datasources'])
-    P.get_train_val_files(None,"nodesthick,nodes")
 
-
-# %%
+    plans= conf['plan4']
     plans = conf['plan1']
-    planb= conf['plan3']
-    P.add_plan(plans, overwrite_global_properties=False)
+
+    P.add_main_plan(plans)
+# %%
+    # P.maybe_store_projectwide_properties(overwrite=True)
 # %%
     # P.set_lm_groups([['litq','litqsmall','drli','lits'],['lidc2']])
     # P.set_lm_groups()
@@ -653,18 +743,29 @@ if __name__ == "__main__":
     len(P.raw_data_imgs)
     len(P)
 # %%
+
+    P.train_v
+    if P.has_folds:
+        P.get_train_val_files(0,conf['plan']['datasources'])
+        aa = P.get_train_val_files(None,"nodes")
 # %%
     P.imported_labels('lm_group2',Path("/s/fran_storage/predictions/totalseg/LITS-827/"),labelsets =[lr,ll])
 
 # %%
     import sqlite3
+    db_name = "/s/fran_storage/projects/litsmc/cases.db"
     db_name = "/s/fran_storage/projects/nodes/cases.db"
     conn = sqlite3.connect(db_name)
+    cur = conn.cursor()
     
+# %%
     ss = """ALTER TABLE datasources RENAME COLUMN lm to lm"""
     ss = """DELETE FROM datasources WHERE case_id='lits_115'"""
 
-    cur = conn.cursor()
+    ss = """SELECT case_id FROM datasources WHERE fold IS NOT NULL"""
+
+
+# %%
     ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{} ".format(1)
     dss = conf['plan']['datasources']
     dss = ("nodesthick","nodes")
@@ -717,9 +818,6 @@ if __name__ == "__main__":
 
 # %%
 
-    ss = """select * FROM datasources"""
-    qr = conn.execute(ss)
-    pd.DataFrame(qr)
 # %%
     P._create_folds()
     max_cases = 100
@@ -750,6 +848,21 @@ if __name__ == "__main__":
     test=None
 # %%
 
+    fold = 0
+    ds = DS.nodes
+    ss_train = P.build_sql_query(fold, ds, is_validation=False)
+
+    ss_val = P.build_sql_query(fold, ds, is_validation=True)
+    query = ss_val
+
+    result = P.sql_query(query, True)
+    result = P.sql_query(ss, True)
+    # Execute SQL queries
+    train_files = P.fetch_files(ss_train)
+    val_files = P.fetch_files(ss_val)
+
+    ss = """SELECT NOT EXISTS (SELECT 1 FROM datasources WHERE fold IS NOT NULL) AS all_nulls"""
+# %%
 # %%
 
     strs = [P.vars_to_sql(ds.name,ds.alias, *pair, ds.test) for pair in ds.verified_pairs]

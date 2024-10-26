@@ -137,8 +137,8 @@ class _Preprocessor(GetAttr):
             )
 
     def process_batch(self, batch):
-        U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
-        batch = U(batch)
+        # U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
+        # batch = U(batch)
         images, lms, fg_inds, bg_inds=(
             batch["image"],
             batch["lm"],
@@ -554,5 +554,41 @@ if __name__ == "__main__":
     df
     dici = load_dict()
     save_json(resampled_dataset_properties,"/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/resampled_dataset_properties.json")
+# %%
+    dl = I.R.dl
+    iteri = iter(dl)
+    batch = next(iteri )
+# %%
+    U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
+    batch = U(batch)
+    images, lms, fg_inds, bg_inds=(
+        batch["image"],
+        batch["lm"],
+        batch["lm_fg_indices"],
+        batch["lm_bg_indices"]
+    )
+    for (
+        image,
+        lm,
+        fg_ind,
+        bg_ind,
+    ) in zip(
+        images, lms, fg_inds, bg_inds,
+    ):
+        assert image.shape == lm.shape, "mismatch in shape".format(
+            image.shape, lm.shape
+        )
+        assert image.dim() == 4, "images should be cxhxwxd"
+
+        inds = {
+            "lm_fg_indices": fg_ind,
+            "lm_bg_indices": bg_ind,
+            "meta": image.meta,
+        }
+        I.R.save_indices(inds, I.R.indices_subfolder)
+        I.R.save_pt(image[0], "images")
+        I.R.save_pt(lm[0], "lms")
+        I.R.extract_image_props(image)
+
 
 # %%

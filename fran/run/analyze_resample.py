@@ -2,12 +2,16 @@
 import argparse
 import ast
 import shutil
+from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
+from fran.utils.config_parsers import ConfigMaker
+from fran.utils.string import ast_literal_eval
+from managers import Project
 
 from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
-from fran.preprocessing.labelbounded import FGBGIndicesLBD, LabelBoundedDataGenerator, LabelBoundedDataGeneratorImported
+from fran.preprocessing.labelbounded import FGBGIndicesLBD, LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from fran.utils.fileio import *
 from fran.utils.helpers import *
@@ -56,6 +60,7 @@ class PreprocessingManager():
 
         # args.overwrite=False
         self.plan = conf[self.plan]
+        self.plan_name = args.plan
         self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
         # 
@@ -100,7 +105,7 @@ class PreprocessingManager():
             spacing=self.plan['spacing'],
             lm_group="lm_group1",
             mask_label=1,
-
+            folder_suffix=self.plan_name,
             fg_indices_exclude=None,
         )
         L.setup(overwrite=overwrite)
@@ -289,11 +294,11 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "litsmc"
+    args.project_title = "nodes"
 
     # args.num_processes = 1
     args.debug=True
-    args.plan = "plan3"
+    args.plan = "plan1"
 # %%
 
     P= Project(project_title=args.project_title)
@@ -305,7 +310,7 @@ if __name__ == "__main__":
 # %%
 
     plans = conf[args.plan]
-    plans['spacing'] = ast.literal_eval(plans['spacing'])
+    plans['spacing'] = ast_literal_eval(plans['spacing'])
 # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plans['lm_groups'])
@@ -321,7 +326,8 @@ if __name__ == "__main__":
     if I.plan['mode']=='patch':
     # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
-    I.generate_lbd_dataset()
+    elif I.plan['mode'] == 'lbd':
+        I.generate_lbd_dataset()
 # %%
     R = I.R
     dici = R.ds.data[0]

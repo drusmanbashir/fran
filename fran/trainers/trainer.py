@@ -5,11 +5,12 @@ import shutil
 from lightning.pytorch.profilers import AdvancedProfiler
 from monai.transforms.io.dictionary import LoadImaged
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
-from fran.managers import UNetManager
+from fran.managers import UNetManager, Project
 from fran.managers.unet import maybe_ddp
 from fran.transforms.imageio import TorchReader
 import ipdb
 
+from fran.utils.config_parsers import ConfigMaker
 from fran.utils.helpers import pp
 
 tr = ipdb.set_trace
@@ -152,6 +153,7 @@ class Trainer:
         else:
             self.D = self.init_dm()
             self.N = self.init_trainer(epochs)
+        print("Data Manager initialized.\n {}".format(self.D))
 
     def set_lr(self, lr):
         if lr and not self.ckpt:
@@ -389,7 +391,6 @@ if __name__ == "__main__":
 
     # conf['model_params']['lr']=1e-3
 
-    # conf['dataset_params']['plan']=5
 # %%
     # run_name = "LITS-1007"
     # device_id = 1

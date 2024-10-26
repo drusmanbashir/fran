@@ -16,6 +16,7 @@ from fran.managers.base import get_ds_remapping
 from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import ChangeDType
+from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.misc_transforms import (
     ChangeDtyped,
     DictToMeta,

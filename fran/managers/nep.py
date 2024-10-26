@@ -7,21 +7,14 @@ import psutil
 import torch._dynamo
 from paramiko import SSHClient
 
-from fran.managers.data import (DataManager, DataManagerPatch,
-                                DataManagerShort, DataManagerSource)
-from fran.utils.batch_size_scaling import (_reset_dataloaders,
-                                           _scale_batch_size2)
 
 torch._dynamo.config.suppress_errors = True
-import itertools as il
 from typing import Any
 
 import neptune as nt
 import torch
 # from fastcore.basics import GenttAttr
 from lightning.pytorch.loggers.neptune import NeptuneLogger
-from torchvision.transforms import Compose
-from torchvision.utils import make_grid
 
 from fran.evaluation.losses import *
 from fran.transforms.spatialtransforms import one_hot

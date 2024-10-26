@@ -1,7 +1,6 @@
 # %%
-
 # NOTE: UTILITY functions to reconcile previous version with new.
-from fran.managers.training import UNetTrainer, checkpoint_from_model_id
+from fran.trainers.impsamp import checkpoint_from_model_id
 from fran.utils.helpers import pbar
 
 import itertools as il

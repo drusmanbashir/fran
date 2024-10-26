@@ -1,4 +1,4 @@
-# %o%
+# %%
 
 from fastcore.basics import  store_attr
 import numpy as np

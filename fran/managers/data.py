@@ -2,7 +2,7 @@
 from lightning import LightningDataModule
 from fran.utils.helpers import pbar
 from monai.transforms.transform import RandomizableTransform
-from fran.preprocessing.patch import bbox_bg_only
+from fran.preprocessing import bbox_bg_only
 import ast
 import math
 from functools import reduce
@@ -122,6 +122,12 @@ class DataManager(LightningDataModule):
         self.assimilate_tfm_factors(transform_factors)
         self.set_tfm_keys()
         self.collate_fn = None # needs to be set in each inheriting class
+
+    def __str__(self):
+        return 'DataManager instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items()])
+
+    def __repr__(self):
+        return f'DataManager(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
 
     def set_tfm_keys(self):
         raise NotImplementedError
@@ -399,6 +405,11 @@ class DataManagerSource(DataManager):
         )
         self.collate_fn = source_collated
 
+    def __str__(self):
+        return 'DataManagerSource instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items()])
+
+    def __repr__(self):
+        return f'DataManagerSource(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
     def set_tfm_keys(self):
         self.keys_val = "L,Ld,E,Rva,Re,N"
         self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
@@ -442,7 +453,7 @@ class DataManagerSource(DataManager):
         self.valid_ds = PersistentDataset(
             data=self.data_valid,
             transform=self.tfms_valid,
-            cache_dir=self.self.cache_folder,
+            cache_dir=self.cache_folder,
         )
 
 
@@ -471,6 +482,12 @@ class DataManagerWhole(DataManagerSource):
         self.keys_tr = "L,E,F1,F2,Affine,Resize,N,IntensityTfms"
         self.keys_val = "L,E,Resize,N"
         self.collate_fn = whole_collated
+
+    def __str__(self):
+        return 'DataManagerWhole instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items()])
+
+    def __repr__(self):
+        return f'DataManagerWhole(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
 
     def derive_data_folder(self):
         prefix = "sze"
@@ -524,6 +541,19 @@ class DataManagerLBD(DataManagerSource):
             data_folder
         )
         return data_folder
+    def __repr__(self):
+        return (f"DataManagerLBD(plan={self.plan}, "
+                f"dataset_params={self.dataset_params}, "
+                f"lbd_folder={self.project.lbd_folder})")
+
+    def __str__(self):
+        return ("LBD Data Manager with plan {} and dataset parameters: {} "
+                "(using LBD folder: {})".format(
+                    self.plan,
+                    self.dataset_params,
+                    self.project.lbd_folder
+                ))
+
 
     # def prepare_data(self):
     #     super().prepare_data()
@@ -546,6 +576,20 @@ class DataManagerPBD(DataManagerLBD):
             data_folder
         )
         return data_folder
+
+    def __repr__(self):
+        return (f"DataManagerPBD(plan={self.plan}, "
+                f"dataset_params={self.dataset_params}, "
+                f"pbd_folder={self.project.pbd_folder})")
+
+    def __str__(self):
+        return ("PBD Data Manager with plan {} and dataset parameters: {} "
+                "(using PBD folder: {})".format(
+                    self.plan,
+                    self.dataset_params,
+                    self.project.pbd_folder
+                ))
+
 
 
 class DataManagerShort(DataManager):
@@ -758,35 +802,19 @@ class DataManagerPatch(DataManager):
         self.train_ds = LMDBDataset(
             data=self.data_train,
             transform=self.tfms_train,
-            cache_dir=self.self.cache_folder,
+            cache_dir=self.cache_folder,
             db_name="training_cache",
         )
         self.valid_ds = LMDBDataset(
             data=self.data_valid,
             transform=self.tfms_valid,
-            cache_dir=self.self.cache_folder,
+            cache_dir=self.cache_folder,
             db_name="valid_cache",
         )
 
     @property
     def src_dims(self):
         return self.plan["patch_size"]
-
-#
-# class DataManagerPlainLBD(DataManagerLBD):
-#     '''
-#     Small dataset of size =batchsize comprising a single batch. No augmentations. Used to get a baseline
-#     '''
-#     def __init__(self, project, dataset_params: dict, config: dict, transform_factors: dict, affine3d: dict, batch_size=8, **kwargs):
-#         super().__init__(project, dataset_params, config, transform_factors, affine3d, batch_size, **kwargs)
-#         self.keys_tr=self.keys_val
-#
-#     
-#     def prepare_data(self):
-#         super().prepare_data()
-#         self.data_train= self.data_train[:self.batch_size]
-#         self.data_valid= self.data_valid[:self.batch_size]
-
 
 
 class DataManagerBaseline(DataManagerLBD):
@@ -799,6 +827,12 @@ class DataManagerBaseline(DataManagerLBD):
         super().__init__(project, dataset_params, config, transform_factors, affine3d, batch_size,**kwargs)
         self.collate_fn = whole_collated
 
+
+    def __str__(self):
+        return 'DataManagerBaseline instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items()])
+
+    def __repr__(self):
+        return f'DataManagerBaseline(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
 
     def set_effective_batch_size(self):
         self.effective_batch_size = self.batch_size
@@ -845,6 +879,7 @@ class DataManagerBaseline(DataManagerLBD):
     def cache_folder(self):
         parent_folder = Path(COMMON_PATHS['cache_folder'])/(self.project.project_title)
         return parent_folder/(self.data_folder.name+"_baseline")
+
 # %%
 if __name__ == "__main__":
 # %%

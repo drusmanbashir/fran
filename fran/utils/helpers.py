@@ -9,7 +9,6 @@ from pathlib import Path
 
 import ipdb
 from ipdb.__main__ import get_ipython
-from label_analysis.helpers import get_labels, relabel
 import numpy as np
 import torch
 from tqdm import tqdm as tqdm_ip
@@ -24,6 +23,9 @@ tr = ipdb.set_trace
 import gc, ray
 # from fran.utils.fileio import *
 
+PAT_FULL = r"(?P<pt_id>[a-z]*_[a-z0-9]+)_(?P<date>\d+)_(?P<desc>.*)_(?P<tag>thick)_?.*(?=(?P<ext>\.(nii|nrrd)(\.gz)?)$)"
+PAT_NODESC ="(?P<pt_id>[a-z]*_[a-z0-9]*)_(?P<date>\d*)"
+PAT_IDONLY = "(?P<pt_id>[a-z]*_[a-z0-9]*)"
 
 def set_autoreload():
     # gals = globals()
@@ -32,8 +34,9 @@ def set_autoreload():
         print("setting autoreload")
         from IPython import get_ipython
         ipython = get_ipython()
-        ipython.run_line_magic("load_ext", "autoreload")
-        ipython.run_line_magic("autoreload", "2")
+        if ipython:
+            ipython.run_line_magic("load_ext", "autoreload")
+            ipython.run_line_magic("autoreload", "2")
 
 def test_modified(filename,ndays:int= 1):
     '''
@@ -57,9 +60,6 @@ def timing(f):
         return result
     return wrap
 
-pat_full = r"(?P<pt_id>[a-z]*_[a-z0-9]+)_(?P<date>\d+)_(?P<desc>.*)_(?P<tag>thick)_?.*(?=(?P<ext>\.(nii|nrrd)(\.gz)?)$)"
-pat_nodesc ="(?P<pt_id>[a-z]*_[a-z0-9]*)_(?P<date>\d*)"
-pat_idonly = "(?P<pt_id>[a-z]*_[a-z0-9]*)"
 
 def get_pbar():
     if 'get_ipython' in globals():
@@ -415,6 +415,8 @@ def write_files_or_not(output_filenames, overwrite=True):
 
 # %%
 if __name__=="__main__":
+
+    from label_analysis.helpers import get_labels, relabel
     dd = load_dict("/home/ub/datasets/preprocessed/lits/patches/spc_100_100_200/dim_256_256_128/bboxes_info.pkl")
 
     fn = Path("/s/fran_storage/predictions/litsmc/LITS-933_fixed_mc/crc_CRC154_20140712_ABDOMEN.nii.gz")

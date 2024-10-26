@@ -272,7 +272,7 @@ class GlobalProperties(GetAttr):
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
-    P = Project(project_title="nodes2");
+    P = Project(project_title="nodes");
     G = GlobalProperties(P,max_cases=200)
 # %%
     G.store_projectwide_properties()
