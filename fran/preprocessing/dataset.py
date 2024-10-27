@@ -1,4 +1,5 @@
 # %%
+from monai.transforms.utils import is_positive
 import torch
 from fastcore.all import Union, store_attr
 from fastcore.foundation import GetAttr
@@ -290,7 +291,7 @@ class CropToLabelDataset(ImporterDataset):
         case_ids,
         data_folder,
         spacing,
-        mask_label,
+        mask_label=None,
         fg_indices_exclude=None,
         device="cuda",
     ):
@@ -336,7 +337,10 @@ class CropToLabelDataset(ImporterDataset):
         return fns[0]
 
     def create_transforms(self):
-
+        if self.mask_label is None:
+            select_fn = is_positive
+        else:
+            select_fn = lambda lm: lm == self.mask_label
         image_key = "image"
         lm_key = "lm"
 
@@ -350,7 +354,7 @@ class CropToLabelDataset(ImporterDataset):
         self.C = CropForegroundd(
             keys=[image_key,lm_key],
             source_key=lm_key,
-            select_fn=lambda lm: lm == self.mask_label,
+            select_fn=select_fn,
             margin=margin,
         )
         self.Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", ignore_labels = self.fg_indices_exclude,image_threshold=-2600)

@@ -380,7 +380,7 @@ def find_matching_fn(src_fn:Path,mask_fnames:Union[list,Path],use_cid=False):
                     matching_mask_fns.append(mask_fn)
         if len(matching_mask_fns)==1: return matching_mask_fns[0]
         # elif len(matching_mask_fns)==0: return None
-        else: raise Exception("Multiple or None files matching {} found".format(src_fn))
+        else: raise Exception("Multiple or None files matching {0} found:\n{1}".format(src_fn, matching_mask_fns))
 
 
 def get_fileslist_from_path(path:Path, ext:str = ".pt"):

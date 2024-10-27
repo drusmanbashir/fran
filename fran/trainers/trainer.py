@@ -31,7 +31,14 @@ import torch._dynamo
 from fran.callback.nep import NeptuneImageGridCallback
 
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
-from fran.managers.data import DataManagerBaseline, DataManagerLBD, DataManagerPBD, DataManagerPatch, DataManagerSource, DataManagerWhole
+from fran.managers.data import (
+    DataManagerBaseline,
+    DataManagerLBD,
+    DataManagerPBD,
+    DataManagerPatch,
+    DataManagerSource,
+    DataManagerWhole,
+)
 from fran.utils.fileio import load_yaml
 from fran.utils.imageviewers import ImageMaskViewer
 
@@ -54,6 +61,7 @@ from fran.architectures.create_network import (
 )
 import torch.nn.functional as F
 from fran.utils import COMMON_PATHS
+
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
 except:
@@ -333,7 +341,7 @@ class Trainer:
             DMClass = DataManagerPatch
         elif mode == "source":
             DMClass = DataManagerSource
-        elif mode =="whole":
+        elif mode == "whole":
             DMClass = DataManagerWhole
         elif mode == "lbd":
             DMClass = DataManagerLBD
@@ -368,8 +376,7 @@ class Trainer:
 
 
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
-
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -395,9 +402,9 @@ if __name__ == "__main__":
     # run_name = "LITS-1007"
     # device_id = 1
     device_id = 1
-    run_name ='LITS-1018'
+    run_name = "LITS-1018"
     run_name = None
-    bs = 10# 5 is good if LBD with 2 samples per case
+    bs = 10  # 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
     profiler = False
@@ -430,15 +437,30 @@ if __name__ == "__main__":
 # %%
 
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR>
 
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.valid_ds
     ds = Tm.D.train_ds
 # %%
-    i = ds[12]
+    dl = Tm.D.train_dataloader()
+    iteri = iter(dl)
+    while iteri:
+        bb = next(iteri)
+        print(bb["image"].meta["filename_or_obj"])
+# %%
+    i = 52
+    dd = ds.data[i]
 
+# %%
+    im_fn = dd["image"]
+    lm_fn = dd["lm"]
+    im = torch.load(im_fn)
+    lm = torch.load(lm_fn)
+    im.shape
+    lm.shape
+# %%
     for i, id in enumerate(ds):
         print(i)
 # %%
@@ -446,7 +468,7 @@ if __name__ == "__main__":
     dici = ds.data[7]
     dici = ds.transform(dici)
 
-# %%
+    #    D.train_ds[2] %%
     L = LoadImaged(
         keys=["image", "lm"],
         image_only=True,

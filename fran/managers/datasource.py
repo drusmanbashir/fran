@@ -74,19 +74,20 @@ class _DS():
     if a member has a 2-tuple value intead of 1, the send element is alias of the member dataset. This alias is used to match filenames with correct dataset
     '''
     def __init__(self) -> None:
+        # for any datasource, an alias matching the {projectname}_ part of the filename should be given if the ds name is non-standard, e.g., drli_short
             self.lits={'ds': 'lits', 'folder': "/s/datasets_bkp/lits_segs_improved/", 'alias':None}
             self.litq={'ds':'litq', 'folder': "/s/xnat_shadow/litq", 'alias':None}
             self.nodes = {'ds': 'nodes', "folder":"/s/xnat_shadow/nodes", "alias":None}
             self.nodesthick={'ds':'nodesthick',"folder":"/s/xnat_shadow/nodesthick/", "alias": None}
             self.tcianode={'ds':'tcianode',"folder":"/s/xnat_shadow/tcianode",  'alias':None}
             self.tcianodeshort={'ds':'tcianodeshort',"folder":"/s/xnat_shadow/tcianodeshort",  'alias':"tcianode"}
-            self.drli_short={'ds':'drli_short','folder': "/s/datasets_bkp/drli_short/","alias":None}
+            self.drli_short={'ds':'drli_short','folder': "/s/datasets_bkp/drli_short/","alias":'drli'}
             self.drli={'ds':'drli','folder': "/s/datasets_bkp/drli/","alias":None}
             self.litqsmall={'ds':'litqsmall','folder': "/s/datasets_bkp/litqsmall/","alias":None}
             self.lidc2={'ds':'lidc2','folder': "/s/xnat_shadow/lidc2","alias":None}
             self.lidctmp={'ds':'lidctmp','folder': "/s/xnat_shadow/lidctmp","alias":None}
             self.totalseg={'ds':'totalseg',"folder":"/s//xnat_shadow/totalseg","alias":None}
-            self.task6={'ds':'task6','folder': "/s/datasets_bkp/Task06Lung/","alias":None}
+            self.task6={'ds':'task6','folder': "/s/datasets_bkp/Task06Lung/","alias":'lung'}
 
     def resolve_ds_name(self,ds:str):
         ds_dict = getattr(self,ds)

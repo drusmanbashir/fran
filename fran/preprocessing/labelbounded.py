@@ -49,7 +49,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         fg_indices_exclude: list = None,
     ) -> None:
         """
-        mask_label: this label is used to apply mask, i.e., crop the image and lm
+        mask_label: this label is used to apply mask, i.e., crop the image and lm. Defaults to None aka all label values >0 are used to crop.
         """
 
 
@@ -61,8 +61,6 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         self.case_ids = self.get_case_ids_lm_group(self.lm_group)
         self.set_folders_from_spacing(self.spacing)
         print("Total case ids:", len(self.case_ids))
-        if not self.mask_label:
-            self.mask_label = 1
 
     def set_folders_from_spacing(self, spacing):
         self.fixed_spacing_subfolder = folder_name_from_list(

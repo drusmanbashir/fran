@@ -1,4 +1,5 @@
 # %%
+from fran.managers.project import Project
 from lightning import LightningDataModule
 from fran.utils.helpers import pbar
 from monai.transforms.transform import RandomizableTransform
@@ -43,7 +44,7 @@ from fran.data.dataset import (
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
-from fran.utils.config_parsers import is_excel_None
+from fran.utils.config_parsers import ConfigMaker, is_excel_None
 from fran.utils.fileio import load_dict, load_yaml
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
 from fran.utils.imageviewers import ImageMaskViewer
@@ -435,6 +436,7 @@ class DataManagerSource(DataManager):
         print("Setting up datasets. Training ds type is: ", self.ds_type)
         if is_excel_None(self.ds_type):
             self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
+            print("Vanilla Pytorch Dataset set up.")
         elif self.ds_type == "cache":
             self.train_ds = CacheDataset(
                 data=self.data_train,
@@ -892,7 +894,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "litsmc"
+    project_title = "nodes"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -1000,6 +1002,35 @@ if __name__ == "__main__":
     lm = b['lm']
 
 # %%
+# %%
+#SECTION:-------------------- LBD--------------------------------------------------------------------------------------
+
+# %%
+    batch_size = 2
+    D = DataManagerLBD(
+        proj,
+        config=config,
+        dataset_params=config["dataset_params"],
+        transform_factors=config["transform_factors"],
+        affine3d=config["affine3d"],
+        batch_size=batch_size,
+    )
+    D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
+# %%
+    D.prepare_data()
+    D.setup()
+    D.data_folder
+    b = D.train_ds[0]
+
+    dl = D.train_dataloader()
+    iteri = iter(dl)
+    b = next(iteri)
+    im = b['image']
+    lm = b['lm']
+
+# %%
+
+
 
 # %%
 # SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
@@ -1016,7 +1047,16 @@ if __name__ == "__main__":
 
     D.prepare_data()
     D.setup()
-    D.train_ds[0]
+# %%
+    dl = D.train_dataloader()
+    iteri = iter(dl)
+    b = next(iteri)
+    im = b['image']
+    lm = b['lm']
+# %%
+    for i, dd in enumerate(D.train_ds):
+        print(i)
+
 # %%
     cids = D.train_cids
     patches_per_id = []

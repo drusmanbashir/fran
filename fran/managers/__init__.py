@@ -1,3 +1,3 @@
 from .unet import UNetManager 
-from .data import DataManager
 from .project import Project
+from .data import DataManager

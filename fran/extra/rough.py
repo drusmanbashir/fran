@@ -2,7 +2,6 @@
 import time
 
 from fastcore.script import save_pickle
-from fran.data.dataloader import img_lm_metadata_lists_collated
 from label_analysis.overlap import fk_generator
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
@@ -56,10 +55,25 @@ import numpy as np
 
 # %%
 if __name__ == "__main__":
-    fldr = Path("/s/xnat_shadow/tcianode/lms/")
+    fldr = Path("/s/xnat_shadow/nodes/lms/")
+    lm_fns = list(fldr.glob("*"))
+    for lm_fn in lm_fns:
+        lm = sitk.ReadImage(str(lm_fn))
+        labels = get_labels(lm)
+        if not labels == [1]:
+            lm= to_binary(lm)
+            sitk.WriteImage(lm,lm_fn)
+
+# %%
+
+    im_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_150/images/nodes_66_410921_ChestAbdomenPelviswithIVC1p00Br40S3.pt")
+    lm_fn = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_150/lms/nodes_66_410921_ChestAbdomenPelviswithIVC1p00Br40S3.pt")
+
+    im = torch.load(im_fn)
+    lm = torch.load(lm_fn)
+    ImageMaskViewer([im,lm], 'im')
 
 
-    lm_fn = Path("/s/xnat_shadow/crc/lms/crc_CRC278_20141029_Abdomen3p0I30f3.nrrd")
     lm = sitk.ReadImage(str(lm_fn))
     get_labels(lm)
     lm = relabel(lm,{1:2})

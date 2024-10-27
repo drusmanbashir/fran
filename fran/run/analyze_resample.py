@@ -99,7 +99,7 @@ class PreprocessingManager():
         self.R.process()
 
     def generate_lbd_dataset(self, overwrite=False):
-        L = LabelBoundedDataGenerator(
+        self.L = LabelBoundedDataGenerator(
             project=self.project,
             expand_by=self.plan['expand_by_lbd'],
             spacing=self.plan['spacing'],
@@ -108,8 +108,8 @@ class PreprocessingManager():
             folder_suffix=self.plan_name,
             fg_indices_exclude=None,
         )
-        L.setup(overwrite=overwrite)
-        L.process()
+        self.L.setup(overwrite=overwrite)
+        self.L.process()
 
 
     def generate_TSlabelboundeddataset(self,organ,imported_folder,keep_imported_labels=False,lm_group="lm_group1"):
@@ -318,17 +318,66 @@ if __name__ == "__main__":
 
 # %%
     I = PreprocessingManager(args)
+
     # I.spacing = 
 # %%
     I.resample_dataset(overwrite=True)
+
+    I.R.get_tensor_folder_stats()
 
 # %%
     if I.plan['mode']=='patch':
     # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan['mode'] == 'lbd':
-        I.generate_lbd_dataset()
+        I.generate_lbd_dataset(overwrite=True)
 # %%
+    # I.L.get_tensor_folder_stats()
+    # I.L.generate_bboxes()
+# %%
+#SECTION:-------------------- Troubleshooting--------------------------------------------------------------------------------------
+
+# %%
+    overwrite=False
+    L = LabelBoundedDataGenerator(
+        project=I.project,
+        expand_by=I.plan['expand_by_lbd'],
+        spacing=I.plan['spacing'],
+        lm_group="lm_group1",
+        mask_label=1,
+        folder_suffix=I.plan_name,
+        fg_indices_exclude=None,
+    )
+    L.setup(overwrite=overwrite)
+    data = L.ds.create_data_dicts()
+    lm_fn = data[0]['lm']
+
+    L.process()
+    L.ds[1]
+
+    L.ds.set_transforms("LT,D,E,C,Ind")
+# %%
+    ds = L.ds
+    for dici in data:
+    # dici = data[1]
+        try:
+            print(dici['image'])
+            dici = L.ds.LT(dici)
+            im,lm = dici['image'], dici['lm']
+            print(lm.unique())
+            print("="*100)
+        except:
+            pass
+        # ImageMaskViewer([im,lm])
+# %%
+    dici = L.ds.D(dici)
+    dici = L.ds.E(dici)
+    dici = L.ds.C(dici)
+
+
+
+# %%
+
     R = I.R
     dici = R.ds.data[0]
     dici = L(dici)

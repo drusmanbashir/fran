@@ -40,6 +40,7 @@ from fran.utils.fileio import load_dict, maybe_makedirs, save_dict, save_json
 from fran.utils.helpers import folder_name_from_list, multiprocess_multiarg, pbar
 from fran.utils.string import info_from_filename, strip_extension
 
+
 def generate_bboxes_from_lms_folder(
     masks_folder, bg_label=0, debug=False, num_processes=16
 ):
@@ -69,30 +70,37 @@ class _Preprocessor(GetAttr):
     ) -> None:
         store_attr("project,spacing,device")
 
-    def save_pt(self, tnsr, subfolder,contiguous=True,suffix:str=None):
-        if contiguous==True:
+    def save_pt(self, tnsr, subfolder, contiguous=True, suffix: str = None):
+        if contiguous == True:
             tnsr = tnsr.contiguous()
         fn = Path(tnsr.meta["filename_or_obj"])
-        fn_name = strip_extension(fn.name) 
+        fn_name = strip_extension(fn.name)
         if suffix:
-            fn_name = fn_name+"_"+suffix+".pt"
+            fn_name = fn_name + "_" + suffix + ".pt"
         else:
-            fn_name =  fn_name + ".pt"
+            fn_name = fn_name + ".pt"
 
         fn = self.output_folder / subfolder / fn_name
         torch.save(tnsr, fn)
 
-    def save_indices(self, indices_dict, subfolder,suffix:str=None):
+    def register_existing_files(self):
+        self.existing_files = list((self.output_folder / ("lms")).glob("*pt"))
+        self.existing_case_ids = [
+            info_from_filename(f.name, full_caseid=True)["case_id"]
+            for f in self.existing_files
+        ]
+        self.existing_case_ids = set(self.existing_case_ids)
+        print("Case ids processed in a previous session: ", len(self.existing_case_ids))
+    def save_indices(self, indices_dict, subfolder, suffix: str = None):
         fn = Path(indices_dict["meta"]["filename_or_obj"])
-        fn_name = strip_extension(fn.name) 
+        fn_name = strip_extension(fn.name)
         if suffix:
-            fn_name = fn_name+"_"+suffix+".pt"
+            fn_name = fn_name + "_" + suffix + ".pt"
         else:
-            fn_name =  fn_name + ".pt"
+            fn_name = fn_name + ".pt"
         # fn_name = strip_extension(fn.name) + ".pt"
         fn = self.output_folder / subfolder / fn_name
         torch.save(indices_dict, fn)
-
 
     def _store_dataset_properties(self):
         resampled_dataset_properties = self.create_info_dict()
@@ -139,11 +147,11 @@ class _Preprocessor(GetAttr):
     def process_batch(self, batch):
         # U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
         # batch = U(batch)
-        images, lms, fg_inds, bg_inds=(
+        images, lms, fg_inds, bg_inds = (
             batch["image"],
             batch["lm"],
             batch["lm_fg_indices"],
-            batch["lm_bg_indices"]
+            batch["lm_bg_indices"],
         )
         for (
             image,
@@ -151,14 +159,15 @@ class _Preprocessor(GetAttr):
             fg_ind,
             bg_ind,
         ) in zip(
-            images, lms, fg_inds, bg_inds,
+            images,
+            lms,
+            fg_inds,
+            bg_inds,
         ):
             assert image.shape == lm.shape, "mismatch in shape".format(
                 image.shape, lm.shape
             )
             assert image.dim() == 4, "images should be cxhxwxd"
-
-
 
             inds = {
                 "lm_fg_indices": fg_ind,
@@ -178,10 +187,12 @@ class _Preprocessor(GetAttr):
         img_filenames = (self.output_folder / ("images")).glob("*")
         args = [[img_fn] for img_fn in img_filenames]
         results = multiprocess_multiarg(get_tensorfile_stats, args, debug=debug)
-        self.shapes= [a['shape'] for a in results]
-        self.results = pd.DataFrame(results)#.values
-        self.results = self.results[['max','min','median']]
+        self.shapes = [a["shape"] for a in results]
+        self.results = pd.DataFrame(results)  # .values
+        self.results = self.results[["max", "min", "median"]]
         self._store_dataset_properties()
+
+
 
     def _store_dataset_properties(self):
         resampled_dataset_properties = self.create_properties_dict()
@@ -203,9 +214,11 @@ class _Preprocessor(GetAttr):
             self.shapes, 0
         ).tolist()
         resampled_dataset_properties["dataset_spacing"] = self.spacing
-        resampled_dataset_properties["dataset_max"] = self.results['max'].max().item()
-        resampled_dataset_properties["dataset_min"] = self.results['min'].min().item()
-        resampled_dataset_properties["dataset_median"] = np.median(L.results['median']).item()
+        resampled_dataset_properties["dataset_max"] = self.results["max"].max().item()
+        resampled_dataset_properties["dataset_min"] = self.results["min"].min().item()
+        resampled_dataset_properties["dataset_median"] = np.median(
+            self.results["median"]
+        ).item()
         return resampled_dataset_properties
 
     def create_output_folders(self):
@@ -217,23 +230,20 @@ class _Preprocessor(GetAttr):
             ]
         )
 
-
     @property
     def indices_subfolder(self):
-        indices_subfolder =self.output_folder/ ( "indices")
+        indices_subfolder = self.output_folder / ("indices")
         return indices_subfolder
 
     @property
     def output_folder(self):
         raise NotImplementedError
 
+
 class ResampleDatasetniftiToTorch(_Preprocessor):
     def __init__(self, project, spacing, device="cpu", half_precision=False):
         super().__init__(project, spacing, device=device)
         self.half_precision = half_precision
-
-
-
 
     def setup(self, overwrite=False):
         self.register_existing_files()
@@ -267,14 +277,6 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
             batch_size=batch_size,
             pin_memory=False,
         )
-
-
-    def register_existing_files(self):
-        self.bboxes = self.maybe_load_bboxes()
-        if self.bboxes:
-            self.existing_files = [dici["filename"] for dici in self.bboxes]
-        else:
-            self.existing_files = []
 
     def maybe_load_bboxes(self):
         fixed_sp_bboxes_fn = self.output_folder / ("bboxes_info.pkl")
@@ -325,13 +327,13 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
         except:
             saved_specs = [specs]
             save_dict(saved_specs, specs_file)
-
-    def get_tensor_folder_stats(self, debug=True):
-        img_filenames = (self.output_folder / ("images")).glob("*")
-        args = [[img_fn] for img_fn in img_filenames]
-        results = multiprocess_multiarg(get_tensorfile_stats, args, debug=debug)
-        self.results = pd.DataFrame(results).values
-        self._store_dataset_properties()
+    #
+    # def get_tensor_folder_stats(self, debug=True):
+    #     img_filenames = (self.output_folder / ("images")).glob("*")
+    #     args = [[img_fn] for img_fn in img_filenames]
+    #     results = multiprocess_multiarg(get_tensorfile_stats, args, debug=debug)
+    #     self.results = pd.DataFrame(results).values
+    #     self._store_dataset_properties()
 
     @property
     def output_folder(self):
@@ -341,7 +343,6 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
             values_list=self.spacing,
         )
         return self._output_folder
-
 
 
 def get_tensorfile_stats(filename):
@@ -354,7 +355,7 @@ def get_tensor_stats(tnsr):
         "max": tnsr.max().item(),
         "min": tnsr.min().item(),
         "median": np.median(tnsr),
-        "shape":[*tnsr.shape]
+        "shape": [*tnsr.shape],
     }
     return dic
 
@@ -365,7 +366,6 @@ class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
 
     def register_existing_files(self):
         self.existing_files = list(self.indices_subfolder.glob("*"))
-
 
     def process(
         self,
@@ -379,11 +379,11 @@ class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
             self.process_batch(batch)
 
     def process_batch(self, batch):
-        images, lms, fg_inds, bg_inds=(
+        images, lms, fg_inds, bg_inds = (
             batch["image"],
             batch["lm"],
             batch["lm_fg_indices"],
-            batch["lm_bg_indices"]
+            batch["lm_bg_indices"],
         )
         for (
             image,
@@ -391,7 +391,10 @@ class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
             fg_ind,
             bg_ind,
         ) in zip(
-            images, lms, fg_inds, bg_inds,
+            images,
+            lms,
+            fg_inds,
+            bg_inds,
         ):
             assert image.shape == lm.shape, "mismatch in shape".format(
                 image.shape, lm.shape
@@ -403,7 +406,6 @@ class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
                 "meta": image.meta,
             }
             self.save_indices(inds, self.indices_subfolder)
-
 
 
 # %%
@@ -419,9 +421,9 @@ if __name__ == "__main__":
 
     Rs.setup(True)
     Rs.process()
-# %%
+    # %%
 
-# %%
+    # %%
     L = LoadSITKd(keys=["image", "lm"], image_only=True)
     R = LabelRemapd(keys=["lm"], remapping_key="remapping")
     T = ToDeviced(keys=["image", "lm"], device=Rs.ds.device)
@@ -449,29 +451,29 @@ if __name__ == "__main__":
         mean=Rs.ds.mean,
         std=Rs.ds.std,
     )
-    Ch = ChangeDtyped(keys=['lm'],target_dtype = torch.uint8)
+    Ch = ChangeDtyped(keys=["lm"], target_dtype=torch.uint8)
 
     # tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
-    tfms = [L, R, T, Re, Ind, E, Si, Rz,Ch]
-# %%
+    tfms = [L, R, T, Re, Ind, E, Si, Rz, Ch]
+    # %%
     dici = Rs.ds[0]
-    dici['lm'].meta
-    dici =Rs.ds.data[0]
+    dici["lm"].meta
+    dici = Rs.ds.data[0]
 
-# %%
-    dici =L(dici)
+    # %%
+    dici = L(dici)
 
     dici = R(dici)
-    dici =T(dici)
-    dici =Re(dici)
-    dici =Ind(dici)
-    dici =E(dici)
-    dici =Si(dici)
-    dici =Rz(dici)
-    dici =Ch(dici)
+    dici = T(dici)
+    dici = Re(dici)
+    dici = Ind(dici)
+    dici = E(dici)
+    dici = Si(dici)
+    dici = Rz(dici)
+    dici = Ch(dici)
 
-# %%
-    print(dici['image'].meta['filename_or_obj'], dici['lm'].meta['filename_or_obj'])
+    # %%
+    print(dici["image"].meta["filename_or_obj"], dici["lm"].meta["filename_or_obj"])
 
     L = LoadSITKd(keys=["image", "lm"], image_only=True)
     T = ToDeviced(keys=["image", "lm"], device=Rx.device)
@@ -537,35 +539,38 @@ if __name__ == "__main__":
             df.drop([i], inplace=True)
             # rows_new.append(row)
 
-# %%
+        # %%
         L.shapes = np.array(L.shapes)
         resampled_dataset_properties = dict()
-        resampled_dataset_properties["median_shape"] = np.median(
-            L.shapes, 0
-        ).tolist()
+        resampled_dataset_properties["median_shape"] = np.median(L.shapes, 0).tolist()
         resampled_dataset_properties["dataset_spacing"] = L.spacing
-        resampled_dataset_properties["dataset_max"] = L.results['max'].max().item()
-        resampled_dataset_properties["dataset_min"] = L.results['min'].min().item()
-        resampled_dataset_properties["dataset_median"] = np.median(L.results['median']).item()
+        resampled_dataset_properties["dataset_max"] = L.results["max"].max().item()
+        resampled_dataset_properties["dataset_min"] = L.results["min"].min().item()
+        resampled_dataset_properties["dataset_median"] = np.median(
+            L.results["median"]
+        ).item()
 
-# %%
-    df = pd.DataFrame(np.arange(12).reshape(3, 4),                  columns=['A', 'B', 'C', 'D'])
-    df.drop(['A','B'],axis=1)
+    # %%
+    df = pd.DataFrame(np.arange(12).reshape(3, 4), columns=["A", "B", "C", "D"])
+    df.drop(["A", "B"], axis=1)
     df
     dici = load_dict()
-    save_json(resampled_dataset_properties,"/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/resampled_dataset_properties.json")
-# %%
+    save_json(
+        resampled_dataset_properties,
+        "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/resampled_dataset_properties.json",
+    )
+    # %%
     dl = I.R.dl
     iteri = iter(dl)
-    batch = next(iteri )
-# %%
+    batch = next(iteri)
+    # %%
     U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
     batch = U(batch)
-    images, lms, fg_inds, bg_inds=(
+    images, lms, fg_inds, bg_inds = (
         batch["image"],
         batch["lm"],
         batch["lm_fg_indices"],
-        batch["lm_bg_indices"]
+        batch["lm_bg_indices"],
     )
     for (
         image,
@@ -573,7 +578,10 @@ if __name__ == "__main__":
         fg_ind,
         bg_ind,
     ) in zip(
-        images, lms, fg_inds, bg_inds,
+        images,
+        lms,
+        fg_inds,
+        bg_inds,
     ):
         assert image.shape == lm.shape, "mismatch in shape".format(
             image.shape, lm.shape

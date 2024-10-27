@@ -1,9 +1,10 @@
 # %%
 import sqlite3
+import ipdb
+
 from batchgenerators.utilities.file_and_folder_operations import List
 from fastcore.basics import listify
 from fastcore.script import tuplify
-import ipdb
 from fastcore.basics import GetAttr
 from monai.utils.enums import StrEnum
 from fran.managers.datasource import Datasource, _DS
@@ -391,23 +392,30 @@ class Project(DictToAttr):
         Datasource
             Filtered datasource with only new images.
         """
+
+        print("="*50)
+        print("Filtering datasource: ",ds.name)
         ss = "SELECT image FROM datasources WHERE ds='{}'".format(ds.name)
-        with db_ops(self.db) as cur:
+        with db_ops(P.db) as cur:
             res = cur.execute(ss)
             pa = res.fetchall()
         existing_images = list(il.chain.from_iterable(pa))
+        existing_images = [Path(x) for x in existing_images]
         if len(existing_images) > 0:
             print(
                 "Datasource {} exists already. Checking for new files in added folder".format(
                     ds.name
                 )
             )
-            existing_images = [x in existing_images for x in ds.images]
-            ds.verified_pairs = list(il.compress(ds.verified_pairs, existing_images))
-            if ln := len(ds) > 0:
+            remaining_images_bool = [x not in existing_images for x in ds.images]
+            ds.verified_pairs= list(il.compress(ds.verified_pairs, remaining_images_bool))
+            if (ln := len(ds)) > 0:
                 print("{} new files found. Adding to db.".format(ln))
             else:
                 print("No new files to add from datasource {}".format(ds.name))
+
+        print("="*50)
+
         return ds
 
     def set_folder_file_names(self):
@@ -743,11 +751,10 @@ class Project(DictToAttr):
             self.G.compute_std_mean_dataset()
             self.G.collate_lm_labels()
 
-    def add_main_plan(self,plan:dict):
+    def add_plan(self,plan:dict):
         """
-        Adds a main plan to the project, which defines datasets, label groups, and preprocessing steps.
-        Note: This plan should have ALL datasets forming this project. All datasets should be correctly sorted in relevant lm_groups if applicable. 
-        Later plans with fewer datasets should not be used as an argument
+        Adds a plan to the project, which defines datasets, label groups, and preprocessing steps.
+        Each time this is called with a plan contaiing new datasources, the database will be updated accordingly.
 
         Parameters:
         ----------
@@ -834,6 +841,10 @@ class Project(DictToAttr):
     
     @property
     def has_folds(self):
+        '''
+        checks if folds have been created for this project
+        '''
+        
         ss = """SELECT fold FROM datasources"""
         result = self.sql_query(ss, True)
         cc =[a=='NULL' for a in result]
@@ -843,13 +854,17 @@ class Project(DictToAttr):
 
 
 # %%
+# %%
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+
 if __name__ == "__main__":
     from fran.utils.common import *
 
     P= Project(project_title="nodes")
     # P.delete()
-    # P.create(mnemonic='nodes')
-    P.add_data([DS.nodes,DS.nodesthick])
+    # P.create(mnemonic='liver')
+    # P.add_data([DS.nodes,DS.nodesthick])
+    P.add_data([DS.drli_short])
 
 # %%
     conf = ConfigMaker(
@@ -858,9 +873,9 @@ if __name__ == "__main__":
     ).config
 
     plans= conf['plan4']
-    plans = conf['plan1']
+    plans = conf['plantmp']
 
-    P.add_main_plan(plans)
+    P.add_plan(plans)
 # %%
     # P.maybe_store_projectwide_properties(overwrite=True)
 # %%
@@ -998,4 +1013,45 @@ if __name__ == "__main__":
     strs = [P.vars_to_sql(ds.name,ds.alias, *pair, ds.test) for pair in ds.verified_pairs]
     with db_ops(P.db) as cur:
         cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?)", strs)
+# %%
+
+    ds_dict =DS.nodes
+    fldr = ds_dict['folder']
+    test=False
+    ds = Datasource(folder=fldr, name = ds_dict['ds'],alias= ds_dict['alias'],test=test)
+
+    ss = "SELECT image FROM datasources WHERE ds='{}'".format(ds.name)
+    with db_ops(P.db) as cur:
+        res = cur.execute(ss)
+        pa = res.fetchall()
+    existing_images = list(il.chain.from_iterable(pa))
+    existing_images = [Path(x) for x in existing_images]
+    if len(existing_images) > 0:
+        print(
+            "Datasource {} exists already. Checking for new files in added folder".format(
+                ds.name
+            )
+        )
+        remaining_images_bool = [x not in existing_images for x in ds.images]
+        ds.verified_pairs= list(il.compress(ds.verified_pairs, remaining_images_bool))
+        if (ln := len(ds)) > 0:
+            print("{} new files found. Adding to db.".format(ln))
+        else:
+            print("No new files to add from datasource {}".format(ds.name))
+# %%
+        datasources= [DS.drli_short]
+        test=False
+        test = [False] * len(datasources) if not test else listify(test)
+        assert len(datasources) == len(
+            test
+        ), "Unequal lengths of datafolders and (bool) test status"
+        for ds_dict, test in zip(datasources, test):
+            fldr = ds_dict['folder']
+            ds = Datasource(folder=fldr, name = ds_dict['ds'],alias= ds_dict['alias'],test=test)
+            ds = P.filter_existing_images(ds)
+            P.populate_tbl(ds)
+        P.populate_raw_data_folder()
+        P.register_datasources(datasources)
+
+
 # %%
