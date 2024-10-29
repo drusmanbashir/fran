@@ -3,7 +3,7 @@ import argparse
 import ast
 import shutil
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
-from fran.utils.config_parsers import ConfigMaker
+from fran.utils.config_parsers import ConfigMaker, parse_excel_plan
 from fran.utils.string import ast_literal_eval
 from managers import Project
 
@@ -11,7 +11,7 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
-from fran.preprocessing.labelbounded import FGBGIndicesLBD, LabelBoundedDataGenerator
+from fran.preprocessing.labelbounded import  LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from fran.utils.fileio import *
 from fran.utils.helpers import *
@@ -38,6 +38,7 @@ def verify_dataset_integrity(folder:Path, debug=False,fix=False):
         print("All images and masks are verified for matching sizes and spacings.")
     return res
 
+
 def user_input(inp:str, out=int):
     tmp = input(inp)
     try:
@@ -59,12 +60,17 @@ class PreprocessingManager():
         ).config
 
         # args.overwrite=False
-        self.plan = conf[self.plan]
+        self.plan = parse_excel_plan(conf[self.plan])
         self.plan_name = args.plan
-        self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
+        # self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
         # 
         print("Project: {0}".format(self.project_title))
+
+
+    def __str__(self) -> str:
+        plan_details = "\n".join([f"{key}: {value}" for key, value in self.plan.items()])
+        return f"PreprocessingManager. Project: {self.project_title}\nPlan Details:\n{plan_details}"
 
 
     def verify_dataset_integrity(self):
@@ -294,7 +300,7 @@ if __name__ == "__main__":
 
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "nodes"
+    args.project_title = "totalseg"
 
     # args.num_processes = 1
     args.debug=True
@@ -310,7 +316,6 @@ if __name__ == "__main__":
 # %%
 
     plans = conf[args.plan]
-    plans['spacing'] = ast_literal_eval(plans['spacing'])
 # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plans['lm_groups'])
@@ -322,7 +327,6 @@ if __name__ == "__main__":
     # I.spacing = 
 # %%
     I.resample_dataset(overwrite=True)
-
     I.R.get_tensor_folder_stats()
 
 # %%
@@ -335,7 +339,7 @@ if __name__ == "__main__":
     # I.L.get_tensor_folder_stats()
     # I.L.generate_bboxes()
 # %%
-#SECTION:-------------------- Troubleshooting--------------------------------------------------------------------------------------
+#ases_for_samplingSECTION:-------------------- Troubleshooting--------------------------------------------------------------------------------------
 
 # %%
     overwrite=False

@@ -24,7 +24,7 @@ from monai.transforms.utility.dictionary import (
 
 from fran.data.collate import dict_list_collated, img_lm_metadata_lists_collated
 from fran.preprocessing.dataset import ResamplerDataset
-from fran.preprocessing.datasetanalyzers import bboxes_function_version
+from fran.preprocessing import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import ChangeDType, ToCPUd
 from fran.transforms.misc_transforms import (

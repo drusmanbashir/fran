@@ -136,7 +136,7 @@ class NeptuneImageGridCallback(Callback):
 
     #
     def on_train_epoch_end(self, trainer, pl_module):
-        if trainer.current_epoch % self.epoch_freq == 0:
+        if trainer.current_epoch % self.epoch_freq == 0 and len(self.grid_imgs) > 0:
             grd_final = []
             for grd, category in zip(
                 [self.grid_imgs, self.grid_preds, self.grid_labels],

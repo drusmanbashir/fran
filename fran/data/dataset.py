@@ -671,56 +671,6 @@ class FillBBoxPatchesd(Transform):
         return d
 
 
-class MaskLabelRemapd(MapTransform):
-    # there should be no channel dim
-    # src_dest_labels should include background label, e.g., 0 too. n_classes = length of this list.
-    def __init__(self, keys, src_dest_labels: tuple, allow_missing_keys=False, use_sitk=True):
-        super().__init__(keys, allow_missing_keys)
-        if isinstance(src_dest_labels, str):
-            src_dest_labels = ast.literal_eval(src_dest_labels)
-        if use_sitk==True:
-            self.src_dest_labels = {x: y for x, y in src_dest_labels}
-            self.remapper = self.remapper_sitk
-        else:
-            self.src_dest_labels = src_dest_labels
-            self.remapper = self.remapper_pt
-
-
-    def __call__(
-        self, data: Mapping[Hashable, torch.Tensor]
-    ) -> Dict[Hashable, torch.Tensor]:
-        d = dict(data)
-        for key in self.key_iterator(d):
-            lm = d[key]
-            if not lm.dim()==3:
-                raise ValueError("Only 3D tensors supported")
-            lm = self.remapper(lm)
-            d[key] = lm
-        return d
-
-    def remapper_pt(self, mask):
-        n_classes = len(self.src_dest_labels)
-        mask_out = torch.zeros(mask.shape, dtype=mask.dtype)
-        mask_tmp = one_hot(mask, n_classes, 0)
-        mask_reassigned = torch.zeros(mask_tmp.shape, device=mask.device)
-        for src_des in self.src_dest_labels:
-            src, dest = src_des[0], src_des[1]
-            mask_reassigned[dest] += mask_tmp[src]
-
-        for x in range(n_classes):
-            mask_out[torch.isin(mask_reassigned[x], 1.0)] = x
-        return mask_out 
-
-    def remapper_sitk(self,lm):
-        lm_dtype = lm.dtype
-        meta = lm.meta
-        lm_sitk= sitk.GetImageFromArray(lm.cpu().numpy())
-        lm_sitk = relabel(lm_sitk, self.src_dest_labels)
-        lm_out   = sitk.GetArrayFromImage(lm_sitk)
-        lm_out = MetaTensor(lm_out, meta=meta, dtype=lm_dtype)
-        return lm_out
-
-
 
 
 

@@ -1,68 +1,46 @@
 # %%
+import shutil
 import time
-
-from fastcore.script import save_pickle
-from label_analysis.overlap import fk_generator
-from monai.data.dataloader import DataLoader
-from monai.data.dataset import Dataset
-from monai.transforms import Compose
-from fran.transforms.imageio import TorchWriter, save_dict
 import SimpleITK as sitk
-import itertools as il
-from SimpleITK.SimpleITK import LabelShapeStatisticsImageFilter
-from label_analysis.helpers import get_labels, relabel, to_binary
-from label_analysis.utils import compress_img
-from monai.apps.detection.transforms.dictionary import MaskToBoxd, RandCropBoxByPosNegLabeld, RandRotateBox90d
-from label_analysis.merge import LabelMapGeometry
-from monai.apps.detection.transforms.array import ConvertBoxMode
-from monai.data.box_utils import BoxMode, CenterSizeMode
-from monai.data.meta_tensor import MetaTensor
-from monai.transforms.croppad.dictionary import BoundingRectd
-from monai.transforms.io.array import SaveImage
-from monai.transforms.io.dictionary import SaveImaged
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
-from monai.transforms.utils import generate_spatial_bounding_box
-import matplotlib.patches as patches
-import torch.nn.functional as F
+import re
 from pathlib import Path
-from monai.transforms.intensity.array import NormalizeIntensity, ScaleIntensity
-from monai.transforms.intensity.dictionary import NormalizeIntensityD, NormalizeIntensityd
-from monai.transforms.spatial.dictionary import Resized, Resize
-from torchvision.datasets.folder import is_image_file
 
-from fran.transforms.imageio import LoadSITKd
-from fran.transforms.misc_transforms import BoundingBoxYOLOd, DictToMeta, MetaToDict
-from fran.transforms.spatialtransforms import Project2D
-from fran.utils.config_parsers import is_excel_None
-from fran.utils.helpers import match_filename_with_case_id, pbar
-import shutil, os
-import h5py
-import torch
-from torch.utils.tensorboard.writer import SummaryWriter
-from fran.utils.fileio import is_sitk_file, load_dict
-from fran.utils.helpers import find_matching_fn
-import ipdb
-tr = ipdb.set_trace
-
-from fran.utils.imageviewers import ImageMaskViewer, view_sitk
-from fran.utils.string import info_from_filename
-from monai.visualize import *
-import matplotlib.pyplot as plt
-from monai.data import dataset_summary, register_writer
-import pandas as pd
-import numpy as np
-# %%
-
+from fran.managers.data import find_matching_fn, pbar
+from fran.utils.fileio import maybe_makedirs
+from fran.utils.helpers import get_labels
 # %%
 if __name__ == "__main__":
-    fldr = Path("/s/xnat_shadow/nodes/lms/")
+    fldr = Path("/s/xnat_shadow/crc/lms/")
+    img_fldr = Path("/s/xnat_shadow/crc/images/")
     lm_fns = list(fldr.glob("*"))
-    for lm_fn in lm_fns:
+
+    out_fldr_img = Path("/s/crc_upload/images")
+    out_fldr_lm = Path("/s/crc_upload/lms")
+    maybe_makedirs([out_fldr_lm,out_fldr_img])
+# %%
+    lm_fn = lm_fns[0]
+    im_fns = list(img_fldr.glob("*"))
+    im_fn= im_fns[0]
+# %%
+    for im_fn in pbar(im_fns):
+        lm_fn = find_matching_fn(im_fn,lm_fns,use_cid=True)
+
+        labs = get_labels(lm)
+
+        new_filename = re.sub(r'_\d{8}_', '_', im_fn.name)
+        out_lm_fname = out_fldr_lm / new_filename
+        out_img_fname = out_fldr_img / new_filename
+        shutil.copy(im_fn, out_img_fname)
+        if not ".nii.gz" in lm_fn.name:
+            lm = sitk.ReadImage(str(lm_fn))
+            sitk.WriteImage(lm, out_lm_fname)
+        else:
+            shutil.copy(lm_fn, out_lm_fname)
+# %%
         lm = sitk.ReadImage(str(lm_fn))
         labels = get_labels(lm)
         if not labels == [1]:
             lm= to_binary(lm)
-            sitk.WriteImage(lm,lm_fn)
 
 # %%
 

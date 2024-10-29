@@ -1,5 +1,6 @@
 # %%
 from fastcore.basics import store_attr
+from fran.utils.string import ast_literal_eval
 from fastcore.transform import GetAttr
 import pandas as pd
 import ast,sys
@@ -27,9 +28,11 @@ def is_excel_None(input):
 def parse_excel_plan(plan):
     keys_maybe_nan = "fg_indices_exclude", "lm_groups"
     for k in keys_maybe_nan:
-        if is_excel_None(plan['fg_indices_exclude']):
-            plan[k]=None
-    plan['spacing'] = ast.literal_eval(plan['spacing'])
+        if k in plan.keys():
+            if is_excel_None(plan[k]):
+                plan[k]=None
+    if 'spacing' in plan.keys():
+        plan['spacing'] = ast_literal_eval(plan['spacing'])
     return plan
 
 BOOL_ROWS='patch_based,one_cycles,heavy,deep_supervision,self_attention,fake_tumours,square_in_union,apply_activation'

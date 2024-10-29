@@ -1,5 +1,6 @@
 # %%
 from fastcore.all import store_attr
+import itertools as il
 from fran.managers.datasource import _DS
 from fran.utils.helpers import pbar
 import random
@@ -16,7 +17,7 @@ from fran.utils.string import info_from_filename
 tr = ipdb.set_trace
 
 
-from fran.preprocessing.datasetanalyzers import get_img_mask_filepairs,case_analyzer_wrapper,  get_intensity_range, get_means_voxelcounts, get_std_numerator, import_h5py, percentile_range_to_str
+from fran.preprocessing import get_img_mask_filepairs,  get_intensity_range, get_means_voxelcounts, get_std_numerator, import_h5py, percentile_range_to_str
 from fran.utils.fileio import load_dict, save_dict
 from fran.utils.helpers import multiprocess_multiarg
 
@@ -39,15 +40,23 @@ class GlobalProperties(GetAttr):
         assert all(
             [isinstance(x, float) for x in percentile_range]
         ), "Provide float values for clip percentile_range. Corresponding HUs will be stored in file for future processing."
-        store_attr("project,bg_label,percentile_range,clip_range")
-        self.case_ids , self.img_filenames= self.collate_project_cases() #        self.h5ns =[]
-        self.cases_for_sampling=self.sample_cases(max_cases)
+        store_attr("project,bg_label,percentile_range,clip_range,max_cases")
+        self.case_ids , self.img_fnames= self.collate_project_cases() #        self.h5ns =[]
+        self.cases_for_sampling = self.sample_cases()
+        self.img_fnames_for_sampling = self.filter_img_fnames_for_sampling()
         for ds in self.global_properties['datasources']:
             h5fn = Path(ds['h5_fname'])
             assert h5fn.exists(), "fg voxels not processed for datasource folder {}".format(ds['folder'])
 
 
     def collate_project_cases(self):
+
+        """
+        Collates project cases by retrieving image-mask file pairs.
+
+        Returns:
+        - tuple: Contains lists of case IDs and corresponding image file paths.
+        """
         cases = get_img_mask_filepairs(
             parent_folder=self.project.raw_data_folder
         )
@@ -59,15 +68,33 @@ class GlobalProperties(GetAttr):
         return case_ids,img_filenames
 
 
-    def sample_cases(self,max_cases):
-        if max_cases:
-            cases_for_sampling= random.sample(self.case_ids,np.minimum(len(self.case_ids),max_cases))
+    def sample_cases(self):
+        if self.max_cases:
+            random.seed(42) # this ensures same set of cases is created each time this code is run for a specific datasset
+            cases_for_sampling= random.sample(self.case_ids,np.minimum(len(self.case_ids),self.max_cases))
         else:
             cases_for_sampling= self.case_ids
         return cases_for_sampling
 
+    def filter_img_fnames_for_sampling(self):
+        img_fnames_to_sample=[]
+        for img_fname in self.img_fnames:
+            img_case_id= info_from_filename(img_fname.name,True)['case_id']
+            bools = img_case_id in self.cases_for_sampling
+            img_fnames_to_sample.append(bools)
+        img_fnames_to_sample= list(il.compress(self.img_fnames,img_fnames_to_sample))
+        return img_fnames_to_sample
+
+
 
     def retrieve_h5_voxels(self):
+
+        """
+        Retrieves voxel data from HDF5 files within sampled cases.
+
+        Returns:
+        - np.array: Concatenated array of voxel data from the cases.
+        """
         voxels=[]
         h5py = import_h5py()
         for dsa in self.global_properties['datasources']:
@@ -83,7 +110,13 @@ class GlobalProperties(GetAttr):
         return voxels
 
     def retrieve_h5_properties(self):
-        h5py = import_h5py()
+        """
+        Retrieves properties for each case from HDF5 files.
+
+        Returns:
+        - List of dicts: Case properties including dataset name, spacing, labels, etc.
+        """
+        h5py = import_h5py() # 
         case_properties=[]
         for dsa in self.global_properties['datasources']:
             ds_props=[]
@@ -92,22 +125,26 @@ class GlobalProperties(GetAttr):
             ds_name_final = DS.resolve_ds_name(ds_name)
             cases_ds = [ cid for cid in self.cases_for_sampling if cid.split("_")[0] == ds_name_final]
 
-
             print(len(cases_ds))
-            with h5py.File(h5fn, "r") as h5f_file:
+            with h5py.File(h5fn, "r") as h5f_file:  # this file has all cases of the ds
                 for cid in pbar(cases_ds):
                     cs = h5f_file[cid]
                     props = {'ds':ds_name_final, 'case_id':cid, 'spacing': cs.attrs['spacing'] ,'labels':cs.attrs['labels']}
                     ds_props.append(props)
-            assert(len(cases_ds) == len(ds_props)), "Mismatch in case_ids and case_properties"
+            assert(len(cases_ds) == len(ds_props)), "Mismatch in case_ids and case_properties. "
             case_properties.extend(ds_props)
-        assert(len(self.case_ids) == len(case_properties)), "Mismatch in case_ids and case_properties"
+        assert(len(self.cases_for_sampling) == len(case_properties)), "Mismatch in case_ids and case_properties"
         return case_properties
 
     def store_projectwide_properties(self):
         '''
         Stage 1.
         Start here.
+
+        Computes and stores global properties across the entire project.
+
+        This includes statistical measures such as mean and standard deviation 
+        of intensities, bounds of intensity range, and spatial median values.
 
         '''
         cases = self.retrieve_h5_voxels()
@@ -154,6 +191,13 @@ class GlobalProperties(GetAttr):
         """
         Stage 2:
         Requires global_properties (intensity_percentile_fg range) for clipping ()
+
+        Computes the clipped mean and std of the dataset.
+
+        Parameters:
+        - num_processes (int): Number of processes for multiprocessing.
+        - multiprocess (bool): Flag to enable/disable multiprocessing.
+        - debug (bool): Flag to enable/disable debug mode.
         """
 
         percentile_label, intensity_percentile_range=  get_intensity_range(self.global_properties)
@@ -177,8 +221,13 @@ class GlobalProperties(GetAttr):
 
 
     def _compute_dataset_mean(self,num_processes,multiprocess,debug):
-        args = [[fname, self.clip_range] for fname in self.img_filenames]
 
+        """
+        Computes the mean intensity of the dataset after applying clipping.
+
+        Parameters are same as the outer method `compute_std_mean_dataset`.
+        """
+        args = [[fname, self.clip_range] for fname in self.img_fnames_for_sampling]
         print("Computing means from all nifti files (clipped to {})".format(self.clip_range))
         means_sizes = multiprocess_multiarg(
             get_means_voxelcounts,
@@ -196,7 +245,7 @@ class GlobalProperties(GetAttr):
         self.dataset_mean = weighted_mn.sum() / self.total_voxels
 
     def _compute_dataset_std(self,num_processes,multiprocess,debug):
-        args = [[fname, self.dataset_mean, self.clip_range] for fname in self.img_filenames]
+        args = [[fname, self.dataset_mean, self.clip_range] for fname in self.img_fnames_for_sampling]
         print(
             "Computing std from all nifti files, using global mean computed above (clipped to {})".format(
                 self.clip_range
@@ -242,6 +291,16 @@ class GlobalProperties(GetAttr):
         self.save_global_properties()
 
     def serializable_obj(self,ints_list):
+
+        """
+        Converts a list of labels into a fully serializable object.
+
+        Parameters:
+        - ints_list: List of label integers to convert.
+        
+        Returns:
+        - List of int: List of converted integer labels.
+        """
         ints_out = [int(x) for x in ints_list]
         return ints_out
 
@@ -322,6 +381,13 @@ if __name__ == "__main__":
 # %%
 # %%
     G=P.G
+
+    cases_for_sampling= random.sample(G.case_ids,np.minimum(len(G.case_ids),G.max_cases))
+    img_fname = G.img_filenames[0]
+    img_fnames_to_sample = []
+# %%
+# %%
+
     h5py = import_h5py()
     case_properties=[]
     for dsa in G.global_properties['datasources']:
@@ -353,6 +419,7 @@ if __name__ == "__main__":
     keys = [k for k in G.global_properties.keys() if lmgps in k]
     key = keys[-1]
     gp = shared_labels_gps[-1]
+# %%
 # %%
     labels_all=[]
     lmgps = "lm_group"

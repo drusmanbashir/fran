@@ -34,7 +34,7 @@ from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 from fran.managers.data import (
     DataManagerBaseline,
     DataManagerLBD,
-    DataManagerPBD,
+    DataManagerWID,
     DataManagerPatch,
     DataManagerSource,
     DataManagerWhole,
@@ -346,7 +346,7 @@ class Trainer:
         elif mode == "lbd":
             DMClass = DataManagerLBD
         elif mode == "pbd":
-            DMClass = DataManagerPBD
+            DMClass = DataManagerWID
         elif mode == "baseline":
             DMClass = DataManagerBaseline
         else:
@@ -402,8 +402,8 @@ if __name__ == "__main__":
     # run_name = "LITS-1007"
     # device_id = 1
     device_id = 1
-    run_name = "LITS-1018"
     run_name = None
+    run_name = "LITS-1078"
     bs = 10  # 5 is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False

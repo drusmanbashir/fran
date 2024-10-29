@@ -3,7 +3,7 @@
 import torch
 from fastcore.all import Union, store_attr
 from fastcore.foundation import GetAttr
-from fran.preprocessing.datasetanalyzers import bboxes_function_version
+from fran.preprocessing import bboxes_function_version
 from fran.transforms.misc_transforms import FgBgToIndicesd2
 from fran.utils.string import info_from_filename
 from pathlib import Path
@@ -20,7 +20,6 @@ import torchio as tio
 from fran.transforms.spatialtransforms import PadDeficitImgMask
 from fran.utils.fileio import load_dict, maybe_makedirs, save_dict
 from fran.utils.helpers import multiprocess_multiarg
-from fran.utils.string import info_from_filename, strip_extension
 
 from pathlib import Path
 
@@ -33,7 +32,6 @@ import ipdb
 
 tr = ipdb.set_trace
 
-from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.preprocessing.fixed_spacing import _Preprocessor
 
 

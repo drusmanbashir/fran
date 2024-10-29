@@ -40,7 +40,7 @@ from fran.callback.nep import NeptuneImageGridCallback
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 from fran.managers.data import (
     DataManagerLBD,
-    DataManagerPBD,
+    DataManagerWID,
     DataManagerPatch,
     DataManagerSource,
     DataManagerWhole,
@@ -86,27 +86,6 @@ def fix_dict_keys(input_dict, old_string, new_string):
     return output_dict
 
 
-def checkpoint_from_model_id(model_id, sort_method="last"):
-    common_paths = load_yaml(common_vars_filename)
-    fldr = Path(common_paths["checkpoints_parent_folder"])
-    all_fldrs = [
-        f for f in fldr.rglob("*{}/checkpoints".format(model_id)) if f.is_dir()
-    ]
-    if len(all_fldrs) == 1:
-        fldr = all_fldrs[0]
-    else:
-        print(
-            "no local files. Model may be on remote path. use download_neptune_checkpoint() "
-        )
-        tr()
-
-    list_of_files = list(fldr.glob("*"))
-    if sort_method == "last":
-        ckpt = max(list_of_files, key=lambda p: p.stat().st_mtime)
-    elif sort_method == "best":
-        tr()
-    return ckpt
-
 
 
 def resolve_datamanager(mode: str):
@@ -119,7 +98,7 @@ def resolve_datamanager(mode: str):
         elif mode == "lbd":
             DMClass = DataManagerLBD
         elif mode == "pbd":
-            DMClass = DataManagerPBD
+            DMClass = DataManagerWID
         else:
             raise NotImplementedError(
                 "Mode {} is not supported for datamanager".format(mode)
@@ -804,7 +783,7 @@ class Trainer:
         elif mode == "lbd":
             DMClass = DataManagerLBD
         elif mode == "pbd":
-            DMClass = DataManagerPBD
+            DMClass = DataManagerWID
         else:
             raise NotImplementedError(
                 "Mode {} is not supported for datamanager".format(mode)

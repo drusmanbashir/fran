@@ -18,7 +18,7 @@ from fran.preprocessing.fixed_spacing import (
 )
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd
-from fran.utils.config_parsers import is_excel_None, parse_excel_plan
+from fran.utils.config_parsers import ConfigMaker, is_excel_None, parse_excel_plan
 from fran.utils.string import info_from_filename
 from pathlib import Path
 
@@ -26,7 +26,6 @@ import numpy as np
 import SimpleITK as sitk
 from fastcore.basics import GetAttr, store_attr
 
-from fran.preprocessing.datasetanalyzers import bboxes_function_version
 from fran.preprocessing.fixed_spacing import _Preprocessor
 from fran.utils.fileio import *
 from fran.utils.helpers import *
@@ -47,6 +46,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         folder_suffix:str ,
         mask_label=None,
         fg_indices_exclude: list = None,
+        remapping:dict=None,
     ) -> None:
         """
         mask_label: this label is used to apply mask, i.e., crop the image and lm. Defaults to None aka all label values >0 are used to crop.
@@ -61,6 +61,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         self.case_ids = self.get_case_ids_lm_group(self.lm_group)
         self.set_folders_from_spacing(self.spacing)
         print("Total case ids:", len(self.case_ids))
+        self.output_folder = project.lbd_folder
 
     def set_folders_from_spacing(self, spacing):
         self.fixed_spacing_subfolder = folder_name_from_list(
@@ -194,19 +195,35 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             indices_subfolder = "indices"
         indices_subfolder = self.output_folder / indices_subfolder
         return indices_subfolder
-
+    # @property
+    # def output_folder(self):
+    #     self._output_folder = folder_name_from_list(
+    #         prefix="spc",
+    #         parent_folder=self.lbd_folder,
+    #         values_list=self.spacing,
+    #     )
+    #     if self.folder_suffix:
+    #         output_name = "_".join([self._output_folder.name , self.folder_suffix])
+    #         self._output_folder= Path(self._output_folder.parent / output_name)#.name = self.output_folder.name + self.folder_suffix
+    #     return self._output_folder
+    #
     @property
     def output_folder(self):
-        self._output_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=self.lbd_folder,
-            values_list=self.spacing,
-        )
-        if self.folder_suffix:
-            output_name = "_".join([self._output_folder.name , self.folder_suffix])
-            self._output_folder= Path(self._output_folder.parent / output_name)#.name = self.output_folder.name + self.folder_suffix
         return self._output_folder
 
+
+    @output_folder.setter
+    def output_folder(self, parent_folder):
+        self._output_folder = folder_name_from_list(
+            prefix="spc",
+            parent_folder=parent_folder,
+            values_list=self.spacing,
+        )
+        if self.folder_suffix is not None:
+            output_name = "_".join([self._output_folder.name, self.folder_suffix])
+            self._output_folder = Path(
+                self._output_folder.parent / output_name
+            )  # .name = self.output_folder.name + self.output_suffix
 
 
 class FGBGIndicesLBD(LabelBoundedDataGenerator):
@@ -363,15 +380,20 @@ if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 
     from fran.utils.common import *
+    from fran.managers import Project
 
     P = Project(project_title="litsmc")
     spacing = [0.8, 0.8, 1.5]
     P.maybe_store_projectwide_properties()
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+# %%
     plan_str = "plan7"
     plan = conf[plan_str]
     plan = parse_excel_plan(plan)
+    plan['spacing']=[.8,.8,1.5]
+    plan['fg_indices_exclude']=None
+
 # %%
     L = LabelBoundedDataGenerator(
         project=P,

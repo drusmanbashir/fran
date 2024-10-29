@@ -1,7 +1,7 @@
 # %%
-from fran.managers.training import UNetTrainer, checkpoint_from_model_id
 import itertools as il
 from pathlib import Path
+from fran.trainers import checkpoint_from_model_id
 
 import itk
 import numpy as np

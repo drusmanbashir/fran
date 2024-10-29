@@ -1,6 +1,6 @@
 # %%
-from monai.transforms import Compose, MapTransform
 from monai.transforms.io.dictionary import SaveImaged
+from monai.transforms import Compose
 from monai.transforms.spatial.dictionary import Resized
 from monai.transforms.utility.dictionary import (
     DeleteItemsd,
@@ -9,13 +9,10 @@ from monai.transforms.utility.dictionary import (
     SqueezeDimd,
 )
 import torch
-from fastcore.all import Union, store_attr
-from fastcore.foundation import GetAttr
-from fran.data.dataset import MaskLabelRemapd
-from fran.preprocessing.datasetanalyzers import bboxes_function_version
-from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
+from fastcore.all import  store_attr
+from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd, TorchWriter
-from fran.transforms.misc_transforms import FgBgToIndicesd2
+from fran.transforms.misc_transforms import FgBgToIndicesd2, MaskLabelRemapd
 from fran.utils.string import info_from_filename
 from pathlib import Path
 import SimpleITK as sitk
@@ -26,12 +23,6 @@ from fran.utils.helpers import *
 from fran.utils.imageviewers import *
 from label_analysis.totalseg import TotalSegmenterLabels
 import torch
-from fran.utils.dictopts import DictToAttr
-import torchio as tio
-from fran.transforms.spatialtransforms import PadDeficitImgMask
-from fran.utils.fileio import load_dict, maybe_makedirs, save_dict
-from fran.utils.helpers import multiprocess_multiarg
-from fran.utils.string import info_from_filename, strip_extension
 
 from pathlib import Path
 
@@ -44,8 +35,6 @@ import ipdb
 
 tr = ipdb.set_trace
 
-from fran.preprocessing.datasetanalyzers import bboxes_function_version
-from fran.preprocessing.fixed_spacing import _Preprocessor
 
 
 @ray.remote(num_cpus=1)
@@ -99,12 +88,12 @@ class FixedSizeMaker(object):
             try:
                 dici = tfms(dici)
             except Exception as e:
+                print("Exception")
                 print(e)
 
         return 1
 
 
-# %%
 class FixedSizeDataGenerator(PatchDataGenerator):
     _default = "project"
 
@@ -125,6 +114,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
 
         lms = list(lms_fldr.glob("*"))
         imgs = list(images_fldr.glob("*"))
+        print("{0} images in data folder {1}".format(len(imgs),self.data_folder))
 
         self.dicis = []
         for img in imgs:
@@ -193,29 +183,49 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.utils.common import *
+    from fran.managers import Project
     from fran.preprocessing.labelbounded import ImporterDataset
 
     P = Project(project_title="totalseg")
     P.maybe_store_projectwide_properties()
 
     TSL = TotalSegmenterLabels()
-    src_dest_labels = list(zip(TSL.all, TSL.labelshort))
+
+    TSL = TotalSegmenterLabels()
+    imported_labelsets = [TSL.labels("all")]
+    TSL.labels("lung", "right")
+# %%
+    new_mapping = [
+        9,
+    ] * len(imported_labelsets)
+    remapping = TSL.create_remapping(imported_labelsets, new_mapping)
+# %%
+    new_mapping = TSL.label_localiser
+    imported_labelsets = TSL.labels("all")
+    src_dest_labels= {a: b for a, b in zip(imported_labelsets, new_mapping)}
+# %%
+
+
     # TSL.labelshort
     data_folder = Path(
-        "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150"
+        "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_080_080_150"
     )
+    spatial_size = 96
+# %%
     F = FixedSizeDataGenerator(
         project=P,
         data_folder=data_folder,
-        spatial_size=96,
+        spatial_size=spatial_size,
         src_dest_labels=src_dest_labels,
     )
-    F.setup(overwrite=False)
+    F.setup(overwrite=True)
+    
 # %%
     lmf = F.output_folder / ("lms")
     list(lmf.glob("*"))
 # %%
     F.process()
+# %%
     output_folder = folder_name_from_list(
         prefix="sze", parent_folder=P.fixed_size_folder, values_list=[64, 64, 64]
     )
@@ -232,7 +242,6 @@ if __name__ == "__main__":
 # %%
     tots = len(pairs)
     n_proc = 32
-    spatial_size = [64, 64, 64]
 
 # %%
     dicis = list(chunks(pairs, n_proc))
@@ -272,6 +281,11 @@ if __name__ == "__main__":
 # %%
 # %%
 # SECTION:-------------------- TROUBLE <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# %%
+    output_folder_lm=F.output_folder/"lms"
+    output_folder_im=F.output_folder/"images"
+
+# %%
     L = LoadTorchd(keys=["lm", "image"])
     M = MaskLabelRemapd(keys=["lm"], src_dest_labels=src_dest_labels, use_sitk=True)
     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
@@ -298,9 +312,35 @@ if __name__ == "__main__":
         output_postfix="",
         separate_folder=False,
     )
+    Del = DeleteItemsd(keys=["image", "lm"])
 
+# %%
+    dici = F.dicis[0]
+    dici=L(dici)
+    dici=M(dici)
+    dici = E(dici)
+    dici = Rz(dici)
+    dici = S(dici)
+    dici = Si(dici)
+    dici = Sl(dici)
+    dici = Del(dici)
+# %%
+    image = dici['image']
+    lm = dici['lm']
+# %%
+    ImageMaskViewer([image,lm])
+# %%
     # S1 = SaveImage(output_ext='pt',  output_dir=self.output_fldr_imgs, output_postfix=str(1), output_dtype='float32', writer=TorchWriter,separate_folder=False)
-    tfms = Compose([L, M, E, Rz, S, Si, Sl])
-
+    if src_dest_labels:
+        tfms = Compose([L, M, E, Rz, S, Si, Sl, Del])
+    else:
+        tfms = Compose([L, E, Rz, S, Si, Sl, Del])
+    for dici in dicis:
+        try:
+            dici = tfms(dici)
+            print("Saved {0}".format(dici["image"].meta['filename_or_obj']))
+        except Exception as e:
+            print("Exception")
+            print(e)
 
 # %%

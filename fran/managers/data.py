@@ -37,7 +37,6 @@ from monai.transforms.utility.dictionary import (
 from fran.data.collate import img_lm_bbox_collated, source_collated, whole_collated
 from fran.data.dataset import (
     ImageMaskBBoxDatasetd,
-    MaskLabelRemapd,
     NormaliseClipd,
     fg_in_bboxes,
 )
@@ -563,7 +562,7 @@ class DataManagerLBD(DataManagerSource):
     #     self.data_valid = self.create_data_dicts(self.valid_cases[:16])
 
 
-class DataManagerPBD(DataManagerLBD):
+class DataManagerWID(DataManagerLBD):
     def derive_data_folder(self, dataset_mode=None):
         spacing = self.plan["spacing"]
         parent_folder = self.project.pbd_folder
@@ -585,7 +584,7 @@ class DataManagerPBD(DataManagerLBD):
                 f"pbd_folder={self.project.pbd_folder})")
 
     def __str__(self):
-        return ("PBD Data Manager with plan {} and dataset parameters: {} "
+        return ("Patient-bound  Data Manager (PBD) with plan {} and dataset parameters: {} "
                 "(using PBD folder: {})".format(
                     self.plan,
                     self.dataset_params,

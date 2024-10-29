@@ -1,5 +1,6 @@
 # %%
 import sqlite3
+from send2trash import send2trash
 import ipdb
 
 from batchgenerators.utilities.file_and_folder_operations import List
@@ -656,7 +657,8 @@ class Project(DictToAttr):
     def delete(self):
         for folder in self.folders:
             if folder.exists() and self.project_title in str(folder):
-                shutil.rmtree(folder)
+                # shutil.rmtree(folder)
+                send2trash(folder)
         print("Done")
 
 
@@ -860,11 +862,11 @@ class Project(DictToAttr):
 if __name__ == "__main__":
     from fran.utils.common import *
 
-    P= Project(project_title="nodes")
+    P= Project(project_title="totalseg")
     # P.delete()
-    # P.create(mnemonic='liver')
+    P.create(mnemonic='totalseg')
     # P.add_data([DS.nodes,DS.nodesthick])
-    P.add_data([DS.drli_short])
+    P.add_data([DS.totalseg])
 
 # %%
     conf = ConfigMaker(

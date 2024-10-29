@@ -6,6 +6,7 @@ from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.utility.dictionary import SqueezeDimd
 import itertools as il
 
+from fran.trainers.base import checkpoint_from_model_id
 from fran.transforms.misc_transforms import SelectLabels
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 from fran.transforms.totensor import ToTensorI, ToTensorT
@@ -35,7 +36,6 @@ from torchvision.transforms.functional import resize
 from fran.data.dataset import FillBBoxPatchesd
 from fran.inference.base import (BaseInferer, 
                                  list_to_chunks, load_params)
-from fran.managers.training import checkpoint_from_model_id
 from fran.transforms.imageio import LoadSITKd, SITKReader
 from fran.transforms.inferencetransforms import (
     BBoxFromPTd, KeepLargestConnectedComponentWithMetad, RenameDictKeys,
