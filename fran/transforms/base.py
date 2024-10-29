@@ -12,9 +12,7 @@ import torch
 from torch.functional import Tensor 
 import ipdb
 
-import itertools as il
 
-from fran.utils.dictopts import DictToAttr
 
 tr = ipdb.set_trace
 

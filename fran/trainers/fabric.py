@@ -1,15 +1,10 @@
 import os
 from torch.cuda.amp import autocast
-from monai.transforms import Decollated
-from monai.transforms.io.array import SaveImage
-import pandas as pd
 from collections.abc import Mapping
 from functools import partial
 from typing import Any, Iterable, List, Literal, Optional, Tuple, Union, cast
 
 import lightning as L
-from lightning.pytorch.callbacks import Callback
-from lightning.pytorch.utilities.types import STEP_OUTPUT
 import torch
 from lightning.fabric.accelerators import Accelerator
 from lightning.fabric.loggers import Logger
@@ -18,7 +13,6 @@ from lightning.fabric.wrappers import _unwrap_objects
 from lightning.pytorch.utilities.model_helpers import is_overridden
 from lightning_utilities import apply_to_collection
 from tqdm import tqdm
-import warnings
 class TrainerFabric:
     def __init__(
         self,

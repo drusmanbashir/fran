@@ -7,7 +7,6 @@ torch._dynamo.config.suppress_errors = True
 import warnings
 from lightning.pytorch import  Trainer
 from torch import nn
-from fran.transforms.spatialtransforms import one_hot
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
 except:
@@ -90,7 +89,6 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
-    from torch.profiler import profile, record_function, ProfilerActivity
     project_title = "nodes"
     proj = Project(project_title=project_title)
 

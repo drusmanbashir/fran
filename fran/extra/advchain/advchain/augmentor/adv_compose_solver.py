@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 import torch
 
 from advchain.common.loss import calc_segmentation_consistency  # noqa

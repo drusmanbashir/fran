@@ -1,4 +1,3 @@
-from cv2 import magnitude
 import numpy as np
 import torch.nn.functional as F
 import torch

@@ -1,5 +1,5 @@
 from .earlytrain import EarlyTrain
-import torch, time
+import torch
 import numpy as np
 from ..nets.nets_utils import MyDataParallel
 

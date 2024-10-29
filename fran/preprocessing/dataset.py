@@ -1,7 +1,7 @@
 # %%
 from monai.transforms.utils import is_positive
 import torch
-from fastcore.all import Union, store_attr
+from fastcore.all import store_attr
 from fastcore.foundation import GetAttr
 from monai.transforms.compose import Compose
 from monai.transforms.spatial.dictionary import  Spacingd
@@ -43,7 +43,6 @@ from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.string import info_from_filename
 
 from pathlib import Path
-import SimpleITK as sitk
 from fastcore.basics import GetAttr, store_attr
 
 from fran.utils.fileio import *

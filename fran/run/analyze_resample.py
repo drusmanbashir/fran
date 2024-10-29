@@ -4,7 +4,6 @@ import ast
 import shutil
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.utils.config_parsers import ConfigMaker, parse_excel_plan
-from fran.utils.string import ast_literal_eval
 from managers import Project
 
 from label_analysis.totalseg import TotalSegmenterLabels

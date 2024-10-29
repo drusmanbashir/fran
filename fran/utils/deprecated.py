@@ -6,14 +6,10 @@ from fran.utils.helpers import pbar
 import itertools as il
 from pathlib import Path
 
-from label_analysis.overlap import pbaconfigr
 import numpy as np
-import SimpleITK as sitk
 import torch
-from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 
 from fran.utils.helpers import pp, slice_list
-from fran.utils.imageviewers import ImageMaskViewer, view_sitk
 
 
 def insert_plan_key(ckpt_fn):

@@ -1,7 +1,6 @@
 # %%
 from fastcore.basics import store_attr
 from fran.utils.string import ast_literal_eval
-from fastcore.transform import GetAttr
 import pandas as pd
 import ast,sys
 import ipdb

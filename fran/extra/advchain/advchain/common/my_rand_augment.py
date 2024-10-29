@@ -2,7 +2,6 @@ from typing import List, Optional
 from torch import Tensor
 import torch
 import torchvision
-import torchvision.transforms as T
 import torchvision.transforms.functional as tv_func
 from torchvision.transforms import  InterpolationMode
 

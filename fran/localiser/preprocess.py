@@ -1,53 +1,25 @@
 # %%
-import time
 
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
 from fran.data.dataloader import as_is_collated
 from fran.transforms.imageio import TorchWriter
-import SimpleITK as sitk
-import itertools as il
-from SimpleITK.SimpleITK import LabelShapeStatisticsImageFilter
-from label_analysis.helpers import get_labels, relabel, to_binary
-from label_analysis.utils import compress_img, store_attr
-from monai.apps.detection.transforms.dictionary import MaskToBoxd, RandCropBoxByPosNegLabeld, RandRotateBox90d
-from label_analysis.merge import LabelMapGeometry
-from monai.apps.detection.transforms.array import ConvertBoxMode
-from monai.data.box_utils import BoxMode, CenterSizeMode
-from monai.data.meta_tensor import MetaTensor
+from label_analysis.utils import store_attr
 from monai.transforms.croppad.dictionary import BoundingRectd
 from monai.transforms.io.array import SaveImage
-from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
-import matplotlib.patches as patches
-import torch.nn.functional as F
 from pathlib import Path
-from monai.transforms.intensity.array import NormalizeIntensity, ScaleIntensity
-from monai.transforms.intensity.dictionary import NormalizeIntensityD, NormalizeIntensityd
-from monai.transforms.spatial.dictionary import Resized, Resize
-from torchvision.datasets.folder import is_image_file
+from monai.transforms.intensity.dictionary import NormalizeIntensityd
 
 from fran.transforms.imageio import LoadSITKd
-from fran.transforms.misc_transforms import BoundingBoxYOLOd, DictToMeta, MetaToDict
+from fran.transforms.misc_transforms import DictToMeta, MetaToDict
 from fran.transforms.spatialtransforms import Project2D
-from fran.utils.helpers import match_filename_with_case_id, pbar
-import shutil, os
-import h5py
-import torch
-from torch.utils.tensorboard.writer import SummaryWriter
-from fran.utils.fileio import is_sitk_file, load_dict, maybe_makedirs
+from fran.utils.fileio import is_sitk_file, maybe_makedirs
 from fran.utils.helpers import find_matching_fn
 import ipdb
 tr = ipdb.set_trace
 
-from fran.utils.imageviewers import ImageMaskViewer, view_sitk
-from fran.utils.string import info_from_filename
-from monai.visualize import *
-import matplotlib.pyplot as plt
-from monai.data import dataset_summary, register_writer
-import pandas as pd
-import numpy as np
 
 
 class Project2DProcessor():

@@ -5,17 +5,10 @@ import ipdb
 
 from batchgenerators.utilities.file_and_folder_operations import List
 from fastcore.basics import listify
-from fastcore.script import tuplify
-from fastcore.basics import GetAttr
-from monai.utils.enums import StrEnum
 from fran.managers.datasource import Datasource, _DS
-from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, import_h5py
 from fran.utils.config_parsers import ConfigMaker
 from fran.utils.string import (
-    cleanup_fname,
-    drop_digit_suffix,
     info_from_filename,
-    strip_extension,
 )
 
 tr = ipdb.set_trace
@@ -23,10 +16,8 @@ tr = ipdb.set_trace
 from pathlib import Path
 import os, sys
 import itertools as il
-from fastcore.basics import detuplify, store_attr
-from fran.utils.dictopts import dic_in_list
+from fastcore.basics import store_attr
 from fran.utils.helpers import *
-import shutil
 from fran.utils.helpers import DictToAttr, ask_proceed
 
 sys.path += ["/home/ub/Dropbox/code"]

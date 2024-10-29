@@ -9,7 +9,6 @@ from fran.utils.fileio import load_dict
 from fran.utils.helpers import folder_name_from_list, resolve_device
 
 
-import torch
 from torch.utils.data import DataLoader
 
 from fran.utils.helpers import folder_name_from_list, resolve_device

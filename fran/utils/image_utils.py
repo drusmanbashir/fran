@@ -1,6 +1,6 @@
 
 # %%
-from monai.utils import first, set_determinism
+from monai.utils import first
 from monai.apps.utils import download_and_extract
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
@@ -10,20 +10,18 @@ from monai.transforms.intensity.dictionary import ScaleIntensityRanged
 from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import Orientationd, SpacingD
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
-from monai.visualize import blend_images, matshow3d, plot_2d_or_3d_image
+from monai.visualize import blend_images, plot_2d_or_3d_image
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard.writer import SummaryWriter
-from torchvision.utils import make_grid
 from pathlib import Path
 import numpy as np
 from numpy.core.fromnumeric import resize
 import torch
 import SimpleITK as sitk
-from fran.utils.fileio import maybe_makedirs, save_np
+from fran.utils.fileio import save_np
 from fran.utils.helpers import abs_list
 import torch.nn.functional as F
 import ipdb
-from fran.utils.imageviewers import ImageMaskViewer
 
 from fran.utils.string import cleanup_fname
 

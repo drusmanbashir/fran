@@ -6,7 +6,6 @@ import ipdb
 
 tr = ipdb.set_trace
 
-from lightning import Trainer as TrainerL
 import torch
 
 from fran.extra.deepcore.deepcore.met.earlytrain import EarlyTrain
@@ -233,7 +232,6 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
-    from torch.profiler import profile, record_function, ProfilerActivity
 
     project_title = "litsmc"
     proj = Project(project_title=project_title)

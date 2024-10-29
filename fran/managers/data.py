@@ -30,8 +30,6 @@ from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
 from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
-    FgBgToIndicesd,
-    ToDeviced,
 )
 
 from fran.data.collate import img_lm_bbox_collated, source_collated, whole_collated

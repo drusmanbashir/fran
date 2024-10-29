@@ -1,13 +1,6 @@
 # %%
 from pytorch_grad_cam import (
     GradCAM,
-    HiResCAM,
-    ScoreCAM,
-    GradCAMPlusPlus,
-    AblationCAM,
-    XGradCAM,
-    EigenCAM,
-    FullGrad,
 )
 import os
 from torch.cuda.amp import autocast
@@ -19,7 +12,6 @@ from functools import partial
 from typing import Any, Iterable, List, Literal, Optional, Tuple, Union, cast
 
 import lightning as L
-from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 import torch
 from lightning.fabric.accelerators import Accelerator
@@ -829,7 +821,6 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
 
     from fran.utils.common import *
-    from torch.profiler import profile, record_function, ProfilerActivity
 
     project_title = "litsmc"
     proj = Project(project_title=project_title)

@@ -11,27 +11,23 @@ from fastcore.all import listify, store_attr
 from fastcore.foundation import GetAttr
 from lightning.fabric import Fabric
 from monai.data.dataloader import DataLoader
-from monai.data.dataset import Dataset, PersistentDataset
+from monai.data.dataset import Dataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
-from monai.data.utils import decollate_batch
 from monai.inferers.inferer import SlidingWindowInferer
 from monai.transforms.compose import Compose
-from monai.transforms.io.dictionary import LoadImaged, SaveImaged
-from monai.transforms.post.dictionary import Activationsd, AsDiscreted, Invertd
+from monai.transforms.io.dictionary import SaveImaged
+from monai.transforms.post.dictionary import Activationsd, AsDiscreted
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  SqueezeDimd)
 
-from fran.data.dataset import (InferenceDatasetNii, InferenceDatasetPersistent,
-                               NormaliseClipd)
+from fran.data.dataset import NormaliseClipd
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import KeepLargestConnectedComponentWithMetad, SaveMultiChanneld, ToCPUd
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 from fran.utils.dictopts import DictToAttr, fix_ast
-from fran.utils.fileio import maybe_makedirs
 from fran.utils.helpers import slice_list
-from fran.utils.imageviewers import ImageMaskViewer, view_sitk
-from fran.utils.itk_sitk import ConvertSimpleItkImageToItkImage
+from fran.utils.imageviewers import ImageMaskViewer
 
 
 
@@ -352,7 +348,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
 
-    from fran.managers.datasource import Datasource, _DS
+    from fran.managers.datasource import _DS
     D = _DS()
     proj = Project(project_title="totalseg")
     run_tot= ["LITS-860"]

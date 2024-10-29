@@ -5,18 +5,16 @@ from monai.transforms.spatial.dictionary import Resized
 from monai.transforms.utility.dictionary import (
     DeleteItemsd,
     EnsureChannelFirstd,
-    EnsureTyped,
     SqueezeDimd,
 )
 import torch
 from fastcore.all import  store_attr
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd, TorchWriter
-from fran.transforms.misc_transforms import FgBgToIndicesd2, MaskLabelRemapd
+from fran.transforms.misc_transforms import MaskLabelRemapd
 from fran.utils.string import info_from_filename
 from pathlib import Path
-import SimpleITK as sitk
-from fastcore.basics import GetAttr, store_attr
+from fastcore.basics import store_attr
 
 from fran.utils.fileio import *
 from fran.utils.helpers import *
@@ -27,9 +25,7 @@ import torch
 from pathlib import Path
 
 import ipdb
-import numpy as np
-import SimpleITK as sitk
-from fastcore.basics import GetAttr, store_attr
+from fastcore.basics import store_attr
 
 import ipdb
 
@@ -184,7 +180,6 @@ if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.utils.common import *
     from fran.managers import Project
-    from fran.preprocessing.labelbounded import ImporterDataset
 
     P = Project(project_title="totalseg")
     P.maybe_store_projectwide_properties()

@@ -1,10 +1,6 @@
 
 # %%
-import numpy as np
-import SimpleITK as sitk
-from matplotlib import pyplot as plt
 
-from fran.utils.imageviewers import ImageMaskViewer
 from monai.utils import set_determinism
 from monai.transforms import (
     AsDiscrete,
@@ -26,7 +22,6 @@ from monai.data import CacheDataset, DataLoader, decollate_batch
 from monai.config import print_config
 from monai.apps import download_and_extract
 import torch
-import matplotlib.pyplot as plt
 import tempfile
 import os
 import glob

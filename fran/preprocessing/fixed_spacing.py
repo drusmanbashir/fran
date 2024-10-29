@@ -8,25 +8,23 @@ from fran.transforms.intensitytransforms import NormaliseClipd
 
 import numpy as np
 import pandas as pd
-import SimpleITK as sitk
 import torch
-from fastcore.all import Union, save_pickle, store_attr
+from fastcore.all import store_attr
 from fastcore.foundation import GetAttr
-from monai.data import Dataset
 from monai.data.dataloader import DataLoader
 from monai.transforms.compose import Compose
-from monai.transforms.spatial.dictionary import Orientationd, Spacingd
+from monai.transforms.spatial.dictionary import Spacingd
 from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
     FgBgToIndicesd,
     ToDeviced,
 )
 
-from fran.data.collate import dict_list_collated, img_lm_metadata_lists_collated
+from fran.data.collate import dict_list_collated
 from fran.preprocessing.dataset import ResamplerDataset
 from fran.preprocessing import bboxes_function_version
 from fran.transforms.imageio import LoadSITKd
-from fran.transforms.inferencetransforms import ChangeDType, ToCPUd
+from fran.transforms.inferencetransforms import ToCPUd
 from fran.transforms.misc_transforms import (
     ChangeDtyped,
     DictToMeta,

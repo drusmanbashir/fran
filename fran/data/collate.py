@@ -8,7 +8,7 @@ from torch.utils.data.dataloader import (
     _SingleProcessDataLoaderIter,
 )
 
-from fran.transforms.imageio import LoadSITKd, LoadTorchd
+from fran.transforms.imageio import LoadSITKd
 
 _loaders = (_MultiProcessingDataLoaderIter, _SingleProcessDataLoaderIter)
 import ipdb

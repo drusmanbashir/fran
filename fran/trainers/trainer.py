@@ -4,7 +4,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 import shutil
 from lightning.pytorch.profilers import AdvancedProfiler
 from monai.transforms.io.dictionary import LoadImaged
-from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
+from fran.transforms.misc_transforms import MetaToDict
 from fran.managers import UNetManager, Project
 from fran.managers.unet import maybe_ddp
 from fran.transforms.imageio import TorchReader
@@ -15,9 +15,6 @@ from fran.utils.helpers import pp
 
 tr = ipdb.set_trace
 
-from label_analysis.overlap import get_ipython
-import numpy as np
-from typing import Union
 from pathlib import Path
 from fastcore.basics import store_attr
 from monai.transforms.croppad.dictionary import (
@@ -30,7 +27,6 @@ import psutil
 import torch._dynamo
 from fran.callback.nep import NeptuneImageGridCallback
 
-from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 from fran.managers.data import (
     DataManagerBaseline,
     DataManagerLBD,
@@ -39,27 +35,18 @@ from fran.managers.data import (
     DataManagerSource,
     DataManagerWhole,
 )
-from fran.utils.fileio import load_yaml
 from fran.utils.imageviewers import ImageMaskViewer
 
 torch._dynamo.config.suppress_errors = True
 from fran.managers.nep import NeptuneManager
-import itertools as il
-import operator
 import warnings
-from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     TQDMProgressBar,
     DeviceStatsMonitor,
 )
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from fran.architectures.create_network import (
-    create_model_from_conf,
-    pool_op_kernels_nnunet,
-)
-import torch.nn.functional as F
 from fran.utils import COMMON_PATHS
 
 try:
@@ -68,7 +55,7 @@ except:
     pass
 
 import torch
-from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch import Trainer
 
 
 def fix_dict_keys(input_dict, old_string, new_string):
@@ -383,7 +370,6 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
 
     from fran.utils.common import *
-    from torch.profiler import profile, record_function, ProfilerActivity
 
     project_title = "nodes"
     proj = Project(project_title=project_title)

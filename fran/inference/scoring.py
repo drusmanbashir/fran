@@ -15,7 +15,6 @@ from fran.transforms.spatialtransforms import one_hot
 import SimpleITK as sitk
 from monai.metrics import *
 
-from fran.utils.string import strip_slicer_strings
 
 # %%
 

@@ -1,9 +1,8 @@
 # %%
 from collections.abc import Hashable, Mapping
-import numpy as np
 from functools import partial
 from pathlib import Path
-from typing import Sequence, Union
+from typing import Union
 
 import ipdb
 import SimpleITK as sitk
@@ -17,8 +16,6 @@ from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
 
 from fran.transforms.base import MonaiDictTransform
-from fran.transforms.imageio import LoadSITKd
-from fran.utils.imageviewers import ImageMaskViewer
 from fran.utils.string import ast_literal_eval
 
 tr = ipdb.set_trace

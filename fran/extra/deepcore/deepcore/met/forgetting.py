@@ -1,6 +1,5 @@
 from .earlytrain import EarlyTrain
 import torch, time
-from torch import nn
 import numpy as np
 
 

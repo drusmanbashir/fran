@@ -4,27 +4,12 @@ import ipdb
 tr = ipdb.set_trace
 import torch._dynamo
 
-from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
-from fran.managers.data import ( DataManagerLBD, DataManagerPatch,
-                                 DataManagerSource)
-from fran.utils.fileio import load_yaml
-from fran.utils.imageviewers import ImageMaskViewer
 
 torch._dynamo.config.suppress_errors = True
-from fran.managers.nep import NeptuneManager
-import itertools as il
-import operator
 import warnings
-from lightning.pytorch import LightningModule, Trainer
-from lightning.pytorch.callbacks import ( LearningRateMonitor,
-                                         TQDMProgressBar, DeviceStatsMonitor)
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from lightning.pytorch import Trainer
 
-from fran.architectures.create_network import (create_model_from_conf, 
-                                               pool_op_kernels_nnunet)
 from torch import nn
-import torch.nn.functional as F
-from fran.transforms.spatialtransforms import one_hot
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
 except:
@@ -32,8 +17,7 @@ except:
 
 import torch
 import torch
-from fastcore.basics import store_attr
-from fran.managers.training import Trainer, UNetTrainer, checkpoint_from_model_id
+from fran.managers.training import Trainer
 
 #TODO: fix LR  setup in Tranfer learning
 
@@ -110,7 +94,6 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
-    from torch.profiler import profile, record_function, ProfilerActivity
     project_title = "nodes"
     proj = Project(project_title=project_title)
 

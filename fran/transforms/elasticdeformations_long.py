@@ -1,12 +1,9 @@
 # %%
-from SimpleITK.SimpleITK import Image
-from fastcore.test import test_close
 from torch.autograd.variable import Variable
 from fran.transforms.spatialtransforms import *
 from fran.utils.helpers import *
 from fran.utils.imageviewers import *
 
-from fran.data.dataset import ImageMaskBBoxDataset
 
 # %%
 
@@ -539,7 +536,6 @@ if __name__ == "__main__":
     ff_rand = torch.rand(base_mesh.shape)*2-1
 # %%
 # %%
-    from nurbspy import nurbs_surface as ns
     import numpy as np
     import matplotlib.pyplot as plt
     from nurbspy.nurbs_curve import NurbsCurve
@@ -656,7 +652,6 @@ if __name__ == "__main__":
 # %%
     import matplotlib.pyplot as plt
     from matplotlib import cm
-    from matplotlib.ticker import LinearLocator
     import numpy as np
     X = np.arange(-5, 5, 0.25)
     Y = np.arange(-5, 5, 0.25)

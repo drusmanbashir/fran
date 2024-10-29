@@ -1,5 +1,4 @@
 import os
-import itertools as il
 from fran.utils.helpers import set_autoreload
 set_autoreload()
 from fran.utils.fileio import load_yaml

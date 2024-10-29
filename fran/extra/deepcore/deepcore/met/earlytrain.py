@@ -1,5 +1,5 @@
 from .coresetmethod import CoresetMethod
-import torch, time
+import torch
 import ipdb
 tr = ipdb.set_trace
 

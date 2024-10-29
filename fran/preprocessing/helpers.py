@@ -8,7 +8,6 @@ from fran.utils.helpers import *
 from fran.utils.fileio import *
 import cc3d
 
-from fran.utils.imageviewers import ImageMaskViewer
 from label_analysis.utils import SITKImageMaskFixer
 
 def to_even(input_num, lower=True):

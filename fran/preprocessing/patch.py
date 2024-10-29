@@ -1,14 +1,12 @@
 # %%
 # %%
 import torch
-from fastcore.all import Union, store_attr
-from fastcore.foundation import GetAttr
+from fastcore.all import store_attr
 from fran.preprocessing import bboxes_function_version
 from fran.transforms.misc_transforms import FgBgToIndicesd2
-from fran.utils.string import info_from_filename
 from pathlib import Path
 import SimpleITK as sitk
-from fastcore.basics import GetAttr, store_attr
+from fastcore.basics import store_attr
 
 from fran.utils.fileio import *
 from fran.utils.helpers import *
@@ -26,7 +24,7 @@ from pathlib import Path
 import ipdb
 import numpy as np
 import SimpleITK as sitk
-from fastcore.basics import GetAttr, store_attr
+from fastcore.basics import store_attr
 
 import ipdb
 
@@ -308,7 +306,6 @@ if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
 
     from fran.utils.common import *
-    from fran.preprocessing.labelbounded import ImporterDataset
 
     P = Project(project_title="litsmc")
     P.maybe_store_projectwide_properties()

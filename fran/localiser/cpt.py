@@ -11,7 +11,6 @@ import torch
 import ipdb
 
 tr = ipdb.set_trace
-from PIL import Image
 # class YOLOLoss(torch.nn.modules.loss._Loss):
 class YOLOLoss(L.LightningModule):
     """A loss function to train YOLO v2
@@ -251,15 +250,11 @@ def convert_cells_to_bboxes(predictions, anchors, s, is_predictions=True):
 
 # %%
 #link :https://blog.flaport.net/yolo-part-1.html
-from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
 from fran.localizer.data import *
-from lightning.pytorch.loggers import CSVLogger
-from lightning.pytorch.trainer import Trainer
 import torch
 import lightning as L
 from torch.optim.lr_scheduler import OneCycleLR
 import matplotlib.pyplot as plt
-from fran.localizer.data import DetectDataModule
 from fran.localizer.loss import YOLOLoss
 from fran.localizer.helpers import *
 

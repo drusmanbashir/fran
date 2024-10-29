@@ -285,7 +285,6 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- WEIGHTS--------------------------------------------------------------------------------------
 
-    from fran.utils.common import set_autoreload
     network2 = TinyYOLOv2a()
     # model = TinyYOLOv2.load_from_checkpoint("/home/ub/code/fran/fran/logs/lightning_logs/version_2/checkpoints/last.ckpt")
     input_tensor = load_image_batch([33], 320)  # batch with single image of an airplane
@@ -426,11 +425,9 @@ if __name__ == "__main__":
             range_.set_postfix(valid_loss=valid_loss)
 
 # %%
-    import matplotlib
     import matplotlib.pyplot as plt
     plt.ion()
     # matplotlib.use('Agg')
-    from IPython.display import Image, display
     import matplotlib.image as mpimg
     pil_img = mpimg.imread('/s/datasets_bkp/VOCdevkit/VOC2007/SegmentationObject/000039.png')
     plt.imshow(pil_img)

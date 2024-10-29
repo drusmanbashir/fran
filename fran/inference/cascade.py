@@ -1,21 +1,16 @@
 # %%
-import gc
 
 import ipdb
-from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.utility.dictionary import SqueezeDimd
 import itertools as il
 
 from fran.trainers.base import checkpoint_from_model_id
 from fran.transforms.misc_transforms import SelectLabels
-from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
-from fran.transforms.totensor import ToTensorI, ToTensorT
 from fran.utils.fileio import maybe_makedirs
 
 tr = ipdb.set_trace
 
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -23,23 +18,19 @@ import SimpleITK as sitk
 from monai.apps.detection.transforms.array import *
 from monai.data.box_utils import *
 from monai.inferers.merger import *
-from monai.transforms import (AsDiscreted, Compose, EnsureChannelFirstd,
-                              Invertd, Spacingd)
-from monai.transforms.io.dictionary import LoadImaged, SaveImaged
+from monai.transforms import (AsDiscreted, Compose, Invertd)
+from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import (Activationsd,
                                               MeanEnsembled)
-from monai.transforms.spatial.dictionary import Orientationd, Resized
-from monai.utils.misc import ensure_tuple
+from monai.transforms.spatial.dictionary import Resized
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
-from torchvision.transforms.functional import resize
 
 from fran.data.dataset import FillBBoxPatchesd
 from fran.inference.base import (BaseInferer, 
                                  list_to_chunks, load_params)
-from fran.transforms.imageio import LoadSITKd, SITKReader
 from fran.transforms.inferencetransforms import (
     BBoxFromPTd, KeepLargestConnectedComponentWithMetad, RenameDictKeys,
-    SaveMultiChanneld, ToCPUd, TransposeSITKd)
+    SaveMultiChanneld, ToCPUd)
 from fran.utils.itk_sitk import *
 
 sys.path += ["/home/ub/code"]
@@ -48,15 +39,12 @@ sys.path += ["/home/ub/code"]
 ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]
 import sys
 
-from fastcore.foundation import L, Union, listify, operator
+from fastcore.foundation import listify
 
-from fran.transforms.intensitytransforms import ClipCenterI
 
 sys.path += ["/home/ub/Dropbox/code/fran/"]
 
-import torch.nn.functional as F
 from fastcore.basics import store_attr
-from fastcore.transform import Transform as TFC
 
 from fran.utils.imageviewers import ImageMaskViewer
 

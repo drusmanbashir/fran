@@ -1,39 +1,23 @@
 # %%
 import lightning as L
-from monai.transforms.io.array import SaveImage
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
-from fran.data.dataloader import as_is_collated
 from fran.localizer.helpers import draw_image_bbox, draw_image_lm_bbox
-from fran.transforms.imageio import LoadTorchd, TorchWriter
-import SimpleITK as sitk
-import itertools as il
+from fran.transforms.imageio import LoadTorchd
 from monai.apps.detection.transforms.dictionary import (
-    ClipBoxToImaged,
     ConvertBoxToStandardModed,
-    MaskToBoxd,
-    RandCropBoxByPosNegLabeld,
-    RandFlipBoxd,
-    RandRotateBox90d,
-    RandZoomBoxd,
-    StandardizeEmptyBoxd,
 )
-from monai.transforms.croppad.dictionary import BoundingRectd, RandCropByPosNegLabeld
-from monai.transforms.io.dictionary import SaveImaged
+from monai.transforms.croppad.dictionary import BoundingRectd
 from monai.transforms.utility.dictionary import (
     DeleteItemsd,
     EnsureChannelFirstd,
     EnsureTyped,
     RepeatChanneld,
 )
-from monai.transforms.utils import generate_spatial_bounding_box
 import matplotlib.patches as patches
-import torch.nn.functional as F
 from pathlib import Path
-from monai.transforms.intensity.array import NormalizeIntensity, ScaleIntensity
 from monai.transforms.intensity.dictionary import (
-    NormalizeIntensityD,
     NormalizeIntensityd,
     RandAdjustContrastd,
     RandGaussianNoised,
@@ -42,37 +26,21 @@ from monai.transforms.intensity.dictionary import (
     RandShiftIntensityd,
 )
 from monai.transforms.spatial.dictionary import RandFlipd, RandRotated, RandZoomd, Resized, Resize
-from torchvision.datasets.folder import is_image_file
 
-from fran.transforms.imageio import LoadSITKd
-from fran.transforms.intensitytransforms import MakeBinary, RandRandGaussianNoised
-from fran.transforms.misc_transforms import BoundingBoxYOLOd, DictToMeta, MetaToDict
-from fran.transforms.spatialtransforms import Project2D
-from fran.utils.helpers import match_filename_with_case_id, pbar
-import shutil, os
-import h5py
+from fran.transforms.intensitytransforms import MakeBinary
+from fran.transforms.misc_transforms import BoundingBoxYOLOd
 import torch
-from torch.utils.tensorboard.writer import SummaryWriter
-from fran.utils.fileio import is_sitk_file, load_dict, maybe_makedirs
-from fran.utils.helpers import find_matching_fn
 import ipdb
 
 tr = ipdb.set_trace
 
-from fran.utils.imageviewers import ImageMaskViewer, view_sitk
-from fran.utils.string import info_from_filename
 from monai.visualize import *
 import matplotlib.pyplot as plt
-from monai.data import dataset_summary, register_writer
-import pandas as pd
-import numpy as np
 
 
 from torch.utils.data import DataLoader, random_split
 from monai.data import Dataset
 
-from fran.utils.fileio import is_sitk_file
-from fran.utils.helpers import find_matching_fn
 
 
 class DetectDS(Dataset):

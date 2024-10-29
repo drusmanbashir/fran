@@ -11,7 +11,6 @@ import torch
 import ipdb
 
 tr = ipdb.set_trace
-from PIL import Image
 # class YOLOLoss(torch.nn.modules.loss._Loss):
 class YOLOLoss(L.LightningModule):
     """A loss function to train YOLO v2

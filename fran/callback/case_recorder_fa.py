@@ -1,6 +1,5 @@
 import re
 import plotly.express as px
-from fastcore.foundation import L
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -8,7 +7,6 @@ from fran.callback.base import *
 from fastai.callback.tracker import Callback
 import itertools as il
 
-from neptune.types import File
 from pathlib import Path
 
 from fran.utils.string import cleanup_fname

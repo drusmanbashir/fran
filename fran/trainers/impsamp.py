@@ -2,7 +2,6 @@
 import lightning as pl
 from torch.utils.data import DataLoader, Subset
 from fran.extra.deepcore.deepcore.met.met_utils import (
-    FacilityLocation,
     submodular_optimizer,
 )
 from fran.extra.deepcore.deepcore.met.met_utils.euclidean import euclidean_dist_pair_np
@@ -16,7 +15,6 @@ from torchinfo import summary
 from fran.trainers.trainer import UNetTrainer
 from fran.transforms.imageio import TorchReader
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
-from fran.utils.common import common_vars_filename
 import ipdb
 
 from fran.utils.helpers import pp
@@ -45,7 +43,6 @@ from fran.managers.data import (
     DataManagerSource,
     DataManagerWhole,
 )
-from fran.utils.fileio import load_yaml
 from fran.utils.imageviewers import ImageMaskViewer
 
 torch._dynamo.config.suppress_errors = True
@@ -819,7 +816,6 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
 
     from fran.utils.common import *
-    from torch.profiler import profile, record_function, ProfilerActivity
 
     project_title = "litsmc"
     proj = Project(project_title=project_title)

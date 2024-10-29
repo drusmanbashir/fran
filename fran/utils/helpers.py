@@ -12,10 +12,9 @@ from ipdb.__main__ import get_ipython
 import numpy as np
 import torch
 from tqdm import tqdm as tqdm_ip
-from tqdm.notebook import tqdm as tqdm_nb
 
 from fran.utils.dictopts import *
-from fran.utils.fileio import is_img_file, is_sitk_file, load_dict, save_dict, str_to_path
+from fran.utils.fileio import is_img_file, load_dict, str_to_path
 from fran.utils.string import cleanup_fname, dec_to_str, info_from_filename, path_to_str, regex_matcher
 from functools import wraps
 from time import time

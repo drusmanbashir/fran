@@ -9,7 +9,6 @@ from fran.managers.trainer import *
 from fran.managers.tune import *
 from fran.inference.cascade import *
 from fran.utils.imageviewers import *
-import itertools as il
 
     # ImageMaskViewer([img_np,mask_np])
 

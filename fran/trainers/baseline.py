@@ -2,7 +2,6 @@
 import torch
 from fran.managers import Project
 
-from fran.managers.data import DataManagerBaseline
 from fran.trainers.trainer import Trainer
 from fran.utils.config_parsers import ConfigMaker
 from fran.utils.imageviewers import ImageMaskViewer

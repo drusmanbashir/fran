@@ -5,7 +5,6 @@
 
 import math
 import torch.nn as nn
-import numpy as np
 # noqa
 from advchain.models.custom_layers import BatchInstanceNorm2d
 from advchain.models.custom_layers import Self_Attn

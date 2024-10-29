@@ -14,7 +14,6 @@ import ipdb
 tr = ipdb.set_trace
 import ray
 tr2 = ray.util.pdb.set_trace
-import numpy as np
 # %%
 
 class PredAsList(Callback):
