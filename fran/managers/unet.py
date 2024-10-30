@@ -101,14 +101,8 @@ class UNetManager(LightningModule):
         return loss
 
     def log_losses(self, loss_dict, prefix):
-        metrics = [
-            "loss",
-            "loss_ce",
-            "loss_dice",
-            "loss_dice_label1",
-            "loss_dice_label2",
-        ]
-        metrics = [me for me in metrics if me in loss_dict.keys()]
+        metrics = loss_dict.keys()
+        metrics = [metric for metric in metrics if "batch" not in metric] # too detailed otherwise
         renamed = [prefix + "_" + nm for nm in metrics]
         logger_dict = {
             neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)

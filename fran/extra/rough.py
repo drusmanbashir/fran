@@ -23,7 +23,7 @@ if __name__ == "__main__":
     im_fn= im_fns[0]
 # %%
     for im_fn in pbar(im_fns):
-        lm_fn = find_matching_fn(im_fn,lm_fns,use_cid=True)
+        lm_fn = find_matching_fn(im_fn,lm_fns,tag='all')
 
         labs = get_labels(lm)
 
@@ -97,7 +97,7 @@ if __name__ == "__main__":
 # %%
     data_dicts= []
     for img in imgs:
-        dici = {'image':img, 'lm':  find_matching_fn(img,lms,use_cid=True)}
+        dici = {'image':img, 'lm':  find_matching_fn(img,lms,tag='all')}
         data_dicts.append(dici)
 
 

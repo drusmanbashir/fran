@@ -1,5 +1,4 @@
 # %%
-
 import ipdb
 from monai.transforms.utility.dictionary import SqueezeDimd
 import itertools as il
@@ -85,10 +84,22 @@ class WholeImageInferer(BaseInferer):
             **kwargs
         )
 
+        self.tfms = "ERN"
     def create_transforms(self):
         super().create_transforms()
-        self.S = Resized(keys=["image"], spatial_size=self.params["patch_size"])
+        self.R = Resized(keys=["image"], spatial_size=self.plan["spatial_size"])
 
+
+    def predict_inner(self,batch):
+                    img_input = batch["image"]
+                    img_input = img_input.cuda()
+                    if "filename_or_obj" in img_input.meta.keys():
+                        print("Processing: ", img_input.meta["filename_or_obj"])
+                    output_tensor = self.model(img_input)
+                    output_tensor = output_tensor[0]
+                    batch["pred"] = output_tensor
+                    batch["pred"].meta = batch["image"].meta.copy()
+                    return batch
 
 class PatchInferer(BaseInferer):
     def __init__(
@@ -372,13 +383,13 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
 # %%
 
-
 if __name__ == "__main__":
 # %%
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
     # ... run your application ...
     from fran.utils.common import *
+    from fran.managers import Project
     project = Project(project_title="litsmc")
 
     run_w = "LIT-145"
@@ -411,7 +422,17 @@ if __name__ == "__main__":
     localiser_labels = [45, 46, 47, 48, 49]
     localiser_labels_litsmc = [1]
 # %%
-#SECTION:-------------------- LITSMC predictions--------------------------------------------------------------------------------------
+#SECTION:-------------------- TOTALSEG WholeImageinferer--------------------------------------------------------------------------------------
+
+    safe_mode=False
+    project = Project(project_title="totalseg")
+    run_tot= ["LITS-1088"]
+    W = WholeImageInferer(project, run_tot[0], safe_mode=safe_mode, k_largest=None,save_channels=False)
+# %%
+    preds = W.run(imgs_crc[:10], chunksize=1)
+    p = preds[0]["pred"][0]
+# %%
+##SECTION:-------------------- LITSMC predictions--------------------------------------------------------------------------------------
 
     run = run_litsmc2
     localiser_labels_litsmc = [44]
@@ -449,6 +470,48 @@ if __name__ == "__main__":
     preds = End.W.postprocess(p)
     bboxes = []
 # %%
+
+# %%
+#SECTION:---------------------------------------- LITSMC predictions--------------------------------------------------------------------
+
+    run = run_litsmc2
+    localiser_labels_litsmc = [44]
+    run_w = "LITS-860"
+    devices = [1]
+    overwrite=False
+    safe_mode=True
+    save_channels=False
+    project = Project(project_title="litsmc")
+    if project.project_title=="litsmc":
+        k_largest= 1
+    else:
+        k_largest= None
+    En = CascadeInferer(
+        project,
+
+        run_w,
+        run,
+        save_channels=save_channels,
+        devices=devices ,
+        overwrite=overwrite,
+        localiser_labels=localiser_labels_litsmc,
+        safe_mode=safe_mode,
+        k_largest=k_largest
+    )
+
+# %%
+# img_fns = list(img_fldr.glob("*"))[20:50]
+    # case_id = "crc_CRC089"
+    # imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
+    preds = En.run(imgs_crc,chunksize=4)
+
+# %%
+
+    preds = End.W.postprocess(p)
+    bboxes = []
+# %%
+
+
 #SECTION:-------------------- TROUBLESHOOTING En.run--------------------------------------------------------------------------------------
 
 

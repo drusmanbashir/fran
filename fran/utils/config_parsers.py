@@ -1,5 +1,6 @@
 # %%
 from fastcore.basics import store_attr
+from label_analysis.totalseg import TotalSegmenterLabels
 from fran.utils.string import ast_literal_eval
 import pandas as pd
 import ast,sys
@@ -25,14 +26,34 @@ def is_excel_None(input):
         return False
 
 def parse_excel_plan(plan):
-    keys_maybe_nan = "fg_indices_exclude", "lm_groups"
+    keys_maybe_nan = "fg_indices_exclude", "lm_groups","datasources"
+    keys_str_to_list = "spacing", "spatial_size", "patch_sizes"
     for k in keys_maybe_nan:
         if k in plan.keys():
             if is_excel_None(plan[k]):
                 plan[k]=None
-    if 'spacing' in plan.keys():
-        plan['spacing'] = ast_literal_eval(plan['spacing'])
+
+    for k in keys_str_to_list:
+        if k in plan.keys():
+            plan[k] = ast_literal_eval(plan[k])
     return plan
+
+def maybe_merge_source_plan(config):
+    # Retrieve the main plan and source plan from the config dictionary
+    main_plan = config['plan']
+    src_plan_key = main_plan.get('source_plan')
+
+    # Ensure the source plan exists in the config before proceeding
+    if src_plan_key:
+        # Access the source plan
+        source_plan = config.get(src_plan_key, {})
+
+        # Iterate over the source plan keys and add any missing keys to the main plan
+        for key in source_plan:
+            if key not in main_plan:
+                main_plan[key] = source_plan[key]
+    return config
+
 
 BOOL_ROWS='patch_based,one_cycles,heavy,deep_supervision,self_attention,fake_tumours,square_in_union,apply_activation'
 def check_bool(row):
@@ -44,10 +65,35 @@ def make_patch_size(patch_dim0,patch_dim1):
     patch_size = [patch_dim0,]*2+[patch_dim1,]
     return patch_size
 
+def out_channels_from_TSL(src_dest_labels):
+    TSL = TotalSegmenterLabels()
+    attrib = src_dest_labels.split('.')[1]
+    labels = getattr(TSL,attrib)
+    labels = set(labels)
+    out_ch=len(labels)
+    return out_ch
+
+
+def out_channels_from_global_properties(global_properties):
+        try:
+            out_ch = len(global_properties['labels_all'])+1
+            return out_ch
+
+        except KeyError as er:
+            print("*"*20)
+            print("Warning: Key {} not is in project.global_properties ".format(er))
+            print("Training will breakdown unless projectwide properties are set first. \nAlternatively set 'out_channels' key in config['model_params']  ")
+            return None
+
 def out_channels_from_dict_or_cell(src_dest_labels):  
-    if isinstance(src_dest_labels, pd.core.series.Series):
-        src_dest_labels = ast.literal_eval(src_dest_labels.item())
-    out_channels = max([src_dest[1] for src_dest in src_dest_labels])+1
+    if src_dest_labels is None:
+        return None
+    if 'TSL' in src_dest_labels:
+        out_channels= out_channels_from_TSL(src_dest_labels)
+    else:
+        if isinstance(src_dest_labels, pd.core.series.Series):
+            src_dest_labels = ast.literal_eval(src_dest_labels.item())
+        out_channels = max([src_dest[1] for src_dest in src_dest_labels])+1
     return out_channels
 
 
@@ -177,8 +223,8 @@ class ConfigMaker():
                 ),
             }
             self.config["model_params"].update(config)
-        self.add_further_keys()
         self.set_active_plan()
+        self.add_further_keys()
       
     def resolve_configuration_filename(self,configuration_filename,configuration_mnemonic):
 
@@ -203,14 +249,7 @@ class ConfigMaker():
             return configurations_folder/("experiment_configs_totalseg.xlsx")
 
     def add_further_keys(self):
-        if not 'out_channels' in self.config["model_params"]:
-            try:
-                self.add_out_channels()
-            except KeyError as er:
-                print("*"*20)
-                print("Warning: Key {} not is in project.global_properties ".format(er))
-                print("Training will breakdown unless projectwide properties are set first. \nAlternatively set 'out_channels' key in config['model_params']  ")
-
+        self.add_out_channels()
         self.add_patch_size()
         self.add_dataset_props()
 
@@ -223,9 +262,12 @@ class ConfigMaker():
             except:
                 self.config['dataset_params'][prop]=None
 
+           
     def add_out_channels(self):
-            out_ch=len(self.project.global_properties['labels_all'])+1
-            self.config['model_params']["out_channels"]  = out_ch
+        out_ch =out_channels_from_dict_or_cell(self.config['plan'].get("src_dest_labels"))
+        if not out_ch:
+            out_ch= out_channels_from_global_properties(self.project.global_properties)
+        self.config['model_params']["out_channels"]  = out_ch
 
     def add_patch_size(self):
         if not "patch_size" in self.config['dataset_params']:
@@ -236,7 +278,10 @@ class ConfigMaker():
     def set_active_plan(self):
         plan = self.config['dataset_params']['plan']
         plan_selected = self.config['plan'+str(plan)]
-        self.config['plan']=plan_selected
+        self.config['plan']= plan_selected
+        self.config = maybe_merge_source_plan(self.config)
+        self.config['plan'] = parse_excel_plan(plan_selected)
+
 
 
  
@@ -307,7 +352,6 @@ if __name__ == "__main__":
 
 
 # %%
-
     configuration_mnemonic="liver"
     configuration_filename = "/home/ub/code/fran/configurations/experiment_configs_liver.xlsx"
 
@@ -325,20 +369,20 @@ if __name__ == "__main__":
 
     df = pd.read_excel(project, sheet_name="metadata", dtype=str)
     df
-    # %%
+# %%
 
     config = {
         # A random function
         "alpha": tune.sample_from(lambda _: np.random.uniform(100)),
         # Use the `spec.config` namespace to access other hyperparameters
         "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal())
-        # %%
+# %%
     }
     config["mom_low"].sample()
     config["mom_high"].sample()
-    # %%
+# %%
     tune.sample_from(lambda _: np.random.uniform(100) ** 2).sample()
-    # %%
+# %%
     config = load_config_from_workbook(project, raytune=True)
     if not "mom_low" in config["model_params"].keys():
         conds = {
@@ -352,8 +396,14 @@ if __name__ == "__main__":
             ),
         }
         config["model_params"].update(conds)
-    # %%
+# %%
     config["model_params"]["mom_low"].sample()
     config["model_params"]["mom_added"].sample()
 
+# %%
+    config['plan']
+    src_plan = config['plan'].get('source_plan')
+    if src_plan:
+        src_plan=config[src_plan]
+    config['plan1']
 # %%

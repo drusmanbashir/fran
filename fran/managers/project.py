@@ -552,6 +552,8 @@ class Project(DictToAttr):
             - train_files: A list of file paths (img_symlink) assigned to training.
             - val_files: A list of file paths (img_symlink) assigned to validation.
         """
+        if not ds: # default datasources are all datasources in the project
+            ds = self.datasources
 
         # Build SQL queries
         ss_train = self.build_sql_query(fold, ds, is_validation=False)

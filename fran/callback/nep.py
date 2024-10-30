@@ -11,7 +11,7 @@ from fran.transforms.spatialtransforms import one_hot
 import neptune
 import ast
 from fran.utils.config_parsers import *
-from fran.utils.fileio import load_yaml
+from fran.utils.fileio import load_json, load_yaml
 
 # from fran.managers.learner_plus import *
 from fran.utils.helpers import *
@@ -23,6 +23,7 @@ try:
 except:
     pass
 
+from fran.utils.colour_palette import colour_palette
 
 _ast_keys = ["dataset_params,patch_size", "metadata,src_dest_labels"]
 _immutable_keys = [
@@ -84,7 +85,7 @@ class NeptuneImageGridCallback(Callback):
         imgs_per_batch=4,
         publish_deep_preds=False,
         apply_activation=True,
-        epoch_freq=2,  # skip how many epochs.
+        epoch_freq=5,  # skip how many epochs.
     ):
         if not isinstance(patch_size, torch.Size):
             patch_size = torch.Size(patch_size)
@@ -141,8 +142,8 @@ class NeptuneImageGridCallback(Callback):
                 ["imgs", "preds", "lms"],
             ):
                 grd = torch.cat(grd)
-                if category == "imgs":
-                    grd = normalize(grd)
+                # if category == "imgs":
+                #     grd = normalize(grd)
                 grd_final.append(grd)
             grd = torch.stack(grd_final)
             grd2 = (
@@ -150,7 +151,7 @@ class NeptuneImageGridCallback(Callback):
                 .contiguous()
                 .view(-1, 3, grd.shape[-2], grd.shape[-1])
             )
-            grd3 = make_grid(grd2, nrow=self.imgs_per_batch * 3)
+            grd3 = make_grid(grd2, nrow=self.imgs_per_batch * 3,scale_each=True)
             grd4 = grd3.permute(1, 2, 0)
             grd4 = np.array(grd4)
             trainer.logger.experiment["images"].append(File.as_image(grd4))
@@ -190,9 +191,11 @@ class NeptuneImageGridCallback(Callback):
             self.img_to_grd(pred),
         )
         img, label, pred = (
-            self.fix_channels(img),
-            self.fix_channels(label),
-            self.fix_channels(pred),
+            self.scale_tensor(img),
+            self.assign_colour(label),
+            self.assign_colour(pred),
+            # self.fix_channels(label),
+            # self.fix_channels(pred),
         )
 
         self.grid_imgs.append(img)
@@ -203,19 +206,28 @@ class NeptuneImageGridCallback(Callback):
         imgs = batch[self.batches, :, :, :, self.slices].clone()
         return imgs
 
-    def fix_channels(self, tnsr):
-        if tnsr.shape[1] == 1:
-            tnsr = tnsr.repeat(1, 3, 1, 1)
-        elif tnsr.shape[1] == 2:
-            tnsr = tnsr[:, 1:, :, :]
-            tnsr = tnsr.repeat(1, 3, 1, 1)
-        elif tnsr.shape[1] > 3:
-            chs = tnsr.shape[1]
-            tnsr = tnsr[:, chs - 3 : :, :]
-        else:
-            # tnsr already in 3d
-            pass
-        return tnsr
+    def assign_colour(self,tnsr):
+        argmax_tensor= torch.argmax(tnsr,dim=1)
+        B, H, W = argmax_tensor.shape
+        rgb_tensor = torch.zeros((B, 3, H, W), dtype=torch.uint8)
+
+        for key, color in colour_palette.items():
+            mask = argmax_tensor == key
+            for channel in range(3):
+                rgb_tensor[:, channel, :, :][mask] = color[channel]
+        return rgb_tensor
+
+    def scale_tensor(self, tnsr):
+        min,max = tnsr.min(), tnsr.max()
+        rng = max-min
+        tnsr= tnsr.repeat(1, 3, 1, 1)
+        tnsr2 = tnsr.clone()
+        t3 = tnsr2-min
+        t4 = t3/rng
+        t5 = t4*255
+        t6 = torch.clamp(t5,min=0,max=255)
+        return t6
+
 # %%
 
 if __name__ == "__main__":
@@ -223,7 +235,7 @@ if __name__ == "__main__":
     proj_defaults = P
     config = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
 
-    # %%
+# %%
     def process_html(fname="case_id_dices_valid.html"):
         df = pd.read_html(fname)[0]
         cols = df.columns

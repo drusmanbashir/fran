@@ -1,5 +1,9 @@
 # %%
 import itertools as il
+import ipdb
+tr = ipdb.set_trace
+
+from fran.managers.unet import UNetManager
 from pathlib import Path
 from fran.trainers import checkpoint_from_model_id
 
@@ -103,6 +107,7 @@ class BaseInferer(GetAttr, DictToAttr):
             progress=True,
             device=stitch_device,
         )
+        self.tfms="ESN"
 
     def setup(self):
         if not hasattr(self, "model"):
@@ -140,7 +145,7 @@ class BaseInferer(GetAttr, DictToAttr):
 
     def process_imgs_sublist(self, imgs_sublist):
         data = self.load_images(imgs_sublist)
-        self.prepare_data(data, tfms="ESN", collate_fn=None)
+        self.prepare_data(data,self.tfms,  collate_fn=None)
         preds = self.predict()
         output = self.postprocess(preds)
         if self.save == True:
@@ -295,7 +300,7 @@ class BaseInferer(GetAttr, DictToAttr):
     def prepare_model(self):
         device_id = self.devices[0]
         device = torch.device(f"cuda:{device_id}")
-        model = UNetTrainer.load_from_checkpoint(
+        model = UNetManager.load_from_checkpoint(
             self.ckpt,
             project=self.project,
             dataset_params=self.params['dataset_params'],
@@ -312,6 +317,11 @@ class BaseInferer(GetAttr, DictToAttr):
         with torch.inference_mode():
             for i, batch in enumerate(self.pred_dl):
                 with torch.no_grad():
+                    batch = self.predict_inner(batch)
+                    outputs.append(batch)
+        return outputs
+
+    def predict_inner(self,batch):
                     img_input = batch["image"]
                     img_input = img_input.cuda()
                     if "filename_or_obj" in img_input.meta.keys():
@@ -320,9 +330,7 @@ class BaseInferer(GetAttr, DictToAttr):
                     output_tensor = output_tensor[0]
                     batch["pred"] = output_tensor
                     batch["pred"].meta = batch["image"].meta.copy()
-                    outputs.append(batch)
-        return outputs
-
+                    return batch
     def postprocess(self, preds):
         self.create_postprocess_transforms(self.ds.transform)
         out_final = []
@@ -349,10 +357,11 @@ if __name__ == "__main__":
 
 
     from fran.managers.datasource import _DS
+    from fran.managers.project import Project
     D = _DS()
     proj = Project(project_title="totalseg")
     run_tot= ["LITS-860"]
-    safe_mode = True
+    safe_mode = False
 
     proj_nodes = Project(project_title="nodes")
     run_nodes= ["LITS-966"]
@@ -488,5 +497,8 @@ if __name__ == "__main__":
     p = pr["pred"][0].cpu()
     img = pr["image"][0, 0]
 # %%
+# %%
+
+
     ImageMaskViewer([img, p])
 # %%

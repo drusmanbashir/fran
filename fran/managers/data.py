@@ -1,9 +1,9 @@
 # %%
 from fran.managers.project import Project
 from lightning import LightningDataModule
-from fran.utils.helpers import pbar
+from fran.utils.helpers import pbar, pp
 from monai.transforms.transform import RandomizableTransform
-from fran.preprocessing import bbox_bg_only
+from fran.preprocessing.helpers import bbox_bg_only
 import ast
 import math
 from functools import reduce
@@ -151,125 +151,405 @@ class DataManager(LightningDataModule):
         for key, value in transform_factors.items():
             dici = {"value": value[0], "prob": value[1]}
             setattr(self, key, dici)
+    #
+    # def create_transforms(self):
+    #     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+    #     N = NormaliseClipd(
+    #         keys=["image"],
+    #         clip_range=self.dataset_params["intensity_clip_range"],
+    #         mean=self.dataset_params["mean_fg"],
+    #         std=self.dataset_params["std_fg"],
+    #     )
+    #     # P = MaskLabelRemapd(
+    #     #     keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
+    #     # )
+    #
+    #     
+    #     RP = RandomPatch()
+    #     F1 = RandFlipd(
+    #         keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
+    #     )
+    #     F2 = RandFlipd(
+    #         keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
+    #     )
+    #     IntensityTfms = [
+    #         RandScaleIntensityd(
+    #             keys="image", factors=self.scale["value"], prob=self.scale["prob"]
+    #         ),
+    #         RandRandGaussianNoised(
+    #             keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
+    #         ),
+    #         # RandGaussianNoised(
+    #         #     keys=["image"], std=self.noise["value"], prob=self.noise["prob"]
+    #         # ),
+    #         RandShiftIntensityd(
+    #             keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
+    #         ),
+    #         RandAdjustContrastd(
+    #             ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
+    #         ),
+    #         # self.create_affine_tfm(),
+    #     ]
+    #
+    #     Affine = RandAffined(
+    #         keys=["image", "lm"],
+    #         mode=["bilinear", "nearest"],
+    #         prob=self.affine3d["p"],
+    #         # spatial_size=self.dataset_params['src_dims'],
+    #         rotate_range=self.affine3d["rotate_range"],
+    #         scale_range=self.affine3d["scale_range"],
+    #     )
+    #
+    #     Re = ResizeWithPadOrCropd(
+    #         keys=["image", "lm"],
+    #         spatial_size=self.dataset_params["patch_size"],
+    #         lazy=True,
+    #     )
+    #
+    #     fgbg_ratio = self.dataset_params["fgbg_ratio"]
+    #     if isinstance(fgbg_ratio, list):
+    #         fg, bg = list_to_fgbg(fgbg_ratio)
+    #     else:
+    #         fg = fgbg_ratio
+    #         bg = 1
+    #
+    #     L = LoadImaged(
+    #         keys=["image", "lm"],
+    #         image_only=True,
+    #         ensure_channel_first=False,
+    #         simple_keys=True,
+    #     )
+    #     L.register(TorchReader())
+    #     Ld = LoadTorchDict(
+    #         keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
+    #     )
+    #     Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
+    #
+    #     Rtr = RandCropByPosNegLabeld(
+    #         keys=["image", "lm"],
+    #         label_key="lm",
+    #         image_key="image",
+    #         fg_indices_key="lm_fg_indices",
+    #         bg_indices_key="lm_bg_indices",
+    #         image_threshold=-2600,
+    #         spatial_size=self.src_dims,
+    #         pos=fg,
+    #         neg=bg,
+    #         num_samples=self.plan["samples_per_file"],
+    #         lazy=True,
+    #         allow_smaller=True,
+    #     )
+    #     Rva = RandCropByPosNegLabeld(
+    #         keys=["image", "lm"],
+    #         label_key="lm",
+    #         image_key="image",
+    #         image_threshold=-2600,
+    #         fg_indices_key="lm_fg_indices",
+    #         bg_indices_key="lm_bg_indices",
+    #         spatial_size=self.dataset_params["patch_size"],
+    #         pos=1,
+    #         neg=1,
+    #         num_samples=self.plan["samples_per_file"],
+    #         lazy=True,
+    #         allow_smaller=True,
+    #     )
+    #
+    #     self.transforms_dict = {
+    #         "RP": RP,
+    #         "Affine": Affine,
+    #         "E": E,
+    #         "N": N,
+    #         "F1": F1,
+    #         "F2": F2,
+    #         "IntensityTfms": IntensityTfms,
+    #         "Re": Re,
+    #         # "P": P,
+    #         "Ld": Ld,
+    #         "L": L,
+    #         "Ind": Ind,
+    #         "Rtr": Rtr,
+    #         "Rva": Rva,
+    #     }
+    #
+    def create_transforms(self, but=None):
+        """
+        Creates transformations used for data preprocessing. 
+        Transforms specified in 'but' are omitted from creation and inclusion.
 
-    def create_transforms(self):
-        E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-        N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.dataset_params["intensity_clip_range"],
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
-        )
-        # P = MaskLabelRemapd(
-        #     keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
-        # )
-
-        
-        RP = RandomPatch()
-        F1 = RandFlipd(
-            keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
-        )
-        F2 = RandFlipd(
-            keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
-        )
-        IntensityTfms = [
-            RandScaleIntensityd(
-                keys="image", factors=self.scale["value"], prob=self.scale["prob"]
-            ),
-            RandRandGaussianNoised(
-                keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
-            ),
-            # RandGaussianNoised(
-            #     keys=["image"], std=self.noise["value"], prob=self.noise["prob"]
-            # ),
-            RandShiftIntensityd(
-                keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
-            ),
-            RandAdjustContrastd(
-                ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
-            ),
-            # self.create_affine_tfm(),
-        ]
-
-        Affine = RandAffined(
-            keys=["image", "lm"],
-            mode=["bilinear", "nearest"],
-            prob=self.affine3d["p"],
-            # spatial_size=self.dataset_params['src_dims'],
-            rotate_range=self.affine3d["rotate_range"],
-            scale_range=self.affine3d["scale_range"],
-        )
-
-        Re = ResizeWithPadOrCropd(
-            keys=["image", "lm"],
-            spatial_size=self.dataset_params["patch_size"],
-            lazy=True,
-        )
-
-        fgbg_ratio = self.dataset_params["fgbg_ratio"]
-        if isinstance(fgbg_ratio, list):
-            fg, bg = list_to_fgbg(fgbg_ratio)
+        Parameters:
+        but (str): A comma-separated string of transform keys to be excluded.
+        """
+        # Parse the 'but' string into a list of keys to exclude
+        if but:
+            exclude_keys = {key.strip() for key in but.split(",")}
         else:
-            fg = fgbg_ratio
-            bg = 1
+            exclude_keys = set()
 
-        L = LoadImaged(
-            keys=["image", "lm"],
-            image_only=True,
-            ensure_channel_first=False,
-            simple_keys=True,
-        )
-        L.register(TorchReader())
-        Ld = LoadTorchDict(
-            keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
-        )
-        Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
+        # Initialize an empty dictionary to store the transforms
+        self.transforms_dict = {}
 
-        Rtr = RandCropByPosNegLabeld(
-            keys=["image", "lm"],
-            label_key="lm",
-            image_key="image",
-            fg_indices_key="lm_fg_indices",
-            bg_indices_key="lm_bg_indices",
-            image_threshold=-2600,
-            spatial_size=self.src_dims,
-            pos=fg,
-            neg=bg,
-            num_samples=self.plan["samples_per_file"],
-            lazy=True,
-            allow_smaller=True,
-        )
-        Rva = RandCropByPosNegLabeld(
-            keys=["image", "lm"],
-            label_key="lm",
-            image_key="image",
-            image_threshold=-2600,
-            fg_indices_key="lm_fg_indices",
-            bg_indices_key="lm_bg_indices",
-            spatial_size=self.dataset_params["patch_size"],
-            pos=1,
-            neg=1,
-            num_samples=self.plan["samples_per_file"],
-            lazy=True,
-            allow_smaller=True,
-        )
+        # Conditionally create transforms based on exclusion list
+        if "E" not in exclude_keys:
+            E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+            self.transforms_dict["E"] = E
 
-        self.transforms_dict = {
-            "RP": RP,
-            "Affine": Affine,
-            "E": E,
-            "N": N,
-            "F1": F1,
-            "F2": F2,
-            "IntensityTfms": IntensityTfms,
-            "Re": Re,
-            # "P": P,
-            "Ld": Ld,
-            "L": L,
-            "Ind": Ind,
-            "Rtr": Rtr,
-            "Rva": Rva,
-        }
+        if "N" not in exclude_keys:
+            N = NormaliseClipd(
+                keys=["image"],
+                clip_range=self.dataset_params["intensity_clip_range"],
+                mean=self.dataset_params["mean_fg"],
+                std=self.dataset_params["std_fg"],
+            )
+            self.transforms_dict["N"] = N
+        
+        if "RP" not in exclude_keys:
+            RP = RandomPatch()
+            self.transforms_dict["RP"] = RP
+        
+        if "F1" not in exclude_keys:
+            F1 = RandFlipd(
+                keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
+            )
+            self.transforms_dict["F1"] = F1
+        
+        if "F2" not in exclude_keys:
+            F2 = RandFlipd(
+                keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
+            )
+            self.transforms_dict["F2"] = F2
+
+        if "IntensityTfms" not in exclude_keys:
+            IntensityTfms = [
+                RandScaleIntensityd(
+                    keys="image", factors=self.scale["value"], prob=self.scale["prob"]
+                ),
+                RandRandGaussianNoised(
+                    keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
+                ),
+                RandShiftIntensityd(
+                    keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
+                ),
+                RandAdjustContrastd(
+                    ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
+                ),
+            ]
+            self.transforms_dict["IntensityTfms"] = IntensityTfms
+
+        if "Affine" not in exclude_keys:
+            Affine = RandAffined(
+                keys=["image", "lm"],
+                mode=["bilinear", "nearest"],
+                prob=self.affine3d["p"],
+                rotate_range=self.affine3d["rotate_range"],
+                scale_range=self.affine3d["scale_range"],
+            )
+            self.transforms_dict["Affine"] = Affine
+
+        if "Re" not in exclude_keys:
+            Re = ResizeWithPadOrCropd(
+                keys=["image", "lm"],
+                spatial_size=self.dataset_params["patch_size"],
+                lazy=True,
+            )
+            self.transforms_dict["Re"] = Re
+
+        # Continue similarly for the remaining transforms like L, Ld, Ind, Rtr, Rva...
+
+        # Example for some more exclusions:
+        if "L" not in exclude_keys:
+            L = LoadImaged(
+                keys=["image", "lm"],
+                image_only=True,
+                ensure_channel_first=False,
+                simple_keys=True,
+            )
+            L.register(TorchReader())
+            self.transforms_dict["L"] = L
+
+        if "Ld" not in exclude_keys:
+            Ld = LoadTorchDict(
+                keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
+            )
+            self.transforms_dict["Ld"] = Ld
+        
+        if "Ind" not in exclude_keys:
+            Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
+            self.transforms_dict["Ind"] = Ind
+
+        if "Rtr" not in exclude_keys:
+            Rtr = RandCropByPosNegLabeld(
+                keys=["image", "lm"],
+                label_key="lm",
+                image_key="image",
+                fg_indices_key="lm_fg_indices",
+                bg_indices_key="lm_bg_indices",
+                image_threshold=-2600,
+                spatial_size=self.src_dims,
+                pos=self.dataset_params["fgbg_ratio"],
+                neg=1,
+                num_samples=self.plan["samples_per_file"],
+                lazy=True,
+                allow_smaller=True,
+            )
+            self.transforms_dict["Rtr"] = Rtr
+
+        if "Rva" not in exclude_keys:
+            Rva = RandCropByPosNegLabeld(
+                keys=["image", "lm"],
+                label_key="lm",
+                image_key="image",
+                fg_indices_key="lm_fg_indices",
+                bg_indices_key="lm_bg_indices",
+                image_threshold=-2600,
+                spatial_size=self.dataset_params["patch_size"],
+                pos=1,
+                neg=1,
+                num_samples=self.plan["samples_per_file"],
+                lazy=True,
+                allow_smaller=True,
+            )
+            self.transforms_dict["Rva"] = Rva
+
+    def create_transforms(self, keys="all"):
+        """
+        Creates transformations used for data preprocessing. 
+        Only the transforms specified in 'include' are created and included.
+        If 'include' is 'all', all available transforms are created.
+
+        Parameters:
+        include (str): A comma-separated string of transform keys to be included, 
+                       or 'all' to include all transforms.
+        """
+        # Parse the 'include' string into a list of keys to include
+        if keys != "all":
+            include_keys = {key.strip() for key in keys.split(",")}
+        else:
+            include_keys = 'all'# Use this to indicate all transforms should be included
+
+        # Initialize an empty dictionary to store the transforms
+        self.transforms_dict = {}
+
+        # Conditionally create transforms based on inclusion list
+        if include_keys =='all' or "E" in include_keys:
+            E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+            self.transforms_dict["E"] = E
+
+        if include_keys =='all' or "N" in include_keys:
+            N = NormaliseClipd(
+                keys=["image"],
+                clip_range=self.dataset_params["intensity_clip_range"],
+                mean=self.dataset_params["mean_fg"],
+                std=self.dataset_params["std_fg"],
+            )
+            self.transforms_dict["N"] = N
+
+        if include_keys =='all' or "RP" in include_keys:
+            RP = RandomPatch()
+            self.transforms_dict["RP"] = RP
+
+        if include_keys =='all' or "F1" in include_keys:
+            F1 = RandFlipd(
+                keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
+            )
+            self.transforms_dict["F1"] = F1
+
+        if include_keys =='all' or "F2" in include_keys:
+            F2 = RandFlipd(
+                keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
+            )
+            self.transforms_dict["F2"] = F2
+
+        if include_keys =='all' or "IntensityTfms" in include_keys:
+            IntensityTfms = [
+                RandScaleIntensityd(
+                    keys="image", factors=self.scale["value"], prob=self.scale["prob"]
+                ),
+                RandRandGaussianNoised(
+                    keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
+                ),
+                RandShiftIntensityd(
+                    keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
+                ),
+                RandAdjustContrastd(
+                    ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
+                ),
+            ]
+            self.transforms_dict["IntensityTfms"] = IntensityTfms
+
+        if include_keys =='all' or "Affine" in include_keys:
+            Affine = RandAffined(
+                keys=["image", "lm"],
+                mode=["bilinear", "nearest"],
+                prob=self.affine3d["p"],
+                rotate_range=self.affine3d["rotate_range"],
+                scale_range=self.affine3d["scale_range"],
+            )
+            self.transforms_dict["Affine"] = Affine
+
+        if include_keys =='all' or "Re" in include_keys:
+            Re = ResizeWithPadOrCropd(
+                keys=["image", "lm"],
+                spatial_size=self.dataset_params["patch_size"],
+                lazy=True,
+            )
+            self.transforms_dict["Re"] = Re
+
+        # Continue similarly for the remaining transforms like L, Ld, Ind, Rtr, Rva...
+
+        if include_keys =='all' or "L" in include_keys:
+            L = LoadImaged(
+                keys=["image", "lm"],
+                image_only=True,
+                ensure_channel_first=False,
+                simple_keys=True,
+            )
+            L.register(TorchReader())
+            self.transforms_dict["L"] = L
+
+        if include_keys =='all' or "Ld" in include_keys:
+            Ld = LoadTorchDict(
+                keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
+            )
+            self.transforms_dict["Ld"] = Ld
+
+        if include_keys =='all' or "Ind" in include_keys:
+            Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
+            self.transforms_dict["Ind"] = Ind
+
+        if include_keys =='all' or "Rtr" in include_keys:
+            Rtr = RandCropByPosNegLabeld(
+                keys=["image", "lm"],
+                label_key="lm",
+                image_key="image",
+                fg_indices_key="lm_fg_indices",
+                bg_indices_key="lm_bg_indices",
+                image_threshold=-2600,
+                spatial_size=self.src_dims,
+                pos=self.dataset_params["fgbg_ratio"],
+                neg=1,
+                num_samples=self.plan["samples_per_file"],
+                lazy=True,
+                allow_smaller=True,
+            )
+            self.transforms_dict["Rtr"] = Rtr
+
+        if include_keys =='all' or "Rva" in include_keys:
+            Rva = RandCropByPosNegLabeld(
+                keys=["image", "lm"],
+                label_key="lm",
+                image_key="image",
+                fg_indices_key="lm_fg_indices",
+                bg_indices_key="lm_bg_indices",
+                image_threshold=-2600,
+                spatial_size=self.dataset_params["patch_size"],
+                pos=1,
+                neg=1,
+                num_samples=self.plan["samples_per_file"],
+                lazy=True,
+                allow_smaller=True,
+            )
+            self.transforms_dict["Rva"] = Rva
+
 
     def set_transforms(self, keys_tr: str, keys_val: str):
         self.tfms_train = self.tfms_from_dict(keys_tr)
@@ -424,8 +704,8 @@ class DataManagerSource(DataManager):
         self.data_train = self.create_data_dicts(self.train_cases)
         self.data_valid = self.create_data_dicts(self.valid_cases)
 
-    def create_transforms(self):
-        super().create_transforms()
+    def create_transforms(self,keys='all'):
+        super().create_transforms(keys)
 
     def setup(self, stage: str = None):
         self.create_transforms()
@@ -496,7 +776,7 @@ class DataManagerWhole(DataManagerSource):
         return data_folder
 
     def create_transforms(self):
-        super().create_transforms()
+        super().create_transforms(keys= self.keys_tr+","+self.keys_val)
         Resize = Resized(
             keys=["image", "lm"],
             spatial_size=self.plan["spatial_size"],
@@ -515,7 +795,7 @@ class DataManagerWhole(DataManagerSource):
         images = list(images_fldr.glob("*.pt"))
         data = []
         # for fn in fnames[400:432]:
-        for fn in fnames:
+        for fn in pbar(fnames):
             fn = Path(fn)
             img_fn = find_matching_fn(fn.name, images, 'all')
             lm_fn = find_matching_fn(fn.name, lms_fldr, 'all')
@@ -769,8 +1049,8 @@ class DataManagerPatch(DataManager):
             patches.append(dici)
         return patches
 
-    def create_transforms(self):
-        super().create_transforms()
+    def create_transforms(self, keys='all'):
+        super().create_transforms(keys)
 
     def derive_data_folder(self):
         parent_folder = self.project.patches_folder
@@ -891,7 +1171,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "nodes"
+    project_title = "totalseg"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -899,14 +1179,45 @@ if __name__ == "__main__":
     )
     configuration_filename = None
 
-# %%
     config = ConfigMaker(
         proj, raytune=False, configuration_filename=configuration_filename
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
 
+    pp(config['plan'])
+
+# SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR>
 # %%
+    D = DataManagerWhole(
+        project=proj,
+        dataset_params = config["dataset_params"],
+        affine3d=config["affine3d"],
+        batch_size=4,
+        transform_factors=config["transform_factors"],
+        config=config,
+    )
+
+# %%
+    D.prepare_data()
+    D.setup()
+    D.data_folder
+    dl = D.train_dataloader()
+    bb = D.train_ds[0]
+# %%
+    iteri = iter(dl)
+    b = next(iteri)
+    b = D.train_ds[0]
+    im = b['image']
+    lm = b['lm']
+
+    ImageMaskViewer([im[0], lm[0]])
+
+
+# %%
+# %%
+
+
 #SECTION:-------------------- DataManagerPlain--------------------------------------------------------------------------------------
 # %%
     batch_size = 2
@@ -940,37 +1251,6 @@ if __name__ == "__main__":
 #     im = b['image']
     lm = b['lm']
 # %
-
-# SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR>
-# %%
-    D = DataManagerSource(
-        project=proj,
-        dataset_params = config["dataset_params"],
-        affine3d=config["affine3d"],
-        batch_size=4,
-        transform_factors=config["transform_factors"],
-        config=config,
-    )
-
-# %%
-    D.prepare_data()
-    D.setup()
-    D.data_folder
-    dl = D.train_dataloader()
-    bb = D.train_ds[0]
-# %%
-    iteri = iter(dl)
-    b = next(iteri)
-    b = D.train_ds[0]
-    im = b['image']
-    lm = b['lm']
-
-    ImageMaskViewer([im[0], lm[0]])
-
-
-# %%
-# %%
-
 # SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR> <CR>
 
 # %%

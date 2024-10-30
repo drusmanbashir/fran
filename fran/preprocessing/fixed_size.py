@@ -1,4 +1,5 @@
 # %%
+from configparser import ConfigParser
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms import Compose
 from monai.transforms.spatial.dictionary import Resized
@@ -12,6 +13,7 @@ from fastcore.all import  store_attr
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd, TorchWriter
 from fran.transforms.misc_transforms import MaskLabelRemapd
+from fran.utils.config_parsers import ConfigMaker
 from fran.utils.string import info_from_filename
 from pathlib import Path
 from fastcore.basics import store_attr
@@ -35,6 +37,10 @@ tr = ipdb.set_trace
 
 @ray.remote(num_cpus=1)
 class FixedSizeMaker(object):
+    '''
+    Used by 'whole' DataManager in training.
+    '''
+    
     def __init__(self):
         pass
 
@@ -116,14 +122,14 @@ class FixedSizeDataGenerator(PatchDataGenerator):
         for img in imgs:
             case_id_info = info_from_filename(img.name, full_caseid=True)
             case_id = case_id_info["case_id"]
-            lm_value = find_matching_fn(img, lms, False)
+            lm_value = find_matching_fn(img, lms, 'case_id')
 
             # Create the dictionary for the current image
             dic = {"case_id": case_id, "image": img, "lm": lm_value}
 
             # Append the dictionary to the dicis list
             self.dicis.append(dic)
-        # self.dicis= [{"case_id": info_from_filename(img.name, full_caseid=True)['case_id'], "image": img , "lm": find_matching_fn(img,lms,False)} for img in imgs]
+        # self.dicis= [{"case_id": info_from_filename(img.name, full_caseid=True)['case_id'], "image": img , "lm": find_matching_fn(img,lms,'case_id')} for img in imgs]
 
     def remove_completed_cases(self):
         dicis_out = []
@@ -133,11 +139,11 @@ class FixedSizeDataGenerator(PatchDataGenerator):
         self.dicis = dicis_out
         print("Remaining cases: ", len(self.dicis))
 
-    def process(self):
+    def process(self, num_processes=16):
         self.create_output_folders()
-        self.create_tensors()
+        self.create_tensors(num_processes=num_processes)
 
-    def create_tensors(self, num_processes=32):
+    def create_tensors(self, num_processes):
         dicis = list(chunks(self.dicis, num_processes))
         actors = [FixedSizeMaker.remote() for _ in range(num_processes)]
         results = ray.get(
@@ -182,9 +188,19 @@ if __name__ == "__main__":
     from fran.managers import Project
 
     P = Project(project_title="totalseg")
+    config = ConfigMaker(
+        P, raytune=False
+    ).config
     P.maybe_store_projectwide_properties()
 
-    TSL = TotalSegmenterLabels()
+# %%
+    plan = config['plan']
+    src_dest_labels = plan['src_dest_labels']
+    if 'TSL' in src_dest_labels:
+        label_name = src_dest_labels.split('.')[-1]
+        TSL = TotalSegmenterLabels()
+        labels = getattr(TSL,label_name)
+
 
     TSL = TotalSegmenterLabels()
     imported_labelsets = [TSL.labels("all")]
@@ -233,7 +249,7 @@ if __name__ == "__main__":
 
     lms = list(lms_fldr.glob("*"))
     imgs = list(images_fldr.glob("*"))
-    pairs = [{"image": img, "lm": find_matching_fn(img, lms, False)} for img in imgs]
+    pairs = [{"image": img, "lm": find_matching_fn(img, lms, 'case_id')} for img in imgs]
 # %%
     tots = len(pairs)
     n_proc = 32
@@ -337,5 +353,24 @@ if __name__ == "__main__":
         except Exception as e:
             print("Exception")
             print(e)
+
+# %%
+    fn = '/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0726.pt'
+    fn = '/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_080_080_150/lms/totalseg_s0928.pt'
+    fn = '/s/xnat_shadow/totalseg/lms/totalseg_s0928.nii.gz'
+    fn = '/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0928.pt'
+    import torch
+    lm = torch.load(fn)
+    lm.unique()
+    lm[lm==118]=0
+    torch.save(lm,fn)
+    import SimpleITK as sitk
+    lm = sitk.ReadImage(fn)
+    from label_analysis.helpers import get_labels, relabel
+    sitk.WriteImage(lm,fn)
+    labs = get_labels(lm)
+    118 in labs
+    remapping = {118:0}
+    lm = relabel(lm,remapping)
 
 # %%

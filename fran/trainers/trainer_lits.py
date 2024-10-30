@@ -196,7 +196,7 @@ class Trainer:
                 classes=self.config["model_params"]["out_channels"],
                 patch_size=self.config["dataset_params"]["patch_size"],
 
-                epoch_freq=5 ,# skip how many epochs.
+                epoch_freq=2 ,# skip how many epochs.
             )
 
             cbs += [N]
@@ -390,9 +390,9 @@ if __name__ == "__main__":
 # %%
     # run_name = "LITS-1007"
     # device_id = 1
-    device_id = 1
-    run_name = None
+    device_id = 0
     run_name = "LITS-1088"
+    run_name = None
     bs = 10# is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False

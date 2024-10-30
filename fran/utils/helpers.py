@@ -361,14 +361,16 @@ def get_train_valid_test_lists_from_json(project_title, fold, json_fname, image_
 
 
 @str_to_path(0)
-def find_matching_fn(src_fn:Path,mask_fnames:Union[list,Path],use_cid=False):
+def find_matching_fn(src_fn:Path,mask_fnames:Union[list,Path],tags='case_id'):
+        allowed_tags = [ "case_id", "all"] # all means identical filename
+        assert tags in allowed_tags, "Allowed tags are {0}".format(allowed_tags)
         if isinstance(mask_fnames,Path) and mask_fnames.is_dir():
             mask_fnames = list(mask_fnames.glob("*"))
             mask_fnames = [fn for fn in mask_fnames if is_img_file(fn)]
         src_fn = cleanup_fname(src_fn.name)
         matching_mask_fns=[]
         for mask_fn in mask_fnames:
-            if use_cid == False:
+            if tags == 'all':
                 mask_fn_clean = cleanup_fname(mask_fn.name)
                 if mask_fn_clean==src_fn:
                     matching_mask_fns.append(mask_fn)
