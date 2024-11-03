@@ -35,7 +35,7 @@ class UNetManager(LightningModule):
     def __init__(
         self,
         project,
-        dataset_params,
+        plan,
         model_params,
         loss_params,
         max_epochs=1000,
@@ -135,14 +135,14 @@ class UNetManager(LightningModule):
         return self.model(inputs)
 
     def create_model(self):
-        model = create_model_from_conf(self.model_params, self.dataset_params)
+        model = create_model_from_conf(self.model_params, self.plan)
         return model
 
     def create_loss_fnc(self):
         if self.model_params["arch"] == "nnUNet":
             num_pool = 5
             self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
-                self.dataset_params["patch_size"]
+                self.plan["patch_size"]
             )
             self.deep_supervision_scales = [[1, 1, 1]] + list(
                 list(i)

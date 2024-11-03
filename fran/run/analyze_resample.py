@@ -106,10 +106,10 @@ class PreprocessingManager():
     def generate_lbd_dataset(self, overwrite=False):
         self.L = LabelBoundedDataGenerator(
             project=self.project,
-            expand_by=self.plan['expand_by_lbd'],
+            expand_by=self.plan['expand_by'],
             spacing=self.plan['spacing'],
             lm_group="lm_group1",
-            mask_label=1,
+            mask_label=None,
             folder_suffix=self.plan_name,
             fg_indices_exclude=None,
         )
@@ -117,24 +117,24 @@ class PreprocessingManager():
         self.L.process()
 
 
-    def generate_TSlabelboundeddataset(self,organ,imported_folder,keep_imported_labels=False,lm_group="lm_group1"):
+    def generate_TSlabelboundeddataset(self,imported_labels,imported_folder,merge_imported_labels=False,lm_group="lm_group1"):
         '''
         requires resampled folder to exist. Crops within this folder
         '''
         imported_folder=Path(imported_folder)
         
         TSL = TotalSegmenterLabels()
-        if organ=="lungs":
+        if imported_labels=="lungs":
             imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
             remapping = TSL.create_remapping(imported_labelsets, [8, 9])
         self.L = LabelBoundedDataGeneratorImported(
             project=self.project,
-            expand_by=self.plan['expand_by_lbd'],
+            expand_by=self.plan['expand_by'],
             spacing=self.plan['spacing'],
             lm_group=lm_group,
             imported_folder=imported_folder,
             imported_labelsets=imported_labelsets,
-            keep_imported_labels=keep_imported_labels,
+            merge_imported_labels=merge_imported_labels,
             remapping=remapping,
         )
 
@@ -298,21 +298,17 @@ if __name__ == "__main__":
 
 
     args = parser.parse_known_args()[0]
-# %%
-    args.project_title = "totalseg"
+    args.project_title = "nodes"
 
     # args.num_processes = 1
     args.debug=True
-    args.plan = "plan1"
-# %%
+    args.plan = "plan2"
 
     P= Project(project_title=args.project_title)
 
-# %%
     conf = ConfigMaker(
         P, raytune=False, configuration_filename=None
     ).config
-# %%
 
     plans = conf[args.plan]
 # %%
@@ -325,7 +321,7 @@ if __name__ == "__main__":
 
     # I.spacing = 
 # %%
-    I.resample_dataset(overwrite=True)
+    I.resample_dataset(overwrite=False)
     I.R.get_tensor_folder_stats()
 
 # %%
@@ -333,18 +329,61 @@ if __name__ == "__main__":
     # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan['mode'] == 'lbd':
-        I.generate_lbd_dataset(overwrite=True)
+        if 'imported_folder' not in plans.keys():
+            I.generate_lbd_dataset(overwrite=True)
+        else:
+            I.generate_TSlabelboundeddataset()
 # %%
+# %%
+#SECTION:-------------------- TSL dataset--------------------------------------------------------------------------------------
+
+    imported_folder = plans['imported_folder']
+    imported_folder=Path(imported_folder)
+    imported_labels= plans['imported_labels']
+    imported_labels = imported_labels.split(".")[1]
+    merge_imported_labels= plans['merge_imported_labels']
+    lm_group = plans['lm_groups']
+
+    TSL = TotalSegmenterLabels()
+
+    if imported_labels=="all":
+        imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
+        remapping = None
+    
+    elif imported_labels=="lungs":
+        imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
+        remapping = TSL.create_remapping(imported_labelsets, [8, 9])
+    else:
+        raise NotImplementedError
+# %%
+    I.L = LabelBoundedDataGeneratorImported(
+        project=I.project,
+        expand_by=I.plan['expand_by'],
+        spacing=I.plan['spacing'],
+        lm_group=lm_group,
+        imported_folder=imported_folder,
+        merge_imported_labels=merge_imported_labels,
+        remapping=remapping,
+        folder_suffix=I.plan_name,
+        fg_indices_exclude=None,
+    )
+
+# %%
+    I.L.setup()
+    I.L.process()
+
+
+
     # I.L.get_tensor_folder_stats()
     # I.L.generate_bboxes()
 # %%
-#ases_for_samplingSECTION:-------------------- Troubleshooting--------------------------------------------------------------------------------------
+#SECTION:-------------------- Troubleshooting--------------------------------------------------------------------------------------
 
 # %%
     overwrite=False
     L = LabelBoundedDataGenerator(
         project=I.project,
-        expand_by=I.plan['expand_by_lbd'],
+        expand_by=I.plan['expand_by'],
         spacing=I.plan['spacing'],
         lm_group="lm_group1",
         mask_label=1,
@@ -352,8 +391,8 @@ if __name__ == "__main__":
         fg_indices_exclude=None,
     )
     L.setup(overwrite=overwrite)
-    data = L.ds.create_data_dicts()
     lm_fn = data[0]['lm']
+    data = L.ds.create_data_dicts()
 
     L.process()
     L.ds[1]

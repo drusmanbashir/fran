@@ -62,24 +62,24 @@ class Generic_UNet_PL(Generic_UNet,LightningModule):
         super(LightningModule,self).__init__()
         super().__init__(input_channels, base_num_features, num_classes, num_pool, num_conv_per_stage, feat_map_mul_on_downscale, conv_op, norm_op, norm_op_kwargs, dropout_op, dropout_op_kwargs, nonlin, nonlin_kwargs, deep_supervision, dropout_in_localization, final_nonlin, weightInitializer, pool_op_kernel_sizes, conv_kernel_sizes, upscale_logits, convolutional_pooling, convolutional_upsampling, max_num_features, basic_block, seg_output_use_bias)
 
-def create_model_from_conf(model_params, dataset_params,metadata=None,deep_supervision=True):
+def create_model_from_conf(model_params, plan,metadata=None,deep_supervision=True):
     # if 'out_channels' not in model_params:
     #         model_params["out_channels"] =  out_channels_from_dict_or_cell(model_params['src_dest_labels'])
 
-    if 'patch_size' not in dataset_params.keys():
-        dataset_params['patch_size'] = make_patch_size(dataset_params['patch_dim0'],dataset_params['patch_dim1'])
+    if 'patch_size' not in plan.keys():
+        plan['patch_size'] = make_patch_size(plan['patch_dim0'],plan['patch_dim1'])
     arch = model_params["arch"]
     if arch == "UNet3D":
-        model = create_model_from_conf_unet(model_params, dataset_params)
+        model = create_model_from_conf_unet(model_params, plan)
     elif arch == "nnUNet":
-        model = create_model_from_conf_nnUNet(model_params, dataset_params,deep_supervision)
+        model = create_model_from_conf_nnUNet(model_params, plan,deep_supervision)
     elif arch == "SwinUNETR":
-        model = create_model_from_conf_swinunetr(model_params, dataset_params,deep_supervision)
+        model = create_model_from_conf_swinunetr(model_params, plan,deep_supervision)
     elif arch == "DynUNet":
-        model = create_model_from_conf_dynunet(model_params, dataset_params)
+        model = create_model_from_conf_dynunet(model_params, plan)
 
     elif arch == "DynUNet_UB":
-        model = create_model_from_conf_dynunet_ub(model_params, dataset_params)
+        model = create_model_from_conf_dynunet_ub(model_params, plan)
     else:
         raise NotImplementedError
 
@@ -88,10 +88,10 @@ def create_model_from_conf(model_params, dataset_params,metadata=None,deep_super
     return model
 
 
-def create_model_from_conf_dynunet(model_params, dataset_params):
+def create_model_from_conf_dynunet(model_params, plan):
 
     kernels, strides = get_kernel_strides(
-        dataset_params["patch_size"], dataset_params["spacing"]
+        plan["patch_size"], plan["spacing"]
     )
     model = DynUNet(
         3,
@@ -106,10 +106,10 @@ def create_model_from_conf_dynunet(model_params, dataset_params):
     )
     return model
 
-def create_model_from_conf_dynunet_ub(model_params, dataset_params):
+def create_model_from_conf_dynunet_ub(model_params, plan):
 
     kernels, strides = get_kernel_strides(
-        dataset_params["patch_size"], dataset_params["spacing"]
+        plan["patch_size"], plan["spacing"]
     )
     model = DynUNet_UB(
         3,
@@ -131,8 +131,8 @@ def pool_op_kernels_nnunet(patch_size):
     pool_op_kernel_sizes = pool_op_kernel_sizes[1:]
     # pool_op_kernel_sizes.reverse() # try witho reverse and without both
     return pool_op_kernel_sizes
-def create_model_from_conf_nnUNet(model_params, dataset_params,deep_supervision):
-    # pool_op_kernel_sizes = pool_op_kernels_nnunet(dataset_params['patch_size'])
+def create_model_from_conf_nnUNet(model_params, plan,deep_supervision):
+    # pool_op_kernel_sizes = pool_op_kernels_nnunet(plan['patch_size'])
     pool_op_kernel_sizes=None
     in_channels, out_channels = (
         model_params["in_channels"],
@@ -176,16 +176,16 @@ def create_model_from_conf_nnUNet(model_params, dataset_params,deep_supervision)
     return model
 
 
-def create_model_from_conf_swinunetr(model_params, dataset_params,deep_supervision=None):
+def create_model_from_conf_swinunetr(model_params, plan,deep_supervision=None):
     model = SwinUNETR(
-        dataset_params["patch_size"],
+        plan["patch_size"],
         model_params["in_channels"],
         model_params["out_channels"],
     )
     return model
 
 
-def create_model_from_conf_unet(model_params, dataset_params):
+def create_model_from_conf_unet(model_params, plan):
     model = UNet3D(
         in_channels=model_params["in_channels"],
         out_channels=model_params["out_channels"],
@@ -245,12 +245,12 @@ if __name__ == "__main__":
     patch_size = [192,192,96]
     x = torch.rand(1,1,192,192,96)
     model_params = {'in_channels':1, 'out_channels':3}
-    dataset_params = {'patch_size':patch_size}
+    plan = {'patch_size':patch_size}
     deep_supervision=True
     pool_op_kernel_sizes = [[2, 2, 1], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]] 
     pool_op_kernel_sizes = [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
-    # net = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
-    net2 = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
+    # net = create_model_from_conf_nnUNet(model_params,plan,deep_supervision)
+    net2 = create_model_from_conf_nnUNet(model_params,plan,deep_supervision)
     x = x.to('cuda')
     net2.to('cuda')
     out = net2(x)

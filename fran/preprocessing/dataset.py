@@ -174,7 +174,7 @@ class ImporterDataset(Dataset):
         spacing,
         imported_folder,
         fg_indices_exclude=None,
-        merge_imported=True,
+        merge_imported_labels=True,
         remapping_imported=None,
         device ="cuda",
     ):
@@ -184,14 +184,14 @@ class ImporterDataset(Dataset):
         data_folder: Folder containing torch images:
         imported_folder: Folder containing sitk Labelmaps
         """
-        if remapping_imported is None: assert merge_imported == False, "If you are merging imported lms, a remapping for the imported labels must be specified"
+        if remapping_imported is None: assert merge_imported_labels == False, "If you are merging imported lms, a remapping for the imported labels must be specified"
 
-        store_attr("expand_by,spacing,case_ids,data_folder,imported_folder,merge_imported,remapping_imported,device")
+        store_attr("expand_by,spacing,case_ids,data_folder,imported_folder,merge_imported_labels,remapping_imported,device")
 
     def setup(self):
         self.create_transforms()
         # self.set_transforms("R,LS,LT,D,Re,E,Rz,M,B,A")
-        if self.merge_imported == True:
+        if self.merge_imported_labels == True:
             self.set_transforms("R,LS,LT,D,E,Rz,M,B,A,Ind")
         else:
             self.set_transforms("R,LS,LT,D,E,Rz,B,A,Ind")

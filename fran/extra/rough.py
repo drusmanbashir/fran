@@ -1,13 +1,16 @@
 # %%
 import shutil
+
+import torch
 import time
 import SimpleITK as sitk
 import re
 from pathlib import Path
 
+from label_analysis.helpers import get_labels
 from fran.managers.data import find_matching_fn, pbar
 from fran.utils.fileio import maybe_makedirs
-from fran.utils.helpers import get_labels
+from fran.utils.imageviewers import ImageMaskViewer
 # %%
 if __name__ == "__main__":
     fldr = Path("/s/xnat_shadow/crc/lms/")
@@ -18,15 +21,24 @@ if __name__ == "__main__":
     out_fldr_lm = Path("/s/crc_upload/lms")
     maybe_makedirs([out_fldr_lm,out_fldr_img])
 # %%
+    im_fn = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150/lms/nodesthick_13_20230322_NCAPC_thick_label-Segment_1-label.pt")
+    im_fn2 = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150/lms/nodesthick_10_20200713_Body1p0CE_thick.pt")
+    im = torch.load(im_fn)
+    lm = torch.load(im_fn2)
+
+
+    ImageMaskViewer([im,lm])
     lm_fn = lm_fns[0]
     im_fns = list(img_fldr.glob("*"))
     im_fn= im_fns[0]
 # %%
-    for im_fn in pbar(im_fns):
-        lm_fn = find_matching_fn(im_fn,lm_fns,tag='all')
+    for lm_fn in pbar(lm_fns):
 
+        lm = sitk.ReadImage(str(lm_fn))
         labs = get_labels(lm)
+        print(labs)
 
+# %%
         new_filename = re.sub(r'_\d{8}_', '_', im_fn.name)
         out_lm_fname = out_fldr_lm / new_filename
         out_img_fname = out_fldr_img / new_filename

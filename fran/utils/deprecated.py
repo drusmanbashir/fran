@@ -1,6 +1,6 @@
 # %%
 # NOTE: UTILITY functions to reconcile previous version with new.
-from fran.trainers.impsamp import checkpoint_from_model_id
+from fran.trainers.base import checkpoint_from_model_id
 from fran.utils.helpers import pbar
 
 import itertools as il
@@ -78,14 +78,19 @@ def remove_loss_key_state_dict(model_id):
 # %%
 if __name__ == "__main__":
 
-    run_w = "LITS-860"
+    run_w = "LITS-1088"
     ckpt = checkpoint_from_model_id(run_w)
 
 
 # %%
     dic_tmp = torch.load(ckpt, map_location="cpu")
+    dic_tmp.keys()
+    dic_tmp['hyper_parameters']['plan']['patch_size'] = (96,96,96)
+    dic_tmp['hyper_parameters']['plan'] =dic_tmp['datamodule_hyper_parameters']['dataset_params'].copy()
+    dic_tmp['datamodule_hyper_parameters']['plan']['patch_size']=(96,96,96)
     dic_tmp['datamodule_hyper_parameters'].keys()
-    dic_tmp['datamodule_hyper_parameters']['config'] = {'plan':dic_tmp['datamodule_hyper_parameters']['plan'].copy()}
+    dic_tmp['datamodule_hyper_parameters']['config']['plan']['patch_size'] 
+    # dic_tmp['datamodule_hyper_parameters']['config'] = {'plan':dic_tmp['datamodule_hyper_parameters']['plan'].copy()}
     torch.save(dic_tmp,ckpt)
 # %%
     insert_plan_key(ckpt)

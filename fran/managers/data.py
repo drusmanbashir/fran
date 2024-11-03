@@ -151,126 +151,6 @@ class DataManager(LightningDataModule):
         for key, value in transform_factors.items():
             dici = {"value": value[0], "prob": value[1]}
             setattr(self, key, dici)
-    #
-    # def create_transforms(self):
-    #     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-    #     N = NormaliseClipd(
-    #         keys=["image"],
-    #         clip_range=self.dataset_params["intensity_clip_range"],
-    #         mean=self.dataset_params["mean_fg"],
-    #         std=self.dataset_params["std_fg"],
-    #     )
-    #     # P = MaskLabelRemapd(
-    #     #     keys=["lm"], src_dest_labels=self.dataset_params["src_dest_labels"]
-    #     # )
-    #
-    #     
-    #     RP = RandomPatch()
-    #     F1 = RandFlipd(
-    #         keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
-    #     )
-    #     F2 = RandFlipd(
-    #         keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
-    #     )
-    #     IntensityTfms = [
-    #         RandScaleIntensityd(
-    #             keys="image", factors=self.scale["value"], prob=self.scale["prob"]
-    #         ),
-    #         RandRandGaussianNoised(
-    #             keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
-    #         ),
-    #         # RandGaussianNoised(
-    #         #     keys=["image"], std=self.noise["value"], prob=self.noise["prob"]
-    #         # ),
-    #         RandShiftIntensityd(
-    #             keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
-    #         ),
-    #         RandAdjustContrastd(
-    #             ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
-    #         ),
-    #         # self.create_affine_tfm(),
-    #     ]
-    #
-    #     Affine = RandAffined(
-    #         keys=["image", "lm"],
-    #         mode=["bilinear", "nearest"],
-    #         prob=self.affine3d["p"],
-    #         # spatial_size=self.dataset_params['src_dims'],
-    #         rotate_range=self.affine3d["rotate_range"],
-    #         scale_range=self.affine3d["scale_range"],
-    #     )
-    #
-    #     Re = ResizeWithPadOrCropd(
-    #         keys=["image", "lm"],
-    #         spatial_size=self.dataset_params["patch_size"],
-    #         lazy=True,
-    #     )
-    #
-    #     fgbg_ratio = self.dataset_params["fgbg_ratio"]
-    #     if isinstance(fgbg_ratio, list):
-    #         fg, bg = list_to_fgbg(fgbg_ratio)
-    #     else:
-    #         fg = fgbg_ratio
-    #         bg = 1
-    #
-    #     L = LoadImaged(
-    #         keys=["image", "lm"],
-    #         image_only=True,
-    #         ensure_channel_first=False,
-    #         simple_keys=True,
-    #     )
-    #     L.register(TorchReader())
-    #     Ld = LoadTorchDict(
-    #         keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
-    #     )
-    #     Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
-    #
-    #     Rtr = RandCropByPosNegLabeld(
-    #         keys=["image", "lm"],
-    #         label_key="lm",
-    #         image_key="image",
-    #         fg_indices_key="lm_fg_indices",
-    #         bg_indices_key="lm_bg_indices",
-    #         image_threshold=-2600,
-    #         spatial_size=self.src_dims,
-    #         pos=fg,
-    #         neg=bg,
-    #         num_samples=self.plan["samples_per_file"],
-    #         lazy=True,
-    #         allow_smaller=True,
-    #     )
-    #     Rva = RandCropByPosNegLabeld(
-    #         keys=["image", "lm"],
-    #         label_key="lm",
-    #         image_key="image",
-    #         image_threshold=-2600,
-    #         fg_indices_key="lm_fg_indices",
-    #         bg_indices_key="lm_bg_indices",
-    #         spatial_size=self.dataset_params["patch_size"],
-    #         pos=1,
-    #         neg=1,
-    #         num_samples=self.plan["samples_per_file"],
-    #         lazy=True,
-    #         allow_smaller=True,
-    #     )
-    #
-    #     self.transforms_dict = {
-    #         "RP": RP,
-    #         "Affine": Affine,
-    #         "E": E,
-    #         "N": N,
-    #         "F1": F1,
-    #         "F2": F2,
-    #         "IntensityTfms": IntensityTfms,
-    #         "Re": Re,
-    #         # "P": P,
-    #         "Ld": Ld,
-    #         "L": L,
-    #         "Ind": Ind,
-    #         "Rtr": Rtr,
-    #         "Rva": Rva,
-    #     }
-    #
     def create_transforms(self, but=None):
         """
         Creates transformations used for data preprocessing. 
@@ -348,7 +228,7 @@ class DataManager(LightningDataModule):
         if "Re" not in exclude_keys:
             Re = ResizeWithPadOrCropd(
                 keys=["image", "lm"],
-                spatial_size=self.dataset_params["patch_size"],
+                spatial_size=self.plan["patch_size"],
                 lazy=True,
             )
             self.transforms_dict["Re"] = Re
@@ -401,7 +281,7 @@ class DataManager(LightningDataModule):
                 fg_indices_key="lm_fg_indices",
                 bg_indices_key="lm_bg_indices",
                 image_threshold=-2600,
-                spatial_size=self.dataset_params["patch_size"],
+                spatial_size=self.plan["patch_size"],
                 pos=1,
                 neg=1,
                 num_samples=self.plan["samples_per_file"],
@@ -489,7 +369,7 @@ class DataManager(LightningDataModule):
         if include_keys =='all' or "Re" in include_keys:
             Re = ResizeWithPadOrCropd(
                 keys=["image", "lm"],
-                spatial_size=self.dataset_params["patch_size"],
+                spatial_size=self.plan["patch_size"],
                 lazy=True,
             )
             self.transforms_dict["Re"] = Re
@@ -541,7 +421,7 @@ class DataManager(LightningDataModule):
                 fg_indices_key="lm_fg_indices",
                 bg_indices_key="lm_bg_indices",
                 image_threshold=-2600,
-                spatial_size=self.dataset_params["patch_size"],
+                spatial_size=self.plan["patch_size"],
                 pos=1,
                 neg=1,
                 num_samples=self.plan["samples_per_file"],
@@ -653,7 +533,7 @@ class DataManager(LightningDataModule):
         if self.dataset_params["zoom"] == True:
             src_dims = self.dataset_params["src_dims"]
         else:
-            src_dims = self.dataset_params["patch_size"]
+            src_dims = self.plan["patch_size"]
         return src_dims
 
     @property
@@ -770,7 +650,7 @@ class DataManagerWhole(DataManagerSource):
 
     def derive_data_folder(self):
         prefix = "sze"
-        spatial_size = self.plan["spatial_size"]
+        spatial_size = self.plan["patch_size"]
         parent_folder = self.project.fixed_size_folder
         data_folder = folder_name_from_list(prefix, parent_folder, spatial_size)
         return data_folder
@@ -779,7 +659,7 @@ class DataManagerWhole(DataManagerSource):
         super().create_transforms(keys= self.keys_tr+","+self.keys_val)
         Resize = Resized(
             keys=["image", "lm"],
-            spatial_size=self.plan["spatial_size"],
+            spatial_size=self.plan["patch_size"],
             mode=["linear", "nearest"],
             lazy=True,
         )

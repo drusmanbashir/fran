@@ -87,20 +87,20 @@ class WholeImageInferer(BaseInferer):
         self.tfms = "ERN"
     def create_transforms(self):
         super().create_transforms()
-        self.R = Resized(keys=["image"], spatial_size=self.plan["spatial_size"])
-
-
-    def predict_inner(self,batch):
-                    img_input = batch["image"]
-                    img_input = img_input.cuda()
-                    if "filename_or_obj" in img_input.meta.keys():
-                        print("Processing: ", img_input.meta["filename_or_obj"])
-                    output_tensor = self.model(img_input)
-                    output_tensor = output_tensor[0]
-                    batch["pred"] = output_tensor
-                    batch["pred"].meta = batch["image"].meta.copy()
-                    return batch
-
+        self.R = Resized(keys=["image"], spatial_size=self.plan["patch_size"])
+    #
+    #
+    # def predict_inner(self,batch):
+    #                 img_input = batch["image"]
+    #                 img_input = img_input.cuda()
+    #                 if "filename_or_obj" in img_input.meta.keys():
+    #                     print("Processing: ", img_input.meta["filename_or_obj"])
+    #                 output_tensor = self.model(img_input)
+    #                 output_tensor = output_tensor[0]
+    #                 batch["pred"] = output_tensor
+    #                 batch["pred"].meta = batch["image"].meta.copy()
+    #                 return batch
+    #
 class PatchInferer(BaseInferer):
     def __init__(
         self,
@@ -170,6 +170,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
         self.predictions_folder = project.predictions_folder
         self.params = load_params(runs_p[0])
+        #CODE:  change params to a different name more aligned and found else where in library
         self.Ps = [
             PatchInferer(
                 project=project,
@@ -417,6 +418,8 @@ if __name__ == "__main__":
     react_fldr = Path("/s/insync/react/sitk/images")
     imgs_react = list(react_fldr.glob("*"))
     imgs_crc = list(fldr_crc.glob("*"))
+    nodes_fldr = Path("/s/xnat_shadow/nodes/images")
+    nodesthick_fldr =Path("/s/xnat_shadow/nodesthick/images")
 
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
@@ -429,7 +432,10 @@ if __name__ == "__main__":
     run_tot= ["LITS-1088"]
     W = WholeImageInferer(project, run_tot[0], safe_mode=safe_mode, k_largest=None,save_channels=False)
 # %%
-    preds = W.run(imgs_crc[:10], chunksize=1)
+    
+    nodes_imgs = list(nodes_fldr.glob("*"))
+    nodesthick_imgs = list(nodesthick_fldr.glob("*"))
+    preds = W.run(nodesthick_imgs, chunksize=1)
     p = preds[0]["pred"][0]
 # %%
 ##SECTION:-------------------- LITSMC predictions--------------------------------------------------------------------------------------

@@ -194,7 +194,7 @@ class Trainer:
             )
             N = NeptuneImageGridCallback(
                 classes=self.config["model_params"]["out_channels"],
-                patch_size=self.config["dataset_params"]["patch_size"],
+                patch_size=self.config["plan"]["patch_size"],
 
                 epoch_freq=5 ,# skip how many epochs.
             )
@@ -279,7 +279,7 @@ class Trainer:
     def init_trainer(self, epochs):
         N = UNetManager(
             self.project,
-            self.config["dataset_params"],
+            self.config["plan"],
             self.config["model_params"],
             self.config["loss_params"],
             lr=self.lr,
@@ -293,7 +293,7 @@ class Trainer:
             N = UNetManager.load_from_checkpoint(
                 self.ckpt,
                 project=self.project,
-                dataset_params=self.config["dataset_params"],
+                plan=self.config["plan"],
                 lr=self.lr,
                 **kwargs,
             )
@@ -313,7 +313,7 @@ class Trainer:
             N = UNetManager.load_from_checkpoint(
                 self.ckpt,
                 project=self.project,
-                dataset_params=self.config["dataset_params"],
+                plan=self.config["plan"],
                 lr=self.lr,
                 **kwargs,
             )
@@ -374,7 +374,7 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
 
-    project_title = "totalseg"
+    project_title = "nodes"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -392,7 +392,7 @@ if __name__ == "__main__":
     # device_id = 1
     device_id = 1
     run_name = None
-    run_name = "LITS-1088"
+    run_name = "LITS-1110"
     bs = 10# is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False

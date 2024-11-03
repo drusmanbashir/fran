@@ -29,7 +29,7 @@ from fran.utils.imageviewers import *
 
 # NOTE:  move all file io processes to ray to avoid 'too many open files' error
 
-
+#CODE: make it accept a 'plan' as argument. Make plan the standard argument throughout
 class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
     _default = "project"
 
@@ -365,7 +365,7 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
 #        additional_props = {
 #            "imported_folder": str(self.imported_folder),
 #            "imported_labels":labels,
-#            "merge_imported": self.merge_imported,
+#            "merge_imported_labels": self.merge_imported_labels,
 #        }
 #        return resampled_dataset_properties|additional_props
 #
@@ -449,7 +449,7 @@ if __name__ == "__main__":
     lm_group = P.global_properties["lm_group1"]
     imported_folder = lm_group["imported_folder1"]
     imported_labelsets = lm_group["imported_labelsets"]
-    merge_imported = False
+    merge_imported_labels = False
     remapping = None
 # %%
 
@@ -460,7 +460,7 @@ if __name__ == "__main__":
         lm_group="lm_group1",
         imported_folder=imported_folder,
         imported_labelsets=imported_labelsets,
-        merge_imported=merge_imported,
+        merge_imported_labels=merge_imported_labels,
         remapping=remapping,
         folder_suffix="plan3"
     )
@@ -632,7 +632,7 @@ if __name__ == "__main__":
         lm_group="lm_group1",
         imported_folder=imported_folder,
         imported_labelsets=imported_labelsets,
-        merge_imported=False,
+        merge_imported_labels=False,
         remapping=remapping,
     )
 

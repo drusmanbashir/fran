@@ -263,6 +263,7 @@ class GlobalProperties(GetAttr):
 
     def collate_lm_labels(self):
         labels_all=[]
+        #CODE: find relevance of lm_groups in modern version. Phase it out if redundant
         lmgps = "lm_group"
         keys = [k for k in self.global_properties.keys() if lmgps in k]
         for key in keys:

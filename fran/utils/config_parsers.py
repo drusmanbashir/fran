@@ -11,7 +11,6 @@ tr = ipdb.set_trace
 
 if not sys.executable=="": # workaround for slicer as it does not load ray tune
     from ray import tune
-# %%
 from openpyxl import load_workbook
 
 from fran.utils.helpers import *
@@ -27,7 +26,7 @@ def is_excel_None(input):
 
 def parse_excel_plan(plan):
     keys_maybe_nan = "fg_indices_exclude", "lm_groups","datasources"
-    keys_str_to_list = "spacing", "spatial_size", "patch_sizes"
+    keys_str_to_list = "spacing",  "patch_size"
     for k in keys_maybe_nan:
         if k in plan.keys():
             if is_excel_None(plan[k]):
@@ -36,8 +35,16 @@ def parse_excel_plan(plan):
     for k in keys_str_to_list:
         if k in plan.keys():
             plan[k] = ast_literal_eval(plan[k])
+    plan = add_patch_size(plan)
     return plan
 
+
+def add_patch_size(plan):
+    if 'patch_dim0' and 'patch_dim1' in plan.keys():
+                    plan['patch_size']= make_patch_size(
+                        plan["patch_dim0"], plan["patch_dim1"]
+                    )
+    return plan
 def maybe_merge_source_plan(config):
     # Retrieve the main plan and source plan from the config dictionary
     main_plan = config['plan']
@@ -250,7 +257,6 @@ class ConfigMaker():
 
     def add_further_keys(self):
         self.add_out_channels()
-        self.add_patch_size()
         self.add_dataset_props()
 
 
@@ -268,12 +274,6 @@ class ConfigMaker():
         if not out_ch:
             out_ch= out_channels_from_global_properties(self.project.global_properties)
         self.config['model_params']["out_channels"]  = out_ch
-
-    def add_patch_size(self):
-        if not "patch_size" in self.config['dataset_params']:
-                    self.config['dataset_params']["patch_size"] = make_patch_size(
-                        self.config['dataset_params']["patch_dim0"], self.config['dataset_params']["patch_dim1"]
-                    )
                     
     def set_active_plan(self):
         plan = self.config['dataset_params']['plan']
@@ -281,6 +281,7 @@ class ConfigMaker():
         self.config['plan']= plan_selected
         self.config = maybe_merge_source_plan(self.config)
         self.config['plan'] = parse_excel_plan(plan_selected)
+
 
 
 
@@ -334,8 +335,14 @@ def parse_neptune_dict(dic: dict):
 
 if __name__ == "__main__":
 
-    from fran.utils.common import *
-    P = Project(project_title="lits"); project= P
+    from fran.managers import Project
+    P= Project(project_title="nodes")
+
+    conf = ConfigMaker(
+        P, raytune=False, configuration_filename=None
+    ).config
+# %%
+
     wb = load_workbook(project)
     sheets = wb.sheetnames
     mode = "manual"

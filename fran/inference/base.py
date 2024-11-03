@@ -100,7 +100,7 @@ class BaseInferer(GetAttr, DictToAttr):
         else:
             stitch_device = "cuda"
         self.inferer = SlidingWindowInferer(
-            roi_size=self.params["dataset_params"]["patch_size"],
+            roi_size=self.params["plan"]["patch_size"],
             sw_batch_size=bs,
             overlap=patch_overlap,
             mode=mode,

@@ -18,7 +18,6 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
     """
     works on fixed_spacing_folder, uses imported_folder which has lms with extra labels. Uses the extra labels to define image boundaries and crops each image accordingly. 
     A single image / lm  pair is generated per case.
-    params: imported_labelsets: list of lists
     """
 
     _default = "project"
@@ -30,15 +29,14 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         spacing,
         lm_group,
         imported_folder,
-        imported_labelsets,
         remapping,
-        merge_imported=False,
+        merge_imported_labels=False,
         folder_suffix:str =None,
         fg_indices_exclude: list = None,
     ) -> None:
 
         super().__init__(project, expand_by, spacing, lm_group, fg_indices_exclude=fg_indices_exclude,folder_suffix=folder_suffix)
-        store_attr('imported_folder,imported_labelsets,remapping,merge_imported')
+        store_attr('imported_folder,remapping,merge_imported_labels')
 
 
 
@@ -78,7 +76,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             data_folder=self.fixed_spacing_subfolder,
             imported_folder=self.imported_folder,
             remapping_imported=self.remapping,
-            merge_imported=self.merge_imported,
+            merge_imported_labels=self.merge_imported_labels,
             device=device,
         )
         self.ds.setup()
@@ -142,14 +140,10 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         additional_props = {
             "imported_folder": str(self.imported_folder),
             "imported_labels": labels,
-            "merge_imported": self.merge_imported,
+            "merge_imported_labels": self.merge_imported_labels,
         }
         return resampled_dataset_properties | additional_props
 
-
-class FixedSizeDataGeneratorImported(LabelBoundedDataGenerator):
-    def __init__(self, project,  spatial_size, lm_group, folder_suffix: str, mask_label=None, fg_indices_exclude: list = None) -> None:
-        super().__init__(project, expand_by, spacing, lm_group, folder_suffix, mask_label, fg_indices_exclude)
 # %%
 
 if __name__ == "__main__":

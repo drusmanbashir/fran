@@ -134,10 +134,13 @@ class _Preprocessor(GetAttr):
         for batch in pbar(self.dl):
             self.process_batch(batch)
         self.results = pd.DataFrame(self.results).values
-        if self.results.shape[-1] == 3:  # only store if entire dset is processed
+        tr()
+        ts = self.results.shape
+        if ts[-1] == 4:  # only store if entire dset is processed
             self._store_dataset_properties()
             generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
         else:
+            print("self.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(ts,ts[-1]))
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
