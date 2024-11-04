@@ -74,17 +74,20 @@ def remove_loss_key_state_dict(model_id):
         else:
             print("No loss keys in state_dict. No change")
 
-    
+def add_subdict(model_id):
+                pass
 # %%
 if __name__ == "__main__":
 
+    run_w = "LITS-1111"
     run_w = "LITS-1088"
     ckpt = checkpoint_from_model_id(run_w)
+    dic_tmp = torch.load(ckpt, map_location="cpu")
+    pp(dic_tmp.keys())
+    dic_tmp['datamodule_hyper_parameters']['config']['plan']
 
 
 # %%
-    dic_tmp = torch.load(ckpt, map_location="cpu")
-    dic_tmp.keys()
     dic_tmp['hyper_parameters']['plan']['patch_size'] = (96,96,96)
     dic_tmp['hyper_parameters']['plan'] =dic_tmp['datamodule_hyper_parameters']['dataset_params'].copy()
     dic_tmp['datamodule_hyper_parameters']['plan']['patch_size']=(96,96,96)

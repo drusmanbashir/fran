@@ -374,7 +374,7 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
 
-    project_title = "nodes"
+    project_title = "totalseg"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
@@ -391,8 +391,8 @@ if __name__ == "__main__":
     # run_name = "LITS-1007"
     # device_id = 1
     device_id = 1
-    run_name = None
     run_name = "LITS-1110"
+    run_name = None
     bs = 10# is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False

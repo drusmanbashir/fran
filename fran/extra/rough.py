@@ -1,6 +1,8 @@
 # %%
 import shutil
+from send2trash import send2trash
 
+from fran.utils.helpers import info_from_filename
 import torch
 import time
 import SimpleITK as sitk
@@ -21,23 +23,27 @@ if __name__ == "__main__":
     out_fldr_lm = Path("/s/crc_upload/lms")
     maybe_makedirs([out_fldr_lm,out_fldr_img])
 # %%
-    im_fn = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150/lms/nodesthick_13_20230322_NCAPC_thick_label-Segment_1-label.pt")
-    im_fn2 = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150/lms/nodesthick_10_20200713_Body1p0CE_thick.pt")
-    im = torch.load(im_fn)
-    lm = torch.load(im_fn2)
+    nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending_neck")
+    nodes_done_fldr = Path("/s/xnat_shadow/nodes/images")
+    nodes_done = list(nodes_done_fldr.glob("*"))
+    nodes = list(nodes_fldr.glob("*"))
 
-
-    ImageMaskViewer([im,lm])
-    lm_fn = lm_fns[0]
-    im_fns = list(img_fldr.glob("*"))
-    im_fn= im_fns[0]
 # %%
-    for lm_fn in pbar(lm_fns):
 
-        lm = sitk.ReadImage(str(lm_fn))
-        labs = get_labels(lm)
-        print(labs)
-
+# %%
+    for i in range(len(nodes_done)):
+        # print("Filename ", node_done)
+        node_done = nodes_done[i]
+        ina = info_from_filename(node_done.name)
+        cid1,desc1 = ina['case_id'], ina['desc']
+        for j, test_pend in enumerate(nodes):
+            test_pend = nodes[j]
+            into = info_from_filename(test_pend.name)
+            cid2,desc2 = into['case_id'], into['desc']
+            if cid1==cid2 :
+                print("Already processed", test_pend.name)
+                send2trash(test_pend)
+# %%
 # %%
         new_filename = re.sub(r'_\d{8}_', '_', im_fn.name)
         out_lm_fname = out_fldr_lm / new_filename

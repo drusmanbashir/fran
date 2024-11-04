@@ -104,6 +104,7 @@ class DataManager(LightningDataModule):
         ds_type=None,
     ):
         super().__init__()
+        #CODE: Simplify saved hyperparameters. E.g., only pass config to classes where you want them to carry forward hpms
         self.save_hyperparameters()
         self.plan = config["plan"]
         store_attr(but="transform_factors")

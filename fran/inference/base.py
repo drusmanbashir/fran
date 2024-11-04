@@ -35,6 +35,18 @@ from fran.utils.imageviewers import ImageMaskViewer
 
 
 
+def get_patch_spacing( run_name):
+        ckpt = checkpoint_from_model_id(run_name)
+        dic1 = torch.load(ckpt)
+        config = dic1['datamodule_hyper_parameters']['config']
+        spacing= config['plan'].get("spacing")
+        if spacing is None:
+            src_plan  = config['plan']['source_plan']
+            src_plan = config[src_plan]
+            spacing = src_plan['spacing']
+        print(run_name,spacing)
+        return spacing
+
 
 def list_to_chunks(input_list: list, chunksize: int):
     n_lists = int(np.ceil(len(input_list) / chunksize))
@@ -100,7 +112,7 @@ class BaseInferer(GetAttr, DictToAttr):
         else:
             stitch_device = "cuda"
         self.inferer = SlidingWindowInferer(
-            roi_size=self.params["plan"]["patch_size"],
+            roi_size=self.params['config']["plan"]["patch_size"],
             sw_batch_size=bs,
             overlap=patch_overlap,
             mode=mode,
@@ -160,6 +172,7 @@ class BaseInferer(GetAttr, DictToAttr):
 
     def create_transforms(self):
         # single letter name is must for each tfm to use with set_transforms
+        spacing = get_patch_spacing(self.run_name)
         self.L = LoadSITKd(
             keys=["image"],
             image_only=True,
@@ -170,7 +183,7 @@ class BaseInferer(GetAttr, DictToAttr):
             keys=["image"], channel_dim="no_channel"
         )  
 
-        self.S = Spacingd(keys=["image"], pixdim= self.plan["spacing"])
+        self.S = Spacingd(keys=["image"], pixdim= spacing)
         self.N = NormaliseClipd(
             keys=["image"],
             clip_range=self.params["dataset_params"]["intensity_clip_range"],
@@ -302,6 +315,7 @@ class BaseInferer(GetAttr, DictToAttr):
         device = torch.device(f"cuda:{device_id}")
         model = UNetManager.load_from_checkpoint(
             self.ckpt,
+            plan=self.plan,
             project=self.project,
             dataset_params=self.params['dataset_params'],
             strict=False,
