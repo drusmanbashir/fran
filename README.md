@@ -104,7 +104,6 @@ I have provided 2 folders as datasets for  this project in the example above. Ty
 Datatypes can be:
 * source
 * lbd
-* pbd
 * patch
 
 These are mentioned in the 'plan{n}' sheet of the configuration file. Before any plan can be executed, you have to generate fixed spacings.
@@ -162,6 +161,33 @@ export HPC_SETTINGS="/s/fran_storage/hpc.yaml"
 ```
 This is because inference functions will not natively have the rights to download models stored on the HPC cluster. This file will store the user access settings to allow inference to retrieve  data stored on the cluster.
 
+## 8. Worflow examples
+
+### A) Creating a patient-bounded dataset for training
+
+**1. Create project.**\
+**2. Create a plan, e.g.,**
+
+| **Variable**            | **Value**                                     |
+|-------------------------|-----------------------------------------------|
+| `var_name`              | `manual_value`                                |
+| `datasources`           | `nodesthick, nodes`                           |
+| `lm_groups`             |                                               |
+| `spacing`               | `0.8, 0.8, 1.5`                               |
+| `fg_indices_exclude`    |                                               |
+| `mode`                  | `lbd`                                         |
+| `patch_overlap`         | `0.25`                                        |
+| `expand_by`             | `0`                                           |
+| `samples_per_file`      | `2`                                           |
+| `imported_folder`       | `/s/fran_storage/predictions/totalseg/LITS-1088` |
+| `imported_labels`       | `TSL.all`                                     |
+| `merge_imported_labels` | `FALSE`                                       |
+| `patch_dim0`            | `128`                                         |
+| `patch_dim1`            | `96`                                          |
+
+*Note: impoarted_labels is set a s TSL.all. This is because LITS-1088 is an 8-label (localiser) model. By selecting TSL.all (i.e., no remapping done on labelmaps) is the correct code. Alternatively, a list of labels, i.e., [0,1,2,3,4,5,6,7,8] ought to (not tested) work the same.*
+
+**3. Train.**\
 # Glossary of terms
 
 |Name      |Abbreviation |Info|

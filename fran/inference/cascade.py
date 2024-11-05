@@ -482,10 +482,10 @@ if __name__ == "__main__":
 #SECTION:---------------------------------------- LITSMC predictions--------------------------------------------------------------------
 
     run = run_litsmc2
-    localiser_labels_litsmc = [44]
-    run_w = "LITS-860"
+    localiser_labels_litsmc = [3]
+    run_w = "LITS-1088"
     devices = [1]
-    overwrite=False
+    overwrite=True
     safe_mode=True
     save_channels=False
     project = Project(project_title="litsmc")
@@ -510,7 +510,7 @@ if __name__ == "__main__":
 # img_fns = list(img_fldr.glob("*"))[20:50]
     # case_id = "crc_CRC089"
     # imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
-    preds = En.run(imgs_crc,chunksize=4)
+    preds = En.run(imgs_crc[:10],chunksize=4)
 
 # %%
     preds = En.W.postprocess(p)

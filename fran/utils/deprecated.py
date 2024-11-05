@@ -80,12 +80,15 @@ def add_subdict(model_id):
 if __name__ == "__main__":
 
     run_w = "LITS-1111"
-    run_w = "LITS-1088"
+# %%
+#SECTION:-------------------- PATCH_SIZE TO PLAN--------------------------------------------------------------------------------------
+    run_w = "LITS-1018"
     ckpt = checkpoint_from_model_id(run_w)
     dic_tmp = torch.load(ckpt, map_location="cpu")
     pp(dic_tmp.keys())
-    dic_tmp['datamodule_hyper_parameters']['config']['plan']
-
+    dic_tmp['datamodule_hyper_parameters']['config']['plan']['patch_size']=dic_tmp['datamodule_hyper_parameters']['config']['dataset_params']['patch_size']
+# %%
+    torch.save(dic_tmp,ckpt)
 
 # %%
     dic_tmp['hyper_parameters']['plan']['patch_size'] = (96,96,96)

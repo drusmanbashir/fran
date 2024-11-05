@@ -1,6 +1,8 @@
 # %%
 import itertools as il
 import ipdb
+
+from fran.utils.string import ast_literal_eval
 tr = ipdb.set_trace
 
 from fran.managers.unet import UNetManager
@@ -44,7 +46,7 @@ def get_patch_spacing( run_name):
             src_plan  = config['plan']['source_plan']
             src_plan = config[src_plan]
             spacing = src_plan['spacing']
-        print(run_name,spacing)
+        spacing= ast_literal_eval(spacing)
         return spacing
 
 

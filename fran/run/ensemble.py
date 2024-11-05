@@ -1,10 +1,10 @@
 # %%
 import os
+from fran.managers.project import Project
 import argparse
 
 # from fran.inference.transforms import *
 from fran.transforms.spatialtransforms import *
-from fran.managers.training import *
 from fran.managers.tune import *
 from fran.inference.cascade import *
 from fran.utils.imageviewers import *
@@ -29,7 +29,7 @@ class EnsembleActor(object):
         self.value = 0
 
     def process(
-        self, project, run_name_w, runs_ensemble,localiser_labels,safe_mode,   k_largest, fnames,  chunksize
+        self, project, run_name_w, runs_ensemble,localiser_labels,safe_mode,   k_largest, fnames,  chunksize, overwrite
     ):
         En = CascadeInferer(
             project=project,
@@ -39,7 +39,7 @@ class EnsembleActor(object):
             safe_mode=safe_mode,
             save_channels=False,
             save=True,
-            overwrite=False,
+            overwrite=overwrite,
             k_largest=k_largest,
 
         )
@@ -52,7 +52,7 @@ class EnsembleActor(object):
 
 def main(args):
 
-    run_name_w = "LITS-860"
+    run_name_w = "LITS-1088"
     input_folder = args.input_folder
     project = Project(project_title=args.t)
     overwrite = args.overwrite
@@ -80,7 +80,7 @@ def main(args):
     results = ray.get(
         [
             c.process.remote(
-                project, run_name_w, runs_ensemble, localiser_labels, safe_mode,   k_largest, fns, chunksize
+                project, run_name_w, runs_ensemble, localiser_labels, safe_mode,   k_largest, fns, chunksize, overwrite
             )
             for c, fns in zip(actors, chunks)
         ]
@@ -110,13 +110,13 @@ if __name__ == "__main__":
     parser.add_argument("--gpus", type=int, default=0)
     args = parser.parse_known_args()[0]
 
-    args.overwrite=False
+    args.overwrite=True
     args.chunksize=4
     args.safe_mode=True
     args.t= 'litsmc'
     args.input_folder ="/s/xnat_shadow/crc/images"
     args.ensemble= ["LITS-1018"]
-    args.localiser_labels = [44]
+    args.localiser_labels = [3]
 
 # %%
     main(args)
