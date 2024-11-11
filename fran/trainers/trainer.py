@@ -1,14 +1,11 @@
 # %%
-from label_analysis.merge import pbar
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import ModelCheckpoint
 import shutil
 from lightning.pytorch.profilers import AdvancedProfiler
 from monai.transforms.io.dictionary import LoadImaged
-from fran.transforms.misc_transforms import MetaToDict
 from fran.managers import UNetManager, Project
 from fran.managers.unet import maybe_ddp
-from fran.transforms.imageio import TorchReader
 import ipdb
 
 from fran.utils.config_parsers import ConfigMaker
@@ -41,7 +38,6 @@ from fran.utils.imageviewers import ImageMaskViewer
 torch._dynamo.config.suppress_errors = True
 from fran.managers.nep import NeptuneManager
 import warnings
-from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     TQDMProgressBar,
@@ -56,7 +52,6 @@ except:
     pass
 
 import torch
-from lightning.pytorch import Trainer
 
 
 def fix_dict_keys(input_dict, old_string, new_string):
@@ -88,7 +83,6 @@ def checkpoint_from_model_id(model_id, sort_method="last"):
     return ckpt
 
 
-# from fran.managers.base import *
 
 
 # class NeptuneCallback(Callback):
@@ -265,10 +259,7 @@ class Trainer:
         DMClass = self.resolve_datamanager(self.config["plan"]["mode"])
         D = DMClass(
             self.project,
-            dataset_params=self.config["dataset_params"],
             config=self.config,
-            transform_factors=self.config["transform_factors"],
-            affine3d=self.config["affine3d"],
             batch_size=self.config["dataset_params"]["batch_size"],
             cache_rate=cache_rate,
             ds_type=ds_type,
@@ -278,10 +269,8 @@ class Trainer:
 
     def init_trainer(self, epochs):
         N = UNetManager(
-            self.project,
-            self.config["plan"],
-            self.config["model_params"],
-            self.config["loss_params"],
+            project=self.project,
+            config=self.config,
             lr=self.lr,
             max_epochs=epochs,
             sync_dist=self.sync_dist,
@@ -289,35 +278,31 @@ class Trainer:
         return N
 
     def load_trainer(self, **kwargs):
-        try:
             N = UNetManager.load_from_checkpoint(
                 self.ckpt,
-                project=self.project,
-                plan=self.config["plan"],
-                lr=self.lr,
                 **kwargs,
             )
             print("Model loaded from checkpoint: ", self.ckpt)
-        except:
-            tr()
-            ckpt_state = self.state_dict["state_dict"]
-            ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
-            # print(ckpt_state_updated.keys())
-            state_dict_neo = self.state_dict.copy()
-            state_dict_neo["state_dict"] = ckpt_state_updated
-            ckpt_old = self.ckpt.str_replace("_bkp", "")
-            ckpt_old = self.ckpt.str_replace(".ckpt", ".ckpt_bkp")
-            torch.save(state_dict_neo, self.ckpt)
-            shutil.move(self.ckpt, ckpt_old)
-
-            N = UNetManager.load_from_checkpoint(
-                self.ckpt,
-                project=self.project,
-                plan=self.config["plan"],
-                lr=self.lr,
-                **kwargs,
-            )
-        return N
+        # except: #CODE: exception should be specific
+        #     tr()
+        #     ckpt_state = self.state_dict["state_dict"]
+        #     ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
+        #     # print(ckpt_state_updated.keys())
+        #     state_dict_neo = self.state_dict.copy()
+        #     state_dict_neo["state_dict"] = ckpt_state_updated
+        #     ckpt_old = self.ckpt.str_replace("_bkp", "")
+        #     ckpt_old = self.ckpt.str_replace(".ckpt", ".ckpt_bkp")
+        #     torch.save(state_dict_neo, self.ckpt)
+        #     shutil.move(self.ckpt, ckpt_old)
+        #
+        #     N = UNetManager.load_from_checkpoint(
+        #         self.ckpt,
+        #         project=self.project,
+        #         plan=self.config["plan"],
+        #         lr=self.lr,
+        #         **kwargs,
+        #     )
+            return N
 
     def load_dm(self):
         DMClass = self.resolve_datamanager(
@@ -374,25 +359,20 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
 
-    project_title = "totalseg"
-    proj = Project(project_title=project_title)
 
-    configuration_filename = (
-        "/s/fran_storage/projects/lits32/experiment_config_wholeimage.xlsx"
-    )
-    configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
-    configuration_filename = None
-
-    conf = ConfigMaker(proj, raytune=False).config
+    proj_nodes = Project(project_title="nodes")
+    proj_litsmc = Project(project_title="litsmc")
+    conf_litsmc = ConfigMaker(proj_litsmc, raytune=False).config
 
     # conf['model_params']['lr']=1e-3
 
 # %%
     # run_name = "LITS-1007"
     # device_id = 1
-    device_id = 1
-    run_name = "LITS-1110"
-    run_name = None
+    device_id = 0
+    run_none= None
+    run_nodes= "LITS-1110"
+    run_litsmc= "LITS-1018"
     bs = 10# is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
@@ -404,7 +384,12 @@ if __name__ == "__main__":
     description = f""
 # %%
 
+    run_name = run_litsmc
+    # run_name = run_none
+    proj = proj_litsmc
+    conf = conf_litsmc
     Tm = Trainer(proj, conf, run_name)
+
 # %%
     Tm.setup(
         compiled=compiled,
@@ -432,6 +417,7 @@ if __name__ == "__main__":
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.valid_ds
+# %%
     for i,bb in pbar(enumerate(ds)):
         lm = bb['lm']
         labs = lm.unique()
@@ -442,9 +428,37 @@ if __name__ == "__main__":
 # %%
     ds = Tm.D.train_ds
 
+
+
 # %%
     dl = Tm.D.train_dataloader()
     iteri = iter(dl)
+    Tm.N.model.to('cpu')
+# %%
+    batch = next(iteri)
+    pred = Tm.N.model(batch['image'])
+# %%
+
+    n= 1
+    im =batch['image'] [n][0].clone()
+    pr = pred[0][n][3].clone()
+    lab = batch['lm'][n][0].clone()
+    lab_bin = (lab>1).float()
+# %%
+    lab = lab.permute(2,1,0)
+    im = im.permute(2,1,0)
+    pr = pr.permute(2,1,0)
+# %%
+    ImageMaskViewer([im.detach().cpu(), pr.detach().cpu()])
+    ImageMaskViewer([im.detach().cpu(),lab_bin.detach().cpu()])
+# %%
+    outfldr = Path("/s/fran_storage/misc")
+
+# %%
+    torch.save(im,outfldr/'im_no_tum.pt')
+    torch.save(pr,outfldr/'pred_no_tum.pt')
+    torch.save(lab,outfldr/'lab_no_tum.pt')
+# %%
     while iteri:
         bb = next(iteri)
         lm = bb['lm']

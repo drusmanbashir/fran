@@ -1,11 +1,12 @@
-
-
+# %%
 import ipdb
+
+from fran.utils.fileio import load_dict
 tr = ipdb.set_trace
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 import warnings
-from lightning.pytorch import  Trainer
+from fran.trainers import Trainer
 from torch import nn
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
@@ -18,24 +19,24 @@ import torch
 
 
 class TrainingManagerTransfer(Trainer):
-    def __init__(self, project, configs, run_name, freeze=None):
+    def __init__(self, project, config, run_name, freeze=None):
         assert freeze in [None,'encoder'],"Freeze either None or encoder"
         assert run_name is not None, "Please specificy a run to transfer learning from"
-        super().__init__(project, configs, run_name)
+        super().__init__(project=project, config=config, run_name=run_name)
         self.freeze=freeze
         self.run_name = None
     def init_dm_unet(self, epochs):
             Ntmp = self.load_trainer(max_epochs= epochs, map_location='cpu')
             self.model_source = Ntmp.model
             self.N = self.init_trainer( epochs )
-            self.D = self.init_dm(cache_rate)
+            self.D = self.init_dm()
             self.update_model()
             del self.model_source
             # self.update_trainer()
 
 
     def update_trainer(self):
-        self.N.model_params = self.configs['model_params']
+        self.N.model_params = self.config['model_params']
 
 
 
@@ -51,7 +52,7 @@ class TrainingManagerTransfer(Trainer):
             param.requires_grad = False
 
     def replace_final_layer_src_model(self):
-        out_ch_new = self.configs['model_params']['out_channels']
+        out_ch_new = self.config['model_params']['out_channels']
         for i, current in enumerate(self.model_source.seg_outputs):
             in_ch,out_ch_old, kernel,stride = current.in_channels,current.out_channels, current.kernel_size,current.stride
             newhead = nn.Conv3d(in_ch,out_ch_new,kernel,stride,bias=False)
@@ -89,11 +90,13 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
-    project_title = "nodes"
+    from fran.managers import Project
+    from fran.utils.config_parsers import ConfigMaker
+    project_title = "litsmc"
     proj = Project(project_title=project_title)
 
     configuration_filename = (
-        "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
+        "/s/fran_storage/projects/lits32/experiment_config_wholeimage.xlsx"
     )
     configuration_filename = None
 
@@ -109,11 +112,12 @@ if __name__ == "__main__":
     run_name = None
     freeze='encoder'
     freeze=None
-    bs =5# if none, will get it from the conf file 
+    bs =10# if none, will get it from the conf file 
     run_name = "LITS-811"
     run_name ='LITS-919'
     run_name = "LITS-949"
     run_name = "LITS-911"
+    run_name = "LITS-1018"
     # run_name ='LITS-836'
     compiled = False
     profiler=False
@@ -124,7 +128,7 @@ if __name__ == "__main__":
     cache_rate=0.0
     description = f"Transfer learning from {run_name}. Freeze: {freeze}"
 
-    Tm = TrainingManagerTransfer(project= proj, configs =config, run_name= run_name,freeze=freeze)
+    Tm = TrainingManagerTransfer(project= proj, config =config, run_name= run_name,freeze=freeze)
 # %%
     Tm.setup(
         lr = 1e-3,
@@ -137,7 +141,6 @@ if __name__ == "__main__":
         neptune=neptune,
         tags=tags,
         description=description,
-        cache_rate=cache_rate
     )
 # %%
     # Tm.D.batch_size=8

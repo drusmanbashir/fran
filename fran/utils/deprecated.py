@@ -74,28 +74,130 @@ def remove_loss_key_state_dict(model_id):
         else:
             print("No loss keys in state_dict. No change")
 
+def find_key_in_dict(d, search_key, path="root"):
+    """Recursively find all occurrences of search_key in nested dictionaries and print their paths
+    
+    Args:
+        d: Dictionary to search in
+        search_key: Key to search for
+        path: Current path in the dictionary (used for recursion)
+    """
+    if not isinstance(d, dict):
+        return
+        
+    for k, v in d.items():
+        current_path = f"{path}->{k}"
+        if k == search_key:
+            print(f"Found '{search_key}' key at: {current_path}")
+            print(f"Value: {v}")
+            print("-" * 50)
+            
+        if isinstance(v, dict):
+            find_key_in_dict(v, search_key, current_path)
+
+def copy_dict_structure(dict_src, dict_dest, path="root", missing_keys=None):
+    """Copy structure from dict_src and fill values from dict_dest where possible.
+    
+    Args:
+        dict_src: Source dictionary whose structure will be copied
+        dict_dest: Destination dictionary to get values from
+        path: Current path in the dictionary (used for recursion)
+        missing_keys: Dictionary to track keys not found in dict_dest
+    
+    Returns:
+        new_dict: New dictionary with src structure and matching values from dest
+    """
+    if missing_keys is None:
+        missing_keys = {}
+    
+    if not isinstance(dict_src, dict):
+        return dict_src
+    
+    new_dict = {}
+    for key, value in dict_src.items():
+        current_path = f"{path}->{key}"
+        
+        if isinstance(value, dict):
+            # Recursively handle nested dictionaries
+            new_dict[key] = copy_dict_structure(value, dict_dest, current_path, missing_keys)
+        else:
+            # For leaf nodes, try to find matching key anywhere in dict_dest
+            found_value = find_value_in_dict(dict_dest, key)
+            if found_value is not None:
+                new_dict[key] = found_value
+            else:
+                # If key not found in dest, use source value and track it
+                new_dict[key] = value
+                missing_keys[current_path] = value
+                print(f"Key not found in destination dict: {current_path}, using source value: {value}")
+    
+    return new_dict
+
+def find_value_in_dict(d, search_key):
+    """Recursively search for a key in nested dictionary and return its value"""
+    if not isinstance(d, dict):
+        return None
+    
+    if search_key in d:
+        return d[search_key]
+    
+    for value in d.values():
+        if isinstance(value, dict):
+            result = find_value_in_dict(value, search_key)
+            if result is not None:
+                return result
+    
+    return None
+
 def add_subdict(model_id):
                 pass
 # %%
 if __name__ == "__main__":
 
-    run_w = "LITS-1111"
-# %%
-#SECTION:-------------------- PATCH_SIZE TO PLAN--------------------------------------------------------------------------------------
-    run_w = "LITS-1018"
-    ckpt = checkpoint_from_model_id(run_w)
-    dic_tmp = torch.load(ckpt, map_location="cpu")
-    pp(dic_tmp.keys())
-    dic_tmp['datamodule_hyper_parameters']['config']['plan']['patch_size']=dic_tmp['datamodule_hyper_parameters']['config']['dataset_params']['patch_size']
-# %%
-    torch.save(dic_tmp,ckpt)
+    run_src = "LITS-1113"
+    ckpt_src = checkpoint_from_model_id(run_src)
+    dict_src = torch.load(ckpt_src, map_location="cpu")
+
+
+
+    run2 = "LITS-1018"
+    ckpt2 = checkpoint_from_model_id(run2)
+    dict_dest= torch.load(ckpt2, map_location="cpu")
 
 # %%
-    dic_tmp['hyper_parameters']['plan']['patch_size'] = (96,96,96)
-    dic_tmp['hyper_parameters']['plan'] =dic_tmp['datamodule_hyper_parameters']['dataset_params'].copy()
-    dic_tmp['datamodule_hyper_parameters']['plan']['patch_size']=(96,96,96)
-    dic_tmp['datamodule_hyper_parameters'].keys()
-    dic_tmp['datamodule_hyper_parameters']['config']['plan']['patch_size'] 
+
+# %%
+#SECTION:-------------------- PATCH_SIZE TO PLAN--------------------------------------------------------------------------------------
+    pp(dict_dest['hyper_parameters'].keys())
+    pp(dict_src['hyper_parameters'].keys())
+# %%
+    dd = copy_dict_structure(dict_src['hyper_parameters'],dict_dest['hyper_parameters'])
+    dd2= copy_dict_structure(dict_src['datamodule_hyper_parameters'],dict_dest['datamodule_hyper_parameters'])
+    dict_dest['hyper_parameters'].keys()#=dd
+    dict_dest['datamodule_hyper_parameters'].keys()#=dd2
+    torch.save(dict_dest,ckpt2)
+# %%
+    dic_dest['hyper_parameters']['plan']=dic_dest['datamodule_hyper_parameters']['config']['plan'].copy()
+    dic_dest['hyper_parameters']['plan']
+    dic_dest['datamodule_hyper_parameters']['config']['plan']['patch_size']=dic_dest['datamodule_hyper_parameters']['config']['dataset_params']['patch_size']
+    dic_dest['datamodule_hyper_parameters']['config']['plan']
+    dic_dest['datamodule_hyper_parameters']['dataset_params']['plan']
+    dic_dest['datamodule_hyper_parameters']['plan'] = dic_dest['datamodule_hyper_parameters']['config']['plan'].copy()
+
+
+    dic_tmp['datamodule_hyper_parameters']['config'].keys()
+    dic_tmp['datamodule_hyper_parameters']['config']['plan']
+# %%
+
+
+# %%
+    dic_tmp['hyper_parameters']['plan']  = dic_tmp['datamodule_hyper_parameters']['dataset_params'].copy()
+    dic_tmp['hyper_parameters']#.pop('plan')
+    dic_tmp['datamodule_hyper_parameters'].pop('plan')
+    # dic_tmp['hyper_parameters']['plan'] =dic_tmp['datamodule_hyper_parameters']['dataset_params'].copy()
+    dic_tmp['datamodule_hyper_parameters']['plan']=dic_tmp['datamodule_hyper_parameters']['dataset_params'].copy()
+    dic_tmp['datamodule_hyper_parameters']['dataset_params']
+    dic_tmp['datamodule_hyper_parameters']['config']['plan']
     # dic_tmp['datamodule_hyper_parameters']['config'] = {'plan':dic_tmp['datamodule_hyper_parameters']['plan'].copy()}
     torch.save(dic_tmp,ckpt)
 # %%

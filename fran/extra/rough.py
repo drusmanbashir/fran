@@ -1,5 +1,11 @@
 # %%
 import shutil
+from matplotlib import pyplot as plt
+from torch import nn
+from gudhi import CubicalComplex
+import cudf
+import cuml
+import cugraph
 from send2trash import send2trash
 
 from fran.utils.helpers import info_from_filename
@@ -9,10 +15,40 @@ import SimpleITK as sitk
 import re
 from pathlib import Path
 
-from label_analysis.helpers import get_labels
+from label_analysis.helpers import get_labels, view_sitk
 from fran.managers.data import find_matching_fn, pbar
 from fran.utils.fileio import maybe_makedirs
 from fran.utils.imageviewers import ImageMaskViewer
+
+# Step 8: Plot the persistence diagram
+def plot_persistence_diagram(diagram):
+        births, deaths = [], []
+        for point in diagram:
+            if point[0] == 0:  # 0-dim components (connected components)
+                births.append(point[1][0])
+                deaths.append(point[1][1])
+
+        plt.figure(figsize=(8, 6))
+        plt.scatter(births, deaths, label="0-dim Features (Connected Components)", color="blue", s=10)
+        plt.plot([0, max(deaths)], [0, max(deaths)], linestyle='--', color='red')  # Diagonal
+        plt.xlabel("Birth")
+        plt.ylabel("Death")
+        plt.title("Persistence Diagram")
+        plt.legend()
+        plt.show()
+# Step 7: Plot the persistence barcode
+def plot_persistence_barcode(intervals, title="Persistence Barcode"):
+    plt.figure(figsize=(10, 5))
+    for i, (birth, death) in enumerate(intervals):
+        if death == float('inf'):
+            death = max(top_dimensional_cells)  # Set death to a max finite value for visualization
+        plt.plot([birth, death], [i, i], 'b', lw=2)
+
+    plt.xlabel("Filtration Value")
+    plt.ylabel("Barcode Index")
+    plt.title(title)
+    plt.show()
+
 # %%
 if __name__ == "__main__":
     fldr = Path("/s/xnat_shadow/crc/lms/")
@@ -29,7 +65,122 @@ if __name__ == "__main__":
     nodes = list(nodes_fldr.glob("*"))
 
 # %%
+    img_fn = Path("/s/fran_storage/misc/img.pt")
+    lm_fn =  Path("/s/fran_storage/misc/lm.pt")
+    lm = torch.load(lm_fn)
 
+# %%
+    pred_fn = Path("/s/fran_storage/misc/pred.pt")
+    im = torch.load(img_fn)
+    pred = torch.load(pred_fn)
+    pred = nn.Softmax()(pred)
+    thres = 0.01
+# %%
+    preds_bin = (pred>thres).float()
+    preds_np = preds_bin.detach().numpy()
+    ImageMaskViewer([im.detach(),preds_bin])
+    ImageMaskViewer([im.detach(),pred])
+
+# Step 3: Flatten the numpy array for GUDHI (top-dimensional cells are voxel values)
+# GUDHI requires a flattened list of the voxel values for constructing the cubical complex.
+# %%
+    top_dimensional_cells = preds_np.flatten()
+
+# Step 4: Define the dimensions of the 3D volume
+    dimensions = preds_np.shape
+
+# Step 5: Create a Cubical Complex
+    cubical_complex = CubicalComplex(dimensions=dimensions, top_dimensional_cells=top_dimensional_cells)
+
+# Step 6: Compute the persistence
+    cubical_complex.persistence()
+
+# Step 7: Get the persistence diagram
+
+    persistence_intervals = cubical_complex.persistence_intervals_in_dimension(0)
+    betti_0 = len(persistence_intervals)
+# %%
+    plot_persistence_barcode(persistence_intervals)
+# Plotting the persistence diagram
+
+        # ImageMaskViewer([lm.detach(),pred_bin.detach()], 'mm')
+# %%
+# %%
+import matplotlib.pyplot as plt
+
+# Data for the persistence diagram
+birth_times = [0, 0, 0]  # All components are born at the start of filtration
+death_times = [10, 10, 10]  # Persist until the end (using a high value)
+
+# Create the persistence diagram
+plt.figure(figsize=(8, 6))
+plt.scatter(birth_times, death_times, color='b', label='Connected Components')
+plt.plot([0, 10], [0, 10], 'r--', label='Diagonal (y = x)')  # Diagonal line
+
+# Plot settings
+plt.xlabel('Birth')
+plt.ylabel('Death')
+plt.title('Persistence Diagram for 0-Dimensional Connected Components')
+plt.legend()
+plt.grid(True)
+plt.xlim(0, 10)
+plt.ylim(0, 10)
+
+# Show plot
+plt.show()
+
+# 1. Test cuDF Installation
+try:
+    print("Testing cuDF...")
+    # Create a simple cuDF DataFrame
+    df = cudf.DataFrame({'a': [1, 2, 3, 4, 5], 'b': [10, 20, 30, 40, 50]})
+    print("cuDF DataFrame:\n", df)
+    print("cuDF head operation successful:", df.head())
+    print("cuDF installed successfully.\n")
+except Exception as e:
+    print("cuDF test failed:", e)
+
+# 2. Test cuML Installation
+try:
+    print("Testing cuML...")
+    from cuml.linear_model import LinearRegression
+    import numpy as np
+
+    # Create some simple data
+    X = np.array([[1.0], [2.0], [3.0], [4.0], [5.0]])
+    y = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    # Train a simple linear regression model
+    model = LinearRegression()
+    model.fit(X, y)
+    print("cuML Linear Regression coefficient:", model.coef_)
+    print("cuML installed successfully.\n")
+except Exception as e:
+    print("cuML test failed:", e)
+
+# 3. Test cuGraph Installation
+try:
+    print("Testing cuGraph...")
+    import cudf
+    import cugraph
+
+    # Create a simple graph edge list using cuDF
+    sources = [0, 1, 2, 3]
+    destinations = [1, 2, 3, 4]
+    gdf = cudf.DataFrame({'src': sources, 'dst': destinations})
+
+    # Create a graph using cuGraph
+    G = cugraph.Graph()
+    G.from_cudf_edgelist(gdf, source='src', destination='dst')
+
+    # Run connected components
+    df = cugraph.connected_components(G)
+    print("cuGraph Connected Components:\n", df)
+    print("cuGraph installed successfully.\n")
+except Exception as e:
+    print("cuGraph test failed:", e)
+
+print("RAPIDS installation test completed.")
 # %%
     for i in range(len(nodes_done)):
         # print("Filename ", node_done)
@@ -77,9 +228,9 @@ if __name__ == "__main__":
     img_fn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_liver_only/images/drli_001ub.pt")
 
 
-    img = torch.load(img_fn)
+    img_fn = torch.load(img_fn)
     lm = torch.load(lm_fn)
-    ImageMaskViewer([img,lm])
+    ImageMaskViewer([img_fn,lm])
 
 # %%
 
@@ -114,8 +265,8 @@ if __name__ == "__main__":
 
 # %%
     data_dicts= []
-    for img in imgs:
-        dici = {'image':img, 'lm':  find_matching_fn(img,lms,tag='all')}
+    for img_fn in imgs:
+        dici = {'image':img_fn, 'lm':  find_matching_fn(img_fn,lms,tag='all')}
         data_dicts.append(dici)
 
 
@@ -138,14 +289,14 @@ if __name__ == "__main__":
 
 
 # %%
-    for img in images1:
-        S1(img)
+    for img_fn in images1:
+        S1(img_fn)
 
-    for img in images2:
-        S1(img)
+    for img_fn in images2:
+        S1(img_fn)
 
-    for img in images3:
-        S1(img)
+    for img_fn in images3:
+        S1(img_fn)
 # %%
 
 
@@ -334,8 +485,8 @@ for bbox in bboxes:
     save_pickle(bbox_fn,bboxes_out)
 # %%
     imgs_fldr = Path("/s/fran_storage/predictions/litsmc/LITS-933")
-    img = [fn for fn in imgs_fldr.glob("*") if "CRC164" in fn.name][0]
-    lm = sitk.ReadImage(str(img))
+    img_fn = [fn for fn in imgs_fldr.glob("*") if "CRC164" in fn.name][0]
+    lm = sitk.ReadImage(str(img_fn))
 
     L = LabelMapGeometry(lm, ignore_labels=[2,3])
 
@@ -509,10 +660,10 @@ for bbox in bboxes:
     imgs_ex= Path("/s/xnat_shadow/crc/srn/excluded/images/")
     imgs_all = list(imgs_all.glob("*"))
 # %%
-    for img in imgs_all:
-        if info_from_filename(img.name,True)["case_id"] in excluded:
-            img_neo = img.str_replace("images","excluded/images")
-            shutil.move(img,img_neo)
+    for img_fn in imgs_all:
+        if info_from_filename(img_fn.name,True)["case_id"] in excluded:
+            img_neo = img_fn.str_replace("images","excluded/images")
+            shutil.move(img_fn,img_neo)
 # %%
 
     imgs_processed =Path("/s/xnat_shadow/crc/srn/cases_with_findings/images/")
@@ -522,9 +673,9 @@ for bbox in bboxes:
     excluded = df.loc[df['labels']=="exclude", "case_id"].to_list()
 # %%
 
-    for img in imgs_all:
-        if img.name  in imgs_processed:
-            os.remove(img)
+    for img_fn in imgs_all:
+        if img_fn.name  in imgs_processed:
+            os.remove(img_fn)
 # %%
     imgs_new = Path("/s/xnat_shadow/crc/srn/images_done/")
     cids = list(set([info_from_filename(fn.name,True)["case_id"] for fn in lm_wxh]))
@@ -544,9 +695,9 @@ for bbox in bboxes:
     for fn in in_wxh:
         os.remove(fn)
 # %%
-    for img in done: 
-        img_neo = img.str_replace("images","images_done")
-        shutil.move(img,img_neo)
+    for img_fn in done: 
+        img_neo = img_fn.str_replace("images","images_done")
+        shutil.move(img_fn,img_neo)
 # %%
     fldr = Path("/s/fran_storage/checkpoints/totalseg/totalseg/LITS-836")
 
@@ -598,13 +749,13 @@ for bbox in bboxes:
     imgs =list((fldr/("images")).glob("*"))
     S = ScaleIntensity()
     for img_fn in pbar(imgs[:50]):
-        spatial_size = [int(sz/4) for sz in img.shape]
+        spatial_size = [int(sz/4) for sz in img_fn.shape]
         Re = Resize(spatial_size=spatial_size)
         lm_fn = find_matching_fn(img_fn,lms)
-        img = torch.load(img_fn)
+        img_fn = torch.load(img_fn)
         lm = torch.load(lm_fn)
-        img[lm==0]=0
-        img2 = img.unsqueeze(0)
+        img_fn[lm==0]=0
+        img2 = img_fn.unsqueeze(0)
         lm = lm.unsqueeze(0)
         img3 = Re(img2,mode='trilinear')
         img3= S(img3)
@@ -661,17 +812,17 @@ for bbox in bboxes:
     import matplotlib.pyplot as plt
     ind = 1
 
-    pred = torch.load("pred_prefix.pt")
+    pred_fn = torch.load("pred_prefix.pt")
     plt.imshow(im[ind,0])
-    plt.imshow(pred[ind,0])
+    plt.imshow(pred_fn[ind,0])
     im= torch.load("image.pt")
     im = im.cpu()
-    pred = torch.load("pred.pt")
-    pred =pred[0].float()
-    pred = pred.cpu()
+    pred_fn = torch.load("pred.pt")
+    pred_fn =pred_fn[0].float()
+    pred_fn = pred_fn.cpu()
     ind = 2
-    pred = F.softmax(pred,dim=1)
-    ImageMaskViewer([im[ind,0],pred[ind,1]])
+    pred_fn = F.softmax(pred_fn,dim=1)
+    ImageMaskViewer([im[ind,0],pred_fn[ind,1]])
 # %%
 # %%
 

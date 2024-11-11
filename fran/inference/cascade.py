@@ -432,8 +432,8 @@ if __name__ == "__main__":
     
     safe_mode=False
     devices = [1]
-    overwrite=False
-    save_channels=False
+    overwrite=True
+    save_channels=True
     project = Project(project_title="nodes")
     En = CascadeInferer(
         project,

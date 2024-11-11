@@ -95,23 +95,21 @@ class DataManager(LightningDataModule):
     def __init__(
         self,
         project,
-        dataset_params: dict,
         config: dict,
-        transform_factors: dict,
-        affine3d: dict,
         batch_size=8,
         cache_rate=0.0,
         ds_type=None,
     ):
         super().__init__()
-        #CODE: Simplify saved hyperparameters. E.g., only pass config to classes where you want them to carry forward hpms
-        self.save_hyperparameters()
+        self.save_hyperparameters('project','config')
+        store_attr()
         self.plan = config["plan"]
-        store_attr(but="transform_factors")
         global_properties = load_dict(project.global_properties_filename)
+        self.dataset_params = config["dataset_params"]
         self.dataset_params["intensity_clip_range"] = global_properties[
             "intensity_clip_range"
         ]
+        transform_factors = config["transform_factors"]
         self.dataset_params["mean_fg"] = global_properties["mean_fg"]
         self.dataset_params["std_fg"] = global_properties["std_fg"]
         self.batch_size = batch_size
@@ -169,24 +167,21 @@ class DataManager(LightningDataModule):
         # Initialize an empty dictionary to store the transforms
         self.transforms_dict = {}
 
-        # Conditionally create transforms based on exclusion list
+        # Conditionally create transforms based on exclusion list, arranged alphabetically
+        if "Affine" not in exclude_keys:
+            Affine = RandAffined(
+                keys=["image", "lm"],
+                mode=["bilinear", "nearest"],
+                prob=self.config['affine3d']["p"],
+                rotate_range=self.config['affine3d']["rotate_range"],
+                scale_range=self.config['affine3d']["scale_range"],
+            )
+            self.transforms_dict["Affine"] = Affine
+
         if "E" not in exclude_keys:
             E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
             self.transforms_dict["E"] = E
 
-        if "N" not in exclude_keys:
-            N = NormaliseClipd(
-                keys=["image"],
-                clip_range=self.dataset_params["intensity_clip_range"],
-                mean=self.dataset_params["mean_fg"],
-                std=self.dataset_params["std_fg"],
-            )
-            self.transforms_dict["N"] = N
-        
-        if "RP" not in exclude_keys:
-            RP = RandomPatch()
-            self.transforms_dict["RP"] = RP
-        
         if "F1" not in exclude_keys:
             F1 = RandFlipd(
                 keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
@@ -198,6 +193,10 @@ class DataManager(LightningDataModule):
                 keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
             )
             self.transforms_dict["F2"] = F2
+
+        if "Ind" not in exclude_keys:
+            Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
+            self.transforms_dict["Ind"] = Ind
 
         if "IntensityTfms" not in exclude_keys:
             IntensityTfms = [
@@ -216,27 +215,6 @@ class DataManager(LightningDataModule):
             ]
             self.transforms_dict["IntensityTfms"] = IntensityTfms
 
-        if "Affine" not in exclude_keys:
-            Affine = RandAffined(
-                keys=["image", "lm"],
-                mode=["bilinear", "nearest"],
-                prob=self.affine3d["p"],
-                rotate_range=self.affine3d["rotate_range"],
-                scale_range=self.affine3d["scale_range"],
-            )
-            self.transforms_dict["Affine"] = Affine
-
-        if "Re" not in exclude_keys:
-            Re = ResizeWithPadOrCropd(
-                keys=["image", "lm"],
-                spatial_size=self.plan["patch_size"],
-                lazy=True,
-            )
-            self.transforms_dict["Re"] = Re
-
-        # Continue similarly for the remaining transforms like L, Ld, Ind, Rtr, Rva...
-
-        # Example for some more exclusions:
         if "L" not in exclude_keys:
             L = LoadImaged(
                 keys=["image", "lm"],
@@ -252,10 +230,27 @@ class DataManager(LightningDataModule):
                 keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
             )
             self.transforms_dict["Ld"] = Ld
-        
-        if "Ind" not in exclude_keys:
-            Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
-            self.transforms_dict["Ind"] = Ind
+
+        if "N" not in exclude_keys:
+            N = NormaliseClipd(
+                keys=["image"],
+                clip_range=self.dataset_params["intensity_clip_range"],
+                mean=self.dataset_params["mean_fg"],
+                std=self.dataset_params["std_fg"],
+            )
+            self.transforms_dict["N"] = N
+
+        if "Re" not in exclude_keys:
+            Re = ResizeWithPadOrCropd(
+                keys=["image", "lm"],
+                spatial_size=self.plan["patch_size"],
+                lazy=True,
+            )
+            self.transforms_dict["Re"] = Re
+
+        if "RP" not in exclude_keys:
+            RP = RandomPatch()
+            self.transforms_dict["RP"] = RP
 
         if "Rtr" not in exclude_keys:
             Rtr = RandCropByPosNegLabeld(
@@ -361,9 +356,9 @@ class DataManager(LightningDataModule):
             Affine = RandAffined(
                 keys=["image", "lm"],
                 mode=["bilinear", "nearest"],
-                prob=self.affine3d["p"],
-                rotate_range=self.affine3d["rotate_range"],
-                scale_range=self.affine3d["scale_range"],
+                prob=self.config['affine3d']["p"],
+                rotate_range=self.config['affine3d']["rotate_range"],
+                scale_range=self.config['affine3d']["scale_range"],
             )
             self.transforms_dict["Affine"] = Affine
 
@@ -546,19 +541,13 @@ class DataManagerSource(DataManager):
     def __init__(
         self,
         project,
-        dataset_params: dict,
         config: dict,
-        transform_factors: dict,
-        affine3d: dict,
         batch_size=8,
         **kwargs
     ):
         super().__init__(
             project,
-            dataset_params,
             config,
-            transform_factors,
-            affine3d,
             batch_size,
             **kwargs
         )
@@ -623,19 +612,13 @@ class DataManagerWhole(DataManagerSource):
     def __init__(
         self,
         project,
-        dataset_params: dict,
         config: dict,
-        transform_factors: dict,
-        affine3d: dict,
         batch_size=8,
         **kwargs
     ):
         super().__init__(
             project,
-            dataset_params,
             config,
-            transform_factors,
-            affine3d,
             batch_size,
             **kwargs
         )
@@ -779,10 +762,7 @@ class DataManagerPatchLegacy(DataManager):
     ):
         super().__init__(
             project,
-            dataset_params,
             config,
-            transform_factors,
-            affine3d,
             batch_size,
             **kwargs
         )
@@ -835,26 +815,26 @@ class DataManagerPatch(DataManager):
     def __init__(
         self,
         project,
-        dataset_params: dict,
         config: dict,
-        transform_factors: dict,
-        affine3d: dict,
         batch_size=8,
         **kwargs
     ):
         self.collate_fn = source_collated
         super().__init__(
             project,
-            dataset_params,
             config,
-            transform_factors,
-            affine3d,
             batch_size,
             **kwargs
         )
         self.derive_data_folder()
         self.load_bboxes()
         self.fg_bg_prior = fg_in_bboxes(self.bboxes)
+
+    def __str__(self):
+        return 'DataManagerPatch instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items() if k not in ['bboxes', 'transforms_dict']])
+
+    def __repr__(self):
+        return f'DataManagerPatch(project={self.project}, config={self.config}, batch_size={self.batch_size}, fg_bg_prior={self.fg_bg_prior})'
 
     def get_patch_files(self, bboxes, case_id: str):
         cids = np.array([bb["case_id"] for bb in bboxes])
@@ -888,6 +868,10 @@ class DataManagerPatch(DataManager):
             # bb.pop("filename")
             bboxes_out.update(bb_out)
         return bboxes_out
+
+    def set_tfm_keys(self):
+        self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
+        self.keys_val = "L,Ld,E,Rva,Re,N"
 
     def load_bboxes(self):
         bbox_fn = self.data_folder / "bboxes_info"
@@ -933,6 +917,8 @@ class DataManagerPatch(DataManager):
     def create_transforms(self, keys='all'):
         super().create_transforms(keys)
 
+    
+    #CODE: INCOMPLETE: FIX THIS FOLLOW THE PATTERN OF DATAMANAGERSOURCE
     def derive_data_folder(self):
         parent_folder = self.project.patches_folder
         plan_name = "plan" + str(self.dataset_params["plan"])
@@ -949,28 +935,35 @@ class DataManagerPatch(DataManager):
 
     # CODE: use same validation dataloader in all flavours of training to make it comparable
     def setup(self, stage: str = None):
-        self.create_transforms()
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
         fgbg_ratio_adjusted = fgbg_ratio / self.fg_bg_prior
         self.dataset_params["fgbg_ratio"] = fgbg_ratio_adjusted
+
+        #
+        # self.create_transforms()
+        # self.set_transforms(keys_tr=self.keys_tr, keys_val=self.keys_val)
+        # self.train_ds = LMDBDataset(
+        #     data=self.data_train,
+        #     transform=self.tfms_train,
+        #     cache_dir=self.cache_folder,
+        #     db_name="training_cache",
+        # )
+        # self.valid_ds = LMDBDataset(
+        #     data=self.data_valid,
+        #     transform=self.tfms_valid,
+        #     cache_dir=self.cache_folder,
+        #     db_name="valid_cache",
+        # )
+        #
+    def set_tfm_keys(self):
+        self.keys_val = "L,Ld,E,Rva,Re,N"
+        self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,I"
         if not math.isnan(self.dataset_params["src_dest_labels"]):
-            keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,I"
+            self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,I"
         else:
-            keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,I"
-        keys_val = "RP,L,Ld,E,Rva,Re,N"
-        self.set_transforms(keys_tr=keys_tr, keys_val=keys_val)
-        self.train_ds = LMDBDataset(
-            data=self.data_train,
-            transform=self.tfms_train,
-            cache_dir=self.cache_folder,
-            db_name="training_cache",
-        )
-        self.valid_ds = LMDBDataset(
-            data=self.data_valid,
-            transform=self.tfms_valid,
-            cache_dir=self.cache_folder,
-            db_name="valid_cache",
-        )
+            self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,I"
+
+        self.keys_val = "RP,L,Ld,E,Rva,Re,N"
 
     @property
     def src_dims(self):
@@ -983,8 +976,8 @@ class DataManagerBaseline(DataManagerLBD):
     It has no training augmentations. Whether the flag is True or False doesnt matter.
     Note: It inherits from LBD dataset.
     '''
-    def __init__(self, project, dataset_params: dict, config: dict, transform_factors: dict, affine3d: dict, batch_size=8, **kwargs):
-        super().__init__(project, dataset_params, config, transform_factors, affine3d, batch_size,**kwargs)
+    def __init__(self, project,  config: dict,   batch_size=8, **kwargs):
+        super().__init__(project,  config, batch_size,**kwargs)
         self.collate_fn = whole_collated
 
 
@@ -1072,10 +1065,7 @@ if __name__ == "__main__":
 # %%
     D = DataManagerWhole(
         project=proj,
-        dataset_params = config["dataset_params"],
-        affine3d=config["affine3d"],
         batch_size=4,
-        transform_factors=config["transform_factors"],
         config=config,
     )
 
@@ -1197,12 +1187,10 @@ if __name__ == "__main__":
     D = DataManagerPatch(
         proj,
         config=config,
-        dataset_params=config["dataset_params"],
-        transform_factors=config["transform_factors"],
-        affine3d=config["affine3d"],
         batch_size=batch_size,
     )
 
+# %%
     D.prepare_data()
     D.setup()
 # %%

@@ -2,14 +2,12 @@
 from functools import wraps
 from pathlib import Path
 from typing import Union
-from fastcore.basics import GetAttr
 
 import numpy as np
 import SimpleITK as sitk
 from batchgenerators.dataloading.multi_threaded_augmenter import torch
 from fastcore.transform import ItemTransform, Transform, store_attr
 from torch.functional import Tensor
-from fran.transforms.base import KeepBBoxTransform
 
 
 import ipdb
@@ -82,14 +80,6 @@ class ToTensorImgMask(ItemTransform):
         x = [ToTensorT()(xx) for xx in x]
         return x
 
-
-class ToTensorI(KeepBBoxTransform,GetAttr):
-    '''
-    works on img/bbox pair
-    '''
-    order = 0
-    def func(self,img:np.ndarray):
-        return torch.tensor(img)
 # %%
 if __name__ == "__main__":
    T= ToTensorI
