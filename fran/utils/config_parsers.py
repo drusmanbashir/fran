@@ -35,11 +35,13 @@ def parse_excel_plan(plan):
     for k in keys_str_to_list:
         if k in plan.keys():
             plan[k] = ast_literal_eval(plan[k])
-    plan = add_patch_size(plan)
+    plan = maybe_add_patch_size(plan)
     return plan
 
 
-def add_patch_size(plan):
+def maybe_add_patch_size(plan):
+    if 'patch_size' in plan.keys():
+        return plan
     if 'patch_dim0' and 'patch_dim1' in plan.keys():
                     plan['patch_size']= make_patch_size(
                         plan["patch_dim0"], plan["patch_dim1"]
@@ -93,7 +95,7 @@ def out_channels_from_global_properties(global_properties):
             return None
 
 def out_channels_from_dict_or_cell(src_dest_labels):  
-    if src_dest_labels is None:
+    if is_excel_None(src_dest_labels) :
         return None
     if 'TSL' in src_dest_labels:
         out_channels= out_channels_from_TSL(src_dest_labels)

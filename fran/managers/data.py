@@ -45,7 +45,7 @@ from fran.utils.config_parsers import ConfigMaker, is_excel_None
 from fran.utils.fileio import load_dict, load_yaml
 from fran.utils.helpers import find_matching_fn, folder_name_from_list
 from fran.utils.imageviewers import ImageMaskViewer
-from fran.utils.string import ast_literal_eval, strip_extension
+from fran.utils.string import ast_literal_eval, info_from_filename, strip_extension
 import re
 import os
 
@@ -445,6 +445,7 @@ class DataManager(LightningDataModule):
 
     def prepare_data(self):
         # getting the right folders
+        self.data_folder = self.derive_data_folder()
         dataset_mode = self.plan["mode"]
         assert dataset_mode in [
             "whole",
@@ -457,7 +458,6 @@ class DataManager(LightningDataModule):
         self.train_cases, self.valid_cases = self.project.get_train_val_files(
             self.dataset_params["fold"],self.plan['datasources']
         )
-        self.data_folder = self.derive_data_folder()
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
@@ -487,7 +487,7 @@ class DataManager(LightningDataModule):
             indices_subfolder = "indices"
         else:
             if isinstance(fg_indices_exclude, str):
-                fg_indices_exclude = ast.literal_eval(fg_indices_exclude)
+                fg_indices_exclude = ast_literal_eval(fg_indices_exclude)
             fg_indices_exclude = listify(fg_indices_exclude)
             indices_subfolder = "indices_fg_exclude_{}".format(
                 "".join([str(x) for x in fg_indices_exclude])
@@ -782,7 +782,7 @@ class DataManagerPatchLegacy(DataManager):
 
     def setup(self, stage: str = None):
         self.create_transforms()
-        if not math.isnan(self.dataset_params["src_dest_labels"]):
+        if not math.isnan(self.plan["src_dest_labels"]):
             keys_tr = "P,E,F1,F2,Affine,Re,N,I"
         else:
             keys_tr = "E,F1,F2,Affine,Re,N,I"
@@ -811,7 +811,7 @@ class DataManagerPatchLegacy(DataManager):
         return self.plan["patch_size"]
 
 
-class DataManagerPatch(DataManager):
+class DataManagerPatch(DataManagerSource):
     def __init__(
         self,
         project,
@@ -819,16 +819,26 @@ class DataManagerPatch(DataManager):
         batch_size=8,
         **kwargs
     ):
-        self.collate_fn = source_collated
         super().__init__(
             project,
             config,
             batch_size,
             **kwargs
         )
-        self.derive_data_folder()
-        self.load_bboxes()
+
+    def prepare_data(self):
+        """Override prepare_data to ensure proper sequence"""
+        self.data_folder = self.derive_data_folder()
+        self.load_bboxes()  # Now we can safely load bboxes
         self.fg_bg_prior = fg_in_bboxes(self.bboxes)
+
+        self.train_cases, self.valid_cases = self.project.get_train_val_files(
+            self.dataset_params["fold"],self.plan['datasources']
+        )
+        print("Creating train data dicts from BBoxes")
+        self.data_train = self.create_data_dicts(self.train_cases)
+        print("Creating val data dicts from BBoxes")
+        self.data_valid = self.create_data_dicts(self.valid_cases)
 
     def __str__(self):
         return 'DataManagerPatch instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items() if k not in ['bboxes', 'transforms_dict']])
@@ -869,22 +879,27 @@ class DataManagerPatch(DataManager):
             bboxes_out.update(bb_out)
         return bboxes_out
 
+    # def set_tfm_keys(self):
+    #     self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
+    #     self.keys_val = "L,Ld,E,Rva,Re,N"
     def set_tfm_keys(self):
-        self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
-        self.keys_val = "L,Ld,E,Rva,Re,N"
-
+        if not is_excel_None(self.plan["src_dest_labels"]):
+            self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
+        else:
+            self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,IntensityTfms"
+        self.keys_val = "RP,L,Ld,E,Rva,Re,N"
     def load_bboxes(self):
         bbox_fn = self.data_folder / "bboxes_info"
         self.bboxes = load_dict(bbox_fn)
 
-    def prepare_data(self):
-        self.train_cids, self.valid_cids = self.project.get_train_val_cids(
-            self.dataset_params["fold"]
-        )
-        print("Creating train data dicts")
-        self.data_train = self.create_data_dicts(self.train_cids)
-        print("Creating val data dicts")
-        self.data_valid = self.create_data_dicts(self.valid_cids)
+    # def prepare_data(self):
+    #     self.train_cids, self.valid_cids = self.project.get_train_val_files(
+    #         self.dataset_params["fold"]
+    #     )
+    #     print("Creating train data dicts")
+    #     self.data_train = self.create_data_dicts(self.train_cids)
+    #     print("Creating val data dicts")
+    #     self.data_valid = self.create_data_dicts(self.valid_cids)
 
     def get_label_info(self, case_patches):
         indices = []
@@ -905,10 +920,13 @@ class DataManagerPatch(DataManager):
             "labels_this_case": labels_this_case,
         }
 
-    def create_data_dicts(self, cids):
+    def create_data_dicts(self, fnames):
         patches = []
-        for cid in pbar(cids):
-            dici = {"case_id": cid}
+        fnames = self.train_cases
+        patches = []
+        for fname in pbar(fnames):
+            cid = info_from_filename(fname,True)['case_id']
+            dici = {"case_id": fname}
             patch_fns = self.get_patch_files(self.bboxes, cid)
             dici.update(patch_fns)
             patches.append(dici)
@@ -917,27 +935,23 @@ class DataManagerPatch(DataManager):
     def create_transforms(self, keys='all'):
         super().create_transforms(keys)
 
-    
-    #CODE: INCOMPLETE: FIX THIS FOLLOW THE PATTERN OF DATAMANAGERSOURCE
     def derive_data_folder(self):
         parent_folder = self.project.patches_folder
         plan_name = "plan" + str(self.dataset_params["plan"])
         source_plan_name = self.plan["source_plan"]
         source_plan = self.config[source_plan_name]
-        spacing = ast.literal_eval(source_plan["spacing"])
-        # spacing = self.dataset_params["spacing"]
+        spacing = ast_literal_eval(source_plan["spacing"])
         subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
-        patch_size = ast.literal_eval(
-            self.plan["patch_size"]
-        )  # self.plan['patch_size']
-        subfldr2 = folder_name_from_list("dim", subfldr1, patch_size, plan_name)
-        self.data_folder = subfldr2
+        patch_size = ast_literal_eval(self.plan["patch_size"])
+        return folder_name_from_list("dim", subfldr1, patch_size, plan_name)
+
 
     # CODE: use same validation dataloader in all flavours of training to make it comparable
     def setup(self, stage: str = None):
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
         fgbg_ratio_adjusted = fgbg_ratio / self.fg_bg_prior
         self.dataset_params["fgbg_ratio"] = fgbg_ratio_adjusted
+        super().setup(stage)
 
         #
         # self.create_transforms()
@@ -955,15 +969,15 @@ class DataManagerPatch(DataManager):
         #     db_name="valid_cache",
         # )
         #
-    def set_tfm_keys(self):
-        self.keys_val = "L,Ld,E,Rva,Re,N"
-        self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,I"
-        if not math.isnan(self.dataset_params["src_dest_labels"]):
-            self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,I"
-        else:
-            self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,I"
-
-        self.keys_val = "RP,L,Ld,E,Rva,Re,N"
+    # def set_tfm_keys(self):
+    #     self.keys_val = "L,Ld,E,Rva,Re,N"
+    #     self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,I"
+    #     if not math.isnan(self.dataset_params["src_dest_labels"]):
+    #         self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,I"
+    #     else:
+    #         self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,I"
+    #
+    #     self.keys_val = "RP,L,Ld,E,Rva,Re,N"
 
     @property
     def src_dims(self):
@@ -1044,6 +1058,15 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
+
+
+    project_title = "litsmc"
+    proj_litsmc = Project(project_title=project_title)
+
+
+    config_litsmc = ConfigMaker(
+        proj_litsmc, raytune=False, configuration_filename=None
+    ).config
 
     project_title = "totalseg"
     proj = Project(project_title=project_title)
@@ -1150,9 +1173,7 @@ if __name__ == "__main__":
     lm = b['lm']
 
 # %%
-# %%
 #SECTION:-------------------- LBD--------------------------------------------------------------------------------------
-
 # %%
     batch_size = 2
     D = DataManagerLBD(
@@ -1183,6 +1204,9 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
+
+    proj=proj_litsmc
+    config=config_litsmc
     batch_size = 2
     D = DataManagerPatch(
         proj,
@@ -1199,6 +1223,7 @@ if __name__ == "__main__":
     b = next(iteri)
     im = b['image']
     lm = b['lm']
+    ImageMaskViewer([im[0,0],lm[0,0]])
 # %%
     for i, dd in enumerate(D.train_ds):
         print(i)
@@ -1299,3 +1324,5 @@ if __name__ == "__main__":
     img = b["image"][ind][0]
     lab = b["lm"][ind][0]
     ImageMaskViewer([img, lab])
+# %%
+# %%
