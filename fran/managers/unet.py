@@ -42,11 +42,11 @@ class UNetManager(LightningModule):
     ):
         super().__init__()
         store_attr()
-        self.lr = lr if lr else self.model_params["lr"]
+        self.save_hyperparameters("project","config","lr")
         self.plan = config["plan"]
         self.model_params = config["model_params"]
         self.loss_params = config['loss_params']
-        self.save_hyperparameters("project","config","lr")
+        self.lr = lr if lr else self.model_params["lr"]
         self.model = self.create_model()
 
     def on_fit_start(self):

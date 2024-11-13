@@ -85,10 +85,10 @@ class WholeImageInferer(BaseInferer):
             **kwargs
         )
 
-        self.tfms = "ERN"
+        self.tfms = "ESN"
     def create_transforms(self):
         super().create_transforms()
-        self.R = Resized(keys=["image"], spatial_size=self.plan["patch_size"])
+        self.S = Resized(keys=["image"], spatial_size=self.plan["patch_size"]) # KEEP NAME AS S TO AVOID BUGS
     #
     #
     # def predict_inner(self,batch):
@@ -157,6 +157,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         profile=None,
         save_channels=False,
         save=True,
+        save_localiser=True,
         k_largest=None,  # assign a number if there are organs involved
     ):
         """
@@ -327,9 +328,12 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             print("Bbox overwrite not implemented yet")
         print("Starting localiser data prep and prediction")
         self.W.setup()
-        self.W.prepare_data(data, tfms="ERN")
+        self.W.prepare_data(data, tfms="ESN")
         p = self.W.predict()
         preds = self.W.postprocess(p)
+        if self.save_localiser==True:
+        #CODE: save_pred uses the run_name of the patch inferer and not that of the WSI inferer . fix this bug. Make it maybe infer project from run_name and initialise the correct projects at the get go.
+            self.W.save_pred(preds)
         bboxes = []
         for pred in preds:
             pred = Sel(pred)
@@ -391,7 +395,7 @@ if __name__ == "__main__":
     project = Project(project_title="litsmc")
 
     run_w2 = "LIT-145"
-    run_w= "LITS-1088"
+    run_w= "LITS-1088" # this run has localiser_labels not full TSL.
 
     run_lidc2 = ["LITS-902"]
     run_nodes = ["LITS-1110"]
@@ -425,9 +429,36 @@ if __name__ == "__main__":
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
     localiser_labels_litsmc = [1]
+    TSL = TotalSegmenterLabels()
+# %%
+# %%
+#SECTION:-------------------- LIDC--------------------------------------------------------------------------------------
+
+    loc_lidc= [7] # lung in localiser_label
+
+    safe_mode=False
+    devices = [1]
+    overwrite=True
+    save_channels=True
+    project = Project(project_title="lidc2")
+    En = CascadeInferer(
+        project,
+        run_w,
+        run_lidc2,
+        save_channels=save_channels,
+        devices=devices ,
+        overwrite=overwrite,
+        localiser_labels=localiser_labels,
+        safe_mode=safe_mode,
+        k_largest=None
+    )
+
+# %%
+    imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
+    preds = En.run(imgs_tmp,chunksize=4)
+
 # %%
 #SECTION:-------------------- NODES --------------------------------------------------------------------------------------
-    TSL = TotalSegmenterLabels()
     localiser_labels= set(TSL.label_localiser)
     
     safe_mode=False
@@ -447,6 +478,10 @@ if __name__ == "__main__":
         k_largest=None
     )
 
+# %%
+# %%
+
+    dl = En.ps
 # %%
     preds = En.run(nodes,chunksize=2)
 
@@ -481,12 +516,13 @@ if __name__ == "__main__":
 ### %%
 #SECTION:---------------------------------------- LITSMC predictions--------------------------------------------------------------------
 
-    run = run_litsmc2
+    run = run_litsmc
     localiser_labels_litsmc = [3]
     run_w = "LITS-1088"
     devices = [1]
     overwrite=True
     safe_mode=True
+    save_localiser=True
     save_channels=False
     project = Project(project_title="litsmc")
     if project.project_title=="litsmc":
@@ -503,6 +539,7 @@ if __name__ == "__main__":
         overwrite=overwrite,
         localiser_labels=localiser_labels_litsmc,
         safe_mode=safe_mode,
+        save_localiser=save_localiser,
         k_largest=k_largest
     )
 
@@ -510,7 +547,9 @@ if __name__ == "__main__":
 # img_fns = list(img_fldr.glob("*"))[20:50]
     # case_id = "crc_CRC089"
     # imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
-    preds = En.run(imgs_crc[:10],chunksize=4)
+    # preds = En.run(imgs_crc[:10],chunksize=4)
+    imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
+    preds = En.run(imgs_tmp,chunksize=4)
 
 # %%
     preds = En.W.postprocess(p)
@@ -591,6 +630,7 @@ if __name__ == "__main__":
         P.prepare_data(data=data, tfms="ESN", collate_fn=img_bbox_collated)
         batch = next(iter(P.pred_dl))
 
+# %%
         with torch.inference_mode():
             for i, batch in enumerate(P.pred_dl):
                 with torch.no_grad():

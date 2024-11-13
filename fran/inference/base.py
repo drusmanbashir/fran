@@ -46,6 +46,7 @@ def get_patch_spacing( run_name):
             src_plan  = config['plan']['source_plan']
             src_plan = config[src_plan]
             spacing = src_plan['spacing']
+        print(run_name,spacing)
         spacing= ast_literal_eval(spacing)
         return spacing
 
@@ -104,6 +105,7 @@ class BaseInferer(GetAttr, DictToAttr):
         else:
             self.params = params
         self.plan = fix_ast(self.params['config']['plan'],["spacing"])
+        self.dataset_params = self.params['config']['dataset_params']
 
         if safe_mode == True:
             print(
@@ -188,9 +190,9 @@ class BaseInferer(GetAttr, DictToAttr):
         self.S = Spacingd(keys=["image"], pixdim= spacing)
         self.N = NormaliseClipd(
             keys=["image"],
-            clip_range=self.params["dataset_params"]["intensity_clip_range"],
-            mean=self.params["dataset_params"]["mean_fg"],
-            std=self.params["dataset_params"]["std_fg"],
+            clip_range=self.dataset_params["intensity_clip_range"],
+            mean=self.dataset_params["mean_fg"],
+            std=self.dataset_params["std_fg"],
         )
 
         self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
@@ -319,7 +321,7 @@ class BaseInferer(GetAttr, DictToAttr):
             self.ckpt,
             plan=self.plan,
             project=self.project,
-            dataset_params=self.params['dataset_params'],
+            dataset_params=self.dataset_params,
             strict=False,
             map_location=device,
         )
@@ -377,6 +379,7 @@ if __name__ == "__main__":
     D = _DS()
     proj = Project(project_title="totalseg")
     run_tot= ["LITS-860"]
+    run_loc = ["LITS-1088"]
     safe_mode = False
 
     proj_nodes = Project(project_title="nodes")
@@ -451,11 +454,12 @@ if __name__ == "__main__":
     bs = 4
     overwrite = False
     devices = [0]
+    run = run_loc[0]
     
 
     T = BaseInferer(
         proj,
-        run_tot[0],
+        run,
         save_channels=save_channels,
         safe_mode=safe_mode,
         devices=devices
@@ -466,7 +470,7 @@ if __name__ == "__main__":
     imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
     preds = T.run(imgs_crc, chunksize=1)
 
-# %%
+#datamodule_ %%
 
     P.setup()
     imgs_sublist = img_fns

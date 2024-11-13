@@ -361,8 +361,10 @@ if __name__ == "__main__":
 
 
     proj_nodes = Project(project_title="nodes")
+    proj_tsl =  Project(project_title="totalseg")
     proj_litsmc = Project(project_title="litsmc")
     conf_litsmc = ConfigMaker(proj_litsmc, raytune=False).config
+    conf_tsl= ConfigMaker(proj_tsl, raytune=False).config
 
     # conf['model_params']['lr']=1e-3
 
@@ -385,9 +387,11 @@ if __name__ == "__main__":
 # %%
 
     run_name = run_litsmc
-    # run_name = run_none
+    run_name = run_none
     proj = proj_litsmc
+    proj = proj_tsl
     conf = conf_litsmc
+    conf = conf_tsl
     Tm = Trainer(proj, conf, run_name)
 
 # %%
