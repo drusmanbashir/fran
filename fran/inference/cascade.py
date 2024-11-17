@@ -68,7 +68,6 @@ def img_bbox_collated(batch):
 class WholeImageInferer(BaseInferer):
     def __init__(
         self,
-        project,
         run_name,
         devices=[1],
         save_channels=True,
@@ -77,7 +76,6 @@ class WholeImageInferer(BaseInferer):
     ):
 
         super().__init__(
-            project=project,
             run_name=run_name,
             devices=devices,
             save_channels=save_channels,
@@ -105,7 +103,6 @@ class WholeImageInferer(BaseInferer):
 class PatchInferer(BaseInferer):
     def __init__(
         self,
-        project,
         run_name,
         patch_overlap=0.25,
         bs=1,
@@ -115,7 +112,6 @@ class PatchInferer(BaseInferer):
         **kwargs
     ):
         super().__init__(
-            project=project,
             run_name=run_name,
             devices=devices,
             save_channels=save_channels,
@@ -147,7 +143,6 @@ class PatchInferer(BaseInferer):
 class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
     def __init__(
         self,
-        project,
         run_name_w,
         runs_p,
         localiser_labels: list,  # these labels will be used to create bbox
@@ -170,12 +165,10 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             "all",
         ], "Choose one of None , 'dataloading', 'prediction', 'all'"
 
-        self.predictions_folder = project.predictions_folder
         self.params = load_params(runs_p[0])
         #CODE:  change params to a different name more aligned and found else where in library
         self.Ps = [
             PatchInferer(
-                project=project,
                 run_name=run,
                 devices=devices,
                 save_channels=save_channels,
@@ -183,10 +176,10 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             )
             for run in runs_p
         ]
+        self.predictions_folder = self.Ps[0].project.predictions_folder
         self.localiser_tfms = "ESN"
         WSInf = self.inferer_from_params(run_name_w)
         self.W = WSInf(
-            project=project,
             run_name=run_name_w,
             save_channels=save_channels,
             devices=devices,
@@ -332,7 +325,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         p = self.W.predict()
         preds = self.W.postprocess(p)
         if self.save_localiser==True:
-        #CODE: save_pred uses the run_name of the patch inferer and not that of the WSI inferer . fix this bug. Make it maybe infer project from run_name and initialise the correct projects at the get go.
             self.W.save_pred(preds)
         bboxes = []
         for pred in preds:
@@ -392,7 +384,6 @@ if __name__ == "__main__":
     # ... run your application ...
     from fran.utils.common import *
     from fran.managers import Project
-    project = Project(project_title="litsmc")
 
     run_w2 = "LIT-145"
     run_w= "LITS-1088" # this run has localiser_labels not full TSL.
@@ -439,16 +430,14 @@ if __name__ == "__main__":
     safe_mode=False
     devices = [1]
     overwrite=True
-    save_channels=True
-    project = Project(project_title="lidc2")
+    save_channels=False
     En = CascadeInferer(
-        project,
         run_w,
         run_lidc2,
         save_channels=save_channels,
         devices=devices ,
         overwrite=overwrite,
-        localiser_labels=localiser_labels,
+        localiser_labels=loc_lidc,
         safe_mode=safe_mode,
         k_largest=None
     )
@@ -465,9 +454,7 @@ if __name__ == "__main__":
     devices = [1]
     overwrite=True
     save_channels=True
-    project = Project(project_title="nodes")
     En = CascadeInferer(
-        project,
         run_w,
         run_nodes,
         save_channels=save_channels,
@@ -500,9 +487,8 @@ if __name__ == "__main__":
 #SECTION:-------------------- TOTALSEG WholeImageinferer--------------------------------------------------------------------------------------
 
     safe_mode=False
-    project = Project(project_title="totalseg")
     run_tot= ["LITS-1088"]
-    W = WholeImageInferer(project, run_tot[0], safe_mode=safe_mode, k_largest=None,save_channels=False)
+    W = WholeImageInferer( run_tot[0], safe_mode=safe_mode, k_largest=None,save_channels=False)
 # %%
     
     nodes_imgs = list(nodes_fldr.glob("*"))
@@ -530,8 +516,6 @@ if __name__ == "__main__":
     else:
         k_largest= None
     En = CascadeInferer(
-        project,
-
         run_w,
         run,
         save_channels=save_channels,
@@ -615,7 +599,7 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- process_imgs_sublist--------------------------------------------------------------------------------------
       
-        imgs_sublist = nodes
+        imgs_sublist = imgs_tmp
         data = En.load_images(imgs_sublist)
         En.bboxes = En.extract_fg_bboxes(data)
         data = En.apply_bboxes(data, En.bboxes)

@@ -74,7 +74,6 @@ def load_params(model_id):
 class BaseInferer(GetAttr, DictToAttr):
     def __init__(
         self,
-        project,
         run_name,
         ckpt=None,
         state_dict=None,
@@ -95,7 +94,7 @@ class BaseInferer(GetAttr, DictToAttr):
         """
         torch.cuda.empty_cache()
 
-        store_attr("project,run_name,devices,save_channels, save,safe_mode, k_largest")
+        store_attr("run_name,devices,save_channels, save,safe_mode, k_largest")
         if ckpt is None:
             self.ckpt = checkpoint_from_model_id(run_name)
         else:
@@ -106,6 +105,7 @@ class BaseInferer(GetAttr, DictToAttr):
             self.params = params
         self.plan = fix_ast(self.params['config']['plan'],["spacing"])
         self.dataset_params = self.params['config']['dataset_params']
+        self.infer_project()
 
         if safe_mode == True:
             print(
@@ -196,6 +196,29 @@ class BaseInferer(GetAttr, DictToAttr):
         )
 
         self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+
+    def infer_project(self):
+        """Recursively search through params dictionary to find 'project' key and set it as attribute"""
+        def find_project(d):
+            if isinstance(d, dict):
+                for k, v in d.items():
+                    if k == 'project':
+                        return v
+                    result = find_project(v)
+                    if result is not None:
+                        return result
+            elif isinstance(d, list):
+                for item in d:
+                    result = find_project(item)
+                    if result is not None:
+                        return result
+            return None
+            
+        project_value = find_project(self.params)
+        if project_value:
+            self.project = project_value
+        else:
+            raise ValueError("No 'project' key found in params dictionary")
 
     def __repr__(self) -> str:
         return str(self.__class__)
@@ -409,7 +432,6 @@ if __name__ == "__main__":
     overwrite = False
     devices = [0]
     N = BaseInferer(
-        proj_nodes,
         run_nodes[0],
         save_channels=save_channels,
         safe_mode=safe_mode,
@@ -433,7 +455,6 @@ if __name__ == "__main__":
     overwrite = True
     devices = [1]
     L = BaseInferer(
-        proj_litsmc,
         run_litsmc[0],
    
         save_channels=save_channels,
@@ -458,7 +479,6 @@ if __name__ == "__main__":
     
 
     T = BaseInferer(
-        proj,
         run,
         save_channels=save_channels,
         safe_mode=safe_mode,
