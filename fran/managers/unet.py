@@ -93,6 +93,7 @@ class UNetManager(LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, loss_dict = self._common_step(batch, batch_idx)
+        tr()
         self.log_losses(loss_dict, prefix="train")
         return loss
 
@@ -241,14 +242,14 @@ class UNetManagerFabric(UNetManager):
         pass
 
 
-    def training_step(self, batch, batch_idx):
-        output = self._common_step(batch, batch_idx,"train")
-        return output
+    # def training_step(self, batch, batch_idx):
+        # output = self._common_step(batch, batch_idx,"train")
+        # return output
         # loss = output['loss']
         # return loss
 
-    def validation_step(self, batch, batch_idx):
-        output = self._common_step(batch, batch_idx,"val")
-        return output
+    # def validation_step(self, batch, batch_idx):
+    #     output = self._common_step(batch, batch_idx,"val")
+    #     return output
         # loss = output['loss']
         # return loss

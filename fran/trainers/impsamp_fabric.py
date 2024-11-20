@@ -1,7 +1,16 @@
 # %%
+from fran.managers import Project
+from pathlib import Path
 from pytorch_grad_cam import (
     GradCAM,
 )
+import ipdb
+
+from fran.trainers.base import checkpoint_from_model_id
+from fran.utils.config_parsers import ConfigMaker
+tr = ipdb.set_trace
+
+from fran.managers import UNetManagerCraig
 import os
 from torch.cuda.amp import autocast
 from monai.transforms import Decollated
@@ -23,13 +32,9 @@ from lightning_utilities import apply_to_collection
 from tqdm import tqdm
 import warnings
 
-from xnat.object_oriented import shutil
-
+import shutil
 from fran.trainers.impsamp import (
-    UNetTrainerCraig,
-    checkpoint_from_model_id,
     fix_dict_keys,
-    init_unet_trainer,
     resolve_datamanager,
 )
 from fran.transforms.imageio import TorchWriter
@@ -38,11 +43,9 @@ from fran.utils.imageviewers import ImageMaskViewer
 
 
 def init_unet_trainer(project, config, lr):
-    N = UNetTrainerCraig(
-        project,
-        config["dataset_params"],
-        config["model_params"],
-        config["loss_params"],
+    N = UNetManagerCraig(
+        project=project,
+        config=config,
         lr=lr,
     )
     return N
@@ -50,7 +53,7 @@ def init_unet_trainer(project, config, lr):
 
 def load_unet_trainer(ckpt, project, config, lr, **kwargs):
     try:
-        N = UNetTrainerCraig.load_from_checkpoint(
+        N = UNetManagerCraig.load_from_checkpoint(
             ckpt,
             project=project,
             dataset_params=config["dataset_params"],
@@ -72,7 +75,7 @@ def load_unet_trainer(ckpt, project, config, lr, **kwargs):
         torch.save(state_dict_neo, ckpt)
         shutil.move(ckpt, ckpt_old)
 
-        N = UNetTrainerCraig.load_from_checkpoint(
+        N = UNetManagerCraig.load_from_checkpoint(
             ckpt,
             project=project,
             dataset_params=config["dataset_params"],
@@ -119,7 +122,7 @@ class StoreInfo:
         pass
 
     def _common(self, outputs, batch):
-        grad_L_z = outputs["grad_L_z"]
+        grad_L_z = outputs[1]
         # Gi_inside = model.grad_L_x * model.grad_sigma_z[0]
         # Gi_inside_normed_batch = [torch.linalg.norm(G) for G in Gi_inside]
         # # Gi_inside_normed = torch.stack(Gi_inside_normed_batch)
@@ -178,7 +181,7 @@ class StoreInfo:
 
 
 # customizing hooks because fabric treats model as a callback
-class UNetTrainerCraig(UNetTrainerCraig):
+class UNetManagerCraig(UNetManagerCraig):
     def on_train_batch_start(self, trainer, batch, batch_idx):
         pass
 
@@ -465,7 +468,7 @@ class Trainer:
                     model, scheduler_cfg, level="step", current_value=self.global_step
                 )
 
-            self._format_iterable(iterable, self._current_train_return["loss"], "train")
+            self._format_iterable(iterable, self._current_train_return[0], "train")
             # only increase global step if optimizer stepped
             self.global_step += int(should_optim_step)
             # stopping criterion on step level
@@ -531,7 +534,7 @@ class Trainer:
             out = apply_to_collection(out, torch.Tensor, lambda x: x.detach())
             self.fabric.call("on_validation_batch_end", self, out, batch, batch_idx)
             self._current_val_return = out
-            self._format_iterable(iterable, self._current_val_return["loss"], "val")
+            self._format_iterable(iterable, self._current_val_return[0], "val")
 
         self.fabric.call("on_validation_epoch_end")
 
@@ -544,6 +547,7 @@ class Trainer:
     def validation_step(self, model: L.LightningModule, batch: Any, batch_idx: int):
         """The default validation step. Override if you need to do anything extra"""
         with autocast():
+
             out = model.validation_step(batch, batch_idx)
         return out
 
@@ -612,6 +616,9 @@ class Trainer:
         possible_monitor_vals = {None: None}
         if isinstance(self._current_train_return, torch.Tensor):
             possible_monitor_vals.update("train_loss", self._current_train_return)
+
+        if isinstance(self._current_train_return, tuple):
+            possible_monitor_vals.update("train_loss", self._current_train_return[0])
         elif isinstance(self._current_train_return, Mapping):
             possible_monitor_vals.update(
                 {
@@ -622,6 +629,9 @@ class Trainer:
 
         if isinstance(self._current_val_return, torch.Tensor):
             possible_monitor_vals.update("val_loss", self._current_val_return)
+
+        if isinstance(self._current_val, tuple):
+            possible_monitor_vals.update("val_loss", self._current_val_return[0])
         elif isinstance(self._current_val_return, Mapping):
             possible_monitor_vals.update(
                 {
@@ -869,14 +879,13 @@ if __name__ == "__main__":
     else:
         D = DMClass(
             proj,
-            dataset_params=config["dataset_params"],
+            
             config=config,
-            transform_factors=config["transform_factors"],
-            affine3d=config["affine3d"],
             batch_size=config["dataset_params"]["batch_size"],
             cache_rate=0,
-            ds_type=config["dataset_params"]["ds_type"],
+           
         )
+# %%
         N = init_unet_trainer(proj, config, lr=config["model_params"]["lr"])
 # %%
     D.prepare_data()
@@ -889,7 +898,7 @@ if __name__ == "__main__":
 # %%
 
 # SECTION:-------------------- Train-------------------------------------------------------------------------------------- <CR>
-    Tm = Trainer(callbacks=cbs, precision="16-true", should_train=False,devices = devices)
+    Tm = Trainer(callbacks=cbs, precision="bf16-mixed", should_train=False,devices = devices)
 # %%
     Tm.fit(model=N, train_loader=train_dl, val_loader=val_dl)
 # SECTION:-------------------- GRADCAM-------------------------------------------------------------------------------------- <CR>
@@ -972,4 +981,191 @@ if __name__ == "__main__":
 # Performing the matrix multiplication
     A*B
     result = np.matmul(A, B)
+# %%
+# %%
+#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
+# %%
+    accelerator = "auto"
+    ckpt_path=None
+    strategy = "auto" 
+    precision = "bf16-mixed"
+    plugins = None
+    loggers = None
+    grad_accum_steps = 1
+    max_epochs = 1
+    max_steps = None
+    limit_train_batches = float("inf")
+    limit_val_batches = float("inf")
+    validation_frequency = 1
+    use_distributed_sampler = True
+    checkpoint_dir = "./checkpoints"
+    checkpoint_frequency = 1
+    callbacks=cbs
+    precision="bf16-mixed"
+
+    devices = [0]
+    should_train=False
+# %%
+    # Initialize Fabric
+    Tm.fabric = L.Fabric(
+        accelerator=accelerator,
+        strategy=strategy,
+        devices=devices,
+        precision=precision,
+        plugins=plugins,
+        callbacks=callbacks,
+        loggers=loggers,
+    )
+    
+    # Set trainer attributes
+    Tm.should_train = should_train
+    Tm.global_step = 0
+    Tm.grad_accum_steps = grad_accum_steps
+    Tm.current_epoch = 0
+    Tm.max_epochs = max_epochs
+    Tm.max_steps = max_steps
+    Tm.should_stop = False
+    Tm.limit_train_batches = limit_train_batches
+    Tm.limit_val_batches = limit_val_batches
+    Tm.validation_frequency = validation_frequency
+    Tm.use_distributed_sampler = use_distributed_sampler
+    Tm._current_train_return: Union[torch.Tensor, Mapping[str, Any]] = {}
+    Tm._current_val_return: Optional[Union[torch.Tensor, Mapping[str, Any]]] = {}
+    Tm.checkpoint_dir = checkpoint_dir
+    Tm.checkpoint_frequency = checkpoint_frequency
+
+# %%
+
+    model =N
+    val_loader=val_dl
+    train_loader=train_dl
+    Tm.fabric.launch()
+    # setup dataloaders
+    train_loader = Tm.fabric.setup_dataloaders(
+        train_loader, use_distributed_sampler=Tm.use_distributed_sampler
+    )
+    if val_loader is not None:
+        val_loader = Tm.fabric.setup_dataloaders(
+            val_loader, use_distributed_sampler=Tm.use_distributed_sampler
+        )
+
+# %%
+    iteri =iter(train_loader)
+    batch = next(iteri)
+    batch['image'].dtype
+# %%
+    # setup model and optimizer
+    if isinstance(Tm.fabric.strategy, L.fabric.strategies.fsdp.FSDPStrategy):
+        # currently, there is no way to support fsdp with model.configure_optimizers in fabric
+        # as it would require fabric to hold a reference to the model, which we don't want to.
+        raise NotImplementedError("BYOT currently does not support FSDP")
+
+    optimizer, scheduler_cfg = model.configure_optimizers().values()
+    assert optimizer is not None
+    model, optimizer = Tm.fabric.setup(model, optimizer)
+
+    # assemble state (current epoch and global step will be added in save)
+    state = {"model": model, "optim": optimizer, "scheduler": scheduler_cfg}
+
+    # load last checkpoint if available
+    if ckpt_path is not None and os.path.isdir(ckpt_path):
+        latest_checkpoint_path = Tm.get_latest_checkpoint(Tm.checkpoint_dir)
+        if latest_checkpoint_path is not None:
+            Tm.load(state, latest_checkpoint_path)
+
+            # check if we even need to train here
+            if (
+                Tm.max_epochs is not None
+                and Tm.current_epoch >= Tm.max_epochs
+            ):
+                Tm.should_stop = True
+
+    Tm.fabric.call("on_fit_start")
+    while not Tm.should_stop:
+        # if Tm.should_train:
+        #     Tm.train_loop(
+        #         model,
+        #         optimizer,
+        #         train_loader,
+        #         limit_batches=Tm.limit_train_batches,
+        #         scheduler_cfg=scheduler_cfg,
+        #     )
+
+        if Tm.should_validate:
+            Tm.val_loop(model, val_loader, limit_batches=Tm.limit_val_batches)
+
+        if Tm.should_train:
+            Tm.step_scheduler(
+                model,
+                scheduler_cfg,
+                level="epoch",
+                current_value=Tm.current_epoch,
+            )
+
+        Tm.current_epoch += 1
+
+        # stopping condition on epoch level
+        if Tm.max_epochs is not None and Tm.current_epoch >= Tm.max_epochs:
+            Tm.should_stop = True
+
+        Tm.save(state)
+
+    # reset for next fit call
+    Tm.fabric.call("on_fit_end")
+    Tm.should_stop = False
+
+
+# %%
+    model = Tm.model
+    val_loader
+    limit_batches=Tm.limit_val_batches
+
+    # no validation but warning if val_loader was passed, but validation_step not implemented
+    if val_loader is not None and not is_overridden(
+        "validation_step", _unwrap_objects(model)
+    ):
+        L.fabric.utilities.rank_zero_warn(
+            "Your LightningModule does not have a validation_step implemented, "
+            "but you passed a validation dataloder. Skipping Validation."
+        )
+
+    if not is_overridden("on_validation_model_eval", _unwrap_objects(model)):
+        # pass
+        model.eval()
+    else:
+        Tm.fabric.call("on_validation_model_eval")  # calls `model.eval()`
+
+    print("==" * 50)
+    print("GRAD ENABLED")
+    torch.set_grad_enabled(True)
+
+    Tm.fabric.call("on_validation_epoch_start")
+
+    iterable = Tm.progbar_wrapper(
+        val_loader, total=min(len(val_loader), limit_batches), desc="Validation"
+    )
+
+    for batch_idx, batch in enumerate(iterable):
+        # end epoch if stopping training completely or max batches for this epoch reached
+        if Tm.should_stop or batch_idx >= limit_batches:
+            break
+
+        Tm.fabric.call("on_validation_batch_start", batch, batch_idx)
+
+        out = Tm.validation_step(model, batch, batch_idx)
+        # avoid gradients in stored/accumulated values -> prevents potential OOM
+        out = apply_to_collection(out, torch.Tensor, lambda x: x.detach())
+        Tm.fabric.call("on_validation_batch_end", Tm, out, batch, batch_idx)
+        Tm._current_val_return = out
+        Tm._format_iterable(iterable, Tm._current_val_return[0], "val")
+
+    Tm.fabric.call("on_validation_epoch_end")
+
+    if not is_overridden("on_validation_model_train", _unwrap_objects(model)):
+        model.train()
+    else:
+        Tm.fabric.call("on_validation_model_train")
+    torch.set_grad_enabled(True)
+
+
 # %%

@@ -187,6 +187,10 @@ if __name__ == "__main__":
     dici['hyper_parameters']['config']['plan']['spacing']
     dici['hyper_parameters']['config']['loss_params'] = dici['hyper_parameters']['loss_params'].copy()
 # %%
+    dici['hyper_parameters']['config'].keys()
+
+    dici['hyper_parameters']['project']
+    dict_src['hyper_parameters']['project']
 # %%
     dici['datamodule_hyper_parameters'].keys()
     dici['datamodule_hyper_parameters']['dataset_params']
@@ -194,7 +198,7 @@ if __name__ == "__main__":
     dici['datamodule_hyper_parameters']['config']['dataset_params']=dici['datamodule_hyper_parameters']['dataset_params'].copy()
     dici['datamodule_hyper_parameters']['config']['plan'] = dici['datamodule_hyper_parameters']['dataset_params'].copy()
     dici['datamodule_hyper_parameters']['config']['plan']['spacing']
-    dici['datamodule_hyper_parameters']['config']['plan']['mode'] 
+    dici['datamodule_hyper_parameters']['config']['plan']['mode'] ='whole'
     dici['datamodule_hyper_parameters']['config']['loss_params'] = dici['hyper_parameters']['loss_params'].copy()
     dici['hyper_parameters']['project'] = dici['datamodule_hyper_parameters']['project'].copy()
     dici['hyper_parameters'].keys()

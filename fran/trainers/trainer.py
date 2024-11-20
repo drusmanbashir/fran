@@ -437,9 +437,11 @@ if __name__ == "__main__":
 # %%
     dl = Tm.D.train_dataloader()
     iteri = iter(dl)
-    Tm.N.model.to('cpu')
+    # Tm.N.model.to('cpu')
 # %%
     batch = next(iteri)
+    print(batch['image'].dtype)
+# %%
     pred = Tm.N.model(batch['image'])
 # %%
 

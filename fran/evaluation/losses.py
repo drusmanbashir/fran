@@ -236,8 +236,8 @@ class DeepSupervisionLoss(pl.LightningModule):
         losses_weighted = torch.stack(
             [self.weights * loss[0] for loss in losses]
         )  # total_loss * weight for each level
-        losses_weighted_summed = losses_weighted.sum()
-        return losses_weighted_summed
+        losses_out = losses_weighted.sum()
+        return losses_out
 
     def set_loss_dict(self,l):
         class_losses = l[-1].mean(0)

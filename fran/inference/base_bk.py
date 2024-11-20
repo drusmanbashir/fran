@@ -1,6 +1,5 @@
 # %%
 import itertools as il
-from typing import Union, List
 import ipdb
 
 from fran.utils.string import ast_literal_eval
@@ -71,12 +70,11 @@ def load_params(model_id):
     # dic_relevant['plan']=fix_ast(dic_relevant['plan'], keys = ['spacing'])# = fix_ast(dic_tmp, keys=['spacing'])
     return dic_relevant
 
+
 class BaseInferer(GetAttr, DictToAttr):
     def __init__(
         self,
         run_name,
-        project=None,
-        config=None,
         ckpt=None,
         state_dict=None,
         params=None,
@@ -85,11 +83,11 @@ class BaseInferer(GetAttr, DictToAttr):
         mode="gaussian",
         devices=[0],
         safe_mode=False,
+        # reader=None,
         save_channels=True,
         save=True,
         k_largest=None,  # assign a number if there are organs involved
     ):
-
         """
         data is a dataset from Ensemble in this base class
         params: should be a dict with 2 keys: dataset_params and plan.
@@ -125,19 +123,11 @@ class BaseInferer(GetAttr, DictToAttr):
             progress=True,
             device=stitch_device,
         )
-
-        # Initialize InferenceDataModule
-        self.data_module = InferenceDataModule(
-            project=self.project,
-            config=self.params['config'],
-            batch_size=bs,
-            num_workers=0 if safe_mode else 4,
-            safe_mode=safe_mode
-        )
-
+        self.tfms="ESN"
 
     def setup(self):
         if not hasattr(self, "model"):
+            self.create_transforms()
             self.prepare_model()
         # self.create_postprocess_transforms()
 
@@ -170,13 +160,13 @@ class BaseInferer(GetAttr, DictToAttr):
         return imgs
 
     def process_imgs_sublist(self, imgs_sublist):
-        """Process a subset of images using the data module"""
-        self.pred_dl = self.data_module.setup(imgs_sublist)
+        data = self.load_images(imgs_sublist)
+        self.prepare_data(data,self.tfms,  collate_fn=None)
         preds = self.predict()
         output = self.postprocess(preds)
-        if self.save:
+        if self.save == True:
             self.save_pred(output)
-        if self.safe_mode:
+        if self.safe_mode == True:
             self.reset()
         return output
 
@@ -415,6 +405,8 @@ if __name__ == "__main__":
     run_loc = ["LITS-1088"]
     safe_mode = False
 
+    proj_nodes = Project(project_title="nodes")
+    run_nodes= ["LITS-966"]
 
     proj_litsmc= Project(project_title="litsmc")
     fldr_crc = Path("/s/xnat_shadow/crc/images")
@@ -430,6 +422,27 @@ if __name__ == "__main__":
 
 
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
+
+# %%
+#SECTION:-------------------- NODES--------------------------------------------------------------------------------------
+
+    safe_mode = False
+    bs = 5
+    save_channels = False
+    overwrite = False
+    devices = [0]
+    N = BaseInferer(
+        run_nodes[0],
+        save_channels=save_channels,
+        safe_mode=safe_mode,
+        devices=devices,
+    )
+
+# %%
+    preds = N.run(img_nodes, chunksize=1,overwrite=overwrite)
+# %%
+    data = P.ds.data[0]
+# %%
 
 # %%
 #SECTION:-------------------- LITSMC--------------------------------------------------------------------------------------

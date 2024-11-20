@@ -116,6 +116,7 @@ class DataManager(LightningDataModule):
         self.cache_rate = cache_rate
         self.ds_type = ds_type
         self.set_effective_batch_size()
+        self.data_folder = self.derive_data_folder()
         self.assimilate_tfm_factors(transform_factors)
         self.set_tfm_keys()
         self.collate_fn = None # needs to be set in each inheriting class
@@ -131,20 +132,20 @@ class DataManager(LightningDataModule):
 
 
     def set_effective_batch_size(self):
-        if "samples_per_file" in self.plan:
-            self.effective_batch_size = int(np.maximum(1, 
-                self.batch_size / self.plan["samples_per_file"]
-            ))
-            print(
-                "Given {0} Samples per file and {1} batch_size on the GPU, effective batch size (number of file tensors loaded then sampled for for training is:\n {2} ".format(
-                    self.plan["samples_per_file"],
-                    self.batch_size,
-                    self.effective_batch_size,
-                )
-            )
+        if not "samples_per_file" in self.plan:
+            self.plan["samples_per_file"] = 1
 
-        else:
-            self.effective_batch_size = self.batch_size
+        self.effective_batch_size = int(np.maximum(1, 
+            self.batch_size / self.plan["samples_per_file"]
+        ))
+        print(
+            "Given {0} Samples per file and {1} batch_size on the GPU, effective batch size (number of file tensors loaded then sampled for for training is:\n {2} ".format(
+                self.plan["samples_per_file"],
+                self.batch_size,
+                self.effective_batch_size,
+            )
+        )
+
 
     def assimilate_tfm_factors(self, transform_factors):
         for key, value in transform_factors.items():
@@ -445,7 +446,6 @@ class DataManager(LightningDataModule):
 
     def prepare_data(self):
         # getting the right folders
-        self.data_folder = self.derive_data_folder()
         dataset_mode = self.plan["mode"]
         assert dataset_mode in [
             "whole",
@@ -537,6 +537,50 @@ class DataManager(LightningDataModule):
         parent_folder = Path(COMMON_PATHS['cache_folder'])/(self.project.project_title)
         return parent_folder/(self.data_folder.name)
 
+    @classmethod
+    def from_folder(cls, data_folder: str, split: str, project, config: dict, batch_size=8, **kwargs):
+        """
+        Create a DataManager instance from a folder containing images and labels.
+        
+        Args:
+            folder_path (str): Path to folder containing 'images' and 'lms' subfolders
+            split (str): Either 'train' or 'val'
+            project: Project instance
+            config (dict): Configuration dictionary
+            batch_size (int): Batch size for dataloaders
+            **kwargs: Additional arguments passed to DataManager constructor
+            
+        Returns:
+            DataManager: Instance initialized with data from the specified folder
+        Note: After this do not call setup() and instead jump straight to prepare_data()
+        """
+        data_folder = Path(data_folder)
+        assert data_folder.exists(), f"Folder {data_folder} does not exist"
+        assert split in ['train', 'val'], "Split must be either 'train' or 'val'"
+        
+        # Create instance
+        instance = cls(project=project, config=config, batch_size=batch_size, **kwargs)
+        
+        # Override data folder
+        instance.data_folder = data_folder
+        
+        # Get files from images and lms folders
+        images_folder = data_folder / "images"
+        lms_folder = data_folder / "lms"
+        assert images_folder.exists(), f"Images folder {images_folder} does not exist"
+        assert lms_folder.exists(), f"Labels folder {lms_folder} does not exist"
+        
+        # Create data dictionaries
+        image_files = sorted(list(images_folder.glob("*.pt")))
+            
+        # Assign to train or validation based on split
+        if split == 'train':
+            instance.train_cases = [d["image"].stem for d in image_files]
+        else:
+            instance.valid_cases = [d["image"].stem for d in image_files]
+            
+        return instance
+
 class DataManagerSource(DataManager):
     def __init__(
         self,
@@ -563,6 +607,7 @@ class DataManagerSource(DataManager):
         self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
 
     def derive_data_folder(self):
+        assert self.plan["mode"] == "source", f"Dataset mode must be 'source' for DataManagerSource, got '{self.plan['mode']}'"
         prefix = "spc"
         spacing = self.plan["spacing"]
         parent_folder = self.project.fixed_spacing_folder
@@ -581,6 +626,12 @@ class DataManagerSource(DataManager):
         self.create_transforms()
         self.set_transforms(keys_tr=self.keys_tr, keys_val=self.keys_val)
         print("Setting up datasets. Training ds type is: ", self.ds_type)
+        self.create_ds_train()
+        self.create_ds_valid()
+
+    def create_ds_train(self):
+        if not hasattr(self,"data_train") or len(self.data_train) == 0:
+            return 0
         if is_excel_None(self.ds_type):
             self.train_ds = Dataset(data=self.data_train, transform=self.tfms_train)
             print("Vanilla Pytorch Dataset set up.")
@@ -599,14 +650,15 @@ class DataManagerSource(DataManager):
             )
         else:
             raise NotImplementedError
+
+    def create_ds_valid(self):
+        if not hasattr(self,"data_valid") or len(self.data_valid) == 0:
+            return 0
         self.valid_ds = PersistentDataset(
             data=self.data_valid,
             transform=self.tfms_valid,
             cache_dir=self.cache_folder,
         )
-
-
-
 class DataManagerWhole(DataManagerSource):
 
     def __init__(
@@ -633,6 +685,7 @@ class DataManagerWhole(DataManagerSource):
         return f'DataManagerWhole(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
 
     def derive_data_folder(self):
+        assert self.plan["mode"] == "whole", f"Dataset mode must be 'whole' for DataManagerWhole, got '{self.plan['mode']}'"
         prefix = "sze"
         spatial_size = self.plan["patch_size"]
         parent_folder = self.project.fixed_size_folder
@@ -671,6 +724,7 @@ class DataManagerWhole(DataManagerSource):
 
 class DataManagerLBD(DataManagerSource):
     def derive_data_folder(self, dataset_mode=None):
+        assert self.plan["mode"] == "lbd", f"Dataset mode must be 'lbd' for DataManagerLBD, got '{self.plan['mode']}'"
         spacing = ast_literal_eval(self.plan["spacing"])
         parent_folder = self.project.lbd_folder
         folder_suffix = "plan" + str(self.dataset_params["plan"])
@@ -936,6 +990,7 @@ class DataManagerPatch(DataManagerSource):
         super().create_transforms(keys)
 
     def derive_data_folder(self):
+        assert self.plan["mode"] == "patch", f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan['mode']}'"
         parent_folder = self.project.patches_folder
         plan_name = "plan" + str(self.dataset_params["plan"])
         source_plan_name = self.plan["source_plan"]
@@ -1010,6 +1065,7 @@ class DataManagerBaseline(DataManagerLBD):
 
 
     def derive_data_folder(self, dataset_mode=None):
+        assert self.plan["mode"] == "baseline", f"Dataset mode must be 'baseline' for DataManagerBaseline, got '{self.plan['mode']}'"
         # return data_folder
         source_plan_name = self.plan["source_plan"]
         source_plan = self.config[source_plan_name]
@@ -1069,27 +1125,27 @@ if __name__ == "__main__":
     ).config
 
     project_title = "totalseg"
-    proj = Project(project_title=project_title)
+    proj_tot = Project(project_title=project_title)
 
     configuration_filename = (
         "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     )
     configuration_filename = None
 
-    config = ConfigMaker(
-        proj, raytune=False, configuration_filename=configuration_filename
+    config_tot = ConfigMaker(
+        proj_tot, raytune=False, configuration_filename=configuration_filename
     ).config
 
-    global_props = load_dict(proj.global_properties_filename)
+    global_props = load_dict(proj_tot.global_properties_filename)
 
-    pp(config['plan'])
+    pp(config_tot['plan'])
 
 # SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR>
 # %%
     D = DataManagerWhole(
-        project=proj,
+        project=proj_tot,
         batch_size=4,
-        config=config,
+        config=config_tot,
     )
 
 # %%
@@ -1116,11 +1172,8 @@ if __name__ == "__main__":
 # %%
     batch_size = 2
     D = DataManagerBaseline(
-        proj,
-        config=config,
-        dataset_params=config["dataset_params"],
-        transform_factors=config["transform_factors"],
-        affine3d=config["affine3d"],
+        proj_tot,
+        config=config_tot,
         batch_size=batch_size,
     )
     # D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
@@ -1150,11 +1203,11 @@ if __name__ == "__main__":
 # %%
     batch_size = 2
     D = DataManagerSource(
-        proj,
-        config=config,
-        dataset_params=config["dataset_params"],
-        transform_factors=config["transform_factors"],
-        affine3d=config["affine3d"],
+        proj_tot,
+        config=config_tot,
+        dataset_params=config_tot["dataset_params"],
+        transform_factors=config_tot["transform_factors"],
+        affine3d=config_tot["affine3d"],
         batch_size=batch_size,
     )
     D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
@@ -1175,16 +1228,17 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- LBD--------------------------------------------------------------------------------------
 # %%
+    D = DataManagerLBD.from_folder(data_folder="/s/xnat_shadow/crc",project=proj_litsmc,config=config_litsmc,split="val")
+    D.prepare_data()
+    # D.setup()
+# %%
     batch_size = 2
     D = DataManagerLBD(
-        proj,
-        config=config,
-        dataset_params=config["dataset_params"],
-        transform_factors=config["transform_factors"],
-        affine3d=config["affine3d"],
+        proj_litsmc,
+        config=config_tot,
         batch_size=batch_size,
     )
-    D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
+
 # %%
     D.prepare_data()
     D.setup()
@@ -1205,12 +1259,12 @@ if __name__ == "__main__":
 # SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
 
-    proj=proj_litsmc
-    config=config_litsmc
+    proj_tot=proj_litsmc
+    config_tot=config_litsmc
     batch_size = 2
     D = DataManagerPatch(
-        proj,
-        config=config,
+        proj_tot,
+        config=config_tot,
         batch_size=batch_size,
     )
 
