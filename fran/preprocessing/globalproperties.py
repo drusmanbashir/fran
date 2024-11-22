@@ -1,7 +1,7 @@
 # %%
 from fastcore.all import store_attr
 import itertools as il
-from fran.managers.datasource import _DS
+from fran.managers import _DS
 from fran.utils.helpers import pbar
 import random
 from fastcore.basics import GetAttr

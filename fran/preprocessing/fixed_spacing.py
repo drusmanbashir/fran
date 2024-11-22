@@ -35,7 +35,7 @@ from fran.transforms.misc_transforms import (
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.common import *
 from fran.utils.fileio import load_dict, maybe_makedirs, save_dict, save_json
-from fran.utils.helpers import folder_name_from_list, multiprocess_multiarg, pbar
+from fran.utils.helpers import create_df_from_folder, folder_name_from_list, multiprocess_multiarg, pbar
 from fran.utils.string import info_from_filename, strip_extension
 
 
@@ -65,9 +65,29 @@ class _Preprocessor(GetAttr):
         project,
         spacing,
         device="cpu",
+        data_folder=None,
+        output_folder=None,
     ) -> None:
-        store_attr("project,spacing,device")
+        store_attr("project,spacing,device,data_folder")
+        self.data_folder=data_folder
+        self.set_input_output_folders(data_folder,output_folder)
+        self.create_data_df()
 
+    def create_data_df(self):
+        if self.data_folder is not None:
+            self.df = create_df_from_folder(self.data_folder)
+        else:
+            self.df = self.project.df
+        print("Total number of cases: ", len(self.df))
+
+
+
+    def set_input_output_folders(self,data_folder,output_folder): raise NotImplementedError
+        # if output_folder :
+        #     self.output_folder = Path(output_folder)
+        #     # self.set_input_output_folders()
+        # else:
+            
     def save_pt(self, tnsr, subfolder, contiguous=True, suffix: str = None):
         if contiguous == True:
             tnsr = tnsr.contiguous()
@@ -115,10 +135,9 @@ class _Preprocessor(GetAttr):
     def create_info_dict(self):
         resampled_dataset_properties = dict()
         resampled_dataset_properties["dataset_spacing"] = self.spacing
-        resampled_dataset_properties["dataset_max"] = self.results[:, 0].max().item()
-        resampled_dataset_properties["dataset_min"] = self.results[:, 1].min().item()
-        resampled_dataset_properties["dataset_std"] = self.results[:, 1].std().item()
-        resampled_dataset_properties["dataset_median"] = np.median(self.results[:, 2])
+        resampled_dataset_properties["dataset_max"] = self.results_df['max'].max().item()
+        resampled_dataset_properties["dataset_min"] = self.results_df['min'].min().item()
+        resampled_dataset_properties["dataset_median"] = np.median(self.results_df['median'])
         return resampled_dataset_properties
 
     def process(
@@ -133,9 +152,9 @@ class _Preprocessor(GetAttr):
 
         for batch in pbar(self.dl):
             self.process_batch(batch)
-        self.results = pd.DataFrame(self.results).values
-        tr()
-        ts = self.results.shape
+        self.results_df = pd.DataFrame(self.results)
+        # self.results= pd.DataFrame(self.results).values
+        ts = self.results_df.shape
         if ts[-1] == 4:  # only store if entire dset is processed
             self._store_dataset_properties()
             generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
@@ -215,10 +234,10 @@ class _Preprocessor(GetAttr):
             self.shapes, 0
         ).tolist()
         resampled_dataset_properties["dataset_spacing"] = self.spacing
-        resampled_dataset_properties["dataset_max"] = self.results["max"].max().item()
-        resampled_dataset_properties["dataset_min"] = self.results["min"].min().item()
+        resampled_dataset_properties["dataset_max"] = self.results_df["max"].max().item()
+        resampled_dataset_properties["dataset_min"] = self.results_df["min"].min().item()
         resampled_dataset_properties["dataset_median"] = np.median(
-            self.results["median"]
+            self.results_df["median"]
         ).item()
         return resampled_dataset_properties
 
@@ -236,14 +255,11 @@ class _Preprocessor(GetAttr):
         indices_subfolder = self.output_folder / ("indices")
         return indices_subfolder
 
-    @property
-    def output_folder(self):
-        raise NotImplementedError
 
 
 class ResampleDatasetniftiToTorch(_Preprocessor):
-    def __init__(self, project, spacing, device="cpu", half_precision=False):
-        super().__init__(project, spacing, device=device)
+    def __init__(self, project, spacing, data_folder=None, output_folder=None,device="cpu", half_precision=False):
+        super().__init__(project, spacing, device=device,output_folder=output_folder,data_folder=data_folder)
         self.half_precision = half_precision
 
     def setup(self, overwrite=False):
@@ -336,14 +352,15 @@ class ResampleDatasetniftiToTorch(_Preprocessor):
     #     self.results = pd.DataFrame(results).values
     #     self._store_dataset_properties()
 
-    @property
-    def output_folder(self):
-        self._output_folder = folder_name_from_list(
+    def set_input_output_folders(self,data_folder,output_folder):
+        if output_folder is not None:
+            self.output_folder = output_folder
+        self.output_folder = folder_name_from_list(
             prefix="spc",
             parent_folder=self.fixed_spacing_folder,
             values_list=self.spacing,
         )
-        return self._output_folder
+        self.data_folder = data_folder
 
 
 def get_tensorfile_stats(filename):
@@ -413,15 +430,20 @@ class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
 if __name__ == "__main__":
     from fran.utils.common import *
 
+    from fran.managers import Project
     project = Project("litsmc")
-    Rs = ResampleDatasetniftiToTorch(project, spacing=[0.8, 0.8, 1.5], device="cpu")
+
+# %%
+#SECTION:-------------------- ResampleDatasetniftiToTorch--------------------------------------------------------------------------------------
+    Rs = ResampleDatasetniftiToTorch(project, spacing=[0.8, 0.8, 1.5], device="cpu",data_folder="/s/xnat_shadow/crc/",output_folder="/s/xnat_shadow/crc/tensors/fixed_spacing/")
+    Rs.setup(True)
+    Rs.process()
+# %%
     F = FGBGIndicesResampleDataset(project, spacing=[0.8, 0.8, 1.5], device="cpu")
     F.setup()
     F.process()
     # R.register_existing_files()
 
-    Rs.setup(True)
-    Rs.process()
     # %%
 
     # %%

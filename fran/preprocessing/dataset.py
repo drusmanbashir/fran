@@ -51,19 +51,45 @@ from fran.utils.imageviewers import *
 
 
 class ResamplerDataset(GetAttr, Dataset):
+    """A dataset class that handles resampling of medical images and their labels.
+    
+    This dataset loads SITK images and labels, applies various transformations including
+    resampling to a specified spacing, and handles normalization of image intensities.
+    """
     _default = "project"
 
     def __init__(
         self,
         project,
-        df,
         spacing,
+        df=None,
+        data_folder=None,
         half_precision=False,
         clip_center=False,
         store_label_inds=False,
         mean_std_mode: str = "dataset",
         device="cuda",
     ):
+        """Initialize the ResamplerDataset.
+        
+        Args:
+            project: Project configuration object
+            spacing: Target spacing for resampling
+            df: DataFrame containing image/label paths (optional)
+            data_folder: Path to data folder containing 'images' and 'lms' subfolders (optional)
+            half_precision: Whether to use half precision
+            clip_center: Whether to apply intensity clipping
+            store_label_inds: Whether to store label indices
+            mean_std_mode: Type of normalization ('dataset' or 'fg')
+            device: Device to use for processing
+            
+        Raises:
+            ValueError: If neither df nor data_folder is provided, or if both are provided
+        """
+        if df is None and data_folder is None:
+            raise ValueError("Either df or data_folder must be provided")
+        if df is not None and data_folder is not None:
+            raise ValueError("Only one of df or data_folder should be provided")
 
         assert mean_std_mode in [
             "dataset",
@@ -71,6 +97,7 @@ class ResamplerDataset(GetAttr, Dataset):
         ], "Select either dataset mean/std or fg mean/std for normalization"
         self.project = project
         self.df = df
+        self.data_folder = data_folder
         self.spacing = spacing
         self.half_precision = half_precision
         self.clip_center = clip_center
@@ -79,6 +106,7 @@ class ResamplerDataset(GetAttr, Dataset):
         self.set_normalization_values(mean_std_mode)
 
     def setup(self):
+        """Initialize the dataset by creating transforms and data dictionaries."""
         self.create_transforms()
         data = self.create_data_dicts()
         Dataset.__init__(self, data, self.transform)
@@ -100,19 +128,60 @@ class ResamplerDataset(GetAttr, Dataset):
     #     return dici
     #
     def create_data_dicts(self, overwrite=False):
+        """Create a list of dictionaries containing file paths and remapping information.
+        
+        Args:
+            overwrite (bool): Flag to overwrite existing data dictionaries.
+            
+        Returns:
+            list: List of dictionaries containing image paths and remapping info.
+        """
+        if hasattr(self, 'df') and self.df is not None:
+            return self._create_data_dicts_from_df()
+        else:
+            return self._create_data_dicts_from_folder()
+            
+    def _create_data_dicts_from_df(self):
+        """Create data dictionaries from DataFrame."""
         data = []
         for index in range(len(self.df)):
-            cp = self.df.iloc[index]
-            ds = cp["ds"]
-            remapping = get_ds_remapping(ds, self.global_properties)
-            img_fname = cp["image"]
-            mask_fname = cp["lm"]
+            row = self.df.iloc[index]
+            ds = row.get("ds")
+            if ds:
+                remapping = get_ds_remapping(ds, self.global_properties)
+            else:
+                remapping = None
+            img_fname = row["image"]
+            mask_fname = row["lm"]
             dici = {
                 "image": img_fname,
                 "lm": mask_fname,
                 "remapping_imported": remapping,
             }
             data.append(dici)
+        return data
+        
+    def _create_data_dicts_from_folder(self):
+        """Create data dictionaries from data_folder structure."""
+        data_folder = Path(self.data_folder)
+        masks_folder = data_folder / "lms"
+        images_folder = data_folder / "images"
+        
+        img_fns = list(images_folder.glob("*"))
+        data = []
+        
+        for img_fn in img_fns:
+            lm_fn = find_matching_fn(img_fn.name, masks_folder, 'case_id')
+                
+            remapping = None
+            
+            dici = {
+                "image": str(img_fn),
+                "lm": str(lm_fn),
+                "remapping_imported": remapping,
+            }
+            data.append(dici)
+        assert (len(data)>0), "No data found in data folder"
         return data
 
     def create_transforms(self):
@@ -166,6 +235,11 @@ class ResamplerDataset(GetAttr, Dataset):
 
 
 class ImporterDataset(Dataset):
+    """A dataset class for importing and processing medical images with their labels.
+    
+    This dataset handles loading both torch-format images/labels and imported SITK labelmaps,
+    applies bounding box transformations, and optionally merges labels.
+    """
     def __init__(
         self,
         expand_by,
@@ -220,6 +294,18 @@ class ImporterDataset(Dataset):
         return data
 
     def case_id_file_match(self, case_id, fileslist):
+        """Match a case ID to its corresponding file in a list of files.
+        
+        Args:
+            case_id (str): The case identifier to match.
+            fileslist (list): List of Path objects to search through.
+            
+        Returns:
+            Path: The matched file path.
+            
+        Raises:
+            Exception: If exactly one matching file is not found.
+        """
         # cids = [info_from_filename(fn.name, full_caseid=True)["case_id"] for fn in fileslist]
         fns = [fn for fn in fileslist if info_from_filename(fn.name, full_caseid=True)["case_id"] == case_id]
         if len(fns) != 1:
@@ -280,6 +366,11 @@ class ImporterDataset(Dataset):
 
 
 class CropToLabelDataset(ImporterDataset):
+    """A dataset class that crops images based on label masks.
+    
+    This dataset loads images and their corresponding labels, and crops them
+    based on specified label values while maintaining proper spacing and expansion.
+    """
     def __init__(
         self,
         expand_by,
@@ -365,8 +456,11 @@ class CropToLabelDataset(ImporterDataset):
 
 
 class FGBGIndicesDataset(CropToLabelDataset):
-    """
-    This dataset will only load labelmaps, retrieve indices, and output them.
+    """A dataset class for extracting foreground/background indices from labelmaps.
+    
+    This dataset loads labelmaps and corresponding images, processes them to identify
+    foreground and background regions based on specified thresholds and exclusion criteria.
+    The main purpose is to retrieve and output indices for training sampling.
     """
 
     def __init__(self, case_ids, data_folder, fg_indices_exclude=None, device="cuda"):
@@ -394,4 +488,28 @@ class FGBGIndicesDataset(CropToLabelDataset):
 # %%
 if __name__ == "__main__":
 
+    from fran.managers import Project
+    project = Project("litsmc")
+    df = None
+    spacing = [.8,.8,1.5]
+    half_precision = False
+    device = 0
+    data_folder = "/s/xnat_shadow/crc/hard_cases"
+    ds = ResamplerDataset(
+                df=df,
+                project=project,
+                    data_folder = data_folder,
+                spacing=spacing,
+                half_precision=half_precision,
+                device=device,
+            )
+
+    ds.setup()
+
+    dat =ds[0]
+    im = dat['image'][0].cpu()
+    lm = dat['lm'][0].cpu()
+
+    ImageMaskViewer([im,lm])
+# %%
     pass

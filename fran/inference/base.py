@@ -407,7 +407,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
 
-    from fran.managers.datasource import _DS
+    from fran.managers import _DS
     from fran.managers.project import Project
     D = _DS()
     proj = Project(project_title="totalseg")

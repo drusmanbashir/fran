@@ -29,35 +29,45 @@ from fran.utils.imageviewers import *
 
 # NOTE:  move all file io processes to ray to avoid 'too many open files' error
 
-#CODE: make it accept a 'plan' as argument. Make plan the standard argument throughout
 class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
     _default = "project"
 
     def __init__(
         self,
         project,
-        expand_by,
-        spacing,
-        lm_group,
-        folder_suffix:str ,
+        plan,
+        # expand_by,
+        # spacing,
+        # lm_group,
+
+        # folder_suffix:str ,
+        device='cpu',
+        data_folder=None,
+        output_folder=None,
         mask_label=None,
-        fg_indices_exclude: list = None,
+        # fg_indices_exclude: list = None,
         remapping:dict=None,
     ) -> None:
         """
         mask_label: this label is used to apply mask, i.e., crop the image and lm. Defaults to None aka all label values >0 are used to crop.
         """
+        _Preprocessor.__init__(self, project=project, spacing=plan.get("spacing"),device=device,data_folder=data_folder, output_folder=output_folder)
 
-
-        fg_indices_exclude=listify (fg_indices_exclude)
-        # self.fg_indices_exclude=listify (self.fg_indices_exclude)
-        store_attr()  # WARN: leave this as top line otherwise getattr fails
+        self.mask_label = mask_label
+        self.lm_group = self.plan.get('lm_group')
         if is_excel_None(self.lm_group):
             self.lm_group = "lm_group1"
-        self.case_ids = self.get_case_ids_lm_group(self.lm_group)
-        self.set_folders_from_spacing(self.spacing)
-        print("Total case ids:", len(self.case_ids))
-        self.output_folder = project.lbd_folder
+
+
+    def set_input_output_folder(self,data_folder,output_folder):
+        if data_folder is None:
+            self.data_folder = self.set_folders_from_spacing(self.spacing)
+        else:
+            self.data_folder=data_folder
+        if output_folder is None:
+            self.output_folder = self.project.lbd_folder
+        else:
+            self.output_folder=output_folder
 
     def set_folders_from_spacing(self, spacing):
         self.fixed_spacing_subfolder = folder_name_from_list(
@@ -88,7 +98,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
 
         self.ds = CropToLabelDataset(
             case_ids=self.case_ids,
-            expand_by=self.expand_by,
+            expand_by=self.plan.get('expand_by'),
             spacing=self.spacing,
             data_folder=self.fixed_spacing_subfolder,
             mask_label=self.mask_label,
@@ -191,19 +201,6 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             indices_subfolder = "indices"
         indices_subfolder = self.output_folder / indices_subfolder
         return indices_subfolder
-    # @property
-    # def output_folder(self):
-    #     self._output_folder = folder_name_from_list(
-    #         prefix="spc",
-    #         parent_folder=self.lbd_folder,
-    #         values_list=self.spacing,
-    #     )
-    #     if self.folder_suffix:
-    #         output_name = "_".join([self._output_folder.name , self.folder_suffix])
-    #         self._output_folder= Path(self._output_folder.parent / output_name)#.name = self.output_folder.name + self.folder_suffix
-    #     return self._output_folder
-    #
-    @property
     def output_folder(self):
         return self._output_folder
 

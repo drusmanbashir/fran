@@ -1,5 +1,6 @@
 # %%
 from typing import Union
+import pandas as pd
 import logging, os
 import collections
 import pprint
@@ -22,9 +23,6 @@ tr = ipdb.set_trace
 import gc, ray
 # from fran.utils.fileio import *
 
-PAT_FULL = r"(?P<pt_id>[a-z]*_[a-z0-9]+)_(?P<date>\d+)_(?P<desc>.*)_(?P<tag>thick)_?.*(?=(?P<ext>\.(nii|nrrd)(\.gz)?)$)"
-PAT_NODESC ="(?P<pt_id>[a-z]*_[a-z0-9]*)_(?P<date>\d*)"
-PAT_IDONLY = "(?P<pt_id>[a-z]*_[a-z0-9]*)"
 
 def set_autoreload():
     # gals = globals()
@@ -36,6 +34,23 @@ def set_autoreload():
         if ipython:
             ipython.run_line_magic("load_ext", "autoreload")
             ipython.run_line_magic("autoreload", "2")
+
+@str_to_path(0)
+def create_df_from_folder(folder):
+    images_fldr = folder/("images")
+    lms_fldr = folder/("lms")
+    image_fns = list(images_fldr.glob("*"))
+    lm_fns =  list(lms_fldr.glob("*"))
+    dicis = []
+    for img_fn in image_fns:
+        lm_fn = find_matching_fn(img_fn,lm_fns,tags='case_id')
+        case_id = info_from_filename(lm_fn.name,full_caseid=True)['case_id']
+        dici= {"image":img_fn, "lm":lm_fn, "case_id":case_id}
+        dicis.append(dici)
+    df = pd.DataFrame(dicis)
+    return df
+
+
 
 def test_modified(filename,ndays:int= 1):
     '''
@@ -362,12 +377,12 @@ def get_train_valid_test_lists_from_json(project_title, fold, json_fname, image_
 
 @str_to_path(0)
 def find_matching_fn(src_fn:Path,mask_fnames:Union[list,Path],tags='case_id'):
-        assert (len(mask_fnames) > 0), "List of candidate filenames is empty"
         allowed_tags = [ "case_id", "all"] # all means identical filename
         assert tags in allowed_tags, "Allowed tags are {0}".format(allowed_tags)
         if isinstance(mask_fnames,Path) and mask_fnames.is_dir():
             mask_fnames = list(mask_fnames.glob("*"))
             mask_fnames = [fn for fn in mask_fnames if is_img_file(fn)]
+        assert (len(mask_fnames) > 0), "List of candidate filenames is empty"
         src_fn = cleanup_fname(src_fn.name)
         matching_mask_fns=[]
         for mask_fn in mask_fnames:
