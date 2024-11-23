@@ -161,7 +161,7 @@ if __name__ == "__main__":
 
 
 # %%
-    run2 = "LITS-911"
+    run2 = "LITS-1088"
     ckpt2 = checkpoint_from_model_id(run2)
     ckpt2_neo = ckpt2.str_replace(".ckpt","_neo.ckpt")
     dici= torch.load(ckpt2, map_location="cpu")
@@ -179,16 +179,19 @@ if __name__ == "__main__":
 
     dici['hyper_parameters']['config']={}
     dici['hyper_parameters']['config'].keys()
-    dici['hyper_parameters']['config']['dataset_params']= dici['datamodule_hyper_parameters']['dataset_params'].copy()
+    dici['hyper_parameters']['config']['dataset_params']#= dici['datamodule_hyper_parameters']['dataset_params'].copy()
     dici['hyper_parameters']['config']['model_params']=dici['hyper_parameters']['model_params'].copy()
 
     dici['hyper_parameters']['config']['plan'] = dici['hyper_parameters']['config']['dataset_params'].copy()
-    dici['hyper_parameters']['config']['plan']['mode']
+    dici['hyper_parameters']['config']['plan']['mode']="whole"
     dici['hyper_parameters']['config']['plan']['spacing']
     dici['hyper_parameters']['config']['loss_params'] = dici['hyper_parameters']['loss_params'].copy()
 # %%
     dici['hyper_parameters']['config'].keys()
+    dici['hyper_parameters']['config']['plan']['patch_size']#=[96,96,96]
 
+    dici['hyper_parameters']['config']['dataset_params']['patch_size'] = [96,96,96]#=
+    dici['datamodule_hyper_parameters'].keys()#['dataset_params']['patch_size'] = [96,96,96]#=
     dici['hyper_parameters']['project']
     dict_src['hyper_parameters']['project']
 # %%

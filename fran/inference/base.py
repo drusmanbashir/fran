@@ -90,6 +90,7 @@ class BaseInferer(GetAttr, DictToAttr):
         k_largest=None,  # assign a number if there are organs involved
     ):
         """
+        BaseInferer applies the dataset spacing, normalization and then patch_size to use a sliding window inference over the resulting image
         data is a dataset from Ensemble in this base class
         params: should be a dict with 2 keys: dataset_params and plan.
         """
@@ -105,6 +106,7 @@ class BaseInferer(GetAttr, DictToAttr):
         else:
             self.params = params
         self.plan = fix_ast(self.params['config']['plan'],["spacing"])
+        assert self.plan['mode'] == "source", "This inferer only works with source plans"
         self.dataset_params = self.params['config']['dataset_params']
         self.infer_project()
 
@@ -399,7 +401,7 @@ if __name__ == "__main__":
     D = _DS()
     proj = Project(project_title="totalseg")
     run_tot= ["LITS-860"]
-    run_loc = ["LITS-1088"]
+    run_whole_image = ["LITS-1088"]
     safe_mode = False
 
 
@@ -447,9 +449,8 @@ if __name__ == "__main__":
     save_channels = False
     safe_mode = True
     bs = 4
-    overwrite = False
+    overwrite = True
     devices = [0]
-    run = run_loc[0]
     
 
 # %%

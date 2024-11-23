@@ -74,6 +74,10 @@ class WholeImageInferer(BaseInferer):
         save=True,
         **kwargs
     ):
+        '''
+        Resizes image directly to patch_size and applies inference, one model run per image.
+        '''
+    
 
         super().__init__(
             run_name=run_name,
@@ -479,11 +483,6 @@ if __name__ == "__main__":
 # %%
 
 
-
-
-
-
-
 #SECTION:-------------------- TOTALSEG WholeImageinferer--------------------------------------------------------------------------------------
 
     safe_mode=False
@@ -491,6 +490,7 @@ if __name__ == "__main__":
     W = WholeImageInferer( run_tot[0], safe_mode=safe_mode, k_largest=None,save_channels=False)
 # %%
     
+    preds = W.run(imgs_crc, chunksize=6)
     nodes_imgs = list(nodes_fldr.glob("*"))
     nodesthick_imgs = list(nodesthick_fldr.glob("*"))
     preds = W.run(nodesthick_imgs, chunksize=1)
