@@ -1,6 +1,5 @@
 # %%
 import itertools as il
-from typing import Union, List
 import ipdb
 
 from fran.utils.string import ast_literal_eval
@@ -53,6 +52,7 @@ def get_patch_spacing( run_name):
 
 
 def list_to_chunks(input_list: list, chunksize: int):
+    assert len(input_list) >= chunksize,"Print list size too small: {}".format(len(input_list))
     n_lists = int(np.ceil(len(input_list) / chunksize))
 
     fpl = int(len(input_list) / n_lists)
@@ -71,12 +71,11 @@ def load_params(model_id):
     # dic_relevant['plan']=fix_ast(dic_relevant['plan'], keys = ['spacing'])# = fix_ast(dic_tmp, keys=['spacing'])
     return dic_relevant
 
+
 class BaseInferer(GetAttr, DictToAttr):
     def __init__(
         self,
         run_name,
-        project=None,
-        config=None,
         ckpt=None,
         state_dict=None,
         params=None,
@@ -85,11 +84,11 @@ class BaseInferer(GetAttr, DictToAttr):
         mode="gaussian",
         devices=[0],
         safe_mode=False,
+        # reader=None,
         save_channels=True,
         save=True,
         k_largest=None,  # assign a number if there are organs involved
     ):
-
         """
         data is a dataset from Ensemble in this base class
         params: should be a dict with 2 keys: dataset_params and plan.
@@ -125,19 +124,11 @@ class BaseInferer(GetAttr, DictToAttr):
             progress=True,
             device=stitch_device,
         )
-
-        # Initialize InferenceDataModule
-        self.data_module = InferenceDataModule(
-            project=self.project,
-            config=self.params['config'],
-            batch_size=bs,
-            num_workers=0 if safe_mode else 4,
-            safe_mode=safe_mode
-        )
-
+        self.tfms="ESN"
 
     def setup(self):
         if not hasattr(self, "model"):
+            self.create_transforms()
             self.prepare_model()
         # self.create_postprocess_transforms()
 
@@ -170,13 +161,13 @@ class BaseInferer(GetAttr, DictToAttr):
         return imgs
 
     def process_imgs_sublist(self, imgs_sublist):
-        """Process a subset of images using the data module"""
-        self.pred_dl = self.data_module.setup(imgs_sublist)
+        data = self.load_images(imgs_sublist)
+        self.prepare_data(data,self.tfms,  collate_fn=None)
         preds = self.predict()
         output = self.postprocess(preds)
-        if self.save:
+        if self.save == True:
             self.save_pred(output)
-        if self.safe_mode:
+        if self.safe_mode == True:
             self.reset()
         return output
 
@@ -396,12 +387,8 @@ class BaseInferer(GetAttr, DictToAttr):
         fldr = "_".join(run_name)
         fldr = self.project.predictions_folder / fldr
         return fldr
-
-
-# %%
-
 if __name__ == "__main__":
-    # ... run your application ...
+# %%
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
     from fran.utils.common import *
@@ -455,7 +442,7 @@ if __name__ == "__main__":
 # %%
     data = P.ds.data[0]
 # %%
-#SECTION:-------------------- TOTALSEG--------------------------------------------------------------------------------------
+ #SECTION:-------------------- TOTALSEG--------------------------------------------------------------------------------------
     
     save_channels = False
     safe_mode = True
@@ -465,6 +452,7 @@ if __name__ == "__main__":
     run = run_loc[0]
     
 
+# %%
     T = BaseInferer(
         run,
         save_channels=save_channels,
@@ -473,59 +461,84 @@ if __name__ == "__main__":
     )
 # %%
 
+    preds = T.run(imgs_crc, chunksize=2,overwrite=overwrite)
     case_id = "crc_CRC089"
     imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
-    preds = T.run(imgs_crc, chunksize=1)
 
 #datamodule_ %%
-
-    P.setup()
-    imgs_sublist = img_fns
-    data = P.load_images(imgs_sublist)
-    P.prepare_data(data, tfms="ESN", collate_fn=None)
-    preds = P.predict()
-    # preds = P.decollate(preds)
-
-    pred = preds[0]
-    pp = preds[0]["pred"][0]
-    ImageMaskViewer([pp, pp])
 # %%
+#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
+    overwrite=True
+    T.setup()
+    imgs = imgs_crc
+
+    if overwrite == False and (
+        isinstance(imgs[0], str) or isinstance(imgs[0], Path)
+    ):
+        imgs = T.filter_existing_preds(imgs)
+    imgs = list_to_chunks(imgs, 4)
+    # for imgs_sublist in imgs:
+    #     output = T.process_imgs_sublist(imgs_sublist)
+    imgs_sublist=imgs[0]
+# %%
+    """Process a subset of images using the data module"""
+    T.pred_dl = T.data_module.setup(imgs_sublist)
+    preds = T.predict()
+    # output = T.postprocess(preds)
+# %%
+    T.create_postprocess_transforms()
+    out_final = []
+    # for batch in preds:
+    batch= preds[0]
+    tmp = T.postprocess_transforms(batch)
+    out_final.append(tmp)
+# %%
+    if T.save:
+        T.save_pred(output)
+    if T.safe_mode:
+        T.reset()
 # %%
 
-    Sq = SqueezeDimd(keys=["pred"], dim=0)
-    pred = Sq(pred)
+    Sq = SqueezeDimd(keys=["pred", "image"], dim=0)
+
+    # below is expensive on large number of channels and on discrete data I am unsure if it uses nearest neighbours
+    # I = Invertd(
+    #     keys=["pred"], transform=T.ds.transform, orig_keys=["image"]
+    # )  # watchout: use detach beforeharnd. make sure spacing are correct in preds
     A = Activationsd(keys="pred", softmax=True)
-    pred = A(pred)
     D = AsDiscreted(keys=["pred"], argmax=True)  # ,threshold=0.5)
-    C = ToCPUd(keys=["image", "pred"])
+    U = ToCPUd(keys=["image", "pred"])
     Sa = SaveMultiChanneld(
         keys=["pred"],
-        output_dir=P.output_folder,
+        output_dir=T.output_folder,
         output_postfix="",
         separate_folder=False,
     )
-
-    if P.save_channels == True:
-        I = ResizeToSisterTensor(
-            keys=["pred"], key_spatial_shape="image", mode="nearest"
-        )
-        tfms = [Sq, A, D, I, C]
+    I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
+   
+    out_final = []
+    if T.save_channels == True:
+        tfms = [Sq, Sa, A, D, I]
     else:
-        I = ResizeToSisterTensor(
-            keys=["pred"], key_spatial_shape="image", mode="trilinear"
-        )
-    Sq = SqueezeDimd(keys=["pred"], dim=0)
-
-    ca = Compose([Sq, A, D])
-    pred = preds[0]
-
-    pr = ca(pred)
-    pr2 = I(pr)
-    p = pr["pred"][0].cpu()
-    img = pr["image"][0, 0]
+        tfms = [Sq, A, D, I]
+    if T.k_largest:
+        K = KeepLargestConnectedComponentWithMetad(
+                keys=["pred"], independent=False, num_components=T.k_largest
+            )  # label=1 is the organ
+        tfms.insert(-1, K)
+    if T.safe_mode == True:
+        tfms.insert(0, U)
+    else:
+            tfms.append(U)
 # %%
+    pred = batch['pred']
+    pred.meta['spatial_shape']
+# %%
+    batch = Sq(batch)
+    batch = A(batch)
+    batch = D(batch)
+    batch = U(batch)
+    batch = I(batch)
 # %%
 
 
-    ImageMaskViewer([img, p])
-# %%

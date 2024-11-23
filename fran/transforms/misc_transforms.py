@@ -33,21 +33,35 @@ import fran.transforms.spatialtransforms as spatial
 #
 
 
-def merge_pt(lm_base_arr, lm_arrs:Union[sitk.Image,list],labels_lol:list =None):
-
-    #labels_lol:i.e.., list of lists. One set of labels per lm. If not provided, all labels in each lm are used. This is necessary as a uniform template. Some lm may not have full compliment of labels. note lm_base labels are not required
-    # those earlier in order get overwritten by those later. So lesions should be last
-    if not isinstance(lm_arrs,Union[tuple,list]): lm_arrs = [lm_arrs]
-    def _inner(lm2_ar,labels):
+def merge_pt(base_labelmap: torch.Tensor, 
+             overlay_labelmaps: Union[torch.Tensor, list[torch.Tensor]],
+             label_lists: list[list[int]] = None) -> torch.Tensor:
+    """Merge multiple labelmaps by overlaying them onto a base labelmap.
+    
+    Args:
+        base_labelmap: Base labelmap to overlay others onto
+        overlay_labelmaps: Single labelmap or list of labelmaps to overlay
+        label_lists: Optional list of label lists, one per overlay labelmap.
+                    If None, uses all non-zero labels from each overlay.
+                    
+    Returns:
+        Merged labelmap with overlays applied in order (later ones override earlier)
+    """
+    # Ensure overlay_labelmaps is a list
+    if not isinstance(overlay_labelmaps, (tuple, list)):
+        overlay_labelmaps = [overlay_labelmaps]
+        
+    # Get non-zero labels if not provided
+    if label_lists is None:
+        label_lists = [lm.unique()[1:] for lm in overlay_labelmaps]
+        
+    # Apply each overlay
+    result = base_labelmap.clone()
+    for overlay, labels in zip(overlay_labelmaps, label_lists):
         for label in labels:
-            lm_base_arr[lm2_ar==label]=label
-        return lm_base_arr
-
-    if labels_lol is None:
-        labels_lol  = [lm.unique()[1:] for lm in lm_arrs]
-
-    lm_final = [_inner(lm_arr,labels) for lm_arr,labels in zip (lm_arrs,labels_lol)][0]
-    return lm_final
+            result[overlay == label] = label
+            
+    return result
 
 class MaskLabelRemapd(MapTransform):
     # there should be no channel dim
@@ -350,23 +364,28 @@ class MergeLabelmapsd(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
+        meta_key:str,
         key_output: str,
         allow_missing_keys: bool = False,
     ) -> None:
         """
         lm which will be overwritten by others should be first in the keys
+        meta_key: is the key whose meta will be used in the output
         """
 
         self.key_output = key_output
+        self.meta_key = key_output
         assert len(keys) == 2, "Only allows 2 keys, i.e., 2 pt lms to merge"
         super().__init__(keys, allow_missing_keys)
 
     def __call__(self, d: dict):
 
+        meta = d[self.meta_key].meta
         lms = []
         for key in self.key_iterator(d):
             lms.append(d[key])
         lm_out = merge_pt(lms[0], lms[1])
+        lm_out.meta = meta
         d[self.key_output] = lm_out
         return d
 

@@ -116,7 +116,11 @@ class _DS():
             self.task6={'ds':'task6','folder': "/s/datasets_bkp/Task06Lung/","alias":'lung'}
 
     def resolve_ds_name(self,ds:str):
-        ds_dict = getattr(self,ds)
+
+        try:
+            ds_dict = getattr(self,ds)
+        except:
+            return None # ds does not exist as a standard DS
         alias = ds_dict['alias']
         if alias is not None:
             return alias

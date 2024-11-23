@@ -51,6 +51,25 @@ def plot_persistence_barcode(intervals, title="Persistence Barcode"):
 
 # %%
 if __name__ == "__main__":
+    fn = "/s/xnat_shadow/crc/tensors/ldb_plan3/lms/crc_CRC065_20180523_Abdomen3p0I30f3-test.pt"
+    lm = torch.load(fn)
+    ImageMaskViewer([lm,lm])
+    fldr = Path("/s/xnat_shadow/crc/tensors/fixed_spacing/lms/")
+    fls = list(fldr.glob("*"))
+# %%
+    bad= []
+    for fn in fls:
+        lm = torch.load(fn)
+        if "filename_or_obj" in lm.meta.keys():
+            print("Pass")
+        else:
+            bad.append(fn)
+# %%
+    fn = "/s/xnat_shadow/crc/tensors/fixed_spacing/lms/crc_CRC016_20190121_CAP11.pt"
+
+    lm = torch.load(fn)
+    lm.meta
+# %%
     fldr = Path("/s/xnat_shadow/crc/lms/")
     img_fldr = Path("/s/xnat_shadow/crc/images/")
     lm_fns = list(fldr.glob("*"))

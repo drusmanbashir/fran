@@ -279,10 +279,12 @@ class ConfigMaker():
                     
     def set_active_plan(self):
         plan = self.config['dataset_params']['plan']
-        plan_selected = self.config['plan'+str(plan)]
+        plan_name = 'plan'+str(plan)
+        plan_selected = self.config[plan_name]
         self.config['plan']= plan_selected
         self.config = maybe_merge_source_plan(self.config)
         self.config['plan'] = parse_excel_plan(plan_selected)
+        self.config['plan']['plan_name'] = plan_name
 
 
 

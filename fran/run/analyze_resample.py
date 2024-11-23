@@ -230,6 +230,19 @@ class PreprocessingManager():
         except:
             _accept_defaults()
 
+    def get_resampling_config(self, spacing):
+        resamping_config_fn = self.project.fixed_spacing_folder / (
+            "resampling_configs.json"
+        )
+        resampling_configs = load_dict(resamping_config_fn)
+        for config in resampling_configs:
+            if spacing == config["spacing"]:
+                return config
+        raise ValueError(
+            "No resampling config found for this spacing: {0}. \nAll configs are:\n{1}".format(
+                spacing, resampling_configs
+            )
+        )
     @property
     def resampling_configs(self):
         return self.get_resampling_configs()

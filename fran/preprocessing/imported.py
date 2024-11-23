@@ -1,22 +1,27 @@
 # %%
 from fastcore.all import store_attr
+from pathlib import Path
+from label_analysis.totalseg import TotalSegmenterLabels
 from fran.data.collate import dict_list_collated
 from fran.preprocessing.dataset import ImporterDataset
+
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 
 from torch.utils.data import DataLoader
+from fran.utils.config_parsers import ConfigMaker, parse_excel_plan
 from fran.utils.fileio import load_dict
-from fran.utils.helpers import folder_name_from_list, resolve_device
+from fran.utils.helpers import find_matching_fn, folder_name_from_list, resolve_device
 
 
 from torch.utils.data import DataLoader
 
 from fran.utils.helpers import folder_name_from_list, resolve_device
+from fran.utils.string import info_from_filename
 
 
 class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
     """
-    works on fixed_spacing_folder, uses imported_folder which has lms with extra labels. Uses the extra labels to define image boundaries and crops each image accordingly. 
+    works on fixed_spacing_folder, uses imported_folder which has lms with extra labels. Uses the extra labels to define image boundaries and crops each image accordingly.
     A single image / lm  pair is generated per case.
     """
 
@@ -25,70 +30,68 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
     def __init__(
         self,
         project,
-        expand_by,
-        spacing,
-        lm_group,
+        plan,
         imported_folder,
-        remapping,
         merge_imported_labels=False,
-        folder_suffix:str =None,
-        fg_indices_exclude: list = None,
+        folder_suffix: str = None,
+        data_folder=None,
+        output_folder=None,
+        mask_label=None,
+        remapping: dict = None,
     ) -> None:
 
-        super().__init__(project, expand_by, spacing, lm_group, fg_indices_exclude=fg_indices_exclude,folder_suffix=folder_suffix)
-        store_attr('imported_folder,remapping,merge_imported_labels')
-
-
-
-    def set_folders_from_spacing(self, spacing):
-        self.fixed_spacing_subfolder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=self.fixed_spacing_folder,
-            values_list=spacing,
-        )
-    def get_resampling_config(self, spacing):
-        resamping_config_fn = self.project.fixed_spacing_folder / (
-            "resampling_configs.json"
-        )
-        resampling_configs = load_dict(resamping_config_fn)
-        for config in resampling_configs:
-            if spacing == config["spacing"]:
-                return config
-        raise ValueError(
-            "No resampling config found for this spacing: {0}. \nAll configs are:\n{1}".format(
-                spacing, resampling_configs
-            )
+        self.imported_folder = Path(imported_folder)
+        store_attr("merge_imported_labels")
+        super().__init__(
+            project=project,
+            plan=plan,
+            folder_suffix=folder_suffix,
+            data_folder=data_folder,
+            output_folder=output_folder,
+            mask_label=mask_label,
+            remapping=remapping,
         )
 
-    def setup(self, device="cpu", batch_size=4,num_workers=1, overwrite=True):
-        device = resolve_device(device)
-        print("Processing on ", device)
-        self.register_existing_files()
-        print("Overwrite:", overwrite)
-        if overwrite == False:
-            self.case_ids = self.remove_completed_cases()
 
-        self.register_existing_files()
+    def create_data_df(self):
+        super().create_data_df()
+        self.df.imported=None
+        imported_fns = list(self.imported_folder.glob("*"))
+        for fn in imported_fns:
+            case_id = info_from_filename(fn.name,full_caseid=True)['case_id']
+            # Update the imported column for the matching case_id
+            mask = self.df['case_id'] == case_id
+            if mask.any():
+                self.df.loc[mask, 'imported'] = fn
+            else:
+                print(f"No matching case_id found for {case_id}")
+        # Check for NaN values in imported column
+        nan_mask = self.df['imported'].isna()
+        if nan_mask.any():
+            print(f"Found {nan_mask.sum()} cases without matching imported files:")
+            print(self.df[nan_mask]['case_id'].tolist())
+        else:
+            print("All case_ids matched with imported filenames. Good to go!")
+            # self.merge_imported_files_to_df()
+
+    def create_ds(self,device="cpu"):
         self.ds = ImporterDataset(
-            case_ids=self.case_ids,
-            expand_by=self.expand_by,
-            spacing=self.spacing,
-            data_folder=self.fixed_spacing_subfolder,
+            project=self.project,
+            plan=self.plan,
+            df=self.df,
+            data_folder=self.data_folder,
             imported_folder=self.imported_folder,
-            remapping_imported=self.remapping,
             merge_imported_labels=self.merge_imported_labels,
+            remapping_imported=self.remapping,
             device=device,
         )
-        self.ds.setup()
-        self.create_dl(batch_size=batch_size, num_workers=num_workers)
-
 
     def process_batch(self, batch):
-        images, lms, fg_inds, bg_inds=(
+        images, lms, fg_inds, bg_inds = (
             batch["image"],
             batch["lm"],
             batch["lm_fg_indices"],
-            batch["lm_bg_indices"]
+            batch["lm_bg_indices"],
         )
         for (
             image,
@@ -96,7 +99,10 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             fg_ind,
             bg_ind,
         ) in zip(
-            images, lms, fg_inds, bg_inds,
+            images,
+            lms,
+            fg_inds,
+            bg_inds,
         ):
             assert image.shape == lm.shape, "mismatch in shape".format(
                 image.shape, lm.shape
@@ -117,7 +123,14 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             dataset=self.ds,
             num_workers=num_workers,
             collate_fn=dict_list_collated(
-                keys=["image", "lm", "lm_imported","lm_fg_indices","lm_bg_indices", "bounding_box"]
+                keys=[
+                    "image",
+                    "lm",
+                    "lm_imported",
+                    "lm_fg_indices",
+                    "lm_bg_indices",
+                    "bounding_box",
+                ]
             ),
             batch_size=batch_size,
         )
@@ -132,7 +145,8 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
 
     def create_properties_dict(self):
         resampled_dataset_properties = super().create_properties_dict()
-        if self.remapping is None: labels = None
+        if self.remapping is None:
+            labels = None
         else:
             labels = {
                 k[0]: k[1] for k in self.remapping.items() if self.remapping[k[0]] != 0
@@ -144,13 +158,137 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         }
         return resampled_dataset_properties | additional_props
 
+
 # %%
 
 if __name__ == "__main__":
 # %%
-#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
-    pass
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+
+    from fran.utils.common import *
+    from fran.managers import Project
+
+    P = Project(project_title="litsmc")
+    spacing = [0.8, 0.8, 1.5]
+    P.maybe_store_projectwide_properties()
+
+    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+    plan = conf["plan"]
+
+
+# %%
+# SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+
+    if not "labels_all" in P.global_properties.keys():
+        P.set_lm_groups(plan["lm_groups"])
+        P.maybe_store_projectwide_properties(overwrite=False)
+    lm_group = P.global_properties["lm_group1"]
+    TSL = TotalSegmenterLabels()
+    imported_folder = "/s/fran_storage/predictions/totalseg/LITS-1088"
+    imported_labelsets = lm_group["imported_labelsets"]
+    imported_labelsets = [TSL.get_labels("liver",localiser=True)]
+    remapping = TSL.create_remapping(
+        imported_labelsets,
+        [
+            1,
+        ]
+        * len(imported_labelsets),
+        localiser=True,
+    )
+    merge_imported_labels = True
+# %%
+
+    L = LabelBoundedDataGeneratorImported(
+        project=P,
+        data_folder="/s/xnat_shadow/crc/tensors/fixed_spacing",
+        output_folder="/s/xnat_shadow/crc/tensors/ldb_plan3",
+        plan=plan,
+        imported_folder=imported_folder,
+        merge_imported_labels=merge_imported_labels,
+        remapping=remapping,
+        folder_suffix=None,
+    )
+# %%
+    L.setup()
+    L.process()
+# %%
+#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
+    dici = L.ds[30]
+    dici['lm'].meta
+    dici= L.ds.data[0]
+    lm_fn = dici['lm']
+    lm = torch.load(lm_fn)
+    lm.meta
+    dici['lm'].meta
+# %%
+    dl = L.dl
+    iteri = iter(dl)
+    batch  = next(iteri)
+    batch['image'][1].meta
+# %%
+    row = L.df.iloc[10]
+    img_fn = row['image']
+    find_matching_fn(img_fn,Path(L.imported_folder))
+
+
+# %%
+# L.ds.set_transforms("R,LS,LT,D,Re,E,Rz,M,B,A")
+    dici=L.ds.data[45]
+    if L.ds.merge_imported_labels == True:
+        L.ds.set_transforms("R,LS,LT,D,E,Rz,M,B,A,Ind")
+    else:
+        L.ds.set_transforms("R,LS,LT,D,E,Rz,B,A,Ind")
+    dici = L.ds.transforms_dict['R'](dici)
+    dici = L.ds.transforms_dict['LS'](dici)
+    dici = L.ds.transforms_dict['LT'](dici)
+    dici = L.ds.transforms_dict['D'](dici)
+    dici = L.ds.transforms_dict['E'](dici)
+    dici = L.ds.transforms_dict['Rz'](dici)
+# %%
+    dici = L.ds.transforms_dict['M'](dici)
+    dici = L.ds.transforms_dict['B'](dici)
+    dici = L.ds.transforms_dict['A'](dici)
+    dici = L.ds.transforms_dict['Ind'](dici)
+# %%
+    dici['lm'].meta
+
+
+# %%
+# %%
+    """Create data dictionaries from DataFrame."""
+    data = []
+    for index in range(len(L.ds.df)):
+        row = L.ds.df.iloc[index]
+        ds = row.get("ds")
+        remapping = L.ds._get_ds_remapping(ds)
+        dici= L.ds._dici_from_df_row(row,remapping)
+        data.append(dici)
+# %%
+    imported_folder=L.ds.imported_folder
+    masks_folder = L.ds.data_folder / "lms"
+    images_folder = L.ds.data_folder / "images"
+    lm_fns = list(masks_folder.glob("*.pt"))
+    img_fns = list(images_folder.glob("*.pt"))
+    imported_files = list(imported_folder.glob("*"))
+    data = []
+    for cid in L.ds.case_ids:
+        lm_fn = L.ds.case_id_file_match(cid, lm_fns)
+        img_fn = L.ds.case_id_file_match(cid, img_fns)
+        imported_fn = L.ds.case_id_file_match(cid, imported_files)
+        dici = {
+            "lm": lm_fn,
+            "image": img_fn,
+            "lm_imported": imported_fn,
+            "remapping_imported": L.ds.remapping_imported,
+        }
+        data.append(dici)
+# %%
+    
+    # L.df.to_csv("/s/xnat_shadow/crc/tensors/ldb/info.csv")
+
+# %%
 
 
 
 
+# %%

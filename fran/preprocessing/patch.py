@@ -30,10 +30,10 @@ import ipdb
 
 tr = ipdb.set_trace
 
-from fran.preprocessing.fixed_spacing import _Preprocessor
+from fran.preprocessing.preprocessor import Preprocessor
 
 
-class PatchGenerator(DictToAttr,_Preprocessor):
+class PatchGenerator(DictToAttr,Preprocessor):
     def __init__(
         self,
         dataset_properties: dict,
@@ -161,7 +161,7 @@ class PatchGenerator(DictToAttr,_Preprocessor):
             self.create_grid_sampler_from_patchsize(bbox_new)
             self.create_patches_from_grid_sampler()
 
-class PatchDataGenerator(_Preprocessor):
+class PatchDataGenerator(Preprocessor):
     _default = "project"
 
     def __init__(
@@ -267,8 +267,7 @@ class PatchDataGenerator(_Preprocessor):
         save_dict(patches_config, self.patches_config_fn)
 
 
-    @property
-    def output_folder(self):
+    def set_output_folder(self):
         data_folder_name = self.data_folder.name
         pat = re.compile("_plan\d+")
         data_folder_name = pat.sub("",data_folder_name)
@@ -277,10 +276,10 @@ class PatchDataGenerator(_Preprocessor):
         if self.output_suffix:
             patches_fldr_name+="_"+self.output_suffix
 
-        self._output_folder = (
+        self.output_folder = (
             self.patches_folder / data_folder_name/ patches_fldr_name
         )
-        return self._output_folder
+        return self.output_folder
 
 
 def patch_generator_wrapper(

@@ -22,63 +22,78 @@ from pathlib import Path
 
 from fastcore.basics import GetAttr, store_attr
 
-from fran.preprocessing.fixed_spacing import _Preprocessor
+from fran.preprocessing.preprocessor import Preprocessor
 from fran.utils.fileio import *
 from fran.utils.helpers import *
 from fran.utils.imageviewers import *
 
 # NOTE:  move all file io processes to ray to avoid 'too many open files' error
+MIN_SIZE = 32 # min size in a single dimension of any image
 
-class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
+
+class LabelBoundedDataGenerator(PatchDataGenerator, Preprocessor, GetAttr):
     _default = "project"
 
     def __init__(
         self,
         project,
         plan,
-        # expand_by,
-        # spacing,
-        # lm_group,
-
-        # folder_suffix:str ,
-        device='cpu',
+        folder_suffix:str=None ,
         data_folder=None,
         output_folder=None,
         mask_label=None,
         # fg_indices_exclude: list = None,
-        remapping:dict=None,
+        remapping: dict = None,
     ) -> None:
         """
         mask_label: this label is used to apply mask, i.e., crop the image and lm. Defaults to None aka all label values >0 are used to crop.
         """
-        _Preprocessor.__init__(self, project=project, spacing=plan.get("spacing"),device=device,data_folder=data_folder, output_folder=output_folder)
+        self.folder_suffix = folder_suffix 
+        self.plan = plan
+        self.fg_indices_exclude = listify(plan.get("fg_indices_exclude"))
+        self.remapping = remapping
 
         self.mask_label = mask_label
-        self.lm_group = self.plan.get('lm_group')
+        self.lm_group = self.plan.get("lm_group")
         if is_excel_None(self.lm_group):
             self.lm_group = "lm_group1"
+        Preprocessor.__init__(
+            self,
+            project=project,
+            spacing=plan.get("spacing"),
+            data_folder=data_folder,
+            output_folder=output_folder,
+        )
 
-
-    def set_input_output_folder(self,data_folder,output_folder):
+    def set_input_output_folders(self, data_folder, output_folder):
         if data_folder is None:
-            self.data_folder = self.set_folders_from_spacing(self.spacing)
+            self.set_folders_from_spacing(self.spacing)
         else:
-            self.data_folder=data_folder
+            self.data_folder = Path(data_folder)
         if output_folder is None:
-            self.output_folder = self.project.lbd_folder
+            self.set_output_folder(self.project.lbd_folder)
         else:
-            self.output_folder=output_folder
+            self.output_folder = Path(output_folder)
 
     def set_folders_from_spacing(self, spacing):
-        self.fixed_spacing_subfolder = folder_name_from_list(
+        self.data_folder = folder_name_from_list(
             prefix="spc",
             parent_folder=self.fixed_spacing_folder,
             values_list=spacing,
         )
 
-
-    def process(self):
-        _Preprocessor.process(self)
+    def set_output_folder(self, parent_folder):
+        self.output_folder = folder_name_from_list(
+            prefix="spc",
+            parent_folder=parent_folder,
+            values_list=self.spacing,
+        )
+        tr()
+        if self.folder_suffix is not None:
+            output_name = "_".join([self.output_folder.name, self.folder_suffix])
+            self.output_folder = Path(
+                self.output_folder.parent / output_name
+            )  # .name = self.output_folder.name + self.output_suffix
 
     def create_output_folders(self):
         maybe_makedirs(
@@ -88,6 +103,10 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
                 self.indices_subfolder,
             ]
         )
+
+    def process(self):
+        Preprocessor.process(self)
+
     def setup(self, device="cpu", batch_size=4, overwrite=True):
         device = resolve_device(device)
         print("Processing on ", device)
@@ -95,19 +114,18 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
         print("Overwrite:", overwrite)
         if overwrite == False:
             self.case_ids = self.remove_completed_cases()
-
-        self.ds = CropToLabelDataset(
-            case_ids=self.case_ids,
-            expand_by=self.plan.get('expand_by'),
-            spacing=self.spacing,
-            data_folder=self.fixed_spacing_subfolder,
-            mask_label=self.mask_label,
-            fg_indices_exclude=self.fg_indices_exclude,
-            device=device,
-        )
+        self.create_ds(device=device)
         self.ds.setup()
         self.create_dl(batch_size=batch_size, num_workers=1)
 
+    def create_ds(self,device="cpu"):
+        self.ds = CropToLabelDataset(
+            project=self.project,
+            plan=self.plan,
+            df=self.df,
+            mask_label=self.mask_label,
+            device=device,
+        )
     def create_dl(self, num_workers=1, batch_size=4):
         # same function as labelbounded
         self.dl = DataLoader(
@@ -156,6 +174,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
                 image.shape, lm.shape
             )
             assert image.dim() == 4, "images should be cxhxwxd"
+            assert image.numel()>MIN_SIZE^3, "image size is too small {0}. A typical cause of this is that the lm has no/little foreground.".format(image.shape)
             inds = {
                 "lm_fg_indices": fg_ind,
                 "lm_bg_indices": bg_ind,
@@ -193,7 +212,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
 
     @property
     def indices_subfolder(self):
-        if len(self.fg_indices_exclude) >0:
+        if len(self.fg_indices_exclude) > 0:
             indices_subfolder = "indices_fg_exclude_{}".format(
                 "".join([str(x) for x in self.fg_indices_exclude])
             )
@@ -201,22 +220,6 @@ class LabelBoundedDataGenerator(PatchDataGenerator, _Preprocessor, GetAttr):
             indices_subfolder = "indices"
         indices_subfolder = self.output_folder / indices_subfolder
         return indices_subfolder
-    def output_folder(self):
-        return self._output_folder
-
-
-    @output_folder.setter
-    def output_folder(self, parent_folder):
-        self._output_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=parent_folder,
-            values_list=self.spacing,
-        )
-        if self.folder_suffix is not None:
-            output_name = "_".join([self._output_folder.name, self.folder_suffix])
-            self._output_folder = Path(
-                self._output_folder.parent / output_name
-            )  # .name = self.output_folder.name + self.output_suffix
 
 
 class FGBGIndicesLBD(LabelBoundedDataGenerator):
@@ -370,7 +373,7 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     from fran.utils.common import *
     from fran.managers import Project
@@ -384,25 +387,30 @@ if __name__ == "__main__":
     plan_str = "plan7"
     plan = conf[plan_str]
     plan = parse_excel_plan(plan)
-    plan['spacing']=[.8,.8,1.5]
-    plan['fg_indices_exclude']=None
+    plan["spacing"] = [0.8, 0.8, 1.5]
+    plan["fg_indices_exclude"] = None
 
 # %%
+# %%
+#SECTION:-------------------- LabelBoundedDataGenerator--------------------------------------------------------------------------------------
     L = LabelBoundedDataGenerator(
         project=P,
-        expand_by=plan['expand_by'],
-        spacing=plan['spacing'],
-        lm_group=plan["lm_groups"],
+        data_folder = "/s/xnat_shadow/crc/tensors/fixed_spacing",
+        output_folder="/s/xnat_shadow/crc/tensors/ldb",
+        plan=plan,
         mask_label=None,
-        fg_indices_exclude=plan['fg_indices_exclude'],
-        folder_suffix=plan_str
+        folder_suffix=plan_str,
     )
 # %%
     L.indices_subfolder
-# %%
-    L.setup(overwrite=False)
+    L.setup(device='cpu',overwrite=False)
     L.process()
     # L.create_dl(overwrite=False, device="cpu", batch_size=4)
+# %%
+    dl = L.dl
+    iteri = iter(dl)
+    batch = next(iteri)
+    batch['lm'][0].meta
 # %%
     fldr = Path(
         "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/indices_fg_exclude_1"
@@ -435,34 +443,7 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR>
-
-    plans = conf["plan4"]
-    plans["spacing"] = ast.literal_eval(plans["spacing"])
-    if not "labels_all" in P.global_properties.keys():
-        P.set_lm_groups(plans["lm_groups"])
-        P.maybe_store_projectwide_properties(overwrite=True)
-    P.lm_groups
-    lm_group = P.global_properties["lm_group1"]
-    imported_folder = lm_group["imported_folder1"]
-    imported_labelsets = lm_group["imported_labelsets"]
-    merge_imported_labels = False
-    remapping = None
-# %%
-
-    L = LabelBoundedDataGeneratorImported(
-        project=P,
-        expand_by=10,
-        spacing=spacing,
-        lm_group="lm_group1",
-        imported_folder=imported_folder,
-        imported_labelsets=imported_labelsets,
-        merge_imported_labels=merge_imported_labels,
-        remapping=remapping,
-        folder_suffix="plan3"
-    )
-# %%
-#SECTION:-------------------- FGBG indices--------------------------------------------------------------------------------------
+# SECTION:-------------------- FGBG indices-------------------------------------------------------------------------------------- <CR>
 
     F = FGBGIndicesLBD(
         project=P,
@@ -516,11 +497,10 @@ if __name__ == "__main__":
     inds2 = torch.load(fn)
     inds2["lm_fg_indices"].numel()
 
-
 # %%
-#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
 
-    L.setup('cpu',num_workers=4,overwrite=False)
+    L.setup("cpu", num_workers=4, overwrite=False)
     L.process()
     L.get_tensor_folder_stats()
 # %%
@@ -530,28 +510,28 @@ if __name__ == "__main__":
     batch = next(iteri)
 # %%
     dici = L.ds.data[2]
-    dici = L.ds.transforms_dict['R'](dici)
-    dici = L.ds.transforms_dict['LS'](dici)
-    dici = L.ds.transforms_dict['LT'](dici)
-    dici = L.ds.transforms_dict['D'](dici)
-    dici = L.ds.transforms_dict['Re'](dici)
+    dici = L.ds.transforms_dict["R"](dici)
+    dici = L.ds.transforms_dict["LS"](dici)
+    dici = L.ds.transforms_dict["LT"](dici)
+    dici = L.ds.transforms_dict["D"](dici)
+    dici = L.ds.transforms_dict["Re"](dici)
     # dici = L.ds.transforms_dict['Re'](dici)
-    dici = L.ds.transforms_dict['E'](dici)
-    dici = L.ds.transforms_dict['Rz'](dici)
-    dici = L.ds.transforms_dict['M'](dici)
-    dici = L.ds.transforms_dict['B'](dici)
-    dici = L.ds.transforms_dict['A'](dici)
+    dici = L.ds.transforms_dict["E"](dici)
+    dici = L.ds.transforms_dict["Rz"](dici)
+    dici = L.ds.transforms_dict["M"](dici)
+    dici = L.ds.transforms_dict["B"](dici)
+    dici = L.ds.transforms_dict["A"](dici)
 
 # %%
 
     U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
     batch = U(batch)
-    images, lms, fg_inds, bg_inds=(
-            batch["image"],
-            batch["lm"],
-            batch["lm_fg_indices"],
-            batch["lm_bg_indices"]
-        )
+    images, lms, fg_inds, bg_inds = (
+        batch["image"],
+        batch["lm"],
+        batch["lm_fg_indices"],
+        batch["lm_bg_indices"],
+    )
 # %%
     for (
         image,
@@ -559,13 +539,15 @@ if __name__ == "__main__":
         fg_ind,
         bg_ind,
     ) in zip(
-        images, lms, fg_inds, bg_inds,
+        images,
+        lms,
+        fg_inds,
+        bg_inds,
     ):
         assert image.shape == lm.shape, "mismatch in shape".format(
             image.shape, lm.shape
         )
         assert image.dim() == 4, "images should be cxhxwxd"
-
 
 # %%
 
@@ -580,13 +562,13 @@ if __name__ == "__main__":
         L.extract_image_props(image)
 
 # %%
-    im = dici['image']
-    lm = dici['lm']
-    lmi = dici['lm_imported']
-    lmo = dici['lm_out']
+    im = dici["image"]
+    lm = dici["lm"]
+    lmi = dici["lm_imported"]
+    lmo = dici["lm_out"]
 
-    ImageMaskViewer([lm[0],lmo[0]],'mm')
-    ImageMaskViewer([im[0],lm[0]],'im')
+    ImageMaskViewer([lm[0], lmo[0]], "mm")
+    ImageMaskViewer([im[0], lm[0]], "im")
 
     L.ds[0]
 # %%
