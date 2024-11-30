@@ -43,7 +43,7 @@ class UNetManager(LightningModule):
         super().__init__()
         store_attr()
         self.save_hyperparameters("project","config","lr")
-        self.plan = config["plan"]
+        self.plan = config["plan_train"]
         self.model_params = config["model_params"]
         self.loss_params = config['loss_params']
         self.lr = lr if lr else self.model_params["lr"]
@@ -93,7 +93,6 @@ class UNetManager(LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, loss_dict = self._common_step(batch, batch_idx)
-        tr()
         self.log_losses(loss_dict, prefix="train")
         return loss
 
