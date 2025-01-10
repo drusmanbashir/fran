@@ -8,7 +8,7 @@ from fran.preprocessing.dataset import ImporterDataset
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 
 from torch.utils.data import DataLoader
-from fran.utils.config_parsers import ConfigMaker, parse_excel_plan
+from fran.utils.config_parsers import ConfigMaker, parse_excel_dict
 from fran.utils.fileio import load_dict
 from fran.utils.helpers import find_matching_fn, folder_name_from_list, resolve_device
 
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     P.maybe_store_projectwide_properties()
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-    plan = conf["plan"]
+    plan = conf["plan_valid"]
 
 
 # %%
@@ -200,16 +200,16 @@ if __name__ == "__main__":
 
     L = LabelBoundedDataGeneratorImported(
         project=P,
-        data_folder="/s/xnat_shadow/crc/tensors/fixed_spacing",
-        output_folder="/s/xnat_shadow/crc/tensors/ldb_plan3",
+        data_folder="/s/xnat_shadow/crc/sampling/tensors/fixed_spacing",
+        output_folder="/s/xnat_shadow/crc/sampling/tensors/lbd",
         plan=plan,
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
         remapping=remapping,
-        folder_suffix=None,
+        folder_suffix=plan['plan_name'],
     )
 # %%
-    L.setup()
+    L.setup(overwrite=True)
     L.process()
 # %%
 #SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------

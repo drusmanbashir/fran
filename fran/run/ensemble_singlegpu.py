@@ -5,7 +5,6 @@ import argparse
 # from fran.inference.transforms import *
 from fran.utils.common import *
 from fran.transforms.spatialtransforms import *
-from fran.managers.trainer import *
 from fran.managers.tune import *
 from fran.inference.cascade import *
 from fran.utils.imageviewers import *

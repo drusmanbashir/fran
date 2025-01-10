@@ -56,7 +56,7 @@ class UNetManagerCraig(UNetManagerFabric):
                 softmax=True,
                 compute_grad=True,  # i want to capture grad in the model
             )
-            return loss_func
+            self.loss_fnc=loss_func
 
         elif (
             self.model_params["arch"] == "DynUNet"
@@ -90,13 +90,13 @@ class UNetManagerCraig(UNetManagerFabric):
                 fg_classes=self.model_params["out_channels"] - 1,
                 compute_grad=self.capture_grads,
             )
-            return loss_func
+            self.loss_fnc=loss_func
 
         else:
             loss_func = CombinedLoss(
                 **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
             )
-            return loss_func
+            self.loss_fnc=loss_func
 
     def compute_gradient_norm(self):
         """

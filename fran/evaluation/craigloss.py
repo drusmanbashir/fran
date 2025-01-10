@@ -154,16 +154,22 @@ class _DiceCELossMultiOutput(DiceCELoss):
         if compute_grad == True:
             jac = softmax_derivative(input_activated)
             grad_sigma_z = jac
-            grad_L_sigma = torch.autograd.grad(
-                total_loss, input_activated, retain_graph=True
-            )[0]
+            grad_L_sigma = torch.autograd.grad(dice_loss_reduced, input_activated, retain_graph=True)[0]
             grad_L_sigma = grad_L_sigma.unsqueeze(2)
             grad_L_z = torch.einsum('ijk..., ijl...->ilk...', grad_L_sigma,grad_sigma_z)
+
+            grad_sigma_z_ch23 = grad_sigma_z[:, 2:, 2:, :]
+            grad_L_sigma_ch23 = grad_L_sigma[:, 2:, 0:1, :]
+            grad_L_z_ch23=torch.einsum('ijk..., ijl...->ilk...', grad_L_sigma_ch23,grad_sigma_z_ch23)
+            # grad_L_sigma_ch23.shape
+            # grad_sigma_z_ch23.shape
+            # grad_L_z_ch23.shape
             # grad_L_z_normed = torch.linalg.norm(grad_L_z_flat, dim=1)
             # self.grad_prod = self.grad_L_x * self.model.grad_sigma_z[0]
 
             dici_grad = {
                 "grad_L_z": grad_L_z,
+                "grad_L_z_ch23": grad_L_z_ch23,
             }
             dici_out.update(dici_grad)
         return dici_out
@@ -283,6 +289,7 @@ class DeepSupervisionLossCraig(pl.LightningModule):
         # self.set_loss_dict(losses[0])
         self.loss_dict = losses[0]['losses_for_logging']
         self.grad_L_z = losses[0]['grad_L_z']
+        self.grad_L_z_ch23 = losses[0]['grad_L_z_ch23']
         losses_weighted = torch.stack(
             [self.weights * loss['loss'] for loss in losses]
         )  # total_loss * weight for each level

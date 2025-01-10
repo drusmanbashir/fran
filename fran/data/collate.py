@@ -40,7 +40,6 @@ def img_lm_bbox_collated(batch):
 
 
 def img_lm_metadata_lists_collated(batch):
-    tr()
     images = []
     lms = []
     images_meta = []
@@ -98,7 +97,46 @@ def process_items(items):
         
     return imgs, labels, fns_imgs, fns_labels
 
+def process_grid_items(item):
+    #items is a list of dictionaries each dictionary has keys: "image", "lm
+    # Helper function to process items and append to lists
+    imgs = []
+    labels = []
+    fns_imgs = []
+    fns_labels = []
+
+    imgs.append(item["image"])
+    fns_imgs.append(item["image"].meta['filename_or_obj'])
+    labels.append(item["lm"])
+    fns_labels.append(item["lm"].meta['filename_or_obj'])
+        
+    return imgs, labels, fns_imgs, fns_labels
+
+def grid_collated(batch):
+    # same as source except each item in a batch is a 2-tuple. The second item in the tuple has locations of the grid which I will ignore in training
+    imgs = []
+    labels = []
+    fns_imgs=[]
+    fns_labels = []
+    for i, item in enumerate(batch):
+        item=item[0]
+        imgs_,labels_,fns_imgs_,fns_labels_ = process_grid_items(item)
+        imgs.extend(imgs_)
+        labels.extend(labels_)
+        fns_imgs.extend(fns_imgs_)
+        fns_labels.extend(fns_labels_)
+    if len(batch) == 1:
+        fns_imgs = fns_imgs[0]
+        fns_labels = fns_labels[0]
+    imgs_out = torch.stack(imgs, 0)
+    lms_out= torch.stack(labels, 0)
+
+    imgs_out.meta['filename_or_obj']=fns_imgs
+    lms_out.meta['filename_or_obj']=fns_labels
+    output = {"image": imgs_out , "lm": lms_out}
+    return output
 def source_collated(batch):
+
     imgs = []
     labels = []
     fns_imgs=[]

@@ -16,7 +16,7 @@ from fran.preprocessing.fixed_spacing import (
 )
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd
-from fran.utils.config_parsers import ConfigMaker, is_excel_None, parse_excel_plan
+from fran.utils.config_parsers import ConfigMaker, is_excel_None, parse_excel_dict
 from fran.utils.string import info_from_filename
 from pathlib import Path
 
@@ -384,9 +384,9 @@ if __name__ == "__main__":
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 # %%
-    plan_str = "plan7"
+    plan_str = "plan4"
     plan = conf[plan_str]
-    plan = parse_excel_plan(plan)
+
     plan["spacing"] = [0.8, 0.8, 1.5]
     plan["fg_indices_exclude"] = None
 
@@ -395,8 +395,8 @@ if __name__ == "__main__":
 #SECTION:-------------------- LabelBoundedDataGenerator--------------------------------------------------------------------------------------
     L = LabelBoundedDataGenerator(
         project=P,
-        data_folder = "/s/xnat_shadow/crc/tensors/fixed_spacing",
-        output_folder="/s/xnat_shadow/crc/tensors/ldb",
+        data_folder = "/s/xnat_shadow/crc/sampling/tensors/fixed_spacing",
+        output_folder="/s/xnat_shadow/crc/sampling/tensors/lbd",
         plan=plan,
         mask_label=None,
         folder_suffix=plan_str,

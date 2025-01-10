@@ -74,26 +74,33 @@ def remove_loss_key_state_dict(model_id):
         else:
             print("No loss keys in state_dict. No change")
 
-def find_key_in_dict(d, search_key, path="root"):
-    """Recursively find all occurrences of search_key in nested dictionaries and print their paths
+def find_key_in_dict(d, search_key, parent_keys=None):
+    """Recursively find all occurrences of search_key in nested dictionaries and return their parent keys
     
     Args:
         d: Dictionary to search in
         search_key: Key to search for
-        path: Current path in the dictionary (used for recursion)
+        parent_keys: List to track the current path of parent keys
+    
+    Returns:
+        list: List of lists, each containing the sequence of parent keys to reach the search_key
     """
+    if parent_keys is None:
+        parent_keys = []
+    
+    found_paths = []
+    
     if not isinstance(d, dict):
-        return
+        return found_paths
         
     for k, v in d.items():
-        current_path = f"{path}->{k}"
         if k == search_key:
-            print(f"Found '{search_key}' key at: {current_path}")
-            print(f"Value: {v}")
-            print("-" * 50)
+            found_paths.append(parent_keys + [k])
             
         if isinstance(v, dict):
-            find_key_in_dict(v, search_key, current_path)
+            found_paths.extend(find_key_in_dict(v, search_key, parent_keys + [k]))
+            
+    return found_paths
 
 def copy_dict_structure(dict_src, dict_dest, path="root", missing_keys=None):
     """Copy structure from dict_src and fill values from dict_dest where possible.
@@ -133,6 +140,17 @@ def copy_dict_structure(dict_src, dict_dest, path="root", missing_keys=None):
     
     return new_dict
 
+def get_key_path(key_path):
+    """Convert a list of keys into a single string representation
+    
+    Args:
+        key_path: List of strings representing the path to the desired key
+        
+    Returns:
+        str: A string representation of the key path (e.g., "key1.key2.key3")
+    """
+    return '.'.join(key_path)
+
 def find_value_in_dict(d, search_key):
     """Recursively search for a key in nested dictionary and return its value"""
     if not isinstance(d, dict):
@@ -154,22 +172,51 @@ def add_subdict(model_id):
 # %%
 if __name__ == "__main__":
 
-    run_src = "LITS-1116"
+
+
+
+    run_src = "LITS-933";project_title="litsmc"; value =4
+    run_src = "LITS-1088";project_title="totalseg"; value=2
+    run_src = "LITS-911";    project_title="lidc2";value =3
+    
+    project_title="nodes"
+# %%
     ckpt_src = checkpoint_from_model_id(run_src)
     dict_src = torch.load(ckpt_src, map_location="cpu")
 
+# %%
+    dici = dict_src.copy()
+    # pln = dici['datamodule_hyper_parameters']['config']['plan{}'.format(value)]
+    pln = dici['datamodule_hyper_parameters']['config']['plan']
+    dici['hyper_parameters']['config']['plan_train']=pln
+    dici['hyper_parameters']['config']['plan_valid']=pln
+    dici['datamodule_hyper_parameters']['config']['plan_train']=pln
+    dici['datamodule_hyper_parameters']['config']['plan_valid']=pln
+    torch.save(dici,ckpt_src)
+# %%
 
+    dici['hyper_parameters'].keys()
+    dici['hyper_parameters']['project_title'] =project_title
+
+    dici['datamodule_hyper_parameters']['project_title']
+    dici['datamodule_hyper_parameters']['project_title'] =project_title
+    torch.save(dici,ckpt_src)
 
 # %%
     run2 = "LITS-1088"
     ckpt2 = checkpoint_from_model_id(run2)
     ckpt2_neo = ckpt2.str_replace(".ckpt","_neo.ckpt")
     dici= torch.load(ckpt2, map_location="cpu")
+    dici['hyper_parameters']['project_title'] = "total_seg"
+    dici['datamodule_hyper_parameters']['project_title'] = "total_seg"
+    dici['datamodule_hyper_parameters'].keys()
+    torch.save(dici,ckpt_src)
 
 # %%
 
     dd = copy_dict_structure(dict_src,dict_dest)
 
+    dd['hyper_parameters'].keys()
     dd['hyper_parameters']['config'].keys()
     torch.save(dd,ckpt2_neo)
 # %%
@@ -177,7 +224,19 @@ if __name__ == "__main__":
 
     # dici['state_dict']= dict_dest['state_dict'].copy()
 
+    keys = find_key_in_dict(dici,"plan")
+    key_j = get_key_path(keys[0])
+
+    val = get_nested_value(dici,keys[0])
+    dici['hyper_parameters']['config']['plan_train'] =dici['hyper_parameters']['config']['plan'].copy()
+    dici['hyper_parameters']['config']['plan_valid'] =dici['hyper_parameters']['config']['plan'].copy()
+
+    dici['datamodule_hyper_parameters']['config'] = dici['hyper_parameters']['config'].copy()
+    dici['datamodule_hyper_parameters']['config'] 
+    torch.save(dici,ckpt_src)
+# %%
     dici['hyper_parameters']['config']={}
+
     dici['hyper_parameters']['config'].keys()
     dici['hyper_parameters']['config']['dataset_params']#= dici['datamodule_hyper_parameters']['dataset_params'].copy()
     dici['hyper_parameters']['config']['model_params']=dici['hyper_parameters']['model_params'].copy()

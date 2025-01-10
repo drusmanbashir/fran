@@ -1,5 +1,6 @@
 # %%
 from fran.managers import Project
+from fran.utils.helpers import pbar
 from pathlib import Path
 from pytorch_grad_cam import (
     GradCAM,
@@ -8,6 +9,7 @@ import ipdb
 
 from fran.trainers.base import checkpoint_from_model_id
 from fran.utils.config_parsers import ConfigMaker
+from fran.utils.string import info_from_filename
 tr = ipdb.set_trace
 
 from fran.managers import UNetManagerCraig
@@ -830,6 +832,8 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("medium")
 
+    fn_results = "/s/fran_storage/predictions/litsmc/LITS-933_fixed_mc/results/summary_LITS-933.xlsx"
+    df_res = pd.read_excel(fn_results)
     from fran.utils.common import *
 
     project_title = "litsmc"
@@ -850,11 +854,12 @@ if __name__ == "__main__":
     # run_name = "LITS-1007"
     # device_id = 0
     run_totalseg = "LITS-1025"
-    run_litsmc = "LITS-1018"
+    # run_litsmc = "LITS-1018"
+    run_litsmc = "LITS-1131"
     run_empty = None
     run_name = run_empty
     bs = 1  # 5 is good if LBD with 2 samples per case
-    # run_name ='LITS-1003'
+    run_name =run_litsmc
     if run_name is not None:
         ckpt = checkpoint_from_model_id(run_name, sort_method="last")
     else:
@@ -872,12 +877,13 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- Dataloaders-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
-    DMClass = resolve_datamanager(config["plan"]["mode"])
+    DMClass = resolve_datamanager(config["plan_valid"]["mode"])
     if ckpt:
-        D = DMClass.load_from_checkpoint(ckpt, project=proj)
+        # D = DMClass.load_from_checkpoint(ckpt, project=proj)
         N = load_unet_trainer(ckpt=ckpt, project=proj, config=config, lr=1e-2)
     else:
-        D = DMClass(
+        N = init_unet_trainer(proj, config, lr=config["model_params"]["lr"])
+    D = DMClass(
             proj,
             
             config=config,
@@ -885,18 +891,73 @@ if __name__ == "__main__":
             cache_rate=0,
            
         )
+    N.create_loss_fnc()
 # %%
-        N = init_unet_trainer(proj, config, lr=config["model_params"]["lr"])
+#SECTION:-------------------- From Folder--------------------------------------------------------------------------------------
 # %%
+    fldr = Path("/s/xnat_shadow/crc/tensors/lbd_plan3")
+    fn_stats =fldr/("stats.csv")
+    D = DMClass.from_folder(data_folder=fldr, project=proj,config=config,batch_size=2,split="train")
     D.prepare_data()
     D.setup()
-    train_dl = D.train_dataloader()
-    val_dl = D.val_dataloader()
+    dl = D.dl
 
     N.lr = 1e-2
     devices=[1]
+    N.model.to('cuda')
+# %%
+    def stat_dict(grad_L_z,suffix=""):
+        return        {
+            'max'+suffix: grad_L_z.max().item(),
+            'min'+suffix: grad_L_z.min().item(), 
+            'mean'+suffix:grad_L_z.mean().item(),
+            'sum'+suffix: grad_L_z.sum().item(),
+            'std'+suffix: grad_L_z.std().item(),
+            'norm'+suffix:torch.linalg.norm(grad_L_z).item(),
+        }
+
+#SECTION:-------------------- Loops--------------------------------------------------------------------------------------
+    all_stats=[]
+# %%
+    for i, batch in pbar(enumerate(dl)):
+        batch['image'] =batch['image'].to('cuda')
+        batch['lm'] =batch['lm'].to('cuda')
+
+        inputs, target = batch["image"], batch["lm"]
+        pred = N.forward(
+            inputs
+        )  # N.pred so that NeptuneImageGridCallback can use it
+
+        pred, target = N.maybe_apply_ds_scales(pred, target)
+        loss = N.loss_fnc(pred, target)
+        loss_dict = N.loss_fnc.loss_dict
+        grad_L_z = N.loss_fnc.grad_L_z
+        grad_L_z_ch23 = N.loss_fnc.grad_L_z_ch23
+        fn = inputs.meta['filename_or_obj']
+        cid = info_from_filename(Path(fn).name,False)['case_id']
+        inputs.meta
+        stats_grad_L_z = stat_dict(grad_L_z)
+        stats_ch23 = stat_dict(grad_L_z_ch23,suffix="_ch23")
+        info = {
+            'fn': inputs.meta['filename_or_obj'],
+            'case_id':cid,
+        }
+        final_dict = stats_grad_L_z | stats_ch23 | info
+
+
+        all_stats.append(final_dict)
+    # print(stats)
+    df = pd.DataFrame(all_stats)
+    df =df.merge(df_res[['case_id','dsc','lesions_gt','gt_vol_tot']], on='case_id',how='left')
+    df.to_csv(fn_stats,index=False)
+# %%
+    n=0
+    ImageMaskViewer([inputs[n][0].detach().cpu(),pred[0][n][3].detach().cpu()])
 # %%
 
+    preds[0].shape
+    n=1
+# %%
 # SECTION:-------------------- Train-------------------------------------------------------------------------------------- <CR>
     Tm = Trainer(callbacks=cbs, precision="bf16-mixed", should_train=False,devices = devices)
 # %%

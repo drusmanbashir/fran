@@ -24,19 +24,41 @@ def is_excel_None(input):
     else:
         return False
 
-def parse_excel_plan(plan):
-    keys_maybe_nan = "fg_indices_exclude", "lm_groups","datasources"
-    keys_str_to_list = "spacing",  "patch_size"
-    for k in keys_maybe_nan:
-        if k in plan.keys():
-            if is_excel_None(plan[k]):
-                plan[k]=None
-
-    for k in keys_str_to_list:
-        if k in plan.keys():
-            plan[k] = ast_literal_eval(plan[k])
-    plan = maybe_add_patch_size(plan)
-    return plan
+def parse_excel_dict(dici):
+    """Recursively parse an Excel plan, handling nested dictionaries
+    
+    Args:
+        plan: Dictionary containing plan configuration, possibly with nested dictionaries
+    Returns:
+        Parsed plan with proper types for all values
+    """
+    if not isinstance(dici, dict):
+        return dici
+        
+    keys_maybe_nan = "fg_indices_exclude", "lm_groups", "datasources", "cache_rate"
+    keys_str_to_list = "spacing", "patch_size"
+    
+    for key, value in dici.items():
+        # Handle nested dictionaries recursively
+        if isinstance(value, dict):
+            dici[key] = parse_excel_dict(value)
+            continue
+            
+        # Handle None values
+        if key in keys_maybe_nan and is_excel_None(value):
+            dici[key] = None
+            continue
+            
+        # Handle string to list conversion
+        if key in keys_str_to_list and value is not None:
+            try:
+                dici[key] = ast_literal_eval(value)
+            except (ValueError, SyntaxError, TypeError):
+                # Keep original value if conversion fails
+                continue
+                
+    dici = maybe_add_patch_size(dici)
+    return dici
 
 
 def maybe_add_patch_size(plan):
@@ -47,9 +69,16 @@ def maybe_add_patch_size(plan):
                         plan["patch_dim0"], plan["patch_dim1"]
                     )
     return plan
-def maybe_merge_source_plan(config):
+def maybe_merge_source_plan(config, plan_key='plan_train'):
+    """Merge source plan into the specified plan
+    Args:
+        config: Configuration dictionary
+        plan_key: Key of the plan to merge into ('plan_train' or 'plan_valid')
+    Returns:
+        Updated config dictionary
+    """
     # Retrieve the main plan and source plan from the config dictionary
-    main_plan = config['plan']
+    main_plan = config[plan_key]
     src_plan_key = main_plan.get('source_plan')
 
     # Ensure the source plan exists in the config before proceeding
@@ -218,6 +247,7 @@ class ConfigMaker():
         configuration_mnemonic=project.global_properties["mnemonic"]
         configuration_filename = self.resolve_configuration_filename(configuration_filename,configuration_mnemonic)
         self.config = load_config_from_workbook(configuration_filename, raytune)
+        self.config =parse_excel_dict(self.config)
         if not "mom_low" in self.config["model_params"].keys() and raytune==True:
             config = {
                 "mom_low": tune.sample_from(
@@ -232,7 +262,7 @@ class ConfigMaker():
                 ),
             }
             self.config["model_params"].update(config)
-        self.set_active_plan()
+        self.set_active_plans()
         self.add_further_keys()
       
     def resolve_configuration_filename(self,configuration_filename,configuration_mnemonic):
@@ -272,19 +302,29 @@ class ConfigMaker():
 
            
     def add_out_channels(self):
-        out_ch =out_channels_from_dict_or_cell(self.config['plan'].get("src_dest_labels"))
+        out_ch =out_channels_from_dict_or_cell(self.config['plan_train'].get("src_dest_labels"))
         if not out_ch:
             out_ch= out_channels_from_global_properties(self.project.global_properties)
         self.config['model_params']["out_channels"]  = out_ch
                     
-    def set_active_plan(self):
-        plan = self.config['dataset_params']['plan']
-        plan_name = 'plan'+str(plan)
+    def _set_plan(self, plan_key, plan_num):
+        """Helper function to set a plan configuration
+        Args:
+            plan_key: Key in config to store the plan ('plan_train' or 'plan_valid')
+            plan_num: Plan number from dataset_params
+        """
+        plan_name = 'plan' + str(plan_num)
         plan_selected = self.config[plan_name]
-        self.config['plan']= plan_selected
-        self.config = maybe_merge_source_plan(self.config)
-        self.config['plan'] = parse_excel_plan(plan_selected)
-        self.config['plan']['plan_name'] = plan_name
+        self.config[plan_key] = plan_selected
+        self.config = maybe_merge_source_plan(self.config, plan_key)
+        self.config[plan_key] = parse_excel_dict(plan_selected)
+        self.config[plan_key]['plan_name'] = plan_name
+
+    def set_active_plans(self):
+        plan_train = self.config['dataset_params']['plan_train']
+        plan_valid = self.config['dataset_params']['plan_valid']
+        self._set_plan('plan_train', plan_train)
+        self._set_plan('plan_valid', plan_valid)
 
 
 

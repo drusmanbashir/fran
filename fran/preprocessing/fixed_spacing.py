@@ -109,7 +109,7 @@ class ResampleDatasetniftiToTorch(Preprocessor):
         self.df = self.df.copy()
         for i in range(len(self.df)):
             row = self.df.loc[i]
-            df_fname = Path(row.lm_symlink)
+            df_fname = Path(row.lm)
             df_fname = strip_extension(df_fname.name) + ".pt"
             if df_fname in existing_fnames:
                 self.df.drop(i, inplace=True)
@@ -154,13 +154,14 @@ class ResampleDatasetniftiToTorch(Preprocessor):
 
     def set_input_output_folders(self,data_folder,output_folder):
         if output_folder is not None:
-            self.output_folder = output_folder
-        self.output_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=self.fixed_spacing_folder,
-            values_list=self.spacing,
-        )
-        self.data_folder = data_folder
+            self.output_folder = Path(output_folder)
+        else:
+            self.output_folder = folder_name_from_list(
+                prefix="spc",
+                parent_folder=self.fixed_spacing_folder,
+                values_list=self.spacing,
+            )
+        self.data_folder =Path( data_folder)
 
 
 
@@ -221,8 +222,8 @@ if __name__ == "__main__":
 
 # %%
 #SECTION:-------------------- ResampleDatasetniftiToTorch--------------------------------------------------------------------------------------
-    Rs = ResampleDatasetniftiToTorch(project, spacing=[0.8, 0.8, 1.5], data_folder="/s/xnat_shadow/crc/",output_folder="/s/xnat_shadow/crc/tensors/fixed_spacing/")
-    Rs.setup(True)
+    Rs = ResampleDatasetniftiToTorch(project, spacing=[0.8, 0.8, 1.5], data_folder="/s/xnat_shadow/crc/sampling/nifti",output_folder="/s/xnat_shadow/crc/sampling/tensors/fixed_spacing/")
+    Rs.setup(overwrite=True)
     Rs.process()
 # %%
     F = FGBGIndicesResampleDataset(project, spacing=[0.8, 0.8, 1.5] )

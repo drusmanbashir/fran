@@ -1,9 +1,17 @@
 # %%
+
+from fran.utils.helpers import pbar
+import torchvision.io as io
+import torch
+import matplotlib.pyplot as plt
+from torchvision.utils import save_image
+import numpy as np
+from monai.data import PILWriter
 import lightning as L
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
-from fran.localizer.helpers import draw_image_bbox, draw_image_lm_bbox
+from fran.localiser.helpers import draw_image_bbox, draw_image_lm_bbox
 from fran.transforms.imageio import LoadTorchd
 from monai.apps.detection.transforms.dictionary import (
     ConvertBoxToStandardModed,
@@ -41,6 +49,26 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, random_split
 from monai.data import Dataset
 
+
+
+def write_list_to_txt(data_list, filepath, delimiter=' '):
+    """Write a list to a text file, one item per line or delimited on same line.
+    
+    Args:
+        data_list: List of items to write
+        filepath: Path to output text file
+        delimiter: Character to separate items (default space for YOLO format)
+    """
+    with open(filepath, 'w') as f:
+        if isinstance(data_list[0], (list, tuple)):
+            # For nested lists, join inner lists with delimiter
+            for item in data_list:
+                line = delimiter.join(str(x) for x in item)
+                f.write(line + '\n')
+        else:
+            # For flat lists, join all items with delimiter
+            line = delimiter.join(str(x) for x in data_list)
+            f.write(line + '\n')
 
 
 class DetectDS(Dataset):
@@ -258,11 +286,22 @@ if __name__ == "__main__":
     dici = dm.train_dicts[0]
     dici  = dm.transforms_dict['N'](dici)
     dici = dm.transforms_dict['ExtractBbox'](dici)
+
+# %%
+    img = torch.load(dici['image'])
 # %%
 
-    dici2 = dm.ds_train[153]
-    dici2.keys()
+    fldr_prnt = Path("/s/xnat_shadow/lidc2d_yolo")
+    fldr_train = fldr_prnt / "train"
+    fldr_valid = fldr_prnt / "valid"
+    
 
+    fldr = fldr_train
+    fldr_imgs = fldr/("images")
+    fldr_labels = fldr/("labels")
+
+# %%
+    dici2 = dm.ds_train[153]
     im = dici2['image'][0]
     lm = dici2['lm'][0]
     bb = dici2['lm_bbox'].copy()
@@ -270,6 +309,27 @@ if __name__ == "__main__":
     imv= torch.permute(im, (1, 0))
     lmv= torch.permute(lm, (1, 0))
     draw_image_lm_bbox(imv,lmv,*bb)
+
+    src_fn = Path(imv.meta['filename_or_obj'])
+    nm = src_fn.name
+
+    nm_jpg = str(src_fn).replace('pt', 'jpg')
+    nm_txt =  str(src_fn).replace('pt', 'txt')
+
+    save_image(imv,nm_jpg)
+# %%
+
+# Load image using torchvision.io.read_image
+    image_path = "/home/ub/code/fran/fran/test1.jpg"
+    image_tensor = io.read_image(image_path).float() / 255.0
+
+# Convert the image tensor from [C, H, W] to [H, W, C] for visualization
+    image_np = image_tensor.permute(1, 2, 0).numpy()
+
+# Visualize with matplotlib
+    plt.imshow(image_np)
+    plt.axis('off')  # Remove axes for better visual appeal
+    plt.show()
 # %%
 
     start_x,start_y,stop_x,stop_y = bb
@@ -301,6 +361,65 @@ if __name__ == "__main__":
     patch_size = 92
     samples = 3
 # %%
+
+    imv2 = imv.unsqueeze(0)
+    imv2 = imv2.numpy()
+    min_ = imv2.min()
+    imv3 = imv2+np.abs(min_)
+    scl = 255/imv3.max()
+    imv4 = imv3*scl
+    imv5 = imv4.astype(np.uint8)
+    writer = PILWriter(np.uint8)
+
+    save_image(imv,"test1.jpg")
+
+    writer.set_data_array(imv5)
+    writer.write("tmp.jpg",channel_dim=0)
+# %%
+    np_data = np.arange(48).reshape(3, 4, 4)
+    writer = PILWriter(np.uint8)
+    writer.set_data_array(np_data, channel_dim=0)
+    writer.write("test1.jpg", verbose=True)
+# %%
+.
+#SECTION:-------------------- File Utils --------------------------------------------------------------------------------------
+# %%
+
+    fldr_prnt = Path("/s/xnat_shadow/lidc2d_yolo")
+    fldr_train = fldr_prnt / "train"
+    fldr_valid = fldr_prnt / "valid"
+    
+
+# %%
+    fldr = fldr_valid
+    fldr_imgs = fldr/("images")
+    fldr_labels = fldr/("labels")
+
+
+    ds = dm.ds_val
+
+# %%
+    for dici2 in pbar(ds):
+        im = dici2['image'][0]
+        # lm = dici2['lm'][0]
+        imv= torch.permute(im, (1, 0))
+
+        src_fn = Path(imv.meta['filename_or_obj'])
+        nm = src_fn.name
+
+        nm_jpg = nm.replace('pt', 'jpg')
+        nm_txt =  nm.replace('pt', 'txt')
+        bbox = dici2['bbox_yolo']
+        bbox = [0]+bbox.tolist()
+
+        print("Saving image: ",nm_jpg)
+        save_image(imv,fldr_imgs/nm_jpg)
+        write_list_to_txt(bbox,fldr_labels/nm_txt)
+# %%
+
+# Load image using torchvision.io.read_image
+    image_path = "/home/ub/code/fran/fran/test1.jpg"
+    image_tensor = io.read_image(image_path).float() / 255.0
 # %%
 #SECTION:-------------------- TROUBLESHOOT--------------------------------------------------------------------------------------
 

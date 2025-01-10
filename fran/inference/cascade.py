@@ -88,7 +88,12 @@ class WholeImageInferer(BaseInferer):
         )
 
         self.tfms = "ESN"
+
+    def check_plan_compatibility(self):
+        pass
+
     def create_transforms(self):
+
         super().create_transforms()
         self.S = Resized(keys=["image"], spatial_size=self.plan["patch_size"]) # KEEP NAME AS S TO AVOID BUGS
     #
@@ -122,6 +127,10 @@ class PatchInferer(BaseInferer):
             save=False,
             **kwargs
         )
+
+
+    def check_plan_compatibility(self):
+        pass
 
     def create_postprocess_transforms(self, preprocess_transform):
         Sq = SqueezeDimd(keys=["image", "pred"], dim=0)
@@ -209,6 +218,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         imgs can be a list comprising any of filenames, folder, or images (sitk or itk)
         chunksize is necessary in large lists to manage system ram
         """
+        chunksize = np.minimum(len(imgs),chunksize)
         imgs = listify(imgs)
         if self.overwrite == False and (
             isinstance(imgs[0], str) or isinstance(imgs[0], Path)
@@ -232,6 +242,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         pred_patches = self.patch_prediction(data)
         pred_patches = self.decollate_patches(pred_patches, self.bboxes)
         output = self.postprocess(pred_patches)
+        tr()
         if self.save == True:
             self.save_pred(output)
         self.cuda_clear()
@@ -335,6 +346,9 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             pred = Sel(pred)
             pred = B(pred)
             bb = pred["bounding_box"]
+            # Check if bounding box is empty
+            if bb is None or (isinstance(bb, (list, tuple)) and len(bb) == 0):
+                raise ValueError("No bounding box found - localizer failed to detect region of interest")
             bboxes.append(bb)
         return bboxes
 
@@ -448,8 +462,11 @@ if __name__ == "__main__":
 
 # %%
     imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
-    preds = En.run(imgs_tmp,chunksize=4)
+    preds = En.run(imgs_tmp,chunksize=1)
 
+# %%
+    model = En.Ps[0].model
+    
 # %%
 #SECTION:-------------------- NODES --------------------------------------------------------------------------------------
     localiser_labels= set(TSL.label_localiser)

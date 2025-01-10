@@ -1,8 +1,8 @@
 import  os
+from fran.managers.project import Project
 import ipdb
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 import lightning as L
-
 
 tr = ipdb.set_trace
 
@@ -34,15 +34,16 @@ except:
 class UNetManager(LightningModule):
     def __init__(
         self,
-        project,
+        project_title,
         config,
-        max_epochs=1000,
         lr=None,
         sync_dist=False,
     ):
         super().__init__()
-        store_attr()
-        self.save_hyperparameters("project","config","lr")
+
+        self.sync_dist = sync_dist
+        self.project = Project(project_title)
+        self.save_hyperparameters("project_title","config","lr")
         self.plan = config["plan_train"]
         self.model_params = config["model_params"]
         self.loss_params = config['loss_params']
@@ -50,7 +51,7 @@ class UNetManager(LightningModule):
         self.model = self.create_model()
 
     def on_fit_start(self):
-        self.loss_fnc = self.create_loss_fnc()
+        self.create_loss_fnc()
         super().on_fit_start()
 
     def _common_step(self, batch, batch_idx):
@@ -155,7 +156,7 @@ class UNetManager(LightningModule):
                 deep_supervision_scales=self.deep_supervision_scales,
                 fg_classes=self.model_params["out_channels"] - 1,
             )
-            return loss_func
+            self.loss_fnc=loss_func
 
         elif (
             self.model_params["arch"] == "DynUNet"
@@ -188,13 +189,13 @@ class UNetManager(LightningModule):
                 deep_supervision_scales=self.deep_supervision_scales,
                 fg_classes=self.model_params["out_channels"] - 1,
             )
-            return loss_func
+            self.loss_fnc=loss_func
 
         else:
             loss_func = CombinedLoss(
                 **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
             )
-            return loss_func
+            self.loss_fnc=loss_func
 
 
 def update_nep_run_from_config(nep_run, config):

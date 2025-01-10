@@ -1,8 +1,9 @@
 # %%
 import itertools as il
 import ipdb
-
+from fran.managers import Project
 from fran.utils.string import ast_literal_eval
+
 tr = ipdb.set_trace
 
 from fran.managers.unet import UNetManager
@@ -24,35 +25,39 @@ from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import Activationsd, AsDiscreted
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
-from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
-                                                 SqueezeDimd)
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, SqueezeDimd
 
 from fran.data.dataset import NormaliseClipd
 from fran.transforms.imageio import LoadSITKd
-from fran.transforms.inferencetransforms import KeepLargestConnectedComponentWithMetad, SaveMultiChanneld, ToCPUd
+from fran.transforms.inferencetransforms import (
+    KeepLargestConnectedComponentWithMetad,
+    SaveMultiChanneld,
+    ToCPUd,
+)
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 from fran.utils.dictopts import DictToAttr, fix_ast
 from fran.utils.helpers import slice_list
 from fran.utils.imageviewers import ImageMaskViewer
 
 
-
-def get_patch_spacing( run_name):
-        ckpt = checkpoint_from_model_id(run_name)
-        dic1 = torch.load(ckpt)
-        config = dic1['datamodule_hyper_parameters']['config']
-        spacing= config['plan'].get("spacing")
-        if spacing is None:
-            src_plan  = config['plan']['source_plan']
-            src_plan = config[src_plan]
-            spacing = src_plan['spacing']
-        print(run_name,spacing)
-        spacing= ast_literal_eval(spacing)
-        return spacing
+def get_patch_spacing(run_name):
+    ckpt = checkpoint_from_model_id(run_name)
+    dic1 = torch.load(ckpt)
+    config = dic1["datamodule_hyper_parameters"]["config"]
+    spacing = config["plan"].get("spacing")
+    if spacing is None:
+        src_plan = config["plan"]["source_plan"]
+        src_plan = config[src_plan]
+        spacing = src_plan["spacing"]
+    print(run_name, spacing)
+    spacing = ast_literal_eval(spacing)
+    return spacing
 
 
 def list_to_chunks(input_list: list, chunksize: int):
-    assert len(input_list) >= chunksize,"Print list size too small: {}".format(len(input_list))
+    assert len(input_list) >= chunksize, "Print list size too small: {}".format(
+        len(input_list)
+    )
     n_lists = int(np.ceil(len(input_list) / chunksize))
 
     fpl = int(len(input_list) / n_lists)
@@ -105,9 +110,9 @@ class BaseInferer(GetAttr, DictToAttr):
             self.params = load_params(run_name)
         else:
             self.params = params
-        self.plan = fix_ast(self.params['config']['plan'],["spacing"])
-        assert self.plan['mode'] == "source", "This inferer only works with source plans"
-        self.dataset_params = self.params['config']['dataset_params']
+        self.plan = fix_ast(self.params["config"]["plan"], ["spacing"])
+        self.check_plan_compatibility()
+        self.dataset_params = self.params["config"]["dataset_params"]
         self.infer_project()
 
         if safe_mode == True:
@@ -119,14 +124,19 @@ class BaseInferer(GetAttr, DictToAttr):
         else:
             stitch_device = "cuda"
         self.inferer = SlidingWindowInferer(
-            roi_size=self.params['config']["plan"]["patch_size"],
+            roi_size=self.params["config"]["plan"]["patch_size"],
             sw_batch_size=bs,
             overlap=patch_overlap,
             mode=mode,
             progress=True,
             device=stitch_device,
         )
-        self.tfms="ESN"
+        self.tfms = "ESN"
+
+    def check_plan_compatibility(self):
+        assert (
+            self.plan["mode"] == "source"
+        ), "This inferer only works with source plans"
 
     def setup(self):
         if not hasattr(self, "model"):
@@ -134,7 +144,7 @@ class BaseInferer(GetAttr, DictToAttr):
             self.prepare_model()
         # self.create_postprocess_transforms()
 
-    def run(self, imgs,chunksize=12, overwrite=True):
+    def run(self, imgs, chunksize=12, overwrite=True):
         """
         chunksize is necessary in large lists to manage system ram
         """
@@ -164,7 +174,7 @@ class BaseInferer(GetAttr, DictToAttr):
 
     def process_imgs_sublist(self, imgs_sublist):
         data = self.load_images(imgs_sublist)
-        self.prepare_data(data,self.tfms,  collate_fn=None)
+        self.prepare_data(data, self.tfms, collate_fn=None)
         preds = self.predict()
         output = self.postprocess(preds)
         if self.save == True:
@@ -186,11 +196,9 @@ class BaseInferer(GetAttr, DictToAttr):
             ensure_channel_first=False,
             simple_keys=True,
         )
-        self.E = EnsureChannelFirstd(
-            keys=["image"], channel_dim="no_channel"
-        )  
+        self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
 
-        self.S = Spacingd(keys=["image"], pixdim= spacing)
+        self.S = Spacingd(keys=["image"], pixdim=spacing)
         self.N = NormaliseClipd(
             keys=["image"],
             clip_range=self.dataset_params["intensity_clip_range"],
@@ -202,26 +210,27 @@ class BaseInferer(GetAttr, DictToAttr):
 
     def infer_project(self):
         """Recursively search through params dictionary to find 'project' key and set it as attribute"""
-        def find_project(d):
-            if isinstance(d, dict):
-                for k, v in d.items():
-                    if k == 'project':
+
+        def find_project(dici):
+            if isinstance(dici, dict):
+                for k, v in dici.items():
+                    if k == "project_title":
                         return v
                     result = find_project(v)
                     if result is not None:
                         return result
-            elif isinstance(d, list):
-                for item in d:
+            elif isinstance(dici, list):
+                for item in dici:
                     result = find_project(item)
                     if result is not None:
                         return result
             return None
-            
-        project_value = find_project(self.params)
-        if project_value:
-            self.project = project_value
+
+        project_title = find_project(self.params)
+        if project_title is not None:
+            self.project = Project(project_title)
         else:
-            raise ValueError("No 'project' key found in params dictionary")
+            raise ValueError("No 'project_title' key found in params dictionary")
 
     def __repr__(self) -> str:
         return str(self.__class__)
@@ -322,7 +331,7 @@ class BaseInferer(GetAttr, DictToAttr):
             separate_folder=False,
         )
         I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
-       
+
         out_final = []
         if self.save_channels == True:
             tfms = [Sq, Sa, A, D, I]
@@ -330,8 +339,8 @@ class BaseInferer(GetAttr, DictToAttr):
             tfms = [Sq, A, D, I]
         if self.k_largest:
             K = KeepLargestConnectedComponentWithMetad(
-                    keys=["pred"], independent=False, num_components=self.k_largest
-                )  # label=1 is the organ
+                keys=["pred"], independent=False, num_components=self.k_largest
+            )  # label=1 is the organ
             tfms.insert(-1, K)
         if self.safe_mode == True:
             tfms.insert(0, U)
@@ -346,13 +355,29 @@ class BaseInferer(GetAttr, DictToAttr):
         model = UNetManager.load_from_checkpoint(
             self.ckpt,
             plan=self.plan,
-            project=self.project,
+            project_title=self.project.project_title,
             dataset_params=self.dataset_params,
             strict=False,
             map_location=device,
         )
+        model.eval()
+        try:
+            scripted_model = torch.jit.script(model)
+            scripted_model.save("scripted_model.pt")
+            print("Model successfully converted to TorchScript.")
+        except Exception as e:
+            print(f"Script conversion failed: {e}")
+            # Attempt tracing as a fallback
+            try:
+                example_input = torch.rand(1, 1, 128, 128, 96)
+                scripted_model = torch.jit.trace(model, example_input)
+                scripted_model.save("traced_model.pt")
+                print("Model successfully traced and converted to TorchScript.")
+            except Exception as trace_e:
+                print(f"Tracing failed: {trace_e}")
+        scripted = model.to_torchscript()
+        torch.jit.save(scripted,"tmp.pt")
         fabric = Fabric(precision="16-mixed", devices=self.devices, accelerator="gpu")
-
         self.model = fabric.setup(model)
 
     def predict(self):
@@ -365,16 +390,17 @@ class BaseInferer(GetAttr, DictToAttr):
                     outputs.append(batch)
         return outputs
 
-    def predict_inner(self,batch):
-                    img_input = batch["image"]
-                    img_input = img_input.cuda()
-                    if "filename_or_obj" in img_input.meta.keys():
-                        print("Processing: ", img_input.meta["filename_or_obj"])
-                    output_tensor = self.inferer(inputs=img_input, network=self.model)
-                    output_tensor = output_tensor[0]
-                    batch["pred"] = output_tensor
-                    batch["pred"].meta = batch["image"].meta.copy()
-                    return batch
+    def predict_inner(self, batch):
+        img_input = batch["image"]
+        img_input = img_input.cuda()
+        if "filename_or_obj" in img_input.meta.keys():
+            print("Processing: ", img_input.meta["filename_or_obj"])
+        output_tensor = self.inferer(inputs=img_input, network=self.model)
+        output_tensor = output_tensor[0]
+        batch["pred"] = output_tensor
+        batch["pred"].meta = batch["image"].meta.copy()
+        return batch
+
     def postprocess(self, preds):
         self.create_postprocess_transforms(self.ds.transform)
         out_final = []
@@ -389,23 +415,26 @@ class BaseInferer(GetAttr, DictToAttr):
         fldr = "_".join(run_name)
         fldr = self.project.predictions_folder / fldr
         return fldr
+
+
 if __name__ == "__main__":
 # %%
-#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
 
     from fran.utils.common import *
 
-
     from fran.managers import _DS
     from fran.managers.project import Project
+
     D = _DS()
     proj = Project(project_title="totalseg")
-    run_tot= ["LITS-860"]
+    run_tot = ["LITS-860"]
     run_whole_image = ["LITS-1088"]
+    run_nodes = ["LITS-1110"]
     safe_mode = False
 
 
-    proj_litsmc= Project(project_title="litsmc")
+    proj_litsmc = Project(project_title="litsmc")
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
@@ -413,18 +442,22 @@ if __name__ == "__main__":
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/")
     img_nodes = list(fldr_nodes.glob("*"))
-    fldr_litsmc = Path(D.litq['folder']),Path( D.drli['folder']), Path(D.lits['folder']), Path(D.litqsmall['folder'])
-    imgs_litsmc = [list((fld/("images")).glob("*")) for fld in fldr_litsmc]
+    fldr_litsmc = (
+        Path(D.litq["folder"]),
+        Path(D.drli["folder"]),
+        Path(D.lits["folder"]),
+        Path(D.litqsmall["folder"]),
+    )
+    imgs_litsmc = [list((fld / ("images")).glob("*")) for fld in fldr_litsmc]
     imgs_litsmc = list(il.chain.from_iterable(imgs_litsmc))
-
 
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
-#SECTION:-------------------- LITSMC--------------------------------------------------------------------------------------
+# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR>
 
-    run_litsmc= ["LITS-1007"]
-    run_litsmc= ["LITS-999"]
+    run_litsmc = ["LITS-1007"]
+    run_litsmc = ["LITS-999"]
     safe_mode = False
     bs = 5
     save_channels = False
@@ -432,7 +465,6 @@ if __name__ == "__main__":
     devices = [1]
     L = BaseInferer(
         run_litsmc[0],
-   
         save_channels=save_channels,
         safe_mode=safe_mode,
         devices=devices,
@@ -440,47 +472,58 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = L.run(imgs_crc, chunksize=1,     overwrite=overwrite,)
+    preds = L.run(
+        imgs_crc,
+        chunksize=1,
+        overwrite=overwrite,
+    )
 # %%
     data = P.ds.data[0]
 # %%
- #SECTION:-------------------- TOTALSEG--------------------------------------------------------------------------------------
-    
+# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR>
+
     save_channels = False
     safe_mode = True
     bs = 4
     overwrite = True
     devices = [0]
-    
 
 # %%
     T = BaseInferer(
-        run,
-        save_channels=save_channels,
-        safe_mode=safe_mode,
-        devices=devices
+        run_whole_image[0], save_channels=save_channels, safe_mode=safe_mode, devices=devices
     )
 # %%
 
-    preds = T.run(imgs_crc, chunksize=2,overwrite=overwrite)
+    preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
     case_id = "crc_CRC089"
     imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
 
-#datamodule_ %%
+    # datamodule_ %%
 # %%
-#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
-    overwrite=True
+# %%
+#SECTION:--------------------  NODES--------------------------------------------------------------------------------------
+
+    save_channels = False
+    safe_mode = False
+    bs = 2
+    overwrite = True
+    devices = [0]
+    N = BaseInferer(
+        run_nodes[0], save_channels=save_channels, safe_mode=safe_mode, devices=devices
+    )
+
+# %%
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
+    overwrite = True
     T.setup()
     imgs = imgs_crc
 
-    if overwrite == False and (
-        isinstance(imgs[0], str) or isinstance(imgs[0], Path)
-    ):
+    if overwrite == False and (isinstance(imgs[0], str) or isinstance(imgs[0], Path)):
         imgs = T.filter_existing_preds(imgs)
     imgs = list_to_chunks(imgs, 4)
     # for imgs_sublist in imgs:
     #     output = T.process_imgs_sublist(imgs_sublist)
-    imgs_sublist=imgs[0]
+    imgs_sublist = imgs[0]
 # %%
     """Process a subset of images using the data module"""
     T.pred_dl = T.data_module.setup(imgs_sublist)
@@ -490,7 +533,7 @@ if __name__ == "__main__":
     T.create_postprocess_transforms()
     out_final = []
     # for batch in preds:
-    batch= preds[0]
+    batch = preds[0]
     tmp = T.postprocess_transforms(batch)
     out_final.append(tmp)
 # %%
@@ -516,7 +559,7 @@ if __name__ == "__main__":
         separate_folder=False,
     )
     I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
-   
+
     out_final = []
     if T.save_channels == True:
         tfms = [Sq, Sa, A, D, I]
@@ -524,16 +567,16 @@ if __name__ == "__main__":
         tfms = [Sq, A, D, I]
     if T.k_largest:
         K = KeepLargestConnectedComponentWithMetad(
-                keys=["pred"], independent=False, num_components=T.k_largest
-            )  # label=1 is the organ
+            keys=["pred"], independent=False, num_components=T.k_largest
+        )  # label=1 is the organ
         tfms.insert(-1, K)
     if T.safe_mode == True:
         tfms.insert(0, U)
     else:
-            tfms.append(U)
+        tfms.append(U)
 # %%
-    pred = batch['pred']
-    pred.meta['spatial_shape']
+    pred = batch["pred"]
+    pred.meta["spatial_shape"]
 # %%
     batch = Sq(batch)
     batch = A(batch)
@@ -541,5 +584,3 @@ if __name__ == "__main__":
     batch = U(batch)
     batch = I(batch)
 # %%
-
-

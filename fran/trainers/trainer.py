@@ -5,6 +5,7 @@ import shutil
 from lightning.pytorch.profilers import AdvancedProfiler
 from monai.transforms.io.dictionary import LoadImaged
 from fran.managers import UNetManager, Project
+from fran.managers.data.training import DataManagerDual
 from fran.managers.unet import maybe_ddp
 import ipdb
 
@@ -54,6 +55,7 @@ except:
 import torch
 
 
+
 def fix_dict_keys(input_dict, old_string, new_string):
     output_dict = {}
     for key in input_dict.keys():
@@ -88,11 +90,15 @@ def checkpoint_from_model_id(model_id, sort_method="last"):
 # class NeptuneCallback(Callback):
 # def on_train_epoch_start(self, trainer, pl_module):
 #     trainer.logger.experiment["training/epoch"] = trainer.current_epoch
+
 class Trainer:
-    def __init__(self, project, config, run_name=None):
-        store_attr()
+    def __init__(self, project_title, config, run_name=None):
+        self.project = Project(project_title=project_title)
+        self.config = config
+        self.run_name = run_name
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
-        self.qc_config(config, project)
+        self.qc_config(config, self.project)
+
 
     def setup(
         self,
@@ -137,8 +143,9 @@ class Trainer:
     def init_dm_unet(self, epochs):
         if self.ckpt:
             self.D = self.load_dm()
-            self.config["dataset_params"] = self.D.dataset_params
+            self.config["dataset_params"] = self.D.train_manager.config['dataset_params']
             self.N = self.load_trainer()
+
 
         else:
             self.D = self.init_dm()
@@ -188,7 +195,7 @@ class Trainer:
             )
             N = NeptuneImageGridCallback(
                 classes=self.config["model_params"]["out_channels"],
-                patch_size=self.config["plan"]["patch_size"],
+                patch_size=self.config["plan_train"]["patch_size"],
 
                 epoch_freq=5 ,# skip how many epochs.
             )
@@ -256,9 +263,8 @@ class Trainer:
     def init_dm(self):
         cache_rate = self.config["dataset_params"]["cache_rate"]
         ds_type = self.config["dataset_params"]["ds_type"]
-        DMClass = self.resolve_datamanager(self.config["plan"]["mode"])
-        D = DMClass(
-            self.project,
+        D = DataManagerDual(
+            self.project.project_title,
             config=self.config,
             batch_size=self.config["dataset_params"]["batch_size"],
             cache_rate=cache_rate,
@@ -269,10 +275,9 @@ class Trainer:
 
     def init_trainer(self, epochs):
         N = UNetManager(
-            project=self.project,
+            project_title=self.project.project_title,
             config=self.config,
             lr=self.lr,
-            max_epochs=epochs,
             sync_dist=self.sync_dist,
         )
         return N
@@ -305,10 +310,7 @@ class Trainer:
             return N
 
     def load_dm(self):
-        DMClass = self.resolve_datamanager(
-            self.state_dict["datamodule_hyper_parameters"]["config"]["plan"]["mode"]
-        )
-        D = DMClass.load_from_checkpoint(self.ckpt, project=self.project)
+        D = DataManagerDual.load_from_checkpoint(self.ckpt, project_title=self.project.project_title)
         return D
 
     def resolve_datamanager(self, mode: str):
@@ -352,6 +354,7 @@ class Trainer:
 
 if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
+#CODE: Project or config should be the only arg not both
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -369,12 +372,14 @@ if __name__ == "__main__":
     # conf['model_params']['lr']=1e-3
 
 # %%
+    conf_litsmc['dataset_params']['cache_rate']
     # run_name = "LITS-1007"
     # device_id = 1
     device_id = 0
     run_none= None
+    run_tsl= 'LITS-1120'
     run_nodes= "LITS-1110"
-    run_litsmc= "LITS-1018"
+    run_litsmc= "LITS-1131"
     bs = 10# is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
@@ -383,17 +388,20 @@ if __name__ == "__main__":
     batch_finder = False
     neptune = True
     tags = []
-    description = f""
+    description = f"Partially trained up to 100 epochs"
 # %%
 
+    run_name = run_tsl
+    
+    run_name = run_none
+    conf = conf_tsl; proj = "totalseg"
+# %%
     run_name = run_litsmc
     run_name = run_none
-    proj = proj_litsmc
-    proj = proj_tsl
-    conf = conf_litsmc
-    conf = conf_tsl
-    Tm = Trainer(proj, conf, run_name)
+    conf = conf_litsmc;    proj = "litsmc"
 
+# %%
+    Tm = Trainer(proj, conf, run_name)
 # %%
     Tm.setup(
         compiled=compiled,
@@ -407,7 +415,6 @@ if __name__ == "__main__":
         description=description,
     )
 # %%
-
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
 # %%
@@ -418,10 +425,34 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR>
 
+
+    Tm.D.prepare_data()
     Tm.D.setup()
+    Tm.D.train_manager.keys_tr
+# %%
+
     D = Tm.D
     ds = Tm.D.valid_ds
+    ds = Tm.D.train_ds
+    dat= ds[0]
 # %%
+
+    cache_rate = 0
+    ds_type = Tm.config["dataset_params"]["ds_type"]
+    ds_type = "cache"
+    D = DataManagerDual(
+        Tm.project,
+        config=Tm.config,
+        batch_size=Tm.config["dataset_params"]["batch_size"],
+        cache_rate=cache_rate,
+            ds_type=ds_type,
+        )
+    D.prepare_data()
+    D.setup()
+
+
+# %%
+
     for i,bb in pbar(enumerate(ds)):
         lm = bb['lm']
         labs = lm.unique()
@@ -431,7 +462,21 @@ if __name__ == "__main__":
             tr()
 # %%
     ds = Tm.D.train_ds
+    dici = ds.data[0]
+    dat = ds[0]
+# %%
+    tm = Tm.D.train_manager
 
+    tm.tfms_list
+# %%
+
+    dici =tm.tfms_list[0](dici)
+    dici =tm.tfms_list[1](dici)
+    dici =tm.tfms_list[2](dici)
+    dici =tm.tfms_list[3](dici)
+    tm.tfms_list[3]
+    tm.tfms_list[4]
+    dici =tm.tfms_list[4](dici)
 
 
 # %%
@@ -591,7 +636,12 @@ if __name__ == "__main__":
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
     iteri2 = iter(dl2)
-    batch = next(iteri2)
+# %%
+    while iteri:
+        batch= next(iteri)
+        print(batch['image'].shape)
+
+
 # %%
 
     Re = ResizeWithPadOrCropd(
