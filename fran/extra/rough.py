@@ -1,5 +1,6 @@
 # %%
 import shutil
+import socket
 from matplotlib import pyplot as plt
 from torch import nn
 from gudhi import CubicalComplex

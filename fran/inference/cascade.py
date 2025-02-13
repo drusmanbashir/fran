@@ -1,4 +1,5 @@
 # %%
+import time
 import ipdb
 from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms.utility.dictionary import SqueezeDimd
@@ -242,7 +243,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         pred_patches = self.patch_prediction(data)
         pred_patches = self.decollate_patches(pred_patches, self.bboxes)
         output = self.postprocess(pred_patches)
-        tr()
         if self.save == True:
             self.save_pred(output)
         self.cuda_clear()
@@ -545,10 +545,15 @@ if __name__ == "__main__":
     )
 
 # %%
-# img_fns = list(img_fldr.glob("*"))[20:50]
-    # case_id = "crc_CRC089"
+
+    img_fns = list(img_fldr.glob("*"))[20:50]
+    case_id = "crc_CRC089"
     # imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
-    # preds = En.run(imgs_crc[:10],chunksize=4)
+    tn = time.time()
+    preds = En.run(imgs_crc[:30],chunksize=4)
+    t2 = time.time()
+    lapse = t2-tn
+# %%
     imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
     preds = En.run(imgs_tmp,chunksize=4)
 

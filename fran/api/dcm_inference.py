@@ -21,8 +21,6 @@ from label_analysis.merge import LabelMapGeometry
 import numpy as np
 import pydicom
 from pydicom.uid import generate_uid
-import nibabel as nib
-import nibabel as nib
 import pydicom
 import os
 from dicom_utils.dcm_to_sitk import DCMCaseToSITK
