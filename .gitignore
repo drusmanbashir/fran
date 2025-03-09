@@ -24,3 +24,5 @@ experiments/.neptune/config.json
 *lightning_logs*
 .Rproj.user
 *.zip
+
+*.egg-info

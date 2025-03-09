@@ -314,4 +314,5 @@ dmypy.json
 .history
 .ionide
 
+*.egg-info
 # End of https://www.toptal.com/developers/gitignore/api/macos,python,linux,visualstudiocode,pycharm,jupyternotebooks
