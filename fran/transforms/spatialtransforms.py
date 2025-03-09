@@ -21,8 +21,8 @@ from monai.transforms.transform import (
 from monai.utils.enums import LazyAttr, Method, PytorchPadMode, TraceKeys
 from torch import cos, pi, sin
 
-# from fran.utils.fileio import *
-from fran.utils.helpers import *
+# from utilz.fileio import *
+from utilz.helpers import *
 
 
 tr = ipdb.set_trace
@@ -1554,7 +1554,7 @@ if __name__ == "__main__":
     )
     # %%
     from fran.data.dataset import ImageMaskBBoxDataset
-    from fran.utils.imageviewers import *
+    from utilz.imageviewers import *
 
     P = Project(project_title="lits")
     proj_defaults = P

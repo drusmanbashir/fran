@@ -1,6 +1,6 @@
 # %%
 
-from fran.utils.helpers import pbar
+from utilz.helpers import pbar
 import torchvision.io as io
 import torch
 import matplotlib.pyplot as plt
@@ -48,7 +48,6 @@ import matplotlib.pyplot as plt
 
 from torch.utils.data import DataLoader, random_split
 from monai.data import Dataset
-
 
 
 def write_list_to_txt(data_list, filepath, delimiter=' '):
@@ -381,7 +380,6 @@ if __name__ == "__main__":
     writer.set_data_array(np_data, channel_dim=0)
     writer.write("test1.jpg", verbose=True)
 # %%
-.
 #SECTION:-------------------- File Utils --------------------------------------------------------------------------------------
 # %%
 

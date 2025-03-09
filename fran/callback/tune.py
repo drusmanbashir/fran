@@ -1,10 +1,8 @@
-from fastai.callback.schedule import os
-from fastai.callback.tracker import TrackerCallback
 from fran.callback.base import *
 from ray import tune
 from pathlib import Path
 
-from fran.utils.fileio import load_dict, save_dict
+from utilz.fileio import load_dict, save_dict
 
 class TuneCheckpointCallback(TrackerCallback):
     order=51 # (Recorder callback order +1)

@@ -10,8 +10,8 @@ from fran.managers.unet import maybe_ddp
 from fran.transforms.imageio import TorchReader
 import ipdb
 
-from fran.utils.config_parsers import ConfigMaker
-from fran.utils.helpers import pp
+from utilz.config_parsers import ConfigMaker
+from utilz.helpers import pp
 
 tr = ipdb.set_trace
 
@@ -35,7 +35,7 @@ from fran.managers.data import (
     DataManagerSource,
     DataManagerWhole,
 )
-from fran.utils.imageviewers import ImageMaskViewer
+from utilz.imageviewers import ImageMaskViewer
 
 torch._dynamo.config.suppress_errors = True
 from fran.managers.nep import NeptuneManager

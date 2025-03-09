@@ -16,7 +16,7 @@ from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
 
 from fran.transforms.base import MonaiDictTransform
-from fran.utils.string import ast_literal_eval
+from utilz.string import ast_literal_eval
 
 tr = ipdb.set_trace
 

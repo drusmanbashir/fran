@@ -1,6 +1,6 @@
 from ray.util.multiprocessing import Pool as rPool
 from fran.inference.scoring import compute_dice_fran
-from fran.utils.helpers import *
+from utilz.helpers import *
 
 def multiprocess_multiarg(func,arguments, num_processes=8,multiprocess=True,debug=False,progress_bar=True):
     results=[]

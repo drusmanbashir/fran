@@ -7,8 +7,8 @@ import itertools as il
 
 from fran.trainers.base import checkpoint_from_model_id
 from fran.transforms.misc_transforms import SelectLabels
-from fran.utils.fileio import maybe_makedirs
-from fran.utils.helpers import spacing_from_folder_name
+from utilz.fileio import maybe_makedirs
+from utilz.helpers import spacing_from_folder_name
 
 tr = ipdb.set_trace
 
@@ -33,7 +33,7 @@ from fran.inference.base import (BaseInferer, get_patch_spacing,
 from fran.transforms.inferencetransforms import (
     BBoxFromPTd, KeepLargestConnectedComponentWithMetad, RenameDictKeys,
     SaveMultiChanneld, ToCPUd)
-from fran.utils.itk_sitk import *
+from utilz.itk_sitk import *
 
 sys.path += ["/home/ub/code"]
 
@@ -48,7 +48,7 @@ sys.path += ["/home/ub/Dropbox/code/fran/"]
 
 from fastcore.basics import store_attr
 
-from fran.utils.imageviewers import ImageMaskViewer
+from utilz.imageviewers import ImageMaskViewer
 
 def img_bbox_collated(batch):
     imgs = []

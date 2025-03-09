@@ -3,7 +3,7 @@ import torch.nn as nn
 import argparse
 import deepcore.nets as nets
 import deepcore.datasets as datasets
-import deepcore.met as.met
+import deepcore.met as met
 from torchvision import transforms
 from utils import *
 from datetime import datetime
@@ -158,7 +158,7 @@ def main():
                                   greedy=args.submodular_greedy,
                                   function=args.submodular
                                   )
-            method =.met.__dict__[args.selection](dst_train, args, args.fraction, args.seed, **selection_args)
+            method =met.__dict__[args.selection](dst_train, args, args.fraction, args.seed, **selection_args)
             subset = method.select()
         print(len(subset["indices"]))
 

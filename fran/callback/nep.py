@@ -10,12 +10,12 @@ import torch
 from fran.transforms.spatialtransforms import one_hot
 import neptune
 import ast
-from fran.utils.config_parsers import *
-from fran.utils.fileio import load_json, load_yaml
+from utilz.config_parsers import *
+from utilz.fileio import load_json, load_yaml
 
 # from fran.managers.learner_plus import *
-from fran.utils.helpers import *
-from fran.utils.config_parsers import *
+from utilz.helpers import *
+from utilz.config_parsers import *
 
 from lightning.pytorch.callbacks import Callback
 try:
@@ -23,7 +23,7 @@ try:
 except:
     pass
 
-from fran.utils.colour_palette import colour_palette
+from utilz.colour_palette import colour_palette
 
 _ast_keys = ["dataset_params,patch_size", "metadata,src_dest_labels"]
 _immutable_keys = [

@@ -6,50 +6,35 @@ import ipdb
 import numpy as np
 
 tr = ipdb.set_trace
-import ast
-
-
-def ast_literal_eval(str_list):
-    if isinstance(str_list, str):
-        str_list = ast.literal_eval(str_list)
-    return str_list
-
 
 def regex_matcher(indx=0):
     def _outer(func):
 
-        def _inner(*args, **kwargs):
-            pat, string = func(*args, **kwargs)
-            pat = re.compile(pat, re.IGNORECASE)
-            answer = re.search(pat, string)
-            return answer[indx] if answer else None
-
+        def _inner(*args,**kwargs):
+                pat, string= func(*args,**kwargs)
+                pat = re.compile(pat,re.IGNORECASE)
+                answer = re.search(pat,string)
+                return answer[indx] if answer else None
         return _inner
-
     return _outer
 
-
-def dec_to_str(val: float, trailing_zeros=3):
-    val2 = str(round(val, 2))
-    val2 = val2.replace(".", "")
-    trailing_zeros = (
-        np.maximum(trailing_zeros - len(val2), 0) if trailing_zeros > 0 else 0
-    )
-    val2 = val2 + "0" * trailing_zeros  # ensure 3 digits
+def dec_to_str(val:float,trailing_zeros=3):
+    val2 = str(round(val,2))
+    val2 = val2.replace(".","")
+    trailing_zeros = np.maximum(trailing_zeros-len(val2),0) if trailing_zeros>0 else 0
+    val2 = val2+'0'*trailing_zeros # ensure 3 digits
     return val2
 
-
-def int_to_str(val: int, total_length=5):
+def int_to_str(val:int, total_length=5):
     val = str(val)
-    precending_zeros = total_length - len(val)
-    return "0" * precending_zeros + val
+    precending_zeros = total_length-len(val)
+    return '0'*precending_zeros+val
 
 
-def headline(inp: str):
-    print("=") * 20
+def headline(inp:str):
+    print("=")*20
     print(inp)
-    print("=") * 20
-
+    print("=")*20
 
 def append_time(input_str, now=True):
     now = datetime.now()
@@ -71,68 +56,64 @@ def strip_extension(fname: str):
             return fname_stripped
     fname_stripped = fname.split(".")[0]
     return fname_stripped
-
-
+        
 def replace_extension(fname: str, new_ext: str):
-    """
+    '''
     new_ext has no dot
-    """
+    '''
     fname_base = strip_extension(fname)
-    fname_out = ".".join([fname_base, new_ext])
+    fname_out  = ".".join([fname_base,new_ext])
     return fname_out
 
 
-# %%
+
 def strip_slicer_strings(fname: str):
-    pt = re.compile("(_\\d)?$", re.IGNORECASE)
-    pt2 = re.compile("(_\\d)?-segment.*$", re.IGNORECASE)
+    """
+    This is on extension-less fnames. Use strip_extension before this.
+    """
+    # pt = re.compile("(-?label(_\d)?)|_.*(_\d$)",re.IGNORECASE)
+    pt = re.compile("(_\d)?$", re.IGNORECASE)
+    pt2 = re.compile("(_\d)?-segment.*$",re.IGNORECASE)
     fname = fname.replace("-label", "")
     fname = fname.replace("-test", "")
     fname_cl1 = fname.replace("-tissue", "")
     fname_cl2 = re.sub(pt, "", fname_cl1)
     fname_cl3 = re.sub(pt2, "", fname_cl2)
+
     return fname_cl3
 
-# %%
 
 def str_to_path(arg_inds=None):
-    arg_inds = listify(arg_inds)
-
+    arg_inds=listify(arg_inds)
     def wrapper(func):
-        def inner(*args, **kwargs):
-            if len(arg_inds) == 0:
+        def inner (*args,**kwargs):
+            if len(arg_inds )==0:
                 args = [Path(arg) for arg in args]
-                kwargs = {key: Path(val) for key, val in kwargs.items()}
+                kwargs = {key:Path(val) for key,val in kwargs.items()}
             else:
                 args = list(args)
                 all_inds = range(len(args))
-                args = [
-                    Path(arg) if ind in arg_inds else arg
-                    for ind, arg in zip(all_inds, args)
-                ]
-            return func(*args, **kwargs)
-
+                args = [Path(arg) if ind in arg_inds else arg for ind, arg in zip(all_inds,args) ]
+            return func(*args,**kwargs)
         return inner
-
     return wrapper
 
-
 def path_to_str(fnc):
-    def inner(*args, **kwargs):
-        args = map(str, args)
-        for k, v in kwargs.items():
-            kwargs[k] = str(v) if isinstance(v, Path) else v
-        output = fnc(*args, **kwargs)
-        return output
+        def inner(*args,**kwargs):
+            args = map(str,args)
+            for k,v in kwargs.items():
+                kwargs[k] = str(v) if isinstance(v,Path) else v
+            output = fnc(*args,** kwargs)
+            return output
+        return inner
 
-    return inner
 
 
 def cleanup_fname(fname: str):
-    """
+    '''
     If this is a slicer labelmap/segmentation, make sure you strip_slicer_strings first
-    """
-
+    '''
+    
     fname = strip_extension(fname)
 
     pt_token = "(_[a-z0-9]*)"
@@ -155,40 +136,40 @@ def drop_digit_suffix(fname: str):
     """
     Postprocessing will create multiple matches of the same case_id. This allows us to identify which case patches belong to
     """
-    pat = "(_\\d{1,3})?$"
+
+    pat = "(_\d{1,3})?$"
     fname_cl = re.sub(pat, "", fname)
     return fname_cl
 
 
-def info_from_filename(fname: str, full_caseid=False):
+def info_from_filename(fname: str,full_caseid=False):
+
     """
     full_caseid: if true, return project_title+case_id
     returns [proj_title,case_id,desc, ?all-else]
     """
-    tags = ["proj_title", "case_id", "date", "desc"]
+    tags = ["proj_title","case_id", "date", "desc"]
     name = cleanup_fname(fname)
 
     parts = name.split("_")
-    output_dic = {}
-    for key, val in zip(tags, parts):
-        output_dic[key] = val
-    if full_caseid == True:
-        output_dic["case_id"] = output_dic["proj_title"] + "_" + output_dic["case_id"]
+    output_dic={}
+    for key,val in zip(tags,parts):
+        output_dic[key]=val
+    if full_caseid==True:
+        output_dic['case_id']=output_dic['proj_title']+"_"+output_dic['case_id']
     return output_dic
 
-
-def match_filenames(fname1: str, fname2: str):
-    info1 = info_from_filename(fname1)
-    info2 = info_from_filename(fname2)
-    matched = all([val1 == val2 for val1, val2 in zip(info1.values(), info2.values())])
+def match_filenames(fname1:str,fname2:str):
+    info1=info_from_filename(fname1)
+    info2=info_from_filename(fname2)
+    matched=all([val1==val2 for val1,val2 in zip(info1.values(),info2.values())])
     return matched
 
-
-def find_file(substring: str, filenames: Union[list, Path]):
-    if isinstance(filenames, Path) and filenames.is_dir():
+def find_file(substring:str, filenames:Union[list,Path]):
+    if isinstance(filenames,Path) and filenames.is_dir():
         filenames = filenames.glob("*")
 
-    matching_fn = [fn for fn in filenames if substring in fn.name]
+    matching_fn= [fn for fn in filenames if substring in fn.name]
     if len(matching_fn) == 1:
         return matching_fn[0]
     elif len(matching_fn) == 0:
@@ -197,19 +178,16 @@ def find_file(substring: str, filenames: Union[list, Path]):
         print("Multiple matches found")
         return matching_fn
 
-
 # %%
 # %%
 if __name__ == "__main__":
     name = "lits_11_20111509.nii"
     name2 = "lits_11.nii"
     name3 = "lits_11_20111509_jacsde3d_thick.nii"
-    pt = "(-?label(_\\d)?)|(_\\d$)"
-    name = "drli_005-label.nrrd"
+    pt = "(-?label(_\d)?)|(_\d$)"
+    name = "drli_005.nrrd"
     nm = strip_extension(name)
-    print(nm)
     nm = strip_slicer_strings(nm)
-    print(nm)
 
     pt = "(-?label(_\d)?)|(_\d$)"
     re.sub(pt, nm)
@@ -217,7 +195,7 @@ if __name__ == "__main__":
     st = "litq_11_20190927_2"
     re.findall(rpt_pt, st)
     re.sub(pt, "", st)
-# %%
+    # %%
     fname = "litq_40_20171117_1-label"
     pt_token = "(_[a-z0-9]*)"
     re.findall(pt_token, fname)

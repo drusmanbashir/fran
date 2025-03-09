@@ -7,7 +7,6 @@ from monai.transforms.transform import Randomizable
 from monai.transforms.utils import generate_label_classes_crop_centers, map_classes_to_indices
 from monai.utils.misc import fall_back_tuple
 import numpy as np
-from fastai.data.block import torch
 from fastcore.all import ItemTransform, delegates
 from monai.transforms.croppad.array import *
 import ipdb

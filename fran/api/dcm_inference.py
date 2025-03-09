@@ -29,7 +29,7 @@ from fran.managers import Project
 import ipdb
 
 from fran.inference.cascade import CascadeInferer
-from fran.utils.imageviewers import ImageMaskViewer, view_sitk
+from utilz.imageviewers import ImageMaskViewer, view_sitk
 
 tr = ipdb.set_trace
 
@@ -54,7 +54,7 @@ from fran.inference.base import (BaseInferer, get_patch_spacing,
 from fran.transforms.inferencetransforms import (
     BBoxFromPTd, KeepLargestConnectedComponentWithMetad, RenameDictKeys,
     SaveMultiChanneld, ToCPUd)
-from fran.utils.itk_sitk import *
+from utilz.itk_sitk import *
 
 sys.path += ["/home/ub/code"]
 

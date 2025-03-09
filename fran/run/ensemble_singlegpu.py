@@ -7,7 +7,7 @@ from fran.utils.common import *
 from fran.transforms.spatialtransforms import *
 from fran.managers.tune import *
 from fran.inference.cascade import *
-from fran.utils.imageviewers import *
+from utilz.imageviewers import *
 
     # ImageMaskViewer([img_np,mask_np])
 

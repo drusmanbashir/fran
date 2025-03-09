@@ -29,7 +29,7 @@ from monai.utils.enums import MetaKeys, SpaceKeys
 from monai.utils.module import optional_import, require_pkg
 
 from fran.transforms.totensor import ToTensorT
-from fran.utils.fileio import load_dict
+from utilz.fileio import load_dict
 
 nib, _ = optional_import("nibabel")
 Image, _ = optional_import("PIL.Image")
@@ -47,7 +47,7 @@ SUPPORTED_READERS = {
 }
 import ipdb
 
-from fran.utils.imageviewers import ImageMaskViewer
+from utilz.imageviewers import ImageMaskViewer
 
 tr = ipdb.set_trace
 

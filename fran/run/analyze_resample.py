@@ -3,7 +3,7 @@ import argparse
 import ast
 import shutil
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
-from fran.utils.config_parsers import ConfigMaker, parse_excel_plan
+from utilz.config_parsers import ConfigMaker, parse_excel_plan
 from managers import Project
 
 from label_analysis.totalseg import TotalSegmenterLabels
@@ -12,8 +12,8 @@ from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.labelbounded import  LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
-from fran.utils.fileio import *
-from fran.utils.helpers import *
+from utilz.fileio import *
+from utilz.helpers import *
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 

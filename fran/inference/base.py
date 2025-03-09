@@ -2,7 +2,7 @@
 import itertools as il
 import ipdb
 from fran.managers import Project
-from fran.utils.string import ast_literal_eval
+from utilz.string import ast_literal_eval
 
 tr = ipdb.set_trace
 
@@ -35,9 +35,9 @@ from fran.transforms.inferencetransforms import (
     ToCPUd,
 )
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
-from fran.utils.dictopts import DictToAttr, fix_ast
-from fran.utils.helpers import slice_list
-from fran.utils.imageviewers import ImageMaskViewer
+from utilz.dictopts import DictToAttr, fix_ast
+from utilz.helpers import slice_list
+from utilz.imageviewers import ImageMaskViewer
 
 
 def get_patch_spacing(run_name):

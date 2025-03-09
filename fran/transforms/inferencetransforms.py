@@ -15,7 +15,7 @@ from fran.transforms.base import KeepBBoxTransform
 from label_analysis.utils import *
 
 from fran.inference.helpers import get_amount_to_pad, get_scale_factor_from_spacings, rescale_bbox
-from fran.utils.string import strip_extension
+from utilz.string import strip_extension
 
 tr = ipdb.set_trace
 
@@ -26,7 +26,7 @@ from fastcore.transform import ItemTransform
 # from fran.inference.inference_base import get_scale_factor_from_spacings, rescale_bbox
 from fran.transforms.spatialtransforms import  slices_from_lists
 
-from fran.utils.helpers import multiply_lists
+from utilz.helpers import multiply_lists
 from fastcore.test import is_close
 from fastcore.all import GetAttr
 class PredictorTransform(ItemTransform,GetAttr):

@@ -5,12 +5,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from fran.callback.base import *
-from fastai.callback.tracker import Callback
 import itertools as il
 
 from pathlib import Path
 
-from fran.utils.string import cleanup_fname
+from utilz.string import cleanup_fname
 # %%
 
 class DropBBox(Callback):

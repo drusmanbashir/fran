@@ -9,7 +9,7 @@ from typing import List
 import torch
 
 from inference.cascade import CascadeInferer
-from fran.utils.fileio import maybe_makedirs
+from utilz.fileio import maybe_makedirs
 
 app = FastAPI()
 

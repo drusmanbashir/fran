@@ -1,8 +1,8 @@
 # %%
 from torch.autograd.variable import Variable
 from fran.transforms.spatialtransforms import *
-from fran.utils.helpers import *
-from fran.utils.imageviewers import *
+from utilz.helpers import *
+from utilz.imageviewers import *
 
 
 # %%

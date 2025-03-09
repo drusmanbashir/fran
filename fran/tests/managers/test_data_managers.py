@@ -2,10 +2,10 @@ import pytest
 import torch
 from pathlib import Path
 from fran.managers.project import Project
-from fran.utils.config_parsers import ConfigMaker
+from utilz.config_parsers import ConfigMaker
 from fran.utils.common import *
-from fran.utils.helpers import load_dict
-from fran.utils.imageviewers import ImageMaskViewer
+from utilz.helpers import load_dict
+from utilz.imageviewers import ImageMaskViewer
 from managers.data.training import (
     DataManagerWhole,
     DataManagerBaseline,

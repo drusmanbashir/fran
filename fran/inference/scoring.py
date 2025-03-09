@@ -9,7 +9,7 @@ from monai.losses import DiceLoss
 from label_analysis.labels import labels_overlap
 # %%
 
-from fran.utils.imageviewers import ImageMaskViewer, view_sitk
+from utilz.imageviewers import ImageMaskViewer, view_sitk
 from fran.transforms.totensor import ToTensorT
 from fran.transforms.spatialtransforms import one_hot
 import SimpleITK as sitk

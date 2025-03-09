@@ -15,8 +15,8 @@ from monai.transforms.intensity.dictionary import NormalizeIntensityd
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.misc_transforms import DictToMeta, MetaToDict
 from fran.transforms.spatialtransforms import Project2D
-from fran.utils.fileio import is_sitk_file, maybe_makedirs
-from fran.utils.helpers import find_matching_fn
+from utilz.fileio import is_sitk_file, maybe_makedirs
+from utilz.helpers import find_matching_fn
 import ipdb
 tr = ipdb.set_trace
 

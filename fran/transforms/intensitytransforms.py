@@ -224,9 +224,9 @@ if __name__ == "__main__":
     from fran.data.dataset import *
     
     from fran.utils.common import *
-    from fran.utils.helpers import *
-    from fran.utils.fileio import *
-    from fran.utils.imageviewers import *
+    from utilz.helpers import *
+    from utilz.fileio import *
+    from utilz.imageviewers import *
     from fran.transforms.spatialtransforms import *
     from matplotlib import pyplot as plt
     P = Project(project_title="litsmc"); proj_defaults= P

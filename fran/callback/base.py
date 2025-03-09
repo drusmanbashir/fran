@@ -1,9 +1,6 @@
 # %%
 
-from fastai.callback.fp16 import MixedPrecision
-from fastai.callback.schedule import CancelFitException
 from lightning.pytorch.callbacks import Callback
-from fastai.callback.core import Callback as CBF
 import torch.nn.functional as F
 from fastcore.basics import listify, store_attr
 import torch.nn as nn

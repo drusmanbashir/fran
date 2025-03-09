@@ -4,10 +4,10 @@ import shutil
 from pathlib import Path
 import argparse
 
-from fastai.vision.augment import store_attr
 
-from fran.utils.fileio import save_list
-from fran.utils.helpers import multiprocess_multiarg
+from fastcore.all import store_attr
+from utilz.fileio import save_list
+from utilz.helpers import multiprocess_multiarg
 
 
 # %%
