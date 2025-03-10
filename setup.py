@@ -1,5 +1,7 @@
 import setuptools
-
+import os
+with open(os.path.join(os.path.dirname(__file__), "requirements.txt"), encoding="utf-8") as f:
+    requirements = f.read().splitlines()
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
@@ -19,5 +21,6 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.11",
+    install_requires=requirements,
 )
 
