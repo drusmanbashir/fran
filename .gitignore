@@ -25,3 +25,4 @@ experiments/.neptune/config.json
 .Rproj.user
 *.zip
 *.egg-info/
+build/
