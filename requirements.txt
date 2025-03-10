@@ -2,7 +2,7 @@
 # torchinfo>=1.8.0
 # torchio>=0.20.4
 torch
-torchvision#>=0.20.1+cu121
+torchvision
 torchaudio
 batchgenerators>=0.25
 connected_components_3d>=3.17.0
@@ -50,4 +50,4 @@ tqdm>=4.66.5
 ultralytics>=8.3.44
 git+https://github.com/drusmanbashir/utilz.git@main#egg=utilz
 git+https://github.com/drusmanbashir/xnat.git@main#egg=xnat
-git++https://github.com/drusmanbashir/dicom_utils.git@main#egg=dicom_utils
+git+https://github.com/drusmanbashir/dicom_utils.git@main#egg=dicom_utils
