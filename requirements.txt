@@ -45,7 +45,7 @@ scikit-image
 supervision>=0.25.1
 tqdm>=4.66.5
 ultralytics>=8.3.44
-git+https://github.com/drusmanbashir/utilz.git@main#egg=utilz
-git+https://github.com/drusmanbashir/xnat.git@main#egg=xnat
-git+https://github.com/drusmanbashir/label_analysis.git@main#egg=label_analysis
-git+https://github.com/drusmanbashir/dicom_utils.git@main#egg=dicom_utils
+utilz @ git+https://github.com/drusmanbashir/utilz.git@main
+xnat @ git+https://github.com/drusmanbashir/xnat.git@main
+label_analysis @ git+https://github.com/drusmanbashir/label_analysis.git@main
+dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main
