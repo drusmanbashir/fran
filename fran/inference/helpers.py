@@ -24,22 +24,6 @@ def apply_threshold(input_img,threshold):
     input_img[input_img>=threshold]=1
     return input_img
 
-def mask_from_predictions(predictions_array, connected_components, threshold=0.95 ):
-            '''
-            params: predictionary_array shape C,D,W,H
-            '''
-            
-            assert (len(predictions_array.shape)==4), "Input array has to be 4D (C,D,W,H). Found instead {}D".format(len(predictions_array))
-            if (predictions_array.shape[0])> 1: # i.e., multi-channel softmax output_tensor
-                mask = torch.argmax(predictions_array,dim=0)
-            else: 
-                mask = apply_threshold(predictions_array, threshold)
-                mask = mask.squeeze(0)
-            mask = np.array(mask, dtype=np.uint16)
-            mask2 = cc3d.largest_k(mask,k=connected_components,connectivity=26,delta=0,return_N=False)
-            mask[mask>0]=1
-            return mask
-# %%
 def get_amount_to_pad(img_shape, patch_size):
 
 
