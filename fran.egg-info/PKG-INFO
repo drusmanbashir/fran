@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.2
 Name: fran
 Version: 0.8.0
 Summary: A Python package for interfacing with or providing functionality for fran.
@@ -8,8 +8,61 @@ Author-email: usman.bashir@example.com
 Classifier: Programming Language :: Python :: 3
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
-Requires-Python: >=3.6
+Requires-Python: >=3.11
 Description-Content-Type: text/markdown
+Requires-Dist: torch
+Requires-Dist: torchvision
+Requires-Dist: torchaudio
+Requires-Dist: batchgenerators==0.25
+Requires-Dist: connected_components_3d==3.17.0
+Requires-Dist: dicom_utils>=0.1.0
+Requires-Dist: fastapi==0.115.11
+Requires-Dist: fastcore==1.6.3
+Requires-Dist: h5py==3.12.1
+Requires-Dist: ipdb==0.13.13
+Requires-Dist: itk==5.4.2.post1
+Requires-Dist: lightning==2.5.0.post0
+Requires-Dist: lightning_utilities==0.11.9
+Requires-Dist: matplotlib==3.10.1
+Requires-Dist: monai==1.4.0
+Requires-Dist: neptune==1.13.0
+Requires-Dist: numpy
+Requires-Dist: nurbspy==1.1.2
+Requires-Dist: opencv_python==4.10.0.84
+Requires-Dist: opencv_python_headless==4.10.0.84
+Requires-Dist: openpyxl==3.1.5
+Requires-Dist: pandas==2.2.3
+Requires-Dist: paramiko==3.5.0
+Requires-Dist: Pillow==11.1.0
+Requires-Dist: plotly==6.0.0
+Requires-Dist: prefetch_generator==1.0.3
+Requires-Dist: psutil==6.0.0
+Requires-Dist: pydicom==2.3.0
+Requires-Dist: pytest==8.3.3
+Requires-Dist: PyYAML==6.0.2
+Requires-Dist: ray==2.36.1
+Requires-Dist: reportlab==4.2.5
+Requires-Dist: requests==2.32.3
+Requires-Dist: roboflow==1.1.49
+Requires-Dist: scipy==1.15.2
+Requires-Dist: seaborn==0.13.2
+Requires-Dist: Send2Trash==1.8.3
+Requires-Dist: setuptools==75.1.0
+Requires-Dist: SimpleITK==2.4.1
+Requires-Dist: scikit-image
+Requires-Dist: supervision==0.25.1
+Requires-Dist: tqdm==4.66.5
+Requires-Dist: ultralytics==8.3.44
+Requires-Dist: xnat>=0.7.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
 
 This repository combines the powers of **F**astai, **Ra**ytune, and **N**eptune to manage and automate medical image segmentations tasks. Currently, I have developed this specifically using the KiTS21 challenge. I welcome others to test this library on the same challenge initially (or on others if you are feeling adventurous and don't mind debugging). Using the random search implemented in the raytune library, I have achieved very good kidney tumour segmentation results.
 

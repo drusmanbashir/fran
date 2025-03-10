@@ -4,6 +4,7 @@ fran/__init__.py
 fran.egg-info/PKG-INFO
 fran.egg-info/SOURCES.txt
 fran.egg-info/dependency_links.txt
+fran.egg-info/requires.txt
 fran.egg-info/top_level.txt
 fran/data/__init__.py
 fran/data/collate.py
