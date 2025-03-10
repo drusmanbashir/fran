@@ -6,9 +6,6 @@ torchvision
 torchaudio
 batchgenerators>=0.25
 connected_components_3d>=3.17.0
-cudf>=0.6.1.post1
-cugraph>=0.6.1.post1
-cuml>=0.6.1.post1
 fastapi>=0.115.11
 fastcore>=1.6.3
 grad_cam>=1.5.3
