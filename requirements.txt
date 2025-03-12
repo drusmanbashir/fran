@@ -2,32 +2,31 @@ utilz @ git+https://github.com/drusmanbashir/utilz.git@main
 xnat @ git+https://github.com/drusmanbashir/xnat.git@main
 label_analysis @ git+https://github.com/drusmanbashir/label_analysis.git@main
 dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main
-# torch>=2.5.1+cu121
-# torchinfo>=1.8.0
-# torchio>=0.20.4
-# batchgenerators>=0.25
-# connected_components_3d>=3.17.0
-# grad_cam>=1.5.3
-# gudhi>=3.10.1
-# h5py>=3.12.1
-# lightning>=2.5.0.post0
-# lightning_utilities>=0.11.9
-# monai>=1.4.0
-# neptune>=1.13.0
-# nurbspy>=1.1.2
-# opencv_python>=4.10.0.84
-# # opencv_python_headless>=4.10.0.84
-# openpyxl>=3.1.5
-# pandas>=2.2.3
-# paramiko>=3.5.0
-# Pillow>=11.1.0
-# plotly>=6.0.0
-# prefetch_generator>=1.0.3
-# psutil>=6.0.0
-# PyYAML>=6.0.2
-# reportlab>=4.2.5
-# roboflow>=1.1.49
-# seaborn>=0.13.2
-# scikit-image
-# supervision>=0.25.1
-# ultralytics>=8.3.44
+torchinfo
+torchio
+batchgenerators>=0.25
+connected_components_3d>=3.17.0
+grad_cam>=1.5.3
+gudhi>=3.10.1
+h5py>=3.12.1
+lightning>=2.5.0.post0
+lightning_utilities>=0.11.9
+monai>=1.4.0
+neptune>=1.13.0
+nurbspy>=1.1.2
+opencv_python>=4.10.0.84
+# opencv_python_headless>=4.10.0.84
+openpyxl>=3.1.5
+pandas>=2.2.3
+paramiko>=3.5.0
+Pillow>=11.1.0
+plotly>=6.0.0
+prefetch_generator>=1.0.3
+psutil>=6.0.0
+PyYAML>=6.0.2
+reportlab>=4.2.5
+roboflow>=1.1.49
+seaborn>=0.13.2
+scikit-image
+supervision>=0.25.1
+ultralytics>=8.3.44
