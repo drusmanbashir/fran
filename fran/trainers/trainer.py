@@ -9,7 +9,7 @@ from fran.managers.data.training import DataManagerDual
 from fran.managers.unet import maybe_ddp
 import ipdb
 
-from utilz.config_parsers import ConfigMaker
+from fran.utils.config_parsers import ConfigMaker
 from utilz.helpers import pp
 
 tr = ipdb.set_trace

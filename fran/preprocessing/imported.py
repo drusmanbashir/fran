@@ -8,7 +8,7 @@ from fran.preprocessing.dataset import ImporterDataset
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 
 from torch.utils.data import DataLoader
-from utilz.config_parsers import ConfigMaker, parse_excel_dict
+from fran.utils.config_parsers import ConfigMaker, parse_excel_dict
 from utilz.fileio import load_dict
 from utilz.helpers import find_matching_fn, folder_name_from_list, resolve_device
 

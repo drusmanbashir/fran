@@ -16,7 +16,7 @@ from fran.preprocessing.fixed_spacing import (
 )
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd
-from utilz.config_parsers import ConfigMaker, is_excel_None, parse_excel_dict
+from fran.utils.config_parsers import ConfigMaker, is_excel_None, parse_excel_dict
 from utilz.string import info_from_filename
 from pathlib import Path
 

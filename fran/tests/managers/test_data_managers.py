@@ -2,7 +2,7 @@ import pytest
 import torch
 from pathlib import Path
 from fran.managers.project import Project
-from utilz.config_parsers import ConfigMaker
+from fran.utils.config_parsers import ConfigMaker
 from fran.utils.common import *
 from utilz.helpers import load_dict
 from utilz.imageviewers import ImageMaskViewer

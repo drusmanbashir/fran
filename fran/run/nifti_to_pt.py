@@ -3,7 +3,7 @@ import pandas as pd
 from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
-from utilz.config_parsers import ConfigMaker
+from fran.utils.config_parsers import ConfigMaker
 
 
 if __name__ == '__main__':

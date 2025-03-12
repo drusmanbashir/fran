@@ -5,7 +5,7 @@ import ipdb
 
 from batchgenerators.utilities.file_and_folder_operations import List
 from fastcore.basics import listify
-from utilz.config_parsers import ConfigMaker
+from fran.utils.config_parsers import ConfigMaker
 from utilz.string import (
     info_from_filename,
 )

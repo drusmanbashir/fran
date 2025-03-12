@@ -8,7 +8,7 @@ from pytorch_grad_cam import (
 import ipdb
 
 from fran.trainers.base import checkpoint_from_model_id
-from utilz.config_parsers import ConfigMaker
+from fran.utils.config_parsers import ConfigMaker
 from utilz.string import info_from_filename
 tr = ipdb.set_trace
 

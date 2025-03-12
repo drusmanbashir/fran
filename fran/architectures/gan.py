@@ -17,7 +17,7 @@ from fran.transforms.batchtransforms import *
 from fran.architectures.unet3d.model import Generator, Discriminator_ub
 from fran.data.dataset import *
 from fran.evaluation.losses import *
-from utilz.config_parsers import *
+from fran.utils.config_parsers import *
 from utilz.helpers import *
 from fran.callback.nept import *
 from fran.callback.tune import *

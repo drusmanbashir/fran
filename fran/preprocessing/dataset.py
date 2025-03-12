@@ -40,7 +40,7 @@ from fran.transforms.misc_transforms import (
     LabelRemapSITKd,
 )
 from fran.transforms.spatialtransforms import ResizeToTensord
-from utilz.config_parsers import is_excel_None
+from fran.utils.config_parsers import is_excel_None
 from utilz.string import info_from_filename
 
 from pathlib import Path

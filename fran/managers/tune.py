@@ -1,7 +1,7 @@
 # %%
 
 # from fran.callback.nep_manager import *
-from utilz.config_parsers import *
+from fran.utils.config_parsers import *
 import torch.nn as nn
 from ray import tune
 from ray.air import session
@@ -10,7 +10,7 @@ from datetime import datetime
 import pandas as pd
 import ast,re
 from ray import tune
-from utilz.config_parsers import load_metadata
+from fran.utils.config_parsers import load_metadata
 from utilz.fileio import load_json
 from utilz.helpers import make_channels
 # from fran.architectures.unet3d.model import  *

@@ -15,7 +15,7 @@ tr = ipdb.set_trace
 
 
 from fran.architectures.unetcraig import nnUNetCraig
-from utilz.config_parsers import make_patch_size
+from fran.utils.config_parsers import make_patch_size
 
 def get_batch_size(
     model: nn.Module,

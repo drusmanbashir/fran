@@ -91,7 +91,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
     from fran.managers import Project
-    from utilz.config_parsers import ConfigMaker
+    from fran.utils.config_parsers import ConfigMaker
     project_title = "litsmc"
     proj = Project(project_title=project_title)
 

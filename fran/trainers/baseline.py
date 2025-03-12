@@ -3,7 +3,7 @@ import torch
 from fran.managers import Project
 
 from fran.trainers.trainer import Trainer
-from utilz.config_parsers import ConfigMaker
+from fran.utils.config_parsers import ConfigMaker
 from utilz.imageviewers import ImageMaskViewer
 
 #

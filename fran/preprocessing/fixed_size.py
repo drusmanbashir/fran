@@ -13,7 +13,7 @@ from fastcore.all import  store_attr
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd, TorchWriter
 from fran.transforms.misc_transforms import MaskLabelRemapd
-from utilz.config_parsers import ConfigMaker
+from fran.utils.config_parsers import ConfigMaker
 from utilz.string import info_from_filename
 from pathlib import Path
 from fastcore.basics import store_attr
