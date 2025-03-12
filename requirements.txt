@@ -30,3 +30,4 @@ seaborn>=0.13.2
 scikit-image
 supervision>=0.25.1
 ultralytics>=8.3.44
+send2trash
