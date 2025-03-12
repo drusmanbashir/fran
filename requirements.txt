@@ -1,17 +1,12 @@
 # torch>=2.5.1+cu121
 # torchinfo>=1.8.0
 # torchio>=0.20.4
-torch
-torchvision
-torchaudio
 batchgenerators>=0.25
 connected_components_3d>=3.17.0
 fastapi>=0.115.11
-fastcore>=1.6.3
 grad_cam>=1.5.3
 gudhi>=3.10.1
 h5py>=3.12.1
-ipdb>=0.13.13
 itk>=5.4.2.post1
 lightning>=2.5.0.post0
 lightning_utilities>=0.11.9
@@ -37,9 +32,7 @@ reportlab>=4.2.5
 roboflow>=1.1.49
 scipy>=1.15.2
 seaborn>=0.13.2
-Send2Trash>=1.8.3
 setuptools>=75.1.0
-SimpleITK>=2.4.1
 scikit-image
 supervision>=0.25.1
 tqdm>=4.66.5

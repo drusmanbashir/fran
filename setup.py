@@ -5,6 +5,8 @@ with open(os.path.join(os.path.dirname(__file__), "requirements.txt"), encoding=
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+development_only = ["gudhi", "nurbspy",""]
+
 setuptools.setup(
     name="fran",  # Package name
     version="0.8.0",  # Initial release version
