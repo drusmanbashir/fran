@@ -452,7 +452,7 @@ class NeptuneManager(NeptuneLogger, Callback):
             self.nep_run.wait() 
 
     def fix_remote_ckpt(self,ckpt):
-        st_dict=torch.load(ckpt)
+        st_dict=torch.load(ckpt,weights_only=False)
 
         dm_dict=st_dict['datamodule_hyper_parameters']
         remote_proj=dm_dict['project']

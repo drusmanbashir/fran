@@ -42,7 +42,7 @@ from utilz.imageviewers import ImageMaskViewer
 
 def get_patch_spacing(run_name):
     ckpt = checkpoint_from_model_id(run_name)
-    dic1 = torch.load(ckpt)
+    dic1 = torch.load(ckpt, weights_only=False)
     config = dic1["datamodule_hyper_parameters"]["config"]
     spacing = config["plan"].get("spacing")
     if spacing is None:
@@ -70,7 +70,7 @@ def list_to_chunks(input_list: list, chunksize: int):
 
 def load_params(model_id):
     ckpt = checkpoint_from_model_id(model_id)
-    dic_tmp = torch.load(ckpt, map_location="cpu")
+    dic_tmp = torch.load(ckpt, map_location="cpu", weights_only=False)
     dic_relevant = dic_tmp["datamodule_hyper_parameters"]
     # dic_tmp['datamodule_hyper_parameters']['plan']['spacing']= '.8,.8,1.5'# = fix_ast(dic_tmp, keys=['spacing'])
     # dic_relevant['plan']=fix_ast(dic_relevant['plan'], keys = ['spacing'])# = fix_ast(dic_tmp, keys=['spacing'])

@@ -65,7 +65,7 @@ def load_unet_trainer(ckpt, project, config, lr, **kwargs):
         print("Model loaded from checkpoint: ", ckpt)
     except:
         tr()
-        ckpt_dict = torch.load(ckpt)
+        ckpt_dict = torch.load(ckpt, weights_only=False)
         state_dict = ckpt_dict["state_dict"]
         ckpt_state = state_dict["state_dict"]
         ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
