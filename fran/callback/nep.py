@@ -23,7 +23,7 @@ try:
 except:
     pass
 
-from utilz.colour_palette import colour_palette
+from fran.utils.colour_palette import colour_palette
 
 _ast_keys = ["dataset_params,patch_size", "metadata,src_dest_labels"]
 _immutable_keys = [
