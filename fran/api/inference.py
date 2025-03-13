@@ -8,8 +8,8 @@ import SimpleITK as sitk
 from typing import List
 import torch
 
-from inference.cascade import CascadeInferer
 from utilz.fileio import maybe_makedirs
+from fran.inference.cascade import CascadeInferer
 
 app = FastAPI()
 
