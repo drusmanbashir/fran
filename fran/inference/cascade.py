@@ -205,7 +205,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
     def inferer_from_params(self, run_name_w):
         self.ckpt = checkpoint_from_model_id(run_name_w)
-        dic1 = torch.load(self.ckpt)
+        dic1 = torch.load(self.ckpt, weights_only=False)
         mode = dic1['datamodule_hyper_parameters']['config']['plan']['mode']# ["dataset_params"]["mode"]
         if mode == "source":
             return BaseInferer
