@@ -5,7 +5,7 @@ dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main
 torchinfo
 torchio
 batchgenerators>=0.25
-nnunetv2
+nnunet
 connected_components_3d>=3.17.0
 grad_cam>=1.5.3
 gudhi>=3.10.1
