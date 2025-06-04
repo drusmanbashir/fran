@@ -178,19 +178,23 @@ if __name__ == "__main__":
     run_src = "LITS-933";project_title="litsmc"; value =4
     run_src = "LITS-1088";project_title="totalseg"; value=2
     run_src = "LITS-911";    project_title="lidc2";value =3
-    
-    project_title="nodes"
+    run_src = "LITS-1110";    project_title="nodes";value =3
 # %%
+# %%
+#SECTION:-------------------- OLDER settings did not have a config param in UNet. Block below copies that from datamodule--------------------------------------------------------------------------------------
     ckpt_src = checkpoint_from_model_id(run_src)
-    dict_src = torch.load(ckpt_src, map_location="cpu")
-
+    dict_src = torch.load(ckpt_src, map_location="cpu",weights_only=False)
 # %%
     dici = dict_src.copy()
+    dici.keys()
+    pp(dici['hyper_parameters'].keys())
+    pp(dici['hyper_parameters']['model_params'])
     # pln = dici['datamodule_hyper_parameters']['config']['plan{}'.format(value)]
     pln = dici['datamodule_hyper_parameters']['config']['plan']
+    datamod = dici['datamodule_hyper_parameters']['config']
+    dici['hyper_parameters']['config']= dici['datamodule_hyper_parameters']['config'].copy()#['plan_train']=pln
     dici['hyper_parameters']['config']['plan_train']=pln
     dici['hyper_parameters']['config']['plan_valid']=pln
-    dici['datamodule_hyper_parameters']['config']['plan_train']=pln
     dici['datamodule_hyper_parameters']['config']['plan_valid']=pln
     torch.save(dici,ckpt_src)
 # %%

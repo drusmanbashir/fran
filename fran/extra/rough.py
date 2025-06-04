@@ -1,64 +1,150 @@
 # %%
 import shutil
-import socket
 from matplotlib import pyplot as plt
 from torch import nn
-from gudhi import CubicalComplex
+
+from gudhi.cubical_complex import CubicalComplex
 import cudf
-import cuml
 import cugraph
 from send2trash import send2trash
 
 from utilz.helpers import info_from_filename
 import torch
-import time
 import SimpleITK as sitk
 import re
 from pathlib import Path
 
-from label_analysis.helpers import get_labels, view_sitk
-from fran.managers.data import find_matching_fn, pbar
+from label_analysis.helpers import get_labels
 from utilz.fileio import maybe_makedirs
 from utilz.imageviewers import ImageMaskViewer
 
+
+import torch
+import torch.nn as nn
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Create a simple synthetic grayscale image with a horizontal gradient.
+H, W = 64, 64
+# Create an image with values ranging from 0 to 1 across each row.
+image = np.tile(np.linspace(0, 1, W), (H, 1))
+# Convert the numpy array to a PyTorch tensor and add batch and channel dimensions: (1, 1, H, W)
+image_tensor = torch.tensor(image, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+
+##############################
+# 1D Convolution on 2D Image
+##############################
+# We want to treat each row of the image as an independent 1D signal.
+# For Conv1d, the expected input shape is (batch_size, channels, sequence_length).
+# Here, we reshape the image so that each row is a separate sample:
+# Resulting shape: (H, 1, W)
+img_for_conv1d = image_tensor.squeeze(0).squeeze(0).unsqueeze(1)
+
+# Define a 1D convolution layer with kernel size 3, padding to keep the same width.
+conv1d = nn.Conv1d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
+# Set the kernel to [-1, 0, 1] for horizontal edge detection.
+with torch.no_grad():
+    conv1d.weight[:] = torch.tensor([[[-1, 0, 1]]], dtype=torch.float32)
+
+# Apply the 1D convolution to each row.
+# The output shape will be (H, 1, W).
+result1d = conv1d(img_for_conv1d)
+
+##############################
+# 2D Convolution on 2D Image
+##############################
+# Define a 2D convolution layer with kernel size 3 and padding.
+conv2d = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
+# Create a 2D kernel that applies the same horizontal filter only in the middle row.
+kernel_2d = torch.zeros((1, 1, 3, 3))
+kernel_2d[0, 0, 1, :] = torch.tensor([-1, 0, 1], dtype=torch.float32)
+with torch.no_grad():
+    conv2d.weight[:] = kernel_2d
+
+# Apply the 2D convolution to the original image tensor.
+# The output shape will be (1, 1, H, W).
+result2d = conv2d(image_tensor)
+
+##############################
+# Display the Results
+##############################
+plt.figure(figsize=(12, 4))
+# Original image
+plt.subplot(1, 3, 1)
+plt.imshow(image, cmap="gray", aspect="auto")
+plt.title("Original Image")
+plt.axis("off")
+
+# Result of 1D convolution
+plt.subplot(1, 3, 2)
+# Squeeze the channel dimension: shape becomes (H, W)
+plt.imshow(result1d.squeeze(1).detach().numpy(), cmap="gray", aspect="auto")
+plt.title("1D Convolution (per row)")
+plt.axis("off")
+
+# Result of 2D convolution
+plt.subplot(1, 3, 3)
+plt.imshow(result2d.squeeze().detach().numpy(), cmap="gray", aspect="auto")
+plt.title("2D Convolution")
+plt.axis("off")
+
+plt.tight_layout()
+plt.show()
+
+
+# %%
+#
 # Step 8: Plot the persistence diagram
 def plot_persistence_diagram(diagram):
-        births, deaths = [], []
-        for point in diagram:
-            if point[0] == 0:  # 0-dim components (connected components)
-                births.append(point[1][0])
-                deaths.append(point[1][1])
+    births, deaths = [], []
+    for point in diagram:
+        if point[0] == 0:  # 0-dim components (connected components)
+            births.append(point[1][0])
+            deaths.append(point[1][1])
 
-        plt.figure(figsize=(8, 6))
-        plt.scatter(births, deaths, label="0-dim Features (Connected Components)", color="blue", s=10)
-        plt.plot([0, max(deaths)], [0, max(deaths)], linestyle='--', color='red')  # Diagonal
-        plt.xlabel("Birth")
-        plt.ylabel("Death")
-        plt.title("Persistence Diagram")
-        plt.legend()
-        plt.show()
+    plt.figure(figsize=(8, 6))
+    plt.scatter(
+        births,
+        deaths,
+        label="0-dim Features (Connected Components)",
+        color="blue",
+        s=10,
+    )
+    plt.plot(
+        [0, max(deaths)], [0, max(deaths)], linestyle="--", color="red"
+    )  # Diagonal
+    plt.xlabel("Birth")
+    plt.ylabel("Death")
+    plt.title("Persistence Diagram")
+    plt.legend()
+    plt.show()
+
+
 # Step 7: Plot the persistence barcode
 def plot_persistence_barcode(intervals, title="Persistence Barcode"):
     plt.figure(figsize=(10, 5))
     for i, (birth, death) in enumerate(intervals):
-        if death == float('inf'):
-            death = max(top_dimensional_cells)  # Set death to a max finite value for visualization
-        plt.plot([birth, death], [i, i], 'b', lw=2)
+        if death == float("inf"):
+            death = max(
+                top_dimensional_cells
+            )  # Set death to a max finite value for visualization
+        plt.plot([birth, death], [i, i], "b", lw=2)
 
     plt.xlabel("Filtration Value")
     plt.ylabel("Barcode Index")
     plt.title(title)
     plt.show()
 
+
 # %%
 if __name__ == "__main__":
     fn = "/s/xnat_shadow/crc/sampling/tensors/fixed_spacing/images/crc_CRC012_20180422_ABDOMEN.pt"
     lm = torch.load(fn)
-    ImageMaskViewer([lm,lm])
+    ImageMaskViewer([lm, lm])
     fldr = Path("/s/xnat_shadow/crc/tensors/fixed_spacing/lms/")
     fls = list(fldr.glob("*"))
 # %%
-    bad= []
+    bad = []
     for fn in fls:
         lm = torch.load(fn)
         if "filename_or_obj" in lm.meta.keys():
@@ -77,7 +163,7 @@ if __name__ == "__main__":
 
     out_fldr_img = Path("/s/crc_upload/images")
     out_fldr_lm = Path("/s/crc_upload/lms")
-    maybe_makedirs([out_fldr_lm,out_fldr_img])
+    maybe_makedirs([out_fldr_lm, out_fldr_img])
 # %%
     nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending_neck")
     nodes_done_fldr = Path("/s/xnat_shadow/nodes/images")
@@ -86,7 +172,7 @@ if __name__ == "__main__":
 
 # %%
     img_fn = Path("/s/fran_storage/misc/img.pt")
-    lm_fn =  Path("/s/fran_storage/misc/lm.pt")
+    lm_fn = Path("/s/fran_storage/misc/lm.pt")
     lm = torch.load(lm_fn)
 
 # %%
@@ -96,71 +182,73 @@ if __name__ == "__main__":
     pred = nn.Softmax()(pred)
     thres = 0.01
 # %%
-    preds_bin = (pred>thres).float()
+    preds_bin = (pred > thres).float()
     preds_np = preds_bin.detach().numpy()
-    ImageMaskViewer([im.detach(),preds_bin])
-    ImageMaskViewer([im.detach(),pred])
+    ImageMaskViewer([im.detach(), preds_bin])
+    ImageMaskViewer([im.detach(), pred])
 
-# Step 3: Flatten the numpy array for GUDHI (top-dimensional cells are voxel values)
-# GUDHI requires a flattened list of the voxel values for constructing the cubical complex.
+    # Step 3: Flatten the numpy array for GUDHI (top-dimensional cells are voxel values)
+    # GUDHI requires a flattened list of the voxel values for constructing the cubical complex.
 # %%
     top_dimensional_cells = preds_np.flatten()
 
-# Step 4: Define the dimensions of the 3D volume
+    # Step 4: Define the dimensions of the 3D volume
     dimensions = preds_np.shape
 
-# Step 5: Create a Cubical Complex
-    cubical_complex = CubicalComplex(dimensions=dimensions, top_dimensional_cells=top_dimensional_cells)
+    # Step 5: Create a Cubical Complex
+    cubical_complex = CubicalComplex(
+        dimensions=dimensions, top_dimensional_cells=top_dimensional_cells
+    )
 
-# Step 6: Compute the persistence
+    # Step 6: Compute the persistence
     cubical_complex.persistence()
 
-# Step 7: Get the persistence diagram
+    # Step 7: Get the persistence diagram
 
     persistence_intervals = cubical_complex.persistence_intervals_in_dimension(0)
     betti_0 = len(persistence_intervals)
 # %%
     plot_persistence_barcode(persistence_intervals)
-# Plotting the persistence diagram
+    # Plotting the persistence diagram
 
-        # ImageMaskViewer([lm.detach(),pred_bin.detach()], 'mm')
+    # ImageMaskViewer([lm.detach(),pred_bin.detach()], 'mm')
 # %%
 # %%
     import matplotlib.pyplot as plt
 
-# Data for the persistence diagram
+    # Data for the persistence diagram
     birth_times = [0, 0, 0]  # All components are born at the start of filtration
     death_times = [10, 10, 10]  # Persist until the end (using a high value)
 
-# Create the persistence diagram
+    # Create the persistence diagram
     plt.figure(figsize=(8, 6))
-    plt.scatter(birth_times, death_times, color='b', label='Connected Components')
-    plt.plot([0, 10], [0, 10], 'r--', label='Diagonal (y = x)')  # Diagonal line
+    plt.scatter(birth_times, death_times, color="b", label="Connected Components")
+    plt.plot([0, 10], [0, 10], "r--", label="Diagonal (y = x)")  # Diagonal line
 
-# Plot settings
-    plt.xlabel('Birth')
-    plt.ylabel('Death')
-    plt.title('Persistence Diagram for 0-Dimensional Connected Components')
+    # Plot settings
+    plt.xlabel("Birth")
+    plt.ylabel("Death")
+    plt.title("Persistence Diagram for 0-Dimensional Connected Components")
     plt.legend()
     plt.grid(True)
     plt.xlim(0, 10)
     plt.ylim(0, 10)
 
-# Show plot
+    # Show plot
     plt.show()
 
-# 1. Test cuDF Installation
+    # 1. Test cuDF Installation
     try:
         print("Testing cuDF...")
         # Create a simple cuDF DataFrame
-        df = cudf.DataFrame({'a': [1, 2, 3, 4, 5], 'b': [10, 20, 30, 40, 50]})
+        df = cudf.DataFrame({"a": [1, 2, 3, 4, 5], "b": [10, 20, 30, 40, 50]})
         print("cuDF DataFrame:\n", df)
         print("cuDF head operation successful:", df.head())
         print("cuDF installed successfully.\n")
     except Exception as e:
         print("cuDF test failed:", e)
 
-# 2. Test cuML Installation
+    # 2. Test cuML Installation
     try:
         print("Testing cuML...")
         from cuml.linear_model import LinearRegression
@@ -178,7 +266,7 @@ if __name__ == "__main__":
     except Exception as e:
         print("cuML test failed:", e)
 
-# 3. Test cuGraph Installation
+    # 3. Test cuGraph Installation
     try:
         print("Testing cuGraph...")
         import cudf
@@ -187,11 +275,11 @@ if __name__ == "__main__":
         # Create a simple graph edge list using cuDF
         sources = [0, 1, 2, 3]
         destinations = [1, 2, 3, 4]
-        gdf = cudf.DataFrame({'src': sources, 'dst': destinations})
+        gdf = cudf.DataFrame({"src": sources, "dst": destinations})
 
         # Create a graph using cuGraph
         G = cugraph.Graph()
-        G.from_cudf_edgelist(gdf, source='src', destination='dst')
+        G.from_cudf_edgelist(gdf, source="src", destination="dst")
 
         # Run connected components
         df = cugraph.connected_components(G)
@@ -203,32 +291,30 @@ if __name__ == "__main__":
     print("RAPIDS installation test completed.")
 # %%
     for i in range(len(nodes_done)):
-            # print("Filename ", node_done)
-            node_done = nodes_done[i]
-            ina = info_from_filename(node_done.name)
-            cid1,desc1 = ina['case_id'], ina['desc']
-            for j, test_pend in enumerate(nodes):
-                test_pend = nodes[j]
-                into = info_from_filename(test_pend.name)
-                cid2,desc2 = into['case_id'], into['desc']
-                if cid1==cid2 :
-                    print("Already processed", test_pend.name)
-                    send2trash(test_pend)
+        # print("Filename ", node_done)
+        node_done = nodes_done[i]
+        ina = info_from_filename(node_done.name)
+        cid1, desc1 = ina["case_id"], ina["desc"]
+        for j, test_pend in enumerate(nodes):
+            test_pend = nodes[j]
+            into = info_from_filename(test_pend.name)
+            cid2, desc2 = into["case_id"], into["desc"]
+            if cid1 == cid2:
+                print("Already processed", test_pend.name)
+                send2trash(test_pend)
 # %%
 # %%
-            new_filename = re.sub(r'_\d{8}_', '_', im_fn.name)
-            out_lm_fname = out_fldr_lm / new_filename
-            out_img_fname = out_fldr_img / new_filename
-            shutil.copy(im_fn, out_img_fname)
-            if not ".nii.gz" in lm_fn.name:
-                lm = sitk.ReadImage(str(lm_fn))
-                sitk.WriteImage(lm, out_lm_fname)
-            else:
-                shutil.copy(lm_fn, out_lm_fname)
-# %%
+        new_filename = re.sub(r"_\d{8}_", "_", im_fn.name)
+        out_lm_fname = out_fldr_lm / new_filename
+        out_img_fname = out_fldr_img / new_filename
+        shutil.copy(im_fn, out_img_fname)
+        if not ".nii.gz" in lm_fn.name:
             lm = sitk.ReadImage(str(lm_fn))
-            labels = get_labels(lm)
-            if not labels == [1]:
-                lm= to_binary(lm)
-
+            sitk.WriteImage(lm, out_lm_fname)
+        else:
+            shutil.copy(lm_fn, out_lm_fname)
 # %%
+        lm = sitk.ReadImage(str(lm_fn))
+        labels = get_labels(lm)
+        if not labels == [1]:
+            lm = to_binary(lm)

@@ -1,263 +1,99 @@
-
 # %%
 
-from monai.utils import set_determinism
-from monai.transforms import (
-    AsDiscrete,
-    EnsureChannelFirstd,
-    Compose,
-    CropForegroundd,
-    LoadImaged,
-    Orientationd,
-    RandCropByPosNegLabeld,
-    ScaleIntensityRanged,
-    Spacingd,
-)
-from monai.networks.nets import UNet
-from monai.networks.layers import Norm
-from monai.metrics import DiceMetric
-from monai.losses import DiceLoss
-from monai.inferers import sliding_window_inference
-from monai.data import CacheDataset, DataLoader, decollate_batch
-from monai.config import print_config
-from monai.apps import download_and_extract
 import torch
-import tempfile
-import os
-import glob
+import torch.nn as nn
+import matplotlib.pyplot as plt
+import numpy as np
 
-print_config()
-
-
-
-# %%
+# pyright: reportAttributeAccessIssue=false
+from skimage import data, img_as_float
 
 
+# Load the "camera" image from scikit-image.
+image = img_as_float(data.camera())
+H, W = image.shape  # e.g., typically 512x512
 
-directory = os.environ.get("MONAI_DATA_DIRECTORY")
-root_dir = tempfile.mkdtemp() if directory is None else directory
-print(root_dir)
+# Convert the image to a PyTorch tensor with shape (1, 1, H, W)
+image_tensor = torch.tensor(image, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
 
-resource = "https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09_Spleen.tar"
-md5 = "410d4a301da4e5b2f6f86ec3ddba524e"
+##############################
+# 1D Horizontal Convolution
+##############################
+# For a horizontal 1D convolution, treat each row as a 1D signal.
+# Reshape the image to (H, 1, W): H samples, 1 channel, W-length sequence.
+img_for_conv1d = image_tensor.squeeze(0).squeeze(0).unsqueeze(1)  # Shape: (H, 1, W)
 
-compressed_file = os.path.join(root_dir, "Task09_Spleen.tar")
-data_dir = os.path.join(root_dir, "Task09_Spleen")
-if not os.path.exists(data_dir):
-    download_and_extract(resource, compressed_file, root_dir, md5)
+# Define a 1D convolution layer with kernel size 3 and padding=1.
+conv1d_horizontal = nn.Conv1d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
+# Set the kernel to [-1, 0, 1] for horizontal edge detection.
+with torch.no_grad():
+    conv1d_horizontal.weight[:] = torch.tensor([[[-1, 0, 1]]], dtype=torch.float32)
 
+# Apply the horizontal 1D convolution
+result1d_horizontal = conv1d_horizontal(img_for_conv1d)  # Shape: (H, 1, W)
 
+##############################
+# 1D Vertical Convolution
+##############################
+# To perform a vertical convolution, treat each column as a 1D signal.
+# First, transpose the image so that columns become rows.
+# Starting from shape (H, W), transposing gives (W, H), then add a channel dimension.
+img_for_conv1d_vertical = image_tensor.squeeze(0).squeeze(0).transpose(0, 1).unsqueeze(1)  # Shape: (W, 1, H)
 
-train_images = sorted(glob.glob(os.path.join(data_dir, "imagesTr", "*.nii.gz")))
-train_labels = sorted(glob.glob(os.path.join(data_dir, "labelsTr", "*.nii.gz")))
-data_dicts = [{"image": image_name, "label": label_name} for image_name, label_name in zip(train_images, train_labels)]
-train_files, val_files = data_dicts[:-9], data_dicts[-9:]
+# Define a 1D convolution layer for vertical processing.
+conv1d_vertical = nn.Conv1d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
+# Use the same kernel [-1, 0, 1].
+with torch.no_grad():
+    conv1d_vertical.weight[:] = torch.tensor([[[-1, 0, 1]]], dtype=torch.float32)
 
+# Apply the vertical 1D convolution.
+result1d_vertical = conv1d_vertical(img_for_conv1d_vertical)  # Shape: (W, 1, H)
+# Transpose the result back to (H, W)
+result1d_vertical = result1d_vertical.squeeze(1).transpose(0, 1)
 
-set_determinism(seed=0)
+##############################
+# 2D Convolution
+##############################
+# Define a 2D convolution layer with kernel size 3 and padding=1.
+conv2d = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
+# Create a 2D kernel that applies the horizontal filter along the center row.
+kernel_2d = torch.zeros((1, 1, 3, 3))
+kernel_2d[0, 0, 1, :] = torch.tensor([-1, 0, 1], dtype=torch.float32)
+with torch.no_grad():
+    conv2d.weight[:] = kernel_2d
 
-train_transforms = Compose(
-    [
-        LoadImaged(keys=["image", "label"]),
-        EnsureChannelFirstd(keys=["image", "label"]),
-        ScaleIntensityRanged(
-            keys=["image"],
-            a_min=-57,
-            a_max=164,
-            b_min=0.0,
-            b_max=1.0,
-            clip=True,
-        ),
-        CropForegroundd(keys=["image", "label"], source_key="image"),
-        Orientationd(keys=["image", "label"], axcodes="RAS"),
-        Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
-        RandCropByPosNegLabeld(
-            keys=["image", "label"],
-            label_key="label",
-            spatial_size=(96, 96, 96),
-            pos=1,
-            neg=1,
-            num_samples=4,
-            image_key="image",
-            image_threshold=0,
-        ),
-        # user can also add other random transforms
-        # RandAffined(
-        #     keys=['image', 'label'],
-        #     mode=('bilinear', 'nearest'),
-        #     prob=1.0, spatial_size=(96, 96, 96),
-        #     rotate_range=(0, 0, np.pi/15),
-        #     scale_range=(0.1, 0.1, 0.1)),
-    ]
-)
-val_transforms = Compose(
-    [
-        LoadImaged(keys=["image", "label"]),
-        EnsureChannelFirstd(keys=["image", "label"]),
-        ScaleIntensityRanged(
-            keys=["image"],
-            a_min=-57,
-            a_max=164,
-            b_min=0.0,
-            b_max=1.0,
-            clip=True,
-        ),
-        CropForegroundd(keys=["image", "label"], source_key="image"),
-        Orientationd(keys=["image", "label"], axcodes="RAS"),
-        Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
-    ]
-)
+# Apply the 2D convolution on the original image tensor.
+result2d = conv2d(image_tensor)  # Shape: (1, 1, H, W)
 
-train_transforms = Compose(
-    [
-        LoadImaged(keys=["image", "label"]),
-        EnsureChannelFirstd(keys=["image", "label"]),
-        ScaleIntensityRanged(
-            keys=["image"],
-            a_min=-57,
-            a_max=164,
-            b_min=0.0,
-            b_max=1.0,
-            clip=True,
-        ),
-        CropForegroundd(keys=["image", "label"], source_key="image"),
-        Orientationd(keys=["image", "label"], axcodes="RAS"),
-        Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
-        RandCropByPosNegLabeld(
-            keys=["image", "label"],
-            label_key="label",
-            spatial_size=(96, 96, 96),
-            pos=1,
-            neg=1,
-            num_samples=4,
-            image_key="image",
-            image_threshold=0,
-        ),
-        # user can also add other random transforms
-        # RandAffined(
-        #     keys=['image', 'label'],
-        #     mode=('bilinear', 'nearest'),
-        #     prob=1.0, spatial_size=(96, 96, 96),
-        #     rotate_range=(0, 0, np.pi/15),
-        #     scale_range=(0.1, 0.1, 0.1)),
-    ]
-)
-val_transforms = Compose(
-    [
-        LoadImaged(keys=["image", "label"]),
-        EnsureChannelFirstd(keys=["image", "label"]),
-        ScaleIntensityRanged(
-            a_min=-57,
-            keys=["image"],
-            a_max=164,
-            b_min=0.0,
-            b_max=1.0,
-            clip=True,
-        ),
-        CropForegroundd(keys=["image", "label"], source_key="image"),
-        Orientationd(keys=["image", "label"], axcodes="RAS"),
-        Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
-    ]
-)
-# %%
+##############################
+# Display the Results
+##############################
+plt.figure(figsize=(18, 5))
 
-train_ds = CacheDataset(data=train_files, transform=train_transforms, cache_rate=1.0, num_workers=4)
-# train_ds = Dataset(data=train_files, transform=train_transforms)
+# Original Image
+plt.subplot(1, 4, 1)
+plt.imshow(image, cmap='gray')
+plt.title("Original Camera Image")
+plt.axis("off")
 
-# use batch_size=2 to load images and use RandCropByPosNegLabeld
-# to generate 2 x 4 images for network training
-train_loader = DataLoader(train_ds, batch_size=2, shuffle=True, num_workers=4)
+# 1D Horizontal Convolution
+plt.subplot(1, 4, 2)
+plt.imshow(result1d_horizontal.squeeze(1).detach().numpy(), cmap='gray')
+plt.title("1D Convolution (Horizontal)")
+plt.axis("off")
 
-val_ds = CacheDataset(data=val_files, transform=val_transforms, cache_rate=1.0, num_workers=4)
-# val_ds = Dataset(data=val_files, transform=val_transforms)
-val_loader = DataLoader(val_ds, batch_size=1, num_workers=4)
-# %%
+# 1D Vertical Convolution
+plt.subplot(1, 4, 3)
+plt.imshow(result1d_vertical.detach().numpy(), cmap='gray')
+plt.title("1D Convolution (Vertical)")
+plt.axis("off")
 
-# standard PyTorch program style: create UNet, DiceLoss and Adam optimizer
-device = torch.device("cuda:0")
-model = UNet(
-    spatial_dims=3,
-    in_channels=1,
-    out_channels=2,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
-    norm=Norm.BATCH,
-).to(device)
-loss_function = DiceLoss(to_onehot_y=True, softmax=True)
-optimizer = torch.optim.Adam(model.parameters(), 1e-4)
-dice_metric = DiceMetric(include_background=False, reduction="mean")
-# %%
+# 2D Convolution
+plt.subplot(1, 4, 4)
+plt.imshow(result2d.squeeze().detach().numpy(), cmap='gray')
+plt.title("2D Convolution")
+plt.axis("off")
 
-max_epochs = 600
-val_interval = 2
-best_metric = -1
-best_metric_epoch = -1
-epoch_loss_values = []
-metric_values = []
-post_pred = Compose([AsDiscrete(argmax=True, to_onehot=2)])
-post_label = Compose([AsDiscrete(to_onehot=2)])
-
-for epoch in range(max_epochs):
-    print("-" * 10)
-    print(f"epoch {epoch + 1}/{max_epochs}")
-    model.train()
-    epoch_loss = 0
-    step = 0
-    for batch_data in train_loader:
-        step += 1
-        inputs, labels = (
-            batch_data["image"].to(device),
-            batch_data["label"].to(device),
-        )
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = loss_function(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        epoch_loss += loss.item()
-        print(f"{step}/{len(train_ds) // train_loader.batch_size}, " f"train_loss: {loss.item():.4f}")
-    epoch_loss /= step
-    epoch_loss_values.append(epoch_loss)
-    print(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
-
-    if (epoch + 1) % val_interval == 0:
-        model.eval()
-        with torch.no_grad():
-            for val_data in val_loader:
-                val_inputs, val_labels = (
-                    val_data["image"].to(device),
-                    val_data["label"].to(device),
-                )
-                roi_size = (160, 160, 160)
-                sw_batch_size = 4
-                val_outputs = sliding_window_inference(val_inputs, roi_size, sw_batch_size, model)
-                val_outputs = [post_pred(i) for i in decollate_batch(val_outputs)]
-                val_labels = [post_label(i) for i in decollate_batch(val_labels)]
-                # compute metric for current iteration
-                dice_metric(y_pred=val_outputs, y=val_labels)
-
-            # aggregate the final mean dice result
-            metric = dice_metric.aggregate().item()
-            # reset the status for next validation round
-            dice_metric.reset()
-
-            metric_values.append(metric)
-            if metric > best_metric:
-                best_metric = metric
-                best_metric_epoch = epoch + 1
-                torch.save(model.state_dict(), os.path.join(root_dir, "best_metric_model.pth"))
-                print("saved new best metric model")
-            print(
-                f"current epoch: {epoch + 1} current mean dice: {metric:.4f}"
-                f"\nbest mean dice: {best_metric:.4f} "
-                f"at epoch: {best_metric_epoch}"
-            )
-
-# %%
-import plotly.express as px
-
-fig = px.line(x=["a","b","c"], y=[1,3,2], title="sample figure")
-print(fig)
-fig.show()
+plt.tight_layout()
+plt.show()
 # %%

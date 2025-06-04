@@ -1,6 +1,9 @@
 # %%
+
+from utilz.helpers import pbar
 import itertools as il
 import ipdb
+from monai.utils.misc import progress_bar
 from fran.managers import Project
 from utilz.string import ast_literal_eval
 
@@ -17,6 +20,8 @@ import torch
 from fastcore.all import listify, store_attr
 from fastcore.foundation import GetAttr
 from lightning.fabric import Fabric
+from typing import List, Union, Optional
+
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
@@ -38,6 +43,37 @@ from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 from utilz.dictopts import DictToAttr, fix_ast
 from utilz.helpers import slice_list
 from utilz.imageviewers import ImageMaskViewer
+
+def get_device(devices: Optional[List[int]] = None) -> tuple:
+    """
+    Determine the appropriate device(s) based on CUDA availability.
+    
+    Args:
+        devices: List of GPU device indices to use. If None, uses [0] if CUDA is available
+        
+    Returns:
+        tuple: (device_ids, device, accelerator)
+            - device_ids: List of device indices to use
+            - device: torch.device object
+            - accelerator: String indicating 'gpu' or 'cpu'
+    """
+    if not torch.cuda.is_available():
+        print("CUDA not available, using CPU")
+        return [], torch.device('cpu'), 'cpu'
+    
+    if devices is None:
+        devices = [0]
+    
+    try:
+        device_id = devices[0]
+        device = torch.device(f"cuda:{device_id}")
+        # Test if device is actually available
+        torch.cuda.get_device_properties(device_id)
+        return devices, device, 'gpu'
+    except (RuntimeError, AssertionError) as e:
+        print(f"Error accessing CUDA device {devices}: {e}")
+        print("Falling back to CPU")
+        return [], torch.device('cpu'), 'cpu'
 
 
 def get_patch_spacing(run_name):
@@ -100,6 +136,10 @@ class BaseInferer(GetAttr, DictToAttr):
         params: should be a dict with 2 keys: dataset_params and plan.
         """
         torch.cuda.empty_cache()
+        if not torch.cuda.is_available():
+            print("CUDA not available. All processes will be on CPU.")
+            devices="cpu"
+            safe_mode=True
 
         store_attr("run_name,devices,save_channels, save,safe_mode, k_largest")
         if ckpt is None:
@@ -215,6 +255,7 @@ class BaseInferer(GetAttr, DictToAttr):
             if isinstance(dici, dict):
                 for k, v in dici.items():
                     if k == "project_title":
+                        tr()
                         return v
                     result = find_project(v)
                     if result is not None:
@@ -350,8 +391,14 @@ class BaseInferer(GetAttr, DictToAttr):
         self.postprocess_transforms = C
 
     def prepare_model(self):
-        device_id = self.devices[0]
-        device = torch.device(f"cuda:{device_id}")
+        if self.devices=="cpu" :
+            fabric_devices='auto'
+            accelerator = device="cpu"
+        else:
+            fabric_devices =self.devices
+            device_id = self.devices[0]
+            device = torch.device(f"cuda:{device_id}")
+            accelerator="gpu"
         model = UNetManager.load_from_checkpoint(
             self.ckpt,
             plan=self.plan,
@@ -361,14 +408,14 @@ class BaseInferer(GetAttr, DictToAttr):
             map_location=device,
         )
         model.eval()
-        fabric = Fabric(precision="16-mixed", devices=self.devices, accelerator="gpu")
+        fabric = Fabric(precision="16-mixed", devices=fabric_devices, accelerator=accelerator)
         self.model = fabric.setup(model)
 
     def predict(self):
         outputs = []
         self.model.eval()
         with torch.inference_mode():
-            for i, batch in enumerate(self.pred_dl):
+            for i, batch in enumerate(pbar(self.pred_dl, desc="Processing predictions")):
                 with torch.no_grad():
                     batch = self.predict_inner(batch)
                     outputs.append(batch)
@@ -376,7 +423,8 @@ class BaseInferer(GetAttr, DictToAttr):
 
     def predict_inner(self, batch):
         img_input = batch["image"]
-        img_input = img_input.cuda()
+        if self.devices!="cpu":
+            img_input = img_input.cuda()
         if "filename_or_obj" in img_input.meta.keys():
             print("Processing: ", img_input.meta["filename_or_obj"])
         output_tensor = self.inferer(inputs=img_input, network=self.model)
@@ -597,4 +645,25 @@ if __name__ == "__main__":
     batch = D(batch)
     batch = U(batch)
     batch = I(batch)
+# %%
+    if En.devices=="cpu" :
+        fabric_devices='auto'
+        accelerator = device="cpu"
+    else:
+        fabric_devices =En.devices
+        device_id = En.devices[0]
+        device = torch.device(f"cuda:{device_id}")
+        accelerator="gpu"
+    model = UNetManager.load_from_checkpoint(
+        En.ckpt,
+        plan=En.plan,
+        project_title=En.project.project_title,
+        dataset_params=En.dataset_params,
+        strict=False,
+        map_location=device,
+    )
+    model.eval()
+    fabric = Fabric(precision="16-mixed", devices=fabric_devices, accelerator=accelerator)
+    En.model = fabric.setup(model)
+
 # %%
