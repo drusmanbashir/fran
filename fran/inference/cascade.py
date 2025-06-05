@@ -699,6 +699,4 @@ if __name__ == "__main__":
         En.cuda_clear()
 
 
-joi
-
-thisn# %%
+# %%
