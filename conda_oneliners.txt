@@ -27,4 +27,8 @@ install(nonai)
 install(modules)
 install(mods)
 pip.main(['install' ,'torch'  ,'--index-url',  'https://download.pytorch.org/whl/cu124'])
+
 pip.main(["install", "git+ssh://git@github.com/drusmanbashir/fran.git"])
+
+
+/home/ub/programs/Slicer-5.6.2-linux-amd64/bin/PythonSlicer -m pip install "scipy>=1.15.2,<2.0.0"
