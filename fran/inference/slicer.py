@@ -10,13 +10,15 @@ class SlicerCascadeInferer(CascadeInferer):
         self,
         run_name_w,
         runs_p,
-        localiser_labels,
-        devices=...,
-        save_channels=False,
+        localiser_labels: list[str],  # these labels will be used to create bbox
+        devices=[0],
+        overwrite=True,
+        safe_mode=False,
         profile=None,
-        # overwrite=False,
+        save_channels=False,
         save=True,
         save_localiser=True,
+        k_largest=None,  # assign a number if there are organs involved
         **kwargs
     ):
         super().__init__(
@@ -24,11 +26,13 @@ class SlicerCascadeInferer(CascadeInferer):
             runs_p=runs_p,
             localiser_labels=localiser_labels,
             devices=devices,
+            overwrite=overwrite,
+            safe_mode=safe_mode,
+            profile=profile,
             save_channels=save_channels,
             save_localiser=save_localiser,
-            profile=profile,
-            # overwrite=overwrite,
             save=save,
+            k_largest=k_largest,
             **kwargs
         )
         self.profile_enabled = profile
