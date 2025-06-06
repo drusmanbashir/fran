@@ -8,7 +8,6 @@ from fran.inference.cascade import CascadeInferer
 class SlicerCascadeInferer(CascadeInferer):
     def __init__(
         self,
-        project,
         run_name_w,
         runs_p,
         localiser_labels,
@@ -17,15 +16,16 @@ class SlicerCascadeInferer(CascadeInferer):
         profile=None,
         # overwrite=False,
         save=True,
+        save_localiser=True,
         **kwargs
     ):
         super().__init__(
-            project=project,
             run_name_w=run_name_w,
             runs_p=runs_p,
             localiser_labels=localiser_labels,
             devices=devices,
             save_channels=save_channels,
+            save_localiser=save_localiser,
             profile=profile,
             # overwrite=overwrite,
             save=save,
