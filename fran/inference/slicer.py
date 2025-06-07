@@ -38,7 +38,7 @@ class SlicerCascadeInferer(CascadeInferer):
         self.profile_enabled = profile
 
     def profile_decorator(self, func):
-        @contextmanager()
+        @contextmanager
         def profiler(*args, **kwargs):
             if self.profile_enabled:
                 with profile(
@@ -86,3 +86,6 @@ class SlicerCascadeInferer(CascadeInferer):
     #     pred_patches = self.decollate_patches(pred_patches, self.bboxes)
     #     output = self.postprocess(pred_patches)
     #     return output
+if __name__ == '__main__':
+    
+    pass

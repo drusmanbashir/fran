@@ -6,7 +6,7 @@ from typing import Union
 import numpy as np
 import SimpleITK as sitk
 from batchgenerators.dataloading.multi_threaded_augmenter import torch
-from fastcore.transform import ItemTransform, Transform, store_attr
+from fasttransform.transform import ItemTransform, Transform, store_attr
 from torch.functional import Tensor
 
 

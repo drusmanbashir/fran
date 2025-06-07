@@ -22,7 +22,7 @@ tr = ipdb.set_trace
 import torch
 from torch.nn import functional as F
 from fastcore.basics import store_attr
-from fastcore.transform import ItemTransform
+from fasttransform.transform import ItemTransform
 # from fran.inference.inference_base import get_scale_factor_from_spacings, rescale_bbox
 from fran.transforms.spatialtransforms import  slices_from_lists
 

@@ -21,7 +21,7 @@ from utilz.string import ast_literal_eval
 tr = ipdb.set_trace
 
 from fastcore.basics import Dict, store_attr
-from fastcore.transform import ItemTransform, store_attr
+from fasttransform.transform import ItemTransform, store_attr
 
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial

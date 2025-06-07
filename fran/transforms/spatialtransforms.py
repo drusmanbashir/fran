@@ -6,7 +6,7 @@ import ipdb
 import monai.transforms.spatial.functional as fm
 import skimage.transform as tf
 import torch.nn.functional as F
-from fastcore.transform import Pipeline
+from fasttransform.transform import Pipeline
 from monai.config.type_definitions import KeysCollection, SequenceStr
 from monai.data.meta_obj import get_track_meta
 from monai.data.meta_tensor import MetaTensor

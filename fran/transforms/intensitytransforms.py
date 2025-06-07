@@ -9,7 +9,7 @@ from monai.transforms import RandomizableTransform , MapTransform
 from monai.transforms.intensity.array import RandGaussianNoise
 from monai.utils.type_conversion import convert_to_tensor
 from scipy.ndimage.filters import gaussian_filter
-from fastcore.transform import Transform
+from fasttransform.transform import Transform
 from fran.transforms.base import *
 
 
