@@ -1,5 +1,6 @@
 # %%
 from __future__ import annotations
+from torch.serialization import safe_globals
 from monai.data import ImageWriter
 import warnings
 from collections.abc import Sequence
@@ -13,18 +14,25 @@ from fastcore.basics import store_attr, warnings
 from label_analysis.helpers import get_labels as gl
 from monai.config import PathLike
 from monai.config.type_definitions import KeysCollection
-from monai.data.image_reader import (ImageReader, ITKReader, NibabelReader,
-                                     NrrdReader, NumpyReader, PILReader,
-                                     PydicomReader, _copy_compatible_dict,
-                                     _stack_images)
+from monai.data.image_reader import (
+    ImageReader,
+    ITKReader,
+    NibabelReader,
+    NrrdReader,
+    NumpyReader,
+    PILReader,
+    PydicomReader,
+    _copy_compatible_dict,
+    _stack_images,
+)
 from monai.data.meta_tensor import MetaTensor
-from monai.data.utils import (is_supported_format, orientation_ras_lps)
-from monai.transforms.io.array import (SUPPORTED_READERS, LoadImage)
+from monai.data.utils import is_supported_format, orientation_ras_lps
+from monai.transforms.io.array import SUPPORTED_READERS, LoadImage
 from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.transform import MapTransform
 from monai.transforms.utility.array import EnsureChannelFirst
 from monai.utils import ImageMetaKey as Key
-from monai.utils import (ensure_tuple, optional_import)
+from monai.utils import ensure_tuple, optional_import
 from monai.utils.enums import MetaKeys, SpaceKeys
 from monai.utils.module import optional_import, require_pkg
 
@@ -186,14 +194,14 @@ class LoadSITKd(MapTransform):
 
     def maybe_recast_sitk(self, img: sitk.Image):
         pixid = img.GetPixelID()
-        if pixid in [2,3,5] : # unsigned signed 16 bit, unsigned 32 int
+        if pixid in [2, 3, 5]:  # unsigned signed 16 bit, unsigned 32 int
             img = sitk.Cast(img, sitk.sitkInt32)
         return img
 
-
-
-    def func(self, img: Union[str,Path, sitk.Image], get_labels=False):
-        if isinstance(img, Path) or isinstance(img,str): # for compatibility with Slicerpython 3.9
+    def func(self, img: Union[str, Path, sitk.Image], get_labels=False):
+        if isinstance(img, Path) or isinstance(
+            img, str
+        ):  # for compatibility with Slicerpython 3.9
             img_fn = img
             img = sitk.ReadImage(str(img))
             array_np, meta_data = self.get_data(img, get_labels)
@@ -411,9 +419,7 @@ class SITKReader(ITKReader):
         return np_img if self.reverse_indexing else np.moveaxis(np_img.T, 0, -1)
 
 
-
 class TorchReader(ImageReader):
-
 
     def get_data(self, img) -> tuple[torch.Tensor, dict]:
         """
@@ -433,11 +439,8 @@ class TorchReader(ImageReader):
             img_array.append(i)
 
         img_array = torch.stack(img_array, 0)
-        img_array= np.array(img_array)
+        img_array = np.array(img_array)
         return img_array, header
-
-
-
 
     def verify_suffix(self, filename: Sequence[PathLike] | PathLike) -> bool:
         """
@@ -449,15 +452,15 @@ class TorchReader(ImageReader):
         """
         suffixes: Sequence[str] = ["pt"]
         return is_supported_format(filename, suffixes)
-    def read(self,data, **kwargs):
 
+    def read(self, data, **kwargs):
         img_: list = []
-
         filenames: Sequence[PathLike] = ensure_tuple(data)
         for name in filenames:
-            img = torch.load(name,  **kwargs)
-            img_.append(img)
+                img = torch.load(name,weights_only=False, **kwargs)
+                img_.append(img)
         return img_ if len(img_) > 1 else img_[0]
+
 
 class LoadTorchd(MapTransform):
     def __init__(
@@ -470,29 +473,33 @@ class LoadTorchd(MapTransform):
         """
 
         super().__init__(keys, allow_missing_keys)
+
     def __call__(self, d):
         for key in self.key_iterator(d):
             d[key] = self.func(d[key])
         return d
 
-    def func(self,fn):
-        img = torch.load(fn,weights_only=False)
+    def func(self, fn):
+        with safe_globals([MetaTensor]):
+            img = torch.load(fn, weights_only=False)
         meta = img.meta
-        meta['src_filename'] = meta['filename_or_obj']
-        meta['filename_or_obj'] = str(fn)
+        meta["src_filename"] = meta["filename_or_obj"]
+        meta["filename_or_obj"] = str(fn)
         img.meta = meta
         return img
 
+
 class TorchWriter(ImageWriter):
-    def set_data_array(self,data_array,**kwargs):
+    def set_data_array(self, data_array, **kwargs):
         self.data_obj = data_array
 
-    def set_metadata(self,meta_dict, resample,**kwargs):
+    def set_metadata(self, meta_dict, resample, **kwargs):
         if hasattr(self.data_obj, "meta"):
             self.data_obj.meta = meta_dict
-    def write(self,filename, verbose:bool = False,**kwargs):
+
+    def write(self, filename, verbose: bool = False, **kwargs):
         super().write(filename, verbose, **kwargs)
-        torch.save(self.data_obj,filename)
+        torch.save(self.data_obj, filename)
 
 
 # %%
@@ -518,25 +525,25 @@ if __name__ == "__main__":
     ).config
 
     global_props = load_dict(proj.global_properties_filename)
-# %%
+    # %%
     fn = "/s/xnat_shadow/crc/images/crc_CRC261_20170322_AbdoPelvis1p5.nii.gz"
     fn_pt = "/s/fran_storage/datasets/preprocessed/fixed_spacings/lilu/spc_080_080_150/images/drli_001ub.pt"
     dici = {"image": fn}
 
     L = LoadImaged(keys=["image"])
     img = L(dici)
-# %%
+    # %%
     dici_pt = {"image": fn_pt}
     Lp = LoadTorchd(keys=["image"])
     img_pt = Lp(dici_pt)
 
-# %%
+    # %%
     dici = {"image": fn}
     from time import time
 
     L1 = LoadSITKd(keys=["image"])
     L = LoadImaged(keys=["image"])
-# %%
+    # %%
     start = time()
     for n in range(5):
         img = L1(dici)
@@ -544,25 +551,25 @@ if __name__ == "__main__":
     spent = stop - start
     print(spent)
 
-# %%
+    # %%
     start = time()
     for n in range(5):
         img = L(dici)
     stop = time()
     spent = stop - start
     print(spent)
-# %%
+    # %%
 
     L2 = LoadImaged(keys=["image"], reader=SITKReader)
     img2 = L2(dici)
 
     img2["image"].meta
-# %%
+    # %%
     L3 = LoadSITKd(keys=["image"])
     im3 = L3(dici)
 
-# %%
+    # %%
     ImageMaskViewer([img2["image"], im3["image"]], data_types=["image", "image"])
-# %%
+    # %%
     fname = fn
     img = sitk.ReadImage(fname)

@@ -99,31 +99,86 @@ All datasources within a single lm_group are indexed continuously. Subsequent lm
 
 I have provided 2 folders as datasets for  this project in the example above. Typically, most projects will be based on a single datafolder but this provides flexibility to add more data to a project as it becomes available. After the project is initialised, look inside the project folder. You will find a mask_labels.json file. This file sets rules for postprocessing each label after running predictions. 
 
-## 4.Analyze resample
+## 4. Analyze and Resample
 
-Datatypes can be:
-* source
-* lbd
-* patch
+The analyze_resample.py script handles data preprocessing, including dataset analysis, resampling, and various data generation modes. The process is controlled through a plan configuration that specifies parameters for each step.
 
-These are mentioned in the 'plan{n}' sheet of the configuration file. Before any plan can be executed, you have to generate fixed spacings.
+### Data Types
+The system supports multiple data types:
+* **source**: Original raw data
+* **lbd**: Label-bounded data (cropped around regions of interest)
+* **pbd**: Patient-bounded data
+* **patch**: Extracted patches from the data
+* **whole**: Complete volumes at specified resolution
 
-### 1.Generate fixed spacings
+### Configuration
+1. Create a plan in the configuration Excel sheet with the following key parameters:
+   - `spacing`: Target voxel spacing (e.g., [0.8, 0.8, 1.5])
+   - `mode`: Processing mode ('lbd', 'patch', etc.)
+   - `patch_overlap`: For patch mode, overlap between patches (e.g., 0.25)
+   - `expand_by`: Expansion margin around regions of interest
+   - `patch_dim0`, `patch_dim1`: Patch dimensions if using patch mode
+   - `imported_folder`: Optional path to imported labels
+   - `imported_labels`: Label configuration for imported data
+   - `merge_imported_labels`: Whether to merge multiple imported labels
+   - `src_dest_labels` : #INCOMPLETE
+   - `source_plan`: Some plans are derived from others, i.e., `whole`
 
-#### Generate LBD (Labelbounded) dataset
-### 2. Generate LBD (Labelbounded) dataset
-There are two ways to define the label:
-a) Use imported labels
-b) Use own labelmap label
+### Processing Steps
 
-#### 1. Steps:
- - LabelBoundedDataGenerator
+1. **Dataset Analysis**
+   ```bash
+   python analyze_resample.py -t {project_title}
+   ```
+   This step:
+   - Verifies dataset integrity (matching sizes and spacings)
+   - Computes global properties (mean, std, etc.)
+   - Stores metadata for subsequent processing
 
-Note: if you want to generate a new set of FGBG indices, use FGBGIndicesGenerator.
+2. **Fixed Spacing Generation**
+   - Resamples data to target spacing specified in plan
+   - Handles both images and masks
+   - Preserves metadata and image properties
 
+3. **Label-Bounded Dataset Generation**
+   Two approaches available:
+   a) Using imported labels:
+      - Specify `imported_folder` and `imported_labels` in plan
+      - Supports label remapping and merging
+   b) Using own labelmap:
+      - Uses project's existing label definitions
+      - Controlled by `lm_groups` configuration
 
-### 3: PatchDataGenerator
-This works differently from LBD generator. It takes any input folder.
+4. **Patch Generation**
+   For high-resolution analysis:
+   - Extracts patches according to `patch_dim0`, `patch_dim1`
+   - Supports overlap between patches (`patch_overlap`)
+   - Can focus on foreground/background regions
+   - Generates bounding box data automatically
+
+### Key Features
+- Multi-processing support for faster processing
+- Automatic handling of image/mask alignment
+- Flexible data augmentation options
+- Support for different label mapping schemes
+- Progress tracking and error handling
+
+### Example Usage
+```bash
+# Basic analysis and resampling
+python analyze_resample.py -t project_name -p plan1
+
+# With specific options
+python analyze_resample.py -t project_name \
+  -n 8 \                     # number of processes
+  -p patch_size \            # patch dimensions
+  -s spacing \               # target spacing
+  -po 0.25 \                # patch overlap
+  --half_precision \         # use FP16
+  --debug                    # enable debug output
+```
+
+Note: Before running patch generation, ensure you have generated the required fixed spacing dataset. The system will automatically track dependencies and maintain data consistency.
 
 
 

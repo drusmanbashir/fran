@@ -168,7 +168,7 @@ class BBoxesFromMask(object):
         bg_label=0, # so far unused in this code
     ):
         if not isinstance(filename,Path): filename = Path(filename)
-        self.mask =load_image(filename)
+        self.mask =torch.load(filename,weights_only=False)
         if isinstance(self.mask,torch.Tensor): self.mask = np.array(self.mask)
         if isinstance(self.mask,sitk.Image): self.mask = sitk.GetArrayFromImage(self.mask)
         case_id = info_from_filename(filename.name,full_caseid=True)['case_id']

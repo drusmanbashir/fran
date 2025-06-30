@@ -475,6 +475,7 @@ if __name__ == "__main__":
 
 # %%
     imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
+    imgs_tmp = ["/s/insync/datasets/today/mets/201 Axial  iDose (6).nii.gz"]
     preds = En.run(imgs_tmp, chunksize=1)
 
 # %%
@@ -483,7 +484,6 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR>
     localiser_labels = set(TSL.label_localiser)
-
     safe_mode = False
     devices = [1]
     overwrite = True
@@ -504,6 +504,7 @@ if __name__ == "__main__":
 # %%
 
     preds = En.run(nodes, chunksize=2)
+    preds = En.run(img_fns, chunksize=2)
 
 # %%
 
@@ -560,10 +561,12 @@ if __name__ == "__main__":
 # %%
 
     img_fns = list(img_fldr.glob("*"))[20:50]
+    img_fns = ["/s/insync/datasets/today/mets/201 Axial  iDose (6).nii.gz"]
     case_id = "crc_CRC089"
     # imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
     tn = time.time()
-    preds = En.run(imgs_crc[:30], chunksize=4)
+    # preds = En.run(imgs_crc[:30], chunksize=4)
+    preds = En.run(img_fns, chunksize=4)
     t2 = time.time()
     lapse = t2 - tn
 # %%

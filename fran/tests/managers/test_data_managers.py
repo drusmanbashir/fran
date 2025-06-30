@@ -6,7 +6,7 @@ from fran.utils.config_parsers import ConfigMaker
 from fran.utils.common import *
 from utilz.helpers import load_dict
 from utilz.imageviewers import ImageMaskViewer
-from managers.data.training import (
+from fran.managers.data.training import (
     DataManagerWhole,
     DataManagerBaseline,
     DataManagerSource,

@@ -1,7 +1,7 @@
 # %%
 import matplotlib.pyplot as plt
 
-from fran.localizer.helpers import iou, iou_wh
+from fran.localiser.helpers import iou, iou_wh
 plt.ion()
 # matplotlib.use('Agg')
 import numpy as np
@@ -250,13 +250,13 @@ def convert_cells_to_bboxes(predictions, anchors, s, is_predictions=True):
 
 # %%
 #link :https://blog.flaport.net/yolo-part-1.html
-from fran.localizer.data import *
+from fran.localiser.data import *
 import torch
 import lightning as L
 from torch.optim.lr_scheduler import OneCycleLR
 import matplotlib.pyplot as plt
-from fran.localizer.loss import YOLOLoss
-from fran.localizer.helpers import *
+from fran.localiser.loss import YOLOLoss
+from fran.localiser.helpers import *
 
 
 

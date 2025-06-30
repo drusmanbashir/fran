@@ -255,7 +255,6 @@ class BaseInferer(GetAttr, DictToAttr):
             if isinstance(dici, dict):
                 for k, v in dici.items():
                     if k == "project_title":
-                        tr()
                         return v
                     result = find_project(v)
                     if result is not None:
@@ -552,7 +551,7 @@ if __name__ == "__main__":
 
 # %%
     T = BaseInferer(
-        run_whole_image[0], save_channels=save_channels, safe_mode=safe_mode, devices=devices
+        run_tot[0], save_channels=save_channels, safe_mode=safe_mode, devices=devices
     )
 # %%
 

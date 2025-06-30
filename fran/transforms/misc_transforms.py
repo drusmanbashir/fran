@@ -311,7 +311,7 @@ class LoadTorchDict(MonaiDictTransform):
 
         mini_dict = {}
         for key in self.key_iterator(d):
-            dici = torch.load(d[key])
+            dici = torch.load(d[key],weights_only=False)
             for k in self.select_keys:
                 mini_dict[k] = dici[k]
             if self.drop_keys == True:

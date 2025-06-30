@@ -1,7 +1,7 @@
 # %%
 import matplotlib.pyplot as plt
 
-from fran.localizer.helpers import iou, iou_wh
+from fran.localiser.helpers import iou, iou_wh
 plt.ion()
 # matplotlib.use('Agg')
 import numpy as np

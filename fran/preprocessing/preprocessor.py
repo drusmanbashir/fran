@@ -59,7 +59,7 @@ def generate_bboxes_from_lms_folder(
 
 
 def get_tensorfile_stats(filename):
-    tnsr = torch.load(filename)
+    tnsr = torch.load(filename,weights_only=False)
     return get_tensor_stats(tnsr)
 
 
@@ -269,6 +269,11 @@ class Preprocessor(GetAttr):
         indices_subfolder = self.output_folder / ("indices")
         return indices_subfolder
 
+# %%
 
+if __name__ == '__main__':
+    bboxes_fldr = Path('/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150')
+    lms = bboxes_fldr / 'lms'
+    generate_bboxes_from_lms_folder(lms,debug=False)
 
-
+# %%

@@ -3,8 +3,8 @@ import argparse
 import ast
 import shutil
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
-from fran.utils.config_parsers import ConfigMaker, parse_excel_plan
-from managers import Project
+from fran.utils.config_parsers import ConfigMaker
+from fran.managers import Project
 
 from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.datasetanalyzers import *
@@ -59,7 +59,7 @@ class PreprocessingManager():
         ).config
 
         # args.overwrite=False
-        self.plan = parse_excel_plan(conf[self.plan])
+        self.plan = conf[self.plan]
         self.plan_name = args.plan
         # self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
@@ -98,7 +98,7 @@ class PreprocessingManager():
         self.R = ResampleDatasetniftiToTorch(
                     project=self.project,
                     spacing=self.plan['spacing'],
-                    device='cpu'
+                    data_folder= self.project.raw_data_folder,
                 )
         self.R.setup(overwrite)
         self.R.process()
@@ -279,7 +279,7 @@ def do_low_res(proj_defaults):
 
 
 # %%
-
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 if __name__ == "__main__":
     from fran.utils.common import *
     parser = argparse.ArgumentParser(description="Resampler")
@@ -311,11 +311,11 @@ if __name__ == "__main__":
 
 
     args = parser.parse_known_args()[0]
-    args.project_title = "nodes"
+    args.project_title = "totalseg"
 
     # args.num_processes = 1
     args.debug=True
-    args.plan = "plan2"
+    args.plan = "plan3"
 
     P= Project(project_title=args.project_title)
 

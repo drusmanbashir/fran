@@ -1,16 +1,16 @@
 # %%
 #link :https://blog.flaport.net/yolo-part-1.html
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
-from fran.localizer.data import *
+from fran.localiser.data import *
 from lightning.pytorch.loggers import CSVLogger
 from lightning.pytorch.trainer import Trainer
 import torch
 import lightning as L
 from torch.optim.lr_scheduler import OneCycleLR
 import matplotlib.pyplot as plt
-from fran.localizer.data import DetectDataModule
-from fran.localizer.loss import YOLOLoss
-from fran.localizer.helpers import *
+from fran.localiser.data import DetectDataModule
+from fran.localiser.loss import YOLOLoss
+from fran.localiser.helpers import *
 
 
 class TinyYOLOv2a(torch.nn.Module):
