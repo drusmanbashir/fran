@@ -1,4 +1,4 @@
-# %%
+#tch %%
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import ModelCheckpoint
 import shutil
@@ -390,12 +390,35 @@ if __name__ == "__main__":
     tags = []
     description = f"Partially trained up to 100 epochs"
 # %%
-
+#SECTION:-------------------- TOTALSEG TRAINING--------------------------------------------------------------------------------------
     run_name = run_tsl
     
     run_name = run_none
     conf = conf_tsl; proj = "totalseg"
 # %%
+    Tm = Trainer(proj, conf, run_name)
+# %%
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=[device_id],
+        epochs=600 if profiler == False else 1,
+        batchsize_finder=batch_finder,
+        profiler=profiler,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+    )
+# %%
+    # Tm.D.batch_size=8
+    Tm.N.compiled = compiled
+# %%
+    Tm.fit()
+    # model(inputs)
+# %%
+# %%
+#SECTION:-------------------- LITSMC --------------------------------------------------------------------------------------
+
     run_name = run_litsmc
     run_name = run_none
     conf = conf_litsmc;    proj = "litsmc"
@@ -420,8 +443,6 @@ if __name__ == "__main__":
 # %%
     Tm.fit()
     # model(inputs)
-# %%
-
 # %%
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR>
 

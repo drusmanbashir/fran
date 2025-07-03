@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 from label_analysis.helpers import get_labels
-from utilz.fileio import maybe_makedirs
+from utilz.fileio import load_dict, maybe_makedirs
 from utilz.imageviewers import ImageMaskViewer
 
 
@@ -24,6 +24,9 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import numpy as np
 
+# %%
+fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150/bboxes_info.pkl"
+dici = load_dict(fn)
 # Create a simple synthetic grayscale image with a horizontal gradient.
 H, W = 64, 64
 # Create an image with values ranging from 0 to 1 across each row.

@@ -897,6 +897,7 @@ class Project(DictToAttr):
             conditions.append(fold_condition)
 
         # Add datasource condition
+        tr()
         if ds:
             ds_condition = self.build_ds_condition(ds)
             conditions.append(ds_condition)
@@ -1157,6 +1158,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
     P= Project(project_title="totalseg")
+    P= Project(project_title="nodes")
     # P.delete()
     P.create(mnemonic='totalseg')
     # P.add_data([DS.nodes,DS.nodesthick])
@@ -1288,7 +1290,8 @@ if __name__ == "__main__":
 
     test=None
 # %%
-
+# %%
+#SECTION:-------------------- get cases--------------------------------------------------------------------------------------
     fold = 0
     ds = DS.nodes
     ss_train = P.build_sql_query(fold, ds, is_validation=False)
@@ -1296,6 +1299,7 @@ if __name__ == "__main__":
     ss_val = P.build_sql_query(fold, ds, is_validation=True)
     query = ss_val
 
+    query = "SELECT img_symlink FROM datasources WHERE fold <> 0 AND ds IN ('nodes', 'nodesthick')"
     result = P.sql_query(query, True)
     result = P.sql_query(ss, True)
     # Execute SQL queries
@@ -1303,6 +1307,7 @@ if __name__ == "__main__":
     val_files = P.fetch_files(ss_val)
 
     ss = """SELECT NOT EXISTS (SELECT 1 FROM datasources WHERE fold IS NOT NULL) AS all_nulls"""
+
 # %%
 # %%
 

@@ -88,7 +88,6 @@ class LabelBoundedDataGenerator(PatchDataGenerator, Preprocessor, GetAttr):
             parent_folder=parent_folder,
             values_list=self.spacing,
         )
-        tr()
         if self.folder_suffix is not None:
             output_name = "_".join([self.output_folder.name, self.folder_suffix])
             self.output_folder = Path(
@@ -111,6 +110,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, Preprocessor, GetAttr):
         device = resolve_device(device)
         print("Processing on ", device)
         self.register_existing_files()
+        #CODE: BUG: register existing files works but ds  is still full length. it does not remove existing casese. Also, move away from this dl ds paradigm in preprocessing
         print("Overwrite:", overwrite)
         if overwrite == False:
             self.case_ids = self.remove_completed_cases()
@@ -378,25 +378,24 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from fran.managers import Project
 
-    P = Project(project_title="litsmc")
-    spacing = [0.8, 0.8, 1.5]
+    P = Project(project_title="totalseg")
+    # spacing = [0.8, 0.8, 1.5]
+    spacing = [1.5,1.5,1.5]
     P.maybe_store_projectwide_properties()
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 # %%
-    plan_str = "plan4"
+    plan_str = "plan3"
     plan = conf[plan_str]
+    # plan["spacing"] = [0.8, 0.8, 1.5]
+    # plan["fg_indices_exclude"] = None
 
-    plan["spacing"] = [0.8, 0.8, 1.5]
-    plan["fg_indices_exclude"] = None
-
-# %%
 # %%
 #SECTION:-------------------- LabelBoundedDataGenerator--------------------------------------------------------------------------------------
     L = LabelBoundedDataGenerator(
         project=P,
-        data_folder = "/s/xnat_shadow/crc/sampling/tensors/fixed_spacing",
-        output_folder="/s/xnat_shadow/crc/sampling/tensors/lbd",
+        # data_folder = "/s/xnat_shadow/crc/sampling/tensors/fixed_spacing",
+        # output_folder="/s/xnat_shadow/crc/sampling/tensors/lbd",
         plan=plan,
         mask_label=None,
         folder_suffix=plan_str,
@@ -500,6 +499,7 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
 
+    L.existing_case_ids
     L.setup("cpu", num_workers=4, overwrite=False)
     L.process()
     L.get_tensor_folder_stats()

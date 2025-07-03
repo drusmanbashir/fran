@@ -10,7 +10,7 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
-from fran.preprocessing.labelbounded import  LabelBoundedDataGenerator
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from utilz.fileio import *
 from utilz.helpers import *
@@ -19,26 +19,26 @@ common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
 
 @str_to_path(0)
-def verify_dataset_integrity(folder:Path, debug=False,fix=False):
-    '''
+def verify_dataset_integrity(folder: Path, debug=False, fix=False):
+    """
     folder has subfolders images and masks
-    '''
+    """
     print("Verifying dataset integrity")
     subfolder = list(folder.glob("mask*"))[0]
-    args = [[fn,fix] for fn in subfolder.glob("*")]
-    res = multiprocess_multiarg(verify_img_label_match,args,debug=debug)
-    errors = [item for item in res if re.search("mismatch", item[0],re.IGNORECASE)]
-    if len(errors)>0:
-        outname = folder/("errors.txt")
+    args = [[fn, fix] for fn in subfolder.glob("*")]
+    res = multiprocess_multiarg(verify_img_label_match, args, debug=debug)
+    errors = [item for item in res if re.search("mismatch", item[0], re.IGNORECASE)]
+    if len(errors) > 0:
+        outname = folder / ("errors.txt")
         print(f"Errors found saved in {outname}")
-        save_list(errors,outname)
-        res.insert(0,errors)
+        save_list(errors, outname)
+        res.insert(0, errors)
     else:
         print("All images and masks are verified for matching sizes and spacings.")
     return res
 
 
-def user_input(inp:str, out=int):
+def user_input(inp: str, out=int):
     tmp = input(inp)
     try:
         tmp = ast.literal_eval(tmp)
@@ -48,45 +48,47 @@ def user_input(inp:str, out=int):
     return tmp
 
 
-class PreprocessingManager():
-    #dont use getattr
+class PreprocessingManager:
+    # dont use getattr
     def __init__(self, args):
         self.assimilate_args(args)
-        P = Project(project_title=args.project_title); 
-        self.project= P
-        conf = ConfigMaker(
-            P, raytune=False, configuration_filename=None
-        ).config
+        P = Project(project_title=args.project_title)
+        self.project = P
+        conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 
         # args.overwrite=False
         self.plan = conf[self.plan]
         self.plan_name = args.plan
         # self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
-        # 
+        #
         print("Project: {0}".format(self.project_title))
 
-
     def __str__(self) -> str:
-        plan_details = "\n".join([f"{key}: {value}" for key, value in self.plan.items()])
+        plan_details = "\n".join(
+            [f"{key}: {value}" for key, value in self.plan.items()]
+        )
         return f"PreprocessingManager. Project: {self.project_title}\nPlan Details:\n{plan_details}"
 
-
     def verify_dataset_integrity(self):
-        verify_dataset_integrity(self.project.raw_data_folder,debug=self.debug,fix = not self.no_fix)
+        verify_dataset_integrity(
+            self.project.raw_data_folder, debug=self.debug, fix=not self.no_fix
+        )
 
     def analyse_dataset(self):
-            if self._analyse_dataset_questions() == True:
-                self.GlobalP= GlobalProperties(self.project, bg_label=0,clip_range=self.clip_range)
-                self.GlobalP.store_projectwide_properties()
-                self.GlobalP.compute_std_mean_dataset(debug=self.debug)
-                self.GlobalP.collate_lm_labels()
+        if self._analyse_dataset_questions() == True:
+            self.GlobalP = GlobalProperties(
+                self.project, bg_label=0, clip_range=self.clip_range
+            )
+            self.GlobalP.store_projectwide_properties()
+            self.GlobalP.compute_std_mean_dataset(debug=self.debug)
+            self.GlobalP.collate_lm_labels()
 
     def _analyse_dataset_questions(self):
 
         global_properties = load_dict(self.project.global_properties_filename)
-        if not 'total_voxels' in global_properties.keys():
-             return True
+        if not "total_voxels" in global_properties.keys():
+            return True
         else:
             reanalyse = input(
                 "Dataset global properties already computed. Re-analyse dataset (Y/y)?"
@@ -95,42 +97,47 @@ class PreprocessingManager():
                 return True
 
     def resample_dataset(self, overwrite=False):
+        """
+        Resamples dataset to target spacing and stores it in the cold_storage fixed_spacing_folder. 
+        Typically this will be a basis for further processing e.g., pbd, lbd dataset which will then be used in training
+        """
+
         self.R = ResampleDatasetniftiToTorch(
-                    project=self.project,
-                    spacing=self.plan['spacing'],
-                    data_folder= self.project.raw_data_folder,
-                )
+            project=self.project,
+            spacing=self.plan["spacing"],
+            data_folder=self.project.raw_data_folder,
+        )
         self.R.setup(overwrite)
         self.R.process()
 
     def generate_lbd_dataset(self, overwrite=False):
         self.L = LabelBoundedDataGenerator(
             project=self.project,
-            expand_by=self.plan['expand_by'],
-            spacing=self.plan['spacing'],
-            lm_group="lm_group1",
-            mask_label=None,
+            plan=self.plan,
             folder_suffix=self.plan_name,
-            fg_indices_exclude=None,
         )
         self.L.setup(overwrite=overwrite)
         self.L.process()
-
-
-    def generate_TSlabelboundeddataset(self,imported_labels,imported_folder,merge_imported_labels=False,lm_group="lm_group1"):
-        '''
+    def generate_TSlabelboundeddataset(
+        self,
+        imported_labels,
+        imported_folder,
+        merge_imported_labels=False,
+        lm_group="lm_group1",
+    ):
+        """
         requires resampled folder to exist. Crops within this folder
-        '''
-        imported_folder=Path(imported_folder)
-        
+        """
+        imported_folder = Path(imported_folder)
+
         TSL = TotalSegmenterLabels()
-        if imported_labels=="lungs":
+        if imported_labels == "lungs":
             imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
             remapping = TSL.create_remapping(imported_labelsets, [8, 9])
         self.L = LabelBoundedDataGeneratorImported(
             project=self.project,
-            expand_by=self.plan['expand_by'],
-            spacing=self.plan['spacing'],
+            expand_by=self.plan["expand_by"],
+            spacing=self.plan["spacing"],
             lm_group=lm_group,
             imported_folder=imported_folder,
             imported_labelsets=imported_labelsets,
@@ -140,9 +147,6 @@ class PreprocessingManager():
 
         self.L.setup()
         self.L.process()
-
-
-
 
     @ask_proceed("Generating low-res whole images to localise organ of interest")
     def generate_whole_images_dataset(self):
@@ -159,30 +163,43 @@ class PreprocessingManager():
             ] * 3
         self.WholeImageTM = WholeImageTensorMaker(
             self.project,
-            source_spacing=self.plan['spacing'],
+            source_spacing=self.plan["spacing"],
             output_size=output_shape,
             num_processes=self.num_processes,
         )
-        arglist_imgs, arglist_masks= self.WholeImageTM.get_args_for_resizing()
-        for arglist in [arglist_imgs,arglist_masks]: 
-            res= multiprocess_multiarg(func=resize_and_save_tensors,arguments=arglist,num_processes=self.num_processes,debug=self.debug)
+        arglist_imgs, arglist_masks = self.WholeImageTM.get_args_for_resizing()
+        for arglist in [arglist_imgs, arglist_masks]:
+            res = multiprocess_multiarg(
+                func=resize_and_save_tensors,
+                arguments=arglist,
+                num_processes=self.num_processes,
+                debug=self.debug,
+            )
         print("Now call bboxes_from_masks_folder")
-        generate_bboxes_from_masks_folder(self.WholeImageTM.output_folder_masks,0,self.debug,self.num_processes)
+        generate_bboxes_from_masks_folder(
+            self.WholeImageTM.output_folder_masks, 0, self.debug, self.num_processes
+        )
 
-
-    def generate_hires_patches_dataset(self,debug=False,overwrite=False,mode=None):
+    def generate_hires_patches_dataset(self, debug=False, overwrite=False, mode=None):
         lbd_folder = folder_name_from_list(
             prefix="spc",
             parent_folder=self.project.lbd_folder,
-            values_list=self.plan['spacing'],
+            values_list=self.plan["spacing"],
         )
-        patch_overlap = self.plan['patch_overlap']
-        expand_by = self.plan['expand_by_patch']
+        patch_overlap = self.plan["patch_overlap"]
+        expand_by = self.plan["expand_by_patch"]
 
         if mode is None:
             mode = self.mode
-        PG = PatchDataGenerator(self.project,lbd_folder, self.patch_size,patch_overlap=patch_overlap,expand_by=expand_by,mode=mode)
-        PG.create_patches(overwrite=overwrite,debug=debug)
+        PG = PatchDataGenerator(
+            self.project,
+            lbd_folder,
+            self.patch_size,
+            patch_overlap=patch_overlap,
+            expand_by=expand_by,
+            mode=mode,
+        )
+        PG.create_patches(overwrite=overwrite, debug=debug)
         print("Generating boundingbox data")
         PG.generate_bboxes(debug=debug)
 
@@ -199,7 +216,7 @@ class PreprocessingManager():
             )
 
     def create_patches_output_folder(self, fixed_spacing_folder, patch_size):
-        
+
         patches_fldr_name = "dim_{0}_{1}_{2}".format(*patch_size)
         output_folder = (
             self.project.patches_folder / fixed_spacing_folder.name / patches_fldr_name
@@ -243,10 +260,10 @@ class PreprocessingManager():
                 spacing, resampling_configs
             )
         )
+
     @property
     def resampling_configs(self):
         return self.get_resampling_configs()
-
 
 
 def do_resempling(R, args):
@@ -277,11 +294,11 @@ def do_low_res(proj_defaults):
     multiprocess_multiarg(resample_img_mask_tensors, args, debug=False)
 
 
-
 # %%
-#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
 if __name__ == "__main__":
     from fran.utils.common import *
+
     parser = argparse.ArgumentParser(description="Resampler")
 
     parser.add_argument("-t", help="project title", dest="project_title")
@@ -294,76 +311,116 @@ if __name__ == "__main__":
     )
     parser.add_argument("-e", "--enforce-isotropy", action="store_true")
     parser.add_argument("-o", "--overwrite", action="store_true")
-    parser.add_argument("-c", "--clip-centre", action='store_true', help="Clip and centre data now or during training?")
-    parser.add_argument("-r", "--clip-range", nargs='+', help="Give clip range to compute dataset std and mean")
-    parser.add_argument("-m", "--mode", default= "fgbg", help = "Mode of Patch generator, 'fg' or 'fgbg'")
-    parser.add_argument("-p", "--patch-size", nargs="+", default=[192,192,128] ,help="e.g., [192,192,128]if you want a high res patch-based dataset")
-    parser.add_argument("-s", "--spacing", nargs='+', help="Give clip range to compute dataset std and mean")
+    parser.add_argument(
+        "-c",
+        "--clip-centre",
+        action="store_true",
+        help="Clip and centre data now or during training?",
+    )
+    parser.add_argument(
+        "-r",
+        "--clip-range",
+        nargs="+",
+        help="Give clip range to compute dataset std and mean",
+    )
+    parser.add_argument(
+        "-m", "--mode", default="fgbg", help="Mode of Patch generator, 'fg' or 'fgbg'"
+    )
+    parser.add_argument(
+        "-p",
+        "--patch-size",
+        nargs="+",
+        default=[192, 192, 128],
+        help="e.g., [192,192,128]if you want a high res patch-based dataset",
+    )
+    parser.add_argument(
+        "-s",
+        "--spacing",
+        nargs="+",
+        help="Give clip range to compute dataset std and mean",
+    )
     parser.add_argument("-i", "--imported-folder")
-    parser.add_argument("-po", "--patch-overlap" ,help="Generating patches will overlying by this fraction range [0,.9). Default is 0.25 ", default=0.25, type=float)
-    parser.add_argument("-hp", "--half_precision" ,action="store_true")
-    parser.add_argument("-nf", "--no-fix", action="store_false",help="By default if img/mask sitk arrays mismatch in direction, orientation or spacing, FRAN tries to align them. Set this flag to disable")
+    parser.add_argument(
+        "-po",
+        "--patch-overlap",
+        help="Generating patches will overlying by this fraction range [0,.9). Default is 0.25 ",
+        default=0.25,
+        type=float,
+    )
+    parser.add_argument("-hp", "--half_precision", action="store_true")
+    parser.add_argument(
+        "-nf",
+        "--no-fix",
+        action="store_false",
+        help="By default if img/mask sitk arrays mismatch in direction, orientation or spacing, FRAN tries to align them. Set this flag to disable",
+    )
     parser.add_argument("-d", "--debug", action="store_true")
     parser.add_argument(
-        "-np", "--no-pbar", dest="pbar", action="store_false", help="Switch off progress bar"
+        "-np",
+        "--no-pbar",
+        dest="pbar",
+        action="store_false",
+        help="Switch off progress bar",
     )
-
-
 
     args = parser.parse_known_args()[0]
     args.project_title = "totalseg"
 
     # args.num_processes = 1
-    args.debug=True
+    args.debug = True
     args.plan = "plan3"
 
-    P= Project(project_title=args.project_title)
+    P = Project(project_title=args.project_title)
 
-    conf = ConfigMaker(
-        P, raytune=False, configuration_filename=None
-    ).config
+    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 
     plans = conf[args.plan]
 # %%
     if not "labels_all" in P.global_properties.keys():
-        P.set_lm_groups(plans['lm_groups'])
+        P.set_lm_groups(plans["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=True)
 
 # %%
-    I = PreprocessingManager(args)
-
-    # I.spacing = 
 # %%
+#SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
+    I = PreprocessingManager(args)
+    # I.spacing =
+# %%
+#SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
     I.resample_dataset(overwrite=False)
     I.R.get_tensor_folder_stats()
 
 # %%
-    if I.plan['mode']=='patch':
-    # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+#SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
+    if I.plan["mode"] == "patch":
+        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
-    elif I.plan['mode'] == 'lbd':
-        if 'imported_folder' not in plans.keys():
-            I.generate_lbd_dataset(overwrite=True)
+    elif I.plan["mode"] == "lbd":
+        if "imported_folder" not in plans.keys():
+            I.generate_lbd_dataset(overwrite=False)
         else:
             I.generate_TSlabelboundeddataset()
 # %%
 # %%
-#SECTION:-------------------- TSL dataset--------------------------------------------------------------------------------------
 
-    imported_folder = plans['imported_folder']
-    imported_folder=Path(imported_folder)
-    imported_labels= plans['imported_labels']
+# %%
+# SECTION:-------------------- TSL dataset Imported labels-------------------------------------------------------------------------------------- <CR>
+# this section uses imported labels from TSL and integrates those into the dataset. 
+    assert "imported_folder"  in plans.keys(),"Skip this section, there are no imported labels"
+    imported_folder = plans["imported_folder"]
+    imported_folder = Path(imported_folder)
+    imported_labels = plans["imported_labels"]
     imported_labels = imported_labels.split(".")[1]
-    merge_imported_labels= plans['merge_imported_labels']
-    lm_group = plans['lm_groups']
+    merge_imported_labels = plans["merge_imported_labels"]
+    lm_group = plans["lm_groups"]
 
     TSL = TotalSegmenterLabels()
 
-    if imported_labels=="all":
+    if imported_labels == "all":
         imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
         remapping = None
-    
-    elif imported_labels=="lungs":
+
+    elif imported_labels == "lungs":
         imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
         remapping = TSL.create_remapping(imported_labelsets, [8, 9])
     else:
@@ -371,8 +428,8 @@ if __name__ == "__main__":
 # %%
     I.L = LabelBoundedDataGeneratorImported(
         project=I.project,
-        expand_by=I.plan['expand_by'],
-        spacing=I.plan['spacing'],
+        expand_by=I.plan["expand_by"],
+        spacing=I.plan["spacing"],
         lm_group=lm_group,
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
@@ -385,26 +442,24 @@ if __name__ == "__main__":
     I.L.setup()
     I.L.process()
 
-
-
     # I.L.get_tensor_folder_stats()
     # I.L.generate_bboxes()
 # %%
-#SECTION:-------------------- Troubleshooting--------------------------------------------------------------------------------------
+# SECTION:-------------------- Troubleshooting-------------------------------------------------------------------------------------- <CR>
 
 # %%
-    overwrite=False
+    overwrite = False
     L = LabelBoundedDataGenerator(
         project=I.project,
-        expand_by=I.plan['expand_by'],
-        spacing=I.plan['spacing'],
+        expand_by=I.plan["expand_by"],
+        spacing=I.plan["spacing"],
         lm_group="lm_group1",
         mask_label=1,
         folder_suffix=I.plan_name,
         fg_indices_exclude=None,
     )
     L.setup(overwrite=overwrite)
-    lm_fn = data[0]['lm']
+    lm_fn = data[0]["lm"]
     data = L.ds.create_data_dicts()
 
     L.process()
@@ -414,13 +469,13 @@ if __name__ == "__main__":
 # %%
     ds = L.ds
     for dici in data:
-    # dici = data[1]
+        # dici = data[1]
         try:
-            print(dici['image'])
+            print(dici["image"])
             dici = L.ds.LT(dici)
-            im,lm = dici['image'], dici['lm']
+            im, lm = dici["image"], dici["lm"]
             print(lm.unique())
-            print("="*100)
+            print("=" * 100)
         except:
             pass
         # ImageMaskViewer([im,lm])
@@ -429,46 +484,48 @@ if __name__ == "__main__":
     dici = L.ds.E(dici)
     dici = L.ds.C(dici)
 
-
-
 # %%
 
     R = I.R
     dici = R.ds.data[0]
     dici = L(dici)
-    
-    dici['image'].meta
+
+    dici["image"].meta
 # %%
     ca = R.ds[0]
 # %%
 
-
-
     dici = R(dici)
     dici = L(dici)
 
-    lm = dici['lm']
+    lm = dici["lm"]
 # %%
 
 # %%
-    overwrite=True
-    debug=True
-    PG.create_patches(overwrite=overwrite,debug=debug)
+    overwrite = True
+    debug = True
+    PG.create_patches(overwrite=overwrite, debug=debug)
 
 # %%
-    bb= PG.fixed_sp_bboxes[0]
-    args =             [
-                PG.dataset_properties,
-                PG.output_folder,
-                PG.patch_size,
-                bb,
-                patch_overlap,
-                PG.expand_by,
-                PG.mode
-            ]
+    bb = PG.fixed_sp_bboxes[0]
+    args = [
+        PG.dataset_properties,
+        PG.output_folder,
+        PG.patch_size,
+        bb,
+        patch_overlap,
+        PG.expand_by,
+        PG.mode,
+    ]
 # %%
     P = PatchGenerator(
-        PG.dataset_properties, PG.output_folder, PG.patch_size, bb, patch_overlap, expand_by, 'fg'
+        PG.dataset_properties,
+        PG.output_folder,
+        PG.patch_size,
+        bb,
+        patch_overlap,
+        expand_by,
+        "fg",
     )
 # %%
     P.create_patches_from_all_bboxes()
@@ -480,52 +537,60 @@ if __name__ == "__main__":
 
     # I.analyse_dataset()
 
-
 # %%
     im1 = "/home/ub/tmp/imgs/litq_72b_20170224_old.pt"
     im2 = "/s/fran_storage/datasets/preprocessed/fixed_spacing/lilun3/spc_074_074_160/images/litq_72b_20170224.pt"
     im1 = torch.load(im1)
     im2 = torch.load(im2)
-    ImageMaskViewer([im1,im2], dtypes=['image','image'])
+    ImageMaskViewer([im1, im2], dtypes=["image", "image"])
 # %%
 
     spacing_ind = 0
-    patch_overlap=.25
+    patch_overlap = 0.25
     expand_by = 20
-    patches_config , patches_output_folder= I.set_patches_config(spacing_ind,patch_overlap,expand_by)
-    PG = PatchDataGenerator(I.project,I.fixed_spacing_folder, I.patch_size,**patches_config)
+    patches_config, patches_output_folder = I.set_patches_config(
+        spacing_ind, patch_overlap, expand_by
+    )
+    PG = PatchDataGenerator(
+        I.project, I.fixed_spacing_folder, I.patch_size, **patches_config
+    )
     print("Generating boundingbox data")
     PG.generate_bboxes(debug=debug)
 # %%
 
-    patch_overlap=0.25
+    patch_overlap = 0.25
     expand_by = 20
-    patches_config , patches_output_folder= I.set_patches_config(0,patch_overlap,expand_by)
+    patches_config, patches_output_folder = I.set_patches_config(
+        0, patch_overlap, expand_by
+    )
 # %%
 
     resampling_configs = I.get_resampling_configs()
     spacing_config = resampling_configs[spacing_ind]
 
-
-    value= spacing_config['spacing']
+    value = spacing_config["spacing"]
 # %%
     folder_name_from_list(
-            prefix="spc",
-            parent_folder=I.project.lbd_folder,
-            values_list=value,
-        )
+        prefix="spc",
+        parent_folder=I.project.lbd_folder,
+        values_list=value,
+    )
 # %%
-    spacing_ind=1
-    patch_overlap=.25
-    expand_by=0
-    patches_config , patches_output_folder= I.set_patches_config(spacing_ind,patch_overlap,expand_by)
+    spacing_ind = 1
+    patch_overlap = 0.25
+    expand_by = 0
+    patches_config, patches_output_folder = I.set_patches_config(
+        spacing_ind, patch_overlap, expand_by
+    )
 
     if mode is None:
         mode = I.mode
-        PG = PatchDataGenerator(I.project,I.lbd_output_folder, I.patch_size,**patches_config,mode=mode)
+        PG = PatchDataGenerator(
+            I.project, I.lbd_output_folder, I.patch_size, **patches_config, mode=mode
+        )
 
-# ii = "/s/fran_storage/datasets/preprocessed/fixed_spacing/lax/spc_080_080_150/images/lits_5.pt"
-# torch.load(ii).dtype
+        # ii = "/s/fran_storage/datasets/preprocessed/fixed_spacing/lax/spc_080_080_150/images/lits_5.pt"
+        # torch.load(ii).dtype
 # %%
 
         I.get_resampling_configs()

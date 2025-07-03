@@ -454,12 +454,14 @@ class DataManager(LightningDataModule):
         self.data = self.create_data_dicts(self.cases)
 
     def cases_from_project_split(self):
+            tr()
             train_cases, valid_cases = self.project.get_train_val_files(
                 self.dataset_params["fold"], self.plan['datasources']
             )
             
             # Store only the cases for this split
             self.cases = train_cases if self.split == 'train' else valid_cases
+            assert len(self.cases)>0, "There are no cases, aborting!"
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
@@ -472,14 +474,15 @@ class DataManager(LightningDataModule):
         data = []
 
         for fn in pbar(fnames):
-            fn = Path(fn)
-            img_fn = find_matching_fn(fn.name, images, 'all')
-            lm_fn = find_matching_fn(fn.name, lms_fldr, 'all')
-            indices_fn = inds_fldr / img_fn.name
-            assert img_fn.exists(), "Missing image {}".format(img_fn)
-            assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
-            dici = {"image": img_fn, "lm": lm_fn, "indices": indices_fn}
-            data.append(dici)
+                print(f"[DEBUG] Processing file: {fn}")
+                fn = Path(fn)
+                img_fn = find_matching_fn(fn.name, images, 'all')
+                lm_fn = find_matching_fn(fn.name, lms_fldr, 'all')
+                indices_fn = inds_fldr / img_fn.name
+                assert img_fn.exists(), "Missing image {}".format(img_fn)
+                assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
+                dici = {"image": img_fn, "lm": lm_fn, "indices": indices_fn}
+                data.append(dici)
         return data
 
     def infer_inds_fldr(self, plan):
@@ -525,6 +528,8 @@ class DataManager(LightningDataModule):
 
     def create_dataset(self):
         """Create a single dataset based on split type"""
+        print(f"[DEBUG] Number of cases: {len(self.cases)}")
+        print(f"[DEBUG] Example case: {self.cases[0] if self.cases else 'None'}")
         if not hasattr(self, "data") or len(self.data) == 0:
             print("No data. DS is not being created at this point.")
             return 0
