@@ -1,7 +1,7 @@
 # %%
-
+import random
 import math
-
+from typing import Dict, Hashable
 import ipdb
 import monai.transforms.spatial.functional as fm
 import skimage.transform as tf
@@ -50,6 +50,60 @@ def _resize3d(data, spatial_shape, mode):
 
 
 
+class ExtractContiguousSlicesd(RandomizableTransform,MapTransform):
+    """
+    Extract 3 contiguous slices (z-1, z, z+1) from image and label volumes.
+    Outputs:
+        - 'image': [3, H, W]
+        - 'label': [1, H, W] (center slice)
+        - 'label_all': [3, H, W] (optional, for context/debug)
+    """
+
+    def __init__(self, keys: KeysCollection = ("image", "lm"), lm_key = "lm", allow_missing_keys=False):
+        assert lm_key in keys, "One of the keys must be 'lm'"
+        RandomizableTransform.__init__(self, 1) # always randomize
+        MapTransform.__init__(self, keys, allow_missing_keys)
+        self.lm_key = lm_key
+        self.keys = keys if isinstance(keys, (list, tuple)) else [keys]
+
+    def initialize(self,tnsr):
+        _, H,W, num_slices = tnsr.shape
+        self.z = random.randint(1, num_slices - 2)
+
+    def __call__(
+        self, data
+    ):
+        # Handle both single dictionary and list of dictionaries
+        d = dict(data)
+        for i, key in enumerate(self.key_iterator(d)):
+                tnsr = d[key]
+                if i==0:
+                    self.initialize(tnsr)
+                d[key] = self.func(tnsr,key==self.lm_key)
+
+        image = d['image']
+        lm = d['lm']
+        image_lm_prev = torch.stack([image[0],  lm[0], lm[0]])
+        image_lm_next = torch.stack([image[2], lm[2], lm[2]])
+        # lm_current = lm[1].unsqueeze(0)
+        lm_current = lm[1]
+        # lm_current.shape
+        lm_current = lm_current.unsqueeze(0)
+        lm_current = lm_current.repeat(3,1,1)
+        image_current= image[1]
+        image_current = image_current.unsqueeze(0)
+        image_current = image_current.repeat(3,1,1)
+        dici = {'image':image_current,'lm':lm_current, 'image_lm_prev':image_lm_prev, 'image_lm_next':image_lm_next}
+        return dici
+
+    def func(self,tnsr,is_lm_key):
+        tnsr3= tnsr[:, :, :, self.z - 1 : self.z + 2].squeeze(0)  
+        tnsr3 = tnsr3.permute(2, 0, 1) # [3,H, W]
+        if tnsr3.shape[0]==0:
+            tr()
+        return tnsr3
+
+
 class Project2D(MonaiDictTransform, Randomizable):
     def __init__(
         self, keys: KeysCollection, operations=["sum"], dim=None, output_keys=None
@@ -62,11 +116,11 @@ class Project2D(MonaiDictTransform, Randomizable):
          self.do_randomize = False if dim else True
 
 
-    def __call__(self, d: dict):
+    def __call__(self, data: dict):
         self.randomize()
-        for key,output_key, operation in zip(self.key_iterator(d),self.output_keys, self.operations):
-            d[output_key] = self.func(d[key],operation)
-        return d
+        for key,output_key, operation in zip(self.key_iterator(data),self.output_keys, self.operations):
+            data[output_key] = self.func(data[key],operation)
+        return data
 
     def randomize(self):
         if self.do_randomize:

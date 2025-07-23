@@ -1,4 +1,5 @@
 #tch %%
+from label_analysis.merge import pbar
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import ModelCheckpoint
 import shutil
@@ -416,7 +417,6 @@ if __name__ == "__main__":
     Tm.fit()
     # model(inputs)
 # %%
-# %%
 #SECTION:-------------------- LITSMC --------------------------------------------------------------------------------------
 
     run_name = run_litsmc
@@ -453,6 +453,8 @@ if __name__ == "__main__":
 # %%
 
     D = Tm.D
+    dlt = D.train_dataloader()
+    dlv = D.valid_dataloader()
     ds = Tm.D.valid_ds
     ds = Tm.D.train_ds
     dat= ds[0]
@@ -475,12 +477,8 @@ if __name__ == "__main__":
 # %%
 
     for i,bb in pbar(enumerate(ds)):
-        lm = bb['lm']
-        labs = lm.unique()
-        if (labs>8).any() or (labs<0).any():
-            print(labs)
-            print(lm.meta['filename_or_obj'])
-            tr()
+        lm = bb[0]['lm']
+        print(lm.meta['filename_or_obj'])
 # %%
     ds = Tm.D.train_ds
     dici = ds.data[0]
@@ -502,11 +500,14 @@ if __name__ == "__main__":
 
 # %%
     dl = Tm.D.train_dataloader()
-    iteri = iter(dl)
+    dlv = Tm.D.valid_dataloader()
+    iteri = iter(dlt)
     # Tm.N.model.to('cpu')
 # %%
-    batch = next(iteri)
-    print(batch['image'].dtype)
+    while iter:
+        batch = next(iteri)
+        print(batch['image'].dtype)
+# %%
 # %%
     pred = Tm.N.model(batch['image'])
 # %%

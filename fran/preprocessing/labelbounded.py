@@ -1,54 +1,44 @@
 # %%
 from fastcore.basics import listify
-from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
-from torch.utils.data import DataLoader
+from pathlib import Path
 
-from fran.data.collate import dict_list_collated
-from fran.preprocessing.dataset import (
-    CropToLabelDataset,
-    FGBGIndicesDataset,
-)
-from fran.preprocessing.fixed_spacing import (
-    generate_bboxes_from_lms_folder,
-)
-from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd
-from fran.utils.config_parsers import ConfigMaker, is_excel_None, parse_excel_dict
+from fran.transforms.misc_transforms import FgBgToIndicesd2
+from fran.utils.config_parsers import ConfigMaker, is_excel_None
 from utilz.string import info_from_filename
 from pathlib import Path
 
 from fastcore.basics import GetAttr, store_attr
 
-from fran.preprocessing.preprocessor import Preprocessor
+from fran.preprocessing.preprocessor import Preprocessor, generate_bboxes_from_lms_folder
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
 
-# NOTE:  move all file io processes to ray to avoid 'too many open files' error
-MIN_SIZE = 32 # min size in a single dimension of any image
+MIN_SIZE = 32  # min size in a single dimension of any image
 
 
-class LabelBoundedDataGenerator(PatchDataGenerator, Preprocessor, GetAttr):
+class LabelBoundedDataGenerator(Preprocessor, GetAttr):
+
     _default = "project"
 
     def __init__(
         self,
         project,
         plan,
-        folder_suffix:str=None ,
+        folder_suffix: str = None,
         data_folder=None,
         output_folder=None,
         mask_label=None,
-        # fg_indices_exclude: list = None,
         remapping: dict = None,
     ) -> None:
         """
         mask_label: this label is used to apply mask, i.e., crop the image and lm. Defaults to None aka all label values >0 are used to crop.
         """
-        self.folder_suffix = folder_suffix 
+        self.folder_suffix = folder_suffix
         self.plan = plan
         self.fg_indices_exclude = listify(plan.get("fg_indices_exclude"))
         self.remapping = remapping
@@ -92,7 +82,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, Preprocessor, GetAttr):
             output_name = "_".join([self.output_folder.name, self.folder_suffix])
             self.output_folder = Path(
                 self.output_folder.parent / output_name
-            )  # .name = self.output_folder.name + self.output_suffix
+            )
 
     def create_output_folders(self):
         maybe_makedirs(
@@ -103,96 +93,114 @@ class LabelBoundedDataGenerator(PatchDataGenerator, Preprocessor, GetAttr):
             ]
         )
 
+
     def process(self):
-        Preprocessor.process(self)
+        if not hasattr(self, "transforms"):
+            print("No transforms created. No data to be processed. Run setup first")
+            return 0
+            
+        print(
+            "Retrieving FGBG indices from datafolder {0} and storing to subfolder {1}".format(
+                self.data_folder, self.indices_subfolder
+            )
+        )
+        self.create_output_folders()
+        self.process_files()
 
     def setup(self, device="cpu", batch_size=4, overwrite=True):
         device = resolve_device(device)
         print("Processing on ", device)
         self.register_existing_files()
-        #CODE: BUG: register existing files works but ds  is still full length. it does not remove existing casese. Also, move away from this dl ds paradigm in preprocessing
         print("Overwrite:", overwrite)
         if overwrite == False:
-            self.case_ids = self.remove_completed_cases()
-        self.create_ds(device=device)
-        self.ds.setup()
-        self.create_dl(batch_size=batch_size, num_workers=1)
+            Preprocessor.remove_completed_cases(self)
+        # Instead of creating dataset and dataloader, prepare file lists
+        self.image_files = sorted(self.data_folder.glob("images/*.pt"))
+        self.lm_files = sorted(self.data_folder.glob("lms/*.pt"))
+        
+        # Create transforms for processing
+        self.transforms = self.create_transforms(device)
 
-    def create_ds(self,device="cpu"):
-        self.ds = CropToLabelDataset(
-            project=self.project,
-            plan=self.plan,
-            df=self.df,
-            mask_label=self.mask_label,
-            device=device,
-        )
-    def create_dl(self, num_workers=1, batch_size=4):
-        # same function as labelbounded
-        self.dl = DataLoader(
-            dataset=self.ds,
-            num_workers=4,
-            collate_fn=dict_list_collated(
-                keys=[
-                    "image",
-                    "lm",
-                    "lm_fg_indices",
-                    "lm_bg_indices",
-                    "foreground_start_coord",
-                    "foreground_end_coord",
-                ]
-            ),
-            # collate_fn=img_lm_metadata_lists_collated,
-            batch_size=batch_size,
-            pin_memory=False,
-        )
-
-    def remove_completed_cases(self):
-        case_ids = set(self.case_ids).difference(self.existing_case_ids)
-        print("Remaining case ids to process:", len(case_ids))
-        return case_ids
-
-    def process_batch(self, batch):
-        images, lms, fg_inds, bg_inds, foreground_start_coord, foreground_end_coord = (
-            batch["image"],
-            batch["lm"],
-            batch["lm_fg_indices"],
-            batch["lm_bg_indices"],
-            batch["foreground_start_coord"],
-            batch["foreground_end_coord"],
-        )
-        for (
-            image,
-            lm,
-            fg_ind,
-            bg_ind,
-            foreground_start_coord,
-            foreground_end_coord,
-        ) in zip(
-            images, lms, fg_inds, bg_inds, foreground_start_coord, foreground_end_coord
-        ):
-            assert image.shape == lm.shape, "mismatch in shape".format(
-                image.shape, lm.shape
+    def create_transforms(self, device):
+        """Create transforms for processing images and labels"""
+        keys = ["image", "lm"]
+        transforms = [
+            LoadTorchd(keys=keys),
+            EnsureChannelFirstd(keys=keys),
+            ToDeviced(device=device, keys=keys),
+            FgBgToIndicesd2(keys = keys),
+        ]
+        if self.mask_label is not None:
+            transforms.append(
+                CropForegroundd(
+                    keys=["image", "lm"],
+                    source_key="lm",
+                    select_fn=lambda x: x == self.mask_label
+                )
             )
-            assert image.dim() == 4, "images should be cxhxwxd"
-            assert image.numel()>MIN_SIZE^3, "image size is too small {0}. A typical cause of this is that the lm has no/little foreground.".format(image.shape)
-            inds = {
-                "lm_fg_indices": fg_ind,
-                "lm_bg_indices": bg_ind,
-                "foreground_start_coord": foreground_start_coord,
-                "foreground_end_coord": foreground_end_coord,
-                "meta": image.meta,
-            }
-            self.save_indices(inds, self.indices_subfolder)
-            self.save_pt(image[0], "images")
-            self.save_pt(lm[0], "lms")
-            self.extract_image_props(image)
+        return Compose(transforms)
 
-    def make_contiguous(self, batch):
-        for key, listvals in batch.items():
-            if isinstance(listvals[0], torch.Tensor):
-                listvals = [val.contiguous() for val in listvals]
-            batch[key] = listvals
-        return batch
+    def process_files(self):
+        """Process files without using DataLoader"""
+        self.create_output_folders()
+        self.results = []
+        self.shapes = []
+        for img_file, lm_file in pbar(zip(self.image_files, self.lm_files), desc="Processing files", total=len(self.image_files)):
+            try:
+                # Load and process single case
+                data = {
+                    "image": img_file,
+                    "lm": lm_file,
+                }
+                
+                # Apply transforms
+                data = self.transforms(data)
+                
+                # Get metadata and indices
+                # Process the case
+                self.process_single_case(
+                    data["image"],
+                    data["lm"],
+                    data['lm_fg_indices'],
+                    data['lm_bg_indices'],
+                )
+                
+            except Exception as e:
+                print(f"Error processing {img_file.name}: {str(e)}")
+                continue
+
+        self.results_df = pd.DataFrame(self.results)
+        # self.results= pd.DataFrame(self.results).values
+        ts = self.results_df.shape
+        if ts[-1] == 4:  # only store if entire dset is processed
+            self._store_dataset_properties()
+            generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
+        else:
+            print(
+                "self.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(
+                    ts, ts[-1]
+                )
+            )
+            print(
+                "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
+            )
+
+    def process_single_case(self, image, lm, fg_inds, bg_inds):
+        """Process a single case and save results"""
+        assert image.shape == lm.shape, "mismatch in shape"
+        assert image.dim() == 4, "images should be cxhxwxd"
+        assert image.numel() > MIN_SIZE**3, f"image size is too small {image.shape}"
+        
+        inds = {
+            "lm_fg_indices": fg_inds,
+            "lm_bg_indices": bg_inds,
+            "meta": image.meta,
+        }
+        
+        self.save_indices(inds, self.indices_subfolder)
+        self.save_pt(image[0], "images")
+        self.save_pt(lm[0], "lms")
+        self.extract_image_props(image)
 
     def create_info_dict(self):
         resampled_dataset_properties = super().create_info_dict()
@@ -225,8 +233,7 @@ class LabelBoundedDataGenerator(PatchDataGenerator, Preprocessor, GetAttr):
 class FGBGIndicesLBD(LabelBoundedDataGenerator):
     """
     Outputs FGBGIndices only. No images of lms are created.
-    Use this generator when LBD images and lms are already created, but a new set of FG indices is required, for example with exclusion of a new label
-
+    Use this generator when LBD images and lms are already created, but a new set of FG indices is required.
     """
 
     def __init__(self, project, data_folder, fg_indices_exclude: list = None) -> None:
@@ -250,425 +257,78 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
         print("Processing on ", device)
         self.register_existing_files()
         print("Overwrite:", overwrite)
-        if overwrite == False:
-            self.case_ids = self.remove_completed_cases()
+        
+        if not overwrite:
+            self.remove_completed_cases()
 
-        self.ds = FGBGIndicesDataset(
-            case_ids=self.case_ids,
-            data_folder=self.data_folder,
-            fg_indices_exclude=self.fg_indices_exclude,
-            device=device,
-        )
-        self.ds.setup()
-        self.create_dl(batch_size=batch_size, num_workers=1)
-
-    def create_dl(
-        self, num_workers=1, batch_size=4
-    ):  # optimised defaults. Do not change. GPU wont work (multiprocessing issues)
-        # 'gpu' wont work on multiprocessing
-        self.dl = DataLoader(
-            dataset=self.ds,
-            num_workers=num_workers,
-            collate_fn=dict_list_collated(
-                keys=[
-                    "image",
-                    "lm",
-                    "lm_fg_indices",
-                    "lm_bg_indices",
-                    # "foreground_start_coord",
-                    # "foreground_end_coord",
-                ]
-            ),
-            batch_size=batch_size,
-            pin_memory=False,
-        )
+        # Setup file lists and transforms
+        if len(self.df) > 0:
+            self.image_files = sorted(self.data_folder.glob("images/*.pt"))
+            self.lm_files = sorted(self.data_folder.glob("lms/*.pt"))
+            self.transforms = self.create_transforms(device)
+        else:
+            print("No cases to process.")
 
     def create_output_folders(self):
         maybe_makedirs(self.indices_subfolder)
 
-    def process(
-        self,
-    ):
-        if not hasattr(self, "dl"):
-            print("No data loader created. No data to be processed. Create dl first")
-            return 0
-        print(
-            "Retrieving FGBG indices from datafolder {0} and storing to subfolder {1}".format(
-                self.data_folder, self.indices_subfolder
-            )
-        )
-        self.create_output_folders()
-        self.results = []
-        self.shapes = []
 
-        for batch in pbar(self.dl):
-            self.process_batch(batch)
-        # if self.results.shape[-1] == 3:  # only store if entire dset is processed
-        #     self._store_dataset_properties()
-        #     generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
-        # else:
-        #     print(
-        #         "since some files skipped, dataset stats are not being stored. run resampledatasetniftitotorch.get_tensor_folder_stats separately"
-        #     )
-        #
-
-    def process_batch(self, batch):
-        batch = self.make_contiguous(batch)
-        (
-            images,
-            lms,
-            fg_inds,
-            bg_inds,
-        ) = (
-            batch["image"],
-            batch["lm"],
-            batch["lm_fg_indices"],
-            batch["lm_bg_indices"],
-            # batch["foreground_start_coord"],
-            # batch["foreground_end_coord"],
-        )
-        for (
-            image,
-            lm,
-            fg_ind,
-            bg_ind,
-            # foreground_start_coord,
-            # foreground_end_coord,
-        ) in zip(
-            images,
-            lms,
-            fg_inds,
-            bg_inds,  # , foreground_start_coord, foreground_end_coord
-        ):
-            assert image.shape == lm.shape, "mismatch in shape".format(
-                image.shape, lm.shape
-            )
-            assert image.dim() == 4, "images should be cxhxwxd"
-            inds = {
-                "lm_fg_indices": fg_ind,
-                "lm_bg_indices": bg_ind,
-                # "foreground_start_coord": foreground_start_coord,
-                # "foreground_end_coord": foreground_end_coord,
-                "meta": image.meta,
-            }
-            self.save_indices(inds, self.indices_subfolder)
-            # self.save_pt(image[0], "images")
-            # self.save_pt(lm[0], "lms")
-            self.extract_image_props(image)
-
-
-#
-#
-#    def create_properties_dict(self):
-#        resampled_dataset_properties = super().create_properties_dict()
-#        labels ={k[0]:k[1] for k in self.remapping.items() if self.remapping[k[0]] != 0}
-#        additional_props = {
-#            "imported_folder": str(self.imported_folder),
-#            "imported_labels":labels,
-#            "merge_imported_labels": self.merge_imported_labels,
-#        }
-#        return resampled_dataset_properties|additional_props
-#
-
-
-# %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-
+# %%
     from fran.utils.common import *
     from fran.managers import Project
 
-    P = Project(project_title="totalseg")
-    # spacing = [0.8, 0.8, 1.5]
-    spacing = [1.5,1.5,1.5]
+    project_title="litsmc"
+    P = Project(project_title=project_title)
     P.maybe_store_projectwide_properties()
+    spacing = [1.5, 1.5, 1.5]
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-# %%
-    plan_str = "plan3"
+    
+    plan_str = "plan9"
     plan = conf[plan_str]
-    # plan["spacing"] = [0.8, 0.8, 1.5]
-    # plan["fg_indices_exclude"] = None
+    spacing = plan['spacing']
 
-# %%
-#SECTION:-------------------- LabelBoundedDataGenerator--------------------------------------------------------------------------------------
     L = LabelBoundedDataGenerator(
         project=P,
-        # data_folder = "/s/xnat_shadow/crc/sampling/tensors/fixed_spacing",
-        # output_folder="/s/xnat_shadow/crc/sampling/tensors/lbd",
         plan=plan,
         mask_label=None,
         folder_suffix=plan_str,
     )
-# %%
-    L.indices_subfolder
-    L.setup(device='cpu',overwrite=False)
-    L.process()
-    # L.create_dl(overwrite=False, device="cpu", batch_size=4)
-# %%
-    dl = L.dl
-    iteri = iter(dl)
-    batch = next(iteri)
-    batch['lm'][0].meta
-# %%
-    fldr = Path(
-        "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/indices_fg_exclude_1"
-    )
-    fns = list(fldr.glob("*pt"))
-# %%
-    zeros = 0
-    for fn in pbar(fns):
-        tnser = torch.load(fn)
-        lm_fg = tnser["lm_fg_indices"]
-        if len(lm_fg) == 0:
-            zeros += 1
-# %%
-
-        if not "lm_fg_indices" in tnser.keys():
-            tnser["lm_fg_indices"] = tnser["lm_fg_indicesmask_label"]
-
-        keys = (
-            "lm_fg_indices",
-            "lm_bg_indices",
-            "foreground_start_coord",
-            "foreground_end_coord",
-            "meta",
-        )
-        tnsr_neo = {k: tnser[k] for k in keys}
-        tnsr_neo["lm_fg_indices"] = tnsr_neo["lm_fg_indices"].contiguous()
-        tnsr_neo["lm_bg_indices"] = tnsr_neo["lm_fg_indices"].contiguous()
-        torch.save(tnsr_neo, fn)
-# %%
-
+    
+    L.setup(device='cpu', overwrite=False)
+    L.process()  # Use new process_files method instead of process()
 # %%
 # %%
-# SECTION:-------------------- FGBG indices-------------------------------------------------------------------------------------- <CR>
+#SECTION:-------------------- TS--------------------------------------------------------------------------------------
 
-    F = FGBGIndicesLBD(
-        project=P,
-        data_folder="/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/",
-    )
+    # for img_file, lm_file in zip(I.L.image_files, I.L.lm_files):
+    img_file, lm_file = I.L.image_files[0], I.L.lm_files[0]
+    try:
+            # Load and process single case
+            data = {
+                "image": img_file,
+                "lm": lm_file,
+            }
+            
+            # Apply transforms
+            data = I.L.transforms(data)
+            
+            # Get metadata and indices
+            fg_indices = I.L.get_foreground_indices(data["lm"])
+            bg_indices = I.L.get_background_indices(data["lm"])
+            coords = I.L.get_foreground_coords(data["lm"])
+            
+            # Process the case
+            I.L.process_single_case(
+                data["image"],
+                data["lm"],
+                fg_indices,
+                bg_indices,
+                coords["start"],
+                coords["end"]
+            )
+            
+    except Exception as e:
+            print(f"Error processing {img_file.name}: {str(e)}")
 
-# %%
-    F.process()
-
-# %%
-    batch = next(iter(F.dl))
-    F.process_batch(batch)
-
-# %%
-    batch = F.make_contiguous(batch)
-    (
-        images,
-        lms,
-        fg_inds,
-        bg_inds,
-    ) = (
-        batch["image"],
-        batch["lm"],
-        batch["lm_fg_indices"],
-        batch["lm_bg_indices"],
-        # batch["foreground_start_coord"],
-        # batch["foreground_end_coord"],
-    )
-    image, lm, fg_ind, bg_ind = images[0], lms[0], fg_inds[0], bg_inds[0]
-    assert image.shape == lm.shape, "mismatch in shape".format(image.shape, lm.shape)
-    assert image.dim() == 4, "images should be cxhxwxd"
-    inds = {
-        "lm_fg_indices": fg_ind,
-        "lm_bg_indices": bg_ind,
-        # "foreground_start_coord": foreground_start_coord,
-        # "foreground_end_coord": foreground_end_coord,
-        "meta": image.meta,
-    }
-
-    os.makedirs(
-        "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/tmp"
-    )
-    F.save_indices(inds, "tmp")
-    inds = inds.contiguous(inds)
-    inds["lm_fg_indices"] = inds["lm_fg_indices"].contiguous()
-    inds["lm_bg_indices"] = inds["lm_bg_indices"].contiguous()
-    inds["lm_bg_indices"].numel()
-    torch.save(inds, "tmp.pt")
-
-    fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/indices/lits_50.pt"
-    inds2 = torch.load(fn)
-    inds2["lm_fg_indices"].numel()
-
-# %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
-
-    L.existing_case_ids
-    L.setup("cpu", num_workers=4, overwrite=False)
-    L.process()
-    L.get_tensor_folder_stats()
-# %%
-
-    dici = L.ds[0]
-    iteri = iter(L.dl)
-    batch = next(iteri)
-# %%
-    dici = L.ds.data[2]
-    dici = L.ds.transforms_dict["R"](dici)
-    dici = L.ds.transforms_dict["LS"](dici)
-    dici = L.ds.transforms_dict["LT"](dici)
-    dici = L.ds.transforms_dict["D"](dici)
-    dici = L.ds.transforms_dict["Re"](dici)
-    # dici = L.ds.transforms_dict['Re'](dici)
-    dici = L.ds.transforms_dict["E"](dici)
-    dici = L.ds.transforms_dict["Rz"](dici)
-    dici = L.ds.transforms_dict["M"](dici)
-    dici = L.ds.transforms_dict["B"](dici)
-    dici = L.ds.transforms_dict["A"](dici)
-
-# %%
-
-    U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
-    batch = U(batch)
-    images, lms, fg_inds, bg_inds = (
-        batch["image"],
-        batch["lm"],
-        batch["lm_fg_indices"],
-        batch["lm_bg_indices"],
-    )
-# %%
-    for (
-        image,
-        lm,
-        fg_ind,
-        bg_ind,
-    ) in zip(
-        images,
-        lms,
-        fg_inds,
-        bg_inds,
-    ):
-        assert image.shape == lm.shape, "mismatch in shape".format(
-            image.shape, lm.shape
-        )
-        assert image.dim() == 4, "images should be cxhxwxd"
-
-# %%
-
-        inds = {
-            "lm_fg_indices": fg_ind,
-            "lm_bg_indices": bg_ind,
-            "meta": image.meta,
-        }
-        L.save_indices(inds, L.indices_subfolder)
-        L.save_pt(image[0], "images")
-        L.save_pt(lm[0], "lms")
-        L.extract_image_props(image)
-
-# %%
-    im = dici["image"]
-    lm = dici["lm"]
-    lmi = dici["lm_imported"]
-    lmo = dici["lm_out"]
-
-    ImageMaskViewer([lm[0], lmo[0]], "mm")
-    ImageMaskViewer([im[0], lm[0]], "im")
-
-    L.ds[0]
-# %%
-    L.process()
-
-    fn = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/indices_fg_exclude_1/drli_002.pt"
-# %%
-    lmg = "lm_group1"
-    P.global_properties[lmg]
-
-    imported_folder = Path("/s/fran_storage/predictions/totalseg/LITS-860/")
-    TSL = TotalSegmenterLabels()
-    imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
-    remapping = TSL.create_remapping(imported_labelsets, [8, 9])
-    P.imported_labels(lmg, imported_folder, imported_labelsets)
-
-# %%
-    L = LabelBoundedDataGenerator(
-        project=P,
-        expand_by=40,
-        spacing=[0.8, 0.8, 1.5],
-        lm_group="lm_group1",
-        mask_label=1,
-    )
-
-    L.create_dl()
-    L.process()
-
-# %%
-
-    for batch in pbar(L.dl):
-        images, lms = batch["image"], batch["lm"]
-        print(images.shape)
-    ImageMaskViewer([images[0][0], lms[0][0]])
-# %%
-    L = LabelBoundedDataGenerator(
-        project=P,
-        expand_by=20,
-        spacing=[0.8, 0.8, 1.5],
-        lm_group="lm_group1",
-        imported_folder=imported_folder,
-        imported_labelsets=imported_labelsets,
-        merge_imported_labels=False,
-        remapping=remapping,
-    )
-
-# %%
-    L.create_dl()
-    L.process()
-
-# %%
-    bbfn = "/home/ub/datasets/preprocessed/tmp/lbd/spc_080_080_150/bboxes_info.pkl"
-    dic = load_dict(bbfn)
-    generate_bboxes_from_lms_folder(
-        Path("/r/datasets/preprocessed/lidc2/lbd/spc_080_080_150/lms/")
-    )
-# %%
-    spacing = [0.8, 0.8, 1.5]
-
-# %%
-    L.expand_by = 50
-    L.device = "cpu"
-
-    L2 = LoadTorchd(keys=["lm", "image"])
-    # En = EnsureTyped(keys = ["lm","image"])
-    D = ToDeviced(device=L.device, keys=["lm", "image"])
-
-    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-
-    margin = [int(L.expand_by / sp) for sp in L.spacing]
-    margin2 = [int(L.expand_by / sp) * 2 for sp in L.spacing]
-# %%
-    Cr1 = CropForegroundd(
-        keys=["image", "lm"],
-        source_key="lm",
-        select_fn=lambda lm: lm == L.mask_label,
-        margin=margin,
-    )
-    Cr2 = CropForegroundd(
-        keys=["image", "lm"],
-        source_key="lm",
-        select_fn=lambda lm: lm == L.mask_label,
-        margin=margin2,
-    )
-    tfms = [L2, D, E, Cr1]
-    C1 = Compose(tfms)
-
-    tfms2 = [L2, D, E, Cr2]
-    C2 = Compose(tfms)
-# %%
-    dici = L.ds.data[1].copy()
-    dici1 = C1(dici)
-    img1 = dici1["image"][0]
-    lm1 = dici1["lm"][0]
-    ImageMaskViewer([img1, lm1])
-# %%
-
-    dici2 = L.ds.data[1].copy()
-    dici2 = C2(dici2)
-    img2 = dici2["image"][0]
-    lm2 = dici2["lm"][0]
-    ImageMaskViewer([img2, lm2])
-# %%

@@ -897,7 +897,6 @@ class Project(DictToAttr):
             conditions.append(fold_condition)
 
         # Add datasource condition
-        tr()
         if ds:
             ds_condition = self.build_ds_condition(ds)
             conditions.append(ds_condition)

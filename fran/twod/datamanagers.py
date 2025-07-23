@@ -5,12 +5,9 @@ from lightning import LightningDataModule
 from utilz.helpers import pbar, pp
 from monai.transforms.transform import RandomizableTransform
 from fran.preprocessing.helpers import bbox_bg_only
-import ast
-import math
 from functools import reduce
 from operator import add
 from pathlib import Path
-
 import ipdb
 import numpy as np
 import torch
@@ -33,7 +30,9 @@ from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
 )
 
-from fran.data.collate import grid_collated, img_lm_bbox_collated, source_collated, whole_collated
+from fran.data.collate import (
+    whole_collated,
+)
 from fran.data.dataset import (
     ImageMaskBBoxDatasetd,
     NormaliseClipd,
@@ -50,6 +49,53 @@ from utilz.imageviewers import ImageMaskViewer
 from utilz.string import ast_literal_eval, info_from_filename, strip_extension
 import re
 import os
+from collections import defaultdict
+
+
+def process_items(items):
+    data = defaultdict(list)
+    filenames = defaultdict(list)
+
+    for item in items:
+        for key, value in item.items():
+            data[key].append(value)
+            try:
+                filenames[key].append(value.meta['filename_or_obj'])
+            except Exception:
+                filenames[key].append(None)
+
+    return dict(data), dict(filenames)
+
+def source_collated(batch):
+    all_data = defaultdict(list)
+    all_filenames = defaultdict(list)
+
+    for item in batch:
+        data, filenames = process_items(item)
+        for k, v in data.items():
+            all_data[k].extend(v)
+        for k, v in filenames.items():
+            all_filenames[k].extend(v)
+
+    output = {}
+    for key in all_data:
+        values = all_data[key]
+        try:
+            # Stack if all elements are tensors
+            if all(isinstance(x, torch.Tensor) for x in values):
+                stacked = torch.stack(values, 0)
+                # Attach filenames to .meta if possible
+                if hasattr(stacked, 'meta'):
+                    stacked.meta['filename_or_obj'] = (
+                        all_filenames[key][0] if len(batch) == 1 else all_filenames[key]
+                    )
+                output[key] = stacked
+            else:
+                output[key] = values
+        except Exception as e:
+            raise RuntimeError(f"Error processing key '{key}': {e}")
+
+    return output
 
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
@@ -93,11 +139,11 @@ class RandomPatch(RandomizableTransform):
         return dici
 
 
-
 class DataManagerDual(LightningDataModule):
     """
     A higher-level DataManager that manages separate training and validation DataManagers
     """
+
     def __init__(
         self,
         project_title,
@@ -107,14 +153,16 @@ class DataManagerDual(LightningDataModule):
         ds_type=None,
         save_hyperparameters=True,
         keys_tr=None,
-        keys_val = None
+        keys_val=None,
     ):
         super().__init__()
-        project=Project(project_title)
+        project = Project(project_title)
         if save_hyperparameters:
-            self.save_hyperparameters('project_title', 'config',logger=False) # logger = False otherwise it clashes with UNet Manager
-        manager_class_train,manager_class_valid = self.infer_manager_classes(config)
-            
+            self.save_hyperparameters(
+                "project_title", "config", logger=False
+            )  # logger = False otherwise it clashes with UNet Manager
+        manager_class_train, manager_class_valid = self.infer_manager_classes(config)
+
         # Create separate managers for training and validation
         self.train_manager = manager_class_train(
             project=project,
@@ -122,19 +170,18 @@ class DataManagerDual(LightningDataModule):
             batch_size=batch_size,
             cache_rate=cache_rate,
             ds_type=ds_type,
-            split='train',
+            split="train",
             keys_tr=keys_tr,
         )
-        
+
         self.valid_manager = manager_class_valid(
             project=project,
             config=config,
             batch_size=batch_size,
             cache_rate=cache_rate,
             ds_type=None,
-            split='valid',
+            split="valid",
             keys_val=keys_val,
-            
         )
 
     def prepare_data(self):
@@ -168,23 +215,25 @@ class DataManagerDual(LightningDataModule):
     def infer_manager_classes(self, config):
         """
         Infer the appropriate DataManager class based on the mode in config
-        
+
         Args:
             config (dict): Configuration dictionary containing plan_train and plan_valid
-            
+
         Returns:
             class: The appropriate DataManager class
-            
+
         Raises:
             AssertionError: If train and valid modes don't match
             ValueError: If mode is not recognized
         """
         train_mode = config["plan_train"]["mode"]
         valid_mode = config["plan_valid"]["mode"]
-        
+
         # Ensure train and valid modes match
-        assert train_mode == valid_mode, f"Train mode '{train_mode}' and valid mode '{valid_mode}' must match"
-        
+        assert (
+            train_mode == valid_mode
+        ), f"Train mode '{train_mode}' and valid mode '{valid_mode}' must match"
+
         # Map modes to manager classes
         mode_to_class = {
             "source": DataManagerSource,
@@ -192,12 +241,14 @@ class DataManagerDual(LightningDataModule):
             "patch": DataManagerPatch,
             "lbd": DataManagerLBD,
             "baseline": DataManagerBaseline,
-            "pbd": DataManagerWID
+            "pbd": DataManagerWID,
         }
-        
+
         if train_mode not in mode_to_class:
-            raise ValueError(f"Unrecognized mode: {train_mode}. Must be one of {list(mode_to_class.keys())}")
-            
+            raise ValueError(
+                f"Unrecognized mode: {train_mode}. Must be one of {list(mode_to_class.keys())}"
+            )
+
         return mode_to_class[train_mode], mode_to_class[valid_mode]
 
 
@@ -209,18 +260,17 @@ class DataManager(LightningDataModule):
         batch_size=8,
         cache_rate=0.0,
         ds_type=None,
-        split='train'  ,# Add sp,lit parameter
+        split="train",  # Add sp,lit parameter
         save_hyperparameters=False,
         keys_tr=None,
-        keys_val =None,
-
+        keys_val=None,
     ):
 
         super().__init__()
         if save_hyperparameters:
-            self.save_hyperparameters('project','config', 'split',logger=False)
+            self.save_hyperparameters("project", "config", "split", logger=False)
         store_attr()
-        self.plan= config[f"plan_{split}"]
+        self.plan = config[f"plan_{split}"]
         global_properties = load_dict(project.global_properties_filename)
         self.dataset_params = config["dataset_params"]
         self.dataset_params["intensity_clip_range"] = global_properties[
@@ -235,29 +285,33 @@ class DataManager(LightningDataModule):
         self.set_effective_batch_size()
         self.data_folder = self.derive_data_folder()
         self.assimilate_tfm_factors(transform_factors)
-        self.set_tfm_keys(keys_tr,keys_val)
+        self.set_tfm_keys(keys_tr, keys_val)
         self.set_collate_fn()
 
     def set_collate_fn(self):
         raise NotImplementedError
 
-
     def __str__(self):
-        return 'DataManager instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items()])
+        return "DataManager instance with parameters: " + ", ".join(
+            [f"{k}={v}" for k, v in vars(self).items()]
+        )
 
     def __repr__(self):
-        return f'DataManager(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
+        return (
+            f"DataManager("
+            + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
+            + ")"
+        )
 
-
-    def set_tfm_keys(self, keys_tr=None,keys_val=None):
+    def set_tfm_keys(self, keys_tr=None, keys_val=None):
         if keys_tr is None:
             self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
-        else: self.keys_tr = keys_tr
+        else:
+            self.keys_tr = keys_tr
         if keys_val is None:
             self.keys_val = "L,Ld,E,N,Re"
-        else: self.keys_val =keys_val
-
-
+        else:
+            self.keys_val = keys_val
 
     def assimilate_tfm_factors(self, transform_factors):
         for key, value in transform_factors.items():
@@ -265,7 +319,6 @@ class DataManager(LightningDataModule):
             setattr(self, key, dici)
 
     def create_transforms(self, keys):
-
         """
         Creates and assigns transformations based on provided keys.
 
@@ -274,7 +327,7 @@ class DataManager(LightningDataModule):
 
         Returns:
             None: Sets self.transforms with composed transforms
-            
+
         Transform Abbreviations and Full Names:
             E: EnsureChannelFirstd - Ensures channel dimension is first
             Ex: ExtractContiguousSlicesd - Extracts 3 contiguous slices (z-1, z, z+1)
@@ -341,7 +394,9 @@ class DataManager(LightningDataModule):
                     keys="image", factors=self.scale["value"], prob=self.scale["prob"]
                 ),
                 RandRandGaussianNoised(
-                    keys=["image"], std_limits=self.noise["value"], prob=self.noise["prob"]
+                    keys=["image"],
+                    std_limits=self.noise["value"],
+                    prob=self.noise["prob"],
                 ),
                 RandShiftIntensityd(
                     keys="image", offsets=self.shift["value"], prob=self.shift["prob"]
@@ -356,9 +411,9 @@ class DataManager(LightningDataModule):
             Affine = RandAffined(
                 keys=["image", "lm"],
                 mode=["bilinear", "nearest"],
-                prob=self.config['affine3d']["p"],
-                rotate_range=self.config['affine3d']["rotate_range"],
-                scale_range=self.config['affine3d']["scale_range"],
+                prob=self.config["affine3d"]["p"],
+                rotate_range=self.config["affine3d"]["rotate_range"],
+                scale_range=self.config["affine3d"]["scale_range"],
             )
             self.transforms_dict["Affine"] = Affine
 
@@ -371,7 +426,6 @@ class DataManager(LightningDataModule):
             )
 
             self.transforms_dict["Resize"] = Re
-
 
         if "Re" in include_keys:
             Re = ResizeWithPadOrCropd(
@@ -437,20 +491,21 @@ class DataManager(LightningDataModule):
             )
             self.transforms_dict["Rva"] = Rva
         for k in include_keys:
-            if k=="IntensityTfms":
+            if k == "IntensityTfms":
                 self.tfms_list.extend(self.transforms_dict[k])
             else:
                 self.tfms_list.append(self.transforms_dict[k])
-        self.transforms =Compose(self.tfms_list)
-
+        self.transforms = Compose(self.tfms_list)
 
     def set_effective_batch_size(self):
-        if not "samples_per_file" in self.plan or not self.split=="train":  # if split is valid, grid sampling is done and effective batch_size should be same as batch size
+        if (
+            not "samples_per_file" in self.plan or not self.split == "train"
+        ):  # if split is valid, grid sampling is done and effective batch_size should be same as batch size
             self.plan["samples_per_file"] = 1
-        
-        self.effective_batch_size = int(np.maximum(1, 
-            self.batch_size / self.plan["samples_per_file"]
-        ))
+
+        self.effective_batch_size = int(
+            np.maximum(1, self.batch_size / self.plan["samples_per_file"])
+        )
         print(
             "Given {0} Samples per file and {1} batch_size on the GPU, effective batch size (number of file tensors loaded then sampled for {2} is:\n {3} ".format(
                 self.plan["samples_per_file"],
@@ -459,6 +514,7 @@ class DataManager(LightningDataModule):
                 self.effective_batch_size,
             )
         )
+
     def set_transforms(self, keys_tr: str, keys_val: str):
         self.tfms_train = self.tfms_from_dict(keys_tr)
         self.tfms_valid = self.tfms_from_dict(keys_val)
@@ -480,7 +536,7 @@ class DataManager(LightningDataModule):
         dataset_mode = self.plan["mode"]
         assert dataset_mode in [
             "whole",
-            "baseline", 
+            "baseline",
             "patch",
             "source",
             "pbd",
@@ -488,18 +544,19 @@ class DataManager(LightningDataModule):
         ], f"Set a value for mode in 'whole', 'patch' or 'source', got {dataset_mode}"
 
         # Get all cases but only use the ones for this split
-        if not hasattr(self, "cases"): self.cases_from_project_split()
+        if not hasattr(self, "cases"):
+            self.cases_from_project_split()
         # Create data dictionaries for this split
         self.data = self.create_data_dicts(self.cases)
 
     def cases_from_project_split(self):
-            train_cases, valid_cases = self.project.get_train_val_files(
-                self.dataset_params["fold"], self.plan['datasources']
-            )
-            
-            # Store only the cases for this split
-            self.cases = train_cases if self.split == 'train' else valid_cases
-            assert len(self.cases)>0, "There are no cases, aborting!"
+        train_cases, valid_cases = self.project.get_train_val_files(
+            self.dataset_params["fold"], self.plan["datasources"]
+        )
+
+        # Store only the cases for this split
+        self.cases = train_cases if self.split == "train" else valid_cases
+        assert len(self.cases) > 0, "There are no cases, aborting!"
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
@@ -512,14 +569,14 @@ class DataManager(LightningDataModule):
         data = []
 
         for fn in pbar(fnames):
-                fn = Path(fn)
-                img_fn = find_matching_fn(fn.name, images, 'all')
-                lm_fn = find_matching_fn(fn.name, lms_fldr, 'all')
-                indices_fn = inds_fldr / img_fn.name
-                assert img_fn.exists(), "Missing image {}".format(img_fn)
-                assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
-                dici = {"image": img_fn, "lm": lm_fn, "indices": indices_fn}
-                data.append(dici)
+            fn = Path(fn)
+            img_fn = find_matching_fn(fn.name, images, "all")
+            lm_fn = find_matching_fn(fn.name, lms_fldr, "all")
+            indices_fn = inds_fldr / img_fn.name
+            assert img_fn.exists(), "Missing image {}".format(img_fn)
+            assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
+            dici = {"image": img_fn, "lm": lm_fn, "indices": indices_fn}
+            data.append(dici)
         return data
 
     def infer_inds_fldr(self, plan):
@@ -540,28 +597,24 @@ class DataManager(LightningDataModule):
         raise NotImplementedError
 
     def create_dataloader(self):
-            self.dl = DataLoader(
-                self.ds,
-                batch_size=self.effective_batch_size,
-                num_workers=self.effective_batch_size * 2,
-                collate_fn=self.collate_fn,
-                persistent_workers=True,
-                pin_memory=True,
-            )
-
-
+        self.dl = DataLoader(
+            self.ds,
+            batch_size=self.effective_batch_size,
+            num_workers=self.effective_batch_size * 2,
+            collate_fn=self.collate_fn,
+            persistent_workers=True,
+            pin_memory=True,
+        )
 
     def setup(self, stage: str = None) -> None:
         # Create transforms for this split
-        keys = self.keys_tr if self.split == 'train' else self.keys_val
+        keys = self.keys_tr if self.split == "train" else self.keys_val
         self.create_transforms(keys)
         print("Setting up datasets. Training ds type is: ", self.ds_type)
 
         print(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
         self.create_dataset()
         self.create_dataloader()
-    
-
 
     def create_dataset(self):
         """Create a single dataset based on split type"""
@@ -570,48 +623,51 @@ class DataManager(LightningDataModule):
         if not hasattr(self, "data") or len(self.data) == 0:
             print("No data. DS is not being created at this point.")
             return 0
-            
-        if self.split == 'train':
+
+        if self.split == "train":
             self.ds = self._create_train_ds()
         else:
             self.ds = self._create_valid_ds()
 
     def _create_train_ds(self):
-            if is_excel_None(self.ds_type):
-                self.ds = Dataset(data=self.data, transform=self.transforms)
-                print("Vanilla Pytorch Dataset set up.")
-            elif self.ds_type == "cache":
-                self.ds = CacheDataset(
-                    data=self.data,
-                    transform=self.transforms,
-                    cache_rate=self.cache_rate,
-                )
-            elif self.ds_type == "lmdb":
-                self.ds = LMDBDataset(
-                    data=self.data,
-                    transform=self.transforms,
-                    cache_dir=self.cache_folder,
-                    db_name=f"{self.split}_cache",
-                )
-            else:
-
-                raise NotImplementedError
-            return self.ds
-
-    def _create_valid_ds(self):
-            '''
-            valid-ds is a GridPatchDataset to make training runs comparable
-            '''
-            ds1 = PersistentDataset(
+        if is_excel_None(self.ds_type):
+            ds = Dataset(data=self.data, transform=self.transforms)
+            print("Vanilla Pytorch Dataset set up.")
+        elif self.ds_type == "cache":
+            ds = CacheDataset(
+                data=self.data,
+                transform=self.transforms,
+                cache_rate=self.cache_rate,
+            )
+        elif self.ds_type == "lmdb":
+            ds = LMDBDataset(
                 data=self.data,
                 transform=self.transforms,
                 cache_dir=self.cache_folder,
+                db_name=f"{self.split}_cache",
             )
+        else:
 
-            patch_iter = PatchIterd(keys =['image','lm'], patch_size=  self.plan['patch_size'] )
-            ds = GridPatchDataset(data=ds1 ,patch_iter=patch_iter)
-            return ds
+            raise NotImplementedError
+        return ds
 
+    def _create_valid_ds(self):
+        """
+        valid-ds is a GridPatchDataset to make training runs comparable
+        """
+        ds = PersistentDataset(
+            data=self.data,
+            transform=self.transforms,
+            cache_dir=self.cache_folder,
+        )
+        return ds
+
+        # self.plan['patch_size']= self.plan['patch_size'][:2]
+        #
+        # tr()
+        # patch_iter = PatchIterd(keys =['image','lm'], patch_size=  self.plan['patch_size'] )
+        # ds = GridPatchDataset(data=ds1 ,patch_iter=patch_iter)
+        # return ds
 
     @property
     def src_dims(self):
@@ -623,14 +679,18 @@ class DataManager(LightningDataModule):
 
     @property
     def cache_folder(self):
-        parent_folder = Path(COMMON_PATHS['cache_folder'])/(self.project.project_title)
-        return parent_folder/(self.data_folder.name)
+        parent_folder = Path(COMMON_PATHS["cache_folder"]) / (
+            self.project.project_title
+        )
+        return parent_folder / (self.data_folder.name)
 
     @classmethod
-    def from_folder(cls, data_folder: str, split: str, project, config: dict, batch_size=8, **kwargs):
+    def from_folder(
+        cls, data_folder: str, split: str, project, config: dict, batch_size=8, **kwargs
+    ):
         """
         Create a DataManager instance from a folder containing images and labels.
-        
+
         Args:
             folder_path (str): Path to folder containing 'images' and 'lms' subfolders
             split (str): Either 'train' or 'valid'
@@ -638,27 +698,27 @@ class DataManager(LightningDataModule):
             config (dict): Configuration dictionary
             batch_size (int): Batch size for dataloaders
             **kwargs: Additional arguments passed to DataManager constructor
-            
+
         Returns:
             DataManager: Instance initialized with data from the specified folder
         Note: After this do not call setup() and instead jump straight to prepare_data()
         """
         data_folder = Path(data_folder)
         assert data_folder.exists(), f"Folder {data_folder} does not exist"
-        assert split in ['train', 'valid'], "Split must be either 'train' or 'valid'"
-        
+        assert split in ["train", "valid"], "Split must be either 'train' or 'valid'"
+
         # Create instance
         instance = cls(project=project, config=config, batch_size=batch_size, **kwargs)
-        
+
         # Override data folder
         instance.data_folder = data_folder
-        
+
         # Get files from images and lms folders
         images_folder = data_folder / "images"
         lms_folder = data_folder / "lms"
         assert images_folder.exists(), f"Images folder {images_folder} does not exist"
         assert lms_folder.exists(), f"Labels folder {lms_folder} does not exist"
-        
+
         # Create data dictionaries
         image_files = sorted(list(images_folder.glob("*.pt")))
         cls.cases = [d.name for d in image_files]
@@ -667,38 +727,33 @@ class DataManager(LightningDataModule):
         #     instance.train_cases = cases
         # else:
         #     instance.valid_cases =cases
-            
+
         return instance
 
+
 class DataManagerSource(DataManager):
-    def __init__(
-        self,
-        project,
-        config: dict,
-        batch_size=8,
-        **kwargs
-    ):
-        super().__init__(
-            project,
-            config,
-            batch_size,
-            **kwargs
-        )
+    def __init__(self, project, config: dict, batch_size=8, **kwargs):
+        super().__init__(project, config, batch_size, **kwargs)
 
     def set_collate_fn(self):
-        if self.split=="train":
             self.collate_fn = source_collated
-        else:
-            self.collate_fn = grid_collated
 
     def __str__(self):
-        return 'DataManagerSource instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items()])
+        return "DataManagerSource instance with parameters: " + ", ".join(
+            [f"{k}={v}" for k, v in vars(self).items()]
+        )
 
     def __repr__(self):
-        return f'DataManagerSource(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
+        return (
+            f"DataManagerSource("
+            + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
+            + ")"
+        )
 
     def derive_data_folder(self):
-        assert self.plan["mode"] == "source", f"Dataset mode must be 'source' for DataManagerSource, got '{self.plan['mode']}'"
+        assert (
+            self.plan["mode"] == "source"
+        ), f"Dataset mode must be 'source' for DataManagerSource, got '{self.plan['mode']}'"
         prefix = "spc"
         spacing = self.plan["spacing"]
         parent_folder = self.project.fixed_spacing_folder
@@ -710,47 +765,41 @@ class DataManagerSource(DataManager):
     #     self.data_train = self.create_data_dicts(self.train_cases)
     #     self.data_valid = self.create_data_dicts(self.valid_cases)
 
-    def create_transforms(self,keys='all'):
+    def create_transforms(self, keys="all"):
         super().create_transforms(keys)
+
 
 class DataManagerWhole(DataManagerSource):
 
-    def __init__(
-        self,
-        project,
-        config: dict,
-        batch_size=8,
-        **kwargs
-    ):
-        super().__init__(
-            project,
-            config,
-            batch_size,
-            **kwargs
-        )
+    def __init__(self, project, config: dict, batch_size=8, **kwargs):
+        super().__init__(project, config, batch_size, **kwargs)
         self.keys_tr = "L,E,F1,F2,Affine,Resize,N,IntensityTfms"
         self.keys_val = "L,E,Resize,N"
+
     def set_collate_fn(self):
-        if self.split=="train":
             self.collate_fn = whole_collated
-        else:
-            self.collate_fn = grid_collated
 
     def __str__(self):
-        return 'DataManagerWhole instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items()])
+        return "DataManagerWhole instance with parameters: " + ", ".join(
+            [f"{k}={v}" for k, v in vars(self).items()]
+        )
 
     def __repr__(self):
-        return f'DataManagerWhole(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
+        return (
+            f"DataManagerWhole("
+            + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
+            + ")"
+        )
 
     def derive_data_folder(self):
-        assert self.plan["mode"] == "whole", f"Dataset mode must be 'whole' for DataManagerWhole, got '{self.plan['mode']}'"
+        assert (
+            self.plan["mode"] == "whole"
+        ), f"Dataset mode must be 'whole' for DataManagerWhole, got '{self.plan['mode']}'"
         prefix = "sze"
         spatial_size = self.plan["patch_size"]
         parent_folder = self.project.fixed_size_folder
         data_folder = folder_name_from_list(prefix, parent_folder, spatial_size)
         return data_folder
-
-
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
@@ -763,17 +812,20 @@ class DataManagerWhole(DataManagerSource):
         # for fn in fnames[400:432]:
         for fn in pbar(fnames):
             fn = Path(fn)
-            img_fn = find_matching_fn(fn.name, images, 'all')
-            lm_fn = find_matching_fn(fn.name, lms_fldr, 'all')
+            img_fn = find_matching_fn(fn.name, images, "all")
+            lm_fn = find_matching_fn(fn.name, lms_fldr, "all")
             assert img_fn.exists(), "Missing image {}".format(img_fn)
             assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
             dici = {"image": img_fn, "lm": lm_fn}
             data.append(dici)
         return data
 
+
 class DataManagerLBD(DataManagerSource):
     def derive_data_folder(self, dataset_mode=None):
-        assert self.plan["mode"] == "lbd", f"Dataset mode must be 'lbd' for DataManagerLBD, got '{self.plan['mode']}'"
+        assert (
+            self.plan["mode"] == "lbd"
+        ), f"Dataset mode must be 'lbd' for DataManagerLBD, got '{self.plan['mode']}'"
         spacing = ast_literal_eval(self.plan["spacing"])
         parent_folder = self.project.lbd_folder
         folder_suffix = "plan" + str(self.dataset_params[f"plan_{self.split}"])
@@ -787,19 +839,21 @@ class DataManagerLBD(DataManagerSource):
             data_folder
         )
         return data_folder
+
     def __repr__(self):
-        return (f"DataManagerLBD(plan={self.plan}, "
-                f"dataset_params={self.dataset_params}, "
-                f"lbd_folder={self.project.lbd_folder})")
+        return (
+            f"DataManagerLBD(plan={self.plan}, "
+            f"dataset_params={self.dataset_params}, "
+            f"lbd_folder={self.project.lbd_folder})"
+        )
 
     def __str__(self):
-        return ("LBD Data Manager with plan {} and dataset parameters: {} "
-                "(using LBD folder: {})".format(
-                    self.plan,
-                    self.dataset_params,
-                    self.project.lbd_folder
-                ))
-
+        return (
+            "LBD Data Manager with plan {} and dataset parameters: {} "
+            "(using LBD folder: {})".format(
+                self.plan, self.dataset_params, self.project.lbd_folder
+            )
+        )
 
     # def prepare_data(self):
     #     super().prepare_data()
@@ -824,18 +878,19 @@ class DataManagerWID(DataManagerLBD):
         return data_folder
 
     def __repr__(self):
-        return (f"DataManagerPBD(plan={self.plan}, "
-                f"dataset_params={self.dataset_params}, "
-                f"pbd_folder={self.project.pbd_folder})")
+        return (
+            f"DataManagerPBD(plan={self.plan}, "
+            f"dataset_params={self.dataset_params}, "
+            f"pbd_folder={self.project.pbd_folder})"
+        )
 
     def __str__(self):
-        return ("Patient-bound  Data Manager (PBD) with plan {} and dataset parameters: {} "
-                "(using PBD folder: {})".format(
-                    self.plan,
-                    self.dataset_params,
-                    self.project.pbd_folder
-                ))
-
+        return (
+            "Patient-bound  Data Manager (PBD) with plan {} and dataset parameters: {} "
+            "(using PBD folder: {})".format(
+                self.plan, self.dataset_params, self.project.pbd_folder
+            )
+        )
 
 
 class DataManagerShort(DataManager):
@@ -847,22 +902,11 @@ class DataManagerShort(DataManager):
         return super().train_dataloader(num_workers, **kwargs)
 
 
-# CODE: in the below class move Rtr after Affine and get rid of Re to see if it affects training speed / model accuracy
+
 
 class DataManagerPatch(DataManagerSource):
-    def __init__(
-        self,
-        project,
-        config: dict,
-        batch_size=8,
-        **kwargs
-    ):
-        super().__init__(
-            project,
-            config,
-            batch_size,
-            **kwargs
-        )
+    def __init__(self, project, config: dict, batch_size=8, **kwargs):
+        super().__init__(project, config, batch_size, **kwargs)
 
     def prepare_data(self):
         """Override prepare_data to ensure proper sequence"""
@@ -871,7 +915,7 @@ class DataManagerPatch(DataManagerSource):
         self.fg_bg_prior = fg_in_bboxes(self.bboxes)
 
         self.train_cases, self.valid_cases = self.project.get_train_val_files(
-            self.dataset_params["fold"],self.plan_train['datasources']
+            self.dataset_params["fold"], self.plan_train["datasources"]
         )
         print("Creating train data dicts from BBoxes")
         self.data_train = self.create_data_dicts(self.train_cases)
@@ -879,10 +923,16 @@ class DataManagerPatch(DataManagerSource):
         self.data_valid = self.create_data_dicts(self.valid_cases)
 
     def __str__(self):
-        return 'DataManagerPatch instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items() if k not in ['bboxes', 'transforms_dict']])
+        return "DataManagerPatch instance with parameters: " + ", ".join(
+            [
+                f"{k}={v}"
+                for k, v in vars(self).items()
+                if k not in ["bboxes", "transforms_dict"]
+            ]
+        )
 
     def __repr__(self):
-        return f'DataManagerPatch(project={self.project}, config={self.config}, batch_size={self.batch_size}, fg_bg_prior={self.fg_bg_prior})'
+        return f"DataManagerPatch(project={self.project}, config={self.config}, batch_size={self.batch_size}, fg_bg_prior={self.fg_bg_prior})"
 
     def get_patch_files(self, bboxes, case_id: str):
         cids = np.array([bb["case_id"] for bb in bboxes])
@@ -923,6 +973,7 @@ class DataManagerPatch(DataManagerSource):
         else:
             self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,IntensityTfms"
         self.keys_val = "RP,L,Ld,E,N"
+
     def load_bboxes(self):
         bbox_fn = self.data_folder / "bboxes_info"
         self.bboxes = load_dict(bbox_fn)
@@ -960,18 +1011,20 @@ class DataManagerPatch(DataManagerSource):
         fnames = self.train_cases
         patches = []
         for fname in pbar(fnames):
-            cid = info_from_filename(fname,True)['case_id']
+            cid = info_from_filename(fname, True)["case_id"]
             dici = {"case_id": fname}
             patch_fns = self.get_patch_files(self.bboxes, cid)
             dici.update(patch_fns)
             patches.append(dici)
         return patches
 
-    def create_transforms(self, keys='all'):
+    def create_transforms(self, keys="all"):
         super().create_transforms(keys)
 
     def derive_data_folder(self):
-        assert self.plan_train["mode"] == "patch", f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan_train['mode']}'"
+        assert (
+            self.plan_train["mode"] == "patch"
+        ), f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan_train['mode']}'"
         parent_folder = self.project.patches_folder
         plan_name = "plan" + str(self.dataset_params["plan"])
         source_plan_name = self.plan_train["source_plan"]
@@ -980,7 +1033,6 @@ class DataManagerPatch(DataManagerSource):
         subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
         patch_size = ast_literal_eval(self.plan_train["patch_size"])
         return folder_name_from_list("dim", subfldr1, patch_size, plan_name)
-
 
     def setup(self, stage: str = None):
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
@@ -994,44 +1046,53 @@ class DataManagerPatch(DataManagerSource):
 
 
 class DataManagerBaseline(DataManagerLBD):
-    '''
+    """
     Small dataset of size =batchsize comprising a single batch. No augmentations. Used to get a baseline
     It has no training augmentations. Whether the flag is True or False doesnt matter.
     Note: It inherits from LBD dataset.
-    '''
-    def __init__(self, project,  config: dict,   batch_size=8, **kwargs):
-        super().__init__(project,  config, batch_size,**kwargs)
+    """
+
+    def __init__(self, project, config: dict, batch_size=8, **kwargs):
+        super().__init__(project, config, batch_size, **kwargs)
         self.collate_fn = whole_collated
 
-
     def __str__(self):
-        return 'DataManagerBaseline instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items()])
+        return "DataManagerBaseline instance with parameters: " + ", ".join(
+            [f"{k}={v}" for k, v in vars(self).items()]
+        )
 
     def __repr__(self):
-        return f'DataManagerBaseline(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
+        return (
+            f"DataManagerBaseline("
+            + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
+            + ")"
+        )
 
     def set_effective_batch_size(self):
         self.effective_batch_size = self.batch_size
 
     def set_tfm_keys(self):
         self.keys_val = "L,Ld,E,Re,N"
-        self.keys_tr=self.keys_val
-
+        self.keys_tr = self.keys_val
 
     def derive_data_folder(self, dataset_mode=None):
-        assert self.plan_train["mode"] == "baseline", f"Dataset mode must be 'baseline' for DataManagerBaseline, got '{self.plan_train['mode']}'"
+        assert (
+            self.plan_train["mode"] == "baseline"
+        ), f"Dataset mode must be 'baseline' for DataManagerBaseline, got '{self.plan_train['mode']}'"
         # return data_folder
         source_plan_name = self.plan_train["source_plan"]
         source_plan = self.config[source_plan_name]
 
-        source_ds_type =  source_plan['mode']
-        if source_ds_type == 'lbd':
+        source_ds_type = source_plan["mode"]
+        if source_ds_type == "lbd":
             parent_folder = self.project.lbd_folder
         else:
             raise NotImplemented
-        spacing = ast_literal_eval(source_plan['spacing'])
+        spacing = ast_literal_eval(source_plan["spacing"])
 
-        data_folder= folder_name_from_list("spc", parent_folder, spacing, source_plan_name)
+        data_folder = folder_name_from_list(
+            "spc", parent_folder, spacing, source_plan_name
+        )
         assert data_folder.exists(), "Dataset folder {} does not exists".format(
             data_folder
         )
@@ -1039,17 +1100,48 @@ class DataManagerBaseline(DataManagerLBD):
 
     def prepare_data(self):
         super().prepare_data()
-        self.data_train= self.data_train[:self.batch_size]
-        self.data_valid= self.data_valid[:self.batch_size]
+        self.data_train = self.data_train[: self.batch_size]
+        self.data_valid = self.data_valid[: self.batch_size]
 
     @property
     def cache_folder(self):
-        parent_folder = Path(COMMON_PATHS['cache_folder'])/(self.project.project_title)
-        return parent_folder/(self.data_folder.name+"_baseline")
+        parent_folder = Path(COMMON_PATHS["cache_folder"]) / (
+            self.project.project_title
+        )
+        return parent_folder / (self.data_folder.name + "_baseline")
+
+
+class DataManagerDual2(DataManagerDual):
+    """
+    A higher-level DataManager that manages separate training and validation DataManagers
+    """
+
+    def __init__(
+        self,
+        project_title,
+        config: dict,
+        batch_size=8,
+        cache_rate=0.0,
+        ds_type=None,
+        save_hyperparameters=True,
+        keys_tr="L,Ld,E,Rtr,Re,Ex,N,IntensityTfms",
+        keys_val="L,Ld,E,Rva,Re,Ex, N",
+    ):
+        super().__init__(
+            project_title=project_title,
+            config=config,
+            batch_size=batch_size,
+            cache_rate=cache_rate,
+            ds_type=ds_type,
+            save_hyperparameters=save_hyperparameters,
+            keys_val=keys_val,
+            keys_tr=keys_tr,
+        )
+
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     import torch
 
@@ -1058,10 +1150,8 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-
     project_title = "litsmc"
     proj_litsmc = Project(project_title=project_title)
-
 
     config_litsmc = ConfigMaker(
         proj_litsmc, raytune=False, configuration_filename=None
@@ -1083,70 +1173,27 @@ if __name__ == "__main__":
 
 
 # %%
-#SECTION:-------------------- LBD--------------------------------------------------------------------------------------
-    batch_size = 2
-    ds_type="lmdb"
-    D = DataManagerDual(
+
+
+    batch_size = 8
+    ds_type = "lmdb"
+    D = DataManagerDual2(
         project_title=proj_litsmc.project_title,
         config=config_litsmc,
         batch_size=batch_size,
-        ds_type=ds_type
+        ds_type=ds_type,
     )
 
-# %%
+# D.train_manager.plan['patch_size']=[128,128]
+# D.valid_manager.plan['patch_size']
+
     D.prepare_data()
     D.setup()
-    tm = D.valid_manager
-    tm = D.train_manager
-    tm.transforms_dict
+    ds = D.train_ds
+    dici = ds[0]
+    dici[0]['image'].shape
+    dici[0]['lm'].shape
 # %%
-    ds =tm.ds
-    dat= ds[0]
-    dici = ds.data[0]
-    tm.tfms_list
-
-
-# %%
-
-# %%
-    D.train_ds[0]
-    dl =D.train_dataloader()
-# %%
-
-    iteri = iter(dl)
-    while iteri:
-        batch = next(iteri)
-        print(batch['image'].shape)
-
-# %%
-
-    n=0
-    im = batch['image'][n][0]
-    ImageMaskViewer([im, batch['lm'][n][0]])
-# %%
-    ds1 = PersistentDataset(
-        data=D.valid_manager.data,
-        transform=D.valid_manager.transforms,
-        cache_dir=D.valid_manager.cache_folder,
-    )
-    dici = ds1[0]
-# %%
-
-# %%
-#SECTION:-------------------- FromFolder--------------------------------------------------------------------------------------
-
-
-# SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR>
-# %%
-    # Test DataManagerWhole with DataManagerDual
-    D = DataManagerDual(
-        project=proj_tot,
-        config=config_tot,
-        batch_size=4,
-        ds_type=None
-    )
-    D.prepare_data()
-    D.setup()
     
     # Now use train_manager or valid_manager to access the data
     dl = D.train_dataloader()
@@ -1154,211 +1201,5 @@ if __name__ == "__main__":
     
     iteri = iter(dl)
     b = next(iteri)
-    b = D.train_ds[0]
-    im = b['image']
-    lm = b['lm']
-    ImageMaskViewer([im[0], lm[0]])
 
-
-# %%
-    D = DataManagerLBD.from_folder(data_folder="/s/xnat_shadow/crc/tensors/lbd_plan3",split='valid',project=proj_litsmc,config=config_litsmc)
-# %%
-
-
-#SECTION:-------------------- DataManagerPlain--------------------------------------------------------------------------------------
-# %%
-    batch_size = 2
-    D = DataManagerDual(
-        project=proj_tot,
-        config=config_tot,
-        batch_size=batch_size,
-        ds_type=None
-    )
-    # D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
-# %%
-    D.prepare_data()
-    D.setup()
-    b = D.train_ds[0]
-    b['image'].shape
-
-
-
-
-# %%
-#    b = D.valid_ds[1]
-#    b['image'].shape
-# %%
-#
-#    dl = D.train_dataloader()
-# %%
-#     iteri = iter(dl)
-#     b = next(iteri)
-#     im = b['image']
-    lm = b['lm']
-# %
-# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR> <CR>
-
-# %%
-    batch_size = 2
-    D = DataManagerDual(
-        project=proj_tot,
-        config=config_tot,
-        batch_size=batch_size,
-        ds_type=None
-    )
-    D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
-# %%
-# %%
-    D.prepare_data()
-
-    D.setup()
-    D.data_folder
-    b = D.train_ds[0]
-
-    dl = D.train_dataloader()
-    iteri = iter(dl)
-    b = next(iteri)
-    im = b['image']
-    lm = b['lm']
-
-# %%
-# %%
-# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
-
-    proj_tot=proj_litsmc
-    config_tot=config_litsmc
-    batch_size = 2
-    D = DataManagerDual(
-        project=proj_tot,
-        config=config_tot,
-        batch_size=batch_size,
-        ds_type=None
-    )
-
-# %%
-    D.prepare_data()
-    D.setup()
-# %%
-    dl = D.train_dataloader()
-    iteri = iter(dl)
-    b = next(iteri)
-    im = b['image']
-    lm = b['lm']
-    ImageMaskViewer([im[0,0],lm[0,0]])
-# %%
-    for i, dd in enumerate(D.train_ds):
-        print(i)
-
-# %%
-    cids = D.train_cids
-    patches_per_id = []
-
-# %%
-    dici = D.data_train[0]
-    D.transforms_dict.keys()
-    D.transforms_dict[""](dici)
-    dici = RD(dici)
-    D.tfms_train
-    dici = DP(dici)
-# %%
-    RD = RandomPatch()
-    dici2 = RD(dici)
-    D.setup()
-# %%
-
-    cid = D.train_cids[0]
-
-    bboxes = D.get_patch_files(D.bboxes, cid)
-    bboxes.append(D.get_label_info(bboxes))
-    D.bboxes_per_id.append(bboxes)
-# %%
-# %%
-#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
-
-    D.prepare_data()
-    D.setup()
-    tm = D.train_manager
-    tm.transforms_dict
-# %%
-    ds =tm.ds
-    dici = ds.data[0]
-    tm.tfms_list
-
-# %%
-# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
-
-# %%
-
-    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-    Rtr = RandCropByPosNegLabeld(
-        keys=["image", "lm"],
-        label_key="lm",
-        image_key="image",
-        fg_indices_key="lm_fg_indices",
-        bg_indices_key="lm_bg_indices",
-        image_threshold=-2600,
-        spatial_size=D.src_dims,
-        pos=1,
-        neg=1,
-        num_samples=D.plan["samples_per_file"],
-        lazy=True,
-        allow_smaller=False,
-    )
-    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
-
-    Rva = RandCropByPosNegLabeld(
-        keys=["image", "lm"],
-        label_key="lm",
-        image_key="image",
-        image_threshold=-2600,
-        fg_indices_key="lm_fg_indices",
-        bg_indices_key="lm_bg_indices",
-        spatial_size=D.dataset_params["patch_size"],
-        pos=1,
-        neg=1,
-        num_samples=D.plan["samples_per_file"],
-        lazy=True,
-        allow_smaller=True,
-    )
-    Re = ResizeWithPadOrCropd(
-        keys=["image", "lm"],
-        spatial_size=D.dataset_params["patch_size"],
-        lazy=True,
-    )
-
-    L = LoadTorchd(keys=["image", "lm"])
-# %%
-    D.prepare_data()
-    D.setup(None)
-# %%
-    D.valid_ds[7]
-
-    keys_val = "L,Ld,E,Rva,Re,N"
-    dici = D.valid_ds.data[7]
-    dici = L(dici)
-    dici = Ld(dici)
-    dici = E(dici)
-    dici = Rva(dici)
-    dici = Re(dici)
-
-# %%
-    dl = D.train_dataloader()
-    iteri = iter(dl)
-    aa = D.Train_ds[0]
-    b = next(iteri)
-    print(b["image"].shape)
-# %%
-    im_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_300/images/nodes_20_20190611_Neck1p0I30f3_thick.pt"
-    label_fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_300/masks/nodes_20_20190611_Neck1p0I30f3_thick.pt"
-    dici = {"image": im_fn, "lm": label_fn}
-    D.setup()
-# %%
-    ind = 1
-    img = b["image"][ind][0]
-    lab = b["lm"][ind][0]
-    ImageMaskViewer([img, lab])
-# %%
-    for dadd in pbar(dd):
-        for val in dadd.values():
-            assert val.exists(), "{} not existe".format(val)
 # %%

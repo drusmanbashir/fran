@@ -1,43 +1,21 @@
 # %%
 from pathlib import Path
+
 import ipdb
 
 tr = ipdb.set_trace
-
-from fran.managers.project import DS
-from fran.transforms.intensitytransforms import NormaliseClipd
 
 import numpy as np
 import pandas as pd
 import torch
 from fastcore.all import store_attr
 from fastcore.foundation import GetAttr
-from monai.data.dataloader import DataLoader
-from monai.transforms.compose import Compose
-from monai.transforms.spatial.dictionary import Spacingd
-from monai.transforms.utility.dictionary import (
-    EnsureChannelFirstd,
-    FgBgToIndicesd,
-    ToDeviced,
-)
-
-from fran.data.collate import dict_list_collated
-from fran.preprocessing.dataset import ResamplerDataset
-from fran.preprocessing import bboxes_function_version
-from fran.transforms.imageio import LoadSITKd
-from fran.transforms.inferencetransforms import ToCPUd
-from fran.transforms.misc_transforms import (
-    ChangeDtyped,
-    DictToMeta,
-    FgBgToIndicesd2,
-    LabelRemapd,
-    Recastd,
-)
-from fran.transforms.spatialtransforms import ResizeToTensord
-from fran.utils.common import *
-from utilz.fileio import load_dict, maybe_makedirs, save_dict, save_json
-from utilz.helpers import create_df_from_folder, folder_name_from_list, multiprocess_multiarg, pbar
+from utilz.fileio import maybe_makedirs, save_dict, save_json
+from utilz.helpers import create_df_from_folder, multiprocess_multiarg, pbar
 from utilz.string import info_from_filename, strip_extension
+
+from fran.managers.project import DS
+from fran.preprocessing import bboxes_function_version
 
 
 def generate_bboxes_from_lms_folder(
@@ -59,7 +37,7 @@ def generate_bboxes_from_lms_folder(
 
 
 def get_tensorfile_stats(filename):
-    tnsr = torch.load(filename,weights_only=False)
+    tnsr = torch.load(filename, weights_only=False)
     return get_tensor_stats(tnsr)
 
 
@@ -71,6 +49,8 @@ def get_tensor_stats(tnsr):
         "shape": [*tnsr.shape],
     }
     return dic
+
+
 class Preprocessor(GetAttr):
     _default = "project"
 
@@ -82,26 +62,26 @@ class Preprocessor(GetAttr):
         output_folder=None,
     ) -> None:
         store_attr("project,spacing,data_folder")
-        self.data_folder=data_folder
-        self.set_input_output_folders(data_folder,output_folder)
+        self.data_folder = data_folder
+        self.set_input_output_folders(data_folder, output_folder)
         self.create_data_df()
 
     def create_data_df(self):
         if self.data_folder is not None:
             self.df = create_df_from_folder(self.data_folder)
-            extract_ds = lambda x: DS.resolve_ds_name(x.split('_')[0])
+            extract_ds = lambda x: DS.resolve_ds_name(x.split("_")[0])
             # self.df = pd.merge(self.df,self.project.df[['case_id','fold','ds']],how="left",on="case_id")
             self.df["ds"] = self.df["case_id"].apply(extract_ds)
-            self.case_ids  = self.df['case_id'].tolist()
+            self.case_ids = self.df["case_id"].tolist()
 
         else:
             self.df = self.project.df
-            self.case_ids =self.project.case_ids
+            self.case_ids = self.project.case_ids
         print("Total number of cases: ", len(self.df))
 
+    def set_input_output_folders(self, data_folder, output_folder):
+        raise NotImplementedError
 
-    def set_input_output_folders(self,data_folder,output_folder): raise NotImplementedError
-            
     def save_pt(self, tnsr, subfolder, contiguous=True, suffix: str = None):
         if contiguous == True:
             tnsr = tnsr.contiguous()
@@ -123,6 +103,19 @@ class Preprocessor(GetAttr):
         ]
         self.existing_case_ids = set(self.existing_case_ids)
         print("Case ids processed in a previous session: ", len(self.existing_case_ids))
+
+
+    def remove_completed_cases(self):
+        # remove cases only if bboxes have been created
+        existing_fnames = [fn.name for fn in self.existing_files]
+        self.df = self.df.copy()
+        for i in range(len(self.df)):
+            row = self.df.loc[i]
+            df_fname = Path(row.lm)
+            df_fname = strip_extension(df_fname.name) + ".pt"
+            if df_fname in existing_fnames:
+                self.df.drop(i, inplace=True)
+
     def save_indices(self, indices_dict, subfolder, suffix: str = None):
         fn = Path(indices_dict["meta"]["filename_or_obj"])
         fn_name = strip_extension(fn.name)
@@ -149,9 +142,15 @@ class Preprocessor(GetAttr):
     def create_info_dict(self):
         resampled_dataset_properties = dict()
         resampled_dataset_properties["dataset_spacing"] = self.spacing
-        resampled_dataset_properties["dataset_max"] = self.results_df['max'].max().item()
-        resampled_dataset_properties["dataset_min"] = self.results_df['min'].min().item()
-        resampled_dataset_properties["dataset_median"] = np.median(self.results_df['median'])
+        resampled_dataset_properties["dataset_max"] = (
+            self.results_df["max"].max().item()
+        )
+        resampled_dataset_properties["dataset_min"] = (
+            self.results_df["min"].min().item()
+        )
+        resampled_dataset_properties["dataset_median"] = np.median(
+            self.results_df["median"]
+        )
         return resampled_dataset_properties
 
     def process(
@@ -173,7 +172,11 @@ class Preprocessor(GetAttr):
             self._store_dataset_properties()
             generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
         else:
-            print("self.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(ts,ts[-1]))
+            print(
+                "self.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(
+                    ts, ts[-1]
+                )
+            )
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
@@ -226,8 +229,6 @@ class Preprocessor(GetAttr):
         self.results = self.results[["max", "min", "median"]]
         self._store_dataset_properties()
 
-
-
     def _store_dataset_properties(self):
         resampled_dataset_properties = self.create_properties_dict()
 
@@ -248,8 +249,12 @@ class Preprocessor(GetAttr):
             self.shapes, 0
         ).tolist()
         resampled_dataset_properties["dataset_spacing"] = self.spacing
-        resampled_dataset_properties["dataset_max"] = self.results_df["max"].max().item()
-        resampled_dataset_properties["dataset_min"] = self.results_df["min"].min().item()
+        resampled_dataset_properties["dataset_max"] = (
+            self.results_df["max"].max().item()
+        )
+        resampled_dataset_properties["dataset_min"] = (
+            self.results_df["min"].min().item()
+        )
         resampled_dataset_properties["dataset_median"] = np.median(
             self.results_df["median"]
         ).item()
@@ -269,11 +274,14 @@ class Preprocessor(GetAttr):
         indices_subfolder = self.output_folder / ("indices")
         return indices_subfolder
 
+
 # %%
 
-if __name__ == '__main__':
-    bboxes_fldr = Path('/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150')
-    lms = bboxes_fldr / 'lms'
-    generate_bboxes_from_lms_folder(lms,debug=False)
+if __name__ == "__main__":
+    bboxes_fldr = Path(
+        "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150"
+    )
+    lms = bboxes_fldr / "lms"
+    generate_bboxes_from_lms_folder(lms, debug=False)
 
 # %%

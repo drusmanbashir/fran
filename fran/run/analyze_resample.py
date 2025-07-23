@@ -14,7 +14,7 @@ from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from utilz.fileio import *
 from utilz.helpers import *
-
+#CODE: implement database such that instead of creating a new copy of lbd / patch etc for every plan, it checks if a similar plan with similar specs exists already, and reuses it For example, patch_size may change in a new plan with LBD mode, but that doesnt needaa new copy of LBD
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
 
@@ -364,12 +364,12 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_known_args()[0]
-    args.project_title = "totalseg"
 
     # args.num_processes = 1
     args.debug = True
-    args.plan = "plan3"
+    args.plan = "plan9"
 
+    args.project_title = "litsmc"
     P = Project(project_title=args.project_title)
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
@@ -400,7 +400,6 @@ if __name__ == "__main__":
             I.generate_lbd_dataset(overwrite=False)
         else:
             I.generate_TSlabelboundeddataset()
-# %%
 # %%
 
 # %%
@@ -447,6 +446,15 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- Troubleshooting-------------------------------------------------------------------------------------- <CR>
 
+    overwrite=False
+    I.L = LabelBoundedDataGenerator(
+        project=I.project,
+        plan=I.plan,
+        folder_suffix=I.plan_name,
+    )
+# %%
+    I.L.setup(overwrite=overwrite)
+    I.L.process()
 # %%
     overwrite = False
     L = LabelBoundedDataGenerator(

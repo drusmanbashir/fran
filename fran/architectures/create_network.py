@@ -267,7 +267,7 @@ if __name__ == "__main__":
     x = x.to("cuda")
     net2.to("cuda")
     out = net2(x)
-    # %%
+# %%
     x = torch.rand(1, 1, 128, 128, 96)
     x = x.to("cuda")
     print(x.shape)
@@ -282,13 +282,13 @@ if __name__ == "__main__":
             x = net2.td[d](x)
             print(x.shape)
         print("--" * 20)
-    # %%
+# %%
 
     x = net2.conv_blocks_context[-1](x)
     print(x.shape)
 
     net2.conv_blocks_context.parameters()
-    # %%
+# %%
     for u in range(len(net2.tu)):
         x = net2.tu[u](x)
         print(x.shape)
@@ -305,7 +305,7 @@ if __name__ == "__main__":
         print("==" * 20)
         seg_outputs.append(z)
 
-    # %%
+# %%
     outs = tuple(
         [seg_outputs[-1]]
         + [
@@ -313,20 +313,20 @@ if __name__ == "__main__":
             for i, j in zip(list(net2.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])
         ]
     )
-    # %%
+# %%
     for out in outs:
         print(out.shape)
         print("**" * 20)
-    # %%
-    # %%
-    # SECTION:-------------------- Model parts--------------------------------------------------------------------------------------
+# %%
+# %%
+# SECTION:-------------------- Model parts-------------------------------------------------------------------------------------- <CR>
     # NOTE: TD
 
     cc = net2.td.children()
     list(cc)
 
     # summ = summary(net, input_size=tuple([1,1]+patch_size),col_names=["input_size","output_size","kernel_size"],depth=4, verbose=0,device='cuda')
-    # %%
+# %%
     summ2 = summary(
         net2,
         input_size=tuple([1, 1] + patch_size),
@@ -335,5 +335,5 @@ if __name__ == "__main__":
         verbose=0,
         device="cuda",
     )
-    # %%
+# %%
     print(summ2)

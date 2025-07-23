@@ -135,6 +135,7 @@ def grid_collated(batch):
     lms_out.meta['filename_or_obj']=fns_labels
     output = {"image": imgs_out , "lm": lms_out}
     return output
+
 def source_collated(batch):
 
     imgs = []

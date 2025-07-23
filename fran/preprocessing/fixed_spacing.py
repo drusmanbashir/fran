@@ -103,17 +103,6 @@ class ResampleDatasetniftiToTorch(Preprocessor):
             bboxes = None
         return bboxes
 
-    def remove_completed_cases(self):
-        # remove cases only if bboxes have been created
-        existing_fnames = [fn.name for fn in self.existing_files]
-        self.df = self.df.copy()
-        for i in range(len(self.df)):
-            row = self.df.loc[i]
-            df_fname = Path(row.lm)
-            df_fname = strip_extension(df_fname.name) + ".pt"
-            if df_fname in existing_fnames:
-                self.df.drop(i, inplace=True)
-
     def generate_bboxes_from_masks_folder(
         self, bg_label=0, debug=False, num_processes=8
     ):

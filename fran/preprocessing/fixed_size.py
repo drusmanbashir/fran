@@ -1,5 +1,4 @@
 # %%
-from configparser import ConfigParser
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms import Compose
 from monai.transforms.spatial.dictionary import Resized
