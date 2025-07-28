@@ -1,4 +1,67 @@
 # %%
+
+import torch
+from pathlib import Path
+import matplotlib.pyplot as plt
+import numpy as np
+from torch.nn.modules import CrossEntropyLoss
+
+imgfn = "/s/tmp/CSA-Net/CSANet/image_batch.pt"
+labfn = "/s/tmp/CSA-Net/CSANet/label_batch.pt"
+outputfn = "/s/tmp/CSA-Net/CSANet/outputs.pt"
+img = torch.load(imgfn, weights_only=False)
+output = torch.load(outputfn, weights_only=False)
+lab = torch.load(labfn, weights_only=False)
+
+print(f"Image shape: {img.shape}")
+print(f"Output shape: {output.shape}")
+print(f"Label shape: {lab.shape}")
+
+# %%
+# Visualize one sample (first sample, index 0)
+sample_idx = 0
+
+# Get one sample from each tensor
+img_sample = img[sample_idx, 0]  # Shape: (224, 224) - single channel
+output_sample = output[sample_idx]  # Shape: (5, 224, 224) - all 5 channels
+lab_sample = lab[sample_idx]  # Shape: (224, 224)
+
+# Create a grid: 1 image + 5 output channels + 1 label = 7 subplots
+fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+fig.suptitle(f"Sample {sample_idx}: Image, Output Channels, and Label", fontsize=16)
+
+# Flatten axes for easier indexing
+axes = axes.flatten()
+
+# Plot original image
+axes[0].imshow(img_sample.cpu().numpy(), cmap="gray")
+axes[0].set_title("Input Image")
+axes[0].axis("off")
+
+# Plot all 5 output channels
+for i in range(5):
+    axes[i + 1].imshow(output_sample[i].cpu().numpy(), cmap="viridis")
+    axes[i + 1].set_title(f"Output Channel {i}")
+    axes[i + 1].axis("off")
+
+# Plot label
+axes[6].imshow(lab_sample.cpu().numpy(), cmap="jet")
+axes[6].set_title("Label")
+axes[6].axis("off")
+
+# Hide the last unused subplot
+axes[7].axis("off")
+
+plt.tight_layout()
+plt.show()
+
+# %%
+
+ce_loss = CrossEntropyLoss()
+output_sample = output_sample.unsqueeze(0)
+lab2 = lab[0].unsqueeze(0)
+loss_ce = ce_loss(output_sample, lab2[:].long())
+# %%
 import shutil
 from matplotlib import pyplot as plt
 from torch import nn
@@ -146,7 +209,7 @@ if __name__ == "__main__":
     ImageMaskViewer([lm, lm])
     fldr = Path("/s/xnat_shadow/crc/tensors/fixed_spacing/lms/")
     fls = list(fldr.glob("*"))
-# %%
+    # %%
     bad = []
     for fn in fls:
         lm = torch.load(fn)
@@ -154,12 +217,12 @@ if __name__ == "__main__":
             print("Pass")
         else:
             bad.append(fn)
-# %%
+    # %%
     fn = "/s/xnat_shadow/crc/tensors/fixed_spacing/lms/crc_CRC016_20190121_CAP11.pt"
 
     lm = torch.load(fn)
     lm.meta
-# %%
+    # %%
     fldr = Path("/s/xnat_shadow/crc/lms/")
     img_fldr = Path("/s/xnat_shadow/crc/images/")
     lm_fns = list(fldr.glob("*"))
@@ -167,24 +230,24 @@ if __name__ == "__main__":
     out_fldr_img = Path("/s/crc_upload/images")
     out_fldr_lm = Path("/s/crc_upload/lms")
     maybe_makedirs([out_fldr_lm, out_fldr_img])
-# %%
+    # %%
     nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending_neck")
     nodes_done_fldr = Path("/s/xnat_shadow/nodes/images")
     nodes_done = list(nodes_done_fldr.glob("*"))
     nodes = list(nodes_fldr.glob("*"))
 
-# %%
+    # %%
     img_fn = Path("/s/fran_storage/misc/img.pt")
     lm_fn = Path("/s/fran_storage/misc/lm.pt")
     lm = torch.load(lm_fn)
 
-# %%
+    # %%
     pred_fn = Path("/s/fran_storage/misc/pred.pt")
     im = torch.load(img_fn)
     pred = torch.load(pred_fn)
     pred = nn.Softmax()(pred)
     thres = 0.01
-# %%
+    # %%
     preds_bin = (pred > thres).float()
     preds_np = preds_bin.detach().numpy()
     ImageMaskViewer([im.detach(), preds_bin])
@@ -192,7 +255,7 @@ if __name__ == "__main__":
 
     # Step 3: Flatten the numpy array for GUDHI (top-dimensional cells are voxel values)
     # GUDHI requires a flattened list of the voxel values for constructing the cubical complex.
-# %%
+    # %%
     top_dimensional_cells = preds_np.flatten()
 
     # Step 4: Define the dimensions of the 3D volume
@@ -210,13 +273,13 @@ if __name__ == "__main__":
 
     persistence_intervals = cubical_complex.persistence_intervals_in_dimension(0)
     betti_0 = len(persistence_intervals)
-# %%
+    # %%
     plot_persistence_barcode(persistence_intervals)
     # Plotting the persistence diagram
 
     # ImageMaskViewer([lm.detach(),pred_bin.detach()], 'mm')
-# %%
-# %%
+    # %%
+    # %%
     import matplotlib.pyplot as plt
 
     # Data for the persistence diagram
@@ -292,7 +355,7 @@ if __name__ == "__main__":
         print("cuGraph test failed:", e)
 
     print("RAPIDS installation test completed.")
-# %%
+    # %%
     for i in range(len(nodes_done)):
         # print("Filename ", node_done)
         node_done = nodes_done[i]
@@ -305,8 +368,8 @@ if __name__ == "__main__":
             if cid1 == cid2:
                 print("Already processed", test_pend.name)
                 send2trash(test_pend)
-# %%
-# %%
+        # %%
+        # %%
         new_filename = re.sub(r"_\d{8}_", "_", im_fn.name)
         out_lm_fname = out_fldr_lm / new_filename
         out_img_fname = out_fldr_img / new_filename
@@ -316,7 +379,7 @@ if __name__ == "__main__":
             sitk.WriteImage(lm, out_lm_fname)
         else:
             shutil.copy(lm_fn, out_lm_fname)
-# %%
+        # %%
         lm = sitk.ReadImage(str(lm_fn))
         labels = get_labels(lm)
         if not labels == [1]:

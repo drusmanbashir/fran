@@ -98,6 +98,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         if not hasattr(self, "transforms"):
             print("No transforms created. No data to be processed. Run setup first")
             return 0
+        assert len(self.df) > 0,"No new cases to process"
             
         print(
             "Retrieving FGBG indices from datafolder {0} and storing to subfolder {1}".format(
@@ -145,12 +146,14 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.create_output_folders()
         self.results = []
         self.shapes = []
-        for img_file, lm_file in pbar(zip(self.image_files, self.lm_files), desc="Processing files", total=len(self.image_files)):
+
+        # for img_file, lm_file in pbar(zip(self.image_files, self.lm_files), desc="Processing files", total=len(self.image_files)):
+        for index, row in self.df.iterrows():
             try:
                 # Load and process single case
                 data = {
-                    "image": img_file,
-                    "lm": lm_file,
+                    "image": row['image'],
+                    "lm": row['lm'],
                 }
                 
                 # Apply transforms
@@ -166,7 +169,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 )
                 
             except Exception as e:
-                print(f"Error processing {img_file.name}: {str(e)}")
+                print(f"Error processing {row['image'].name}: {str(e)}")
                 continue
 
         self.results_df = pd.DataFrame(self.results)
@@ -281,7 +284,7 @@ if __name__ == "__main__":
     project_title="litsmc"
     P = Project(project_title=project_title)
     P.maybe_store_projectwide_properties()
-    spacing = [1.5, 1.5, 1.5]
+    # spacing = [1.5, 1.5, 1.5]
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     
@@ -297,7 +300,8 @@ if __name__ == "__main__":
     )
     
     L.setup(device='cpu', overwrite=False)
-    L.process()  # Use new process_files method instead of process()
+# %%
+    L.process()
 # %%
 # %%
 #SECTION:-------------------- TS--------------------------------------------------------------------------------------
@@ -332,3 +336,8 @@ if __name__ == "__main__":
     except Exception as e:
             print(f"Error processing {img_file.name}: {str(e)}")
 
+# %%
+    for index, row in L.df.iterrows():
+        print(row)
+        tr()
+# %%

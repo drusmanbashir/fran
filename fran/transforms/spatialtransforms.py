@@ -88,8 +88,8 @@ class ExtractContiguousSlicesd(RandomizableTransform,MapTransform):
         # lm_current = lm[1].unsqueeze(0)
         lm_current = lm[1]
         # lm_current.shape
-        lm_current = lm_current.unsqueeze(0)
-        lm_current = lm_current.repeat(3,1,1)
+        # lm_current = lm_current.unsqueeze(0)
+        # lm_current = lm_current.repeat(3,1,1)
         image_current= image[1]
         image_current = image_current.unsqueeze(0)
         image_current = image_current.repeat(3,1,1)

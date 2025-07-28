@@ -1,8 +1,7 @@
 # %%
 from fran.managers.project import Project
-from monai.data import GridPatchDataset, PatchIterd
 from lightning import LightningDataModule
-from utilz.helpers import pbar, pp
+from utilz.helpers import pbar
 from monai.transforms.transform import RandomizableTransform
 from fran.preprocessing.helpers import bbox_bg_only
 from functools import reduce
@@ -34,19 +33,17 @@ from fran.data.collate import (
     whole_collated,
 )
 from fran.data.dataset import (
-    ImageMaskBBoxDatasetd,
     NormaliseClipd,
     fg_in_bboxes,
 )
-from fran.transforms.imageio import LoadTorchd, TorchReader
+from fran.transforms.imageio import TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.spatialtransforms import ExtractContiguousSlicesd
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
 from fran.utils.config_parsers import ConfigMaker, is_excel_None
-from utilz.fileio import load_dict, load_yaml
+from utilz.fileio import load_dict, load_yaml, files_exist
 from utilz.helpers import find_matching_fn, folder_name_from_list
-from utilz.imageviewers import ImageMaskViewer
-from utilz.string import ast_literal_eval, info_from_filename, strip_extension
+from utilz.string import ast_literal_eval, cleanup_fname, info_from_filename, strip_extension
 import re
 import os
 from collections import defaultdict
@@ -60,11 +57,12 @@ def process_items(items):
         for key, value in item.items():
             data[key].append(value)
             try:
-                filenames[key].append(value.meta['filename_or_obj'])
+                filenames[key].append(value.meta["filename_or_obj"])
             except Exception:
                 filenames[key].append(None)
 
     return dict(data), dict(filenames)
+
 
 def source_collated(batch):
     all_data = defaultdict(list)
@@ -85,8 +83,8 @@ def source_collated(batch):
             if all(isinstance(x, torch.Tensor) for x in values):
                 stacked = torch.stack(values, 0)
                 # Attach filenames to .meta if possible
-                if hasattr(stacked, 'meta'):
-                    stacked.meta['filename_or_obj'] = (
+                if hasattr(stacked, "meta"):
+                    stacked.meta["filename_or_obj"] = (
                         all_filenames[key][0] if len(batch) == 1 else all_filenames[key]
                     )
                 output[key] = stacked
@@ -154,6 +152,7 @@ class DataManagerDual(LightningDataModule):
         save_hyperparameters=True,
         keys_tr=None,
         keys_val=None,
+        data_folder=None,
     ):
         super().__init__()
         project = Project(project_title)
@@ -172,6 +171,7 @@ class DataManagerDual(LightningDataModule):
             ds_type=ds_type,
             split="train",
             keys_tr=keys_tr,
+            data_folder=data_folder,
         )
 
         self.valid_manager = manager_class_valid(
@@ -182,6 +182,7 @@ class DataManagerDual(LightningDataModule):
             ds_type=None,
             split="valid",
             keys_val=keys_val,
+            data_folder=data_folder,
         )
 
     def prepare_data(self):
@@ -264,6 +265,7 @@ class DataManager(LightningDataModule):
         save_hyperparameters=False,
         keys_tr=None,
         keys_val=None,
+        data_folder=None,  # Optional parent folder containing images/ and lms/ subfolders
     ):
 
         super().__init__()
@@ -283,7 +285,10 @@ class DataManager(LightningDataModule):
         self.cache_rate = cache_rate
         self.ds_type = ds_type
         self.set_effective_batch_size()
-        self.data_folder = self.derive_data_folder()
+        if data_folder is None:
+            self.data_folder = self.derive_data_folder()
+        else:
+            self.data_folder = Path(data_folder)
         self.assimilate_tfm_factors(transform_factors)
         self.set_tfm_keys(keys_tr, keys_val)
         self.set_collate_fn()
@@ -558,24 +563,27 @@ class DataManager(LightningDataModule):
         self.cases = train_cases if self.split == "train" else valid_cases
         assert len(self.cases) > 0, "There are no cases, aborting!"
 
-    def create_data_dicts(self, fnames):
-        fnames = [strip_extension(fn) for fn in fnames]
-        fnames = [fn + ".pt" for fn in fnames]
-        fnames = fnames
+    def create_data_dicts(self, cases):
+        cases = [strip_extension(fn) for fn in cases]
+        cases = [fn + ".pt" for fn in cases]
         images_fldr = self.data_folder / ("images")
+
         lms_fldr = self.data_folder / ("lms")
-        inds_fldr = self.infer_inds_fldr(self.plan)
+
+        case_  =cleanup_fname(case_)
+        image_subfoldrs = list(tm.data_folder.glob("images/*"))
+        matches = [fn for fn in image_subfoldrs if case_ in fn.name]
+
         images = list(images_fldr.glob("*.pt"))
         data = []
 
-        for fn in pbar(fnames):
+        for fn in pbar(cases):
             fn = Path(fn)
-            img_fn = find_matching_fn(fn.name, images, "all")
-            lm_fn = find_matching_fn(fn.name, lms_fldr, "all")
-            indices_fn = inds_fldr / img_fn.name
-            assert img_fn.exists(), "Missing image {}".format(img_fn)
-            assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
-            dici = {"image": img_fn, "lm": lm_fn, "indices": indices_fn}
+            img_fn = find_matching_fn(fn.name, images, ['case_id', 'date'], allow_multiple_matches=True)
+            lm_fn = find_matching_fn(fn.name, lms_fldr,['case_id', 'date'], allow_multiple_matches=True)
+            assert files_exist(img_fn), "Missing image {}".format(img_fn)
+            assert files_exist(lm_fn), "Missing labelmap fn {}".format(lm_fn)
+            dici = {"image": img_fn, "lm": lm_fn}
             data.append(dici)
         return data
 
@@ -633,22 +641,12 @@ class DataManager(LightningDataModule):
         if is_excel_None(self.ds_type):
             ds = Dataset(data=self.data, transform=self.transforms)
             print("Vanilla Pytorch Dataset set up.")
-        elif self.ds_type == "cache":
+        else:
             ds = CacheDataset(
                 data=self.data,
                 transform=self.transforms,
                 cache_rate=self.cache_rate,
             )
-        elif self.ds_type == "lmdb":
-            ds = LMDBDataset(
-                data=self.data,
-                transform=self.transforms,
-                cache_dir=self.cache_folder,
-                db_name=f"{self.split}_cache",
-            )
-        else:
-
-            raise NotImplementedError
         return ds
 
     def _create_valid_ds(self):
@@ -732,11 +730,11 @@ class DataManager(LightningDataModule):
 
 
 class DataManagerSource(DataManager):
-    def __init__(self, project, config: dict, batch_size=8, **kwargs):
-        super().__init__(project, config, batch_size, **kwargs)
+    # def __init__(self, project, config: dict, batch_size=8, **kwargs):
+    #     super().__init__(project, config, batch_size, **kwargs)
 
     def set_collate_fn(self):
-            self.collate_fn = source_collated
+        self.collate_fn = source_collated
 
     def __str__(self):
         return "DataManagerSource instance with parameters: " + ", ".join(
@@ -777,7 +775,7 @@ class DataManagerWhole(DataManagerSource):
         self.keys_val = "L,E,Resize,N"
 
     def set_collate_fn(self):
-            self.collate_fn = whole_collated
+        self.collate_fn = whole_collated
 
     def __str__(self):
         return "DataManagerWhole instance with parameters: " + ", ".join(
@@ -822,7 +820,7 @@ class DataManagerWhole(DataManagerSource):
 
 
 class DataManagerLBD(DataManagerSource):
-    def derive_data_folder(self, dataset_mode=None):
+    def derive_data_folder(self, data_folder=None):
         assert (
             self.plan["mode"] == "lbd"
         ), f"Dataset mode must be 'lbd' for DataManagerLBD, got '{self.plan['mode']}'"
@@ -902,8 +900,6 @@ class DataManagerShort(DataManager):
         return super().train_dataloader(num_workers, **kwargs)
 
 
-
-
 class DataManagerPatch(DataManagerSource):
     def __init__(self, project, config: dict, batch_size=8, **kwargs):
         super().__init__(project, config, batch_size, **kwargs)
@@ -947,7 +943,7 @@ class DataManagerPatch(DataManagerSource):
             fn = bb["filename"]
             matched = pat.search(fn.name)
             indx = matched.groups()[0]
-            fn_name = strip_extension(fn.name) + "_" + str(indx) + ".pt"
+            strip_extension(fn.name) + "_" + str(indx) + ".pt"
             lm_fn = Path(fn)
             img_fn = lm_fn.str_replace("lms", "images")
             indices_fn = lm_fn.str_replace("lms", "indices")
@@ -1126,6 +1122,7 @@ class DataManagerDual2(DataManagerDual):
         save_hyperparameters=True,
         keys_tr="L,Ld,E,Rtr,Re,Ex,N,IntensityTfms",
         keys_val="L,Ld,E,Rva,Re,Ex, N",
+        data_folder=None,
     ):
         super().__init__(
             project_title=project_title,
@@ -1136,12 +1133,13 @@ class DataManagerDual2(DataManagerDual):
             save_hyperparameters=save_hyperparameters,
             keys_val=keys_val,
             keys_tr=keys_tr,
+            data_folder=data_folder,
         )
 
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     import torch
 
@@ -1171,9 +1169,7 @@ if __name__ == "__main__":
 
     global_props = load_dict(proj_tot.global_properties_filename)
 
-
 # %%
-
 
     batch_size = 8
     ds_type = "lmdb"
@@ -1182,24 +1178,113 @@ if __name__ == "__main__":
         config=config_litsmc,
         batch_size=batch_size,
         ds_type=ds_type,
+        data_folder="/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan9/slices",
     )
 
-# D.train_manager.plan['patch_size']=[128,128]
-# D.valid_manager.plan['patch_size']
+    tm = D.train_manager
+    tm.data_folder
+# %%
+    # D.train_manager.plan['patch_size']=[128,128]
+    # D.valid_manager.plan['patch_size']
 
     D.prepare_data()
+# %%
     D.setup()
     ds = D.train_ds
-    dici = ds[0]
-    dici[0]['image'].shape
-    dici[0]['lm'].shape
 # %%
-    
+    dici = ds[0]
+    dici[0]["image"].shape
+    dici[0]["lm"].shape
+# %%
+    tm = D.train_manager
+    tm.data_folder
+
+    tm.cases
+# %%
+
     # Now use train_manager or valid_manager to access the data
     dl = D.train_dataloader()
     bb = D.train_ds[0]
-    
+
     iteri = iter(dl)
     b = next(iteri)
+
+# %%
+    fldr = tm.cache_folder
+    fldr = "/s/tmp"
+    ds = LMDBDataset(
+        data=tm.data,
+        transform=tm.transforms,
+        cache_dir=fldr,
+        db_name=f"{tm.split}_cache",
+    )
+# %%
+
+    ds = CacheDataset(
+        data=tm.data,
+        transform=tm.transforms,
+        cache_rate=tm.cache_rate,
+    )
+# %%
+
+    tags = ["proj_title", "case_id", "date", "desc"]
+    name = cleanup_fname(fname)
+    parts = name.split("_")
+    output_dic = {}
+    for key, val in zip(tags, parts):
+        output_dic[key] = val
+    if full_caseid == True:
+        output_dic["case_id"] = output_dic["proj_title"] + "_" + output_dic["case_id"]
+    
+# %%
+
+    fnames = [strip_extension(fn) for fn in fnames]
+    fnames = [fn + ".pt" for fn in fnames]
+    fnames = fnames
+    images_fldr = self.data_folder / ("images")
+    lms_fldr = self.data_folder / ("lms")
+    inds_fldr = self.infer_inds_fldr(self.plan)
+    images = list(images_fldr.glob("*.pt"))
+    data = []
+# %%
+    fn= Path('litq_48_20200107.pt')
+    fn.name 
+    aa = [im for im in images if fn.name in im.name]
+# %%
+
+    images_fldr = tm.data_folder / ("images")
+    lms_fldr = tm.data_folder / ("lms")
+    inds_fldr = tm.infer_inds_fldr(tm.plan)
+    images = list(images_fldr.glob("*.pt"))
+
+# %%
+
+    cases = images
+    cases = [strip_extension(fn) for fn in cases]
+    cases = [fn + ".pt" for fn in cases]
+    cases = cases
+    images_fldr = self.data_folder / ("images")
+    lms_fldr = self.data_folder / ("lms")
+    inds_fldr = self.infer_inds_fldr(self.plan)
+    images = list(images_fldr.glob("*.pt"))
+    data = []
+
+    for fn in pbar(cases):
+        fn = Path(fn)
+        img_fn = find_matching_fn(fn.name, images, ['case_id', 'date'], allow_multiple_matches=True)
+        lm_fn = find_matching_fn(fn.name, lms_fldr,['case_id', 'date'], allow_multiple_matches=True)
+        indices_fn = inds_fldr / img_fn.name
+        assert img_fn.exists(), "Missing image {}".format(img_fn)
+        assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
+        dici = {"image": img_fn, "lm": lm_fn, "indices": indices_fn}
+        data.append(dici)
+# %%
+    case_ = tm.cases[0]
+    case_  =cleanup_fname(case_)
+    image_subfoldrs = list(tm.data_folder.glob("images/*"))
+    matches = [fn for fn in image_subfoldrs if case_ in fn.name]
+    image_subfoldrs = [str(f) for f in image_subfoldrs]
+    image_subfoldrs = [f.split("images/")[1] for f in image_subfoldrs]
+
 
 # %%

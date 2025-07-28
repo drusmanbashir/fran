@@ -104,7 +104,6 @@ class Preprocessor(GetAttr):
         self.existing_case_ids = set(self.existing_case_ids)
         print("Case ids processed in a previous session: ", len(self.existing_case_ids))
 
-
     def remove_completed_cases(self):
         # remove cases only if bboxes have been created
         existing_fnames = [fn.name for fn in self.existing_files]
