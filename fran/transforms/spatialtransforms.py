@@ -1,7 +1,6 @@
 # %%
-import random
+from utilz.imageviewers import ImageMaskViewer
 import math
-from typing import Dict, Hashable
 import ipdb
 import monai.transforms.spatial.functional as fm
 import skimage.transform as tf
@@ -23,6 +22,7 @@ from torch import cos, pi, sin
 
 # from utilz.fileio import *
 from utilz.helpers import *
+from utilz.string import int_to_str
 
 
 tr = ipdb.set_trace
@@ -48,61 +48,60 @@ def _resize3d(data, spatial_shape, mode):
     )
     return data_out
 
-
-
+# %%
 class ExtractContiguousSlicesd(RandomizableTransform,MapTransform):
     """
     Extract 3 contiguous slices (z-1, z, z+1) from image and label volumes.
     Outputs:
-        - 'image': [3, H, W]
-        - 'label': [1, H, W] (center slice)
-        - 'label_all': [3, H, W] (optional, for context/debug)
     """
 
-    def __init__(self, keys: KeysCollection = ("image", "lm"), lm_key = "lm", allow_missing_keys=False):
-        assert lm_key in keys, "One of the keys must be 'lm'"
+    def __init__(self, keys: KeysCollection = ("image_fns", "lm_fldr", "n_slices") ,allow_missing_keys=False):
         RandomizableTransform.__init__(self, 1) # always randomize
         MapTransform.__init__(self, keys, allow_missing_keys)
-        self.lm_key = lm_key
         self.keys = keys if isinstance(keys, (list, tuple)) else [keys]
 
-    def initialize(self,tnsr):
-        _, H,W, num_slices = tnsr.shape
-        self.z = random.randint(1, num_slices - 2)
 
+    def randomize(self, n_slices):
+        self.z= self.R.randint(1, n_slices- 2)
+        
     def __call__(
         self, data
     ):
         # Handle both single dictionary and list of dictionaries
-        d = dict(data)
-        for i, key in enumerate(self.key_iterator(d)):
-                tnsr = d[key]
-                if i==0:
-                    self.initialize(tnsr)
-                d[key] = self.func(tnsr,key==self.lm_key)
+        n_slices = data['n_slices']
+        self.randomize(n_slices)
+        # image_prev = img_fns[self.z]
+        # image_curr = img_fns[self.z+1]
+        # image_next = img_fns[self.z+2]
+        # lm_prev = lm/image_prev.name
+        # lm_curr = lm/image_curr.name
+        # lm_next = lm/image_next.name
+        # dici = {"image_prev":image_prev, "image_curr":image_curr, "image_next":image_next, "lm_prev":lm_prev, "lm_curr":lm_curr, "lm_next":lm_next}
 
-        image = d['image']
-        lm = d['lm']
-        image_lm_prev = torch.stack([image[0],  lm[0], lm[0]])
-        image_lm_next = torch.stack([image[2], lm[2], lm[2]])
-        # lm_current = lm[1].unsqueeze(0)
-        lm_current = lm[1]
-        # lm_current.shape
-        # lm_current = lm_current.unsqueeze(0)
-        # lm_current = lm_current.repeat(3,1,1)
-        image_current= image[1]
-        image_current = image_current.unsqueeze(0)
-        image_current = image_current.repeat(3,1,1)
-        dici = {'image':image_current,'lm':lm_current, 'image_lm_prev':image_lm_prev, 'image_lm_next':image_lm_next}
+    
+        lm_fldr = data['lm_fldr']
+        image_fns = data['image_fns']
+        outs = []
+        for i in range(3):
+            substring = "slice"+int_to_str(self.z+i,3)
+            img_fn = [fn for fn in image_fns if substring in fn.name][0]
+            lm_fn = lm_fldr/(img_fn.name)
+            listi = [img_fn,lm_fn]
+            outs.append(listi)
+        images , lms= [], []
+        for sublist in outs:
+            img_fn = sublist[0]
+            lm_fn = sublist[1]
+            img = torch.load(img_fn,weights_only=False)
+            lm = torch.load(lm_fn,weights_only=False)
+            img = torch.Tensor(img)
+            lm = torch.Tensor(lm)
+            images.append(img)
+            lms.append(lm)
+        images= torch.stack(images)
+        lms = torch.stack(lms)
+        dici = {"image":images, "lm":lms}
         return dici
-
-    def func(self,tnsr,is_lm_key):
-        tnsr3= tnsr[:, :, :, self.z - 1 : self.z + 2].squeeze(0)  
-        tnsr3 = tnsr3.permute(2, 0, 1) # [3,H, W]
-        if tnsr3.shape[0]==0:
-            tr()
-        return tnsr3
-
 
 class Project2D(MonaiDictTransform, Randomizable):
     def __init__(
@@ -1615,3 +1614,66 @@ if __name__ == "__main__":
     # %%
     bboxes_pt_fn = proj_defaults.stage1_folder / ("cropped/images_pt/bboxes_info")
     bboxes_nii_fn = proj_defaults.stage1_folder / ("cropped/images_nii/bboxes_info")
+# %%
+
+    n_slices = data['n_slices']
+    z = random.randint(1, n_slices- 2)
+    img_fns = data['image_fns']
+    lm = data['lm']
+    image_prev = img_fns[z]
+    image_curr = img_fns[z+1]
+    image_next = img_fns[z+2]
+    lm_prev = lm/image_prev.name
+    lm_curr = lm/image_curr.name
+    lm_next = lm/image_next.name
+    dici = {}
+    dici = {'image_lm_prev': [image_prev,lm_prev], 'image_lm_curr': [image_curr,lm_curr], 'image_lm_next': [image_next,lm_next]}
+# %%
+# %%
+
+
+    lm = dici['lm']
+    img = dici['image']
+    # img = img.permute(1,2,0)
+    # lm = lm.permute(1,2,0)
+
+# %%
+    # zz = int_to_str(14,3)
+    Affine = RandAffined(
+                keys=["image", "lm"],
+                mode=["bilinear", "nearest"],
+                prob=1,
+                rotate_range=.6,
+                scale_range=2,
+                shear_range=.5,
+            )
+# %%
+
+
+    dici = Affine(dici)
+# %%
+
+    RP = RandomPatch()
+
+# %%
+    Rva = RandCropByPosNegLabeld(
+                keys=["image", "lm"],
+                label_key="lm",
+                image_key="image",
+                image_threshold=-2600,
+                spatial_size=tm.plan["patch_size"],
+                pos=1,
+                neg=1,
+                num_samples=1,
+                lazy=True,
+                allow_smaller=True,
+            )
+# %%
+    tm.plan['patch_size']
+    dici = Rva(dici)
+
+# %%
+    img,lm = dici['image'],dici['lm']
+    dici = Rva(dici)
+
+# %%

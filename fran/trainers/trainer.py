@@ -1,4 +1,4 @@
-#tch %%
+# tch %%
 from label_analysis.merge import pbar
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -16,7 +16,6 @@ from utilz.helpers import pp
 tr = ipdb.set_trace
 
 from pathlib import Path
-from fastcore.basics import store_attr
 from monai.transforms.croppad.dictionary import (
     RandCropByPosNegLabeld,
     ResizeWithPadOrCropd,
@@ -56,7 +55,6 @@ except:
 import torch
 
 
-
 def fix_dict_keys(input_dict, old_string, new_string):
     output_dict = {}
     for key in input_dict.keys():
@@ -86,11 +84,10 @@ def checkpoint_from_model_id(model_id, sort_method="last"):
     return ckpt
 
 
-
-
 # class NeptuneCallback(Callback):
 # def on_train_epoch_start(self, trainer, pl_module):
 #     trainer.logger.experiment["training/epoch"] = trainer.current_epoch
+
 
 class Trainer:
     def __init__(self, project_title, config, run_name=None):
@@ -99,7 +96,6 @@ class Trainer:
         self.run_name = run_name
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_config(config, self.project)
-
 
     def setup(
         self,
@@ -144,9 +140,10 @@ class Trainer:
     def init_dm_unet(self, epochs):
         if self.ckpt:
             self.D = self.load_dm()
-            self.config["dataset_params"] = self.D.train_manager.config['dataset_params']
+            self.config["dataset_params"] = self.D.train_manager.config[
+                "dataset_params"
+            ]
             self.N = self.load_trainer()
-
 
         else:
             self.D = self.init_dm()
@@ -158,12 +155,12 @@ class Trainer:
             self.lr = lr
         elif lr and self.ckpt:
             self.lr = lr
-            self.state_dict = torch.load(self.ckpt)
+            self.state_dict = torch.load(self.ckpt, weights_only=False)
             self.state_dict["lr_schedulers"][0]["_last_lr"][0] = lr
             torch.save(self.state_dict, self.ckpt)
 
         elif lr is None and self.ckpt:
-            self.state_dict = torch.load(self.ckpt)
+            self.state_dict = torch.load(self.ckpt, weights_only=False)
             self.lr = self.state_dict["lr_schedulers"][0]["_last_lr"][0]
         else:
             self.lr = self.config["model_params"]["lr"]
@@ -197,8 +194,7 @@ class Trainer:
             N = NeptuneImageGridCallback(
                 classes=self.config["model_params"]["out_channels"],
                 patch_size=self.config["plan_train"]["patch_size"],
-
-                epoch_freq=5 ,# skip how many epochs.
+                epoch_freq=5,  # skip how many epochs.
             )
 
             cbs += [N]
@@ -284,11 +280,11 @@ class Trainer:
         return N
 
     def load_trainer(self, **kwargs):
-            N = UNetManager.load_from_checkpoint(
-                self.ckpt,
-                **kwargs,
-            )
-            print("Model loaded from checkpoint: ", self.ckpt)
+        N = UNetManager.load_from_checkpoint(
+            self.ckpt,
+            **kwargs,
+        )
+        print("Model loaded from checkpoint: ", self.ckpt)
         # except: #CODE: exception should be specific
         #     tr()
         #     ckpt_state = self.state_dict["state_dict"]
@@ -308,10 +304,12 @@ class Trainer:
         #         lr=self.lr,
         #         **kwargs,
         #     )
-            return N
+        return N
 
     def load_dm(self):
-        D = DataManagerDual.load_from_checkpoint(self.ckpt, project_title=self.project.project_title)
+        D = DataManagerDual.load_from_checkpoint(
+            self.ckpt, project_title=self.project.project_title
+        )
         return D
 
     def resolve_datamanager(self, mode: str):
@@ -354,8 +352,8 @@ class Trainer:
 
 
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
-#CODE: Project or config should be the only arg not both
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+    # CODE: Project or config should be the only arg not both
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -363,25 +361,23 @@ if __name__ == "__main__":
 
     from fran.utils.common import *
 
-
     proj_nodes = Project(project_title="nodes")
-    proj_tsl =  Project(project_title="totalseg")
+    proj_tsl = Project(project_title="totalseg")
     proj_litsmc = Project(project_title="litsmc")
     conf_litsmc = ConfigMaker(proj_litsmc, raytune=False).config
-    conf_tsl= ConfigMaker(proj_tsl, raytune=False).config
+    conf_nodes = ConfigMaker(proj_nodes, raytune=False).config
+    conf_tsl = ConfigMaker(proj_tsl, raytune=False).config
 
     # conf['model_params']['lr']=1e-3
-
-# %%
-    conf_litsmc['dataset_params']['cache_rate']
+    conf_litsmc["dataset_params"]["cache_rate"]
     # run_name = "LITS-1007"
     # device_id = 1
     device_id = 0
-    run_none= None
-    run_tsl= 'LITS-1120'
-    run_nodes= "LITS-1110"
-    run_litsmc= "LITS-1131"
-    bs = 10# is good if LBD with 2 samples per case
+    run_none = None
+    run_tsl = "LITS-1120"
+    run_nodes = "LITS-1110"
+    run_litsmc = "LITS-1131"
+    bs = 10  # is good if LBD with 2 samples per case
     # run_name ='LITS-1003'
     compiled = False
     profiler = False
@@ -391,11 +387,12 @@ if __name__ == "__main__":
     tags = []
     description = f"Partially trained up to 100 epochs"
 # %%
-#SECTION:-------------------- TOTALSEG TRAINING--------------------------------------------------------------------------------------
+# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     run_name = run_tsl
-    
+
     run_name = run_none
-    conf = conf_tsl; proj = "totalseg"
+    conf = conf_tsl
+    proj = "totalseg"
 # %%
     Tm = Trainer(proj, conf, run_name)
 # %%
@@ -417,11 +414,12 @@ if __name__ == "__main__":
     Tm.fit()
     # model(inputs)
 # %%
-#SECTION:-------------------- LITSMC --------------------------------------------------------------------------------------
+# SECTION:-------------------- LITSMC -------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     run_name = run_litsmc
     run_name = run_none
-    conf = conf_litsmc;    proj = "litsmc"
+    conf = conf_litsmc
+    proj = "litsmc"
 
 # %%
     Tm = Trainer(proj, conf, run_name)
@@ -444,8 +442,33 @@ if __name__ == "__main__":
     Tm.fit()
     # model(inputs)
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    run_name = None
+    run_name = run_nodes
+    conf = conf_nodes
+    proj = "nodes"
 
+# %%
+    Tm = Trainer(proj, conf, run_name)
+# %%
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=[device_id],
+        epochs=600 if profiler == False else 1,
+        batchsize_finder=batch_finder,
+        profiler=profiler,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+    )
+# %%
+    # Tm.D.batch_size=8
+    Tm.N.compiled = compiled
+# %%
+    Tm.fit()
+
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm.D.prepare_data()
     Tm.D.setup()
@@ -457,7 +480,7 @@ if __name__ == "__main__":
     dlv = D.valid_dataloader()
     ds = Tm.D.valid_ds
     ds = Tm.D.train_ds
-    dat= ds[0]
+    dat = ds[0]
 # %%
 
     cache_rate = 0
@@ -468,17 +491,16 @@ if __name__ == "__main__":
         config=Tm.config,
         batch_size=Tm.config["dataset_params"]["batch_size"],
         cache_rate=cache_rate,
-            ds_type=ds_type,
-        )
+        ds_type=ds_type,
+    )
     D.prepare_data()
     D.setup()
 
-
 # %%
 
-    for i,bb in pbar(enumerate(ds)):
-        lm = bb[0]['lm']
-        print(lm.meta['filename_or_obj'])
+    for i, bb in pbar(enumerate(ds)):
+        lm = bb[0]["lm"]
+        print(lm.meta["filename_or_obj"])
 # %%
     ds = Tm.D.train_ds
     dici = ds.data[0]
@@ -489,14 +511,13 @@ if __name__ == "__main__":
     tm.tfms_list
 # %%
 
-    dici =tm.tfms_list[0](dici)
-    dici =tm.tfms_list[1](dici)
-    dici =tm.tfms_list[2](dici)
-    dici =tm.tfms_list[3](dici)
+    dici = tm.tfms_list[0](dici)
+    dici = tm.tfms_list[1](dici)
+    dici = tm.tfms_list[2](dici)
+    dici = tm.tfms_list[3](dici)
     tm.tfms_list[3]
     tm.tfms_list[4]
-    dici =tm.tfms_list[4](dici)
-
+    dici = tm.tfms_list[4](dici)
 
 # %%
     dl = Tm.D.train_dataloader()
@@ -506,35 +527,35 @@ if __name__ == "__main__":
 # %%
     while iter:
         batch = next(iteri)
-        print(batch['image'].dtype)
+        print(batch["image"].dtype)
 # %%
 # %%
-    pred = Tm.N.model(batch['image'])
+    pred = Tm.N.model(batch["image"])
 # %%
 
-    n= 1
-    im =batch['image'] [n][0].clone()
+    n = 1
+    im = batch["image"][n][0].clone()
     pr = pred[0][n][3].clone()
-    lab = batch['lm'][n][0].clone()
-    lab_bin = (lab>1).float()
+    lab = batch["lm"][n][0].clone()
+    lab_bin = (lab > 1).float()
 # %%
-    lab = lab.permute(2,1,0)
-    im = im.permute(2,1,0)
-    pr = pr.permute(2,1,0)
+    lab = lab.permute(2, 1, 0)
+    im = im.permute(2, 1, 0)
+    pr = pr.permute(2, 1, 0)
 # %%
     ImageMaskViewer([im.detach().cpu(), pr.detach().cpu()])
-    ImageMaskViewer([im.detach().cpu(),lab_bin.detach().cpu()])
+    ImageMaskViewer([im.detach().cpu(), lab_bin.detach().cpu()])
 # %%
     outfldr = Path("/s/fran_storage/misc")
 
 # %%
-    torch.save(im,outfldr/'im_no_tum.pt')
-    torch.save(pr,outfldr/'pred_no_tum.pt')
-    torch.save(lab,outfldr/'lab_no_tum.pt')
+    torch.save(im, outfldr / "im_no_tum.pt")
+    torch.save(pr, outfldr / "pred_no_tum.pt")
+    torch.save(lab, outfldr / "lab_no_tum.pt")
 # %%
     while iteri:
         bb = next(iteri)
-        lm = bb['lm']
+        lm = bb["lm"]
         labels = lm.unique()
         if (labels > 8).any():
             print("There are labels greater than 8.")
@@ -547,12 +568,18 @@ if __name__ == "__main__":
             print("There are labels less than 0.")
             print(bb["image"].meta["filename_or_obj"])
 # %%
-    fns = ['/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s1210.pt', '/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0851.pt', '/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s1175.pt', '/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0726.pt', '/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0549.pt']
+    fns = [
+        "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s1210.pt",
+        "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0851.pt",
+        "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s1175.pt",
+        "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0726.pt",
+        "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0549.pt",
+    ]
     for fn in fns:
         lm = torch.load(fn)
         print(lm.unique())
 # %%
-    pred = Tm.N(bb['image'])
+    pred = Tm.N(bb["image"])
 # %%
     [x.shape for x in pred]
 # %%
@@ -660,9 +687,8 @@ if __name__ == "__main__":
     iteri2 = iter(dl2)
 # %%
     while iteri:
-        batch= next(iteri)
-        print(batch['image'].shape)
-
+        batch = next(iteri)
+        print(batch["image"].shape)
 
 # %%
 

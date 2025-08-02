@@ -309,14 +309,6 @@ if __name__ == "__main__":
         help="number of parallel processes",
         default=8,
     )
-    parser.add_argument("-e", "--enforce-isotropy", action="store_true")
-    parser.add_argument("-o", "--overwrite", action="store_true")
-    parser.add_argument(
-        "-c",
-        "--clip-centre",
-        action="store_true",
-        help="Clip and centre data now or during training?",
-    )
     parser.add_argument(
         "-r",
         "--clip-range",
@@ -334,42 +326,20 @@ if __name__ == "__main__":
         help="e.g., [192,192,128]if you want a high res patch-based dataset",
     )
     parser.add_argument(
-        "-s",
-        "--spacing",
-        nargs="+",
-        help="Give clip range to compute dataset std and mean",
-    )
-    parser.add_argument("-i", "--imported-folder")
-    parser.add_argument(
-        "-po",
-        "--patch-overlap",
-        help="Generating patches will overlying by this fraction range [0,.9). Default is 0.25 ",
-        default=0.25,
-        type=float,
-    )
-    parser.add_argument("-hp", "--half_precision", action="store_true")
-    parser.add_argument(
         "-nf",
         "--no-fix",
         action="store_false",
         help="By default if img/mask sitk arrays mismatch in direction, orientation or spacing, FRAN tries to align them. Set this flag to disable",
     )
     parser.add_argument("-d", "--debug", action="store_true")
-    parser.add_argument(
-        "-np",
-        "--no-pbar",
-        dest="pbar",
-        action="store_false",
-        help="Switch off progress bar",
-    )
 
     args = parser.parse_known_args()[0]
 
     # args.num_processes = 1
     args.debug = True
-    args.plan = "plan9"
+    args.plan = "plan2"
 
-    args.project_title = "litsmc"
+    args.project_title = "nodes"
     P = Project(project_title=args.project_title)
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config

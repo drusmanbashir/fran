@@ -192,10 +192,17 @@ if __name__ == "__main__":
     # pln = dici['datamodule_hyper_parameters']['config']['plan{}'.format(value)]
     pln = dici['datamodule_hyper_parameters']['config']['plan']
     datamod = dici['datamodule_hyper_parameters']['config']
-    dici['hyper_parameters']['config']= dici['datamodule_hyper_parameters']['config'].copy()#['plan_train']=pln
+    dici['hyper_parameters']['config']#= dici['datamodule_hyper_parameters']['config'].copy()#['plan_train']=pln
     dici['hyper_parameters']['config']['plan_train']=pln
     dici['hyper_parameters']['config']['plan_valid']=pln
-    dici['datamodule_hyper_parameters']['config']['plan_valid']=pln
+
+#CODE: adding plan index for NODES only
+    dici['hyper_parameters']['config']['dataset_params']['plan_train']=2
+    dici['hyper_parameters']['config']['dataset_params']['plan_valid']=2
+    dici['hyper_parameters']['config']['dataset_params']
+# %%
+    dici['datamodule_hyper_parameters']['config']['plan_valid']#=pln
+    dici['datamodule_hyper_parameters']['config']#['plan_train']#=pln
     torch.save(dici,ckpt_src)
 # %%
 
@@ -232,6 +239,7 @@ if __name__ == "__main__":
     key_j = get_key_path(keys[0])
 
     val = get_nested_value(dici,keys[0])
+    dici['hyper_parameters']['config']['plan_train'] #=dici['hyper_parameters']['config']['plan'].copy()
     dici['hyper_parameters']['config']['plan_train'] =dici['hyper_parameters']['config']['plan'].copy()
     dici['hyper_parameters']['config']['plan_valid'] =dici['hyper_parameters']['config']['plan'].copy()
 

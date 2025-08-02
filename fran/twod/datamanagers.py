@@ -1,4 +1,5 @@
 # %%
+from utilz.imageviewers import ImageMaskViewer
 from fran.managers.project import Project
 from lightning import LightningDataModule
 from utilz.helpers import pbar
@@ -334,28 +335,29 @@ class DataManager(LightningDataModule):
             None: Sets self.transforms with composed transforms
 
         Transform Abbreviations and Full Names:
+            Affine: RandAffined - Random affine transformations (rotation, scaling)
             E: EnsureChannelFirstd - Ensures channel dimension is first
             Ex: ExtractContiguousSlicesd - Extracts 3 contiguous slices (z-1, z, z+1)
-            N: NormaliseClipd - Normalizes and clips image intensities
-            RP: RandomPatch - Applies random patch sampling
             F1: RandFlipd (axis=0) - Random flip along spatial axis 0
             F2: RandFlipd (axis=1) - Random flip along spatial axis 1
+            Ind: MetaToDict - Convert metadata to dictionary format
             IntensityTfms: Collection of intensity transforms:
-                - RandScaleIntensityd: Random intensity scaling
-                - RandRandGaussianNoised: Random Gaussian noise addition
-                - RandShiftIntensityd: Random intensity shifting
                 - RandAdjustContrastd: Random contrast adjustment
-            Affine: RandAffined - Random affine transformations (rotation, scaling)
-            Resize: Resized - Resize to specified spatial size
-            Re: ResizeWithPadOrCropd - Resize with padding or cropping
+                - RandRandGaussianNoised: Random Gaussian noise addition
+                - RandScaleIntensityd: Random intensity scaling
+                - RandShiftIntensityd: Random intensity shifting
             L: LoadImaged - Load image and label data
             Ld: LoadTorchDict - Load torch dictionary with indices
-            Ind: MetaToDict - Convert metadata to dictionary format
+            N: NormaliseClipd - Normalizes and clips image intensities
+            None: Sets self.transforms with composed transforms
+            RP: RandomPatch - Applies random patch sampling
+            Re: ResizeWithPadOrCropd - Resize with padding or cropping
+            Resize: Resized - Resize to specified spatial size
             Rtr: RandCropByPosNegLabeld (training) - Random crop with positive/negative sampling
             Rva: RandCropByPosNegLabeld (validation) - Random crop for validation
-            None: Sets self.transforms with composed transforms
         """
         # Initialize transforms dictionary and list
+        self.plan['patch_size']= self.plan['patch_size'][:2]
         self.transforms_dict = {}
         self.tfms_list = []
         # Parse transform keys
@@ -365,7 +367,7 @@ class DataManager(LightningDataModule):
             E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
             self.transforms_dict["E"] = E
         if "Ex" in include_keys:
-            Ex = ExtractContiguousSlicesd(keys=["image", "lm"])
+            Ex = ExtractContiguousSlicesd(keys = ["image_fns", "lm_fldr", "n_slices"])
             self.transforms_dict["Ex"] = Ex
 
         if "N" in include_keys:
@@ -484,13 +486,11 @@ class DataManager(LightningDataModule):
                 keys=["image", "lm"],
                 label_key="lm",
                 image_key="image",
-                fg_indices_key="lm_fg_indices",
-                bg_indices_key="lm_bg_indices",
                 image_threshold=-2600,
                 spatial_size=self.plan["patch_size"],
                 pos=1,
                 neg=1,
-                num_samples=self.plan["samples_per_file"],
+                num_samples=1,
                 lazy=True,
                 allow_smaller=True,
             )
@@ -565,25 +565,19 @@ class DataManager(LightningDataModule):
 
     def create_data_dicts(self, cases):
         cases = [strip_extension(fn) for fn in cases]
-        cases = [fn + ".pt" for fn in cases]
-        images_fldr = self.data_folder / ("images")
+        image_subfoldrs = list(self.data_folder.glob("images/*"))
+        lm_subfoldrs = list(self.data_folder.glob("lms/*"))
 
-        lms_fldr = self.data_folder / ("lms")
-
-        case_  =cleanup_fname(case_)
-        image_subfoldrs = list(tm.data_folder.glob("images/*"))
-        matches = [fn for fn in image_subfoldrs if case_ in fn.name]
-
-        images = list(images_fldr.glob("*.pt"))
         data = []
-
-        for fn in pbar(cases):
-            fn = Path(fn)
-            img_fn = find_matching_fn(fn.name, images, ['case_id', 'date'], allow_multiple_matches=True)
-            lm_fn = find_matching_fn(fn.name, lms_fldr,['case_id', 'date'], allow_multiple_matches=True)
-            assert files_exist(img_fn), "Missing image {}".format(img_fn)
-            assert files_exist(lm_fn), "Missing labelmap fn {}".format(lm_fn)
-            dici = {"image": img_fn, "lm": lm_fn}
+        for case_ in pbar(cases):
+            img_matched = [fn for fn in image_subfoldrs if case_ == fn.name]
+            lm_matched= [fn for fn in lm_subfoldrs if case_ == fn.name]
+            assert len(img_matched) == 1 and len(lm_matched) == 1, "Multiple images for case {}".format(case_)
+            img_fldr = img_matched[0]
+            lm_fldr= lm_matched[0]
+            img_fns  = list(img_fldr.glob("*"))
+            n_slices = len(img_fns)
+            dici = {"image_fns": img_fns, "lm_fldr": lm_fldr, "n_slices":n_slices}
             data.append(dici)
         return data
 
@@ -641,12 +635,22 @@ class DataManager(LightningDataModule):
         if is_excel_None(self.ds_type):
             ds = Dataset(data=self.data, transform=self.transforms)
             print("Vanilla Pytorch Dataset set up.")
+
+        elif self.ds_type == "cache":
+                ds = CacheDataset(
+                    data=self.data,
+                    transform=self.transforms,
+                    cache_rate=self.cache_rate,
+                )
+        elif self.ds_type == "lmdb":
+                ds = LMDBDataset(
+                    data=self.data,
+                    transform=self.transforms,
+                    cache_dir=self.cache_folder,
+                    db_name=f"{self.split}_cache",
+                )
         else:
-            ds = CacheDataset(
-                data=self.data,
-                transform=self.transforms,
-                cache_rate=self.cache_rate,
-            )
+            raise  NotImplementedError
         return ds
 
     def _create_valid_ds(self):
@@ -1120,8 +1124,8 @@ class DataManagerDual2(DataManagerDual):
         cache_rate=0.0,
         ds_type=None,
         save_hyperparameters=True,
-        keys_tr="L,Ld,E,Rtr,Re,Ex,N,IntensityTfms",
-        keys_val="L,Ld,E,Rva,Re,Ex, N",
+        keys_tr="Ex,Rva,Affine,F1,F2 ,Re,N,IntensityTfms",
+        keys_val="Ex, Rva,Re, N",
         data_folder=None,
     ):
         super().__init__(
@@ -1188,8 +1192,55 @@ if __name__ == "__main__":
     # D.valid_manager.plan['patch_size']
 
     D.prepare_data()
-# %%
     D.setup()
+    tm = D.train_manager
+
+    # dici = tm.ds[0]
+    dl = D.train_dataloader()
+    iteri = iter(dl)
+    bt = next(iteri)
+# %%
+    tm.plan['patch_size']= tm.plan['patch_size'][:2]
+
+    E = ExtractContiguousSlicesd()
+    dici = E(data)
+# %%
+    Rva = RandCropByPosNegLabeld(
+                keys=["image", "lm"],
+                label_key="lm",
+                image_key="image",
+                image_threshold=-2600,
+                spatial_size=tm.plan["patch_size"],
+                pos=1,
+                neg=1,
+                num_samples=1,
+                lazy=False,
+                allow_smaller=True,
+            )
+# %%
+    data= tm.data[4]
+    dici =E(data)
+    dici =Rva(dici)
+    dici[0]['image'].shape
+# % %%
+    img = dici[0]['image']
+    lm = dici[0]['lm']
+    ImageMaskViewer([img,lm])
+
+# %%
+    dici = E(dici)
+    Ld = LoadImaged()
+    dici2 = Ld(dici)
+    z = 1
+
+# %%
+
+
+
+# %%
+    d
+    D.setup()
+
     ds = D.train_ds
 # %%
     dici = ds[0]
@@ -1288,3 +1339,23 @@ if __name__ == "__main__":
 
 
 # %%
+
+    cases = tm.cases
+    cases = [strip_extension(fn) for fn in cases]
+    image_subfoldrs = list(tm.data_folder.glob("images/*"))
+    lm_subfoldrs = list(tm.data_folder.glob("lms/*"))
+
+    data = []
+    for case_ in pbar(cases):
+        img_matched = [fn for fn in image_subfoldrs if case_ == fn.name]
+        lm_matched= [fn for fn in lm_subfoldrs if case_ == fn.name]
+        assert len(img_matched) == 1 and len(lm_matched) == 1, "Multiple images for case {}".format(case_)
+        img_fldr = img_matched[0]
+        lm_fldr= lm_matched[0]
+        dici = {"image": img_fldr, "lm": lm_fldr}
+        data.append(dici)
+
+    tm.data = data
+
+    img_fldr = dici['image']
+    n_slices = len(list(img_fldr.glob("*")))
