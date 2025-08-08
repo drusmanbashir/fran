@@ -107,7 +107,7 @@ class PreprocessingManager:
             spacing=self.plan["spacing"],
             data_folder=self.project.raw_data_folder,
         )
-        self.R.setup(overwrite)
+        self.R.setup(overwrite=overwrite)
         self.R.process()
 
     def generate_lbd_dataset(self, overwrite=False):
@@ -124,6 +124,7 @@ class PreprocessingManager:
         imported_folder,
         merge_imported_labels=False,
         lm_group="lm_group1",
+        overwrite=False,
     ):
         """
         requires resampled folder to exist. Crops within this folder
@@ -134,18 +135,19 @@ class PreprocessingManager:
         if imported_labels == "lungs":
             imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
             remapping = TSL.create_remapping(imported_labelsets, [8, 9])
+
+        else:
+            remapping=None
         self.L = LabelBoundedDataGeneratorImported(
             project=self.project,
-            expand_by=self.plan["expand_by"],
-            spacing=self.plan["spacing"],
-            lm_group=lm_group,
+            plan = self.plan,
+            folder_suffix=self.plan_name,
             imported_folder=imported_folder,
-            imported_labelsets=imported_labelsets,
             merge_imported_labels=merge_imported_labels,
             remapping=remapping,
         )
 
-        self.L.setup()
+        self.L.setup(overwrite=overwrite)
         self.L.process()
 
     @ask_proceed("Generating low-res whole images to localise organ of interest")
@@ -344,13 +346,12 @@ if __name__ == "__main__":
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 
-    plans = conf[args.plan]
+    plan = conf[args.plan]
 # %%
     if not "labels_all" in P.global_properties.keys():
-        P.set_lm_groups(plans["lm_groups"])
+        P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=True)
 
-# %%
 # %%
 #SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
     I = PreprocessingManager(args)
@@ -362,26 +363,31 @@ if __name__ == "__main__":
 
 # %%
 #SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
+    overwrite=True
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
-        if "imported_folder" not in plans.keys():
-            I.generate_lbd_dataset(overwrite=False)
+        if "imported_folder" not in plan.keys():
+            I.generate_lbd_dataset(overwrite=overwrite)
         else:
-            I.generate_TSlabelboundeddataset()
+            I.generate_TSlabelboundeddataset(
+                imported_labels=plan["imported_labels"],
+                imported_folder=plan["imported_folder"],
+            overwrite=overwrite)
 # %%
 
 # %%
 # SECTION:-------------------- TSL dataset Imported labels-------------------------------------------------------------------------------------- <CR>
+
 # this section uses imported labels from TSL and integrates those into the dataset. 
-    assert "imported_folder"  in plans.keys(),"Skip this section, there are no imported labels"
-    imported_folder = plans["imported_folder"]
+    assert "imported_folder"  in plan.keys(),"Skip this section, there are no imported labels"
+    imported_folder = plan["imported_folder"]
     imported_folder = Path(imported_folder)
-    imported_labels = plans["imported_labels"]
+    imported_labels = plan["imported_labels"]
     imported_labels = imported_labels.split(".")[1]
-    merge_imported_labels = plans["merge_imported_labels"]
-    lm_group = plans["lm_groups"]
+    merge_imported_labels = plan["merge_imported_labels"]
+    lm_group = plan["lm_groups"]
 
     TSL = TotalSegmenterLabels()
 
@@ -395,16 +401,18 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 # %%
+
+    merge_imported_labels = plan["merge_imported_labels"]
+    remapping= None
+# %%
     I.L = LabelBoundedDataGeneratorImported(
+        plan = plan,
         project=I.project,
-        expand_by=I.plan["expand_by"],
-        spacing=I.plan["spacing"],
-        lm_group=lm_group,
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
         remapping=remapping,
         folder_suffix=I.plan_name,
-        fg_indices_exclude=None,
+
     )
 
 # %%
@@ -416,6 +424,22 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- Troubleshooting-------------------------------------------------------------------------------------- <CR>
 
+# %%
+    imported_folder = plan["imported_folder"]
+    imported_folder = Path(imported_folder)
+
+    TSL = TotalSegmenterLabels()
+    I.L = LabelBoundedDataGeneratorImported(
+        project=I.project,
+        plan = I.plan,
+        folder_suffix=I.plan_name,
+        # expand_by=I.plan["expand_by"],
+        # spacing=I.plan["spacing"],
+        imported_folder=imported_folder,
+        merge_imported_labels=merge_imported_labels,
+        remapping=remapping,
+        )
+# %%
     overwrite=False
     I.L = LabelBoundedDataGenerator(
         project=I.project,

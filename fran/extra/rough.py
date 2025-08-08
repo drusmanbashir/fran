@@ -1,5 +1,5 @@
 # %%
-
+import SimpleITK as sitk
 import torch
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -13,6 +13,20 @@ img = torch.load(imgfn, weights_only=False)
 output = torch.load(outputfn, weights_only=False)
 lab = torch.load(labfn, weights_only=False)
 
+# %%
+segs_folder = Path("/s/insync/datasets/capestart/nodes_2025/segmentations")
+imgs_folder =  Path("/s/xnat_shadow/nodesthick/images")
+seg_fns= list(segs_folder.glob("*"))
+img_fns = list(imgs_folder.glob("*"))
+# %%
+means = []
+for imgfn in img_fns:
+    img = sitk.ReadImage(imgfn)
+    arr = sitk.GetArrayFromImage(img)
+    means.append(arr.mean())
+# %%
+pairs =[[fn , find_matching_fn(fn,img_fns,tags=['all'])] for fn in seg_fns]
+# %%
 print(f"Image shape: {img.shape}")
 print(f"Output shape: {output.shape}")
 print(f"Label shape: {lab.shape}")
@@ -71,7 +85,7 @@ import cudf
 import cugraph
 from send2trash import send2trash
 
-from utilz.helpers import info_from_filename
+from utilz.helpers import find_matching_fn, info_from_filename
 import torch
 import SimpleITK as sitk
 import re

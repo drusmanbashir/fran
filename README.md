@@ -33,8 +33,13 @@ export FRAN_COMMON_PATHS={PATH-TO-config.yaml}
 ```
 *Note: In this instruction, names inside curly-braces are variable names. You can set them as any word you like.* Names without curly braces are fixed and must be the same in your schema.
 
-## 2. Dataset organization
-In each input path, data (nifti or nrrd format) must be organised in sub-folders 'images' and 'masks'
+## 2. Datasource
+
+The Datasource class is the core component for managing individual medical imaging datasets in FRAN. Each datasource represents a folder containing paired image and label files, handling data validation, preprocessing, and storage of processed voxel statistics.
+
+### Folder Structure Requirements
+
+In each input path, data (nifti or nrrd format) must be organised in sub-folders 'images' and 'lms'
 
 
 
@@ -45,14 +50,23 @@ In each input path, data (nifti or nrrd format) must be organised in sub-folders
         │   ├── ...
         │   ├── ...
         │   └── kits21_00299.nii.gz
-        └── masks
+        └── lms
            ├── kits21_00000.nii.gz
            ├── ...
            ├── ...
            └── kits21_00299.nii.gz
 ```
 In the figure above, I have used `kits_21` as the `{project title}`. You can have any name as long as it follows the [naming rules](#naming-rules) given below
-As shown above, mask and image files of a given case will have identical names, e.g., `kits21_00299.nii.gz`, but will be under separate folders (`images` and `masks`). 
+As shown above, mask and image files of a given case will have identical names, e.g., `kits21_00299.nii.gz`, but will be under separate folders (`images` and `lms`). 
+
+### Key Features
+
+- **Automatic Validation**: Verifies matching image-label pairs and equal file counts
+- **Incremental Processing**: Tracks processed cases in HDF5 files, skipping already processed data
+- **Metadata Storage**: Stores foreground voxel statistics (mean, std, min, max, labels) for each case
+- **Label Management**: Supports relabeling operations for standardizing label schemes
+- **Error Handling**: Detects duplicate case IDs and provides tools for resolution
+
 ### Naming rules 
 - Each case file name has the following parts: `{project_title}_{case_id}.ext`
 - project_title should be in small letters. 
@@ -65,7 +79,188 @@ As shown above, mask and image files of a given case will have identical names, 
 *Note: There is no validation data folder. The library will create splits by itself keeps track of them.*
 
 *Note: Having separate `{slow_storage}` and `{fast_storage}` is not a requirement. Both folders can be on the same drive. I recommend using SSD for `{fast_storage}` to speed up learning.*
-## 3. Project
+
+## 3. Project Creation
+
+The project creation workflow is the foundation of the FRAN framework and involves several key steps to set up a complete machine learning project for medical image segmentation. This process creates the necessary folder structure, manages data sources, and prepares configurations for training.
+
+### Core Components
+
+The project creation system consists of several key classes:
+
+- **Project**: Main project management class that handles folder structure, database operations, and data organization
+- **Datasource**: Manages individual datasets with integrity checking and preprocessing capabilities  
+- **ConfigMaker**: Handles configuration parsing from Excel files and parameter setup
+
+### Step-by-Step Project Creation Process
+
+#### 1. Initialize Project Object
+```python
+from fran.managers.project import Project
+
+P = Project(project_title="your_project_name")
+```
+
+#### 2. Create Project Structure
+```python
+P.create(mnemonic='project_mnemonic')
+```
+
+This step:
+- Creates the complete folder hierarchy for the project
+- Initializes the SQLite database (`cases.db`) to track all cases
+- Sets up global properties for the project
+- Creates necessary subfolders for raw data, preprocessed data, predictions, etc.
+
+#### 3. Add Data Sources
+```python
+# Add predefined data sources
+P.add_data([DS.dataset1, DS.dataset2], test=False)
+
+# Or add custom data sources
+datasources = [
+    {'ds': 'custom_dataset', 'folder': '/path/to/dataset', 'alias': None}
+]
+P.add_data(datasources)
+```
+
+The `add_data` method:
+- Validates data integrity (matching image/mask pairs)
+- Creates symbolic links in the raw data folder
+- Populates the project database with case information
+- Handles duplicate detection and filtering
+- Registers datasources in global properties
+
+#### 4. Configure Label Groups
+```python
+# Single group (default)
+P.set_lm_groups()  # All datasets in one group
+
+# Multiple groups for different label schemes
+P.set_lm_groups([['dataset1', 'dataset2'], ['dataset3']])
+```
+
+Label groups (`lm_groups`) organize datasets with different labeling schemes. Each group maintains separate label indices, allowing combination of datasets with overlapping or conflicting label definitions.
+
+#### 5. Generate Training/Validation Folds
+```python
+P.maybe_store_projectwide_properties()
+```
+
+This critical step:
+- Creates 5-fold cross-validation splits (80:20 train/validation)
+- Computes global dataset properties (mean, std, intensity ranges)
+- Collates all unique labels across datasets
+- Stores foreground voxel statistics for each case
+
+#### 6. Create Configuration Plans
+```python
+from fran.utils.config_parsers import ConfigMaker
+
+conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+plans = conf['plan1']  # Select desired plan
+P.add_plan(plans)
+```
+
+Configuration plans define:
+- Target spacing and dimensions
+- Processing modes (lbd, patch, whole, etc.)
+- Data augmentation parameters
+- Model architecture settings
+- Training hyperparameters
+
+### Database Schema
+
+The project uses SQLite to track all cases with the following schema:
+
+```sql
+CREATE TABLE datasources (
+    ds TEXT,              -- Dataset name
+    alias TEXT,           -- Dataset alias for filename matching
+    case_id TEXT,         -- Unique case identifier
+    image TEXT,           -- Original image path
+    lm TEXT,              -- Original labelmap path
+    img_symlink TEXT,     -- Symlink path for image
+    lm_symlink TEXT,      -- Symlink path for labelmap
+    fold INTEGER,         -- Cross-validation fold assignment
+    test BOOLEAN          -- Test set flag
+)
+```
+
+### Folder Structure Created
+
+```
+project_folder/
+├── cases.db                    # SQLite database
+├── global_properties.json     # Project-wide settings
+├── experiment_configs.xlsx    # Configuration plans
+└── validation_folds.json      # Cross-validation splits
+
+cold_storage/
+├── raw_data/project_name/      # Symbolic links to original data
+│   ├── images/
+│   └── lms/
+└── preprocessed/               # Generated preprocessed datasets
+    ├── fixed_spacing/
+    ├── lbd/                   # Label-bounded datasets
+    ├── patches/               # Patch datasets
+    └── whole_images/          # Whole image datasets
+
+rapid_access/project_name/      # Fast storage for training
+├── cache/                      # Cached data
+├── patches/                   # Patch datasets
+└── lbd/                       # Label-bounded datasets
+```
+
+### Advanced Features
+
+#### Data Source Management
+- **Integrity Checking**: Verifies matching image/mask pairs
+- **Duplicate Detection**: Handles cases with identical names across datasets
+- **Incremental Addition**: Add new data to existing projects without rebuilding
+- **Alias Support**: Handle datasets with non-standard naming conventions
+
+#### Configuration System
+- **Excel-based Configuration**: Define complex training plans in spreadsheets
+- **Parameter Inheritance**: Plans can inherit from other plans using `source_plan`
+- **Ray Tune Integration**: Automatic hyperparameter search space definition
+- **Dynamic Parameter Resolution**: Automatic calculation of output channels, dataset statistics
+
+#### Global Properties Management
+- **Intensity Statistics**: Foreground mean, std, min, max across all datasets
+- **Label Consolidation**: Unified label mapping across multiple datasets
+- **Spacing Analysis**: Dataset spacing statistics and recommendations
+- **Clipping Ranges**: Optimal intensity clipping ranges for preprocessing
+
+### Example: Complete Project Setup
+
+```python
+# 1. Create project
+P = Project(project_title="lung_segmentation")
+P.create(mnemonic='lungs')
+
+# 2. Add multiple datasets
+P.add_data([DS.task6, DS.lidc2])
+
+# 3. Set up label groups
+P.set_lm_groups([['task6'], ['lidc2']])  # Different label schemes
+
+# 4. Generate folds and compute properties
+P.maybe_store_projectwide_properties()
+
+# 5. Load configuration and add plan
+conf = ConfigMaker(P, raytune=False).config
+P.add_plan(conf['plan1'])
+
+# 6. Verify setup
+print(f"Project has {len(P)} cases")
+print(f"Datasets: {P.datasources}")
+print(f"Has folds: {P.has_folds}")
+```
+
+This comprehensive project creation system ensures reproducible, well-organized machine learning experiments with proper data management, configuration tracking, and validation protocols.
+
+## 4. Project
 
 ### 1. Excel spreadsheet
 Make sure to add a sheet labelled 'plan1' at least.

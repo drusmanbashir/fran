@@ -1,5 +1,4 @@
 # %%
-
 from utilz.helpers import pbar
 import itertools as il
 import ipdb
@@ -490,6 +489,7 @@ if __name__ == "__main__":
     D = _DS()
     proj = Project(project_title="totalseg")
     run_tot = ["LITS-860"]
+    run_whole_image = ["LITS-1088"]
     run_whole_image = ["LITS-1088"]
     run_nodes = ["LITS-1110"]
     safe_mode = False

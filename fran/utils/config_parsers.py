@@ -267,7 +267,7 @@ class ConfigMaker():
       
     def resolve_configuration_filename(self,configuration_filename,configuration_mnemonic):
 
-        _mnemonics = ["liver", "lungs", "nodes", "bones", "lilu", "totalseg"]
+        _mnemonics = ["liver","lits", "lungs", "nodes", "bones", "lilu", "totalseg"]
         if configuration_filename: return configuration_filename
         assert configuration_filename or configuration_mnemonic, "Provide either a configuration filename or a configuration mnemonic"
 
@@ -278,7 +278,7 @@ class ConfigMaker():
         configurations_folder = Path(common_paths['configurations_folder'])
         if configuration_mnemonic: 
             assert configuration_mnemonic in _mnemonics, "Please provide a valid mnemonic from the list {}".format(_mnemonics)
-        if configuration_mnemonic == "liver":
+        if configuration_mnemonic == "liver" or configuration_mnemonic == "lits":
             return configurations_folder/("experiment_configs_liver.xlsx")
         elif configuration_mnemonic == "lungs":
             return configurations_folder/("experiment_configs_lungs.xlsx")

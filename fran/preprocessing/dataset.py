@@ -155,10 +155,12 @@ class ResamplerDataset(GetAttr, Dataset):
 
     def _get_ds_remapping(self, ds):
         if ds:
-            remapping = get_ds_remapping(ds, self.global_properties)
-        else:
-            remapping = None
-        return remapping
+            try:
+                remapping = get_ds_remapping(ds, self.global_properties)
+                return remapping
+            except:
+                return None
+        return None
 
     def _dici_from_df_row(self, row, remapping):
         img_fname = row["image"]
@@ -194,7 +196,6 @@ class ResamplerDataset(GetAttr, Dataset):
         return data
 
     def create_transforms(self):
-
         L = LoadSITKd(keys=["image", "lm"], image_only=True)
         R = LabelRemapd(keys=["lm"], remapping_key="remapping_imported")
         T = ToDeviced(keys=["image", "lm"], device=self.device)

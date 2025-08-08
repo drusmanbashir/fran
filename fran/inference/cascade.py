@@ -445,7 +445,7 @@ if __name__ == "__main__":
     imgs_react = list(react_fldr.glob("*"))
     imgs_crc = list(fldr_crc.glob("*"))
     nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
-    nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending")
+    nodes_fldr = Path("/s/xnat_shadow/nodes/images")
     nodes = list(nodes_fldr.glob("*"))
 
     img_fns = [imgs_t6][:20]
@@ -521,10 +521,11 @@ if __name__ == "__main__":
     )
 # %%
 
-    preds = W.run(imgs_crc, chunksize=6)
-    nodes_imgs = list(nodes_fldr.glob("*"))
+    # preds = W.run(imgs_crc, chunksize=6)
     nodesthick_imgs = list(nodesthick_fldr.glob("*"))
-    preds = W.run(nodesthick_imgs, chunksize=1)
+    nodes_imgs = list(nodes_fldr.glob("*"))
+    preds = W.run(nodes_imgs, chunksize=1, overwrite=False)
+# %%
     p = preds[0]["pred"][0]
 
 # %%

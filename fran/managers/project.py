@@ -2,7 +2,6 @@
 import sqlite3
 from send2trash import send2trash
 import ipdb
-
 from batchgenerators.utilities.file_and_folder_operations import List
 from fastcore.basics import listify
 from fran.utils.config_parsers import ConfigMaker
@@ -69,7 +68,7 @@ def fix_repeat_caseids(parent_folder):
         file_pairs = []
         
         for img_fn in img_fns:
-            lm_fn = find_matching_fn(img_fn,lm_fns)
+            lm_fn = find_matching_fn(img_fn,lm_fns,["all"])
             file_pairs.append([img_fn,lm_fn])
 
         case_ids =[]
@@ -102,6 +101,7 @@ class _DS():
     def __init__(self) -> None:
         # for any datasource, an alias matching the {projectname}_ part of the filename should be given if the ds name is non-standard, e.g., drli_short
             self.lits={'ds': 'lits', 'folder': "/s/datasets_bkp/lits_segs_improved/", 'alias':None}
+            self.lits_tmp={'ds': 'lits', 'folder': "/s/datasets_bkp/litstmp/", 'alias':"tmp"}
             self.litq={'ds':'litq', 'folder': "/s/xnat_shadow/litq", 'alias':None}
             self.nodes = {'ds': 'nodes', "folder":"/s/xnat_shadow/nodes", "alias":None}
             self.nodesthick={'ds':'nodesthick',"folder":"/s/xnat_shadow/nodesthick/", "alias": None}
@@ -141,9 +141,73 @@ class _DS():
         return "Datasources: "+datasrcs
 
 class Datasource(GetAttr):
+    """
+
+    This class manages a dataset folder containing 'images' and 'lms' (label maps) subfolders,
+    handles data preprocessing, integrity checking, and HDF5 storage of processed voxel data.
+    
+    Attributes
+    ----------
+    folder : Path
+        Root folder containing 'images' and 'lms' subfolders
+    name : str
+        Dataset name (inferred from filenames or provided)
+    alias : str, optional
+        Alternative name for dataset matching
+    bg_label : int
+        Background label value (default: 0)
+    test : bool
+        Whether this is a test dataset
+    h5_fname : Path
+        Path to HDF5 file storing processed voxel data
+    verified_pairs : list
+        List of verified [image, label] file pairs
+    new_cases : list
+        List of new cases to be processed
+        
+    Main Methods
+    -----------
+    integrity_check()
+        Verifies matching image-label pairs and equal counts
+    process(return_voxels=True, num_processes=8, multiprocess=True, debug=False)
+        Processes all new cases and extracts foreground voxel statistics
+    dump_to_h5()
+        Saves processed voxel data and metadata to HDF5 file
+    relabel(remapping=None, target_label=None)
+        Relabels all label maps according to specified mapping
+    infer_dataset_name()
+        Extracts dataset name from first image filename
+        
+    Example
+    -------
+    >>> ds = Datasource(folder="/path/to/dataset", name="liver_ct")
+    >>> ds.process(num_processes=4)  # Process all cases
+    >>> print(f"Dataset has {len(ds)} cases")
+    
+    Notes
+    -----
+    - Folder structure must be: folder/images/*.nii.gz, folder/lms/*.nii.gz
+    - Image and label filenames must match exactly
+    - Creates 'fg_voxels.h5' file in dataset folder for processed data
+    - Supports incremental processing (skips already processed cases)
+    """
+    
     def __init__(self, folder: Union[str, Path],name:str=None,alias=None, bg_label=0, test=False) -> None:
         """
-        src_folder: has subfolders 'images' and 'lms'. Files in each are identically named
+        Initialize a Datasource for medical imaging data.
+        
+        Parameters
+        ----------
+        folder : Union[str, Path]
+            Root folder containing 'images' and 'lms' subfolders with paired files
+        name : str, optional
+            Dataset name. If None, inferred from first image filename
+        alias : str, optional
+            Alternative dataset name for filename matching
+        bg_label : int, default=0
+            Background label value for processing
+        test : bool, default=False
+            Whether this dataset is for testing purposes
         """
         self.bg_label = bg_label
         self.folder = Path(folder)
@@ -199,7 +263,7 @@ class Datasource(GetAttr):
         )
         self.verified_pairs = []
         for img_fn in images:
-            self.verified_pairs.append([img_fn, find_matching_fn(img_fn, lms)])
+            self.verified_pairs.append([img_fn, find_matching_fn(img_fn, lms,["all"])])
         print("Verified filepairs are matched")
 
 
@@ -297,7 +361,7 @@ class Datasource(GetAttr):
 
         verified_pairs = []
         for img_fn in img_fnames:
-            verified_pairs.append([img_fn, find_matching_fn(img_fn, lm_fnames)])
+            verified_pairs.append([img_fn, find_matching_fn(img_fn, lm_fnames,tags=["all"])])
         assert self.paths_exist(
             verified_pairs
         ), "(Some) paths do not exist. Fix paths and try again."
@@ -689,7 +753,7 @@ class Project(DictToAttr):
         print("="*50)
         print("Filtering datasource: ",ds.name)
         ss = "SELECT image FROM datasources WHERE ds='{}'".format(ds.name)
-        with db_ops(P.db) as cur:
+        with db_ops(self.db) as cur:
             res = cur.execute(ss)
             pa = res.fetchall()
         existing_images = list(il.chain.from_iterable(pa))
@@ -1150,7 +1214,6 @@ class Project(DictToAttr):
 
 
 # %%
-# %%
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -1158,10 +1221,11 @@ if __name__ == "__main__":
 
     P= Project(project_title="totalseg")
     P= Project(project_title="nodes")
+    P = Project("litstmp")
     # P.delete()
-    P.create(mnemonic='totalseg')
-    # P.add_data([DS.nodes,DS.nodesthick])
-    P.add_data([DS.totalseg])
+    P.create(mnemonic='lits')
+    P.add_data([DS.lits_tmp])
+    # P.add_data([DS.totalseg])
 
 # %%
     conf = ConfigMaker(
@@ -1169,8 +1233,8 @@ if __name__ == "__main__":
 
     ).config
 
-    plans= conf['plan4']
     plans = conf['plantmp']
+    plans= conf['plan2']
 
     P.add_plan(plans)
 # %%
@@ -1290,9 +1354,17 @@ if __name__ == "__main__":
     test=None
 # %%
 # %%
+#SECTION:-------------------- Datasource setup from folder--------------------------------------------------------------------------------------
+    test =False
+    ds = Datasource(folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test)
+    ds = Datasource(folder=Path("/s/datasets_bkp/litstmp"), name="lits_tmp", alias="tmp", test=test)
+    ds.process()
+
+# %%
 #SECTION:-------------------- get cases--------------------------------------------------------------------------------------
     fold = 0
     ds = DS.nodes
+
     ss_train = P.build_sql_query(fold, ds, is_validation=False)
 
     ss_val = P.build_sql_query(fold, ds, is_validation=True)
@@ -1338,7 +1410,6 @@ if __name__ == "__main__":
             print("{} new files found. Adding to db.".format(ln))
         else:
             print("No new files to add from datasource {}".format(ds.name))
-# %%
         datasources= [DS.drli_short]
         test=False
         test = [False] * len(datasources) if not test else listify(test)

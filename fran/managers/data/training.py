@@ -121,8 +121,8 @@ class DataManagerDual(LightningDataModule):
             config=config,
             batch_size=batch_size,
             cache_rate=cache_rate,
-            ds_type=ds_type,
             split='train',
+            ds_type=ds_type,
             keys_tr=keys_tr,
         )
         
@@ -251,10 +251,10 @@ class DataManager(LightningDataModule):
 
     def set_tfm_keys(self, keys_tr=None,keys_val=None):
         if keys_tr is None:
-            self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
+            self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms"
         else: self.keys_tr = keys_tr
         if keys_val is None:
-            self.keys_val = "L,Ld,E,N,Re"
+            self.keys_val = "L,Ld,E,N,ResizePC"
         else: self.keys_val =keys_val
 
 
@@ -288,8 +288,8 @@ class DataManager(LightningDataModule):
                 - RandShiftIntensityd: Random intensity shifting
                 - RandAdjustContrastd: Random contrast adjustment
             Affine: RandAffined - Random affine transformations (rotation, scaling)
-            Resize: Resized - Resize to specified spatial size
-            Re: ResizeWithPadOrCropd - Resize with padding or cropping
+            ResizePC: ResizeWithPadOrCropd - Resize with padding or cropping
+            ResizeW: Resized - Resize to specified spatial size
             L: LoadImaged - Load image and label data
             Ld: LoadTorchDict - Load torch dictionary with indices
             Ind: MetaToDict - Convert metadata to dictionary format
@@ -362,24 +362,22 @@ class DataManager(LightningDataModule):
             )
             self.transforms_dict["Affine"] = Affine
 
-        if "Resize" in include_keys:
-            Resize = Resized(
+        if "ResizePC" in include_keys:
+            ResizePC= ResizeWithPadOrCropd(
+                keys=["image", "lm"],
+                spatial_size=self.plan["patch_size"],
+                lazy=True,
+            )
+            self.transforms_dict["ResizePC"] = ResizePC
+
+        if "ResizeW" in include_keys:
+            ResizeW = Resized(
                 keys=["image", "lm"],
                 spatial_size=self.plan["patch_size"],
                 mode=["linear", "nearest"],
                 lazy=True,
             )
-
-            self.transforms_dict["Resize"] = Re
-
-
-        if "Re" in include_keys:
-            Re = ResizeWithPadOrCropd(
-                keys=["image", "lm"],
-                spatial_size=self.plan["patch_size"],
-                lazy=True,
-            )
-            self.transforms_dict["Re"] = Re
+            self.transforms_dict["ResizeW"] = ResizeW
 
         # Continue similarly for the remaining transforms like L, Ld, Ind, Rtr, Rva...
 
@@ -513,8 +511,8 @@ class DataManager(LightningDataModule):
 
         for fn in pbar(fnames):
                 fn = Path(fn)
-                img_fn = find_matching_fn(fn.name, images, 'all')
-                lm_fn = find_matching_fn(fn.name, lms_fldr, 'all')
+                img_fn = find_matching_fn(fn.name, images, ['all'])
+                lm_fn = find_matching_fn(fn.name, lms_fldr, ['all'])
                 indices_fn = inds_fldr / img_fn.name
                 assert img_fn.exists(), "Missing image {}".format(img_fn)
                 assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
@@ -728,8 +726,8 @@ class DataManagerWhole(DataManagerSource):
             batch_size,
             **kwargs
         )
-        self.keys_tr = "L,E,F1,F2,Affine,Resize,N,IntensityTfms"
-        self.keys_val = "L,E,Resize,N"
+        self.keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"
+        self.keys_val = "L,E,ResizeW,N"
     def set_collate_fn(self):
         if self.split=="train":
             self.collate_fn = whole_collated
@@ -763,8 +761,8 @@ class DataManagerWhole(DataManagerSource):
         # for fn in fnames[400:432]:
         for fn in pbar(fnames):
             fn = Path(fn)
-            img_fn = find_matching_fn(fn.name, images, 'all')
-            lm_fn = find_matching_fn(fn.name, lms_fldr, 'all')
+            img_fn = find_matching_fn(fn.name, images, ['all'])
+            lm_fn = find_matching_fn(fn.name, lms_fldr,[ 'all'])
             assert img_fn.exists(), "Missing image {}".format(img_fn)
             assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
             dici = {"image": img_fn, "lm": lm_fn}
@@ -919,9 +917,9 @@ class DataManagerPatch(DataManagerSource):
 
     def set_tfm_keys(self):
         if not is_excel_None(self.plan_train["src_dest_labels"]):
-            self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
+            self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms"
         else:
-            self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,IntensityTfms"
+            self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,ResizePC,N,IntensityTfms"
         self.keys_val = "RP,L,Ld,E,N"
     def load_bboxes(self):
         bbox_fn = self.data_folder / "bboxes_info"
@@ -1014,7 +1012,7 @@ class DataManagerBaseline(DataManagerLBD):
         self.effective_batch_size = self.batch_size
 
     def set_tfm_keys(self):
-        self.keys_val = "L,Ld,E,Re,N"
+        self.keys_val = "L,Ld,E,ResizePC,N"
         self.keys_tr=self.keys_val
 
 
@@ -1085,7 +1083,12 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- LBD--------------------------------------------------------------------------------------
     batch_size = 2
+    ds_type=None
     ds_type="lmdb"
+    config_litsmc["dataset_params"]["mode"] = None
+    config_litsmc["dataset_params"]["cache_rate"] = 0
+
+
     D = DataManagerDual(
         project_title=proj_litsmc.project_title,
         config=config_litsmc,
@@ -1096,9 +1099,10 @@ if __name__ == "__main__":
 # %%
     D.prepare_data()
     D.setup()
-    tm = D.valid_manager
     tm = D.train_manager
+    tm = D.valid_manager
     tm.transforms_dict
+
 # %%
     ds =tm.ds
     dat= ds[0]
@@ -1111,16 +1115,17 @@ if __name__ == "__main__":
 # %%
     D.train_ds[0]
     dl =D.train_dataloader()
+    dl =D.val_dataloader()
 # %%
 
     iteri = iter(dl)
-    while iteri:
-        batch = next(iteri)
-        print(batch['image'].shape)
+    batch = next(iteri)
+    # while iteri:
+    #     print(batch['image'].shape)
 
 # %%
 
-    n=0
+    n=1
     im = batch['image'][n][0]
     ImageMaskViewer([im, batch['lm'][n][0]])
 # %%

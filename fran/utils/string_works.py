@@ -8,6 +8,15 @@ import numpy as np
 tr = ipdb.set_trace
 
 def regex_matcher(indx=0):
+    """
+    Decorator that applies regex pattern matching to a function's output.
+    
+    Args:
+        indx: Index of the regex match group to return (default: 0 for full match)
+    
+    Returns:
+        Decorator function that extracts specified match group from regex search
+    """
     def _outer(func):
 
         def _inner(*args,**kwargs):
@@ -19,6 +28,16 @@ def regex_matcher(indx=0):
     return _outer
 
 def dec_to_str(val:float,trailing_zeros=3):
+    """
+    Convert a float to a string representation with specified trailing zeros.
+    
+    Args:
+        val: Float value to convert
+        trailing_zeros: Minimum number of digits in output (default: 3)
+    
+    Returns:
+        str: String representation with decimal point removed and padded with zeros
+    """
     val2 = str(round(val,2))
     val2 = val2.replace(".","")
     trailing_zeros = np.maximum(trailing_zeros-len(val2),0) if trailing_zeros>0 else 0
@@ -26,23 +45,59 @@ def dec_to_str(val:float,trailing_zeros=3):
     return val2
 
 def int_to_str(val:int, total_length=5):
+    """
+    Convert an integer to a zero-padded string of specified length.
+    
+    Args:
+        val: Integer value to convert
+        total_length: Total length of output string (default: 5)
+    
+    Returns:
+        str: Zero-padded string representation
+    """
     val = str(val)
     precending_zeros = total_length-len(val)
     return '0'*precending_zeros+val
 
 
 def headline(inp:str):
+    """
+    Print a string surrounded by equal signs as a headline.
+    
+    Args:
+        inp: String to display as headline
+    """
     print("=")*20
     print(inp)
     print("=")*20
 
 def append_time(input_str, now=True):
+    """
+    Append current timestamp to input string in format _DDMMYY_HHMM.
+    
+    Args:
+        input_str: String to append timestamp to
+        now: Unused parameter (kept for compatibility)
+    
+    Returns:
+        str: Input string with timestamp appended
+    """
     now = datetime.now()
     dt_string = now.strftime("_%d%m%y_%H%M")
     return input_str + dt_string
 
 
 def infer_dataset_name(filename):
+    """
+    Extract dataset name from filename using regex pattern.
+    Used with regex_matcher decorator to get first part before underscore or dash.
+    
+    Args:
+        filename: Path object with filename
+        
+    Returns:
+        tuple: (pattern, filename.name) for regex_matcher decorator
+    """
     pat = "^([^-_]*)"
     return pat, filename.name
 

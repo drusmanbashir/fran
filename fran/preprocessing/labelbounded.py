@@ -22,6 +22,37 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 
 
 class LabelBoundedDataGenerator(Preprocessor, GetAttr):
+    """
+    Label-bounded data generator for preprocessing medical imaging data with automatic folder management.
+    
+    This class generates preprocessed image and label data by applying transformations and cropping
+    based on label boundaries. It automatically manages input and output folder structures based
+    on spacing parameters and configuration.
+    
+    **Algorithm for Setting Input/Output Folders:**
+    
+    1. **Input Data Folder Logic:**
+       - If `data_folder` is provided: Uses the specified path directly
+       - If `data_folder` is None: Automatically generates path using spacing parameters
+         - Creates folder name: "{fixed_spacing_folder}/spc_{spacing[0]}_{spacing[1]}_{spacing[2]}"
+         - Example: "/project/data/fixed_spacing/spc_1.5_1.5_1.5"
+    
+    2. **Output Folder Logic:**
+       - If `output_folder` is provided: Uses the specified path directly  
+       - If `output_folder` is None: Automatically generates path under project's lbd_folder
+         - Base path: "{project.lbd_folder}/spc_{spacing[0]}_{spacing[1]}_{spacing[2]}"
+         - If `folder_suffix` provided: Appends suffix to folder name
+         - Example: "/project/lbd/spc_1.5_1.5_1.5_plan9" (with folder_suffix="plan9")
+    
+    3. **Folder Structure Created:**
+       - `{output_folder}/images/` - Processed image files (.pt format)
+       - `{output_folder}/lms/` - Processed label/mask files (.pt format)  
+       - `{output_folder}/indices/` - Foreground/background indices (.pt format)
+       - `{output_folder}/indices_fg_exclude_{labels}/` - When fg_indices_exclude is specified
+    
+    The automatic folder naming ensures consistent organization based on processing parameters
+    and prevents conflicts between different spacing configurations or processing plans.
+    """
 
     _default = "project"
 
@@ -36,7 +67,16 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         remapping: dict = None,
     ) -> None:
         """
-        mask_label: this label is used to apply mask, i.e., crop the image and lm. Defaults to None aka all label values >0 are used to crop.
+        Initialize the LabelBoundedDataGenerator.
+        
+        Args:
+            project: Project instance containing paths and configuration
+            plan: Processing plan dictionary containing spacing and other parameters
+            folder_suffix: Optional suffix to append to output folder name
+            data_folder: Path to input data folder. If None, auto-generated from spacing
+            output_folder: Path to output folder. If None, auto-generated under project.lbd_folder
+            mask_label: Specific label value to use for cropping. If None, uses all labels >0
+            remapping: Dictionary for label value remapping (optional)
         """
         self.folder_suffix = folder_suffix
         self.plan = plan
@@ -99,12 +139,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             print("No transforms created. No data to be processed. Run setup first")
             return 0
         assert len(self.df) > 0,"No new cases to process"
-            
-        print(
-            "Retrieving FGBG indices from datafolder {0} and storing to subfolder {1}".format(
-                self.data_folder, self.indices_subfolder
-            )
-        )
         self.create_output_folders()
         self.process_files()
 
@@ -148,7 +182,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.shapes = []
 
         # for img_file, lm_file in pbar(zip(self.image_files, self.lm_files), desc="Processing files", total=len(self.image_files)):
-        for index, row in self.df.iterrows():
+        for index, row in pbar(self.df.iterrows(), total=len(self.df)):
             try:
                 # Load and process single case
                 data = {
