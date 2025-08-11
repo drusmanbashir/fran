@@ -79,9 +79,9 @@ def get_patch_spacing(run_name):
     ckpt = checkpoint_from_model_id(run_name)
     dic1 = torch.load(ckpt, weights_only=False)
     config = dic1["datamodule_hyper_parameters"]["config"]
-    spacing = config["plan"].get("spacing")
+    spacing = config["plan_train"].get("spacing")
     if spacing is None:
-        src_plan = config["plan"]["source_plan"]
+        src_plan = config["plan_train"]["source_plan"]
         src_plan = config[src_plan]
         spacing = src_plan["spacing"]
     print(run_name, spacing)
@@ -107,8 +107,6 @@ def load_params(model_id):
     ckpt = checkpoint_from_model_id(model_id)
     dic_tmp = torch.load(ckpt, map_location="cpu", weights_only=False)
     dic_relevant = dic_tmp["datamodule_hyper_parameters"]
-    # dic_tmp['datamodule_hyper_parameters']['plan']['spacing']= '.8,.8,1.5'# = fix_ast(dic_tmp, keys=['spacing'])
-    # dic_relevant['plan']=fix_ast(dic_relevant['plan'], keys = ['spacing'])# = fix_ast(dic_tmp, keys=['spacing'])
     return dic_relevant
 
 
@@ -149,7 +147,7 @@ class BaseInferer(GetAttr, DictToAttr):
             self.params = load_params(run_name)
         else:
             self.params = params
-        self.plan = fix_ast(self.params["config"]["plan"], ["spacing"])
+        self.plan = fix_ast(self.params["config"]["plan_train"], ["spacing"])
         self.check_plan_compatibility()
         self.dataset_params = self.params["config"]["dataset_params"]
         self.infer_project()
@@ -163,7 +161,7 @@ class BaseInferer(GetAttr, DictToAttr):
         else:
             stitch_device = "cuda"
         self.inferer = SlidingWindowInferer(
-            roi_size=self.params["config"]["plan"]["patch_size"],
+            roi_size=self.params["config"]["plan_train"]["patch_size"],
             sw_batch_size=bs,
             overlap=patch_overlap,
             mode=mode,

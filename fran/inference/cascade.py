@@ -132,6 +132,7 @@ class PatchInferer(BaseInferer):
         grid_mode="gaussian",
         devices=[1],
         save_channels=True,
+        params=None,
         **kwargs
     ):
         super().__init__(
@@ -139,6 +140,7 @@ class PatchInferer(BaseInferer):
             devices=devices,
             save_channels=save_channels,
             save=False,
+            params=params,
             **kwargs
         )
 
@@ -199,6 +201,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
                 devices=devices,
                 save_channels=save_channels,
                 safe_mode=safe_mode,
+                params=self.params,
             )
             for run in runs_p
         ]
@@ -219,7 +222,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
     def inferer_from_params(self, run_name_w):
         self.ckpt = checkpoint_from_model_id(run_name_w)
         dic1 = torch.load(self.ckpt, weights_only=False)
-        mode = dic1["datamodule_hyper_parameters"]["config"]["plan"][
+        mode = dic1["datamodule_hyper_parameters"]["config"]["plan_train"][
             "mode"
         ]  # ["dataset_params"]["mode"]
         if mode == "source":
@@ -421,6 +424,7 @@ if __name__ == "__main__":
 
     run_lidc2 = ["LITS-902"]
     run_nodes = ["LITS-1110"]
+    run_nodes = ["LITS-1159"]
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
     run_lidc2 = ["LITS-911"]
@@ -445,7 +449,7 @@ if __name__ == "__main__":
     imgs_react = list(react_fldr.glob("*"))
     imgs_crc = list(fldr_crc.glob("*"))
     nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
-    nodes_fldr = Path("/s/xnat_shadow/nodes/images")
+    nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending")
     nodes = list(nodes_fldr.glob("*"))
 
     img_fns = [imgs_t6][:20]
@@ -462,6 +466,7 @@ if __name__ == "__main__":
     devices = [1]
     overwrite = True
     save_channels = False
+# %%
     En = CascadeInferer(
         run_w,
         run_lidc2,
@@ -503,7 +508,7 @@ if __name__ == "__main__":
 
 # %%
 
-    preds = En.run(nodes, chunksize=2)
+    preds = En.run(nodes[:10], chunksize=2)
     preds = En.run(img_fns, chunksize=2)
 
 # %%
@@ -593,7 +598,7 @@ if __name__ == "__main__":
     imgs_sublist = nodes[:2]
     data = En.load_images(imgs_sublist)
     En.W.setup()
-    En.W.prepare_data(data, tfms="ERN")
+    En.W.prepare_data(data, tfms="ESN")
     p = En.W.predict()
     preds = En.W.postprocess(p)
 # %%
@@ -633,13 +638,17 @@ if __name__ == "__main__":
 # %%
 # %%
 # SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR>
+        n=1
 
         imgs_sublist = imgs_tmp
         data = En.load_images(imgs_sublist)
         En.bboxes = En.extract_fg_bboxes(data)
         data = En.apply_bboxes(data, En.bboxes)
-        data[0].keys()
-        ImageMaskViewer([data[0]["image"], data[0]["image"]])
+        data[1].keys()
+        img = data[1]["image"]
+
+        img = img.permute(2, 1, 0)
+        ImageMaskViewer([img,img])
 # %%
 # SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR>
 
@@ -687,7 +696,7 @@ if __name__ == "__main__":
                 print("\\n")
 
 # %%
-            img = imgs[ind]
+        img = imgs[ind]
 
         ImageMaskViewer([ot[0][0][2].cpu(), ot[2][0][2].cpu()])
 # %%

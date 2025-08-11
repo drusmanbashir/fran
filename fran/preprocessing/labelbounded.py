@@ -1,5 +1,7 @@
 # %%
 from fastcore.basics import listify
+from monai.transforms.utils import is_positive
+import pandas as pd
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
@@ -22,6 +24,7 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 
 
 class LabelBoundedDataGenerator(Preprocessor, GetAttr):
+#CODE: Preprocessor and downstream classes need thorough review and re-writing. E.g., where does expand_by go, in preprocessor or labelboudned?
     """
     Label-bounded data generator for preprocessing medical imaging data with automatic folder management.
     
@@ -65,6 +68,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         output_folder=None,
         mask_label=None,
         remapping: dict = None,
+        expand_by=0,
     ) -> None:
         """
         Initialize the LabelBoundedDataGenerator.
@@ -81,12 +85,16 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.folder_suffix = folder_suffix
         self.plan = plan
         self.fg_indices_exclude = listify(plan.get("fg_indices_exclude"))
-        self.remapping = remapping
-
+        self.expand_by = expand_by
         self.mask_label = mask_label
         self.lm_group = self.plan.get("lm_group")
+        self.remapping = self.create_remapping_dict(remapping)
         if is_excel_None(self.lm_group):
             self.lm_group = "lm_group1"
+        self.image_key = "image"
+        self.lm_key = "lm"
+        self.tnsr_keys = [self.image_key,self.lm_key]
+        self.tfms_keys = "LT,E,D,C,Ind"
         Preprocessor.__init__(
             self,
             project=project,
@@ -94,6 +102,9 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             data_folder=data_folder,
             output_folder=output_folder,
         )
+
+    def create_remapping_dict(self,remapping):
+        return remapping
 
     def set_input_output_folders(self, data_folder, output_folder):
         if data_folder is None:
@@ -142,7 +153,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.create_output_folders()
         self.process_files()
 
-    def setup(self, device="cpu", batch_size=4, overwrite=True):
+    def setup(self, device="cpu",  overwrite=True):
         device = resolve_device(device)
         print("Processing on ", device)
         self.register_existing_files()
@@ -152,9 +163,8 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         # Instead of creating dataset and dataloader, prepare file lists
         self.image_files = sorted(self.data_folder.glob("images/*.pt"))
         self.lm_files = sorted(self.data_folder.glob("lms/*.pt"))
-        
-        # Create transforms for processing
-        self.transforms = self.create_transforms(device)
+        self.create_transforms(device=device)
+        self.set_transforms(self.tfms_keys)
 
     def create_transforms(self, device):
         """Create transforms for processing images and labels"""
@@ -174,6 +184,43 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 )
             )
         return Compose(transforms)
+
+
+    def create_transforms(self,device):
+        margin = [int(self.expand_by / sp) for sp in self.spacing] 
+        if self.mask_label is None:
+            select_fn = is_positive
+        else:
+            select_fn = lambda lm: lm == self.mask_label
+        # Transform attributes in alphabetical order
+        self.C = CropForegroundd(
+            keys=self.tnsr_keys,
+            source_key=self.lm_key,
+            select_fn=select_fn,
+            margin=margin,
+        )
+        self.D = ToDeviced(
+            device=device, keys=self.tnsr_keys
+        )
+        self.E = EnsureChannelFirstd(
+            keys=self.tnsr_keys, channel_dim="no_channel"
+        )
+        self.Ind = FgBgToIndicesd2(
+            keys=[self.lm_key],
+            image_key=self.image_key,
+            ignore_labels=self.fg_indices_exclude,
+            image_threshold=-2600,
+        )
+        self.LT = LoadTorchd(keys=self.tnsr_keys)
+
+        self.transforms_dict = {
+            "C": self.C,
+            "D": self.D,
+            "E": self.E,
+            "Ind": self.Ind,
+            "LT": self.LT,
+        }
+
 
     def process_files(self):
         """Process files without using DataLoader"""
@@ -254,6 +301,25 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             cds = self.df["case_id"][self.df["ds"] == dsrc].to_list()
             cids.extend(cds)
         return cids
+
+
+    def set_transforms(self, keys_tr: str):
+        self.transforms = self.tfms_from_dict(keys_tr)
+
+    def tfms_from_dict(self, keys: str):
+        keys = keys.replace(" ", "").split(",")
+        tfms = []
+        for key in keys:
+            tfm = self.transforms_dict[key]
+            tfms.append(tfm)
+        tfms = Compose(tfms)
+        return tfms
+
+    # def set_transforms(self, tfms: str = ""):
+    #     tfms_final = []
+    #     for tfm in tfms:
+    #         tfms_final.append(getattr(self, tfm))
+        self.transform = Compose(tfms_final)
 
     @property
     def indices_subfolder(self):
@@ -341,7 +407,7 @@ if __name__ == "__main__":
 #SECTION:-------------------- TS--------------------------------------------------------------------------------------
 
     # for img_file, lm_file in zip(I.L.image_files, I.L.lm_files):
-    img_file, lm_file = I.L.image_files[0], I.L.lm_files[0]
+    img_file, lm_file = L.image_files[0], L.lm_files[0]
     try:
             # Load and process single case
             data = {
@@ -350,15 +416,15 @@ if __name__ == "__main__":
             }
             
             # Apply transforms
-            data = I.L.transforms(data)
+            data = L.transforms(data)
             
             # Get metadata and indices
-            fg_indices = I.L.get_foreground_indices(data["lm"])
-            bg_indices = I.L.get_background_indices(data["lm"])
-            coords = I.L.get_foreground_coords(data["lm"])
+            fg_indices = L.get_foreground_indices(data["lm"])
+            bg_indices = L.get_background_indices(data["lm"])
+            coords = L.get_foreground_coords(data["lm"])
             
             # Process the case
-            I.L.process_single_case(
+            L.process_single_case(
                 data["image"],
                 data["lm"],
                 fg_indices,

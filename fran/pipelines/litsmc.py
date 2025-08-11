@@ -2,6 +2,7 @@
 import argparse
 
 from utilz.imageviewers import ImageMaskViewer
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.trainers import Trainer
 from pathlib import Path
 from fran.managers import Project
@@ -16,9 +17,11 @@ from fran.utils.config_parsers import ConfigMaker
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
-    P = Project("nodes")
+    P = Project("litsmc")
+    # P.create('litsmc')
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf['plan_train']
+
 # %%
 #SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
 
@@ -27,7 +30,8 @@ if __name__ == '__main__':
     
 # P.delete()
     DS = _DS()
-    P.add_data([DS.nodes,DS.nodesthick])
+    P.add_data([DS.litq,DS.lits,DS.drli,DS.litqsmall])
+
 # P.add_data([DS.totalseg])
 # %%
 #SECTION:-------------------- DATA FOLDER H5PY file--------------------------------------------------------------------------------------
@@ -35,12 +39,13 @@ if __name__ == '__main__':
     test =False
     ds = Datasource(folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test)
     ds.process()
-# %%
 
+# %%
 #SECTION:-------------------- GLOBAL PROPERTIES--------------------------------------------------------------------------------------
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=True)
+# %%
 #SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
 
     parser = argparse.ArgumentParser(description="Resampler")
@@ -81,8 +86,8 @@ if __name__ == '__main__':
 
     # args.num_processes = 1
     args.debug = True
-    args.plan = "plan2"
-    args.project_title = "nodes"
+    args.plan = "plan4"
+    args.project_title = "litsmc"
 
 
 
@@ -108,7 +113,7 @@ if __name__ == '__main__':
             I.generate_TSlabelboundeddataset(
                 imported_labels=plans["imported_labels"],
                 imported_folder=plans["imported_folder"],
-                overwrite=overwrite)
+                overwrite=overwrite, device="cuda")
 # %%
 
     L = LabelBoundedDataGeneratorImported( project=P,
@@ -120,14 +125,21 @@ if __name__ == '__main__':
         )
 
 # %%
+    device="cpu"
     overwrite=True
-    L.setup(overwrite=overwrite)
-    L.process()
+    I.L = LabelBoundedDataGenerator(
+        project=I.project,
+        plan=I.plan,
+        folder_suffix=I.plan_name,
+    )
+    I.L.setup(overwrite=overwrite,device=device)
+    I.L.process()
+# %%
 
 # %%
 #SECTION:-------------------- DATA MANAGER--------------------------------------------------------------------------------------
 
-    batch_size = 10
+    batch_size = 8
     ds_type=None
     ds_type="lmdb"
 
@@ -173,15 +185,14 @@ if __name__ == '__main__':
 # %%
 #SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
 # %%
-    run_nodes = "LITS-1110"
-    bs = 10  # is good if LBD with 2 samples per case
+    bs = 8  # is good if LBD with 2 samples per case
     compiled = False
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
     neptune = True
     tags = []
-    description = f"Partially trained up to 100 epochs"
+    description = None
 
     # device_id = 1
     device_id = 0
@@ -208,6 +219,8 @@ if __name__ == '__main__':
     Tm.N.compiled = compiled
     Tm.fit()
 # %%
+# %%
+#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
     
     Tm.D.prepare_data()
     Tm.D.setup()
@@ -241,7 +254,7 @@ if __name__ == '__main__':
     lm = lm.permute(0,1,4,2,3)
     ImageMaskViewer([im[n][0], lm[n][0]])
 # %%
-#SECTION:-------------------- TROUBLE--------------------------------------------------------------------------------------
+
 
     batch_size = 2
     ds_type="lmdb"

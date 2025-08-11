@@ -14,7 +14,8 @@ from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from utilz.fileio import *
 from utilz.helpers import *
-#CODE: implement database such that instead of creating a new copy of lbd / patch etc for every plan, it checks if a similar plan with similar specs exists already, and reuses it For example, patch_size may change in a new plan with LBD mode, but that doesnt needaa new copy of LBD
+
+# CODE: implement database such that instead of creating a new copy of lbd / patch etc for every plan, it checks if a similar plan with similar specs exists already, and reuses it For example, patch_size may change in a new plan with LBD mode, but that doesnt needaa new copy of LBD
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
 
@@ -98,7 +99,7 @@ class PreprocessingManager:
 
     def resample_dataset(self, overwrite=False):
         """
-        Resamples dataset to target spacing and stores it in the cold_storage fixed_spacing_folder. 
+        Resamples dataset to target spacing and stores it in the cold_storage fixed_spacing_folder.
         Typically this will be a basis for further processing e.g., pbd, lbd dataset which will then be used in training
         """
 
@@ -110,20 +111,22 @@ class PreprocessingManager:
         self.R.setup(overwrite=overwrite)
         self.R.process()
 
-    def generate_lbd_dataset(self, overwrite=False):
+    def generate_lbd_dataset(self, overwrite=False,device="cpu"):
         self.L = LabelBoundedDataGenerator(
             project=self.project,
             plan=self.plan,
             folder_suffix=self.plan_name,
         )
-        self.L.setup(overwrite=overwrite)
+        self.L.setup(overwrite=overwrite,device=device)
         self.L.process()
+
     def generate_TSlabelboundeddataset(
         self,
         imported_labels,
         imported_folder,
         merge_imported_labels=False,
         lm_group="lm_group1",
+        device="cpu",
         overwrite=False,
     ):
         """
@@ -137,17 +140,17 @@ class PreprocessingManager:
             remapping = TSL.create_remapping(imported_labelsets, [8, 9])
 
         else:
-            remapping=None
+            remapping = None
         self.L = LabelBoundedDataGeneratorImported(
             project=self.project,
-            plan = self.plan,
+            plan=self.plan,
             folder_suffix=self.plan_name,
             imported_folder=imported_folder,
             merge_imported_labels=merge_imported_labels,
             remapping=remapping,
-        )
 
-        self.L.setup(overwrite=overwrite)
+        )
+        self.L.setup(overwrite=overwrite, device=device)
         self.L.process()
 
     @ask_proceed("Generating low-res whole images to localise organ of interest")
@@ -297,7 +300,7 @@ def do_low_res(proj_defaults):
 
 
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 if __name__ == "__main__":
     from fran.utils.common import *
 
@@ -341,7 +344,7 @@ if __name__ == "__main__":
     args.debug = True
     args.plan = "plan2"
 
-    args.project_title = "nodes"
+    args.project_title = "lidc2"
     P = Project(project_title=args.project_title)
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
@@ -353,17 +356,17 @@ if __name__ == "__main__":
         P.maybe_store_projectwide_properties(overwrite=True)
 
 # %%
-#SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
+# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
     I = PreprocessingManager(args)
     # I.spacing =
 # %%
-#SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
+# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
     I.resample_dataset(overwrite=False)
     I.R.get_tensor_folder_stats()
 
 # %%
-#SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
-    overwrite=True
+# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
+    overwrite = True
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
@@ -374,14 +377,17 @@ if __name__ == "__main__":
             I.generate_TSlabelboundeddataset(
                 imported_labels=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],
-            overwrite=overwrite)
+                overwrite=overwrite,
+            )
 # %%
 
 # %%
-# SECTION:-------------------- TSL dataset Imported labels-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TSL dataset Imported labels-------------------------------------------------------------------------------------- <CR> <CR>
 
-# this section uses imported labels from TSL and integrates those into the dataset. 
-    assert "imported_folder"  in plan.keys(),"Skip this section, there are no imported labels"
+    # this section uses imported labels from TSL and integrates those into the dataset.
+    assert (
+        "imported_folder" in plan.keys()
+    ), "Skip this section, there are no imported labels"
     imported_folder = plan["imported_folder"]
     imported_folder = Path(imported_folder)
     imported_labels = plan["imported_labels"]
@@ -403,16 +409,15 @@ if __name__ == "__main__":
 # %%
 
     merge_imported_labels = plan["merge_imported_labels"]
-    remapping= None
+    remapping = None
 # %%
     I.L = LabelBoundedDataGeneratorImported(
-        plan = plan,
+        plan=plan,
         project=I.project,
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
         remapping=remapping,
         folder_suffix=I.plan_name,
-
     )
 
 # %%
@@ -422,7 +427,7 @@ if __name__ == "__main__":
     # I.L.get_tensor_folder_stats()
     # I.L.generate_bboxes()
 # %%
-# SECTION:-------------------- Troubleshooting-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- Troubleshooting-------------------------------------------------------------------------------------- <CR> <CR>
 
 # %%
     imported_folder = plan["imported_folder"]
@@ -431,16 +436,16 @@ if __name__ == "__main__":
     TSL = TotalSegmenterLabels()
     I.L = LabelBoundedDataGeneratorImported(
         project=I.project,
-        plan = I.plan,
+        plan=I.plan,
         folder_suffix=I.plan_name,
         # expand_by=I.plan["expand_by"],
         # spacing=I.plan["spacing"],
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
         remapping=remapping,
-        )
+    )
 # %%
-    overwrite=False
+    overwrite = False
     I.L = LabelBoundedDataGenerator(
         project=I.project,
         plan=I.plan,

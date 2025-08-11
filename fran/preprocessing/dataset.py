@@ -254,9 +254,10 @@ class ResamplerDataset(GetAttr, Dataset):
             self.std = self.global_properties["std_fg"]
 
 
-class ImporterDataset(ResamplerDataset):
-    """A dataset class for importing and processing medical images with their labels.
-
+class ImporterDataset(ResamplerDataset): 
+#CODE: being phased out in favour of setting every thing up in imported.py
+    """
+    Dataset for importing labelmaps.
     This dataset handles loading both torch-format images/labels and imported SITK labelmaps,
     applies bounding box transformations, and optionally merges labels.
     """
@@ -299,27 +300,6 @@ class ImporterDataset(ResamplerDataset):
         data = self.create_data_dicts(overwrite=overwrite)
         Dataset.__init__(self, data=data, transform=self.transform)
 
-    #
-    # def _create_data_dicts_from_df(self):
-    #     imported_folder=self.imported_folder
-    #     masks_folder = self.data_folder / "lms"
-    #     images_folder = self.data_folder / "images"
-    #     lm_fns = list(masks_folder.glob("*.pt"))
-    #     img_fns = list(images_folder.glob("*.pt"))
-    #     imported_files = list(imported_folder.glob("*"))
-    #     data = []
-    #     for cid in self.case_ids:
-    #         lm_fn = self.case_id_file_match(cid, lm_fns)
-    #         img_fn = self.case_id_file_match(cid, img_fns)
-    #         imported_fn = self.case_id_file_match(cid, imported_files)
-    #         dici = {
-    #             "lm": lm_fn,
-    #             "image": img_fn,
-    #             "lm_imported": imported_fn,
-    #             "remapping_imported": remapping_imported,
-    #         }
-    #         data.append(dici)
-    #     return data
 
     def _get_ds_remapping(self, ds):
         return self.remapping_imported
@@ -363,7 +343,6 @@ class ImporterDataset(ResamplerDataset):
         return fns[0]
 
     def create_transforms(self):
-
         image_key = "image"
         lm_key = "lm"
         lm_imported_key = "lm_imported"
@@ -383,6 +362,7 @@ class ImporterDataset(ResamplerDataset):
         self.Rz = ResizeToTensord(
             keys=[lm_imported_key], key_template_tensor=lm_key, mode="nearest"
         )
+
 
         self.M = MergeLabelmapsd(
             keys=[lm_imported_key, lm_key], meta_key=lm_key, key_output=lm_key
@@ -422,6 +402,7 @@ class ImporterDataset(ResamplerDataset):
 
 
 class CropToLabelDataset(ImporterDataset, ResamplerDataset):
+#CODE: being phased out
     """A dataset class that crops images based on label masks.
 
     This dataset loads images and their corresponding labels, and crops them
@@ -499,6 +480,7 @@ class CropToLabelDataset(ImporterDataset, ResamplerDataset):
         self.D = ToDeviced(device=self.device, keys=[image_key, lm_key])
         self.E = EnsureChannelFirstd(keys=[image_key, lm_key], channel_dim="no_channel")
         margin = [int(self.expand_by / sp) for sp in self.spacing]
+
         self.C = CropForegroundd(
             keys=[image_key, lm_key],
             source_key=lm_key,

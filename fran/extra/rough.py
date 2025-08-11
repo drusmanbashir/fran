@@ -1,4 +1,5 @@
 # %%
+from utilz.imageviewers import ImageMaskViewer
 import SimpleITK as sitk
 import torch
 from pathlib import Path
@@ -14,8 +15,8 @@ output = torch.load(outputfn, weights_only=False)
 lab = torch.load(labfn, weights_only=False)
 
 # %%
-segs_folder = Path("/s/insync/datasets/capestart/nodes_2025/segmentations")
-imgs_folder =  Path("/s/xnat_shadow/nodesthick/images")
+segs_folder = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan4/lms")
+imgs_folder =  Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan4/images")
 seg_fns= list(segs_folder.glob("*"))
 img_fns = list(imgs_folder.glob("*"))
 # %%
@@ -25,7 +26,34 @@ for imgfn in img_fns:
     arr = sitk.GetArrayFromImage(img)
     means.append(arr.mean())
 # %%
-pairs =[[fn , find_matching_fn(fn,img_fns,tags=['all'])] for fn in seg_fns]
+
+lmfn = seg_fns[0]
+lmfn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan4/lms/drli_075.pt")
+imgfn = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan4/images/drli_075.pt")
+img = torch.load(imgfn, weights_only=False)
+lm = torch.load(lmfn, weights_only=False)
+lm =lm.cpu()
+img = img.cpu()
+print(lm.shape)
+print(img.shape)
+
+ImageMaskViewer([img, lm])
+# %%
+n= 5
+
+ImageMaskViewer([img[n][0], lm[n][0]])
+
+# %%
+imgfn = "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_2/images/nodes_13_20230322_NCAPC.pt"
+lmfn = "/r/datasets/preprocessed/tmp/lms/nodes_13_20230322_NCAPC.pt"
+# %%
+fldr = Path("/s/fran_storage/predictions/nodes/LITS-1159")
+lmfns = list(fldr.glob("*"))
+lmfn = lmfns[0]
+lm = sitk.ReadImage(lmfn)
+lma = sitk.GetArrayFromImage(lm)
+lma.max()
+ImageMaskViewer([img,lm])
 # %%
 print(f"Image shape: {img.shape}")
 print(f"Output shape: {output.shape}")

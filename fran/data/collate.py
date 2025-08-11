@@ -119,7 +119,7 @@ def grid_collated(batch):
     fns_imgs=[]
     fns_labels = []
     for i, item in enumerate(batch):
-        item=item[0]
+        # item=item[0]
         imgs_,labels_,fns_imgs_,fns_labels_ = process_grid_items(item)
         imgs.extend(imgs_)
         labels.extend(labels_)

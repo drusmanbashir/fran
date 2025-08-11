@@ -18,7 +18,7 @@ if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("nodes")
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-    plan = conf['plan_train']
+
 # %%
 #SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
 
@@ -36,11 +36,6 @@ if __name__ == '__main__':
     ds = Datasource(folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test)
     ds.process()
 # %%
-
-#SECTION:-------------------- GLOBAL PROPERTIES--------------------------------------------------------------------------------------
-    if not "labels_all" in P.global_properties.keys():
-        P.set_lm_groups(plan["lm_groups"])
-        P.maybe_store_projectwide_properties(overwrite=True)
 #SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
 
     parser = argparse.ArgumentParser(description="Resampler")
@@ -289,3 +284,5 @@ if __name__ == '__main__':
     #     print(batch['image'].shape)
 #SECTION:-------------------- INFERENCE--------------------------------------------------------------------------------------
 
+# %%
+#SECTION:-------------------- Imported dataset--------------------------------------------------------------------------------------

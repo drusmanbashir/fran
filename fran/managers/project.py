@@ -1221,8 +1221,8 @@ if __name__ == "__main__":
 
     P= Project(project_title="totalseg")
     P= Project(project_title="nodes")
-    P = Project("litstmp")
-    # P.delete()
+    P = Project("litsmc")
+    P.delete()
     P.create(mnemonic='lits')
     P.add_data([DS.lits_tmp])
     # P.add_data([DS.totalseg])
@@ -1356,6 +1356,8 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- Datasource setup from folder--------------------------------------------------------------------------------------
     test =False
+    ds = Datasource(folder=DS.lits['folder'], name=DS.lits['ds'], alias=DS.lits['alias'], test=test)
+    ds = Datasource(folder=DS.drli['folder'], name=DS.drli['ds'], alias=DS.drli['alias'], test=test)
     ds = Datasource(folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test)
     ds = Datasource(folder=Path("/s/datasets_bkp/litstmp"), name="lits_tmp", alias="tmp", test=test)
     ds.process()

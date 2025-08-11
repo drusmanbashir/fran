@@ -56,8 +56,9 @@ def generate_bboxes_from_lms_folder(
     save_dict(bboxes, bbox_fn)
 
 class ResampleDatasetniftiToTorch(Preprocessor):
-    def __init__(self, project, spacing, data_folder=None, output_folder=None, half_precision=False):
+    def __init__(self, project, spacing, data_folder=None, output_folder=None, half_precision=False,clip_center=False):
         super().__init__(project, spacing, output_folder=output_folder,data_folder=data_folder)
+        self.clip_center = clip_center
         self.half_precision = half_precision
 
     def setup(self, device="cpu",overwrite=False):
@@ -71,6 +72,7 @@ class ResampleDatasetniftiToTorch(Preprocessor):
                 spacing=self.spacing,
                 half_precision=self.half_precision,
                 device=device,
+                clip_center=self.clip_center,
             )
             self.ds.setup()
             self.create_dl()

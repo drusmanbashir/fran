@@ -445,6 +445,7 @@ class ToCPUd(MapTransform):
 
 
 class BBoxFromPTd(MapTransform):
+    #CODE: this should accept margin as arg instead of both spacing and expand_by, just l9ike CropToForeground
     def __init__(
         self,
         spacing,

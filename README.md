@@ -169,6 +169,10 @@ Configuration plans define:
 - Model architecture settings
 - Training hyperparameters
 
+##### a. Imported labelmaps
+If you add imported labelmaps to a plan, you have to include a remapping cell, leave it empty to give logic for remapping in it. It can be a dict, or a TSL class attribute if imported folder is TSL predictions. TSL class attributes simplify remapping and generate the dict for you.
+
+You must include imported_folder, remapping, and merge_imported_labels in the spreadsheet.
 ### Database Schema
 
 The project uses SQLite to track all cases with the following schema:

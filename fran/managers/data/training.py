@@ -553,8 +553,7 @@ class DataManager(LightningDataModule):
         # Create transforms for this split
         keys = self.keys_tr if self.split == 'train' else self.keys_val
         self.create_transforms(keys)
-        print("Setting up datasets. Training ds type is: ", self.ds_type)
-
+        print("Transforms are set up: ",keys)
         print(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
         self.create_dataset()
         self.create_dataloader()
@@ -573,6 +572,7 @@ class DataManager(LightningDataModule):
             self.ds = self._create_train_ds()
         else:
             self.ds = self._create_valid_ds()
+
 
     def _create_train_ds(self):
             if is_excel_None(self.ds_type):
@@ -610,6 +610,28 @@ class DataManager(LightningDataModule):
             ds = GridPatchDataset(data=ds1 ,patch_iter=patch_iter)
             return ds
 
+
+    def _create_valid_ds(self):
+            if is_excel_None(self.ds_type):
+                self.ds = Dataset(data=self.data, transform=self.transforms)
+                print("Vanilla Pytorch Dataset set up.")
+            elif self.ds_type == "cache":
+                self.ds = CacheDataset(
+                    data=self.data,
+                    transform=self.transforms,
+                    cache_rate=self.cache_rate,
+                )
+            elif self.ds_type == "lmdb":
+                self.ds = LMDBDataset(
+                    data=self.data,
+                    transform=self.transforms,
+                    cache_dir=self.cache_folder,
+                    db_name=f"{self.split}_cache",
+                )
+            else:
+
+                raise NotImplementedError
+            return self.ds
 
     @property
     def src_dims(self):
@@ -1067,7 +1089,9 @@ if __name__ == "__main__":
 
     project_title = "totalseg"
     proj_tot = Project(project_title=project_title)
+    proj_nodes = Project(project_title="nodes")
 
+    config_nodes = ConfigMaker(proj_nodes, raytune=False).config
     configuration_filename = (
         "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     )
@@ -1096,6 +1120,19 @@ if __name__ == "__main__":
         ds_type=ds_type
     )
 
+
+# %%
+    batch_size = 2
+    ds_type=None
+    ds_type="lmdb"
+    config_nodes["dataset_params"]["mode"] = "lbd"
+    config_nodes["dataset_params"]["cache_rate"] = 0
+    D = DataManagerDual(
+        project_title=proj_nodes.project_title,
+        config=config_nodes,
+        batch_size=batch_size,
+        ds_type=ds_type
+    )
 # %%
     D.prepare_data()
     D.setup()
@@ -1166,9 +1203,13 @@ if __name__ == "__main__":
 
 
 # %%
-    D = DataManagerLBD.from_folder(data_folder="/s/xnat_shadow/crc/tensors/lbd_plan3",split='valid',project=proj_litsmc,config=config_litsmc)
 # %%
 
+    config_nodes["dataset_params"] ["cache_rate"]=0.5
+    # D3 = DataManagerLBD(project=proj_nodes,config=config_nodes,split='valid',ds_type='cache',cache_rate=0.5)
+    D3 = DataManagerLBD.from_folder(data_folder="/r/datasets/preprocessed/tmp",split='valid',project=proj_nodes,config=config_nodes,ds_type="lmdb")
+    D3.prepare_data()
+    D3.setup()
 
 #SECTION:-------------------- DataManagerPlain--------------------------------------------------------------------------------------
 # %%
