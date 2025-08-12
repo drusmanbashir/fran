@@ -2,7 +2,7 @@
 from fran.managers.project import Project
 from monai.data import GridPatchDataset, PatchIterd
 from lightning import LightningDataModule
-from utilz.helpers import pbar, pp
+from utilz.helpers import pbar, pp, resolve_device
 from monai.transforms.transform import RandomizableTransform
 from fran.preprocessing.helpers import bbox_bg_only
 import ast
@@ -31,6 +31,7 @@ from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
 from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
+    ToDeviceD,
 )
 
 from fran.data.collate import grid_collated, img_lm_bbox_collated, source_collated, whole_collated
@@ -104,10 +105,11 @@ class DataManagerDual(LightningDataModule):
         config: dict,
         batch_size=8,
         cache_rate=0.0,
+        device="cuda",
         ds_type=None,
         save_hyperparameters=True,
-        keys_tr=None,
-        keys_val = None
+        keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms",
+        keys_val = "L,Ld,E,N,ResizePC",
     ):
         super().__init__()
         project=Project(project_title)
@@ -122,8 +124,9 @@ class DataManagerDual(LightningDataModule):
             batch_size=batch_size,
             cache_rate=cache_rate,
             split='train',
+            device=device,
             ds_type=ds_type,
-            keys_tr=keys_tr,
+            keys=keys_tr,
         )
         
         self.valid_manager = manager_class_valid(
@@ -131,9 +134,10 @@ class DataManagerDual(LightningDataModule):
             config=config,
             batch_size=batch_size,
             cache_rate=cache_rate,
+            device=device,
             ds_type=None,
             split='valid',
-            keys_val=keys_val,
+            keys=keys_val,
             
         )
 
@@ -208,17 +212,18 @@ class DataManager(LightningDataModule):
         config: dict,
         batch_size=8,
         cache_rate=0.0,
+        device="cuda:0",
         ds_type=None,
         split='train'  ,# Add sp,lit parameter
         save_hyperparameters=False,
-        keys_tr=None,
-        keys_val =None,
+        keys=None,
 
     ):
 
         super().__init__()
         if save_hyperparameters:
             self.save_hyperparameters('project','config', 'split',logger=False)
+        device = resolve_device(device)
         store_attr()
         self.plan= config[f"plan_{split}"]
         global_properties = load_dict(project.global_properties_filename)
@@ -229,13 +234,13 @@ class DataManager(LightningDataModule):
         transform_factors = config["transform_factors"]
         self.dataset_params["mean_fg"] = global_properties["mean_fg"]
         self.dataset_params["std_fg"] = global_properties["std_fg"]
-        self.batch_size = batch_size
-        self.cache_rate = cache_rate
-        self.ds_type = ds_type
+        # self.batch_size = batch_size
+        # self.cache_rate = cache_rate
+        # self.ds_type = ds_type
         self.set_effective_batch_size()
         self.data_folder = self.derive_data_folder()
         self.assimilate_tfm_factors(transform_factors)
-        self.set_tfm_keys(keys_tr,keys_val)
+        # self.keys=keys
         self.set_collate_fn()
 
     def set_collate_fn(self):
@@ -248,14 +253,14 @@ class DataManager(LightningDataModule):
     def __repr__(self):
         return f'DataManager(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
 
-
-    def set_tfm_keys(self, keys_tr=None,keys_val=None):
-        if keys_tr is None:
-            self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms"
-        else: self.keys_tr = keys_tr
-        if keys_val is None:
-            self.keys_val = "L,Ld,E,N,ResizePC"
-        else: self.keys_val =keys_val
+    #
+    # def set_tfm_keys(self, keys_tr=None,keys_val=None):
+    #     if keys_tr is None:
+    #         self.keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms"
+    #     else: self.keys_tr = keys_tr
+    #     if keys_val is None:
+    #         self.keys_val = "L,Ld,E,N,ResizePC"
+    #     else: self.keys_val =keys_val
 
 
 
@@ -264,7 +269,7 @@ class DataManager(LightningDataModule):
             dici = {"value": value[0], "prob": value[1]}
             setattr(self, key, dici)
 
-    def create_transforms(self, keys):
+    def create_transforms(self):
 
         """
         Creates and assigns transformations based on provided keys.
@@ -276,8 +281,8 @@ class DataManager(LightningDataModule):
             None: Sets self.transforms with composed transforms
             
         Transform Abbreviations and Full Names:
+            Dev: EnsureTyped - puts data on GPU
             E: EnsureChannelFirstd - Ensures channel dimension is first
-            Ex: ExtractContiguousSlicesd - Extracts 3 contiguous slices (z-1, z, z+1)
             N: NormaliseClipd - Normalizes and clips image intensities
             RP: RandomPatch - Applies random patch sampling
             F1: RandFlipd (axis=0) - Random flip along spatial axis 0
@@ -298,45 +303,30 @@ class DataManager(LightningDataModule):
             None: Sets self.transforms with composed transforms
         """
         # Initialize transforms dictionary and list
-        self.transforms_dict = {}
-        self.tfms_list = []
         # Parse transform keys
-        include_keys = [key.strip() for key in keys.split(",")]
-        # Conditionally create transforms based on inclusion list
-        if "E" in include_keys:
-            E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-            self.transforms_dict["E"] = E
-        if "Ex" in include_keys:
-            Ex = ExtractContiguousSlicesd(keys=["image", "lm"])
-            self.transforms_dict["Ex"] = Ex
-
-        if "N" in include_keys:
-            N = NormaliseClipd(
+        Dev = ToDeviceD(keys=["image", "lm"],device=self.device)
+        E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+        N = NormaliseClipd(
                 keys=["image"],
                 clip_range=self.dataset_params["intensity_clip_range"],
                 mean=self.dataset_params["mean_fg"],
                 std=self.dataset_params["std_fg"],
             )
-            self.transforms_dict["N"] = N
 
-        if "RP" in include_keys:
-            RP = RandomPatch()
-            self.transforms_dict["RP"] = RP
+        RP = RandomPatch()
+            # self.transforms_dict["RP"] = RP
 
-        if "F1" in include_keys:
-            F1 = RandFlipd(
+        F1 = RandFlipd(
                 keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=0, lazy=True
             )
-            self.transforms_dict["F1"] = F1
+            # self.transforms_dict["F1"] = F1
 
-        if "F2" in include_keys:
-            F2 = RandFlipd(
+        F2 = RandFlipd(
                 keys=["image", "lm"], prob=self.flip["prob"], spatial_axis=1, lazy=True
             )
-            self.transforms_dict["F2"] = F2
+            # self.transforms_dict["F2"] = F2
 
-        if "IntensityTfms" in include_keys:
-            IntensityTfms = [
+        IntensityTfms = [
                 RandScaleIntensityd(
                     keys="image", factors=self.scale["value"], prob=self.scale["prob"]
                 ),
@@ -350,59 +340,48 @@ class DataManager(LightningDataModule):
                     ["image"], gamma=self.contrast["value"], prob=self.contrast["prob"]
                 ),
             ]
-            self.transforms_dict["IntensityTfms"] = IntensityTfms
+            # self.transforms_dict["IntensityTfms"] = IntensityTfms
 
-        if "Affine" in include_keys:
-            Affine = RandAffined(
+        Affine = RandAffined(
                 keys=["image", "lm"],
                 mode=["bilinear", "nearest"],
                 prob=self.config['affine3d']["p"],
                 rotate_range=self.config['affine3d']["rotate_range"],
                 scale_range=self.config['affine3d']["scale_range"],
             )
-            self.transforms_dict["Affine"] = Affine
 
-        if "ResizePC" in include_keys:
-            ResizePC= ResizeWithPadOrCropd(
+        ResizePC= ResizeWithPadOrCropd(
                 keys=["image", "lm"],
                 spatial_size=self.plan["patch_size"],
                 lazy=True,
             )
-            self.transforms_dict["ResizePC"] = ResizePC
 
-        if "ResizeW" in include_keys:
-            ResizeW = Resized(
+        ResizeW = Resized(
                 keys=["image", "lm"],
                 spatial_size=self.plan["patch_size"],
                 mode=["linear", "nearest"],
                 lazy=True,
             )
-            self.transforms_dict["ResizeW"] = ResizeW
 
         # Continue similarly for the remaining transforms like L, Ld, Ind, Rtr, Rva...
 
-        if "L" in include_keys:
-            L = LoadImaged(
+        L = LoadImaged(
                 keys=["image", "lm"],
                 image_only=True,
                 ensure_channel_first=False,
                 simple_keys=True,
             )
-            L.register(TorchReader())
-            self.transforms_dict["L"] = L
+        L.register(TorchReader())
 
-        if "Ld" in include_keys:
-            Ld = LoadTorchDict(
+        Ld = LoadTorchDict(
                 keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
             )
-            self.transforms_dict["Ld"] = Ld
+            # self.transforms_dict["Ld"] = Ld
 
-        if "Ind" in include_keys:
-            Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
-            self.transforms_dict["Ind"] = Ind
+        Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
+            # self.transforms_dict["Ind"] = Ind
 
-        if "Rtr" in include_keys:
-            Rtr = RandCropByPosNegLabeld(
+        Rtr = RandCropByPosNegLabeld(
                 keys=["image", "lm"],
                 label_key="lm",
                 image_key="image",
@@ -416,10 +395,9 @@ class DataManager(LightningDataModule):
                 lazy=True,
                 allow_smaller=True,
             )
-            self.transforms_dict["Rtr"] = Rtr
+            # self.transforms_dict["Rtr"] = Rtr
 
-        if "Rva" in include_keys:
-            Rva = RandCropByPosNegLabeld(
+        Rva = RandCropByPosNegLabeld(
                 keys=["image", "lm"],
                 label_key="lm",
                 image_key="image",
@@ -433,15 +411,27 @@ class DataManager(LightningDataModule):
                 lazy=True,
                 allow_smaller=True,
             )
-            self.transforms_dict["Rva"] = Rva
-        for k in include_keys:
-            if k=="IntensityTfms":
-                self.tfms_list.extend(self.transforms_dict[k])
-            else:
-                self.tfms_list.append(self.transforms_dict[k])
-        self.transforms =Compose(self.tfms_list)
+            # self.transforms_dict["Rva"] = Rva
+        self.transforms_dict = {
+            "Dev": Dev,
+            "E": E,
+            "N": N,
+            "RP": RP,
+            "F1": F1,
+            "F2": F2,
+            "IntensityTfms": IntensityTfms,
+            "Affine": Affine,
+            "ResizePC": ResizePC,
+            "ResizeW": ResizeW,
+            "L": L,
+            "Ld": Ld,
+            "Ind": Ind,
+            "Rtr": Rtr,
+            "Rva": Rva
+        }
 
 
+        # Conditionally create transforms based on inclusion list
     def set_effective_batch_size(self):
         if not "samples_per_file" in self.plan or not self.split=="train":  # if split is valid, grid sampling is done and effective batch_size should be same as batch size
             self.plan["samples_per_file"] = 1
@@ -457,9 +447,8 @@ class DataManager(LightningDataModule):
                 self.effective_batch_size,
             )
         )
-    def set_transforms(self, keys_tr: str, keys_val: str):
-        self.tfms_train = self.tfms_from_dict(keys_tr)
-        self.tfms_valid = self.tfms_from_dict(keys_val)
+    def set_transforms(self, keys):
+        self.transforms= self.tfms_from_dict(keys)
 
     def tfms_from_dict(self, keys: str):
         keys = keys.split(",")
@@ -539,6 +528,7 @@ class DataManager(LightningDataModule):
 
     def create_dataloader(self):
             self.dl = DataLoader(
+                
                 self.ds,
                 batch_size=self.effective_batch_size,
                 num_workers=self.effective_batch_size * 2,
@@ -551,9 +541,9 @@ class DataManager(LightningDataModule):
 
     def setup(self, stage: str = None) -> None:
         # Create transforms for this split
-        keys = self.keys_tr if self.split == 'train' else self.keys_val
-        self.create_transforms(keys)
-        print("Transforms are set up: ",keys)
+        self.create_transforms()
+        self.set_transforms(self.keys)
+        print("Transforms are set up: ",self.keys)
         print(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
         self.create_dataset()
         self.create_dataloader()
@@ -585,6 +575,7 @@ class DataManager(LightningDataModule):
                     cache_rate=self.cache_rate,
                 )
             elif self.ds_type == "lmdb":
+            #BUG: LMDBDataset will slow training down. fix it
                 self.ds = LMDBDataset(
                     data=self.data,
                     transform=self.transforms,
@@ -730,8 +721,8 @@ class DataManagerSource(DataManager):
     #     self.data_train = self.create_data_dicts(self.train_cases)
     #     self.data_valid = self.create_data_dicts(self.valid_cases)
 
-    def create_transforms(self,keys='all'):
-        super().create_transforms(keys)
+    def create_transforms(selfs):
+        super().create_transforms()
 
 class DataManagerWhole(DataManagerSource):
 
@@ -987,8 +978,8 @@ class DataManagerPatch(DataManagerSource):
             patches.append(dici)
         return patches
 
-    def create_transforms(self, keys='all'):
-        super().create_transforms(keys)
+    def create_transforms(self):
+        super().create_transforms()
 
     def derive_data_folder(self):
         assert self.plan_train["mode"] == "patch", f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan_train['mode']}'"
@@ -1177,6 +1168,9 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- FromFolder--------------------------------------------------------------------------------------
 
+    Dev = EnsureTyped(keys=["image", "lm"],device=1)
+    dat2 = Dev(dat)
+
 
 # SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR>
 # %%
@@ -1189,6 +1183,8 @@ if __name__ == "__main__":
     )
     D.prepare_data()
     D.setup()
+    tm = D.train_manager
+# %%
     
     # Now use train_manager or valid_manager to access the data
     dl = D.train_dataloader()
@@ -1229,7 +1225,9 @@ if __name__ == "__main__":
 
 
 
-
+    D = tm.transforms_dict["Dev"]
+    
+    b2 = D(b[0])
 # %%
 #    b = D.valid_ds[1]
 #    b['image'].shape
@@ -1328,8 +1326,12 @@ if __name__ == "__main__":
 # %%
     ds =tm.ds
     dici = ds.data[0]
+    dici2 = tm.transforms(dici)
     tm.tfms_list
 
+    dv = resolve_device(0)
+    Dev = ToDeviceD(keys=["image", "lm"],device=dv)
+    dat3 = Dev(dat2)
 # %%
 # SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 

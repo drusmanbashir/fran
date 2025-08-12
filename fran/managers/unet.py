@@ -141,6 +141,7 @@ class UNetManager(LightningModule):
         return model
 
     def create_loss_fnc(self):
+        fg_classes= max(self.model_params["out_channels"]-1,1)
         if self.model_params["arch"] == "nnUNet":
             num_pool = 5
             self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
@@ -154,7 +155,7 @@ class UNetManager(LightningModule):
             loss_func = DeepSupervisionLoss(
                 levels=num_pool,
                 deep_supervision_scales=self.deep_supervision_scales,
-                fg_classes=self.model_params["out_channels"] - 1,
+                fg_classes=fg_classes,
             )
             self.loss_fnc=loss_func
 
@@ -187,13 +188,13 @@ class UNetManager(LightningModule):
             loss_func = DeepSupervisionLoss(
                 levels=num_pool,
                 deep_supervision_scales=self.deep_supervision_scales,
-                fg_classes=self.model_params["out_channels"] - 1,
+                fg_classes=fg_classes,
             )
             self.loss_fnc=loss_func
 
         else:
             loss_func = CombinedLoss(
-                **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
+                **self.loss_params, fg_classes=fg_classes
             )
             self.loss_fnc=loss_func
 

@@ -1,4 +1,4 @@
-# tch %%
+# %%
 from label_analysis.merge import pbar
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -371,7 +371,6 @@ if __name__ == "__main__":
     # conf['model_params']['lr']=1e-3
     conf_litsmc["dataset_params"]["cache_rate"]
     # run_name = "LITS-1007"
-    # device_id = 1
     device_id = 0
     run_none = None
     run_tsl = "LITS-1120"
@@ -414,13 +413,17 @@ if __name__ == "__main__":
     Tm.fit()
     # model(inputs)
 # %%
+
+    conf["dataset_params"]["ds_type"] 
+    conf["dataset_params"]["cache_rate"] 
+# %%
 # SECTION:-------------------- LITSMC -------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     run_name = run_litsmc
     run_name = run_none
     conf = conf_litsmc
     proj = "litsmc"
-
+    conf["dataset_params"]["cache_rate"]=0.5
 # %%
     Tm = Trainer(proj, conf, run_name)
 # %%
@@ -443,8 +446,8 @@ if __name__ == "__main__":
     # model(inputs)
 # %%
 # SECTION:-------------------- NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-    run_name = None
     run_name = run_nodes
+    run_name = None
     conf = conf_nodes
     proj = "nodes"
 
@@ -465,14 +468,18 @@ if __name__ == "__main__":
 # %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-# %%
     Tm.fit()
+# %%
 
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm.D.prepare_data()
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
+    dl = Tm.D.train_dataloader()
+    dlv = Tm.D.valid_dataloader()
+    iteri = iter(dl)
+    b = next(iteri)
 # %%
 
     D = Tm.D

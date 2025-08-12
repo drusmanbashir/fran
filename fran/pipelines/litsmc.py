@@ -1,6 +1,8 @@
 # %%
 import argparse
+import torch
 
+from monai.data.dataset import GDSDataset
 from utilz.imageviewers import ImageMaskViewer
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.trainers import Trainer
@@ -16,6 +18,7 @@ from fran.utils.config_parsers import ConfigMaker
 # %%
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
+    torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
     P = Project("litsmc")
     # P.create('litsmc')
@@ -23,6 +26,42 @@ if __name__ == '__main__':
     plan = conf['plan_train']
 
 # %%
+#SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
+    bs = 14  # is good if LBD with 2 samples per case
+    compiled = False
+    profiler = False
+    # NOTE: if Neptune = False, should store checkpoint locally
+    batch_finder = False
+    neptune = True
+    tags = []
+    description = None
+
+    # device_id = 1
+    device_id = 0
+# %%
+    # conf["dataset_params"]["ds_type"] ='lmdb'
+    # conf["dataset_params"]["cache_rate"] = None
+
+    run_name=None
+    Tm = Trainer(P.project_title, conf, run_name)
+# %%
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=[device_id],
+        epochs=600 if profiler == False else 1,
+        batchsize_finder=batch_finder,
+        profiler=profiler,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+    )
+# %%
+    # Tm.D.batch_size=8
+    Tm.N.compiled = compiled
+    Tm.fit()
+# %%
+
 #SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
 
 
@@ -140,11 +179,12 @@ if __name__ == '__main__':
 #SECTION:-------------------- DATA MANAGER--------------------------------------------------------------------------------------
 
     batch_size = 8
-    ds_type=None
     ds_type="lmdb"
+    ds_type=None
+    device = 0
 
     conf["dataset_params"]["mode"] = None
-    conf["dataset_params"]["cache_rate"] = 0
+    conf["dataset_params"]["cache_rate"] = 0.5
 
     D = DataManagerDual(
         project_title=P.project_title,
@@ -183,42 +223,6 @@ if __name__ == '__main__':
     for num,batch in enumerate(dlt):
         print(batch["image"].shape)
 # %%
-#SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
-# %%
-    bs = 8  # is good if LBD with 2 samples per case
-    compiled = False
-    profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
-    batch_finder = False
-    neptune = True
-    tags = []
-    description = None
-
-    # device_id = 1
-    device_id = 0
-# %%
-    conf["dataset_params"]["cache_rate"] = 0
-    conf["dataset_params"]["ds_type"] ='lmdb'
-
-    run_name=None
-    Tm = Trainer(P.project_title, conf, run_name)
-# %%
-    Tm.setup(
-        compiled=compiled,
-        batch_size=bs,
-        devices=[device_id],
-        epochs=600 if profiler == False else 1,
-        batchsize_finder=batch_finder,
-        profiler=profiler,
-        neptune=neptune,
-        tags=tags,
-        description=description,
-    )
-# %%
-    # Tm.D.batch_size=8
-    Tm.N.compiled = compiled
-    Tm.fit()
-# %%
 # %%
 #SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
     
@@ -228,9 +232,11 @@ if __name__ == '__main__':
 # %%
     tm = Tm.D.train_manager
     dici = tm.ds[0]
+    ds =   GDSDataset
 # %%
-    img = dici['image']
+    img = dici[0]['image']
     lm = dici['lm']
+
 
     im = dici[0]['image']
     lm =  dici[0]['lm']

@@ -1,4 +1,5 @@
 # %%
+import warnings
 from fastcore.basics import store_attr
 from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.string import ast_literal_eval
@@ -115,6 +116,9 @@ def out_channels_from_TSL(src_dest_labels):
 def out_channels_from_global_properties(global_properties):
         try:
             out_ch = len(global_properties['labels_all'])+1
+            if out_ch <2:
+                warnings.warn("Out channel set at {0} by labels_all. It is being reset at 2 as minimum (1 BG, 1 FG)".format(out_ch))
+                out_ch = 2
             return out_ch
 
         except KeyError as er:

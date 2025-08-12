@@ -20,6 +20,44 @@ if __name__ == '__main__':
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf['plan_train']
 # %%
+#SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
+# %%
+    run_nodes = "LITS-1110"
+    bs = 10  # is good if LBD with 2 samples per case
+    compiled = False
+    profiler = False
+    # NOTE: if Neptune = False, should store checkpoint locally
+    batch_finder = False
+    neptune = True
+    tags = []
+    description = f"Partially trained up to 100 epochs"
+
+    # device_id = 1
+    device_id = 1
+    conf["dataset_params"]["cache_rate"] = 0
+    conf["dataset_params"]["ds_type"] =None
+
+    run_name=None
+    Tm = Trainer(P.project_title, conf, run_name)
+    conf["model_params"]
+# %%
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=[device_id],
+        epochs=600 if profiler == False else 1,
+        batchsize_finder=batch_finder,
+        profiler=profiler,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+    )
+# %%
+    # Tm.D.batch_size=8
+    Tm.N.compiled = compiled
+    Tm.fit()
+# %%
+
 #SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
 
 
@@ -132,7 +170,7 @@ if __name__ == '__main__':
     ds_type="lmdb"
 
     conf["dataset_params"]["mode"] = None
-    conf["dataset_params"]["cache_rate"] = 0
+    conf["dataset_params"]["cache_rate"] = 0.5
 
     D = DataManagerDual(
         project_title=P.project_title,
@@ -171,44 +209,7 @@ if __name__ == '__main__':
     for num,batch in enumerate(dlt):
         print(batch["image"].shape)
 # %%
-#SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
-# %%
-    run_nodes = "LITS-1110"
-    bs = 10  # is good if LBD with 2 samples per case
-    compiled = False
-    profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
-    batch_finder = False
-    neptune = True
-    tags = []
-    description = f"Partially trained up to 100 epochs"
-
-    # device_id = 1
-    device_id = 0
-# %%
-    conf["dataset_params"]["cache_rate"] = 0
-    conf["dataset_params"]["ds_type"] ='lmdb'
-
-    run_name=None
-    Tm = Trainer(P.project_title, conf, run_name)
-# %%
-    Tm.setup(
-        compiled=compiled,
-        batch_size=bs,
-        devices=[device_id],
-        epochs=600 if profiler == False else 1,
-        batchsize_finder=batch_finder,
-        profiler=profiler,
-        neptune=neptune,
-        tags=tags,
-        description=description,
-    )
-# %%
-    # Tm.D.batch_size=8
-    Tm.N.compiled = compiled
-    Tm.fit()
-# %%
-    
+#    
     Tm.D.prepare_data()
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
@@ -288,4 +289,19 @@ if __name__ == '__main__':
     # while iteri:
     #     print(batch['image'].shape)
 #SECTION:-------------------- INFERENCE--------------------------------------------------------------------------------------
+    dl  = Tm.D.val_dataloader()
+    iteri = iter(dl)
+    batch = next(iteri)
+    img = batch['image']
+    preds = Tm.N(batch['image'])
+    [print(a.shape) for a in preds]
+    pp = preds[0]
+    n = 1
+
+    im = img[n][0].detach().cpu()
+    lm = pp[n][0].detach().cpu()
+    ImageMaskViewer([im, lm])
+
+
+
 
