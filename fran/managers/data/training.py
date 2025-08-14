@@ -575,7 +575,7 @@ class DataManager(LightningDataModule):
                     cache_rate=self.cache_rate,
                 )
             elif self.ds_type == "lmdb":
-            #BUG: LMDBDataset will slow training down. fix it
+            #BUG: LMDBDataset will slow training down. fix it  (see #4)
                 self.ds = LMDBDataset(
                     data=self.data,
                     transform=self.transforms,

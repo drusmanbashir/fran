@@ -255,7 +255,7 @@ class ResamplerDataset(GetAttr, Dataset):
 
 
 class ImporterDataset(ResamplerDataset): 
-#CODE: being phased out in favour of setting every thing up in imported.py
+#CODE: being phased out in favour of setting every thing up in imported.py  (see #3)
     """
     Dataset for importing labelmaps.
     This dataset handles loading both torch-format images/labels and imported SITK labelmaps,

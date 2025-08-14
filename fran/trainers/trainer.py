@@ -335,8 +335,8 @@ class Trainer:
 
 if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
-    # CODE: Project or config should be the only arg not both
 
+    # CODE: Project or config should be the only arg not both
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")

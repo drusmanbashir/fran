@@ -14,7 +14,7 @@ def get_epoch(fn:Path):
 
 
 def get_ds_remapping(ds:str,global_properties):
-#BUG: this needs  to go.  remappings to be unique to each plan in excel
+#BUG: this needs  to go.  remappings to be unique to each plan in excel  (see #5)
         key = 'lm_group'
         keys=[]
         for k in global_properties.keys():
