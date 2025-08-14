@@ -12,7 +12,6 @@ from fran.utils.config_parsers import ConfigMaker
 
 
 # %%
-# %%
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
@@ -21,8 +20,7 @@ if __name__ == '__main__':
     plan = conf['plan_train']
 # %%
 #SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
-# %%
-    run_nodes = "LITS-1110"
+    run_nodes = "LITS-1230"
     bs = 10  # is good if LBD with 2 samples per case
     compiled = False
     profiler = False
@@ -32,12 +30,13 @@ if __name__ == '__main__':
     tags = []
     description = f"Partially trained up to 100 epochs"
 
-    # device_id = 1
     device_id = 1
+    # device_id = 0
     conf["dataset_params"]["cache_rate"] = 0
     conf["dataset_params"]["ds_type"] =None
 
-    run_name=None
+# %%
+    run_name=run_nodes
     Tm = Trainer(P.project_title, conf, run_name)
     conf["model_params"]
 # %%

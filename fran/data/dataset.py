@@ -126,7 +126,7 @@ class InferenceDatasetNii(Dataset):
 
         # self.transform=Compose(tfms)
 
-    # CODE: match set_transforms function thoughout project
+# CODE: match set_transforms function thoughout project
     def set_transforms(self, tfms: str = ""):
         tfms_final = []
         for tfm in tfms:

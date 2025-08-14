@@ -1,4 +1,7 @@
 # %%
+import os
+import re
+import shutil
 import torch
 from pathlib import Path
 
@@ -21,7 +24,6 @@ for img_path in pbar(sorted(image_dir.glob("*.pt"))):
     lbl_path = label_dir / f"{name}.pt"
     assert lbl_path.exists(), f"Missing label: {lbl_path}"
     image_out_subfolder = image_out/name
-    tr()
 
     img_vol = torch.load(img_path,weights_only=False)  # shape: [D, H, W]
     lbl_vol = torch.load(lbl_path,weights_only=False)  # shape: [D, H, W]
@@ -35,13 +37,11 @@ for img_path in pbar(sorted(image_dir.glob("*.pt"))):
         slice_name = f"{name}_slice{z:03d}.pt"
         torch.save(img_slice, image_out / slice_name)
         torch.save(lbl_slice, label_out / slice_name)
-# %%
 
-import os
-import re
-import shutil
 
 # %%
+#SECTION:-------------------- MOVE SLICES INTO FOLDERS--------------------------------------------------------------------------------------
+src_dir = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan9/slices/images"  # Change to your actual folder path
 src_dir = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan9/slices/lms"  # Change to your actual folder path
 pattern = re.compile(r"^(.*)_slice\d{3}.pt$")  # Captures prefix before "_slice###"
 

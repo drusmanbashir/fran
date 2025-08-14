@@ -1,7 +1,6 @@
 # %%
-from utilz.imageviewers import ImageMaskViewer
-from fran.managers.project import Project
 from lightning import LightningDataModule
+from fran.managers import Project
 from utilz.helpers import pbar
 from monai.transforms.transform import RandomizableTransform
 from fran.preprocessing.helpers import bbox_bg_only
@@ -42,7 +41,7 @@ from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.spatialtransforms import ExtractContiguousSlicesd
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
 from fran.utils.config_parsers import ConfigMaker, is_excel_None
-from utilz.fileio import load_dict, load_yaml, files_exist
+from utilz.fileio import load_dict, load_yaml 
 from utilz.helpers import find_matching_fn, folder_name_from_list
 from utilz.string import ast_literal_eval, cleanup_fname, info_from_filename, strip_extension
 import re
@@ -290,6 +289,9 @@ class DataManager(LightningDataModule):
             self.data_folder = self.derive_data_folder()
         else:
             self.data_folder = Path(data_folder)
+            assert self.data_folder.is_dir(), "Dataset folder {} does not exists or is not a folder".format(
+                self.data_folder
+            )
         self.assimilate_tfm_factors(transform_factors)
         self.set_tfm_keys(keys_tr, keys_val)
         self.set_collate_fn()

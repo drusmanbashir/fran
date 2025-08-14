@@ -423,13 +423,14 @@ if __name__ == "__main__":
     run_w = "LITS-1088"  # this run has localiser_labels not full TSL.
 
     run_lidc2 = ["LITS-902"]
-    run_nodes = ["LITS-1110"]
     run_nodes = ["LITS-1159"]
+    run_nodes = ["LITS-1230"]
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
     run_lidc2 = ["LITS-911"]
     run_litsmc = ["LITS-933"]
     run_litsmc2 = ["LITS-1018"]
+    run_litsmc2 = ["LITS-1217"]
     run_ts = ["LITS-827"]
 
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
@@ -508,13 +509,9 @@ if __name__ == "__main__":
 
 # %%
 
-    preds = En.run(nodes[:10], chunksize=2)
-    preds = En.run(img_fns, chunksize=2)
+    preds = En.run(nodes[5:10], chunksize=2)
+    # preds = En.run(img_fns, chunksize=2)
 
-# %%
-
-    preds = En.W.postprocess(p)
-    bboxes = []
 # %%
 
 # SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR>
@@ -538,8 +535,7 @@ if __name__ == "__main__":
 
 # %%
 # SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR>
-
-    run = run_litsmc
+    run = run_litsmc2
     localiser_labels_litsmc = [3]
     run_w = "LITS-1088"
     devices = [1]
@@ -566,8 +562,9 @@ if __name__ == "__main__":
 
 # %%
 
-    img_fns = list(img_fldr.glob("*"))[20:50]
     img_fns = ["/s/insync/datasets/today/mets/201 Axial  iDose (6).nii.gz"]
+    img_fns = list(img_fldr.glob("*"))[:20]
+    img_fns = imgs_crc[:20]
     case_id = "crc_CRC089"
     # imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
     tn = time.time()
@@ -595,7 +592,7 @@ if __name__ == "__main__":
     print("Starting localiser data prep and prediction")
 # %%
 
-    imgs_sublist = nodes[:2]
+    imgs_sublist =img_fns[:5]
     data = En.load_images(imgs_sublist)
     En.W.setup()
     En.W.prepare_data(data, tfms="ESN")
@@ -604,10 +601,11 @@ if __name__ == "__main__":
 # %%
 # %%
     preds[0]["pred"].shape
+    preds[0]["image"].shape
     ImageMaskViewer([preds[0]["pred"][0].detach(), preds[0]["image"][0].detach()])
     ImageMaskViewer([preds[1]["pred"][0].detach(), preds[1]["image"][0].detach()])
-    bboxes = []
 # %%
+    bboxes = []
     for pred in preds:
         pred = Sel(pred)
         pred = B(pred)
@@ -638,17 +636,22 @@ if __name__ == "__main__":
 # %%
 # %%
 # SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR>
-        n=1
-
-        imgs_sublist = imgs_tmp
-        data = En.load_images(imgs_sublist)
+        n=4
+        data = En.load_images(nodes[:5])
+        img0 = data[n]["image"]
+        print(img0.shape)
         En.bboxes = En.extract_fg_bboxes(data)
-        data = En.apply_bboxes(data, En.bboxes)
-        data[1].keys()
-        img = data[1]["image"]
+        data2 = En.apply_bboxes(data, En.bboxes)
+# %%
+        img1 = data2[n]["image"]
+        print(img0.shape)
+        print(img1.shape)
+# %%
 
-        img = img.permute(2, 1, 0)
-        ImageMaskViewer([img,img])
+
+        img0 = img0.permute(2, 1, 0)
+        img1 = img1.permute(2, 1, 0)
+        ImageMaskViewer([img0,img1])
 # %%
 # SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR>
 
@@ -670,16 +673,16 @@ if __name__ == "__main__":
 
                     #
 # %%
+        fldr = "preds"
+        maybe_makedirs(fldr)
         fn = img_input.meta["filename_or_obj"]
         fn_name = Path(fn).name
         fn_out = Path(fldr) / fn_name
         img_input.shape
         img_input2 = img_input[0, 0].cpu()
         img_input2 = torch.permute(img_input2, (2, 1, 0))
-        img = sitk.GetImageFromArray(img_input2)
-        sitk.WriteImage(img, str(fn_out))
-        fldr = "preds"
-        maybe_makedirs(fldr)
+        img_cropped_to_bbox = sitk.GetImageFromArray(img_input2)
+        sitk.WriteImage(img_cropped_to_bbox, str(fn_out))
         ot = output_tensor
         imgs = [im.cpu()[0] for im in ot]
 
@@ -696,7 +699,7 @@ if __name__ == "__main__":
                 print("\\n")
 
 # %%
-        img = imgs[ind]
+        img_cropped_to_bbox = imgs[ind]
 
         ImageMaskViewer([ot[0][0][2].cpu(), ot[2][0][2].cpu()])
 # %%

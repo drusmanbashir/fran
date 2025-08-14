@@ -18,7 +18,7 @@ from torchvision.utils import Union
 from utilz.helpers import range_inclusive
 
 tr = ipdb.set_trace
-from monai.losses import DiceLoss
+from monai.losses import DiceLoss, DiceCELoss
 import torch.nn.functional as F
 
 # Cell
@@ -98,51 +98,6 @@ class _DiceCELossMultiOutput(nn.Module):
 
         return total_loss, *losses_for_logging_only
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        # input: [N, C, ...] logits
-        # target: [N,1,...] or [N,...] with class indices (possibly >1)
-
-        if len(input.shape) != len(target.shape) and not (target.ndim == input.ndim - 1):
-            raise ValueError(f"input {tuple(input.shape)} vs target {tuple(target.shape)} mismatch")
-
-        N, C, *sp = input.shape
-
-        # --- canonicalize to index tensor [N, ...] ---
-        if target.ndim == input.ndim and target.size(1) == 1:
-            t_idx = target.select(1, 0)
-        elif target.ndim == input.ndim - 1:
-            t_idx = target
-        else:
-            raise ValueError("Unsupported target shape")
-
-        t_idx = t_idx.long()
-
-        # --- binary collapse for 2-class setup ---
-        if C == 2:
-            # everything >0 becomes foreground 1
-            t_idx = (t_idx > 0).long()
-        else:
-            # guard against out-of-range
-            if (t_idx < 0).any() or (t_idx >= C).any():
-                u = t_idx.unique()
-                raise ValueError(f"labels {u.tolist()} out of range for C={C}")
-
-        # --- losses ---
-        # DiceLoss has to_onehot_y=True, so pass indices
-        t_dice = t_idx.unsqueeze(1) 
-        dice_loss_unreduced = self.dice(input, t_dice)          # [N, C, ...] unreduced
-        dice_loss_reduced   = dice_loss_unreduced.mean()
-
-        ce_loss = self.cross_entropy(input, t_idx)              # CE expects indices
-
-        total_loss = self.lambda_dice * dice_loss_reduced + self.lambda_ce * ce_loss
-
-        losses_for_logging_only = [
-            ce_loss.detach(),
-            dice_loss_reduced.detach(),
-            dice_loss_unreduced.squeeze(2).squeeze(2).squeeze(2).detach(),
-        ]
-        return total_loss, *losses_for_logging_only
 
 class CombinedLoss(_DiceCELossMultiOutput):
     def __init__(self, fg_classes, *args, **kwargs):

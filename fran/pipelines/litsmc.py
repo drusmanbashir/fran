@@ -86,6 +86,9 @@ if __name__ == '__main__':
         P.maybe_store_projectwide_properties(overwrite=True)
 # %%
 #SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
+    active_plan = "plan9"
+    overwrite=False
+# %%
 
     parser = argparse.ArgumentParser(description="Resampler")
 
@@ -125,7 +128,7 @@ if __name__ == '__main__':
 
     # args.num_processes = 1
     args.debug = True
-    args.plan = "plan4"
+    args.plan = active_plan
     args.project_title = "litsmc"
 
 
@@ -141,13 +144,12 @@ if __name__ == '__main__':
 
 # %%
 #SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
-    overwrite = True
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
         if "imported_folder" not in plans.keys():
-            I.generate_lbd_dataset(overwrite=False)
+            I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
                 imported_labels=plans["imported_labels"],

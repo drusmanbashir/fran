@@ -94,8 +94,8 @@ if __name__ == "__main__":
 # %%
     ims = []
     for fn in [img_fn, pred_fn]:
-        img = sitk.ReadImage(str(fn))
-        arr = sitk.GetArrayFromImage(img)
+        img2 = sitk.ReadImage(str(fn))
+        arr = sitk.GetArrayFromImage(img2)
         ims.append(arr)
 # %%
 # bb = bboxes[1][2],bboxes[1][1],bboxes[1][0]

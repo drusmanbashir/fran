@@ -16,7 +16,7 @@ from fran.utils.config_parsers import ConfigMaker
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
-    P = Project("nodes")
+    P = Project("lidc")
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 
 # %%

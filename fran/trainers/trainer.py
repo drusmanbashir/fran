@@ -10,6 +10,7 @@ from fran.managers.data.training import DataManagerDual
 from fran.managers.unet import maybe_ddp
 import ipdb
 
+from fran.trainers.base import checkpoint_from_model_id
 from fran.utils.config_parsers import ConfigMaker
 from utilz.helpers import pp
 
@@ -63,25 +64,6 @@ def fix_dict_keys(input_dict, old_string, new_string):
     return output_dict
 
 
-def checkpoint_from_model_id(model_id, sort_method="last"):
-    fldr = Path(COMMON_PATHS["checkpoints_parent_folder"])
-    all_fldrs = [
-        f for f in fldr.rglob("*{}/checkpoints".format(model_id)) if f.is_dir()
-    ]
-    if len(all_fldrs) == 1:
-        fldr = all_fldrs[0]
-    else:
-        print(
-            "no local files. Model may be on remote path. use download_neptune_checkpoint() "
-        )
-        tr()
-
-    list_of_files = list(fldr.glob("*"))
-    if sort_method == "last":
-        ckpt = max(list_of_files, key=lambda p: p.stat().st_mtime)
-    elif sort_method == "best":
-        tr()
-    return ckpt
 
 
 # class NeptuneCallback(Callback):

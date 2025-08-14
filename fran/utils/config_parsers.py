@@ -246,7 +246,7 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
 
 
 class ConfigMaker():
-    def __init__(self, project, configuration_filename=None, raytune=False):
+    def __init__(self, project, configuration_filename=None, raytune=False, plan_train=None,plan_valid=None):
         store_attr()
         configuration_mnemonic=project.global_properties["mnemonic"]
         configuration_filename = self.resolve_configuration_filename(configuration_filename,configuration_mnemonic)
@@ -266,7 +266,7 @@ class ConfigMaker():
                 ),
             }
             self.config["model_params"].update(config)
-        self.set_active_plans()
+        self.set_active_plans(plan_train,plan_valid)
         self.add_further_keys()
       
     def resolve_configuration_filename(self,configuration_filename,configuration_mnemonic):
@@ -324,9 +324,11 @@ class ConfigMaker():
         self.config[plan_key] = parse_excel_dict(plan_selected)
         self.config[plan_key]['plan_name'] = plan_name
 
-    def set_active_plans(self):
-        plan_train = self.config['dataset_params']['plan_train']
-        plan_valid = self.config['dataset_params']['plan_valid']
+    def set_active_plans(self,plan_train=None,plan_valid=None):
+        if plan_train==None:
+            plan_train = self.config['dataset_params']['plan_train']
+        if plan_valid==None:
+            plan_valid = self.config['dataset_params']['plan_valid']
         self._set_plan('plan_train', plan_train)
         self._set_plan('plan_valid', plan_valid)
 

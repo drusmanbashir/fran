@@ -43,6 +43,7 @@ from utilz.dictopts import DictToAttr, fix_ast
 from utilz.helpers import slice_list
 from utilz.imageviewers import ImageMaskViewer
 
+#CODE: consider move util functions outside the class file
 def get_device(devices: Optional[List[int]] = None) -> tuple:
     """
     Determine the appropriate device(s) based on CUDA availability.
