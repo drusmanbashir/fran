@@ -1,7 +1,6 @@
 # %%
-# %%
 import torch
-from fastcore.all import store_attr
+from fastcore.basics import store_attr
 from fran.preprocessing import bboxes_function_version
 from fran.transforms.misc_transforms import FgBgToIndicesd2
 from pathlib import Path
@@ -33,7 +32,7 @@ tr = ipdb.set_trace
 from fran.preprocessing.preprocessor import Preprocessor
 
 
-class PatchGenerator(DictToAttr,Preprocessor):
+class PatchGenerator(DictToAttr, Preprocessor):
     def __init__(
         self,
         dataset_properties: dict,
@@ -129,26 +128,26 @@ class PatchGenerator(DictToAttr,Preprocessor):
         print("Processing filepair : ", self.lm_fn)
         print("Number of patches: ", len(self.grid_sampler))
         for i, a in enumerate(self.grid_sampler):
-            img = a["image"][tio.DATA]#.squeeze(0)
-            lm = a["lm"][tio.DATA]#.squeeze(0)
-            Ind = FgBgToIndicesd2(keys=['lm'], image_key="image", image_threshold=-2600)
-            dici = {'image':img,'lm':lm}
+            img = a["image"][tio.DATA]  # .squeeze(0)
+            lm = a["lm"][tio.DATA]  # .squeeze(0)
+            Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
+            dici = {"image": img, "lm": lm}
             dici = Ind(dici)
 
-            fg_ind = dici['lm_fg_indices']
-            bg_ind = dici['lm_bg_indices']
-            image= dici['image']
-            lm = dici['lm']
+            fg_ind = dici["lm_fg_indices"]
+            bg_ind = dici["lm_bg_indices"]
+            image = dici["image"]
+            lm = dici["lm"]
             inds = {
                 "lm_fg_indices": fg_ind,
                 "lm_bg_indices": bg_ind,
                 "meta": image.meta,
             }
 
-            self.save_indices(inds, self.indices_subfolder,suffix=str(i))
+            self.save_indices(inds, self.indices_subfolder, suffix=str(i))
             # self.save_in(inds, self.indices_subfolder,contiguous=False,suffix=str(i))
-            self.save_pt(image[0], "images",suffix=str(i))
-            self.save_pt(lm[0], "lms",suffix=str(i))
+            self.save_pt(image[0], "images", suffix=str(i))
+            self.save_pt(lm[0], "lms", suffix=str(i))
 
     def process(self):
         self.create_output_folders()
@@ -160,6 +159,7 @@ class PatchGenerator(DictToAttr,Preprocessor):
             bbox_new = self.maybe_expand_bbox(bbx)
             self.create_grid_sampler_from_patchsize(bbox_new)
             self.create_patches_from_grid_sampler()
+
 
 class PatchDataGenerator(Preprocessor):
     _default = "project"
@@ -185,7 +185,7 @@ class PatchDataGenerator(Preprocessor):
             self.data_folder
         )
         self.dataset_properties = load_dict(dataset_properties_fn)
-        self.dataset_properties['data_folder'] = str(data_folder)
+        self.dataset_properties["data_folder"] = str(data_folder)
 
         self.patches_config_fn = self.output_folder / ("patches_config.json")
 
@@ -202,10 +202,10 @@ class PatchDataGenerator(Preprocessor):
         self.register_existing_files()
         if overwrite == False:
             self.remove_completed_cases()
+
     def process(self, debug=False):
         self.create_output_folders()
         self.create_patches(debug)
-
 
     def remove_completed_cases(self):
         all_cases = set([bb["case_id"] for bb in self.fixed_sp_bboxes])
@@ -219,7 +219,7 @@ class PatchDataGenerator(Preprocessor):
             bb for bb in self.fixed_sp_bboxes if bb["case_id"] in new_case_ids
         ]
 
-    def create_patches(self,  debug=False):
+    def create_patches(self, debug=False):
         patch_overlap = [int(self.patch_overlap * ps) for ps in self.patch_size]
         patch_overlap = [to_even(ol) for ol in patch_overlap]
         maybe_makedirs(self.output_folder)
@@ -266,19 +266,16 @@ class PatchDataGenerator(Preprocessor):
         }
         save_dict(patches_config, self.patches_config_fn)
 
-
     def set_output_folder(self):
         data_folder_name = self.data_folder.name
         pat = re.compile("_plan\d+")
-        data_folder_name = pat.sub("",data_folder_name)
+        data_folder_name = pat.sub("", data_folder_name)
 
         patches_fldr_name = "dim_{0}_{1}_{2}".format(*self.patch_size)
         if self.output_suffix:
-            patches_fldr_name+="_"+self.output_suffix
+            patches_fldr_name += "_" + self.output_suffix
 
-        self.output_folder = (
-            self.patches_folder / data_folder_name/ patches_fldr_name
-        )
+        self.output_folder = self.patches_folder / data_folder_name / patches_fldr_name
         return self.output_folder
 
 
@@ -298,49 +295,49 @@ def patch_generator_wrapper(
     return 1, info["filename"]
 
 
-
 # %%
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     from fran.utils.common import *
 
     P = Project(project_title="litsmc")
     P.maybe_store_projectwide_properties()
-    
+
 # %%
-#SECTION:-------------------- PATCHGENERATOR--------------------------------------------------------------------------------------
+# SECTION:-------------------- PATCHGENERATOR-------------------------------------------------------------------------------------- <CR> <CR>
 
-    conf = ConfigMaker(
-        P, raytune=False
-    ).config
-    plan = conf['plan']
-    plan_name = "plan"+str(conf['dataset_params']['plan'])
+    conf = ConfigMaker(P, raytune=False).config
+    plan = conf["plan"]
+    plan_name = "plan" + str(conf["dataset_params"]["plan"])
 
-    source_plan_name = plan['source_plan']
+    source_plan_name = plan["source_plan"]
     source_plan = conf[source_plan_name]
-    spacing = ast.literal_eval(source_plan['spacing'])
-    src_data_mode= source_plan['mode']
+    spacing = ast.literal_eval(source_plan["spacing"])
+    src_data_mode = source_plan["mode"]
     P.lbd_folder
-    patch_size = ast.literal_eval(plan['patch_size'])
-    patch_overlap = plan['patch_overlap']
+    patch_size = ast.literal_eval(plan["patch_size"])
+    patch_overlap = plan["patch_overlap"]
 
-    deb=False
+    deb = False
 # %%
-    data_folder  = folder_name_from_list(
-            prefix="spc",
-            parent_folder=P.lbd_folder,
-            values_list=spacing,
-        suffix=source_plan_name
-        )
-
-
+    data_folder = folder_name_from_list(
+        prefix="spc",
+        parent_folder=P.lbd_folder,
+        values_list=spacing,
+        suffix=source_plan_name,
+    )
 
 # %%
     data_folder = "/s/xnat_shadow/lidc2"
     PG = PatchDataGenerator(
-        P, data_folder, patch_size=patch_size, patch_overlap=patch_overlap, expand_by=0,output_suffix=plan_name
+        P,
+        data_folder,
+        patch_size=patch_size,
+        patch_overlap=patch_overlap,
+        expand_by=0,
+        output_suffix=plan_name,
     )
 # %%
 
@@ -360,10 +357,10 @@ if __name__ == "__main__":
     P.imported_labels(lmg, imported_folder, imported_labelsets)
     # remapping = TSL.create_remapping(imported_labelsets, [8, 9])
 # %%
-#SECTION:-------------------- PATCHGENERATOR Single module--------------------------------------------------------------------------------------
+# SECTION:-------------------- PATCHGENERATOR Single module-------------------------------------------------------------------------------------- <CR> <CR>
 # %%
 
-    patch_overlap = .25
+    patch_overlap = 0.25
     args = [
         [
             PG.dataset_properties,
@@ -378,7 +375,7 @@ if __name__ == "__main__":
     ]
 # %%
     argi = args[0]
-    info =argi[3]
+    info = argi[3]
 
     patch_overlap = [int(PG.patch_overlap * ps) for ps in PG.patch_size]
     patch_overlap = [to_even(ol) for ol in patch_overlap]
@@ -403,7 +400,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-#SECTION:-------------------- ROUGH--------------------------------------------------------------------------------------
+# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR>
     img_fn = "/r/datasets/tmp/images/lits_108_0.pt"
     lm_fn = "/r/datasets/tmp/lms/lits_108_0.pt"
 
@@ -418,7 +415,7 @@ if __name__ == "__main__":
     for fn in indices_fn:
         inds = torch.load(fn)
         print(fn)
-        print("FG", len(inds['lm_fg_indices']))
+        print("FG", len(inds["lm_fg_indices"]))
 # %%
     #
     # case_ids=PG.case_ids,

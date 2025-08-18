@@ -103,7 +103,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         super().__init__(
             project=project,
             plan=plan,
-            folder_suffix=folder_suffix,
+            plan_name=folder_suffix,
             data_folder=data_folder,
             output_folder=output_folder,
             mask_label=mask_label,

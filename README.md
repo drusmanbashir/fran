@@ -15,6 +15,17 @@ Make sure you have installed and set up:
 \
 To quickly install all pre-requisites in a new environment, I run the commands in file `conda_oneliners.txt` ***(make sure to create a new environment beforehand!)***
 
+## 1. Configuration  (excel spreadsheets)
+
+All dataset creation and (some) training blueprints are in excel spreadsheets and thats where we start. Glossary:
+### A. Plans
+
+#### i) Remapping: 
+Remapping patterns can be dicts, TSL attributes. These are baked into the dataset (c.f. `src_dest_labels`_)
+
+#### ii) Src_dest_labels:
+This is also a remapping but unlike `Remapping` above, this remapping happens on the fly, during training.
+
 
 ## 1. Setting common variables
 Once you have installed neptune client, and created a new empty project, open the project and you will find instructions to initialize a project like so:
@@ -172,7 +183,7 @@ Configuration plans define:
 ##### a. Imported labelmaps
 If you add imported labelmaps to a plan, you have to include a remapping cell, leave it empty to give logic for remapping in it. It can be a dict, or a TSL class attribute if imported folder is TSL predictions. TSL class attributes simplify remapping and generate the dict for you.
 
-You must include imported_folder, remapping, and merge_imported_labels in the spreadsheet.
+You must include imported_folder, remapping,
 ### Database Schema
 
 The project uses SQLite to track all cases with the following schema:

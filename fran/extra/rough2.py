@@ -1,99 +1,114 @@
 # %%
 
-import torch
-import torch.nn as nn
-import matplotlib.pyplot as plt
-import numpy as np
+import sqlite3
+from datetime import datetime
+import pandas as pd
 
-# pyright: reportAttributeAccessIssue=false
-from skimage import data, img_as_float
+DB_PATH = "plans.db"
+TABLE = "master_plans"
 
+# ---- helpers --------------------------------------------------------------
 
-# Load the "camera" image from scikit-image.
-image = img_as_float(data.camera())
-H, W = image.shape  # e.g., typically 512x512
+def read_kv_excel(xlsx_path: str, sheet_name=0) -> dict[str, str | None]:
+    """Excel with 2 columns: first=key, second=value."""
+    df = pd.read_excel(xlsx_path, header=None, sheet_name=sheet_name).iloc[:, :2]
+    df = df.rename(columns={0: "key", 1: "value"})
+    kv = {}
+    for _, r in df.iterrows():
+        k = str(r["key"]).strip()
+        if not k or k.lower() == "nan":
+            continue
+        v = None if pd.isna(r["value"]) else str(r["value"]).strip()
+        kv[k] = v
+    return kv
 
-# Convert the image to a PyTorch tensor with shape (1, 1, H, W)
-image_tensor = torch.tensor(image, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+def get_columns(conn) -> list[str]:
+    return [r[1] for r in conn.execute(f'PRAGMA table_info("{TABLE}")').fetchall()]
 
-##############################
-# 1D Horizontal Convolution
-##############################
-# For a horizontal 1D convolution, treat each row as a 1D signal.
-# Reshape the image to (H, 1, W): H samples, 1 channel, W-length sequence.
-img_for_conv1d = image_tensor.squeeze(0).squeeze(0).unsqueeze(1)  # Shape: (H, 1, W)
+def ensure_table_and_columns(conn: sqlite3.Connection, keys: list[str]):
+    # create table (id + created_at only; data columns added below)
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS "{TABLE}" (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    # add missing columns as TEXT
+    existing = set(get_columns(conn))
+    for k in keys:
+        if k not in existing:
+            conn.execute(f'ALTER TABLE "{TABLE}" ADD COLUMN "{k}" TEXT')
+    conn.commit()
 
-# Define a 1D convolution layer with kernel size 3 and padding=1.
-conv1d_horizontal = nn.Conv1d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
-# Set the kernel to [-1, 0, 1] for horizontal edge detection.
-with torch.no_grad():
-    conv1d_horizontal.weight[:] = torch.tensor([[[-1, 0, 1]]], dtype=torch.float32)
+def find_matching_row(conn: sqlite3.Connection, data: dict) -> int | None:
+    if not data:
+        return None
+    conds, params = [], []
+    for k, v in data.items():
+        if v is None:
+            conds.append(f'"{k}" IS NULL')
+        else:
+            conds.append(f'"{k}" = ?')
+            params.append(v)
+    sql = f'SELECT id FROM "{TABLE}" WHERE ' + " AND ".join(conds) + " LIMIT 1"
+    row = conn.execute(sql, params).fetchone()
+    return row[0] if row else None
 
-# Apply the horizontal 1D convolution
-result1d_horizontal = conv1d_horizontal(img_for_conv1d)  # Shape: (H, 1, W)
+def quote_ident(name: str) -> str:
+    # SQLite identifier quoting with double quotes
+    return '"' + name.replace('"', '""') + '"'
 
-##############################
-# 1D Vertical Convolution
-##############################
-# To perform a vertical convolution, treat each column as a 1D signal.
-# First, transpose the image so that columns become rows.
-# Starting from shape (H, W), transposing gives (W, H), then add a channel dimension.
-img_for_conv1d_vertical = image_tensor.squeeze(0).squeeze(0).transpose(0, 1).unsqueeze(1)  # Shape: (W, 1, H)
+def insert_row(conn: sqlite3.Connection, data: dict) -> int:
+    cols = [c for c in get_columns(conn) if c != "id"]
+    now = datetime.utcnow().isoformat(sep=" ", timespec="seconds")
 
-# Define a 1D convolution layer for vertical processing.
-conv1d_vertical = nn.Conv1d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
-# Use the same kernel [-1, 0, 1].
-with torch.no_grad():
-    conv1d_vertical.weight[:] = torch.tensor([[[-1, 0, 1]]], dtype=torch.float32)
+    values = []
+    for c in cols:
+        if c == "created_at":
+            values.append(now)
+        else:
+            values.append(data.get(c))  # None -> NULL
 
-# Apply the vertical 1D convolution.
-result1d_vertical = conv1d_vertical(img_for_conv1d_vertical)  # Shape: (W, 1, H)
-# Transpose the result back to (H, W)
-result1d_vertical = result1d_vertical.squeeze(1).transpose(0, 1)
+    cols_sql = ", ".join(quote_ident(c) for c in cols)
+    placeholders = ", ".join("?" for _ in cols)
+    sql = f'INSERT INTO {quote_ident(TABLE)} ({cols_sql}) VALUES ({placeholders})'
 
-##############################
-# 2D Convolution
-##############################
-# Define a 2D convolution layer with kernel size 3 and padding=1.
-conv2d = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
-# Create a 2D kernel that applies the horizontal filter along the center row.
-kernel_2d = torch.zeros((1, 1, 3, 3))
-kernel_2d[0, 0, 1, :] = torch.tensor([-1, 0, 1], dtype=torch.float32)
-with torch.no_grad():
-    conv2d.weight[:] = kernel_2d
+    cur = conn.execute(sql, values)
+    conn.commit()
+    return cur.lastrowid
+def upsert_plan_from_excel(xlsx_path: str, sheet_name=0) -> int:
+    data = read_kv_excel(xlsx_path, sheet_name)
+    with sqlite3.connect(DB_PATH) as conn:
+        ensure_table_and_columns(conn, list(data.keys()))
+        # If a row exists where ALL provided key→value pairs match, reuse it.
+        match_id = find_matching_row(conn, data)
+        if match_id is not None:
+            return match_id
+        # Otherwise, insert a new row (missing keys become NULL).
+        return insert_row(conn, data)
+# %%
+# ---- example without Excel (your provided pairs) --------------------------
 
-# Apply the 2D convolution on the original image tensor.
-result2d = conv2d(image_tensor)  # Shape: (1, 1, H, W)
+if __name__ == "__main__":
+    DB_PATH= "plans.db"
+    sample = {
+        "var_name": "manual_value",
+        "datasources": "lits,drli,litq,litqsmall",
+        "lm_groups": None,
+        "spacing": "0.8,.8,1.5",
+        "expand_by": "40",
+        "fg_indices_exclude": "1",
+        "mode": "lbd",
+    }
+    with sqlite3.connect(DB_PATH) as conn:
+        ensure_table_and_columns(conn, list(sample.keys()))
+        row_id = find_matching_row(conn, sample)
+        if row_id is None:
+            row_id = insert_row(conn, sample)
+    print("row_id:", row_id)
 
-##############################
-# Display the Results
-##############################
-plt.figure(figsize=(18, 5))
+# %%
 
-# Original Image
-plt.subplot(1, 4, 1)
-plt.imshow(image, cmap='gray')
-plt.title("Original Camera Image")
-plt.axis("off")
-
-# 1D Horizontal Convolution
-plt.subplot(1, 4, 2)
-plt.imshow(result1d_horizontal.squeeze(1).detach().numpy(), cmap='gray')
-plt.title("1D Convolution (Horizontal)")
-plt.axis("off")
-
-# 1D Vertical Convolution
-plt.subplot(1, 4, 3)
-plt.imshow(result1d_vertical.detach().numpy(), cmap='gray')
-plt.title("1D Convolution (Vertical)")
-plt.axis("off")
-
-# 2D Convolution
-plt.subplot(1, 4, 4)
-plt.imshow(result2d.squeeze().detach().numpy(), cmap='gray')
-plt.title("2D Convolution")
-plt.axis("off")
-
-plt.tight_layout()
-plt.show()
 # %%

@@ -7,6 +7,7 @@ from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 from pathlib import Path
 
+from fran.managers.db import add_plan_to_db, find_matching_plan
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import FgBgToIndicesd2
 from fran.utils.config_parsers import ConfigMaker, is_excel_None
@@ -63,7 +64,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self,
         project,
         plan,
-        folder_suffix: str = None,
+        plan_name: str = None,
         data_folder=None,
         output_folder=None,
         mask_label=None,
@@ -82,7 +83,13 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             mask_label: Specific label value to use for cropping. If None, uses all labels >0
             remapping: Dictionary for label value remapping (optional)
         """
-        self.folder_suffix = folder_suffix
+
+
+        existing_fldr = find_matching_plan(project.db, plan)
+        if existing_fldr is not None:
+            print("Plan folder already exists in db: {}.\nWill use existing folder to add data".format( existing_fldr))
+            output_folder=existing_fldr
+        self.plan_name = plan_name
         self.plan = plan
         self.fg_indices_exclude = listify(plan.get("fg_indices_exclude"))
         self.expand_by = expand_by
@@ -129,8 +136,8 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             parent_folder=parent_folder,
             values_list=self.spacing,
         )
-        if self.folder_suffix is not None:
-            output_name = "_".join([self.output_folder.name, self.folder_suffix])
+        if self.plan_name is not None:
+            output_name = "_".join([self.output_folder.name, self.plan_name])
             self.output_folder = Path(
                 self.output_folder.parent / output_name
             )
@@ -152,6 +159,8 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         assert len(self.df) > 0,"No new cases to process"
         self.create_output_folders()
         self.process_files()
+        add_plan_to_db(self.plan,self.output_folder, db_path=self.project.db)
+    
 
     def setup(self, device="cpu",  overwrite=True):
         device = resolve_device(device)
@@ -222,7 +231,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         }
 
 
-    def process_files(self):
+    def process_files(self, force_store_props=False):
         """Process files without using DataLoader"""
         self.create_output_folders()
         self.results = []
@@ -256,7 +265,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.results_df = pd.DataFrame(self.results)
         # self.results= pd.DataFrame(self.results).values
         ts = self.results_df.shape
-        if ts[-1] == 4:  # only store if entire dset is processed
+        if ts[-1] == 4 or force_store_props==True:  # only store if entire dset is processed
             self._store_dataset_properties()
             generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
         else:
@@ -266,8 +275,17 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 )
             )
             print(
-                "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
+                "since some files skipped, dataset stats are not being stored. Either:\na) set force_store_props to True, or\nb) run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
+
+
+    def create_properties_dict(self):
+        resampled_dataset_properties = Preprocessor.create_properties_dict(self)
+        ignore_keys = ["src_dest_labels", "mode", "spacing","samples_per_file", "src_dest_labels"]
+        for key in self.plan.keys():
+            if not key in ignore_keys:
+                resampled_dataset_properties[key] = self.plan[key]
+        return resampled_dataset_properties
 
     def process_single_case(self, image, lm, fg_inds, bg_inds):
         """Process a single case and save results"""
@@ -286,13 +304,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.save_pt(lm[0], "lms")
         self.extract_image_props(image)
 
-    def create_info_dict(self):
-        resampled_dataset_properties = super().create_info_dict()
-        resampled_dataset_properties["fg_indices_exclude"] = self.fg_indices_exclude
-        resampled_dataset_properties["expand_by"] = self.expand_by
-        resampled_dataset_properties["mask_label"] = self.mask_label
-        resampled_dataset_properties["lm_group"] = self.lm_group
-        return resampled_dataset_properties
 
     def get_case_ids_lm_group(self, lm_group):
         dsrcs = self.global_properties[lm_group]["ds"]
@@ -396,7 +407,7 @@ if __name__ == "__main__":
         project=P,
         plan=plan,
         mask_label=None,
-        folder_suffix=plan_str,
+        plan_name=plan_str,
     )
     
     L.setup(device='cpu', overwrite=False)

@@ -14,7 +14,7 @@ from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg, pbar
 from utilz.string import info_from_filename, strip_extension
 
-from fran.managers.project import DS
+from fran.managers import DS
 from fran.preprocessing import bboxes_function_version
 
 
@@ -126,32 +126,7 @@ class Preprocessor(GetAttr):
         fn = self.output_folder / subfolder / fn_name
         torch.save(indices_dict, fn)
 
-    def _store_dataset_properties(self):
-        resampled_dataset_properties = self.create_info_dict()
-        resampled_dataset_properties_fname = (
-            self.output_folder / "resampled_dataset_properties.json"
-        )
-        print(
-            "Writing preprocessing output properties to {}".format(
-                resampled_dataset_properties_fname
-            )
-        )
-        save_dict(resampled_dataset_properties, resampled_dataset_properties_fname)
-
-    def create_info_dict(self):
-        resampled_dataset_properties = dict()
-        resampled_dataset_properties["dataset_spacing"] = self.spacing
-        resampled_dataset_properties["dataset_max"] = (
-            self.results_df["max"].max().item()
-        )
-        resampled_dataset_properties["dataset_min"] = (
-            self.results_df["min"].min().item()
-        )
-        resampled_dataset_properties["dataset_median"] = np.median(
-            self.results_df["median"]
-        )
-        return resampled_dataset_properties
-
+    #CODE: rename below to process_files  (see #9)
     def process(
         self,
     ):
@@ -161,8 +136,8 @@ class Preprocessor(GetAttr):
         self.create_output_folders()
         self.results = []
         self.shapes = []
-
-        for batch in pbar(self.dl):
+#CODE:  move away from dataloader and use multiprocessing  (see #7)
+        for batch in pbar(self.dl): 
             self.process_batch(batch)
         self.results_df = pd.DataFrame(self.results)
         # self.results= pd.DataFrame(self.results).values
@@ -230,7 +205,6 @@ class Preprocessor(GetAttr):
 
     def _store_dataset_properties(self):
         resampled_dataset_properties = self.create_properties_dict()
-
         resampled_dataset_properties_fname = (
             self.output_folder / "resampled_dataset_properties.json"
         )

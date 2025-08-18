@@ -432,6 +432,7 @@ if __name__ == "__main__":
     run_litsmc2 = ["LITS-1018"]
     run_litsmc2 = ["LITS-1217"]
     run_ts = ["LITS-827"]
+    run_totalseg = ["LITS-1238"]
 
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
@@ -450,7 +451,7 @@ if __name__ == "__main__":
     imgs_react = list(react_fldr.glob("*"))
     imgs_crc = list(fldr_crc.glob("*"))
     nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
-    nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending")
+    nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
     nodes = list(nodes_fldr.glob("*"))
 
     img_fns = [imgs_t6][:20]
@@ -492,7 +493,7 @@ if __name__ == "__main__":
     localiser_labels = set(TSL.label_localiser)
     safe_mode = False
     devices = [1]
-    overwrite = True
+    overwrite = False
     save_channels = False
     save_localiser=True
     En = CascadeInferer(
@@ -509,7 +510,7 @@ if __name__ == "__main__":
 
 # %%
 
-    preds = En.run(nodes[5:10], chunksize=2)
+    preds = En.run(nodes, chunksize=1)
     # preds = En.run(img_fns, chunksize=2)
 
 # %%
@@ -532,7 +533,32 @@ if __name__ == "__main__":
 
 # %%
 # %%
+# %%
+#SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)--------------------------------------------------------------------------------------
 
+
+    localiser_labels = set(TSL.label_localiser)
+    safe_mode = True
+    devices = [0]
+    overwrite = False
+    save_channels = False
+    save_localiser=False
+    En = CascadeInferer(
+        run_w,
+        run_totalseg,
+        save_channels=save_channels,
+        devices=devices,
+        overwrite=overwrite,
+        localiser_labels=localiser_labels,
+        save_localiser=save_localiser,
+        safe_mode=safe_mode,
+        k_largest=None,
+    )
+
+# %%
+
+    preds = En.run(nodes, chunksize=1)
+    # preds = En.run(img_fns, chunksize=2)
 # %%
 # SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR>
     run = run_litsmc2

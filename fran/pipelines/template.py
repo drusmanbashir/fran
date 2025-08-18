@@ -1,7 +1,13 @@
 # %%
+from fran.managers.db import *
+import torch
 import argparse
 from pathlib import Path
+from fran.trainers import Trainer
+
 from fran.managers import Project, Datasource, _DS
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from fran.run.analyze_resample import PreprocessingManager
 from fran.utils.config_parsers import ConfigMaker
 
 
@@ -15,10 +21,55 @@ if __name__ == '__main__':
     
     P = Project("litstmp")
 # P.delete()
+# %%
 
+    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+    plan = conf['plan_train']
     DS = _DS()
     P.add_data([DS.lits_tmp])
 # P.add_data([DS.totalseg])
+# %%
+#SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
+    bs = 14  # is good if LBD with 2 samples per case
+    compiled = False
+    profiler = False
+    # NOTE: if Neptune = False, should store checkpoint locally
+    batch_finder = False
+    neptune = True
+    tags = []
+    description = None
+
+    # device_id = 1
+    device_id = 0
+# %%
+    # conf["dataset_params"]["ds_type"] ='lmdb'
+    # conf["dataset_params"]["cache_rate"] = None
+
+    run_name=None
+    Tm = Trainer(P.project_title, conf, run_name)
+# %%
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=[device_id],
+        epochs=600 if profiler == False else 1,
+        batchsize_finder=batch_finder,
+        profiler=profiler,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+    )
+# %%
+    Tm.D.prepare_data()
+    Tm.D.setup()
+    # Tm.D.batch_size=8
+    Tm.N.compiled = compiled
+    Tm.fit()
+# %%
+
+    train_cases, valid_cases = P.get_train_val_files(
+                conf["dataset_params"]["fold"], plan['datasources']
+            )
 # %%
 #SECTION:-------------------- DATA FOLDER H5PY file--------------------------------------------------------------------------------------
 
@@ -66,14 +117,11 @@ if __name__ == '__main__':
 
     # args.num_processes = 1
     args.debug = True
-    args.plan = "plan2"
+    args.plan_name = "plan10"
     args.project_title = "litstmp"
 
-    P = Project(project_title=args.project_title)
-
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-
-    plan = conf[args.plan]
+    plan = conf["plan10"]
+    plan["src_dest_labels"] = {1:0}
 # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
@@ -85,22 +133,86 @@ if __name__ == '__main__':
     # I.spacing =
 # %%
 #SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
-    I.resample_dataset(overwrite=False)
+    overwrite=True
+    I.resample_dataset(overwrite=overwrite)
     I.R.get_tensor_folder_stats()
 
 # %%
 #SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
+    overwrite=False
+    I.plan_name= "jj"
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
         if "imported_folder" not in plan.keys():
-            I.generate_lbd_dataset(overwrite=False)
+            I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
                 imported_labels=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],)
 # %%
+# %%
+#SECTION:-------------------- troubleshoot--------------------------------------------------------------------------------------
+
+
+    plan_name = args.plan_name
+    L = LabelBoundedDataGenerator( project=P,
+            plan = plan,
+            plan_name=plan_name,
+            
+        )
 
 # %%
+    overwrite=True
+    L.setup(overwrite=overwrite)
+    L.process()
+
+    add_plan_to_db(L.plan,L.output_folder, db_path="plans.db")
+# %%
+
+    
+    img_file, lm_file = L.image_files[0], L.lm_files[0]
+    img = torch.load(img_file,weights_only=False)
+    # Load and process single case
+    data = {
+        "image": img_file,
+        "lm": lm_file,
+    }
+
+    print(L.tfms_keys)
+    fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_150/images/nodes_21b_20210202_Thorax0p75I70f3.pt"
+    t2 = torch.load(fn,weights_only=False)
+    print(t2.meta.keys())
+# %%
+    # Apply transforms
+    data = L.transforms(data)
+    data2 = L.transforms_dict["LT"](data)
+    
+    data3 = L.transforms_dict["E"](data2)
+    data4 = L.transforms_dict["D"](data3)
+    data5 = L.transforms_dict["C"](data4)
+    data6 = L.transforms_dict["Ind"](data5)
+
+    print(data4['lm'].max())
+    print(data5['lm'].max())
+# %%
+    print(lm_file)
+    ttt = torch.load(img_file,weights_only=False)
+    print(ttt.meta.keys())
+# %%
+    # Get metadata and indices
+    fg_indices = L.get_foreground_indices(data["lm"])
+    bg_indices = L.get_background_indices(data["lm"])
+    coords = L.get_foreground_coords(data["lm"])
+    
+    # Process the case
+    L.process_single_case(
+        data["image"],
+        data["lm"],
+        fg_indices,
+        bg_indices,
+        coords["start"],
+        coords["end"]
+            )
 # S

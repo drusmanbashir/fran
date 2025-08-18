@@ -211,7 +211,8 @@ if __name__ == "__main__":
 
 # %%
 #SECTION:-------------------- ResampleDatasetniftiToTorch--------------------------------------------------------------------------------------
-    Rs = ResampleDatasetniftiToTorch(project, spacing=[0.8, 0.8, 1.5], data_folder="/s/xnat_shadow/crc/sampling/nifti",output_folder="/s/xnat_shadow/crc/sampling/tensors/fixed_spacing/")
+    spacing = [1,1,1]
+    Rs = ResampleDatasetniftiToTorch(project, spacing=spacing, data_folder="/s/xnat_shadow/crc/sampling/nifti",output_folder="/s/xnat_shadow/crc/sampling/tensors/fixed_spacing/")
     Rs.setup(overwrite=True)
     Rs.process()
 # %%
@@ -220,9 +221,9 @@ if __name__ == "__main__":
     F.process()
     # R.register_existing_files()
 
-    # %%
+# %%
 
-    # %%
+# %%
     L = LoadSITKd(keys=["image", "lm"], image_only=True)
     R = LabelRemapd(keys=["lm"], remapping_key="remapping")
     T = ToDeviced(keys=["image", "lm"], device=Rs.ds.device)
@@ -254,12 +255,12 @@ if __name__ == "__main__":
 
     # tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
     tfms = [L, R, T, Re, Ind, E, Si, Rz, Ch]
-    # %%
+# %%
     dici = Rs.ds[0]
     dici["lm"].meta
     dici = Rs.ds.data[0]
 
-    # %%
+# %%
     dici = L(dici)
 
     dici = R(dici)
@@ -271,7 +272,7 @@ if __name__ == "__main__":
     dici = Rz(dici)
     dici = Ch(dici)
 
-    # %%
+# %%
     print(dici["image"].meta["filename_or_obj"], dici["lm"].meta["filename_or_obj"])
 
     L = LoadSITKd(keys=["image", "lm"], image_only=True)
@@ -303,7 +304,7 @@ if __name__ == "__main__":
 
     tf = Compose([R, L, T, Re, Ind])
     dici = tf(dici)
-    # %%
+# %%
     I.Resampler.shapes = np.array(I.Resampler.shapes)
     fn_dict = I.Resampler.output_folder / "info.json"
 
@@ -316,7 +317,7 @@ if __name__ == "__main__":
     resampled_dataset_properties["median_shape"] = np.median(
         I.Resampler.shapes, 0
     ).tolist()
-    # %%
+# %%
     tnsr = torch.load(
         "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/lms/drli_001ub.nii.gz"
     )
@@ -324,12 +325,12 @@ if __name__ == "__main__":
     fn_name = strip_extension(fn.name) + ".pt"
     fn_out = fn.parent / (fn_name)
     generate_bboxes_from_lms_folder(R.output_folder / ("lms"))
-    # %%
+# %%
 
     existing_fnames = [fn.name for fn in R.existing_files]
     df = R.df.copy()
     rows_new = []
-    # %%
+# %%
     for i in range(len(df)):
         row = df.loc[i]
         df_fname = Path(row.lm_symlink)
@@ -338,7 +339,7 @@ if __name__ == "__main__":
             df.drop([i], inplace=True)
             # rows_new.append(row)
 
-        # %%
+# %%
         L.shapes = np.array(L.shapes)
         resampled_dataset_properties = dict()
         resampled_dataset_properties["median_shape"] = np.median(L.shapes, 0).tolist()
@@ -349,7 +350,7 @@ if __name__ == "__main__":
             L.results["median"]
         ).item()
 
-    # %%
+# %%
     df = pd.DataFrame(np.arange(12).reshape(3, 4), columns=["A", "B", "C", "D"])
     df.drop(["A", "B"], axis=1)
     df
@@ -358,11 +359,11 @@ if __name__ == "__main__":
         resampled_dataset_properties,
         "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/resampled_dataset_properties.json",
     )
-    # %%
+# %%
     dl = I.R.dl
     iteri = iter(dl)
     batch = next(iteri)
-    # %%
+# %%
     U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
     batch = U(batch)
     images, lms, fg_inds, bg_inds = (

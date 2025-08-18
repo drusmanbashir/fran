@@ -153,23 +153,28 @@ class BaseInferer(GetAttr, DictToAttr):
         self.dataset_params = self.params["config"]["dataset_params"]
         self.infer_project()
 
+        sw_device = "cuda"
         if safe_mode == True:
             print(
                 "================================================================\nSafe mode is on. Stitching will be on CPU. Slower speed expected\n================================================="
             )
             bs = 1
-            stitch_device = "cpu"
+            device = "cpu"
+            patch_overlap=0.1
+
         else:
-            stitch_device = "cuda"
+            device = "cuda"
         self.inferer = SlidingWindowInferer(
             roi_size=self.params["config"]["plan_train"]["patch_size"],
             sw_batch_size=bs,
             overlap=patch_overlap,
             mode=mode,
             progress=True,
-            device=stitch_device,
+            sw_device=sw_device,
+            device=device,
         )
         self.tfms = "ESN"
+        self.safe_mode=safe_mode
 
     def check_plan_compatibility(self):
         assert (
@@ -380,10 +385,10 @@ class BaseInferer(GetAttr, DictToAttr):
                 keys=["pred"], independent=False, num_components=self.k_largest
             )  # label=1 is the organ
             tfms.insert(-1, K)
-        if self.safe_mode == True:
-            tfms.insert(0, U)
-        else:
-            tfms.append(U)
+        # if self.safe_mode == True:
+        #     tfms.insert(0, U)
+        # else:
+        #     tfms.append(U)
         C = Compose(tfms)
         self.postprocess_transforms = C
 
@@ -409,7 +414,7 @@ class BaseInferer(GetAttr, DictToAttr):
         self.model = fabric.setup(model)
 
     def predict(self):
-        outputs = []
+        # outputs = []
         self.model.eval()
         with torch.inference_mode():
             for i, batch in enumerate(pbar(self.pred_dl, desc="Processing predictions")):
@@ -424,6 +429,8 @@ class BaseInferer(GetAttr, DictToAttr):
             img_input = img_input.cuda()
         if "filename_or_obj" in img_input.meta.keys():
             print("Processing: ", img_input.meta["filename_or_obj"])
+        if self.safe_mode==True:
+            img_input = img_input.to('cpu')
         output_tensor = self.inferer(inputs=img_input, network=self.model)
         output_tensor = output_tensor[0]
         batch["pred"] = output_tensor
@@ -478,7 +485,7 @@ class BaseInfererTorchScript(BaseInferer):
         self.model = fabric.setup(model)
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 
     from fran.utils.common import *
 
@@ -514,7 +521,7 @@ if __name__ == "__main__":
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
-# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR>
 
     run_litsmc = ["LITS-1007"]
     run_litsmc = ["LITS-999"]
@@ -540,7 +547,7 @@ if __name__ == "__main__":
 # %%
     data = P.ds.data[0]
 # %%
-# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR>
 
     save_channels = False
     safe_mode = True
@@ -573,7 +580,7 @@ if __name__ == "__main__":
     )
 
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR>
     overwrite = True
     T.setup()
     imgs = imgs_crc
@@ -603,6 +610,7 @@ if __name__ == "__main__":
         T.reset()
 # %%
 
+    T= En.Ps[0]
     Sq = SqueezeDimd(keys=["pred", "image"], dim=0)
 
     # below is expensive on large number of channels and on discrete data I am unsure if it uses nearest neighbours
@@ -620,6 +628,7 @@ if __name__ == "__main__":
     )
     I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
 
+# %%
     out_final = []
     if T.save_channels == True:
         tfms = [Sq, Sa, A, D, I]
@@ -643,6 +652,7 @@ if __name__ == "__main__":
     batch = D(batch)
     batch = U(batch)
     batch = I(batch)
+
 # %%
     if En.devices=="cpu" :
         fabric_devices='auto'

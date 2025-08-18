@@ -1,12 +1,12 @@
 # %%
 from fran.managers.project import Project
+
+from fran.managers.db import find_matching_plan
 from monai.data import GridPatchDataset, PatchIterd
 from lightning import LightningDataModule
-from utilz.helpers import pbar, pp, resolve_device
+from utilz.helpers import pbar, resolve_device
 from monai.transforms.transform import RandomizableTransform
 from fran.preprocessing.helpers import bbox_bg_only
-import ast
-import math
 from functools import reduce
 from operator import add
 from pathlib import Path
@@ -31,18 +31,17 @@ from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
 from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
+    MapLabelValued,
     ToDeviceD,
 )
 
-from fran.data.collate import grid_collated, img_lm_bbox_collated, source_collated, whole_collated
+from fran.data.collate import grid_collated, source_collated, whole_collated
 from fran.data.dataset import (
-    ImageMaskBBoxDatasetd,
     NormaliseClipd,
     fg_in_bboxes,
 )
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
-from fran.transforms.spatialtransforms import ExtractContiguousSlicesd
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
 from fran.utils.config_parsers import ConfigMaker, is_excel_None
 from utilz.fileio import load_dict, load_yaml
@@ -349,7 +348,10 @@ class DataManager(LightningDataModule):
                 rotate_range=self.config['affine3d']["rotate_range"],
                 scale_range=self.config['affine3d']["scale_range"],
             )
-
+        if not is_excel_None(self.plan["src_dest_labels"]):
+            orig_labels = self.plan["src_dest_labels"][1]
+            dest_labels = self.plan["src_dest_labels"][2]
+            Remap = MapLabelValued(keys = ["lm"],orig_labels=orig_labels, target_labels=dest_labels)
         ResizePC= ResizeWithPadOrCropd(
                 keys=["image", "lm"],
                 spatial_size=self.plan["patch_size"],
@@ -483,7 +485,6 @@ class DataManager(LightningDataModule):
             train_cases, valid_cases = self.project.get_train_val_files(
                 self.dataset_params["fold"], self.plan['datasources']
             )
-            
             # Store only the cases for this split
             self.cases = train_cases if self.split == 'train' else valid_cases
             assert len(self.cases)>0, "There are no cases, aborting!"
@@ -524,7 +525,10 @@ class DataManager(LightningDataModule):
         return self.data_folder / (indices_subfolder)
 
     def derive_data_folder(self):
-        raise NotImplementedError
+        data_folder = find_matching_plan(self.project.db,self.plan)
+        data_folder = Path(data_folder)
+        return data_folder
+
 
     def create_dataloader(self):
             self.dl = DataLoader(
@@ -575,7 +579,7 @@ class DataManager(LightningDataModule):
                     cache_rate=self.cache_rate,
                 )
             elif self.ds_type == "lmdb":
-            #BUG: LMDBDataset will slow training down. fix it  (see #4)
+            #BUG: LMDBDataset will slow training down. fix it  (see #8)
                 self.ds = LMDBDataset(
                     data=self.data,
                     transform=self.transforms,
@@ -707,15 +711,15 @@ class DataManagerSource(DataManager):
 
     def __repr__(self):
         return f'DataManagerSource(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
-
-    def derive_data_folder(self):
-        assert self.plan["mode"] == "source", f"Dataset mode must be 'source' for DataManagerSource, got '{self.plan['mode']}'"
-        prefix = "spc"
-        spacing = self.plan["spacing"]
-        parent_folder = self.project.fixed_spacing_folder
-        data_folder = folder_name_from_list(prefix, parent_folder, spacing)
-        return data_folder
-
+    #
+    # def derive_data_folder(self):
+    #     assert self.plan["mode"] == "source", f"Dataset mode must be 'source' for DataManagerSource, got '{self.plan['mode']}'"
+    #     prefix = "spc"
+    #     spacing = self.plan["spacing"]
+    #     parent_folder = self.project.fixed_spacing_folder
+    #     data_folder = folder_name_from_list(prefix, parent_folder, spacing)
+    #     return data_folder
+    #
     # def prepare_data(self):
     #     super().prepare_data()
     #     self.data_train = self.create_data_dicts(self.train_cases)
@@ -753,13 +757,13 @@ class DataManagerWhole(DataManagerSource):
     def __repr__(self):
         return f'DataManagerWhole(' + ', '.join([f'{k}={v}' for k, v in vars(self).items()]) + ')'
 
-    def derive_data_folder(self):
-        assert self.plan["mode"] == "whole", f"Dataset mode must be 'whole' for DataManagerWhole, got '{self.plan['mode']}'"
-        prefix = "sze"
-        spatial_size = self.plan["patch_size"]
-        parent_folder = self.project.fixed_size_folder
-        data_folder = folder_name_from_list(prefix, parent_folder, spatial_size)
-        return data_folder
+    # def derive_data_folder(self):
+    #     assert self.plan["mode"] == "whole", f"Dataset mode must be 'whole' for DataManagerWhole, got '{self.plan['mode']}'"
+    #     prefix = "sze"
+    #     spatial_size = self.plan["patch_size"]
+    #     parent_folder = self.project.fixed_size_folder
+    #     data_folder = folder_name_from_list(prefix, parent_folder, spatial_size)
+    #     return data_folder
 
 
 
@@ -783,21 +787,21 @@ class DataManagerWhole(DataManagerSource):
         return data
 
 class DataManagerLBD(DataManagerSource):
-    def derive_data_folder(self, dataset_mode=None):
-        assert self.plan["mode"] == "lbd", f"Dataset mode must be 'lbd' for DataManagerLBD, got '{self.plan['mode']}'"
-        spacing = ast_literal_eval(self.plan["spacing"])
-        parent_folder = self.project.lbd_folder
-        folder_suffix = "plan" + str(self.dataset_params[f"plan_{self.split}"])
-        data_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=parent_folder,
-            values_list=spacing,
-            suffix=folder_suffix,
-        )
-        assert data_folder.exists(), "Dataset folder {} does not exists".format(
-            data_folder
-        )
-        return data_folder
+    # def derive_data_folder(self, dataset_mode=None):
+    #     assert self.plan["mode"] == "lbd", f"Dataset mode must be 'lbd' for DataManagerLBD, got '{self.plan['mode']}'"
+    #     spacing = ast_literal_eval(self.plan["spacing"])
+    #     parent_folder = self.project.lbd_folder
+    #     folder_suffix = "plan" + str(self.dataset_params[f"plan_{self.split}"])
+    #     data_folder = folder_name_from_list(
+    #         prefix="spc",
+    #         parent_folder=parent_folder,
+    #         values_list=spacing,
+    #         suffix=folder_suffix,
+    #     )
+    #     assert data_folder.exists(), "Dataset folder {} does not exists".format(
+    #         data_folder
+    #     )
+    #     return data_folder
     def __repr__(self):
         return (f"DataManagerLBD(plan={self.plan}, "
                 f"dataset_params={self.dataset_params}, "
@@ -819,20 +823,20 @@ class DataManagerLBD(DataManagerSource):
 
 
 class DataManagerWID(DataManagerLBD):
-    def derive_data_folder(self, dataset_mode=None):
-        spacing = self.plan["spacing"]
-        parent_folder = self.project.pbd_folder
-        folder_suffix = "plan" + str(self.dataset_params[f"plan_{self.split}"])
-        data_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=parent_folder,
-            values_list=spacing,
-            suffix=folder_suffix,
-        )
-        assert data_folder.exists(), "Dataset folder {} does not exists".format(
-            data_folder
-        )
-        return data_folder
+    # def derive_data_folder(self, dataset_mode=None):
+    #     spacing = self.plan["spacing"]
+    #     parent_folder = self.project.pbd_folder
+    #     folder_suffix = "plan" + str(self.dataset_params[f"plan_{self.split}"])
+    #     data_folder = folder_name_from_list(
+    #         prefix="spc",
+    #         parent_folder=parent_folder,
+    #         values_list=spacing,
+    #         suffix=folder_suffix,
+    #     )
+    #     assert data_folder.exists(), "Dataset folder {} does not exists".format(
+    #         data_folder
+    #     )
+    #     return data_folder
 
     def __repr__(self):
         return (f"DataManagerPBD(plan={self.plan}, "
@@ -908,7 +912,7 @@ class DataManagerPatch(DataManagerSource):
             fn = bb["filename"]
             matched = pat.search(fn.name)
             indx = matched.groups()[0]
-            fn_name = strip_extension(fn.name) + "_" + str(indx) + ".pt"
+            strip_extension(fn.name) + "_" + str(indx) + ".pt"
             lm_fn = Path(fn)
             img_fn = lm_fn.str_replace("lms", "images")
             indices_fn = lm_fn.str_replace("lms", "indices")
@@ -981,16 +985,16 @@ class DataManagerPatch(DataManagerSource):
     def create_transforms(self):
         super().create_transforms()
 
-    def derive_data_folder(self):
-        assert self.plan_train["mode"] == "patch", f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan_train['mode']}'"
-        parent_folder = self.project.patches_folder
-        plan_name = "plan" + str(self.dataset_params["plan"])
-        source_plan_name = self.plan_train["source_plan"]
-        source_plan = self.config[source_plan_name]
-        spacing = ast_literal_eval(source_plan["spacing"])
-        subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
-        patch_size = ast_literal_eval(self.plan_train["patch_size"])
-        return folder_name_from_list("dim", subfldr1, patch_size, plan_name)
+    # def derive_data_folder(self):
+    #     assert self.plan_train["mode"] == "patch", f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan_train['mode']}'"
+    #     parent_folder = self.project.patches_folder
+    #     plan_name = "plan" + str(self.dataset_params["plan"])
+    #     source_plan_name = self.plan_train["source_plan"]
+    #     source_plan = self.config[source_plan_name]
+    #     spacing = ast_literal_eval(source_plan["spacing"])
+    #     subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
+    #     patch_size = ast_literal_eval(self.plan_train["patch_size"])
+    #     return folder_name_from_list("dim", subfldr1, patch_size, plan_name)
 
 
     def setup(self, stage: str = None):
@@ -1029,24 +1033,24 @@ class DataManagerBaseline(DataManagerLBD):
         self.keys_tr=self.keys_val
 
 
-    def derive_data_folder(self, dataset_mode=None):
-        assert self.plan_train["mode"] == "baseline", f"Dataset mode must be 'baseline' for DataManagerBaseline, got '{self.plan_train['mode']}'"
-        # return data_folder
-        source_plan_name = self.plan_train["source_plan"]
-        source_plan = self.config[source_plan_name]
-
-        source_ds_type =  source_plan['mode']
-        if source_ds_type == 'lbd':
-            parent_folder = self.project.lbd_folder
-        else:
-            raise NotImplemented
-        spacing = ast_literal_eval(source_plan['spacing'])
-
-        data_folder= folder_name_from_list("spc", parent_folder, spacing, source_plan_name)
-        assert data_folder.exists(), "Dataset folder {} does not exists".format(
-            data_folder
-        )
-        return data_folder
+    # def derive_data_folder(self, dataset_mode=None):
+    #     assert self.plan_train["mode"] == "baseline", f"Dataset mode must be 'baseline' for DataManagerBaseline, got '{self.plan_train['mode']}'"
+    #     # return data_folder
+    #     source_plan_name = self.plan_train["source_plan"]
+    #     source_plan = self.config[source_plan_name]
+    #
+    #     source_ds_type =  source_plan['mode']
+    #     if source_ds_type == 'lbd':
+    #         parent_folder = self.project.lbd_folder
+    #     else:
+    #         raise NotImplemented
+    #     spacing = ast_literal_eval(source_plan['spacing'])
+    #
+    #     data_folder= folder_name_from_list("spc", parent_folder, spacing, source_plan_name)
+    #     assert data_folder.exists(), "Dataset folder {} does not exists".format(
+    #         data_folder
+    #     )
+    #     return data_folder
 
     def prepare_data(self):
         super().prepare_data()

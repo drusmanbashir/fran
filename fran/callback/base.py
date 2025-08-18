@@ -1,5 +1,4 @@
 # %%
-
 from lightning.pytorch.callbacks import Callback
 import torch.nn.functional as F
 from fastcore.basics import listify, store_attr

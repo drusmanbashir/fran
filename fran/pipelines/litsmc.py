@@ -1,7 +1,9 @@
 # %%
+
 import argparse
 import torch
 
+from fran.trainers import Trainer
 from monai.data.dataset import GDSDataset
 from utilz.imageviewers import ImageMaskViewer
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
@@ -61,6 +63,16 @@ if __name__ == '__main__':
     Tm.N.compiled = compiled
     Tm.fit()
 # %%
+# %%
+#SECTION:-------------------- TS--------------------------------------------------------------------------------------
+
+#    
+    Tm.D.prepare_data()
+    Tm.D.setup()
+    Tm.D.train_manager.keys_tr
+# %%
+    tm = Tm.D.train_manager
+    dici = tm.ds[0]
 
 #SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
 
@@ -86,7 +98,7 @@ if __name__ == '__main__':
         P.maybe_store_projectwide_properties(overwrite=True)
 # %%
 #SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
-    active_plan = "plan9"
+    active_plan = "plan10"
     overwrite=False
 # %%
 
@@ -128,18 +140,19 @@ if __name__ == '__main__':
 
     # args.num_processes = 1
     args.debug = True
-    args.plan = active_plan
+    args.plan_name = active_plan
     args.project_title = "litsmc"
 
 
 
-    plans = conf[args.plan]
+    plans = conf[args.plan_name]
 #SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
     I = PreprocessingManager(args)
     # I.spacing =
 # %%
 #SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
-    I.resample_dataset(overwrite=True)
+    overwrite=False
+    I.resample_dataset(overwrite=overwrite)
     I.R.get_tensor_folder_stats()
 
 # %%
@@ -171,7 +184,7 @@ if __name__ == '__main__':
     I.L = LabelBoundedDataGenerator(
         project=I.project,
         plan=I.plan,
-        folder_suffix=I.plan_name,
+        plan_name=I.plan_name,
     )
     I.L.setup(overwrite=overwrite,device=device)
     I.L.process()

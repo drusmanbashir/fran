@@ -39,7 +39,6 @@ if __name__ == '__main__':
 #SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
 
     parser = argparse.ArgumentParser(description="Resampler")
-
     parser.add_argument("-t", help="project title", dest="project_title")
     parser.add_argument(
         "-n",
@@ -76,12 +75,12 @@ if __name__ == '__main__':
 
     # args.num_processes = 1
     args.debug = True
-    args.plan = "plan2"
+    args.plan_name = "plan2"
     args.project_title = "nodes"
 
 
 
-    plans = conf[args.plan]
+    plans = conf[args.plan_name]
 #SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
     I = PreprocessingManager(args)
     # I.spacing =

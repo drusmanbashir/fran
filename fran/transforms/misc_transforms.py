@@ -244,7 +244,7 @@ class FgBgToIndicesd2(FgBgToIndicesd):
                     lm[lm == label] = 0
                 if lm.max() == 0:
                     print(
-                        "Warning: No foreground in label {}".format(lm.meta["filename"])
+                        "Warning: No foreground in label {}".format(lm.meta["filename_or_obj"])
                     )
                     print("Not removing any labels to avoid bugs")
                     lm = d[key].clone()  # clone so the original is untouched

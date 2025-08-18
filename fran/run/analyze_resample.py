@@ -56,10 +56,9 @@ class PreprocessingManager:
         P = Project(project_title=args.project_title)
         self.project = P
         conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-
         # args.overwrite=False
-        self.plan = conf[self.plan]
-        self.plan_name = args.plan
+        self.plan_name = args.plan_name
+        self.plan = conf[args.plan_name]
         # self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
         #
@@ -108,6 +107,7 @@ class PreprocessingManager:
             spacing=self.plan["spacing"],
             data_folder=self.project.raw_data_folder,
         )
+
         self.R.setup(overwrite=overwrite)
         self.R.process()
 
@@ -115,7 +115,7 @@ class PreprocessingManager:
         self.L = LabelBoundedDataGenerator(
             project=self.project,
             plan=self.plan,
-            folder_suffix=self.plan_name,
+            plan_name=self.plan_name,
         )
         self.L.setup(overwrite=overwrite,device=device)
         self.L.process()
@@ -196,6 +196,7 @@ class PreprocessingManager:
 
         if mode is None:
             mode = self.mode
+        #BUG: Throws file not found error, multiple bugs that need fixsing  (see #10)
         PG = PatchDataGenerator(
             self.project,
             lbd_folder,
@@ -342,14 +343,14 @@ if __name__ == "__main__":
 
     # args.num_processes = 1
     args.debug = True
-    args.plan = "plan2"
+    args.plan_name = "plan2"
 
     args.project_title = "lidc2"
     P = Project(project_title=args.project_title)
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 
-    plan = conf[args.plan]
+    plan = conf[args.plan_name]
 # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
@@ -449,7 +450,7 @@ if __name__ == "__main__":
     I.L = LabelBoundedDataGenerator(
         project=I.project,
         plan=I.plan,
-        folder_suffix=I.plan_name,
+        plan_name=I.plan_name,
     )
 # %%
     I.L.setup(overwrite=overwrite)
@@ -462,7 +463,7 @@ if __name__ == "__main__":
         spacing=I.plan["spacing"],
         lm_group="lm_group1",
         mask_label=1,
-        folder_suffix=I.plan_name,
+        plan_name=I.plan_name,
         fg_indices_exclude=None,
     )
     L.setup(overwrite=overwrite)

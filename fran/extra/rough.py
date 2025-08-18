@@ -1,4 +1,9 @@
 # %%
+import ipdb
+tr = ipdb.set_trace
+
+import shutil
+import re
 from utilz.imageviewers import ImageMaskViewer
 import SimpleITK as sitk
 import torch
@@ -6,17 +11,55 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from torch.nn.modules import CrossEntropyLoss
+import pandas as pd
+from utilz.string import dec_to_str
 
-imgfn = "/s/tmp/CSA-Net/CSANet/image_batch.pt"
-labfn = "/s/tmp/CSA-Net/CSANet/label_batch.pt"
+
+imgfn = "/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan4/images/totalseg_s0024.pt"
+labfn = "/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan4/lms/totalseg_s0024.pt"
 outputfn = "/s/tmp/CSA-Net/CSANet/outputs.pt"
 img = torch.load(imgfn, weights_only=False)
-output = torch.load(outputfn, weights_only=False)
 lab = torch.load(labfn, weights_only=False)
+output = torch.load(outputfn, weights_only=False)
 
+img=img.permute(2,1,0)
+lab=lab.permute(2,1,0)
+# %%
+ImageMaskViewer([img,lab])
+# %%
+#SECTION:-------------------- SORTING IMAGES_PENDING FOLDER--------------------------------------------------------------------------------------
+
+df = pd.DataFrame(columns=["fn","thin","thick","too_thin"])
+pat_1p5 = r"1p5|3p0"
+pat_thick = r"5p0"
+pat_too_thin= r"0p7|1p0"
+fldr_1p5 = Path("/s/xnat_shadow/nodes/images_pending/thin_slice")
+fldr_too_thin  = Path("/s/xnat_shadow/nodes/images_pending/1mm_or_less")
+fldr_5p0= Path("/s/xnat_shadow/nodes/images_pending/5mm")
+fldr = Path("/s/xnat_shadow/nodes/images_pending")
+fls = list(fldr.glob("*"))
+fn = fls[0]
+thin = re.search(pat_1p5,fn.name)
+thick= re.search(pat_thick,fn.name)
+too_thin = re.search(pat_too_thin,fn.name)
+assert not all([thin,thick,too_thin]), "Too many matches"
+# %%
+fls = [fn for fn in fldr.glob("*") if not fn.is_dir()]
+for fn in fls:
+    img = sitk.ReadImage(fn)
+    thickness = img.GetSpacing()[-1]
+    as_fl = dec_to_str(thickness)
+    full = as_fl[0]+"p"+as_fl[1:]
+
+    fn_out_name =  fn.name.split(".")[0]+"_"+full+".nii.gz"
+    print ("{0} ---> {1}\n{2} ".format(thickness,full,fn_out_name))
+    tr()
+    fn_out = fn.parent/fn_out_name
+    shutil.move(fn,fn_out)
 # %%
 segs_folder = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan4/lms")
 imgs_folder =  Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan4/images")
+# %%
 seg_fns= list(segs_folder.glob("*"))
 img_fns = list(imgs_folder.glob("*"))
 # %%
