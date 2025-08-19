@@ -12,13 +12,14 @@ DB_PATH = "plans.db"
 TABLE = "master_plans"
 
 # Fixed schema (created earlier)
-COLUMNS = [
+PLAN_COLUMNS = [
     "datasources",
     "lm_groups",
     "spacing",
     "expand_by",
     "fg_indices_exclude",
     "mode",
+    "remapping",
     # "samples_per_file",
     # "src_dest_labels",
 ]
@@ -44,7 +45,7 @@ def _normalize_for_db(v):
         return str(v)
     return str(v)
 def _init_db(db_path: str = DB_PATH):
-    ddl_cols = ", ".join(f'"{c}" TEXT' for c in COLUMNS+["data_folder", "derived_plans"])
+    ddl_cols = ", ".join(f'"{c}" TEXT' for c in PLAN_COLUMNS+["data_folder", "derived_plans"])
     sql = f'''
     CREATE TABLE IF NOT EXISTS "{TABLE}" (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,8 +73,8 @@ def _read_kv_excel(xlsx_path: str, sheet_name=0) -> dict:
 
 def find_matching_plan(db_path: str, plan: dict) -> int | None:
         """Return id of a row where all provided key->value pairs match (for known columns)."""
-        plan = {k: plan.get(k) for k in COLUMNS}  # align to fixed schema
-        keys = [k for k in COLUMNS if k in plan]
+        plan = {k: plan.get(k) for k in PLAN_COLUMNS}  # align to fixed schema
+        keys = [k for k in PLAN_COLUMNS if k in plan]
         if not keys:
             return None
         conds, params = [], []
@@ -91,8 +92,8 @@ def find_matching_plan(db_path: str, plan: dict) -> int | None:
 
 def _insert_row(conn: sqlite3.Connection, data: dict,data_folder:str) -> int:
     now = datetime.utcnow().isoformat(sep=" ", timespec="seconds")
-    cols = ["created_at"] + COLUMNS + ["data_folder"]
-    vals = [now] + [_normalize_for_db(data.get(c)) for c in COLUMNS]
+    cols = ["created_at"] + PLAN_COLUMNS + ["data_folder"]
+    vals = [now] + [_normalize_for_db(data.get(c)) for c in PLAN_COLUMNS]
     vals+= [str(data_folder)]
     placeholders = ", ".join("?" for _ in cols)
     cols_sql = ", ".join(f'"{c}"' for c in cols)

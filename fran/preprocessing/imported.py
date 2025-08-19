@@ -1,36 +1,34 @@
 # %%
+import ipdb
+import torch
 from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 from monai.transforms.utils import is_positive
-import torch
-import ipdb
 from utilz.imageviewers import ImageMaskViewer
 
 from fran.preprocessing.preprocessor import generate_bboxes_from_lms_folder
 from fran.transforms.imageio import LoadSITKd, LoadTorchd
 from fran.transforms.inferencetransforms import BBoxFromPTd
-from fran.transforms.misc_transforms import (
-    ApplyBBox,
-    FgBgToIndicesd2,
-    LabelRemapSITKd,
-    MergeLabelmapsd,
-    Recastd,
-)
+from fran.transforms.misc_transforms import (ApplyBBox, FgBgToIndicesd2,
+                                             LabelRemapSITKd, MergeLabelmapsd,
+                                             Recastd)
 from fran.transforms.spatialtransforms import ResizeToTensord
 
 tr = ipdb.set_trace
 
-from fastcore.all import store_attr
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
+
+from fastcore.all import store_attr
 from label_analysis.totalseg import TotalSegmenterLabels
+from torch.utils.data import DataLoader
+from utilz.helpers import find_matching_fn, pbar, resolve_device
+from utilz.string import info_from_filename
+
 from fran.data.collate import dict_list_collated
 from fran.preprocessing.dataset import ImporterDataset
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-from torch.utils.data import DataLoader
 from fran.utils.config_parsers import ConfigMaker
-from utilz.helpers import find_matching_fn, pbar, resolve_device
-from utilz.string import info_from_filename
 
 
 # %%
@@ -405,10 +403,10 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
 
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
-    from fran.utils.common import *
     from fran.managers import Project
+    from fran.utils.common import *
 
     P = Project(project_title="nodes")
     spacing = [0.8, 0.8, 1.5]
@@ -422,7 +420,7 @@ if __name__ == "__main__":
     merge_imported_labels = False
     remapping = None
 # %%
-# SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     L = LabelBoundedDataGeneratorImported(
         project=P,
         plan=plan,
@@ -471,7 +469,7 @@ if __name__ == "__main__":
     L.setup(overwrite=True)
     L.process()
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     L.create_output_folders()
     L.results = []
     L.shapes = []

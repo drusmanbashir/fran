@@ -2,10 +2,8 @@
 
 from fran.run.analyze_resample import PreprocessingManager
 import argparse
-import warnings
 from fran.inference.cascade import WholeImageInferer
 from fran.managers import  Project
-import torch
 from fran.utils.common import *
 from fran.trainers.trainer import Trainer
 from fran.utils.config_parsers import ConfigMaker
@@ -14,8 +12,11 @@ from fran.utils.config_parsers import ConfigMaker
 if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("totalseg")
+    P._create_plans_table()
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+    print(conf["model_params"])
     plan = conf['plan_train']
+    print(plan)
 # %%
 
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
@@ -34,6 +35,7 @@ if __name__ == '__main__':
 
     conf["dataset_params"]["cache_rate"]=0.4
     
+    print(conf['model_params']['out_channels'])
 # %%
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
@@ -126,7 +128,7 @@ if __name__ == '__main__':
 
 # %%
 #SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
-    overwrite = True
+    overwrite = False
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()

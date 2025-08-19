@@ -3,6 +3,7 @@
 import argparse
 import torch
 
+from fran.managers.db import add_plan_to_db
 from fran.trainers import Trainer
 from monai.data.dataset import GDSDataset
 from utilz.imageviewers import ImageMaskViewer
@@ -23,6 +24,8 @@ if __name__ == '__main__':
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
     P = Project("litsmc")
+    P._create_plans_table()
+
     # P.create('litsmc')
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf['plan_train']

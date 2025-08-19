@@ -389,6 +389,9 @@ class MergeLabelmapsd(MapTransform):
         d[self.key_output] = lm_out
         return d
 
+class DummyTransform(MapTransform):
+    def __call__(self, d: dict):
+        return d
 
 class LabelRemapd(MapTransform):
     """

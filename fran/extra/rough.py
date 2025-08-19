@@ -16,16 +16,30 @@ from utilz.string import dec_to_str
 
 
 imgfn = "/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan4/images/totalseg_s0024.pt"
-labfn = "/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan4/lms/totalseg_s0024.pt"
+labfn = "/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5/lms/totalseg_s0367.pt"
 outputfn = "/s/tmp/CSA-Net/CSANet/outputs.pt"
 img = torch.load(imgfn, weights_only=False)
 lab = torch.load(labfn, weights_only=False)
 output = torch.load(outputfn, weights_only=False)
+print(lab.max())
 
 img=img.permute(2,1,0)
 lab=lab.permute(2,1,0)
 # %%
 ImageMaskViewer([img,lab])
+# %%
+#SECTION:-------------------- ITK--------------------------------------------------------------------------------------
+imgfn = "/s/fran_storage/predictions/totalseg/LITS-1238/nodes_40_20221205_CAP1p5SoftTissue.nii.gz"
+img = sitk.ReadImage(imgfn)
+img.GetDirection()
+img.GetSpacing()
+img_pt= sitk.GetArrayFromImage(img)
+stats = sitk.StatisticsImageFilter()
+stats.Execute(img)
+mx = stats.GetMaximum()       # float or int depending on pixel type
+mn = stats.GetMinimum()  
+# %%
+Imag_pteMaskViewer([img_pt,img_pt])
 # %%
 #SECTION:-------------------- SORTING IMAGES_PENDING FOLDER--------------------------------------------------------------------------------------
 

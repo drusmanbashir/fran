@@ -40,16 +40,7 @@ from utilz.string import info_from_filename, str_to_path
 
 tr = ipdb.set_trace
 from pathlib import Path
-
-PLAN_COLUMNS = [
-    "datasources",
-    "lm_groups",
-    "spacing",
-    "expand_by",
-    "fg_indices_exclude",
-    "mode",
-]
-
+from fran.managers.db import PLAN_COLUMNS
 
 def subscript_generator():
     letters = list(string.ascii_letters)
@@ -947,15 +938,18 @@ if __name__ == "__main__":
 
     db_name = "/s/fran_storage/projects/litsmc/cases.db"
     db_name = "/s/fran_storage/projects/nodes/cases.db"
+    db_name = "/s/fran_storage/projects/totalseg/cases.db"
     conn = sqlite3.connect(db_name)
     cur = conn.cursor()
 
 # %%
+    ss = """ALTER TABLE master_plans ADD COLUMN remapping"""
     ss = """ALTER TABLE datasources RENAME COLUMN lm to lm"""
     ss = """DELETE FROM datasources WHERE case_id='lits_115'"""
 
     ss = """SELECT case_id FROM datasources WHERE fold IS NOT NULL"""
 
+    cur.execute(ss)
 # %%
     ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{} ".format(1)
     dss = conf["plan"]["datasources"]

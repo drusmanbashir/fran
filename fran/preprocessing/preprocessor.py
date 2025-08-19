@@ -64,7 +64,6 @@ class Preprocessor(GetAttr):
         store_attr("project,spacing,data_folder")
         self.data_folder = data_folder
         self.set_input_output_folders(data_folder, output_folder)
-        self.create_data_df()
 
     def create_data_df(self):
         if self.data_folder is not None:

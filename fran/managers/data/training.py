@@ -1,5 +1,6 @@
 # %%
 from fran.managers.project import Project
+from typing import Union
 
 from fran.managers.db import find_matching_plan
 from monai.data import GridPatchDataset, PatchIterd
@@ -42,7 +43,7 @@ from fran.data.dataset import (
 )
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
-from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
+from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
 from fran.utils.config_parsers import ConfigMaker, is_excel_None
 from utilz.fileio import load_dict, load_yaml
 from utilz.helpers import find_matching_fn, folder_name_from_list
@@ -107,8 +108,8 @@ class DataManagerDual(LightningDataModule):
         device="cuda",
         ds_type=None,
         save_hyperparameters=True,
-        keys_tr = "L,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms",
-        keys_val = "L,Ld,E,N,ResizePC",
+        keys_tr = "L,Remap,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms",
+        keys_val = "L,Remap,Ld,E,N,ResizePC",
     ):
         super().__init__()
         project=Project(project_title)
@@ -349,9 +350,11 @@ class DataManager(LightningDataModule):
                 scale_range=self.config['affine3d']["scale_range"],
             )
         if not is_excel_None(self.plan["src_dest_labels"]):
-            orig_labels = self.plan["src_dest_labels"][1]
-            dest_labels = self.plan["src_dest_labels"][2]
+            assert isinstance(self.plan["src_dest_labels"], Union[tuple, list]) and len(self.plan["src_dest_labels"]) == 2, "src_dest_labels must be a tuple or list of length 2"
+            orig_labels = self.plan["src_dest_labels"][0]
+            dest_labels = self.plan["src_dest_labels"][1]
             Remap = MapLabelValued(keys = ["lm"],orig_labels=orig_labels, target_labels=dest_labels)
+        else: Remap = DummyTransform(keys=["lm"])
         ResizePC= ResizeWithPadOrCropd(
                 keys=["image", "lm"],
                 spatial_size=self.plan["patch_size"],
@@ -428,6 +431,7 @@ class DataManager(LightningDataModule):
             "L": L,
             "Ld": Ld,
             "Ind": Ind,
+            "Remap": Remap,
             "Rtr": Rtr,
             "Rva": Rva
         }
@@ -934,7 +938,7 @@ class DataManagerPatch(DataManagerSource):
 
     def set_tfm_keys(self):
         if not is_excel_None(self.plan_train["src_dest_labels"]):
-            self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms"
+            self.keys_tr = "RP,L,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms"
         else:
             self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,ResizePC,N,IntensityTfms"
         self.keys_val = "RP,L,Ld,E,N"
@@ -1064,7 +1068,7 @@ class DataManagerBaseline(DataManagerLBD):
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     import torch
 
@@ -1176,7 +1180,7 @@ if __name__ == "__main__":
     dat2 = Dev(dat)
 
 
-# SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR> <CR>
 # %%
     # Test DataManagerWhole with DataManagerDual
     D = DataManagerDual(
@@ -1244,7 +1248,7 @@ if __name__ == "__main__":
 #     im = b['image']
     lm = b['lm']
 # %
-# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR> <CR> <CR>
 
 # %%
     batch_size = 2
@@ -1271,7 +1275,7 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     proj_tot=proj_litsmc
     config_tot=config_litsmc
@@ -1337,7 +1341,7 @@ if __name__ == "__main__":
     Dev = ToDeviceD(keys=["image", "lm"],device=dv)
     dat3 = Dev(dat2)
 # %%
-# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
 # %%
 

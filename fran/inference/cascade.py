@@ -1,5 +1,4 @@
 # %%
-from os.path import join
 import time
 import ipdb
 from label_analysis.totalseg import TotalSegmenterLabels
@@ -68,7 +67,6 @@ from utilz.imageviewers import ImageMaskViewer
 
 def img_bbox_collated(batch):
     imgs = []
-    imgs_c = []
     bboxes = []
     for i, item in enumerate(batch):
         imgs.append(item["image"])
@@ -291,7 +289,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
                 len(imgs)
             )
         )
-        new_W = []
         for P in self.Ps:
             out_fns = [P.output_folder / img.name for img in imgs]
             new_P = np.array([not fn.exists() for fn in out_fns])
@@ -311,8 +308,8 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             output_postfix="",
             separate_folder=False,
         )
-        for pp in preds:
-            S(pp)
+        for pred in preds:
+            S(pred)
 
     def get_mini_bundle(self, patch_bundles, indx):
         patch_bundle = {}
@@ -351,20 +348,21 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         print("Starting localiser data prep and prediction")
         self.W.setup()
         self.W.prepare_data(data, tfms="ESN")
-        p = self.W.predict()
-        preds = self.W.postprocess(p)
-        if self.save_localiser == True:
-            self.W.save_pred(preds)
         bboxes = []
-        for pred in preds:
+        for batch in self.W.predict():
+        # p = self.W.predict()
+            self.W.create_postprocess_transforms(self.W.ds.transform)
+            pred = self.W.postprocess_transforms(batch)
+            if self.save_localiser == True:
+                self.W.save_pred(pred)
             pred = Sel(pred)
             pred = B(pred)
             bb = pred["bounding_box"]
             # Check if bounding box is empty
             if bb is None or (isinstance(bb, (list, tuple)) and len(bb) == 0):
-                raise ValueError(
-                    "No bounding box found - localizer failed to detect region of interest"
-                )
+                    raise ValueError(
+                        "No bounding box found - localizer failed to detect region of interest"
+                    )
             bboxes.append(bb)
         return bboxes
 
@@ -374,11 +372,15 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         preds_all_runs = {}
         print("Starting patch data prep and prediction")
         for P in self.Ps:
+            preds_all_runs[P.run_name]=[]
             P.setup()
             P.prepare_data(data=data, tfms="ESN", collate_fn=img_bbox_collated)
-            preds = P.predict()
-            preds = P.postprocess(preds)
-            preds_all_runs[P.run_name] = preds
+            P.create_postprocess_transforms(P.ds.transform)
+            for batch in P.predict():
+                batch = P.postprocess_transforms(batch)
+            # preds = P.predict()
+            # preds = P.postprocess(preds)
+                preds_all_runs[P.run_name].append(batch)
         return preds_all_runs
 
     @property
@@ -389,8 +391,8 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
     def postprocess(self, preds):
         keys = self.runs_p
-        A = Activationsd(keys="pred", softmax=True)
-        D = AsDiscreted(keys=["pred"], argmax=True)
+        # A = Activationsd(keys="pred", softmax=True)
+        # D = AsDiscreted(keys=["pred"], argmax=True)
         F = FillBBoxPatchesd()
         if len(keys) == 1:
             MR = RenameDictKeys(new_keys=["pred"], keys=keys)
@@ -400,9 +402,10 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             K = KeepLargestConnectedComponentWithMetad(
                 keys=["pred"], independent=False, num_components=self.k_largest
             )  # label=1 is the organ
-            tfms = [MR, A, D, K, F]
+            # tfms = [MR, A, D, K, F]
+            tfms = [MR,  K, F]
         else:
-            tfms = [MR, A, D, F]
+            tfms = [MR,  F]
         # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
         C = Compose(tfms)
         output = C(preds)
@@ -490,10 +493,10 @@ if __name__ == "__main__":
 
 # %%
 # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR>
-    localiser_labels = set(TSL.label_localiser)
+    localiser_labels = set(TSL.labels_localiser)
     safe_mode = False
     devices = [1]
-    overwrite = False
+    overwrite = True
     save_channels = False
     save_localiser=True
     En = CascadeInferer(
@@ -510,7 +513,7 @@ if __name__ == "__main__":
 
 # %%
 
-    preds = En.run(nodes, chunksize=1)
+    preds = En.run(nodes[:3], chunksize=1)
     # preds = En.run(img_fns, chunksize=2)
 
 # %%
@@ -537,10 +540,10 @@ if __name__ == "__main__":
 #SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)--------------------------------------------------------------------------------------
 
 
-    localiser_labels = set(TSL.label_localiser)
+    localiser_labels = set(TSL.labels_localiser)
     safe_mode = True
     devices = [0]
-    overwrite = False
+    overwrite = True
     save_channels = False
     save_localiser=False
     En = CascadeInferer(
@@ -557,7 +560,7 @@ if __name__ == "__main__":
 
 # %%
 
-    preds = En.run(nodes, chunksize=1)
+    preds = En.run(nodes[:3], chunksize=2)
     # preds = En.run(img_fns, chunksize=2)
 # %%
 # SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR>
@@ -617,19 +620,24 @@ if __name__ == "__main__":
         print("Bbox overwrite not implemented yet")
     print("Starting localiser data prep and prediction")
 # %%
+    imgs_sublist=nodes
 
-    imgs_sublist =img_fns[:5]
-    data = En.load_images(imgs_sublist)
-    En.W.setup()
-    En.W.prepare_data(data, tfms="ESN")
-    p = En.W.predict()
-    preds = En.W.postprocess(p)
+    data = En.load_images(imgs_sublist[:3])
+    En.bboxes = En.extract_fg_bboxes(data)
+    data = En.apply_bboxes(data, En.bboxes)
+    pred_patches = En.patch_prediction(data)
+    pred_patches = En.decollate_patches(pred_patches, En.bboxes)
+    output = En.postprocess(pred_patches)
+    if En.save == True:
+        En.save_pred(output)
+    En.cuda_clear()
+        
 # %%
-# %%
+    pred = pred_patches[0]['LITS-1238']
     preds[0]["pred"].shape
     preds[0]["image"].shape
     ImageMaskViewer([preds[0]["pred"][0].detach(), preds[0]["image"][0].detach()])
-    ImageMaskViewer([preds[1]["pred"][0].detach(), preds[1]["image"][0].detach()])
+    ImageMaskViewer([image,pred[0]])
 # %%
     bboxes = []
     for pred in preds:
@@ -639,6 +647,11 @@ if __name__ == "__main__":
         bboxes.append(bb)
 
     print(bboxes)
+# %%
+    dat = data[0]
+    image = dat["image"]
+    pred = dat['pred']
+    ImageMaskViewer([image.detach(), image.detach()])
 # %%
 
     pred_patches = En.patch_prediction(data)
@@ -741,4 +754,8 @@ if __name__ == "__main__":
         En.cuda_clear()
 
 
+        batch = torch.load("batch.pt",weights_only=False)
+        print(batch.keys())
+        img = batch['image']
+        preds = batch['pred']
 # %%

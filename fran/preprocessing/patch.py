@@ -199,6 +199,7 @@ class PatchDataGenerator(Preprocessor):
             self.expand_by = patches_config["expand_by"]
 
     def setup(self, overwrite=False):
+        self.create_data_df()
         self.register_existing_files()
         if overwrite == False:
             self.remove_completed_cases()

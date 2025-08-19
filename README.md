@@ -21,10 +21,12 @@ All dataset creation and (some) training blueprints are in excel spreadsheets an
 ### A. Plans
 
 #### i) Remapping: 
-Remapping patterns can be dicts, TSL attributes. These are baked into the dataset (c.f. `src_dest_labels`_)
+Remapping patterns can be dicts or 2-tuples mapping srce to dest labels. This remapping bakes the new labels into the dataset, reducing training workload(c.f. `src_dest_labels`_)
 
 #### ii) Src_dest_labels:
-This is also a remapping but unlike `Remapping` above, this remapping happens on the fly, during training.
+This is also a remapping but unlike `Remapping` above, this remapping happens on the fly, during training.\
+It is a list of 2 lists, list 1 is the source mappings, list 2 dest mappings. Aligns with monai transform MapLabelValue
+
 
 
 ## 1. Setting common variables

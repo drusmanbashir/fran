@@ -62,6 +62,7 @@ class ResampleDatasetniftiToTorch(Preprocessor):
         self.half_precision = half_precision
 
     def setup(self, device="cpu",overwrite=False):
+        self.create_data_df()
         self.register_existing_files()
         if overwrite == False:
             self.remove_completed_cases()

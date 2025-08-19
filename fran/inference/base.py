@@ -218,13 +218,16 @@ class BaseInferer(GetAttr, DictToAttr):
     def process_imgs_sublist(self, imgs_sublist):
         data = self.load_images(imgs_sublist)
         self.prepare_data(data, self.tfms, collate_fn=None)
-        preds = self.predict()
-        output = self.postprocess(preds)
-        if self.save == True:
-            self.save_pred(output)
-        if self.safe_mode == True:
-            self.reset()
-        return output
+        # preds = self.predict()
+        self.create_postprocess_transforms(self.ds.transform)
+        for batch in self.predict():
+            batch = self.postprocess_transforms(batch)
+            if self.save == True:
+                self.save_pred(output)
+            if self.safe_mode == True:
+                self.reset()
+                return None  
+            return output
 
     def reset(self):
         torch.cuda.empty_cache()
@@ -355,8 +358,8 @@ class BaseInferer(GetAttr, DictToAttr):
             output_postfix="",
             separate_folder=False,
         )
-        for pp in preds:
-            S(pp)
+        
+        S(preds)
 
     def create_postprocess_transforms(self, preprocess_transform):
         Sq = SqueezeDimd(keys=["pred", "image"], dim=0)
@@ -375,11 +378,10 @@ class BaseInferer(GetAttr, DictToAttr):
         )
         I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
 
-        out_final = []
-        if self.save_channels == True:
+        if self.save_channels == True and self.safe_mode==False:
             tfms = [Sq, Sa, A, D, I]
         else:
-            tfms = [Sq, A, D, I]
+            tfms = [Sq,   I]  # now each minibatch already is argmax and discrete.
         if self.k_largest:
             K = KeepLargestConnectedComponentWithMetad(
                 keys=["pred"], independent=False, num_components=self.k_largest
@@ -418,12 +420,33 @@ class BaseInferer(GetAttr, DictToAttr):
         self.model.eval()
         with torch.inference_mode():
             for i, batch in enumerate(pbar(self.pred_dl, desc="Processing predictions")):
-                with torch.no_grad():
+                # with torch.no_grad():
                     batch = self.predict_inner(batch)
-                    outputs.append(batch)
-        return outputs
+                    yield batch
+
 
     def predict_inner(self, batch):
+        img = batch["image"]
+        if self.devices != "cpu":
+            img = img.cuda(non_blocking=True)
+        if self.safe_mode:
+            img = img.to("cpu")
+
+        logits = self.inferer(inputs=img, network=self.model)  # [B,117,D,H,W]
+        logits = logits[0] # model has deep supervision only 0 channel is needed
+        # Collapse channels early; keep on same device
+        if self.safe_mode==True or self.save_channels==False:
+            labels = torch.argmax(logits, dim=1, keepdim=True)
+            labels = labels.to(torch.uint8)
+            batch["pred"] = labels
+            del logits
+        else:
+            batch["pred"] = logits
+        batch["pred"].meta = batch["image"].meta.copy()
+        return batch
+
+
+
         img_input = batch["image"]
         if self.devices!="cpu":
             img_input = img_input.cuda()
@@ -437,12 +460,11 @@ class BaseInferer(GetAttr, DictToAttr):
         batch["pred"].meta = batch["image"].meta.copy()
         return batch
 
-    def postprocess(self, preds):
-        self.create_postprocess_transforms(self.ds.transform)
-        out_final = []
-        for batch in preds:
-            tmp = self.postprocess_transforms(batch)
-            out_final.append(tmp)
+    # def postprocess(self, batch):
+    #     out_final = []
+    #     for batch in preds:
+    #         tmp = self.postprocess_transforms(batch)
+    #         out_final.append(tmp)
         return out_final
 
     @property

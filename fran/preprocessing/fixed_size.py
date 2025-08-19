@@ -210,7 +210,7 @@ if __name__ == "__main__":
     ] * len(imported_labelsets)
     remapping = TSL.create_remapping(imported_labelsets, new_mapping)
 # %%
-    new_mapping = TSL.label_localiser
+    new_mapping = TSL.labels_localiser
     imported_labelsets = TSL.labels("all")
     src_dest_labels= {a: b for a, b in zip(imported_labelsets, new_mapping)}
 # %%
