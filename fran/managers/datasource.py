@@ -32,6 +32,7 @@ from fran.preprocessing.datasetanalyzers import (case_analyzer_wrapper,
                                                  import_h5py)
 
 
+MNEMONICS = ["liver", "lits", "lungs", "nodes", "bones", "lilu", "totalseg"]
 class _DS():
     '''
     each folder has subfolder images and lms
@@ -117,6 +118,17 @@ class Datasource(GetAttr):
     infer_dataset_name()
         Extracts dataset name from first image filename
         
+    Case attributes:
+    Each caser has following:
+                    ds.attrs['spacing'] = list(output['case']['properties']['spacing'])
+                    ds.attrs['labels'] = list(output['case']['properties']['labels'])
+                    ds.attrs['numel_fg']= output['case']['properties']['numel_fg']
+                    ds.attrs['mean_fg']= output['case']['properties']['mean_fg']
+                    ds.attrs['min_fg']= output['case']['properties']['min_fg']
+                    ds.attrs['max_fg']= output['case']['properties']['max_fg']
+                    ds.attrs['std_fg']= output['case']['properties']['std_fg']
+
+
     Example
     -------
     >>> ds = Datasource(folder="/path/to/dataset", name="liver_ct")
@@ -238,16 +250,17 @@ class Datasource(GetAttr):
 
 
     def process(
-        self, return_voxels=True, num_processes=8, multiprocess=True, debug=False
+        self, return_voxels=True, num_processes=8, multiprocess=True, debug=False, 
     ):
         """
         Stage 1: derives datase properties especially intensity_fg
         if return_voxels == True, returns voxels to be stored inside the h5 file
         """
+
         args_list = [
-            [case_tuple,  self.bg_label, return_voxels]
-            for case_tuple in self.new_cases
-        ]
+                [case_tuple,  self.bg_label, return_voxels]
+                for case_tuple in self.new_cases
+            ]
         self.outputs = multiprocess_multiarg(
             func=case_analyzer_wrapper,
             arguments=args_list,
@@ -278,7 +291,8 @@ class Datasource(GetAttr):
                     ds.attrs['max_fg']= output['case']['properties']['max_fg']
                     ds.attrs['std_fg']= output['case']['properties']['std_fg']
 
-                except ValueError:
+                except ValueError as e:
+                    print(e)
                     print("Case id {} already exists in h5 file. Skipping".format(output['case']['case_id']))
 
     def _store_raw_dataset_properties(self):
@@ -317,6 +331,26 @@ class Datasource(GetAttr):
         return images
 
     
+    @property
+    def labels(self):
+        if not hasattr(self,"_labels"):
+           import h5py
+           labels = []
+           with h5py.File(self.h5_fname, "r") as f:
+                for case_id , obj in f.items():
+                    labs = obj.attrs['labels']
+                    labels.extend(tuple(labs))
+           labels = set(labels)
+           labels_list =[]
+           for lab in labels:
+                lab = int(lab)
+                labels_list.append(lab)
+           # labels = list(labels)
+           self._labels = labels_list
+             
+        return self._labels
+
+
     @property
     def lms(self):
         lms = [x[1] for x in self.verified_pairs]
@@ -391,5 +425,44 @@ def db_ops(db_name):
         conn.close()
 
 
-
-
+if __name__ == '__main__':
+# %%
+   nodes_fldr = "/s/xnat_shadow/nodes"
+   nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
+   ds = Datasource(nodes_fldr,"nodes")
+   ds.process()
+# %%
+   import h5py
+   ff = h5py.File(nodes_fn, "r")
+   labels = []
+   with h5py.File(nodes_fn, "r") as f:
+        for case_id , obj in f.items():
+            labs = obj.attrs['labels']
+            labels.extend(tuple(labs))
+   labels = set(labels)
+#
+# # %%
+#     labs_list = []
+#     for lab in labels:
+#         labs_list.append(lab)
+#     print(labs_list)
+#
+#    
+#
+# # %%
+#    
+#    labels = []
+#    for fff in ff:
+#        cc= ff['fff'] 
+#        labels.append(fff.attrs['labels'])
+#
+#
+# # %%
+#     ds.raw_dataset_properties=[]
+#     for output in ds.outputs:
+#         ds.raw_dataset_properties.append(output["case"])
+#         ds.dump_to_h5()
+# #
+#
+#
+# # %%3k3k3k3

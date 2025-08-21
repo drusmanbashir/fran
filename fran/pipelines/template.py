@@ -21,17 +21,16 @@ if __name__ == '__main__':
     
     P = Project("litstmp")
 # P.delete()
-# %%
 
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf['plan_train']
     DS = _DS()
-    P.add_data([DS.lits_tmp])
+    # P.add_data([DS.lits_tmp])
 # P.add_data([DS.totalseg])
 # %%
 #SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
     bs = 14  # is good if LBD with 2 samples per case
-    compiled = False
+    compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
@@ -45,6 +44,8 @@ if __name__ == '__main__':
     # conf["dataset_params"]["ds_type"] ='lmdb'
     # conf["dataset_params"]["cache_rate"] = None
 
+    
+    add_plan_to_db(plan,"/r/datasets/preprocessed/litstmp/lbd/spc_080_080_150_plan2",P.db)
     run_name=None
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
@@ -60,8 +61,8 @@ if __name__ == '__main__':
         description=description,
     )
 # %%
-    Tm.D.prepare_data()
-    Tm.D.setup()
+    # Tm.D.prepare_data()
+    # Tm.D.setup()
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()

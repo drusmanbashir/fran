@@ -79,6 +79,14 @@ def img_bbox_collated(batch):
     }
     return output
 
+def validate_bbox(box):
+        for j, s in enumerate(box):
+            if isinstance(s, slice) and s.start == 0 and s.stop == 0:
+                raise ValueError(f"Invalid bbox at index {i}, slice {j}: {s}")
+        return box
+
+# usage
+
 
 class WholeImageInferer(BaseInferer):
     def __init__(self, run_name, devices=[1], save_channels=True, save=True, **kwargs):
@@ -363,6 +371,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
                     raise ValueError(
                         "No bounding box found - localizer failed to detect region of interest"
                     )
+            bb = validate_bbox(bb)
             bboxes.append(bb)
         return bboxes
 
@@ -416,7 +425,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 
     # ... run your application ...
     from fran.utils.common import *
@@ -435,7 +444,7 @@ if __name__ == "__main__":
     run_litsmc2 = ["LITS-1018"]
     run_litsmc2 = ["LITS-1217"]
     run_ts = ["LITS-827"]
-    run_totalseg = ["LITS-1238"]
+    run_totalseg = ["LITS-1246"]
 
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
@@ -456,6 +465,8 @@ if __name__ == "__main__":
     nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
     nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
     nodes = list(nodes_fldr.glob("*"))
+    capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
+    capestart = list(capestart_fldr.glob("*"))
 
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
@@ -463,7 +474,7 @@ if __name__ == "__main__":
     TSL = TotalSegmenterLabels()
 # %%
 # %%
-# SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR>
 
     loc_lidc = [7]  # lung in localiser_label
 
@@ -492,8 +503,8 @@ if __name__ == "__main__":
     model = En.Ps[0].model
 
 # %%
-# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR>
-    localiser_labels = set(TSL.labels_localiser)
+# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR>
+    localiser_labels = set(TSL.label_localiser)
     safe_mode = False
     devices = [1]
     overwrite = True
@@ -513,12 +524,12 @@ if __name__ == "__main__":
 
 # %%
 
-    preds = En.run(nodes[:3], chunksize=1)
+    preds = En.run(nodes, chunksize=1)
     # preds = En.run(img_fns, chunksize=2)
 
 # %%
 
-# SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR>
 
     safe_mode = False
     run_tot = ["LITS-1088"]
@@ -540,10 +551,10 @@ if __name__ == "__main__":
 #SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)--------------------------------------------------------------------------------------
 
 
-    localiser_labels = set(TSL.labels_localiser)
+    localiser_labels = set(TSL.label_localiser)
     safe_mode = True
     devices = [0]
-    overwrite = True
+    overwrite = False
     save_channels = False
     save_localiser=False
     En = CascadeInferer(
@@ -560,10 +571,11 @@ if __name__ == "__main__":
 
 # %%
 
-    preds = En.run(nodes[:3], chunksize=2)
+    # preds = En.run(capestart, chunksize=2)
+    preds = En.run(nodes, chunksize=2)
     # preds = En.run(img_fns, chunksize=2)
 # %%
-# SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR>
+# SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR> <CR>
     run = run_litsmc2
     localiser_labels_litsmc = [3]
     run_w = "LITS-1088"
@@ -610,8 +622,8 @@ if __name__ == "__main__":
     bboxes = []
 # %%
 
-# SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR>
-# SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR> <CR>
 # %%
     spacing = get_patch_spacing(En.run_name_w)
     Sel = SelectLabels(keys=["pred"], labels=list(En.localiser_labels))
@@ -620,11 +632,11 @@ if __name__ == "__main__":
         print("Bbox overwrite not implemented yet")
     print("Starting localiser data prep and prediction")
 # %%
-    imgs_sublist=nodes
-
+    imgs_sublist=capestart
     data = En.load_images(imgs_sublist[:3])
     En.bboxes = En.extract_fg_bboxes(data)
     data = En.apply_bboxes(data, En.bboxes)
+
     pred_patches = En.patch_prediction(data)
     pred_patches = En.decollate_patches(pred_patches, En.bboxes)
     output = En.postprocess(pred_patches)
@@ -632,6 +644,9 @@ if __name__ == "__main__":
         En.save_pred(output)
     En.cuda_clear()
         
+# %%
+    P = En.Ps[0]
+    dici = P.L(data)
 # %%
     pred = pred_patches[0]['LITS-1238']
     preds[0]["pred"].shape
@@ -674,7 +689,7 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR> <CR>
         n=4
         data = En.load_images(nodes[:5])
         img0 = data[n]["image"]
@@ -692,7 +707,7 @@ if __name__ == "__main__":
         img1 = img1.permute(2, 1, 0)
         ImageMaskViewer([img0,img1])
 # %%
-# SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR>
+# SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR> <CR>
 
         P = En.Ps[0]
 

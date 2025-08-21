@@ -12,7 +12,8 @@ from fran.utils.config_parsers import ConfigMaker
 if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("totalseg")
-    P._create_plans_table()
+    # P._create_plans_table()
+    # P.add_data([_DS().totalseg])
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     print(conf["model_params"])
     plan = conf['plan_train']
@@ -21,9 +22,10 @@ if __name__ == '__main__':
 
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     device_id = 1
-    run_none = None
-    bs = 6  # is good if LBD with 2 samples per case
-    # run_name ='LITS-1003'
+    bs = 10  # is good if LBD with 2 samples per case
+
+    run_name =None
+    run_name ='LITS-1246'
     compiled = False
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -31,11 +33,10 @@ if __name__ == '__main__':
     neptune = True
     tags = []
     description = f"Partially trained up to 100 epochs"
-    run_name =None
 
     conf["dataset_params"]["cache_rate"]=0.4
-    
     print(conf['model_params']['out_channels'])
+    
 # %%
     Tm = Trainer(P.project_title, conf, run_name)
 # %%

@@ -25,11 +25,17 @@ if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("litsmc")
     P._create_plans_table()
+    P.create("lits")
 
+    P.add_data([_DS().litq, _DS().lits, _DS().drli, _DS().litqsmall])
     # P.create('litsmc')
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf['plan_train']
 
+    conn = sqlite3.connect(db_name)
+    cur = conn.cursor()
+    ss = """ALTER TABLE master_plans ADD COLUMN remapping"""
+    cur.execute(ss)
 # %%
 #SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
     bs = 14  # is good if LBD with 2 samples per case

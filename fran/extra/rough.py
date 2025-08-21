@@ -1,10 +1,12 @@
 # %%
 import ipdb
 tr = ipdb.set_trace
+from label_analysis.helpers import *
 
 import shutil
 import re
 from utilz.imageviewers import ImageMaskViewer
+from utilz.helpers import *
 import SimpleITK as sitk
 import torch
 from pathlib import Path
@@ -13,7 +15,6 @@ import numpy as np
 from torch.nn.modules import CrossEntropyLoss
 import pandas as pd
 from utilz.string import dec_to_str
-
 
 imgfn = "/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan4/images/totalseg_s0024.pt"
 labfn = "/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5/lms/totalseg_s0367.pt"
@@ -26,7 +27,20 @@ print(lab.max())
 img=img.permute(2,1,0)
 lab=lab.permute(2,1,0)
 # %%
-ImageMaskViewer([img,lab])
+# ImageMaskViewer([img,lab])
+# %%
+#SECTION:-------------------- remapping sitk lms--------------------------------------------------------------------------------------
+fldr = Path("/s/xnat_shadow/nodesthick/lms")
+fls = list(fldr.glob("*"))
+for fl in pbar(fls):
+    print(fl)
+    lm = sitk.ReadImage(fl)
+    labs = get_labels(lm)
+    if not labs ==[1]:
+        lm = to_binary(lm)
+        # id = lm.GetPixelID()
+        sitk.WriteImage(lm,fl)
+        # lm = relabel()
 # %%
 #SECTION:-------------------- ITK--------------------------------------------------------------------------------------
 imgfn = "/s/fran_storage/predictions/totalseg/LITS-1238/nodes_40_20221205_CAP1p5SoftTissue.nii.gz"
@@ -170,13 +184,13 @@ import cudf
 import cugraph
 from send2trash import send2trash
 
-from utilz.helpers import find_matching_fn, info_from_filename
+from utilz.helpers import find_matching_fn, info_from_filename, pbar, relabel
 import torch
 import SimpleITK as sitk
 import re
 from pathlib import Path
 
-from label_analysis.helpers import get_labels
+from label_analysis.helpers import get_labels, to_binary
 from utilz.fileio import load_dict, maybe_makedirs
 from utilz.imageviewers import ImageMaskViewer
 

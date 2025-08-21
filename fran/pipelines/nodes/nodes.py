@@ -17,10 +17,10 @@ from fran.utils.config_parsers import ConfigMaker
 if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("nodes")
-    P._create_plans_table()
+    # P._create_plans_table()
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf['plan_train']
-    add_plan_to_db(plan,xxx,P.db)
+    # add_plan_to_db(plan,,P.db)
 # %%
 #SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
     run_nodes = "LITS-1230"

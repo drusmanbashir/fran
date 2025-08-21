@@ -1,6 +1,7 @@
 # %%
 import sqlite3
 
+from fran.managers.datasource import _DS
 import ipdb
 from batchgenerators.utilities.file_and_folder_operations import List
 from fastcore.basics import listify
@@ -8,7 +9,7 @@ from send2trash import send2trash
 from utilz.string import info_from_filename
 
 from fran.managers import Datasource
-from fran.managers.datasource import db_ops
+from fran.managers.datasource import db_ops, MNEMONICS
 from fran.utils.config_parsers import ConfigMaker
 
 tr = ipdb.set_trace
@@ -40,7 +41,9 @@ from utilz.string import info_from_filename, str_to_path
 
 tr = ipdb.set_trace
 from pathlib import Path
+
 from fran.managers.db import PLAN_COLUMNS
+
 
 def subscript_generator():
     letters = list(string.ascii_letters)
@@ -144,26 +147,32 @@ class Project(DictToAttr):
 
         if self.global_properties_filename.exists():
             self.global_properties = load_dict(self.global_properties_filename)
+        else:
+            print("Global properties file does not exist")
+            print("Run 'create' to create the project")
 
     def create(self, mnemonic, datasources: list = None, test: list = None):
         """
         param datasets: list of datasets to add to raw_data_folder
         param test: list of bool assigning some (or none) as test set(s)
         """
+        assert mnemonic in MNEMONICS, "mnemonic must be one of : {}".format(MNEMONICS)
 
         assert (
             not self.db.exists()
         ), "Project already exists. Use 'add_data' if you want to add data. "
-        self.global_properties = {
-            "project_title": self.project_title,
-            "mnemonic": mnemonic,
-        }
+        self._init_global_properties(mnemonic)
         self._create_folder_tree()
         self.create_tables()
         if datasources:
             self.add_data(datasources, test)
         self.save_global_properties()
-
+    def _init_global_properties(self,mnemonic  ):
+        self.global_properties = {
+            "project_title": self.project_title,
+            "mnemonic": 
+        mnemonic,
+        }
     def save_global_properties(self):
         save_dict(self.global_properties, self.global_properties_filename)
 
@@ -235,7 +244,6 @@ class Project(DictToAttr):
         self._create_datasources_table()
         self._create_plans_table()
 
-
     def _create_datasources_table(self):
         tbl_name = "datasources"
         if not self.table_exists(tbl_name):
@@ -244,7 +252,6 @@ class Project(DictToAttr):
                     tbl_name
                 )
             )
-
 
     def _create_plans_table(self):
         ddl_cols = ", ".join(f'"{c}" TEXT' for c in PLAN_COLUMNS + ["data_folder"])
@@ -544,7 +551,7 @@ class Project(DictToAttr):
 
             self.update_tbl_folds()
 
-    def register_datasources(self, datasources):
+    def register_datasources(self, datasources: list) -> list:
         """
         Register new datasources and save to global properties.
 
@@ -563,11 +570,13 @@ class Project(DictToAttr):
             fldr = Path(ds["folder"])
             dataset_name = ds["ds"]
             h5_fname = fldr / ("fg_voxels.h5")
+            dss = Datasource(fldr)
             dici = {
                 "ds": dataset_name,
                 "alias": ds["alias"],
                 "folder": str(fldr),
                 "h5_fname": str(h5_fname),
+                "labels": dss.labels,
             }
             dicis.append(dici)
         self.global_properties["datasources"] = dicis
@@ -889,17 +898,25 @@ class Project(DictToAttr):
 
 
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 
 if __name__ == "__main__":
     from fran.utils.common import *
 
-    P = Project(project_title="totalseg")
+
+    DS = _DS()
     P = Project(project_title="nodes")
+    P.create(mnemonic="nodes")
+    P = Project(project_title="totalseg")
+    P.add_data([DS.nodes, DS.nodesthick])
     P = Project("litstmp")
+    save_json (P.global_properties,"tmp.json")
+    
+# %%
     # P.delete()
     P.create(mnemonic="lits")
     P.add_data([DS.lits_tmp])
+
     # P.add_data([DS.totalseg])
 
 # %%
@@ -939,6 +956,7 @@ if __name__ == "__main__":
     db_name = "/s/fran_storage/projects/litsmc/cases.db"
     db_name = "/s/fran_storage/projects/nodes/cases.db"
     db_name = "/s/fran_storage/projects/totalseg/cases.db"
+    db_name = "/s/fran_storage/projects/litstmp/cases.db"
     conn = sqlite3.connect(db_name)
     cur = conn.cursor()
 
@@ -949,6 +967,7 @@ if __name__ == "__main__":
 
     ss = """SELECT case_id FROM datasources WHERE fold IS NOT NULL"""
 
+# %%
     cur.execute(ss)
 # %%
     ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{} ".format(1)
@@ -1035,7 +1054,7 @@ if __name__ == "__main__":
     test = None
 # %%
 # %%
-# SECTION:-------------------- Datasource setup from folder-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- Datasource setup from folder-------------------------------------------------------------------------------------- <CR> <CR>
     test = False
     ds = Datasource(
         folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test
@@ -1046,7 +1065,7 @@ if __name__ == "__main__":
     ds.process()
 
 # %%
-# SECTION:-------------------- get cases-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- get cases-------------------------------------------------------------------------------------- <CR> <CR>
     fold = 0
     ds = DS.nodes
 
@@ -1112,6 +1131,24 @@ if __name__ == "__main__":
             P.populate_tbl(ds)
         P.populate_raw_data_folder()
         P.register_datasources(datasources)
+
+# %%
+        test=False
+
+        mnemonic="totalseg"
+        P.global_properties = {
+            "project_title": P.project_title,
+            "mnemonic": mnemonic,
+        }
+# %%
+        datasources = [DS.totalseg]
+        P = Project(project_title="totalseg")
+        P.add_data([DS.totalseg])
+        P._create_folder_tree()
+        P.create_tables()
+        if datasources:
+            P.add_data(datasources, test)
+        P.save_global_properties()
 
 
 # %%

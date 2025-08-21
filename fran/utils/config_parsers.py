@@ -2,6 +2,7 @@
 import ast
 import sys
 import warnings
+from fran.managers.datasource import MNEMONICS
 
 import ipdb
 import pandas as pd
@@ -69,9 +70,19 @@ def compute_out_channels(plan: dict, global_props: dict | None = None) -> int:
         return int(max(remap.values())) + 1
 
     # --- 3) global fallback ---
-    if global_props and "labels_all" in global_props:
-        oc = len(global_props["labels_all"]) + 1
-        return max(2, oc)
+
+    labels_all=[]
+    for ds in global_props['datasources']:
+        labs =         ds['labels']
+        labels_all.extend(labs)
+        labels_all = set(labels_all)
+        print("Unique labels in all datasets:", labels_all)
+        fg = len(labels_all)
+        return fg+1
+
+    # if global_props and "labels_all" in global_props:
+    #     oc = len(global_props["labels_all"]) + 1
+    #     return max(2, oc)
 
     # --- 4) last resort ---
     warnings.warn("Could not infer out_channels; defaulting to 2 (BG+FG).")
@@ -391,7 +402,6 @@ class ConfigMaker:
         self, configuration_filename, configuration_mnemonic
     ):
 
-        _mnemonics = ["liver", "lits", "lungs", "nodes", "bones", "lilu", "totalseg"]
         if configuration_filename:
             return configuration_filename
         assert (
@@ -403,8 +413,8 @@ class ConfigMaker:
         configurations_folder = Path(common_paths["configurations_folder"])
         if configuration_mnemonic:
             assert (
-                configuration_mnemonic in _mnemonics
-            ), "Please provide a valid mnemonic from the list {}".format(_mnemonics)
+                configuration_mnemonic in MNEMONICS
+            ), "Please provide a valid mnemonic from the list {}".format(MNEMONICS)
         if configuration_mnemonic == "liver" or configuration_mnemonic == "lits":
             return configurations_folder / ("experiment_configs_liver.xlsx")
         elif configuration_mnemonic == "lungs":
@@ -443,6 +453,8 @@ class ConfigMaker:
         #     out_ch = out_channels_from_global_properties(self.project.global_properties)
         out_ch = compute_out_channels(self.config['plan_train'],self.project.global_properties)
         self.config["model_params"]["out_channels"] = out_ch
+        print("Out channels set to {}".format(out_ch))
+        print("-" * 20)
 
     def _set_plan(self, plan_key, plan_num):
         """Helper function to set a plan configuration
@@ -521,7 +533,7 @@ if __name__ == "__main__":
 
     from fran.managers import Project
 
-    P = Project(project_title="totalseg")
+    P = Project(project_title="nodes")
 
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
     conf = C.config

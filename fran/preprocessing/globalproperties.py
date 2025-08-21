@@ -1,30 +1,28 @@
 # %%
-import json
-from fastcore.all import store_attr
 import itertools as il
-from fran.managers import _DS
-from utilz.helpers import PrintableDict, pbar
+import json
 import random
-from fastcore.basics import GetAttr
 from pathlib import Path
-import torch
-import numpy as np
+
 import ipdb
+import numpy as np
+import torch
+from fastcore.all import store_attr
+from fastcore.basics import GetAttr
+from utilz.helpers import PrintableDict, pbar
 from utilz.string import info_from_filename
+
+from fran.managers import _DS
 
 tr = ipdb.set_trace
 
 
-from fran.preprocessing import (
-    get_img_mask_filepairs,
-    get_intensity_range,
-    get_means_voxelcounts,
-    get_std_numerator,
-    import_h5py,
-    percentile_range_to_str,
-)
 from utilz.fileio import save_dict
 from utilz.helpers import multiprocess_multiarg
+
+from fran.preprocessing import (get_img_mask_filepairs, get_intensity_range,
+                                get_means_voxelcounts, get_std_numerator,
+                                import_h5py, percentile_range_to_str)
 
 
 def unique_idx(total_len, start=1):
@@ -75,6 +73,8 @@ class GlobalProperties(GetAttr):
             assert (
                 h5fn.exists()
             ), "fg voxels not processed for datasource folder {}".format(ds["folder"])
+        self.case_properties=self._retrieve_h5_properties()
+
 
     def __str__(self) -> str:
         repr = str(self.global_properties)
@@ -133,7 +133,7 @@ class GlobalProperties(GetAttr):
         img_fnames_to_sample = list(il.compress(self.img_fnames, img_fnames_to_sample))
         return img_fnames_to_sample
 
-    def retrieve_h5_voxels(self):
+    def _retrieve_h5_voxels(self):
         """
         Retrieves voxel data from HDF5 files within sampled cases.
 
@@ -158,7 +158,7 @@ class GlobalProperties(GetAttr):
         voxels = np.concatenate(voxels)
         return voxels
 
-    def retrieve_h5_properties(self):
+    def _retrieve_h5_properties(self):
         """
         Retrieves properties for each case from HDF5 files.
 
@@ -209,8 +209,10 @@ class GlobalProperties(GetAttr):
         of intensities, bounds of intensity range, and spatial median values.
 
         """
-        cases = self.retrieve_h5_voxels()
-        self.case_properties = self.retrieve_h5_properties()
+        cases = self._retrieve_h5_voxels()
+        # tr()
+        # print("Do i need to retrieve h5 properties again?")
+        # self.case_properties = self._retrieve_h5_properties()
 
         # convert h5file cases into an array
         intensity_range = np.percentile(cases, self.percentile_range)
@@ -340,6 +342,9 @@ class GlobalProperties(GetAttr):
     #         except:
     #             print("A valid clip_range is not entered. Using intensity-default")
     #             self.clip_range = intensity_percentile_range
+    @property
+    def unique_labels(self):
+        pass
 
     def collate_lm_labels(self):
         """
@@ -430,18 +435,62 @@ class GlobalProperties(GetAttr):
 # %%
 if __name__ == "__main__":
 # %%
-#SECTION:-------------------- SETUPPPPPP--------------------------------------------------------------------------------------
-    from fran.utils.common import *
-    from fran.managers import Project
+#SECTION:--------------------------------------------- SETUPPPPPP--------------------------------------------------------------------------------------
 
-    P = Project(project_title="litstmp")
+    from fran.managers import Project
+    from fran.utils.common import *
+
+    P = Project(project_title="nodes")
     G = GlobalProperties(P, max_cases=50)
+    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+    plan = conf["plan"]
+# %%
+    labs_gp =[]
+    for cc in G.case_properties:
+                    # if ds_name == cc["ds"]:
+                        labels = cc["labels"]
+                        labels = G.serializable_obj(labels)
+                        labs_gp.extend(labels)
+
 # %%
 
-    if not "labels_all" in P.global_properties.keys():
-        P.set_lm_groups(plans["lm_groups"])
-        P.maybe_store_projectwide_properties(overwrite=True)
-    G.store_projectwide_properties()
+
+    labels_all = []
+    lmgps = "lm_group"
+    keys = [k for k in G.global_properties.keys() if lmgps in k]
+    for key in keys:
+        shared_labels_gps = G.global_properties[key]["ds"]
+# %%
+        labs_gp = []
+        for cc in G.case_properties:
+                    labels = cc["labels"]
+                    ds = cc['ds']
+                    labels = G.serializable_obj(labels)
+                    labels = tuple(labels)
+                    # if labels!=[1]:
+                    #     tr()
+                    dici = {"ds": ds, "label": labels}
+                    labs_gp.append(dici)
+# %%
+    df = pd.DataFrame(labs_gp)
+    df = df.drop_duplicates(subset=["ds", "label"], keep="first").reset_index(drop=True)
+
+# %%
+#         labs_gp = list(set(labs_gp))
+#         dici = {"ds": ds_name, "label": labs_gp}
+#         labels_all.extend(labs_gp)
+#         print(labs_gp)
+#         G.global_properties[key].update(
+#             {"labels": labs_gp, "num_labels": len(labs_gp)}
+#         )
+#     G.global_properties["labels_all"] = list(set(labels_all))
+#     labels_tot = len(labels_all)
+#     if len(keys) > 1:
+# # %%
+#     if not "labels_all" in P.global_properties.keys():
+#         P.set_lm_groups(plans["lm_groups"])
+#         P.maybe_store_projectwide_properties(overwrite=True)
+#     G.store_projectwide_properties()
 # %%
     debug = True
     G.collate_lm_labels()
@@ -474,7 +523,7 @@ if __name__ == "__main__":
     h5fn = ds["h5_fname"]
 
     cases_ds = [cid for cid in G.cases_for_sampling if ds_name in cid]
-# %%
+
     import h5py
 
     voxels = []
@@ -495,6 +544,7 @@ if __name__ == "__main__":
 # %%
 # %%
 
+    G.case_properties = G._retrieve_h5_properties()
     h5py = import_h5py()
     case_properties = []
     for dsa in G.global_properties["datasources"]:
@@ -547,9 +597,9 @@ if __name__ == "__main__":
         for gp in shared_labels_gps:
             tr()
             ds_name = DS.resolve_ds_name(gp)
-            for c in G.case_properties:
-                if ds_name == c["ds"]:
-                    labels = c["labels"]
+            for cc in G.case_properties:
+                if ds_name == cc["ds"]:
+                    labels = cc["labels"]
                     labels = G.serializable_obj(labels)
                     labs_gp.extend(labels)
 
