@@ -263,6 +263,7 @@ class GlobalProperties(GetAttr):
         - debug (bool): Flag to enable/disable debug mode.
         """
 
+        assert "mean_fg" in self.global_properties.keys(),"mean_fg not found in global_properties. Run store_projectwide_properties() first."
         percentile_label, intensity_percentile_range = get_intensity_range(
             self.global_properties
         )

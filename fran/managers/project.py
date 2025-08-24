@@ -799,7 +799,7 @@ class Project(DictToAttr):
 
         self._create_folds()
         self.G = GlobalProperties(self, max_cases=max_cases, clip_range=clip_range)
-        if not "labels_all" in self.global_properties.keys() or overwrite == True:
+        if not "mean_dataset_clipped" in self.global_properties.keys() or overwrite == True:
             self.G.store_projectwide_properties()
             self.G.compute_std_mean_dataset()
             self.G.collate_lm_labels()
@@ -1031,7 +1031,7 @@ if __name__ == "__main__":
     clip_range = [-300, 300]
 
     P.G = GlobalProperties(P, max_cases=max_cases, clip_range=clip_range)
-    if not "labels_all" in P.global_properties.keys() or overwrite == True:
+    if not "mean_dataset_clipped" in P.global_properties.keys() or overwrite == True:
         P.G.store_projectwide_properties()
         P.G.compute_std_mean_dataset()
         P.G.collate_lm_labels()

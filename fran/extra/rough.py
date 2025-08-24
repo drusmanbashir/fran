@@ -27,6 +27,22 @@ print(lab.max())
 img=img.permute(2,1,0)
 lab=lab.permute(2,1,0)
 # %%
+# %%
+# %%
+#SECTION:-------------------- torch lm lab values--------------------------------------------------------------------------------------
+fldr = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2")
+fldr_lms= fldr/"lms"
+
+lm_fns = list(fldr_lms.glob("*"))
+
+for lm_fn in lm_fns:
+    lm = torch.load(lm_fn,weights_only=False)
+    print(lm.max())
+    if not lm.max() == 1:
+        tr()
+        # lm[lm>0]=1
+        # torch.save(lm,lm_fn)
+        
 # ImageMaskViewer([img,lab])
 # %%
 #SECTION:-------------------- remapping sitk lms--------------------------------------------------------------------------------------

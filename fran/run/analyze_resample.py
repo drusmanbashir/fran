@@ -15,7 +15,7 @@ from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from utilz.fileio import *
 from utilz.helpers import *
 
-# CODE: implement database such that instead of creating a new copy of lbd / patch etc for every plan, it checks if a similar plan with similar specs exists already, and reuses it For example, patch_size may change in a new plan with LBD mode, but that doesnt needaa new copy of LBD
+
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
 

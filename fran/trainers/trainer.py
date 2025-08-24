@@ -215,7 +215,7 @@ class Trainer:
 
     def qc_config(self, config, project):
         ratios = config["dataset_params"]["fgbg_ratio"]
-        labels_fg = project.global_properties["labels_all"]
+        labels_fg = config['model_params']['out_channels']-1
         labels = [0] + labels_fg
         if isinstance(ratios, list):
             assert (

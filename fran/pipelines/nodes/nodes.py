@@ -3,6 +3,8 @@ import argparse
 
 from utilz.imageviewers import ImageMaskViewer
 from fran.managers.db import add_plan_to_db
+from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.trainers import Trainer
 from pathlib import Path
 from fran.managers import Project
@@ -17,13 +19,14 @@ from fran.utils.config_parsers import ConfigMaker
 if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("nodes")
-    # P._create_plans_table()
+    # P._create_plan_table()
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf['plan_train']
     # add_plan_to_db(plan,,P.db)
 # %%
 #SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
     run_nodes = "LITS-1230"
+    lr =1e-3
     bs = 10  # is good if LBD with 2 samples per case
     compiled = False
     profiler = False
@@ -47,6 +50,7 @@ if __name__ == '__main__':
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
+        lr=lr,
         epochs=600 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
@@ -63,7 +67,6 @@ if __name__ == '__main__':
 #SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
 
 
-
     
 # P.delete()
     DS = _DS()
@@ -77,10 +80,7 @@ if __name__ == '__main__':
     ds.process()
 # %%
 
-#SECTION:-------------------- GLOBAL PROPERTIES--------------------------------------------------------------------------------------
-    if not "labels_all" in P.global_properties.keys():
-        P.set_lm_groups(plan["lm_groups"])
-        P.maybe_store_projectwide_properties(overwrite=True)
+
 #SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
 
     parser = argparse.ArgumentParser(description="Resampler")
@@ -126,13 +126,15 @@ if __name__ == '__main__':
 
 
 
-    plans = conf[args.plan_name]
+    plan = conf[args.plan_name]
 #SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
+# %%
     I = PreprocessingManager(args)
     # I.spacing =
 # %%
 #SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
-    I.resample_dataset(overwrite=True)
+    overwrite = True
+    I.resample_dataset(overwrite=overwrite)
     I.R.get_tensor_folder_stats()
 
 # %%
@@ -142,13 +144,16 @@ if __name__ == '__main__':
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
-        if "imported_folder" not in plans.keys():
-            I.generate_lbd_dataset(overwrite=False)
+        if "imported_folder" not in plan.keys():
+            I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
-                imported_labels=plans["imported_labels"],
-                imported_folder=plans["imported_folder"],
+                imported_labels=plan["imported_labels"],
+                imported_folder=plan["imported_folder"],
                 overwrite=overwrite)
+# %%
+    L = LabelBoundedDataGenerator(
+        project=I.project,plan=I.plan,plan_name=I.plan_name)
 # %%
 
     L = LabelBoundedDataGeneratorImported( project=P,

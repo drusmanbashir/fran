@@ -31,7 +31,6 @@ from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.utils.config_parsers import ConfigMaker
 
 
-# %%
 class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
     """
     Label-bounded data generator that works with imported label files.
@@ -86,7 +85,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         plan: Dict[str, Any],
         imported_folder: Union[str, Path],
         merge_imported_labels: bool = False,
-        remapping: Optional[Dict[int, int]] = None,
+        remapping_imported: Optional[Dict[int, int]] = None,
         folder_suffix: Optional[str] = None,
         data_folder: Optional[Union[str, Path]] = None,
         output_folder: Optional[Union[str, Path]] = None,
@@ -105,7 +104,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             data_folder=data_folder,
             output_folder=output_folder,
             mask_label=mask_label,
-            remapping=remapping,
+            remapping=remapping_imported,
             expand_by=expand_by,
         )
         if self.merge_imported_labels == True:
@@ -427,7 +426,8 @@ if __name__ == "__main__":
         folder_suffix=plan_name,
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
-        remapping=remapping,
+
+        remapping_imported=remapping,
     )
 
 # %%
@@ -462,7 +462,7 @@ if __name__ == "__main__":
         plan=plan,
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
-        remapping=remapping,
+        remapping_imported=remapping,
         folder_suffix=plan["plan_name"],
     )
 # %%
@@ -573,7 +573,7 @@ if __name__ == "__main__":
         # spacing=I.plan["spacing"],
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
-        remapping=remapping,
+        remapping_imported=remapping,
     )
 
 # %%

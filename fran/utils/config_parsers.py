@@ -2,7 +2,6 @@
 import ast
 import sys
 import warnings
-from fran.managers.datasource import MNEMONICS
 
 import ipdb
 import pandas as pd
@@ -10,6 +9,8 @@ from fastcore.basics import store_attr
 from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
 from utilz.string import ast_literal_eval
+
+from fran.managers.datasource import MNEMONICS
 
 tr = ipdb.set_trace
 
@@ -30,6 +31,38 @@ def is_excel_None(input):
         return False
 
 
+def labels_from_remapping(remapping):
+    def _inner(remapping):
+            if remapping is None or remapping == "" or remapping == "nan":
+                return None
+            if isinstance(remapping, pd.Series):
+                try: remapping = ast.literal_eval(remapping.item())
+                except Exception: pass
+
+            # TSL.* or explicit (src, dest)
+            try:
+                if isinstance(remapping, (list, tuple)) and len(remapping) == 2:
+                    dest = remapping[1]
+                    # return int(max(dest)) + 1
+                elif isinstance(remapping, str) and "TSL" in remapping:
+                    TSL = TotalSegmenterLabels()
+                    attr = remapping.split(".")[1]
+                    # use the class-ids list to keep rule: max(dest)+1
+                    dest = getattr(TSL, attr)
+                    # return int(max(dest)) + 1
+                if 0 not in dest:
+                    dest = [0] + dest
+                return dest
+            except Exception as e:
+                print(e)
+                return None
+            # fall through to remapping/global if parsing fails
+    # --- 1) src_dest_labels ---
+    # remapping = plan.get("src_dest_labels")
+        # pandas cell stored as string/Series -> try literal_eval
+    labels_all = _inner(remapping)
+    return set(labels_all)
+#CODE: delete the below if code is not breaking  (see #12)
 def compute_out_channels(plan: dict, global_props: dict | None = None) -> int:
     """
     Priority:
@@ -39,21 +72,21 @@ def compute_out_channels(plan: dict, global_props: dict | None = None) -> int:
       4) default to 2
     """
     # --- 1) src_dest_labels ---
-    sdl = plan.get("src_dest_labels")
-    if sdl is not None and sdl != "" and sdl != "nan":
+    remapping = plan.get("src_dest_labels")
+    if remapping is not None and remapping != "" and remapping != "nan":
         # pandas cell stored as string/Series -> try literal_eval
-        if isinstance(sdl, pd.Series):
-            try: sdl = ast.literal_eval(sdl.item())
+        if isinstance(remapping, pd.Series):
+            try: remapping = ast.literal_eval(remapping.item())
             except Exception: pass
 
         # TSL.* or explicit (src, dest)
         try:
-            if isinstance(sdl, (list, tuple)) and len(sdl) == 2:
-                dest = sdl[1]
+            if isinstance(remapping, (list, tuple)) and len(remapping) == 2:
+                dest = remapping[1]
                 return int(max(dest)) + 1
-            if isinstance(sdl, str) and "TSL" in sdl:
+            if isinstance(remapping, str) and "TSL" in remapping:
                 TSL = TotalSegmenterLabels()
-                attr = sdl.split(".")[1]
+                attr = remapping.split(".")[1]
                 # use the class-ids list to keep rule: max(dest)+1
                 dest = getattr(TSL, attr)
                 return int(max(dest)) + 1
@@ -88,12 +121,12 @@ def compute_out_channels(plan: dict, global_props: dict | None = None) -> int:
     warnings.warn("Could not infer out_channels; defaulting to 2 (BG+FG).")
     return 2
 
-def create_remapping(plan, as_list=False,as_dict=False):
+def create_remapping(plan,key, as_list=False,as_dict=False):
         assert  as_list or as_dict, "Either list mode or dict mode should be true"
-        if "remapping" not in  plan.keys():
+        if key not in  plan.keys():
             remapping = None
         else:
-            remapping = plan["remapping"]
+            remapping = plan[key]
 
         if isinstance(remapping, str) and "TSL" in remapping:
             src,dest = remapping.split(",")
@@ -396,7 +429,38 @@ class ConfigMaker:
             }
             self.config["model_params"].update(config)
         self.set_active_plans(plan_train, plan_valid)
-        self.add_further_keys()
+        self.collate_labels()
+        self.add_out_channels()
+        self.add_dataset_props()
+
+
+    def collate_labels(self):
+
+        plan = self.config["plan_train"]
+    # --- 1) src_dest_labels ---
+        sdl = plan.get("src_dest_labels")
+        remapping = plan.get("remapping")
+        remapping_imported= plan.get("remapping_imported")
+        merge_imported = plan.get("merge_imported_labels")
+        if sdl is not None and sdl != "" and sdl != "nan":
+            labels_all= labels_from_remapping(sdl)
+# --- 2) remapping ---
+        elif remapping_imported is not None and merge_imported ==bool(True):
+            labels_all= labels_from_remapping(remapping_imported)
+        elif remapping is not None:
+            labels_all= labels_from_remapping(remapping)
+        else:
+            labels_all=[]
+            for ds in self.project.global_properties['datasources']:
+                labs =         ds['labels']
+                labels_all.extend(labs)
+            labels_all = [0]+labels_all
+            labels_all = set(labels_all)
+            print("Unique labels in all datasets:", labels_all)
+            plan["labels_all"] = labels_all
+            print("-" * 20)
+            # self.config[plan]["labels_all"] = labels_all
+
 
     def resolve_configuration_filename(
         self, configuration_filename, configuration_mnemonic
@@ -424,9 +488,6 @@ class ConfigMaker:
         elif configuration_mnemonic == "totalseg":
             return configurations_folder / ("experiment_configs_totalseg.xlsx")
 
-    def add_further_keys(self):
-        self.add_out_channels()
-        self.add_dataset_props()
 
     def add_dataset_props(self):
         props = [
@@ -445,13 +506,12 @@ class ConfigMaker:
                 self.config["dataset_params"][prop] = None
 
     def add_out_channels(self):
-
         # out_ch = out_channels_from_dict_or_cell(
         #     self.config["plan_train"].get("src_dest_labels")
         # )
         # if not out_ch:
         #     out_ch = out_channels_from_global_properties(self.project.global_properties)
-        out_ch = compute_out_channels(self.config['plan_train'],self.project.global_properties)
+        out_ch = len(self.config["plan_train"]["labels_all"])
         self.config["model_params"]["out_channels"] = out_ch
         print("Out channels set to {}".format(out_ch))
         print("-" * 20)
@@ -471,7 +531,9 @@ class ConfigMaker:
         self.config[plan_key]["src_dest_labels"] = remapping_from_src_dest_labels(
             self.config[plan_key]["src_dest_labels"]
         )
-        self.config[plan_key]["remapping"] = create_remapping(self.config[plan_key],as_list=True)
+        self.config[plan_key]["remapping"] = create_remapping(self.config[plan_key],key="remapping",as_list=True)
+        if "remapping_imported" in self.config[plan_key].keys():
+            self.config[plan_key]["remapping_imported"] = create_remapping(self.config[plan_key],key="remapping_imported",as_list=True)
         
 
     def set_active_plans(self, plan_train=None, plan_valid=None):
@@ -528,8 +590,10 @@ def parse_neptune_dict(dic: dict):
 
 
 # %%
-
 if __name__ == "__main__":
+# %%
+#SECTION:-------------------- setup--------------------------------------------------------------------------------------
+
 
     from fran.managers import Project
 
@@ -538,8 +602,14 @@ if __name__ == "__main__":
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
     conf = C.config
 # %%
+
+
 # %%
 #SECTION:-------------------- OUTCHANNELS--------------------------------------------------------------------------------------
+
+
+
+    # ds_labs = 
 
 # %%
     wb = load_workbook(project)
@@ -616,4 +686,3 @@ if __name__ == "__main__":
     dict = True
 
     isinstance(remapping, dict) #and dict ==True
-
