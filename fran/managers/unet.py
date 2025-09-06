@@ -35,7 +35,7 @@ class UNetManager(LightningModule):
     def __init__(
         self,
         project_title,
-        config,
+        configs,
         lr=None,
         sync_dist=False,
     ):
@@ -43,10 +43,10 @@ class UNetManager(LightningModule):
 
         self.sync_dist = sync_dist
         self.project = Project(project_title)
-        self.save_hyperparameters("project_title","config","lr")
-        self.plan = config["plan_train"]
-        self.model_params = config["model_params"]
-        self.loss_params = config['loss_params']
+        self.save_hyperparameters("project_title","configs","lr")
+        self.plan = configs["plan_train"]
+        self.model_params = configs["model_params"]
+        self.loss_params = configs['loss_params']
         self.lr = lr if lr else self.model_params["lr"]
         self.model = self.create_model()
 
@@ -199,8 +199,8 @@ class UNetManager(LightningModule):
             self.loss_fnc=loss_func
 
 
-def update_nep_run_from_config(nep_run, config):
-    for key, value in config.items():
+def update_nep_run_from_configs(nep_run, configs):
+    for key, value in configs.items():
         nep_run[key] = value
     return nep_run
 

@@ -41,7 +41,7 @@ class _DS():
     def __init__(self) -> None:
         # for any datasource, an alias matching the {projectname}_ part of the filename should be given if the ds name is non-standard, e.g., drli_short
             self.lits={'ds': 'lits', 'folder': "/s/datasets_bkp/lits_segs_improved/", 'alias':None}
-            self.lits_tmp={'ds': 'lits', 'folder': "/s/datasets_bkp/litstmp/", 'alias':"tmp"}
+            self.litstmp={'ds': 'litstmp', 'folder': "/s/datasets_bkp/litstmp/", 'alias':None}
             self.litq={'ds':'litq', 'folder': "/s/xnat_shadow/litq", 'alias':None}
             self.nodes = {'ds': 'nodes', "folder":"/s/xnat_shadow/nodes", "alias":None}
             self.nodesthick={'ds':'nodesthick',"folder":"/s/xnat_shadow/nodesthick/", "alias": None}
@@ -430,6 +430,7 @@ if __name__ == '__main__':
    nodes_fldr = "/s/xnat_shadow/nodes"
    nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
    ds = Datasource(nodes_fldr,"nodes")
+   # ds = Datasource(/s/datasets_bkp/litstmp,"litstmp")
    ds.process()
 # %%
    import h5py

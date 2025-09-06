@@ -15,26 +15,187 @@ import numpy as np
 from torch.nn.modules import CrossEntropyLoss
 import pandas as pd
 from utilz.string import dec_to_str
+parent_fldr = Path("/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_100_100_100_rscr1")
+img_fldr = parent_fldr/"images"
+lms_fldr = parent_fldr/"lms"
 
-imgfn = "/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan4/images/totalseg_s0024.pt"
-labfn = "/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5/lms/totalseg_s0367.pt"
-outputfn = "/s/tmp/CSA-Net/CSANet/outputs.pt"
-img = torch.load(imgfn, weights_only=False)
-lab = torch.load(labfn, weights_only=False)
+img_fns = list(img_fldr.glob("*"))
+lab_fns = list(lms_fldr.glob("*"))
+# %%
+lab_fn = "/r/datasets/preprocessed/totalseg/fixed_spacing/spc_100_100_100_rscr1/lms/totalseg_s0591.pt"
+img_fn = "/r/datasets/preprocessed/totalseg/fixed_spacing/spc_100_100_100_rscr1/images/totalseg_s0591.pt"
+
+for img_fn, lab_fn in zip(img_fns,lab_fns):
+    img = torch.load(img_fn, weights_only=False)
+    lab = torch.load(lab_fn, weights_only=False)
+    print(img.shape)
+    assert img.shape == lab.shape, "shape mismatch"
+    print(lab.max())
+    if lab.max() >19:
+        tr()
+    median = img.median()
+    mean = img.mean()
+    print(mean,median)
+# %%
+        # lab[lab>0]=1
+
+        # torch.save(lab,lab_fn)
+# %%
+imgfn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_100_100_100_rscr1/images/totalseg_s0587.pt"
+labfn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_100_100_100_rscr1/lms/totalseg_s0587.pt"
+outputfn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_100_100_100_rscr1/lms/totalseg_s0587.pt"
+# imgfn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_100_100_100_rscr1/images/totalseg_s0587.pt"
+# labfn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_100_100_100_rscr1/lms/totalseg_s0587.pt"
+img = torch.load(imgfn, weights_only=False,map_location='cpu')
+lab = torch.load(labfn, weights_only=False,map_location="cpu")
+lab.max()
+print(lab.shape)
+print(img.shape)
 output = torch.load(outputfn, weights_only=False)
 print(lab.max())
 
 img=img.permute(2,1,0)
 lab=lab.permute(2,1,0)
+ImageMaskViewer([img,lab])
 # %%
+import pandas as pd
+
+from pathlib import Path
+
+
+import pandas as pd
+from pathlib import Path
+
+def replace_key_in_first_column(
+    root, 
+    old_value="src_dest_labels", 
+    new_value="remapping_train", 
+    recursive=True
+):
+    root = Path(root)
+    pattern = "**/*.xlsx" if recursive else "*.xlsx"
+    files = sorted(root.glob(pattern))
+
+    for f in files:
+        print(f"Processing {f}")
+        xls = pd.ExcelFile(f)
+        updated = False
+        out = {}
+
+        for sheet in xls.sheet_names:
+            # Read as strings to avoid losing exact text; don't auto-convert blanks to NaN
+            df = pd.read_excel(f, sheet_name=sheet, dtype=str, keep_default_na=False)
+            if df.shape[1] == 0:
+                out[sheet] = df
+                continue
+
+            first_col = df.columns[0]
+            # Normalize whitespace for comparison
+            mask = df[first_col].astype(str).str.strip() == old_value
+            if mask.any():
+                df.loc[mask, first_col] = new_value
+                print(f"  Updated '{sheet}': {mask.sum()} row(s)")
+                updated = True
+
+            out[sheet] = df
+
+        # Only rewrite file if something changed
+        if updated:
+            with pd.ExcelWriter(f, engine="openpyxl", mode="w") as writer:
+                for sheet, df in out.items():
+                    df.to_excel(writer, sheet_name=sheet, index=False)
+        else:
+            print("  No changes needed.")
+
+# Example:
+# replace_key_in_first_column("/path/to/folder")
 # %%
+
+# %%
+#SECTION:-------------------- REMAPPING_TRAIN --------------------------------------------------------------------------------------
+
+import pandas as pd
+from pathlib import Path
+
+def build_plans_sheet_for_file(xlsx_path: Path, plan_prefix="plan", out_sheet="plans"):
+    xls = pd.ExcelFile(xlsx_path)
+    plan_sheets = [s for s in xls.sheet_names if s.lower().startswith(plan_prefix.lower())]
+    if not plan_sheets:
+        print(f"No plan* sheets in {xlsx_path.name}")
+        return
+
+    # Collect all unique keys from col 1 across all plan sheets
+    all_keys = []
+    per_sheet_maps = {}
+
+    for sheet in plan_sheets:
+        df = pd.read_excel(xlsx_path, sheet_name=sheet, header=None, dtype=str, keep_default_na=False)
+        if df.shape[1] < 2:
+            # Need at least two columns to map key->value
+            per_sheet_maps[sheet] = {}
+            continue
+
+        # Clean leading/trailing whitespace
+        df[0] = df[0].astype(str).str.strip()
+        df[1] = df[1].astype(str).str.strip()
+
+        # Drop empty keys in first column
+        df = df[df[0] != ""].copy()
+
+        # If duplicate keys exist in a sheet, keep the last occurrence
+        kv = dict(zip(df[0].tolist(), df[1].tolist()))
+        per_sheet_maps[sheet] = kv
+        all_keys.extend(kv.keys())
+
+    columns = sorted(set(all_keys))  # deterministic order
+
+    # Build the output table: rows = sheet names, columns = all unique keys
+    out_rows = []
+    for sheet in plan_sheets:
+        kv = per_sheet_maps.get(sheet, {})
+        row = {"_sheet": sheet}
+        for k in columns:
+            row[k] = kv.get(k, "")
+        out_rows.append(row)
+
+    plans_df = pd.DataFrame(out_rows, columns=["_sheet"] + columns)
+
+    # Write back: keep existing sheets, replace/create 'plans'
+    # Re-read to preserve all non-plan sheets as-is
+    sheets_dict = {s: pd.read_excel(xlsx_path, sheet_name=s) for s in xls.sheet_names if s != out_sheet}
+    with pd.ExcelWriter(xlsx_path, engine="openpyxl", mode="w") as writer:
+        # write original sheets (unchanged)
+        for s, df in sheets_dict.items():
+            df.to_excel(writer, sheet_name=s, index=False)
+        # write the new 'plans' sheet
+        plans_df.to_excel(writer, sheet_name=out_sheet, index=False)
+
+    print(f"Wrote '{out_sheet}' in {xlsx_path.name} with {len(plan_sheets)} rows and {len(columns)} columns.")
+
+def build_plans_for_folder(root, recursive=True):
+    root = Path(root)
+    pattern = "**/*.xlsx" if recursive else "*.xlsx"
+    for f in sorted(root.glob(pattern)):
+        try:
+            build_plans_sheet_for_file(f)
+        except Exception as e:
+            print(f"Failed on {f}: {e}")
+
+# Example:
+# build_plans_for_folder("/path/to/folder")
+build_plans_for_folder(folder)
 # %%
 #SECTION:-------------------- torch lm lab values--------------------------------------------------------------------------------------
 fldr = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2")
 fldr_lms= fldr/"lms"
 
 lm_fns = list(fldr_lms.glob("*"))
+img_fn = lm_fn.str_replace("lms","images")
+img = torch.load(img_fn,weights_only=False)
 
+lm_fn = lm_fns[0]
+lm= torch.load(lm_fn,weights_only=False)
+ImageMaskViewer([img,lm])
 for lm_fn in lm_fns:
     lm = torch.load(lm_fn,weights_only=False)
     print(lm.max())

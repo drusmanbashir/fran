@@ -442,6 +442,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
     P = Project(project_title="nodes")
+    P = Project(project_title="totalseg")
     G = GlobalProperties(P, max_cases=50)
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf["plan"]
@@ -612,4 +613,41 @@ if __name__ == "__main__":
     G.global_properties["labels_all"] = list(set(labels_all))
     labels_tot = len(labels_all)
 
+
 # %%
+
+    """
+    Collate and organize landmark labels from all datasets in the project.
+
+    This method processes label groups, resolves dataset names, and creates
+    a unified label mapping across all datasets.
+    """
+    labels_all = []
+    # CODE: find relevance of lm_groups in modern version. Phase it out if redundant
+    lmgps = "lm_group"
+    keys = [k for k in G.global_properties.keys() if lmgps in k]
+    for key in keys:
+        shared_labels_gps = G.global_properties[key]["ds"]
+        labs_gp = []
+        for gp in shared_labels_gps:
+            ds_name = DS.resolve_ds_name(gp)
+            for c in G.case_properties:
+                if ds_name == c["ds"]:
+                    labels = c["labels"]
+                    labels = G.serializable_obj(labels)
+                    labs_gp.extend(labels)
+
+        labs_gp = list(set(labs_gp))
+        dici = {"ds": ds_name, "label": labs_gp}
+        labels_all.extend(labs_gp)
+        print(labs_gp)
+        G.global_properties[key].update(
+            {"labels": labs_gp, "num_labels": len(labs_gp)}
+        )
+    G.global_properties["labels_all"] = list(set(labels_all))
+    labels_tot = len(labels_all)
+    if len(keys) > 1:
+        G._remap_labels(keys, labels_tot)
+    G.maybe_append_imported_labels()
+# %%
+

@@ -11,7 +11,6 @@ from monai.transforms.utility.dictionary import (
 )
 
 from monai.data import Dataset
-from fran.managers.base import get_ds_remapping
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.misc_transforms import (
@@ -51,6 +50,7 @@ from utilz.helpers import *
 from utilz.imageviewers import *
 
 
+#CODE: TO BE DELETED
 class ResamplerDataset(GetAttr, Dataset):
     """A dataset class that handles resampling of medical images and their labels.
 
@@ -197,7 +197,8 @@ class ResamplerDataset(GetAttr, Dataset):
 
     def create_transforms(self):
         L = LoadSITKd(keys=["image", "lm"], image_only=True)
-        R = LabelRemapd(keys=["lm"], remapping_key="remapping_imported")
+        Rem = LabelRemapd(keys=["lm"], remapping_key="remapping_source")
+        RemI = LabelRemapd(keys=["lm"], remapping_key="remapping_imported")
         T = ToDeviced(keys=["image", "lm"], device=self.device)
         Re = Recastd(keys=["image", "lm"])
 
@@ -236,7 +237,7 @@ class ResamplerDataset(GetAttr, Dataset):
         Ch = ChangeDtyped(keys=["lm"], target_dtype=torch.uint8)
 
         # tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
-        tfms = [L, R, T, Re, Ind, E, Si, Rz, Ch]
+        tfms = [L, Rem,RemI, T, Re, Ind, E, Si, Rz, Ch]
 
         if self.clip_center == True:
             tfms.extend([N])
@@ -534,10 +535,26 @@ class FGBGIndicesDataset(CropToLabelDataset):
 
 # %%
 if __name__ == "__main__":
-    # %%
-    # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
     from fran.managers import Project
+    from fran.utils.common import *
+    from fran.utils.config_parsers import ConfigMaker
+# %%
+#SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
+    P = Project("totalseg")
+    # P._create_plans_table()
+    # P.add_data([_DS().totalseg])
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C.setup(6)
+    C.plans
+    conf = C.configs
+    print(conf["model_params"])
 
+    plan = conf['plan_train']
+    print(plan)
+    plan['mode']
+    # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     project = Project("litsmc")
     df = None
     spacing = [0.8, 0.8, 1.5]
@@ -545,6 +562,7 @@ if __name__ == "__main__":
     device = "cpu"
     data_folder = "/s/xnat_shadow/crc/hard_cases"
 
+# %%
     ds = ResamplerDataset(
         df=df,
         project=project,
@@ -555,12 +573,12 @@ if __name__ == "__main__":
     )
 
     ds.setup()
-    # %%
+# %%
+# %%
 
     dat = ds[0]
     im = dat["image"][0].cpu()
     lm = dat["lm"][0].cpu()
 
     ImageMaskViewer([im, lm])
-    # %%
-    pass
+# %%

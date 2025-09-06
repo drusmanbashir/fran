@@ -196,7 +196,7 @@ if __name__ == "__main__":
 # %%
     after_item_train = Pipeline([
             DropBBoxFromDataset(),
-           MaskLabelRemap(src_dest_labels),
+           MaskLabelRemap(remapping_train),
             PermuteImageMask,
             # StrideRandom(patch_size=patch_size, stride_max=[2, 2, 2], pad_value=-0.49),
             # CropExtra(patch_size=patch_size), 
@@ -206,7 +206,7 @@ if __name__ == "__main__":
         ])
     after_item_valid = Pipeline([
             DropBBoxFromDataset(),
-           MaskLabelRemap(src_dest_labels), Unsqueeze],
+           MaskLabelRemap(remapping_train), Unsqueeze],
                                          )
     after_batch_train = Pipeline([
             # AffineTrainingTransform3D(**affine_vals),

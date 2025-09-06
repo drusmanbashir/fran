@@ -3,6 +3,8 @@ from pathlib import Path
 
 import ipdb
 
+from fran.managers.db import add_plan_to_db
+
 tr = ipdb.set_trace
 
 import numpy as np
@@ -41,7 +43,7 @@ def get_tensorfile_stats(filename):
     return get_tensor_stats(tnsr)
 
 
-def get_tensor_stats(tnsr):
+def get_tensor_stats(tnsr)->dict:
     dic = {
         "max": tnsr.max().item(),
         "min": tnsr.min().item(),
@@ -57,11 +59,12 @@ class Preprocessor(GetAttr):
     def __init__(
         self,
         project,
-        spacing,
+        plan,
         data_folder=None,
         output_folder=None,
+
     ) -> None:
-        store_attr("project,spacing,data_folder")
+        store_attr("project,plan,data_folder")
         self.data_folder = data_folder
         self.set_input_output_folders(data_folder, output_folder)
 
@@ -95,24 +98,22 @@ class Preprocessor(GetAttr):
         torch.save(tnsr, fn)
 
     def register_existing_files(self):
-        self.existing_files = list((self.output_folder / ("lms")).glob("*pt"))
-        self.existing_case_ids = [
-            info_from_filename(f.name, full_caseid=True)["case_id"]
-            for f in self.existing_files
-        ]
-        self.existing_case_ids = set(self.existing_case_ids)
+        existimg_lm_ids = self._get_existing_ids(self.output_folder / ("lms"))
+        existing_img_ids = self._get_existing_ids(self.output_folder / ("images"))
+        self.existing_case_ids = existing_img_ids.intersection(existimg_lm_ids)
         print("Case ids processed in a previous session: ", len(self.existing_case_ids))
 
+    def _get_existing_ids(self,subfolder):
+        existing_files = list(subfolder.glob("*pt"))
+        existing_case_ids = [
+            info_from_filename(f.name, full_caseid=True)["case_id"]
+            for f in existing_files
+        ]
+        existing_case_ids = set(existing_case_ids)
+        return existing_case_ids
+
     def remove_completed_cases(self):
-        # remove cases only if bboxes have been created
-        existing_fnames = [fn.name for fn in self.existing_files]
-        self.df = self.df.copy()
-        for i in range(len(self.df)):
-            row = self.df.loc[i]
-            df_fname = Path(row.lm)
-            df_fname = strip_extension(df_fname.name) + ".pt"
-            if df_fname in existing_fnames:
-                self.df.drop(i, inplace=True)
+        self.df = self.df[~self.df.case_id.isin(self.existing_case_ids)]
 
     def save_indices(self, indices_dict, subfolder, suffix: str = None):
         fn = Path(indices_dict["meta"]["filename_or_obj"])
@@ -153,6 +154,7 @@ class Preprocessor(GetAttr):
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
+        add_plan_to_db(self.plan, self.output_folder, db_path=self.project.db)
 
     def process_batch(self, batch):
         # U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
@@ -191,7 +193,7 @@ class Preprocessor(GetAttr):
 
     def extract_image_props(self, image):
         self.results.append(get_tensor_stats(image))
-        self.shapes.append(image.shape[1:])
+        # self.shapes.append(image.shape[1:])
 
     def get_tensor_folder_stats(self, debug=True):
         img_filenames = (self.output_folder / ("images")).glob("*")
@@ -220,7 +222,7 @@ class Preprocessor(GetAttr):
         resampled_dataset_properties["median_shape"] = np.median(
             self.shapes, 0
         ).tolist()
-        resampled_dataset_properties["dataset_spacing"] = self.spacing
+        resampled_dataset_properties["dataset_spacing"] = self.plan.get('spacing')
         resampled_dataset_properties["dataset_max"] = (
             self.results_df["max"].max().item()
         )

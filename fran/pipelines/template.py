@@ -1,4 +1,5 @@
 # %%
+
 from fran.managers.db import *
 import torch
 import argparse
@@ -9,6 +10,7 @@ from fran.managers import Project, Datasource, _DS
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.run.analyze_resample import PreprocessingManager
 from fran.utils.config_parsers import ConfigMaker
+from fran.utils.folder_names import folder_names_from_plan
 
 
 # %%
@@ -20,16 +22,30 @@ if __name__ == '__main__':
     from fran.utils.common import *
     
     P = Project("litstmp")
+    # P.add_data([_DS().litstmp])
+    # P.set_labels_all()
 # P.delete()
 
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-    plan = conf['plan_train']
     DS = _DS()
-    # P.add_data([DS.lits_tmp])
+    P.global_properties["labels_all"] 
+    
+    # P.add_data([DS.litstmp])
+    # P.global_properties = load_dict("/s/fran_storage/projects/litsmc/global_properties.pkl")
+    # save_dict(P.global_properties, P.global_properties_filename)
+    P.maybe_store_projectwide_properties(overwrite=True)
+
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C.setup()
+    C.plans
+    plan = conf['plan_train']
+    conf = C.configs
+    print(conf["model_params"])
+
+    plan = conf["plan_train"]
 # P.add_data([DS.totalseg])
 # %%
 #SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
-    bs = 14  # is good if LBD with 2 samples per case
+    bs = 8# is good if LBD with 2 samples per case
     compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -43,9 +59,6 @@ if __name__ == '__main__':
 # %%
     # conf["dataset_params"]["ds_type"] ='lmdb'
     # conf["dataset_params"]["cache_rate"] = None
-
-    
-    add_plan_to_db(plan,"/r/datasets/preprocessed/litstmp/lbd/spc_080_080_150_plan2",P.db)
     run_name=None
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
@@ -75,7 +88,7 @@ if __name__ == '__main__':
 #SECTION:-------------------- DATA FOLDER H5PY file--------------------------------------------------------------------------------------
 
     test =False
-    ds = Datasource(folder=Path("/s/datasets_bkp/litstmp"), name="lits_tmp", alias="tmp", test=test)
+    ds = Datasource(folder=Path("/s/datasets_bkp/litstmp"), name="litstmp", alias="tmp", test=test)
     ds.process()
 # %%
 #SECTION:-------------------- ANALYSE RESAMPE------------------------------------------------------------------------------------  <CR>
@@ -118,11 +131,13 @@ if __name__ == '__main__':
 
     # args.num_processes = 1
     args.debug = True
-    args.plan_name = "plan10"
+    args.plan_num = 11
+# %%
+    args.plan = plan
     args.project_title = "litstmp"
 
     plan = conf["plan10"]
-    plan["src_dest_labels"] = {1:0}
+    plan["remapping_train"] = {1:0}
 # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
@@ -141,12 +156,12 @@ if __name__ == '__main__':
 # %%
 #SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
     overwrite=False
-    I.plan_name= "jj"
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
-        if "imported_folder" not in plan.keys():
+        imported_folder=plan.get("imported_folder")
+        if imported_folder is None:
             I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
@@ -217,3 +232,7 @@ if __name__ == '__main__':
         coords["end"]
             )
 # S
+# %%
+
+    add_plan_to_db(I.L.plan, data_folder_lbd = I.L.output_folder, db_path=I.L.project.db)
+# %%

@@ -970,7 +970,7 @@ class DataManagerPatch(DataManagerSource):
         return bboxes_out
 
     def set_tfm_keys(self):
-        if not is_excel_None(self.plan_train["src_dest_labels"]):
+        if not is_excel_None(self.plan_train["remapping_train"]):
             self.keys_tr = "RP,L,Ld,P,E,Rtr,F1,F2,Affine,Re,N,IntensityTfms"
         else:
             self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,Re,N,IntensityTfms"

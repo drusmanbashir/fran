@@ -9,8 +9,8 @@ from fastcore.basics import store_attr
 from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
 from utilz.string import ast_literal_eval
-
 from fran.managers.datasource import MNEMONICS
+import numpy as np
 
 tr = ipdb.set_trace
 
@@ -31,6 +31,26 @@ def is_excel_None(input):
         return False
 
 
+
+def _to_py(obj):
+    """Recursively convert numpy scalars to Python scalars and cast 1.0 -> 1."""
+    # numpy scalar -> Python scalar
+    if isinstance(obj, np.generic):
+        obj = obj.item()
+
+    # containers
+    if isinstance(obj, list):
+        return [_to_py(x) for x in obj]
+    if isinstance(obj, tuple):
+        return tuple(_to_py(x) for x in obj)
+    if isinstance(obj, dict):
+        return { _to_py(k): _to_py(v) for k, v in obj.items() }
+
+    # floats that are integer-valued -> int
+    if isinstance(obj, float) and obj.is_integer():
+        return int(obj)
+
+    return obj
 def labels_from_remapping(remapping):
     def _inner(remapping):
             if remapping is None or remapping == "" or remapping == "nan":
@@ -46,7 +66,7 @@ def labels_from_remapping(remapping):
                     # return int(max(dest)) + 1
                 elif isinstance(remapping, str) and "TSL" in remapping:
                     TSL = TotalSegmenterLabels()
-                    attr = remapping.split(".")[1]
+                    attr = remapping.replace("TSL.","").split(",")[1]
                     # use the class-ids list to keep rule: max(dest)+1
                     dest = getattr(TSL, attr)
                     # return int(max(dest)) + 1
@@ -57,43 +77,38 @@ def labels_from_remapping(remapping):
                 print(e)
                 return None
             # fall through to remapping/global if parsing fails
-    # --- 1) src_dest_labels ---
-    # remapping = plan.get("src_dest_labels")
+    # --- 1) remapping_train ---
+    # remapping = plan.get("remapping_train")
         # pandas cell stored as string/Series -> try literal_eval
     labels_all = _inner(remapping)
     return set(labels_all)
-#CODE: delete the below if code is not breaking  (see #12)
-def compute_out_channels(plan: dict, global_props: dict | None = None) -> int:
+
+#CODE: delete the below if code is not breaking  (see #13)
+def compute_out_labels(plan: dict, global_props: dict | None = None) -> list:
     """
     Priority:
-      1) plan['src_dest_labels']  -> infer mapping, return max(dest)+1
+      1) plan['remapping_train']  -> infer mapping, return max(dest)+1
       2) plan['remapping']        -> if [src, dest] or (src, dest) use max(dest)+1; if dict use max(values)+1
       3) global_props['labels_all'] -> len + 1
       4) default to 2
     """
-    # --- 1) src_dest_labels ---
-    remapping = plan.get("src_dest_labels")
-    if remapping is not None and remapping != "" and remapping != "nan":
-        # pandas cell stored as string/Series -> try literal_eval
-        if isinstance(remapping, pd.Series):
-            try: remapping = ast.literal_eval(remapping.item())
-            except Exception: pass
-
-        # TSL.* or explicit (src, dest)
-        try:
-            if isinstance(remapping, (list, tuple)) and len(remapping) == 2:
-                dest = remapping[1]
-                return int(max(dest)) + 1
-            if isinstance(remapping, str) and "TSL" in remapping:
-                TSL = TotalSegmenterLabels()
-                attr = remapping.split(".")[1]
-                # use the class-ids list to keep rule: max(dest)+1
-                dest = getattr(TSL, attr)
-                return int(max(dest)) + 1
-        except Exception:
-            # fall through to remapping/global if parsing fails
-            pass
-
+    # --- 1) remapping_train ---
+    rmt = plan.get("remapping_train")
+    rms = plan.get("remapping_source")
+    rml= plan.get("remapping_lbd")
+    mode = plan.get("mode")
+    # if all([rmt,rms,rml]) is False:
+    #     return global_props["labels_all"]
+    if rmt: labels_all  = labels_from_remapping(rmt)
+    elif (mode == "source" or mode=="whole") and rms:
+         labels_all = labels_from_remapping(rms)
+        # else: labels_all = global_props["labels_all"]
+    elif mode=="lbd" and rml:
+         labels_all = labels_from_remapping(rml)
+        # else: return global_props["labels_all"]
+    else:
+        labels_all = global_props["labels_all"]
+    return labels_all
     # --- 2) remapping ---
     remap = plan.get("remapping")
     if isinstance(remap, (list, tuple)) and len(remap) == 2:
@@ -138,7 +153,7 @@ def create_remapping(plan,key, as_list=False,as_dict=False):
             remapping =remapping
         elif isinstance(remapping, list) and as_list ==True and len(remapping)==2: # its in correct format
             remapping  = remapping
-        elif remapping is None:
+        elif remapping is None :
             remapping = None
         else: raise NotImplementedError
         return remapping
@@ -155,7 +170,7 @@ def parse_excel_dict(dici):
     if not isinstance(dici, dict):
         return dici
 
-    keys_maybe_nan = "fg_indices_exclude", "lm_groups", "datasources", "cache_rate"
+    # keys_maybe_nan = "fg_indices_exclude", "lm_groups", "datasources", "cache_rate", "ce_weight", "remapping_sitk","remapping_train","remapping_imported"
     keys_str_to_list = "spacing", "patch_size"
 
     for key, value in dici.items():
@@ -165,7 +180,7 @@ def parse_excel_dict(dici):
             continue
 
         # Handle None values
-        if key in keys_maybe_nan and is_excel_None(value):
+        if is_excel_None(value):
             dici[key] = None
             continue
 
@@ -180,6 +195,28 @@ def parse_excel_dict(dici):
     dici = maybe_add_patch_size(dici)
     return dici
 
+def parse_excel_dict(dici):
+    if not isinstance(dici, dict):
+        return _to_py(dici)
+
+    keys_str_to_list = ("spacing", "patch_size")
+
+    for key, value in list(dici.items()):
+        if isinstance(value, dict):
+            dici[key] = parse_excel_dict(value)
+            continue
+        if is_excel_None(value):
+            dici[key] = None
+            continue
+        if key in keys_str_to_list and value is not None:
+            try:
+                value = ast_literal_eval(value)
+            except Exception:
+                pass
+        dici[key] = _to_py(value)
+
+    dici = maybe_add_patch_size(dici)
+    return dici
 
 def maybe_add_patch_size(plan):
     if "patch_size" in plan.keys():
@@ -188,29 +225,6 @@ def maybe_add_patch_size(plan):
         plan["patch_size"] = make_patch_size(plan["patch_dim0"], plan["patch_dim1"])
     return plan
 
-
-def maybe_merge_source_plan(config, plan_key="plan_train"):
-    """Merge source plan into the specified plan
-    Args:
-        config: Configuration dictionary
-        plan_key: Key of the plan to merge into ('plan_train' or 'plan_valid')
-    Returns:
-        Updated config dictionary
-    """
-    # Retrieve the main plan and source plan from the config dictionary
-    main_plan = config[plan_key]
-    src_plan_key = main_plan.get("source_plan")
-
-    # Ensure the source plan exists in the config before proceeding
-    if src_plan_key:
-        # Access the source plan
-        source_plan = config.get(src_plan_key, {})
-
-        # Iterate over the source plan keys and add any missing keys to the main plan
-        for key in source_plan:
-            if key not in main_plan:
-                main_plan[key] = source_plan[key]
-    return config
 
 
 BOOL_ROWS = "patch_based,one_cycles,heavy,deep_supervision,self_attention,fake_tumours,square_in_union,apply_activation"
@@ -231,26 +245,26 @@ def make_patch_size(patch_dim0, patch_dim1):
     return patch_size
 
 #
-# def out_channels_from_TSL(src_dest_labels):
+# def out_channels_from_TSL(remapping_train):
 #     TSL = TotalSegmenterLabels()
-#     attrib = src_dest_labels.split(".")[1]
+#     attrib = remapping_train.split(".")[1]
 #     labels = getattr(TSL, attrib)
 #     labels = set(labels)
 #     out_ch = len(labels)
 #     return out_ch
 
 
-def remapping_from_src_dest_labels(src_dest_labels):
-    if is_excel_None(src_dest_labels):
+def remapping_from_remapping_train(remapping_train):
+    if is_excel_None(remapping_train):
         return None
-    elif "TSL" in src_dest_labels:
+    elif "TSL" in remapping_train:
         TSL = TotalSegmenterLabels()
-        TSL_attr = src_dest_labels.split(".")[1]
+        TSL_attr = remapping_train.split(".")[1]
         orig_labels = TSL.all
         final_labels = getattr(TSL, TSL_attr)
         return orig_labels, final_labels
-    elif isinstance(src_dest_labels, tuple) or isinstance(src_dest_labels, list):
-        return src_dest_labels
+    elif isinstance(remapping_train, tuple) or isinstance(remapping_train, list):
+        return remapping_train
     else:
         raise NotImplementedError
 
@@ -276,16 +290,16 @@ def remapping_from_src_dest_labels(src_dest_labels):
 #         return None
 #
 #
-# def out_channels_from_dict_or_cell(src_dest_labels):
-#     if is_excel_None(src_dest_labels):
+# def out_channels_from_dict_or_cell(remapping_train):
+#     if is_excel_None(remapping_train):
 #         return None
-#     if "TSL" in src_dest_labels:
-#         out_channels = out_channels_from_TSL(src_dest_labels)
+#     if "TSL" in remapping_train:
+#         out_channels = out_channels_from_TSL(remapping_train)
 #         return out_channels
-#     if isinstance(src_dest_labels, pd.core.series.Series):
-#             src_dest_labels = ast.literal_eval(src_dest_labels.item())
-#     if isinstance(src_dest_labels, tuple) or isinstance(src_dest_labels, list):
-#         dest_labels = src_dest_labels[1]
+#     if isinstance(remapping_train, pd.core.series.Series):
+#             remapping_train = ast.literal_eval(remapping_train.item())
+#     if isinstance(remapping_train, tuple) or isinstance(remapping_train, list):
+#         dest_labels = remapping_train[1]
 #         out_channels = max(dest_labels) + 1
 #     else:
 #         raise NotImplementedError
@@ -404,17 +418,16 @@ class ConfigMaker:
         project,
         configuration_filename=None,
         raytune=False,
-        plan_train=None,
-        plan_valid=None,
     ):
         store_attr()
         configuration_mnemonic = project.global_properties["mnemonic"]
         configuration_filename = self.resolve_configuration_filename(
             configuration_filename, configuration_mnemonic
         )
-        self.config = load_config_from_workbook(configuration_filename, raytune)
-        self.config = parse_excel_dict(self.config)
-        if not "mom_low" in self.config["model_params"].keys() and raytune == True:
+        self.plans = pd.read_excel(configuration_filename, sheet_name="plans",index_col="id")
+        self.configs = load_config_from_workbook(configuration_filename, raytune)
+        self.configs = parse_excel_dict(self.configs)
+        if not "mom_low" in self.configs["model_params"].keys() and raytune == True:
             config = {
                 "mom_low": tune.sample_from(
                     lambda spec: np.random.uniform(0.6, 0.9100)
@@ -427,39 +440,25 @@ class ConfigMaker:
                     )
                 ),
             }
-            self.config["model_params"].update(config)
-        self.set_active_plans(plan_train, plan_valid)
-        self.collate_labels()
+            self.configs["model_params"].update(config)
+
+    def setup(self ,
+        plan_train=None,
+        plan_valid=None):
+        self._set_active_plans(plan_train, plan_valid)
+        self.add_output_labels()
         self.add_out_channels()
         self.add_dataset_props()
 
 
-    def collate_labels(self):
-
-        plan = self.config["plan_train"]
-    # --- 1) src_dest_labels ---
-        sdl = plan.get("src_dest_labels")
-        remapping = plan.get("remapping")
-        remapping_imported= plan.get("remapping_imported")
-        merge_imported = plan.get("merge_imported_labels")
-        if sdl is not None and sdl != "" and sdl != "nan":
-            labels_all= labels_from_remapping(sdl)
-# --- 2) remapping ---
-        elif remapping_imported is not None and merge_imported ==bool(True):
-            labels_all= labels_from_remapping(remapping_imported)
-        elif remapping is not None:
-            labels_all= labels_from_remapping(remapping)
-        else:
-            labels_all=[]
-            for ds in self.project.global_properties['datasources']:
-                labs =         ds['labels']
-                labels_all.extend(labs)
-            labels_all = [0]+labels_all
-            labels_all = set(labels_all)
-            print("Unique labels in all datasets:", labels_all)
-            plan["labels_all"] = labels_all
-            print("-" * 20)
-            # self.config[plan]["labels_all"] = labels_all
+    def add_output_labels(self):
+        out_labels= compute_out_labels(self.configs["plan_train"],self.project.global_properties)
+        out_labels = [0] + out_labels
+        out_labels = set(out_labels)
+        print("labels output by Dataloaders, including background: ", out_labels)
+        self.configs['plan_train']["labels_all"] = out_labels
+        print("-" * 20)
+        # self.config[plan]["labels_all"] = labels_all
 
 
     def resolve_configuration_filename(
@@ -499,69 +498,111 @@ class ConfigMaker:
         ]
         for prop in props:
             try:
-                self.config["dataset_params"][prop] = self.project.global_properties[
+                self.configs["dataset_params"][prop] = self.project.global_properties[
                     prop
                 ]
             except:
-                self.config["dataset_params"][prop] = None
+                self.configs["dataset_params"][prop] = None
 
     def add_out_channels(self):
         # out_ch = out_channels_from_dict_or_cell(
-        #     self.config["plan_train"].get("src_dest_labels")
+        #     self.config["plan_train"].get("remapping_train")
         # )
         # if not out_ch:
         #     out_ch = out_channels_from_global_properties(self.project.global_properties)
-        out_ch = len(self.config["plan_train"]["labels_all"])
-        self.config["model_params"]["out_channels"] = out_ch
+        out_ch = len(self.configs["plan_train"]["labels_all"])
+        self.configs["model_params"]["out_channels"] = out_ch
         print("Out channels set to {}".format(out_ch))
         print("-" * 20)
 
-    def _set_plan(self, plan_key, plan_num):
+
+    def maybe_merge_source_plan(self, plan_key="plan_train"):
+        """Merge source plan into the specified plan
+        Args:
+            config: Configuration dictionary
+            plan_key: Key of the plan to merge into ('plan_train' or 'plan_valid')
+        Returns:
+            Updated config dictionary
+        """
+        # Retrieve the main plan and source plan from the config dictionary
+        main_plan = self.configs[plan_key]
+        src_plan_key = main_plan.get("source_plan")
+
+        # Ensure the source plan exists in the config before proceeding
+        if src_plan_key:
+            # Access the source plan
+            source_plan  = self.plans.loc[src_plan_key]
+            source_plan = dict(source_plan)
+            # source_plan = config.get(src_plan_key, {})
+
+            # Iterate over the source plan keys and add any missing keys to the main plan
+            for key in source_plan:
+                if key not in main_plan:
+                    main_plan[key] = source_plan[key]
+
+            
+
+    def _set_plan(self, plan_num, train: bool=True):
         """Helper function to set a plan configuration
         Args:
-            plan_key: Key in config to store the plan ('plan_train' or 'plan_valid')
             plan_num: Plan number from dataset_params
+            train: Boolean - True for training plan, False for validation plan
         """
         plan_name = "plan" + str(plan_num)
-        plan_selected = self.config[plan_name]
-        self.config[plan_key] = plan_selected
-        self.config = maybe_merge_source_plan(self.config, plan_key)
-        self.config[plan_key] = parse_excel_dict(plan_selected)
-        self.config[plan_key]["plan_name"] = plan_name
-        self.config[plan_key]["src_dest_labels"] = remapping_from_src_dest_labels(
-            self.config[plan_key]["src_dest_labels"]
+        plan_selected = self.plans.loc[plan_name]
+        plan_selected = dict(plan_selected)
+        samples_per_file = plan_selected["samples_per_file"]
+        plan_selected["samples_per_file"] = int(samples_per_file) if not is_excel_None(samples_per_file) else 1
+        plan_key = "plan_train" if train else "plan_valid"
+        self.configs[plan_key] = plan_selected
+         # self.maybe_merge_source_plan(plan_key)
+        self.configs[plan_key] = parse_excel_dict(plan_selected)
+        self.configs[plan_key]["plan_name"] = plan_name
+        self.configs[plan_key]["remapping_train"] = remapping_from_remapping_train(
+            self.configs[plan_key]["remapping_train"]
         )
-        self.config[plan_key]["remapping"] = create_remapping(self.config[plan_key],key="remapping",as_list=True)
-        if "remapping_imported" in self.config[plan_key].keys():
-            self.config[plan_key]["remapping_imported"] = create_remapping(self.config[plan_key],key="remapping_imported",as_list=True)
-        
+        self.configs[plan_key]["remapping"] = create_remapping(self.configs[plan_key],key="remapping",as_list=True)
+        if "remapping_imported" in self.configs[plan_key].keys():
+            self.configs[plan_key]["remapping_imported"] = create_remapping(self.configs[plan_key],key="remapping_imported",as_list=True)
 
-    def set_active_plans(self, plan_train=None, plan_valid=None):
+
+    def _set_active_plans(self, plan_train: int=None, plan_valid:int =None):
         if plan_train == None:
-            plan_train = self.config["dataset_params"]["plan_train"]
+            plan_train = self.configs["dataset_params"]["plan_train"]
         if plan_valid == None:
-            plan_valid = self.config["dataset_params"]["plan_valid"]
-        self._set_plan("plan_train", plan_train)
-        self._set_plan("plan_valid", plan_valid)
+            plan_valid = self.configs["dataset_params"]["plan_valid"]
+        self._set_plan(plan_train, True)
+        self._set_plan(plan_valid, False)
 
+       
 
 def load_config_from_workbook(settingsfilename, raytune):
     wb = load_workbook(settingsfilename)
     sheets = wb.sheetnames
-    # sheets.remove("metadata")
-    configs_dict = {
-        sheet: load_config_from_worksheet(settingsfilename, sheet, raytune)
-        for sheet in sheets
-    }
+    configs_dict = {}
+    for sheet in sheets:
+        if sheet.lower() == "plans":
+            # Read all plans at once and spread them into plan1, plan2, ...
+            pass
+        else:
+            # Old behavior for all other sheets
+            configs_dict[sheet] = load_config_from_worksheet(settingsfilename, sheet, raytune)
+
     return configs_dict
+    # sheets.remove("metadata")
+
+
+def load_metadata(settingsfilename):
+    df = pd.read_excel(settingsfilename, sheet_name="metadata", index_col=None)
+    return df
+
 
 
 def parse_excel_cell(cell_val):
     if isinstance(cell_val, (int, float)):
         return cell_val
     if isinstance(cell_val, str):
-        if cell_val in ["None"]:
-            return ast.literal_eval(cell_val)
+
 
         if any(pattern in cell_val for pattern in ("[", "{", "(")):
             try:
@@ -571,16 +612,30 @@ def parse_excel_cell(cell_val):
                 return cell_val
             return
         else:
-            return cell_val
+            try:
+                return ast.literal_eval(cell_val)
+            except:
+                return cell_val
     else:
         return cell_val
 
 
-def load_metadata(settingsfilename):
-    df = pd.read_excel(settingsfilename, sheet_name="metadata", index_col=None)
-    return df
-
-
+def parse_excel_cell(cell_val):
+    if isinstance(cell_val, (int, float)):
+        return _to_py(cell_val)
+    if isinstance(cell_val, str):
+        if any(p in cell_val for p in ("[", "{", "(")):
+            try:
+                return _to_py(ast.literal_eval(cell_val))
+            except:
+                return cell_val
+        else:
+            try:
+                return _to_py(ast.literal_eval(cell_val))
+            except:
+                return cell_val
+    return _to_py(cell_val)
+   
 def parse_neptune_dict(dic: dict):
     # fixes lists of int appearing in strings
     for kk, vv in dic.items():
@@ -591,98 +646,95 @@ def parse_neptune_dict(dic: dict):
 
 # %%
 if __name__ == "__main__":
+
 # %%
 #SECTION:-------------------- setup--------------------------------------------------------------------------------------
 
-
     from fran.managers import Project
 
-    P = Project(project_title="nodes")
+    P = Project(project_title="litstmp")
+    project= P
 
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
-    conf = C.config
+    C.setup(plan_train=4)
+    conf= C.configs
+    pp( conf['plan_train'])
+    
+ 
+# %%
+    settingsfilename = "/home/ub/code/fran/configurations/experiment_configs_totalseg.xlsx"
+    engine="pd"
+    sheet_name="dataset_params"
+
+    if engine == "pd":
+        df = pd.read_excel(settingsfilename, sheet_name=sheet_name)
+    elif engine == "openpyxl":  # THIS IS NOT PROPERLY IMPLEMENTED AND HAS BUGS
+        wb = load_workbook(settingsfilename)
+        sheet = wb[sheet_name]
+        df = pd.DataFrame(sheet.values)
+
+    else:
+        raise NotImplementedError
+# %%
+    config = {}
+    rr = df.iloc[1]
+    for row in df.iterrows():
+        # rr = row[1]
+        rr = check_bool(rr)
+        var_type = rr["tune_type"]
+        key = rr["var_name"]
+        if sheet_name == "transform_factors":
+            if raytune == False or rr["tune"] == False:
+                val = parse_excel_cell(rr["manual_value"])
+                prob = rr["manual_p"]
+            else:
+                if rr["tune_type"] == "double_range":
+                    val_lower, val_upper = parse_excel_cell(rr["tune_value"])
+                    val_lower = tune.uniform(lower=val_lower[0], upper=val_lower[1])
+                    val_upper = tune.uniform(lower=val_upper[0], upper=val_upper[1])
+                    val = [val_lower, val_upper]
+
+                    prob = parse_excel_cell(rr["tune_p"])
+                    prob = tune.uniform(lower=prob[0], upper=prob[1])
+            config.update({key: [val, prob]})
+        else:
+            if raytune == False or rr["tune"] == False:
+                val = parse_excel_cell(rr["manual_value"])
+                config.update({key: parse_excel_cell(val)})
+            else:
+                if "spec" in var_type:
+                    pass
+                else:
+                    val = parse_excel_cell(rr["tune_value"])
+                    if "_" in var_type:
+                        tr()
+                        vals = parse_excel_cell(rr["tune_value"])
+                        var_type.split("_")
+                        tune_fnc = resolve_tune_fnc(var_type)
+                        val_sample = [tune_fnc(val[0], val[1]) for val in vals]
+                    elif (
+                        var_type == "randint"
+                        or var_type == "loguniform"
+                        or var_type == "uniform"
+                    ):
+                        tune_fnc = resolve_tune_fnc(var_type)
+                        val_sample = tune_fnc(val[0], val[1])
+                    elif rr["tune_type"] == "double_range":
+                        val_lower, val_upper = parse_excel_cell(rr["tune_value"])
+                        val_lower = tune.uniform(lower=val_lower[0], upper=val_lower[1])
+                        val_upper = tune.uniform(lower=val_upper[0], upper=val_upper[1])
+                        val_sample = [val_lower, val_upper]
+
+                    elif rr["tune_type"] == "choice":
+                        val_sample = tune.choice(val)
+                    else:
+                        tune_fnc = resolve_tune_fnc(var_type)
+                        if tune_fnc.__name__[0] == "q":
+                            val.append(rr["quant"])
+                        val_sample = tune_fnc(*val)
+                    config.update({key: val_sample})
+
 # %%
 
-
+    labels_from_remapping = compute_out_labels(C.configs["plan_train"],C.project.global_properties)
 # %%
-#SECTION:-------------------- OUTCHANNELS--------------------------------------------------------------------------------------
-
-
-
-    # ds_labs = 
-
-# %%
-    wb = load_workbook(project)
-    sheets = wb.sheetnames
-    mode = "manual"
-    meta = load_metadata(project)
-    sheet_name = "after_item_intensity"
-    trans = load_config_from_worksheet(project, "after_item_intensity", raytune=True)
-    spat = load_config_from_worksheet(project, "after_item_spatial", raytune=True)
-    met = load_config_from_worksheet(project, "metadata", raytune=True)
-
-# %%
-    configuration_mnemonic = "liver"
-    configuration_filename = (
-        "/home/ub/code/fran/configurations/experiment_configs_liver.xlsx"
-    )
-
-    config = ConfigMaker(
-        project,
-        configuration_filename,
-        raytune=False,
-        configuration_mnemonic=configuration_mnemonic,
-    ).config
-# %%
-    wb = load_workbook(project)
-    sheets = wb.sheetnames
-    raytune = False
-
-    configs_dict = {
-        sheet: load_config_from_worksheet(project, sheet, raytune) for sheet in sheets
-    }
-
-    df = pd.read_excel(project, sheet_name="metadata", dtype=str)
-    df
-# %%
-
-    config = {
-        # A random function
-        "alpha": tune.sample_from(lambda _: np.random.uniform(100)),
-        # Use the `spec.config` namespace to access other hyperparameters
-        "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
-# %%
-    }
-    config["mom_low"].sample()
-    config["mom_high"].sample()
-# %%
-    tune.sample_from(lambda _: np.random.uniform(100) ** 2).sample()
-# %%
-    config = load_config_from_workbook(project, raytune=True)
-    if not "mom_low" in config["model_params"].keys():
-        conds = {
-            "mom_low": tune.sample_from(
-                lambda spec: np.random_uniform(low=0.6, high=0.9)
-            ),
-            "mom_high": tune.sample_from(
-                lambda spec: np.maximum(
-                    0.99, spec.conds.mom_low + np.ranomd.uniform(low=0.5, high=0.35)
-                )
-            ),
-        }
-        config["model_params"].update(conds)
-# %%
-    config["model_params"]["mom_low"].sample()
-    config["model_params"]["mom_added"].sample()
-
-# %%
-    config["plan"]
-    src_plan = config["plan"].get("source_plan")
-    if src_plan:
-        src_plan = config[src_plan]
-    config["plan1"]
-# %%
-    remapping = [1234,233]
-    dict = True
-
-    isinstance(remapping, dict) #and dict ==True

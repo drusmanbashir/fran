@@ -1,65 +1,61 @@
 # %%
-
 import argparse
-import torch
+from pathlib import Path
 
-from fran.managers.db import add_plan_to_db
-from fran.trainers import Trainer
 from monai.data.dataset import GDSDataset
 from utilz.imageviewers import ImageMaskViewer
-from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-from fran.trainers import Trainer
-from pathlib import Path
-from fran.managers import Project
-from fran.managers import Datasource, _DS
-from fran.run.analyze_resample import PreprocessingManager
+
+from fran.managers import _DS, Datasource, Project
 from fran.managers.data import DataManagerDual
+from fran.preprocessing.globalproperties import GlobalProperties
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from fran.run.analyze_resample import PreprocessingManager
+from fran.trainers import Trainer
 from fran.utils.config_parsers import ConfigMaker
 
-
 # %%
-# %%
-#SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
-if __name__ == '__main__':
-    torch.set_float32_matmul_precision("medium")
+# SECTION:-------------------- SETUP----------------------------------------------------------------------------------------------------- <CR>
+if __name__ == "__main__":
     from fran.utils.common import *
+    devices = 2
     P = Project("litsmc")
-    P._create_plans_table()
-    P.create("lits")
+    P.set_labels_all()
+    # P.global_properties = load_dict("/s/fran_storage/projects/litsmc/global_properties.pkl")
+    # save_dict(P.global_properties, P.global_properties_filename)
+    # P.global_properties["labels_all"] 
+    P.maybe_store_projectwide_properties()
 
-    P.add_data([_DS().litq, _DS().lits, _DS().drli, _DS().litqsmall])
-    # P.create('litsmc')
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-    plan = conf['plan_train']
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C.setup()
+    C.plans
+    conf = C.configs
+    print(conf["model_params"])
 
-    conn = sqlite3.connect(db_name)
-    cur = conn.cursor()
-    ss = """ALTER TABLE master_plans ADD COLUMN remapping"""
-    cur.execute(ss)
+    plan = conf["plan_train"]
+    pp(plan)
 # %%
-#SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
-    bs = 14  # is good if LBD with 2 samples per case
+
+    bs = 8
+    # P._create_plans_table()
+    # P.add_data([_DS().totalseg])
     compiled = False
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
     neptune = True
     tags = []
-    description = None
-
-    # device_id = 1
-    device_id = 0
+    description = f"trying 2 gpu"
+    # plan['mode']
 # %%
     # conf["dataset_params"]["ds_type"] ='lmdb'
     # conf["dataset_params"]["cache_rate"] = None
 
-    run_name=None
+    run_name = None
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
-        devices=[device_id],
+        devices=devices,
         epochs=600 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
@@ -73,9 +69,9 @@ if __name__ == '__main__':
     Tm.fit()
 # %%
 # %%
-#SECTION:-------------------- TS--------------------------------------------------------------------------------------
+# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
-#    
+    #
     Tm.D.prepare_data()
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
@@ -83,32 +79,28 @@ if __name__ == '__main__':
     tm = Tm.D.train_manager
     dici = tm.ds[0]
 
-#SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
+# SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
-
-
-    
-# P.delete()
+    # P.delete()
     DS = _DS()
-    P.add_data([DS.litq,DS.lits,DS.drli,DS.litqsmall])
+    P.add_data([DS.litq, DS.lits, DS.drli, DS.litqsmall])
 
-# P.add_data([DS.totalseg])
+    # P.add_data([DS.totalseg])
 # %%
-#SECTION:-------------------- DATA FOLDER H5PY file--------------------------------------------------------------------------------------
+# SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
-    test =False
-    ds = Datasource(folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test)
+    test = False
+    ds = Datasource(
+        folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test
+    )
     ds.process()
 
 # %%
-#SECTION:-------------------- GLOBAL PROPERTIES--------------------------------------------------------------------------------------
-    if not "labels_all" in P.global_properties.keys():
-        P.set_lm_groups(plan["lm_groups"])
-        P.maybe_store_projectwide_properties(overwrite=True)
+# SECTION:-------------------- GLOBAL PROPERTIES-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 # %%
-#SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
-    active_plan = "plan10"
-    overwrite=False
+# SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR> <CR> <CR> <CR>
+    # active_plan = "plan10"
+    overwrite = False
 # %%
 
     parser = argparse.ArgumentParser(description="Resampler")
@@ -152,59 +144,61 @@ if __name__ == '__main__':
     args.plan_name = active_plan
     args.project_title = "litsmc"
 
-
-
     plans = conf[args.plan_name]
-#SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
+# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     I = PreprocessingManager(args)
     # I.spacing =
 # %%
-#SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
-    overwrite=False
+# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    overwrite = False
     I.resample_dataset(overwrite=overwrite)
     I.R.get_tensor_folder_stats()
 
 # %%
-#SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
+# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR> <CR> <CR>
+
+    overwrite=False
+    I.plan_name= "jj"
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
-        if "imported_folder" not in plans.keys():
+        if plan['imported_folder'] is None:
             I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
-                imported_labels=plans["imported_labels"],
-                imported_folder=plans["imported_folder"],
-                overwrite=overwrite, device="cuda")
+                imported_labels=plan["imported_labels"],
+                imported_folder=plan["imported_folder"],)
 # %%
 
-    L = LabelBoundedDataGeneratorImported( project=P,
-            plan = plan,
-            folder_suffix=plan_name,
-            imported_folder=imported_folder,
-            merge_imported_labels=merge_imported_labels,
-            remapping=remapping,
-        )
+    L = LabelBoundedDataGeneratorImported(
+        project=P,
+        plan=plan,
+        folder_suffix=plan_name,
+        imported_folder=imported_folder,
+        merge_imported_labels=merge_imported_labels,
+        remapping=remapping,
+    )
 
 # %%
-    device="cpu"
-    overwrite=True
-    I.L = LabelBoundedDataGenerator(
+    device = "cpu"
+    overwrite = True
+    L = LabelBoundedDataGenerator(
         project=I.project,
         plan=I.plan,
         plan_name=I.plan_name,
     )
-    I.L.setup(overwrite=overwrite,device=device)
-    I.L.process()
+# %%
+    L.setup(overwrite=overwrite, device=device)
+    L.process()
 # %%
 
 # %%
-#SECTION:-------------------- DATA MANAGER--------------------------------------------------------------------------------------
+# SECTION:-------------------- DATA MANAGER-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     batch_size = 8
-    ds_type="lmdb"
-    ds_type=None
+    ds_type = "lmdb"
+    ds_type = None
     device = 0
 
     conf["dataset_params"]["mode"] = None
@@ -214,7 +208,7 @@ if __name__ == '__main__':
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,
-        ds_type=ds_type
+        ds_type=ds_type,
     )
 
 # %%
@@ -225,45 +219,43 @@ if __name__ == '__main__':
     tm.transforms_dict
 
 # %%
-    ds =tm.ds
-    dat= ds[0]
+    ds = tm.ds
+    dat = ds[0]
     dici = ds.data[0]
     tm.tfms_list
-
 
 # %%
 
 # %%
     D.train_ds[0]
-    dlt =D.train_dataloader()
-    dlv =D.val_dataloader()
+    dlt = D.train_dataloader()
+    dlv = D.val_dataloader()
 # %%
 
     # iteri = iter(dlv)
-    for num,batch in enumerate(dlv):
+    for num, batch in enumerate(dlv):
         print(batch["image"].shape)
 # %%
 
-    for num,batch in enumerate(dlt):
+    for num, batch in enumerate(dlt):
         print(batch["image"].shape)
 # %%
 # %%
-#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
-    
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+
     Tm.D.prepare_data()
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
 # %%
     tm = Tm.D.train_manager
     dici = tm.ds[0]
-    ds =   GDSDataset
+    ds = GDSDataset
 # %%
-    img = dici[0]['image']
-    lm = dici['lm']
+    img = dici[0]["image"]
+    lm = dici["lm"]
 
-
-    im = dici[0]['image']
-    lm =  dici[0]['lm']
+    im = dici[0]["image"]
+    lm = dici[0]["lm"]
     ImageMaskViewer([im[0], lm[0]])
 # %%
 
@@ -274,28 +266,26 @@ if __name__ == '__main__':
     iteri = iter(dlt)
     batch = next(iteri)
 
-    batch['lm'].max()
+    batch["lm"].max()
 
 # %%
-    n=0
-    lm = batch['lm']
-    im = batch['image']
-    im = im.permute(0,1,4,2,3)
-    lm = lm.permute(0,1,4,2,3)
+    n = 0
+    lm = batch["lm"]
+    im = batch["image"]
+    im = im.permute(0, 1, 4, 2, 3)
+    lm = lm.permute(0, 1, 4, 2, 3)
     ImageMaskViewer([im[n][0], lm[n][0]])
 # %%
 
-
     batch_size = 2
-    ds_type="lmdb"
-    ds_type=None
-
+    ds_type = "lmdb"
+    ds_type = None
 
     D = DataManagerDual(
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,
-        ds_type=ds_type
+        ds_type=ds_type,
     )
 
 # %%
@@ -306,29 +296,40 @@ if __name__ == '__main__':
     tm.transforms_dict
 
 # %%
-    ds =tm.ds
-    dat= ds[0]
+    ds = tm.ds
+    dat = ds[0]
     dici = ds.data[0]
     tm.tfms_list
-
 
 # %%
 
 # %%
     # D.train_ds[0]
     # dl =D.train_dataloader()
-    dl =D.val_dataloader()
+    dl = D.val_dataloader()
 # %%
 
     iteri = iter(dl)
     batch = next(iteri)
 
-
 # %%
-    n=0
-    im = batch['image'][n][0]
-    ImageMaskViewer([im, batch['lm'][n][0]])
+    n = 0
+    im = batch["image"][n][0]
+    ImageMaskViewer([im, batch["lm"][n][0]])
     # while iteri:
     #     print(batch['image'].shape)
-#SECTION:-------------------- INFERENCE--------------------------------------------------------------------------------------
+# SECTION:-------------------- INFERENCE-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# %%
 
+    P._create_folds()
+    labels_all = P.global_properties.get("labels_all")
+    max_cases = 100
+    clip_range =None
+    P.G = GlobalProperties(P, max_cases=max_cases, clip_range=clip_range)
+    if labels_all is None or len(labels_all) == 0:
+        headline("Labels have not been collated. Doing it now")
+        P.G.collate_lm_labels()
+    if not "mean_dataset_clipped" in P.global_properties.keys() or overwrite == True:
+        P.G.store_projectwide_properties()
+        P.G.compute_std_mean_dataset()
+# %%

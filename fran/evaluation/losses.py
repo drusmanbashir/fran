@@ -41,6 +41,7 @@ class _DiceCELossMultiOutput(nn.Module):
         lambda_ce: float = 1.0,
     ) -> None:
         super().__init__()
+        
         dice_reduction = LossReduction.NONE # unreduced loss is outputted for logging and will be reduced manually
         reduction = look_up_option(reduction, DiceCEReduction).value
         self.dice = DiceLoss(
@@ -146,6 +147,7 @@ class _DiceCELossMultiOutput(nn.Module):
 class CombinedLoss(_DiceCELossMultiOutput):
     def __init__(self, fg_classes, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fg_classes=fg_classes
 
     def forward(self, input, target):
         losses = super().forward(input, target)
@@ -154,20 +156,30 @@ class CombinedLoss(_DiceCELossMultiOutput):
             self.create_labels(bs, self.fg_classes)
         self.set_loss_dict(losses)
         return losses[0]
+    #
+    # def set_loss_dict(self, losses):
+    #     losses[1:] = [
+    #         ll.detach() for ll in losses[1:]
+    #     ]  # only l[0] needs gradient. rest are for logging
+    #     class_losses = losses[-1].mean(0)
+    #     separate_case_losses = list(losses[-1].view(-1))
+    #     self.loss_dict = {
+    #         x: y.item()
+    #         for x, y in zip(
+    #             self.labels, il.chain(losses[:3], class_losses, separate_case_losses)
+    #         )
+    #     }
 
-    def set_loss_dict(self, l):
-        l[1:] = [
-            ll.detach() for ll in l[1:]
-        ]  # only l[0] needs gradient. rest are for logging
-        class_losses = l[-1].mean(0)
-        separate_case_losses = list(l[-1].view(-1))
+
+    def set_loss_dict(self, losses):
+        class_losses = losses[-1].mean(0)
+        separate_case_losses = list(losses[-1].view(-1))
         self.loss_dict = {
             x: y.item()
             for x, y in zip(
-                self.labels, il.chain(l[:3], class_losses, separate_case_losses)
+                self.labels, il.chain(losses[:3], class_losses, separate_case_losses)
             )
         }
-
     def create_labels(self, bs, fg_classes):
         label_maker = lambda x: "loss_dice_batch{0}_label{1}".format(*x)
         batches = list(range(bs))
@@ -300,13 +312,13 @@ class DeepSupervisionLoss(pl.LightningModule):
         losses_out = losses_weighted.sum()
         return losses_out
 
-    def set_loss_dict(self, l):
-        class_losses = l[-1].mean(0)
-        separate_case_losses = list(l[-1].view(-1))
+    def set_loss_dict(self, losses):
+        class_losses = losses[-1].mean(0)
+        separate_case_losses = list(losses[-1].view(-1))
         self.loss_dict = {
             x: y.item()
             for x, y in zip(
-                self.labels, il.chain(l[:3], class_losses, separate_case_losses)
+                self.labels, il.chain(losses[:3], class_losses, separate_case_losses)
             )
         }
 
@@ -314,8 +326,19 @@ class DeepSupervisionLoss(pl.LightningModule):
 # %%
 if __name__ == "__main__":
     softmax_helper = lambda x: F.softmax(x, 1)
-    # targ = torch.load("fran/tmp/ed.pt")
-    # pred = torch.load("fran/tmp/pred.pt")
+    P = Project("nodes")
+    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+    loss_params = conf["loss_params"]
+    
+    targ = torch.load("tests/files/image.pt", weights_only=False)
+    pred = torch.load("tests/files/pred.pt",weights_only=False)
+    target = torch.load("tests/files/target.pt",weights_only=False)
+
+    fg_classes = 1
+# %%
+    loss_func = CombinedLoss(**loss_params, fg_classes =fg_classes)
+    
+    loss = loss_func.forward(pred, target)
 # %%
 
 

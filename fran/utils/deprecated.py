@@ -191,9 +191,11 @@ if __name__ == "__main__":
     run_src = "LITS-911"
     project_title = "lidc2"
     value = 3
-    run_src = "LITS-1110"
+# %%
+    run_src = "LITS-1230"
     project_title = "nodes"
     value = 3
+# %%
     run_src = "LITS-1088"
     project_title = "totalseg"
     value = 2
@@ -210,15 +212,22 @@ if __name__ == "__main__":
     dici = dict_src.copy()
     dici.keys()
     pp(dici["hyper_parameters"].keys())
-    pp(dici["hyper_parameters"]["model_params"])
+    dici['hyper_parameters']['lr']
+    pp(dici["hyper_parameters"]['config'].keys())
     # pln = dici['datamodule_hyper_parameters']['config']['plan{}'.format(value)]
     pln = dici["datamodule_hyper_parameters"]["config"]["plan"]
     datamod = dici["datamodule_hyper_parameters"]["config"]
     dici["hyper_parameters"][
         "config"
     ]  # = dici['datamodule_hyper_parameters']['config'].copy()#['plan_train']=pln
-    dici["hyper_parameters"]["config"]["plan_train"] = pln
+    dici["hyper_parameters"]["config"]["plan_train"] #= pln
+    dici["hyper_parameters"]["config"]["plan_train"] ["remapping"]= None
     dici["hyper_parameters"]["config"]["plan_valid"] = pln
+
+# %%
+    dici["datamodule_hyper_parameters"]["config"]["plan_train"]["remapping"] = None
+    dici["hyper_parameters"]["config"]["plan_train"] = plan
+    dici["hyper_parameters"]["config"]["plan_valid"] = plan
 
     # CODE: adding plan index for NODES only
     dici["hyper_parameters"]["config"]["dataset_params"]["plan_train"] = 2

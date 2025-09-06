@@ -13,7 +13,7 @@ from utilz.helpers import *
 from utilz.fileio import *
 
 from utilz.imageviewers import ImageMaskViewer
-from utilz.string import  info_from_filename
+from utilz.string import  headline, info_from_filename
 
 class SingleCaseAnalyzer:
     """
@@ -109,7 +109,7 @@ class MultiCaseAnalyzer(GetAttr):
             all_cases.append(case_)
         all_case_ids = set([c['case_id'] for c  in all_cases])
         new_cases = all_case_ids.difference(prev_processed_cases)
-        print("Found {0} new cases\nCases already processed in a previous session: {1}".format(len(new_cases), len(prev_processed_cases)))
+        headline("Found {0} new cases\nCases already processed in a previous session: {1}".format(len(new_cases), len(prev_processed_cases)))
         assert (l:=len(new_cases)) == (l2:=(len(all_case_ids)-len(prev_processed_cases))), "Difference in number of new cases"
         if len(new_cases) == 0: 
             print("No new cases found.")

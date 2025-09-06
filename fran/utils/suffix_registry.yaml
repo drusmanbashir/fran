@@ -1,0 +1,32 @@
+  remapping: 
+    "TSL.all, TSL.label_minimal": r1
+  #
+  # ex: expand_by
+  # mode:
+  #   src: source
+  #   lbd: lbd
+  #   patch: pch
+  # datasources:
+  #   totalseg: tsl
+  #   drli: drl
+  #   litq: ltq
+  #   litqsmall: lqs
+  #   lidc: ldc
+
+
+  expand_by: ex
+  mode:
+    source: src
+    lbd: lbd
+    pch: patch
+  datasources:
+    totalseg: tsl
+    lits : lts
+    drli: drl
+    litq: lq
+    litqsmall: lqs
+    lidc: ldc
+
+
+
+

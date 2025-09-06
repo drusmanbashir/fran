@@ -15,18 +15,13 @@ Make sure you have installed and set up:
 \
 To quickly install all pre-requisites in a new environment, I run the commands in file `conda_oneliners.txt` ***(make sure to create a new environment beforehand!)***
 
+
+
+
 ## 1. Configuration  (excel spreadsheets)
 
 All dataset creation and (some) training blueprints are in excel spreadsheets and thats where we start. Glossary:
 ### A. Plans
-
-#### i) Remapping: 
-Remapping patterns can be dicts or 2-tuples mapping srce to dest labels. This remapping bakes the new labels into the dataset, reducing training workload(c.f. `src_dest_labels`_)
-
-#### ii) Src_dest_labels:
-This is also a remapping but unlike `Remapping` above, this remapping happens on the fly, during training.\
-It is a list of 2 lists, list 1 is the source mappings, list 2 dest mappings. Aligns with monai transform MapLabelValue
-
 
 
 ## 1. Setting common variables
@@ -64,6 +59,7 @@ In each input path, data (nifti or nrrd format) must be organised in sub-folders
         │   ├── ...
         │   └── kits21_00299.nii.gz
         └── lms
+
            ├── kits21_00000.nii.gz
            ├── ...
            ├── ...
@@ -184,6 +180,15 @@ Configuration plans define:
 
 ##### a. Imported labelmaps
 If you add imported labelmaps to a plan, you have to include a remapping cell, leave it empty to give logic for remapping in it. It can be a dict, or a TSL class attribute if imported folder is TSL predictions. TSL class attributes simplify remapping and generate the dict for you.
+
+##### b. Expand_by
+This setting is used mainly by LBD (labelbounded) datasets. It is ignored by:
+- Source dataset
+
+
+
+A complex element is output folder naming. This is managed in a project database table called ```master_plans``` 
+
 
 You must include imported_folder, remapping,
 ### Database Schema
@@ -311,10 +316,23 @@ All datasources within a single lm_group are indexed continuously. Subsequent lm
 
 I have provided 2 folders as datasets for  this project in the example above. Typically, most projects will be based on a single datafolder but this provides flexibility to add more data to a project as it becomes available. After the project is initialised, look inside the project folder. You will find a mask_labels.json file. This file sets rules for postprocessing each label after running predictions. 
 
-## 4. Analyze and Resample
+## 5. Analyze and Resample
 
 The analyze_resample.py script handles data preprocessing, including dataset analysis, resampling, and various data generation modes. The process is controlled through a plan configuration that specifies parameters for each step.
 
+
+#### i) Remapping: 
+Remapping patterns can be dicts or 2-tuples mapping srce to dest labels. This remapping bakes the new labels into the dataset, reducing training workload(c.f. `src_dest_labels`). Remapping can be a dict or a list of 2-lists (```[src_labels],[dest_labels]```
+Remapping can be done at multiple levels:
+- remapping_imported: for example: ```{1:0,2:2:3:3}``` or ```[1,2,3], [0,2,3]```. However if the imported dataset has additional labels, e.g., ```4, 5,``` they will be remapped to ```0``` if they are not explicitly mentioned in the remapping scheme.
+- remapping_source
+- remapping_lbd
+- remapping_train: This is also a remapping but unlike `Remapping` above, this remapping happens on the fly, during training.\
+It is a list of 2 lists, list 1 is the source mappings, list 2 dest mappings. Aligns with monai transform MapLabelValue
+
+Folder naming schemes are separate and overlapping for: 
+#### A.  Source datasets
+This follows ```sze_dim1_dim2_{remapping_code}``` Remapping codes are managed in ```fran/utils/suffixy_registry```. 
 ### Data Types
 The system supports multiple data types:
 * **source**: Original raw data

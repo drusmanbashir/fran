@@ -26,7 +26,7 @@ class ModelFromTuneTrial():
         self.params_dict = load_json(Path(folder_name)/"params.json")
         if out_channels is None :
             if not 'out_channels' in self.params_dict['model_params']:
-                self.dest_labels = ast.literal_eval(self.metadata['src_dest_labels'].item())
+                self.dest_labels = ast.literal_eval(self.metadata['remapping_train'].item())
                 out_channels = out_channels_from_dict_or_cell(self.dest_labels)
             else:
                 out_channels = self.params_dict['model_params']['out_channels']
@@ -114,7 +114,7 @@ def train_with_tune(multi_gpu,neptune, max_num_epochs,proj_defaults, config):
         cbs+=[
         NeptuneCallback(proj_defaults,config,run_name=tune.get_trial_name(),freq=6),
         NeptuneCheckpointCallback(resume=False,checkpoints_parent_folder= proj_defaults.checkpoints_parent_folder),
-        NeptuneImageGridCallback(classes = out_channels_from_dict_or_cell(config['metadata']['src_dest_labels']),
+        NeptuneImageGridCallback(classes = out_channels_from_dict_or_cell(config['metadata']['remapping_train']),
                          patch_size= make_patch_size(config['dataset_params']['patch_dim0'], config['dataset_params']['patch_dim1'])),
 
         ] # resume = False because TuneCheckpointCallback handles all resumptions

@@ -1,16 +1,15 @@
 # %%
 import sqlite3
 
-from fran.managers.datasource import _DS
+from fran.managers.datasource import _DS, val_indices
 import ipdb
 from batchgenerators.utilities.file_and_folder_operations import List
 from fastcore.basics import listify
 from send2trash import send2trash
-from utilz.string import info_from_filename
+from utilz.string import headline, info_from_filename
 
 from fran.managers import Datasource
 from fran.managers.datasource import db_ops, MNEMONICS
-from fran.utils.config_parsers import ConfigMaker
 
 tr = ipdb.set_trace
 
@@ -42,7 +41,7 @@ from utilz.string import info_from_filename, str_to_path
 tr = ipdb.set_trace
 from pathlib import Path
 
-from fran.managers.db import PLAN_COLUMNS
+from fran.managers.db import COLUMNS_CRITICAL
 
 
 def subscript_generator():
@@ -166,7 +165,17 @@ class Project(DictToAttr):
         self.create_tables()
         if datasources:
             self.add_data(datasources, test)
+        self.set_labels_all()
         self.save_global_properties()
+        
+    def set_labels_all(self):
+        labs =[]
+        datasources =self.global_properties["datasources"]
+        for ds in datasources:
+            labs.extend(ds["labels"])
+        self.global_properties["labels_all"] = list(set(labs))
+
+
     def _init_global_properties(self,mnemonic  ):
         self.global_properties = {
             "project_title": self.project_title,
@@ -254,7 +263,7 @@ class Project(DictToAttr):
             )
 
     def _create_plans_table(self):
-        ddl_cols = ", ".join(f'"{c}" TEXT' for c in PLAN_COLUMNS + ["data_folder"])
+        ddl_cols = ", ".join(f'"{c}" TEXT' for c in COLUMNS_CRITICAL + ["data_folder"])
         sql = f"""
         CREATE TABLE IF NOT EXISTS master_plans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -288,6 +297,7 @@ class Project(DictToAttr):
         assert len(datasources) == len(
             test
         ), "Unequal lengths of datafolders and (bool) test status"
+        headline("Adding rows to tables. Adding datasources entries to global_properties")
         for ds_dict, test in zip(datasources, test):
             fldr = ds_dict["folder"]
             ds = Datasource(
@@ -450,7 +460,7 @@ class Project(DictToAttr):
         return ds
 
     def set_folder_file_names(self):
-        rapid_access_folder = (
+        self.rapid_access_folder = (
             Path(COMMON_PATHS["rapid_access_folder"]) / self.project_title
         )
         self.project_folder = Path(COMMON_PATHS["projects_folder"]) / self.project_title
@@ -458,9 +468,8 @@ class Project(DictToAttr):
             Path(COMMON_PATHS["cold_storage_folder"]) / "datasets"
         )
         self.fixed_spacing_folder = (
-            self.cold_datasets_folder
-            / ("preprocessed/fixed_spacing")
-            / self.project_title
+            self.rapid_access_folder/
+             ("fixed_spacing")
         )
         self.fixed_size_folder = (
             self.cold_datasets_folder / ("preprocessed/fixed_size") / self.project_title
@@ -477,18 +486,18 @@ class Project(DictToAttr):
         self.configuration_filename = self.project_folder / ("experiment_configs.xlsx")
 
         self.global_properties_filename = self.project_folder / "global_properties.json"
-        self.patches_folder = rapid_access_folder / ("patches")
-        self.cache_folder = rapid_access_folder / ("cache")
-        self.lbd_folder = rapid_access_folder / ("lbd")
-        self.pbd_folder = rapid_access_folder / ("pbd")
-        self.patches_folder = rapid_access_folder / ("patches")
+        self.patches_folder = self.rapid_access_folder / ("patches")
+        self.cache_folder = self.rapid_access_folder / ("cache")
+        self.lbd_folder = self.rapid_access_folder / ("lbd")
+        self.pbd_folder = self.rapid_access_folder / ("pbd")
+        self.patches_folder = self.rapid_access_folder / ("patches")
         self.raw_dataset_properties_filename = (
             self.project_folder / "raw_dataset_properties.pkl"
         )
 
         self.bboxes_voxels_info_filename = self.raw_data_folder / ("bboxes_voxels_info")
         self.validation_folds_filename = self.project_folder / ("validation_folds.json")
-        self.whole_images_folder = rapid_access_folder / ("whole_images")
+        self.whole_images_folder = self.rapid_access_folder / ("whole_images")
         self.raw_dataset_info_filename = self.project_folder / ("raw_dataset_srcs.pkl")
         self.log_folder = self.project_folder / ("logs")
 
@@ -781,7 +790,7 @@ class Project(DictToAttr):
         self.save_global_properties()
 
     def maybe_store_projectwide_properties(
-        self, clip_range=None, max_cases=250, overwrite=False
+        self, clip_range=None, max_cases=100, overwrite=False
     ):
         """
         Store global properties like dataset mean and standard deviation.
@@ -798,11 +807,14 @@ class Project(DictToAttr):
         from fran.preprocessing.globalproperties import GlobalProperties
 
         self._create_folds()
+        labels_all = self.global_properties.get("labels_all")
         self.G = GlobalProperties(self, max_cases=max_cases, clip_range=clip_range)
+        if labels_all is None or len(labels_all) == 0:
+            headline("Labels have not been collated. Doing it now")
+            self.G.collate_lm_labels()
         if not "mean_dataset_clipped" in self.global_properties.keys() or overwrite == True:
             self.G.store_projectwide_properties()
             self.G.compute_std_mean_dataset()
-            self.G.collate_lm_labels()
 
     def add_plan(self, plan: dict):
         """
@@ -903,7 +915,7 @@ class Project(DictToAttr):
 if __name__ == "__main__":
     from fran.utils.common import *
 
-
+    from fran.utils.config_parsers import ConfigMaker
     DS = _DS()
     P = Project(project_title="nodes")
     P.create(mnemonic="nodes")
@@ -915,7 +927,7 @@ if __name__ == "__main__":
 # %%
     # P.delete()
     P.create(mnemonic="lits")
-    P.add_data([DS.lits_tmp])
+    P.add_data([DS.litstmp])
 
     # P.add_data([DS.totalseg])
 
@@ -1060,7 +1072,7 @@ if __name__ == "__main__":
         folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test
     )
     ds = Datasource(
-        folder=Path("/s/datasets_bkp/litstmp"), name="lits_tmp", alias="tmp", test=test
+        folder=Path("/s/datasets_bkp/litstmp"), name="litstmp", alias="tmp", test=test
     )
     ds.process()
 

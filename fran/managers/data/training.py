@@ -21,6 +21,7 @@ from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
 from monai.transforms.compose import Compose
 from monai.transforms.croppad.dictionary import (
     RandCropByPosNegLabeld,
+    RandSpatialCropSamplesD,
     ResizeWithPadOrCropd,
 )
 from monai.transforms.intensity.dictionary import (
@@ -102,47 +103,57 @@ class DataManagerDual(LightningDataModule):
     def __init__(
         self,
         project_title,
-        config: dict,
-        batch_size=8,
+        configs: dict,
+        batch_size: int,
         cache_rate=0.0,
         device="cuda",
         ds_type=None,
         save_hyperparameters=True,
-        keys_tr = "L,Remap,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms",
-        keys_val = "L,Remap,Ld,E,N,ResizePC",
+        keys_tr = "L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
+        keys_val = "L,N,Remap,Ld,E,ResizePC",
     ):
         super().__init__()
-        project=Project(project_title)
+        self.project = Project(project_title)
+        self.configs = configs
+        self.batch_size = batch_size
+        self.cache_rate = cache_rate
+        self.device = device
+        self.ds_type = ds_type
+        self.keys_tr = keys_tr
+        self.keys_val = keys_val
+        
         if save_hyperparameters:
-            self.save_hyperparameters('project_title', 'config',logger=False) # logger = False otherwise it clashes with UNet Manager
-        manager_class_train,manager_class_valid = self.infer_manager_classes(config)
+            self.save_hyperparameters('project_title', 'configs',logger=False) # logger = False otherwise it clashes with UNet Manager
+
+    def prepare_data(self):
+
+        """Prepare both training and validation data"""
+
+        manager_class_train, manager_class_valid = self.infer_manager_classes(self.configs)
             
         # Create separate managers for training and validation
         self.train_manager = manager_class_train(
-            project=project,
-            config=config,
-            batch_size=batch_size,
-            cache_rate=cache_rate,
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
             split='train',
-            device=device,
-            ds_type=ds_type,
-            keys=keys_tr,
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_tr,
         )
         
         self.valid_manager = manager_class_valid(
-            project=project,
-            config=config,
-            batch_size=batch_size,
-            cache_rate=cache_rate,
-            device=device,
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            device=self.device,
             ds_type=None,
             split='valid',
-            keys=keys_val,
-            
+            keys=self.keys_val,
         )
-
-    def prepare_data(self):
-        """Prepare both training and validation data"""
+        
         self.train_manager.prepare_data()
         self.valid_manager.prepare_data()
 
@@ -150,6 +161,7 @@ class DataManagerDual(LightningDataModule):
         """Set up both managers"""
         self.train_manager.setup(stage)
         self.valid_manager.setup(stage)
+        # Create separate managers for training and validation
 
     def train_dataloader(self):
         """Return training dataloader"""
@@ -169,7 +181,7 @@ class DataManagerDual(LightningDataModule):
         """Access to validation dataset"""
         return self.valid_manager.ds
 
-    def infer_manager_classes(self, config):
+    def infer_manager_classes(self, configs):
         """
         Infer the appropriate DataManager class based on the mode in config
         
@@ -183,8 +195,8 @@ class DataManagerDual(LightningDataModule):
             AssertionError: If train and valid modes don't match
             ValueError: If mode is not recognized
         """
-        train_mode = config["plan_train"]["mode"]
-        valid_mode = config["plan_valid"]["mode"]
+        train_mode = configs["plan_train"]["mode"]
+        valid_mode = configs["plan_valid"]["mode"]
         
         # Ensure train and valid modes match
         assert train_mode == valid_mode, f"Train mode '{train_mode}' and valid mode '{valid_mode}' must match"
@@ -209,7 +221,7 @@ class DataManager(LightningDataModule):
     def __init__(
         self,
         project,
-        config: dict,
+        configs: dict,
         batch_size=8,
         cache_rate=0.0,
         device="cuda:0",
@@ -222,23 +234,23 @@ class DataManager(LightningDataModule):
 
         super().__init__()
         if save_hyperparameters:
-            self.save_hyperparameters('project','config', 'split',logger=False)
+            self.save_hyperparameters('project','configs', 'split',logger=False)
         device = resolve_device(device)
         store_attr()
-        self.plan= config[f"plan_{split}"]
+        self.plan= configs[f"plan_{split}"]
         global_properties = load_dict(project.global_properties_filename)
-        self.dataset_params = config["dataset_params"]
+        self.dataset_params = configs["dataset_params"]
         self.dataset_params["intensity_clip_range"] = global_properties[
             "intensity_clip_range"
         ]
-        transform_factors = config["transform_factors"]
+        transform_factors = configs["transform_factors"]
         self.dataset_params["mean_fg"] = global_properties["mean_fg"]
         self.dataset_params["std_fg"] = global_properties["std_fg"]
         # self.batch_size = batch_size
         # self.cache_rate = cache_rate
         # self.ds_type = ds_type
         self.set_effective_batch_size()
-        self.data_folder = self.derive_data_folder()
+        self.data_folder = self.derive_data_folder(mode=self.plan["mode"])
         self.assimilate_tfm_factors(transform_factors)
         # self.keys=keys
         self.set_collate_fn()
@@ -345,14 +357,14 @@ class DataManager(LightningDataModule):
         Affine = RandAffined(
                 keys=["image", "lm"],
                 mode=["bilinear", "nearest"],
-                prob=self.config['affine3d']["p"],
-                rotate_range=self.config['affine3d']["rotate_range"],
-                scale_range=self.config['affine3d']["scale_range"],
+                prob=self.configs['affine3d']["p"],
+                rotate_range=self.configs['affine3d']["rotate_range"],
+                scale_range=self.configs['affine3d']["scale_range"],
             )
-        if not is_excel_None(self.plan["src_dest_labels"]):
-            assert isinstance(self.plan["src_dest_labels"], Union[tuple, list]) and len(self.plan["src_dest_labels"]) == 2, "src_dest_labels must be a tuple or list of length 2"
-            orig_labels = self.plan["src_dest_labels"][0]
-            dest_labels = self.plan["src_dest_labels"][1]
+        if not is_excel_None(self.plan["remapping_train"]): # note this is a very expensive transform
+            assert isinstance(self.plan["remapping_train"], Union[tuple, list]) and len(self.plan["remapping_train"]) == 2, "remapping_train must be a tuple or list of length 2"
+            orig_labels = self.plan["remapping_train"][0]
+            dest_labels = self.plan["remapping_train"][1]
             Remap = MapLabelValued(keys = ["lm"],orig_labels=orig_labels, target_labels=dest_labels)
         else: Remap = DummyTransform(keys=["lm"])
         ResizePC= ResizeWithPadOrCropd(
@@ -378,44 +390,51 @@ class DataManager(LightningDataModule):
             )
         L.register(TorchReader())
 
-        Ld = LoadTorchDict(
-                keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
-            )
             # self.transforms_dict["Ld"] = Ld
 
         Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
             # self.transforms_dict["Ind"] = Ind
 
-        Rtr = RandCropByPosNegLabeld(
-                keys=["image", "lm"],
-                label_key="lm",
-                image_key="image",
-                fg_indices_key="lm_fg_indices",
-                bg_indices_key="lm_bg_indices",
-                image_threshold=-2600,
-                spatial_size=self.src_dims,
-                pos=self.dataset_params["fgbg_ratio"],
-                neg=1,
-                num_samples=self.plan["samples_per_file"],
-                lazy=True,
-                allow_smaller=True,
+        if self.plan["use_fg_indices"]== True:
+            Ld = LoadTorchDict(
+                keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
             )
+            Rtr = RandCropByPosNegLabeld(
+                    keys=["image", "lm"],
+                    label_key="lm",
+                    image_key="image",
+                    fg_indices_key="lm_fg_indices",
+                    bg_indices_key="lm_bg_indices",
+                    image_threshold=-2600,
+                    spatial_size=self.src_dims,
+                    pos=self.dataset_params["fgbg_ratio"],
+                    neg=1,
+                    num_samples=self.plan["samples_per_file"],
+                    lazy=True,
+                    allow_smaller=True,
+                )
+
+
             # self.transforms_dict["Rtr"] = Rtr
 
-        Rva = RandCropByPosNegLabeld(
-                keys=["image", "lm"],
-                label_key="lm",
-                image_key="image",
-                fg_indices_key="lm_fg_indices",
-                bg_indices_key="lm_bg_indices",
-                image_threshold=-2600,
-                spatial_size=self.plan["patch_size"],
-                pos=1,
-                neg=1,
-                num_samples=self.plan["samples_per_file"],
-                lazy=True,
-                allow_smaller=True,
-            )
+            Rva = RandCropByPosNegLabeld(
+                        keys=["image", "lm"],
+                        label_key="lm",
+                        image_key="image",
+                        fg_indices_key="lm_fg_indices",
+                        bg_indices_key="lm_bg_indices",
+                        image_threshold=-2600,
+                        spatial_size=self.plan["patch_size"],
+                        pos=1,
+                        neg=1,
+                        num_samples=self.plan["samples_per_file"],
+                        lazy=True,
+                        allow_smaller=True,
+                )
+        else:  # wont use fg_indices hopefully a faster execution
+            Ld = DummyTransform(keys=["image"])
+            Rtr = RandSpatialCropSamplesD (keys = ["image", "lm"], roi_size = self.src_dims, num_samples = self.plan["samples_per_file"], lazy=True)
+            Rva = RandSpatialCropSamplesD(keys = ["image", "lm"], roi_size = self.plan["patch_size"], num_samples = 1, lazy=True)
             # self.transforms_dict["Rva"] = Rva
         self.transforms_dict = {
             "Dev": Dev,
@@ -528,8 +547,9 @@ class DataManager(LightningDataModule):
             )
         return self.data_folder / (indices_subfolder)
 
-    def derive_data_folder(self):
-        data_folder = find_matching_plan(self.project.db,self.plan)
+    def derive_data_folder(self,mode):
+        key = "data_folder_{}".format(mode)
+        data_folder = find_matching_plan(self.project.db,self.plan)[key]
         data_folder = Path(data_folder)
         return data_folder
 
@@ -549,6 +569,8 @@ class DataManager(LightningDataModule):
 
     def setup(self, stage: str = None) -> None:
         # Create transforms for this split
+        print("Using fg indices: ",self.plan["use_fg_indices"])
+
         self.create_transforms()
         self.set_transforms(self.keys)
         print("Transforms are set up: ",self.keys)
@@ -646,7 +668,7 @@ class DataManager(LightningDataModule):
         return parent_folder/(self.data_folder.name)
 
     @classmethod
-    def from_folder(cls, data_folder: str, split: str, project, config: dict, batch_size=8, **kwargs):
+    def from_folder(cls, data_folder: str, split: str, project, configs: dict, batch_size=8, **kwargs):
         """
         Create a DataManager instance from a folder containing images and labels.
         
@@ -654,7 +676,7 @@ class DataManager(LightningDataModule):
             folder_path (str): Path to folder containing 'images' and 'lms' subfolders
             split (str): Either 'train' or 'valid'
             project: Project instance
-            config (dict): Configuration dictionary
+            configs (dict): Configuration dictionary
             batch_size (int): Batch size for dataloaders
             **kwargs: Additional arguments passed to DataManager constructor
             
@@ -667,7 +689,7 @@ class DataManager(LightningDataModule):
         assert split in ['train', 'valid'], "Split must be either 'train' or 'valid'"
         
         # Create instance
-        instance = cls(project=project, config=config, batch_size=batch_size, **kwargs)
+        instance = cls(project=project, configs=configs, batch_size=batch_size, **kwargs)
         
         # Override data folder
         instance.data_folder = data_folder
@@ -693,13 +715,13 @@ class DataManagerSource(DataManager):
     def __init__(
         self,
         project,
-        config: dict,
+        configs: dict,
         batch_size=8,
         **kwargs
     ):
         super().__init__(
             project,
-            config,
+            configs,
             batch_size,
             **kwargs
         )
@@ -723,7 +745,7 @@ class DataManagerSource(DataManager):
     #     parent_folder = self.project.fixed_spacing_folder
     #     data_folder = folder_name_from_list(prefix, parent_folder, spacing)
     #     return data_folder
-    #
+
     # def prepare_data(self):
     #     super().prepare_data()
     #     self.data_train = self.create_data_dicts(self.train_cases)
@@ -737,13 +759,13 @@ class DataManagerWhole(DataManagerSource):
     def __init__(
         self,
         project,
-        config: dict,
+        configs: dict,
         batch_size=8,
         **kwargs
     ):
         super().__init__(
             project,
-            config,
+            configs,
             batch_size,
             **kwargs
         )
@@ -872,13 +894,13 @@ class DataManagerPatch(DataManagerSource):
     def __init__(
         self,
         project,
-        config: dict,
+        configs: dict,
         batch_size=8,
         **kwargs
     ):
         super().__init__(
             project,
-            config,
+            configs,
             batch_size,
             **kwargs
         )
@@ -901,7 +923,7 @@ class DataManagerPatch(DataManagerSource):
         return 'DataManagerPatch instance with parameters: ' + ', '.join([f'{k}={v}' for k, v in vars(self).items() if k not in ['bboxes', 'transforms_dict']])
 
     def __repr__(self):
-        return f'DataManagerPatch(project={self.project}, config={self.config}, batch_size={self.batch_size}, fg_bg_prior={self.fg_bg_prior})'
+        return f'DataManagerPatch(project={self.project}, configs={self.configs}, batch_size={self.batch_size}, fg_bg_prior={self.fg_bg_prior})'
 
     def get_patch_files(self, bboxes, case_id: str):
         cids = np.array([bb["case_id"] for bb in bboxes])
@@ -937,7 +959,7 @@ class DataManagerPatch(DataManagerSource):
         return bboxes_out
 
     def set_tfm_keys(self):
-        if not is_excel_None(self.plan_train["src_dest_labels"]):
+        if not is_excel_None(self.plan_train["remapping_train"]):
             self.keys_tr = "RP,L,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms"
         else:
             self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,ResizePC,N,IntensityTfms"
@@ -994,7 +1016,7 @@ class DataManagerPatch(DataManagerSource):
     #     parent_folder = self.project.patches_folder
     #     plan_name = "plan" + str(self.dataset_params["plan"])
     #     source_plan_name = self.plan_train["source_plan"]
-    #     source_plan = self.config[source_plan_name]
+    #     source_plan = self.configs[source_plan_name]
     #     spacing = ast_literal_eval(source_plan["spacing"])
     #     subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
     #     patch_size = ast_literal_eval(self.plan_train["patch_size"])
@@ -1018,8 +1040,8 @@ class DataManagerBaseline(DataManagerLBD):
     It has no training augmentations. Whether the flag is True or False doesnt matter.
     Note: It inherits from LBD dataset.
     '''
-    def __init__(self, project,  config: dict,   batch_size=8, **kwargs):
-        super().__init__(project,  config, batch_size,**kwargs)
+    def __init__(self, project,  configs: dict,   batch_size=8, **kwargs):
+        super().__init__(project,  configs, batch_size,**kwargs)
         self.collate_fn = whole_collated
 
 
@@ -1041,7 +1063,7 @@ class DataManagerBaseline(DataManagerLBD):
     #     assert self.plan_train["mode"] == "baseline", f"Dataset mode must be 'baseline' for DataManagerBaseline, got '{self.plan_train['mode']}'"
     #     # return data_folder
     #     source_plan_name = self.plan_train["source_plan"]
-    #     source_plan = self.config[source_plan_name]
+    #     source_plan = self.configs[source_plan_name]
     #
     #     source_ds_type =  source_plan['mode']
     #     if source_ds_type == 'lbd':
@@ -1082,9 +1104,11 @@ if __name__ == "__main__":
     proj_litsmc = Project(project_title=project_title)
 
 
-    config_litsmc = ConfigMaker(
+    CL= ConfigMaker(
         proj_litsmc, raytune=False, configuration_filename=None
-    ).config
+    )
+    CL.setup()
+    config_litsmc = CL.configs
 
     project_title = "totalseg"
     proj_tot = Project(project_title=project_title)
@@ -1096,9 +1120,11 @@ if __name__ == "__main__":
     )
     configuration_filename = None
 
-    config_tot = ConfigMaker(
-        proj_tot, raytune=False, configuration_filename=configuration_filename
-    ).config
+    CT = ConfigMaker(
+        proj_tot, raytune=False,
+    )
+    CT.setup(6)
+    config_tot = CT.configs
 
     global_props = load_dict(proj_tot.global_properties_filename)
 
@@ -1112,9 +1138,10 @@ if __name__ == "__main__":
     config_litsmc["dataset_params"]["cache_rate"] = 0
 
 
+# %%
     D = DataManagerDual(
         project_title=proj_litsmc.project_title,
-        config=config_litsmc,
+        configs=config_tot,
         batch_size=batch_size,
         ds_type=ds_type
     )
@@ -1128,7 +1155,7 @@ if __name__ == "__main__":
     config_nodes["dataset_params"]["cache_rate"] = 0
     D = DataManagerDual(
         project_title=proj_nodes.project_title,
-        config=config_nodes,
+        configs=config_nodes,
         batch_size=batch_size,
         ds_type=ds_type
     )
@@ -1185,7 +1212,7 @@ if __name__ == "__main__":
     # Test DataManagerWhole with DataManagerDual
     D = DataManagerDual(
         project=proj_tot,
-        config=config_tot,
+        configs=config_tot,
         batch_size=4,
         ds_type=None
     )
@@ -1220,7 +1247,7 @@ if __name__ == "__main__":
     batch_size = 2
     D = DataManagerDual(
         project=proj_tot,
-        config=config_tot,
+        configs=config_tot,
         batch_size=batch_size,
         ds_type=None
     )
@@ -1254,7 +1281,7 @@ if __name__ == "__main__":
     batch_size = 2
     D = DataManagerDual(
         project=proj_tot,
-        config=config_tot,
+        configs=config_tot,
         batch_size=batch_size,
         ds_type=None
     )
@@ -1282,7 +1309,7 @@ if __name__ == "__main__":
     batch_size = 2
     D = DataManagerDual(
         project=proj_tot,
-        config=config_tot,
+        configs=config_tot,
         batch_size=batch_size,
         ds_type=None
     )

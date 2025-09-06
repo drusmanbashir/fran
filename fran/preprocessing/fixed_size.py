@@ -11,7 +11,7 @@ import torch
 from fastcore.all import  store_attr
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd, TorchWriter
-from fran.transforms.misc_transforms import MaskLabelRemapd
+from fran.transforms.misc_transforms import LabelRemapd
 from fran.utils.config_parsers import ConfigMaker
 from utilz.string import info_from_filename
 from pathlib import Path
@@ -39,7 +39,7 @@ class FixedSizeMaker(object):
     '''
     Used by 'whole' DataManager in training.
     '''
-    
+
     def __init__(self):
         pass
 
@@ -49,11 +49,11 @@ class FixedSizeMaker(object):
         spatial_size,
         output_folder_im,
         output_folder_lm,
-        src_dest_labels=None,
+        remapping=None,
     ):
 
         L = LoadTorchd(keys=["lm", "image"])
-        M = MaskLabelRemapd(keys=["lm"], src_dest_labels=src_dest_labels, use_sitk=True)
+        M = LabelRemapd(keys=["lm"], remapping_key=remapping )
         E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
         Rz = Resized(
             keys=["image", "lm"], spatial_size=spatial_size, mode=["linear", "nearest"]
@@ -81,7 +81,7 @@ class FixedSizeMaker(object):
         Del = DeleteItemsd(keys=["image", "lm"])
 
         # S1 = SaveImage(output_ext='pt',  output_dir=self.output_fldr_imgs, output_postfix=str(1), output_dtype='float32', writer=TorchWriter,separate_folder=False)
-        if src_dest_labels:
+        if remapping:
             tfms = Compose([L, M, E, Rz, S, Si, Sl, Del])
         else:
             tfms = Compose([L, E, Rz, S, Si, Sl, Del])
@@ -94,12 +94,11 @@ class FixedSizeMaker(object):
 
         return 1
 
-
 class FixedSizeDataGenerator(PatchDataGenerator):
     _default = "project"
 
     def __init__(
-        self, project, data_folder, spatial_size, src_dest_labels=None
+        self, project, data_folder, spatial_size, remapping=None
     ) -> None:
         if isinstance(spatial_size, int):
             spatial_size = [spatial_size] * 3
@@ -152,7 +151,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
                     self.spatial_size,
                     self.output_folder / ("images"),
                     self.output_folder / ("lms"),
-                    src_dest_labels=self.src_dest_labels,
+                    remapping=self.remapping,
                 )
                 for c, dicis in zip(actors, dicis)
             ]
@@ -168,35 +167,55 @@ class FixedSizeDataGenerator(PatchDataGenerator):
             ]
         )
 
-    @property
-    def output_folder(self):
+
+    def set_output_folder(self, parent_folder):
         output_folder = folder_name_from_list(
             prefix="sze",
             parent_folder=self.fixed_size_folder,
             values_list=self.spatial_size,
         )
-        return output_folder
-        # output_folder_im = output_folder/"images"
-        # output_folder_lm = output_folder/"lms"
+
+        self.output_folder = folder_name_from_list(
+            prefix="spc",
+            parent_folder=parent_folder,
+            values_list=self.spacing,
+        )
+        if self.plan_name is not None:
+            output_name = "_".join([self.output_folder.name, self.plan_name])
+            self.output_folder = Path(self.output_folder.parent / output_name)
 
 
+    def set_output_folder(self):
+        data_folder_name = self.data_folder.name
+        pat = re.compile("_plan\d+")
+        data_folder_name = pat.sub("", data_folder_name)
+
+        patches_fldr_name = "dim_{0}_{1}_{2}".format(*self.patch_size)
+        if self.output_suffix:
+            patches_fldr_name += "_" + self.output_suffix
+
+        self.output_folder = self.patches_folder / data_folder_name / patches_fldr_name
+        return self.output_folder
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.utils.common import *
     from fran.managers import Project
 
+
     P = Project(project_title="totalseg")
-    config = ConfigMaker(
+    C = ConfigMaker(
         P, raytune=False
-    ).config
+    )
+    C.setup(6)
+    conf = C.configs
     P.maybe_store_projectwide_properties()
 
 # %%
-    plan = config['plan']
-    src_dest_labels = plan['src_dest_labels']
-    if 'TSL' in src_dest_labels:
-        label_name = src_dest_labels.split('.')[-1]
+    plan = conf['plan_train']
+    remapping_train = plan['remapping_train']
+    if 'TSL' in remapping_train:
+        label_name = remapping_train.split('.')[-1]
         TSL = TotalSegmenterLabels()
         labels = getattr(TSL,label_name)
 
@@ -212,7 +231,7 @@ if __name__ == "__main__":
 # %%
     new_mapping = TSL.label_localiser
     imported_labelsets = TSL.labels("all")
-    src_dest_labels= {a: b for a, b in zip(imported_labelsets, new_mapping)}
+    remapping_train= {a: b for a, b in zip(imported_labelsets, new_mapping)}
 # %%
 
 
@@ -226,10 +245,10 @@ if __name__ == "__main__":
         project=P,
         data_folder=data_folder,
         spatial_size=spatial_size,
-        src_dest_labels=src_dest_labels,
+        remapping_train=remapping_train,
     )
     F.setup(overwrite=True)
-    
+
 # %%
     lmf = F.output_folder / ("lms")
     list(lmf.glob("*"))
@@ -264,7 +283,7 @@ if __name__ == "__main__":
                 spatial_size,
                 output_folder_im,
                 output_folder_lm,
-                src_dest_labels=src_dest_labels,
+                remapping_train=remapping_train,
             )
             for c, dicis in zip(actors, dicis)
         ]
@@ -290,14 +309,14 @@ if __name__ == "__main__":
     ImageMaskViewer([trn, t2], dtypes="im")
 # %%
 # %%
-# SECTION:-------------------- TROUBLE <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLE <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
     output_folder_lm=F.output_folder/"lms"
     output_folder_im=F.output_folder/"images"
 
 # %%
     L = LoadTorchd(keys=["lm", "image"])
-    M = MaskLabelRemapd(keys=["lm"], src_dest_labels=src_dest_labels, use_sitk=True)
+    M = MaskLabelRemapd(keys=["lm"], remapping=remapping_train, use_sitk=True)
     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
     Rz = Resized(
         keys=["image", "lm"], spatial_size=spatial_size, mode=["linear", "nearest"]
@@ -341,7 +360,7 @@ if __name__ == "__main__":
     ImageMaskViewer([image,lm])
 # %%
     # S1 = SaveImage(output_ext='pt',  output_dir=self.output_fldr_imgs, output_postfix=str(1), output_dtype='float32', writer=TorchWriter,separate_folder=False)
-    if src_dest_labels:
+    if remapping_train:
         tfms = Compose([L, M, E, Rz, S, Si, Sl, Del])
     else:
         tfms = Compose([L, E, Rz, S, Si, Sl, Del])

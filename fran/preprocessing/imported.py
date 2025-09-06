@@ -114,6 +114,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         self.lm_imported_key = "lm_imported"
         self.tnsr_keys = self.image_key, self.lm_key, self.lm_imported_key
 
+    #CODE: use create_remapping from config_parsers.py
     def create_remapping_dict(self, remapping):
 
         if remapping is None:

@@ -65,18 +65,18 @@ def merge_pt(base_labelmap: torch.Tensor,
 
 class MaskLabelRemapd(MapTransform):
     # there should be no channel dim
-    # src_dest_labels should include background label, e.g., 0 too. n_classes = length of this list.
-    def __init__(self, keys, src_dest_labels: dict, allow_missing_keys=False, use_sitk=True):
+    # remapping should include background label, e.g., 0 too. n_classes = length of this list.
+    def __init__(self, keys, remapping: dict, allow_missing_keys=False, use_sitk=True):
         super().__init__(keys, allow_missing_keys)
-        if isinstance(src_dest_labels, str):
-            src_dest_labels = ast_literal_eval(src_dest_labels)
+        if isinstance(remapping, str):
+            remapping = ast_literal_eval(remapping)
         if use_sitk==True:
-            # self.src_dest_labels = {x: y for x, y in src_dest_labels}
+            # self.remapping_train = {x: y for x, y in remapping_train}
             self.remapper = self.remapper_sitk
         else:
-            # self.src_dest_labels = src_dest_labels
+            # self.remapping_train = remapping_train
             self.remapper = self.remapper_pt
-        self.src_dest_labels = src_dest_labels
+        self.remapping_train = remapping
 
 
     def __call__(
@@ -92,11 +92,11 @@ class MaskLabelRemapd(MapTransform):
         return d
 
     def remapper_pt(self, mask):
-        n_classes = len(self.src_dest_labels)
+        n_classes = len(self.remapping_train)
         mask_out = torch.zeros(mask.shape, dtype=mask.dtype)
         mask_tmp = one_hot(mask, n_classes, 0)
         mask_reassigned = torch.zeros(mask_tmp.shape, device=mask.device)
-        for src,dest in self.src_dest_labels.items():
+        for src,dest in self.remapping_train.items():
             print(src)
             # src, dest = src_des[0], src_des[1]
             mask_reassigned[dest] += mask_tmp[src]
@@ -105,11 +105,17 @@ class MaskLabelRemapd(MapTransform):
             mask_out[torch.isin(mask_reassigned[x], 1.0)] = x
         return mask_out 
 
+
+    def remapper_pt(self,lm):
+        L = LabelRemap()
+
+
+
     def remapper_sitk(self,lm):
         lm_dtype = lm.dtype
         meta = lm.meta
         lm_sitk= sitk.GetImageFromArray(lm.cpu().numpy())
-        lm_sitk = relabel(lm_sitk, self.src_dest_labels)
+        lm_sitk = relabel(lm_sitk, self.remapping_train)
         lm_out   = sitk.GetArrayFromImage(lm_sitk)
         lm_out = MetaTensor(lm_out, meta=meta, dtype=lm_dtype)
         return lm_out

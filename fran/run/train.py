@@ -8,7 +8,7 @@ _translations = {
     "bs": "dataset_params,bs",
     "fold": "dataset_params,fold",
     "lr": "model_params,lr",
-    "labels": "dataset_params,src_dest_labels",
+    "labels": "dataset_params,remapping_train",
     "arch": "model_params,arch",
     "compiled": "model_params,compiled",
 }

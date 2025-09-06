@@ -11,7 +11,7 @@ from monai.transforms.utils import is_positive
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
-from utilz.string import ast_literal_eval, info_from_filename
+from utilz.string import ast_literal_eval, headline, info_from_filename
 
 from fran.managers.db import add_plan_to_db, find_matching_plan
 from fran.preprocessing.preprocessor import (Preprocessor,
@@ -19,6 +19,7 @@ from fran.preprocessing.preprocessor import (Preprocessor,
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import DummyTransform, FgBgToIndicesd2, LabelRemapSITKd
 from fran.utils.config_parsers import ConfigMaker, is_excel_None
+from fran.utils.folder_names import folder_names_from_plan
 
 MIN_SIZE = 32  # min size in a single dimension of any image
 
@@ -44,8 +45,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
        - If `output_folder` is provided: Uses the specified path directly
        - If `output_folder` is None: Automatically generates path under project's lbd_folder
          - Base path: "{project.lbd_folder}/spc_{spacing[0]}_{spacing[1]}_{spacing[2]}"
-         - If `folder_suffix` provided: Appends suffix to folder name
-         - Example: "/project/lbd/spc_1.5_1.5_1.5_plan9" (with folder_suffix="plan9")
 
     3. **Folder Structure Created:**
        - `{output_folder}/images/` - Processed image files (.pt format)
@@ -63,7 +62,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self,
         project,
         plan,
-        plan_name: str = None,
         data_folder=None,
         output_folder=None,
         mask_label=None,
@@ -75,21 +73,19 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         Args:
             project: Project instance containing paths and configuration
             plan: Processing plan dictionary containing spacing and other parameters
-            folder_suffix: Optional suffix to append to output folder name
             data_folder: Path to input data folder. If None, auto-generated from spacing
             output_folder: Path to output folder. If None, auto-generated under project.lbd_folder
             mask_label: Specific label value to use for cropping. If None, uses all labels >0
         """
 
-        existing_fldr = find_matching_plan(project.db, plan)
+        existing_fldr = find_matching_plan(project.db, plan)['data_folder_lbd']
         if existing_fldr is not None:
-            print(
+            headline(
                 "Plan folder already exists in db: {}.\nWill use existing folder to add data".format(
                     existing_fldr
                 )
             )
             output_folder = existing_fldr
-        self.plan_name = plan_name
         self.plan = plan
         self.fg_indices_exclude = listify(plan.get("fg_indices_exclude"))
         self.expand_by = expand_by
@@ -106,42 +102,23 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         Preprocessor.__init__(
             self,
             project=project,
-            spacing=plan.get("spacing"),
+            plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
         )
 
     def create_data_df(self):
-        super().create_data_df()
-        remap = self.plan["remapping"]
-        self.df = self.df.assign(remapping=[remap] * len(self.df))
+        Preprocessor.create_data_df(self)
+        remapping = self.plan.get("remapping")
+        self.df = self.df.assign(remapping=[remapping] * len(self.df))
 
     def set_input_output_folders(self, data_folder, output_folder):
-        if data_folder is None:
-            self.set_folders_from_spacing(self.spacing)
-        else:
-            self.data_folder = Path(data_folder)
+        self.data_folder = Path(data_folder)
         if output_folder is None:
-            self.set_output_folder(self.project.lbd_folder)
+            lbd_subfolder= folder_names_from_plan(self.plan)['lbd_folder']
+            self.output_folder = self.project.lbd_folder / (lbd_subfolder)
         else:
             self.output_folder = Path(output_folder)
-
-    def set_folders_from_spacing(self, spacing):
-        self.data_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=self.fixed_spacing_folder,
-            values_list=spacing,
-        )
-
-    def set_output_folder(self, parent_folder):
-        self.output_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=parent_folder,
-            values_list=self.spacing,
-        )
-        if self.plan_name is not None:
-            output_name = "_".join([self.output_folder.name, self.plan_name])
-            self.output_folder = Path(self.output_folder.parent / output_name)
 
     def create_output_folders(self):
         maybe_makedirs(
@@ -159,10 +136,10 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         assert len(self.df) > 0, "No new cases to process"
         self.create_output_folders()
         self.process_files()
-        add_plan_to_db(self.plan, self.output_folder, db_path=self.project.db)
+        add_plan_to_db(self.plan, data_folder_lbd = self.output_folder, db_path=self.project.db)
 
     def setup(self, device="cpu", overwrite=True):
-        Preprocessor.create_data_df(self)
+        self.create_data_df()
         device = resolve_device(device)
         print("Processing on ", device)
         self.register_existing_files()
@@ -183,6 +160,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             EnsureChannelFirstd(keys=keys),
             ToDeviced(device=device, keys=keys),
             FgBgToIndicesd2(keys=keys),
+
         ]
         if self.mask_label is not None:
             transforms.append(
@@ -195,7 +173,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         return Compose(transforms)
 
     def create_transforms(self, device):
-        margin = [int(self.expand_by / sp) for sp in self.spacing]
+        margin = [int(self.expand_by / sp) for sp in self.plan['spacing'] ]
         if self.mask_label is None:
             select_fn = is_positive
         else:
@@ -205,6 +183,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             keys=self.tnsr_keys,
             source_key=self.lm_key,
             select_fn=select_fn,
+            allow_smaller=True,
             margin=margin,
         )
         self.D = ToDeviced(device=device, keys=self.tnsr_keys)
@@ -220,7 +199,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         if self.plan["remapping"] is not None:
             self.R = MapLabelValueD(keys=[self.lm_key], orig_labels =self.plan["remapping"][0], target_labels=self.plan["remapping"][1])
         else:
-            self.R = DummyTransform()
+            self.R = DummyTransform(keys=[self.lm_key])
         # )
             # keys=[self.lm_key], remapping_key="remapping"
         # )  # This loads and remaps sitk image. Meta filename is lost!
@@ -286,11 +265,11 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
     def create_properties_dict(self):
         resampled_dataset_properties = Preprocessor.create_properties_dict(self)
         ignore_keys = [
-            "src_dest_labels",
+            "remapping_train",
             "mode",
             "spacing",
             "samples_per_file",
-            "src_dest_labels",
+            "remapping_train",
         ]
         for key in self.plan.keys():
             if not key in ignore_keys:
@@ -419,7 +398,7 @@ if __name__ == "__main__":
         project=P,
         plan=plan,
         mask_label=None,
-        plan_name=plan_str,
+        output_folder_suffix=plan_str,
     )
 
 # %%
@@ -478,8 +457,8 @@ if __name__ == "__main__":
         print(row)
         tr()
 # %%
-        remap = L.plan["remapping"]
-        L.df = L.df.assign(remapping=[remap] * len(L.df))
+        remap = I.L.plan["remapping"]
+        I.L.df = I.L.df.assign(remapping=[remap] * len(I.L.df))
 
 
 # %%

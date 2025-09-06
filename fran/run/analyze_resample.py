@@ -1,7 +1,9 @@
 # %%
+from utilz.string import headline
 import argparse
 import ast
 import shutil
+from fran.managers.db import find_matching_plan
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.utils.config_parsers import ConfigMaker
 from fran.managers import Project
@@ -55,10 +57,12 @@ class PreprocessingManager:
         self.assimilate_args(args)
         P = Project(project_title=args.project_title)
         self.project = P
-        conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+        C = ConfigMaker(P, raytune=False, configuration_filename=None)
+        C.setup(args.plan_num)
+
+        conf = C.configs
         # args.overwrite=False
-        self.plan_name = args.plan_name
-        self.plan = conf[args.plan_name]
+        self.plan = conf["plan_train"]
         # self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
         #
@@ -104,18 +108,21 @@ class PreprocessingManager:
 
         self.R = ResampleDatasetniftiToTorch(
             project=self.project,
-            spacing=self.plan["spacing"],
+            plan = self.plan,
             data_folder=self.project.raw_data_folder,
         )
 
         self.R.setup(overwrite=overwrite)
         self.R.process()
+        self.resample_output_folder = self.R.output_folder
 
     def generate_lbd_dataset(self, overwrite=False,device="cpu"):
+        resampled_data_folder = find_matching_plan(self.project.db, self.plan)['data_folder_source']
+        headline("LBD dataset will be based on resampled dataset output_folder {}".format(resampled_data_folder))
         self.L = LabelBoundedDataGenerator(
             project=self.project,
             plan=self.plan,
-            plan_name=self.plan_name,
+            data_folder=resampled_data_folder,
         )
         self.L.setup(overwrite=overwrite,device=device)
         self.L.process()

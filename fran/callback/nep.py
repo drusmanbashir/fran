@@ -25,7 +25,7 @@ except:
 
 from fran.utils.colour_palette import colour_palette
 
-_ast_keys = ["dataset_params,patch_size", "metadata,src_dest_labels"]
+_ast_keys = ["dataset_params,patch_size", "metadata,remapping_train"]
 _immutable_keys = [
     "fold"
 ]  # once set in a particular runs these will not be changed without corrupting the run

@@ -1,5 +1,4 @@
 # %%
-import lightning.pytorch as pl
 import torch
 from fran.architectures.nnunet import Generic_UNet_PL
 
@@ -17,7 +16,7 @@ tr = ipdb.set_trace
 
 
 from fran.architectures.unetcraig import nnUNetCraig
-from fran.utils.config_parsers import make_patch_size
+from fran.utils.config_parsers import ConfigMaker, make_patch_size
 
 
 def get_batch_size(
@@ -111,7 +110,7 @@ def create_model_from_conf_nnUNetCraig(model_params, deep_supervision):
 
 def create_model_from_conf(model_params, plan, deep_supervision=True):
     # if 'out_channels' not in model_params:
-    #         model_params["out_channels"] =  out_channels_from_dict_or_cell(model_params['src_dest_labels'])
+    #         model_params["out_channels"] =  out_channels_from_dict_or_cell(model_params['remapping_train'])
 
     if "patch_size" not in plan.keys():
         plan["patch_size"] = make_patch_size(plan["patch_dim0"], plan["patch_dim1"])
@@ -131,7 +130,7 @@ def create_model_from_conf(model_params, plan, deep_supervision=True):
         raise NotImplementedError
 
     if model_params["compiled"] == True:
-        model = torch.compile(model)
+        model = torch.compile(model, dynamic=True)
     return model
 
 
@@ -227,9 +226,10 @@ def create_model_from_conf_nnUNet(model_params, plan, deep_supervision):
 
 def create_model_from_conf_swinunetr(model_params, plan, deep_supervision=None):
     model = SwinUNETR(
-        plan["patch_size"],
-        model_params["in_channels"],
-        model_params["out_channels"],
+        in_channels=model_params["in_channels"],
+        out_channels=model_params["out_channels"],
+        # patch_size = plan["patch_size"],
+        
     )
     return model
 
@@ -254,15 +254,29 @@ def create_model_from_conf_unet(model_params, plan):
 if __name__ == "__main__":
     import torch
     from torchinfo import summary
+    from fran.utils.common import *
+    from fran.managers.project import Project
 
+    P = Project(project_title="nodes")
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    config = C.config
+# %%
     patch_size = [192, 192, 96]
     x = torch.rand(1, 1, 192, 192, 96)
     model_params = {"in_channels": 1, "out_channels": 3}
     dataset_params = {"patch_size": patch_size}
     deep_supervision = True
+    plan = config["plan_train"]
+    net = create_model_from_conf_swinunetr(model_params, plan, deep_supervision)
+    img = torch.rand(1, 1, 128, 128, 96)
+    pred = net(img)
+# %%
     pool_op_kernel_sizes = [[2, 2, 1], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     pool_op_kernel_sizes = [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     # net = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
+    model_params = config["model_params"]
+    dataset_params=config["dataset_params"]
+    deep_supervision = True
     net2 = create_model_from_conf_nnUNet(model_params, dataset_params, deep_supervision)
     x = x.to("cuda")
     net2.to("cuda")

@@ -457,8 +457,11 @@ class TorchReader(ImageReader):
         img_: list = []
         filenames: Sequence[PathLike] = ensure_tuple(data)
         for name in filenames:
+            try:
                 img = torch.load(name,weights_only=False, **kwargs)
                 img_.append(img)
+            except Exception as e:
+                raise RuntimeError(f"Failed to load {name}: {e}")
         return img_ if len(img_) > 1 else img_[0]
 
 

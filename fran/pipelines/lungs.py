@@ -16,7 +16,7 @@ from fran.utils.config_parsers import ConfigMaker
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
-    P = Project("lidc")
+    P = Project("lidc2")
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 
 # %%
@@ -91,18 +91,20 @@ if __name__ == '__main__':
 
 # %%
 #SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
-    overwrite = True
+
+
+    overwrite=False
+    I.plan_name= "jj"
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
-        if "imported_folder" not in plans.keys():
-            I.generate_lbd_dataset(overwrite=False)
+        if plan['imported_folder'] is None:
+            I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
-                imported_labels=plans["imported_labels"],
-                imported_folder=plans["imported_folder"],
-                overwrite=overwrite)
+                imported_labels=plan["imported_labels"],
+                imported_folder=plan["imported_folder"],)
 # %%
 
     L = LabelBoundedDataGeneratorImported( project=P,
