@@ -14,7 +14,7 @@ def checkpoint_from_model_id(model_id, sort_method="last"): #CODE: Move this fun
         raise Exception("No project found {}".format(model_id))
     project_fldr = project_fldrs[0]/("checkpoints")
 
-    list_of_files = list(project_fldr.glob("*"))
+    list_of_files = [f for f in project_fldr.glob("*") if f.is_file()]
     if sort_method == "last":
         ckpt = max(list_of_files, key=lambda p: p.stat().st_mtime)
     elif sort_method == "best":
