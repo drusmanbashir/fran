@@ -1,0 +1,5 @@
+matplotlib==3.6.1
+kiwisolver==1.4.8
+itk==5.4.2
+imageio==2.37.0
+
