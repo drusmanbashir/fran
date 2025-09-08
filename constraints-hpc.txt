@@ -10,3 +10,4 @@ itk-io==5.4.4
 itk-numerics==5.4.4
 itk-registration==5.4.4
 itk-segmentation==5.4.4
+SimpleITK==5.4.2
