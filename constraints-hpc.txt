@@ -1,5 +1,12 @@
 matplotlib==3.6.1
 kiwisolver==1.4.8
-itk==5.4.2
 imageio==2.37.0
 
+# ITK family — keep these aligned
+itk==5.4.4
+itk-core==5.4.4
+itk-filtering==5.4.4
+itk-io==5.4.4
+itk-numerics==5.4.4
+itk-registration==5.4.4
+itk-segmentation==5.4.4
