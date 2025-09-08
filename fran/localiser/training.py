@@ -1,6 +1,7 @@
 # %%
 from inference import get_model
 import supervision as sv
+import SimpleITK as sitk
 from torch.nn.functional import interpolate
 import torchvision.transforms as T
 from torchvision.io import read_image
