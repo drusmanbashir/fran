@@ -19,7 +19,7 @@ dependencies = [
   "label_analysis @ git+https://github.com/drusmanbashir/label_analysis.git@main",
   "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main",
   "torchinfo",
-  "torchio==0.20.24",
+  "torchio==0.20.22",
   "batchgenerators>=0.25",
   "nnunet",
   "connected_components_3d>=3.17.0",
