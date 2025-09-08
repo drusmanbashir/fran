@@ -210,10 +210,10 @@ def maybe_ddp(devices):
         return "auto"
     ip = get_ipython()
     if ip:
-        print("Using interactive-shell ddp strategy")
+        headline("Using interactive-shell ddp strategy")
         return "ddp_notebook"
     else:
-        print("Using non-interactive shell ddp strategy")
+        headling("Using non-interactive shell ddp strategy")
         return "ddp"
 
 

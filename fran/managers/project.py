@@ -41,7 +41,7 @@ from utilz.string import info_from_filename, str_to_path
 tr = ipdb.set_trace
 from pathlib import Path
 
-from fran.managers.db import COLUMNS_CRITICAL
+from fran.managers.db import COLUMNS_ALL
 
 
 def subscript_generator():
@@ -263,12 +263,13 @@ class Project(DictToAttr):
             )
 
     def _create_plans_table(self):
-        ddl_cols = ", ".join(f'"{c}" TEXT' for c in COLUMNS_CRITICAL + ["data_folder"])
+        all_cols = ", ".join(COLUMNS_ALL)
+
         sql = f"""
         CREATE TABLE IF NOT EXISTS master_plans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TEXT NOT NULL,
-            {ddl_cols}
+            {all_cols}
         )"""
         with sqlite3.connect(self.db) as conn:
             conn.execute(sql)

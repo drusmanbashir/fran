@@ -453,8 +453,8 @@ class ConfigMaker:
 
     def add_output_labels(self):
         out_labels= compute_out_labels(self.configs["plan_train"],self.project.global_properties)
-        out_labels = [0] + out_labels
         out_labels = set(out_labels)
+        out_labels.update([0])
         print("labels output by Dataloaders, including background: ", out_labels)
         self.configs['plan_train']["labels_all"] = out_labels
         print("-" * 20)

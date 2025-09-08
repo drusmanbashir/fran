@@ -181,11 +181,18 @@ def case_analyzer_wrapper(
     if get_voxels == True:
         voxels = S.get_bbox_only_voxels().float()
         S.properties['numel_fg']= voxels.numel()
-        S.properties["mean_fg"] = int(voxels.mean())
-        S.properties["min_fg"] = int(voxels.min())
-        S.properties["max_fg"] = int(voxels.max())
-        S.properties["std_fg"] = int(voxels.std())
-        S.properties[percentile_range_to_str(percentile_range)] = np.percentile(
+        if voxels.numel() == 0:
+            S.properties["mean_fg"] = np.nan
+            S.properties["min_fg"] = np.nan
+            S.properties["max_fg"] = np.nan
+            S.properties["std_fg"] = np.nan
+            S.properties[percentile_range_to_str(percentile_range)] = np.nan
+        else:
+            S.properties["mean_fg"] = int(voxels.mean())
+            S.properties["min_fg"] = int(voxels.min())
+            S.properties["max_fg"] = int(voxels.max())
+            S.properties["std_fg"] = int(voxels.std())
+            S.properties[percentile_range_to_str(percentile_range)] = np.percentile(
             voxels, percentile_range
         )
     case_["properties"] = S.properties
@@ -208,6 +215,34 @@ if __name__ == "__main__":
 
     ss = "SELECT ds, case_id, label_symlink FROM datasources" 
     raw_info = load_dict(P2.raw_dataset_properties_filename)
+# %%
+
+
+    return_voxels=True
+    num_processes=8
+    multiprocess=True
+    debug=True
+    args_list = [
+            [case_tuple,  ds.bg_label, return_voxels]
+            for case_tuple in ds.new_cases
+        ]
+
+# %%
+    case_tuple = ds.new_cases[0]
+    ds.outputs = multiprocess_multiarg(
+        func=case_analyzer_wrapper,
+        arguments=args_list,
+        num_processes=num_processes,
+        multiprocess=multiprocess,
+        debug=debug,
+        logname = "dd.log"
+        )
+# %%
+    case_analyzer_wrapper(case_files_tuple = case_tuple, bg_label=0)
+# %%
+#SECTION:-------------------- TS
+
+
 # %%
     cases = []
     res= P.sql_query(ss)
@@ -234,7 +269,8 @@ if __name__ == "__main__":
         )
     aa = A()
 # %%
-    P = Project("tmp")
+    P = Project("lidc")
+    P.create("lungs")
     M = MultiCaseAnalyzer(P)
     M.process_new_cases(debug=True, num_processes=2, multiprocess=True)
     M.dump_to_h5f()
@@ -286,9 +322,9 @@ if __name__ == "__main__":
     M = GlobalProperties(proj_defaults, bg_label=0)
 
 # %%
-    debug = True
+    debug_ = True
     M.get_nii_bbox_properties(
-        num_processes=1, debug=debug, overwrite=True, multiprocess=True
+        num_processes=1, debug=debug_, overwrite=True, multiprocess=True
     )
 
 # %%

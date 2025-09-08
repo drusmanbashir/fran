@@ -17,7 +17,19 @@ from fran.utils.config_parsers import ConfigMaker
 if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("lidc2")
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+
+
+    # P._create_plans_table()
+    P.add_data([_DS().lidc2])
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C.setup()
+    C.plans
+    conf = C.configs
+    print(conf["model_params"])
+
+    plan = conf['plan_train']
+    pp(plan)
+
 
 # %%
 #SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
@@ -38,7 +50,9 @@ if __name__ == '__main__':
 # %%
 #SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
 
+
     parser = argparse.ArgumentParser(description="Resampler")
+
     parser.add_argument("-t", help="project title", dest="project_title")
     parser.add_argument(
         "-n",
@@ -75,18 +89,17 @@ if __name__ == '__main__':
 
     # args.num_processes = 1
     args.debug = True
-    args.plan_name = "plan2"
-    args.project_title = "nodes"
+    args.plan_num = 2
+    args.plan = plan
+    args.project_title = "lidc2"
 
-
-
-    plans = conf[args.plan_name]
-#SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
-    I = PreprocessingManager(args)
-    # I.spacing =
 # %%
+    if not "labels_all" in P.global_properties.keys():
+        P.set_lm_groups(plan["lm_groups"])
+        P.maybe_store_projectwide_properties(overwrite=True)
 #SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
-    I.resample_dataset(overwrite=True)
+    I = PreprocessingManager(args)
+    I.resample_dataset(overwrite=False)
     I.R.get_tensor_folder_stats()
 
 # %%

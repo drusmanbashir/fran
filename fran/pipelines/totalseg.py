@@ -25,14 +25,15 @@ if __name__ == '__main__':
 
     plan = conf['plan_train']
     pp(plan)
+
     # plan['mode']
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
 
 # %%
 
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-    device_id = [1]
-    devices = 1
+    devices = 2
+    devices= [1]
     bs = 4
 
     run_name =None
@@ -57,7 +58,7 @@ if __name__ == '__main__':
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
-        devices=device_id,
+        devices=devices,
         epochs=600 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,

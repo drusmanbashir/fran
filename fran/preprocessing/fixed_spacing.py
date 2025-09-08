@@ -251,14 +251,17 @@ class ResampleDatasetniftiToTorch(Preprocessor):
         clip_center=False,
     ):
 
-        existing_fldr = find_matching_plan(project.db, plan)['data_folder_source']
-        if existing_fldr is not None:
+        try:
+            existing_fldr = find_matching_plan(project.db, plan)['data_folder_source']
+        # if existing_fldr is not None:
             print(
                 "Plan folder already exists in db: {}.\nWill use existing folder to add data".format(
                     existing_fldr
                 )
             )
             output_folder = existing_fldr
+        except:
+            pass
         self.clip_center = clip_center
         self.half_precision = half_precision
         super().__init__(

@@ -1,6 +1,7 @@
 # %%
 import shutil
 
+from fastcore.all import in_ipython
 import ipdb
 from label_analysis.merge import pbar
 from lightning.pytorch import Trainer as TrainerL
@@ -188,42 +189,49 @@ class Trainer:
         return cbs, logger, profiler
 
     def set_strategy(self, devices):
-        self.strategy = maybe_ddp(devices)
-        if type(devices) == int and devices > 1:
-            self.sync_dist = True
-        else:
-            self.sync_dist = False
-
-    def set_strategy(self, devices):
-        # normalize device count & shape
-        if isinstance(devices, int):
-            ndev, norm_devices = devices, devices
+        """
+        Normalize devices and pick a Lightning strategy.
+        Returns (strategy_string_or_None, normalized_devices:int, sync_dist:bool)
+        """
+        # normalize devices
+        if devices in (-1, "auto", None):
+            n_gpus = torch.cuda.device_count()
+            norm_devices = max(1, n_gpus)
+        elif isinstance(devices, int):
+            norm_devices = max(1, devices)
         elif isinstance(devices, (list, tuple)):
-            ndev = len(devices)
-            norm_devices = ndev if ndev > 1 else 1  # 1 instead of [0]
+            norm_devices = max(1, len(devices))
         else:
-            raise ValueError("devices must be int or list/tuple")
+            raise ValueError("devices must be int, list/tuple, -1, 'auto', or None")
 
-        if ndev <= 1:
-            self.strategy = "auto"  # single process
-            self.sync_dist = False
+        # detect notebook (safer than truthy get_ipython alone)
+
+        if norm_devices <= 1:
+            strategy = "auto"  # let PL pick single-process defaults
+            sync_dist = False
         else:
-            self.strategy = "ddp"  # multiprocessing
-            self.sync_dist = True
+            if in_ipython():
+                # works in Jupyter; avoid fork-based DDP
+                strategy = "ddp_notebook"
+            else:
+                # standard multi-GPU
+                strategy = "ddp"
+            sync_dist = True
 
+        # store and return
         self.devices = norm_devices
+        self.sync_dist = sync_dist
+        self.strategy = strategy
 
     def maybe_alter_configs(self, batch_size, batchsize_finder, compiled):
-        if batch_size:
-            self.configs["dataset_params"]["batch_size"] = batch_size
-            # batch_size = self.configs["dataset_params"]["batch_size"]
-        if (
-            batchsize_finder == True
-        ):  # note even if you set a batchsize, that will be overridden by this.
-            batch_size = self.heuristic_batch_size()
-            self.configs["dataset_params"]["batch_size"] = batch_size
-        if compiled:
-            self.configs["model_params"]["compiled"] = compiled
+        if batch_size is not None:
+            self.configs["dataset_params"]["batch_size"] = int(batch_size)
+
+        if batchsize_finder is True:
+            self.configs["dataset_params"]["batch_size"] = self.heuristic_batch_size()
+
+        if compiled is not None:
+            self.configs["model_params"]["compiled"] = bool(compiled)
 
     def qc_configs(self, configs, project):
         ratios = configs["dataset_params"]["fgbg_ratio"]
@@ -241,17 +249,18 @@ class Trainer:
             ), "If no list is provided, fgbg_ratio must be an integer"
 
     def heuristic_batch_size(self):
-        ram = psutil.virtual_memory()[3] / 1e9
-        if ram < 15:
+        total_gb = psutil.virtual_memory().total / 1e9
+        if total_gb < 15:
             return 6
-        elif ram > 15 and ram < 32:
+        elif total_gb < 32:
             return 8
-        elif ram > 32 and ram < 48:
+        elif total_gb < 48:
             return 20
         else:
             return 48
 
     def init_dm(self):
+
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
         D = DataManagerDual(
@@ -306,6 +315,7 @@ class Trainer:
             self.ckpt,
             project_title=self.project.project_title,
             batch_size=batch_size,
+            map_location = "cpu",
         )
         if batch_size:
             # project_title = self.project.project_title
@@ -353,7 +363,7 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     # CODE: Project or configs should be the only arg not both
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
@@ -386,16 +396,16 @@ if __name__ == "__main__":
     neptune = True
     tags = []
     description = f"Partially trained up to 100 epochs"
-    # %%
-    # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# %%
+# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     run_name = run_tsl
 
     run_name = run_none
     conf = conf_tsl
     proj = "totalseg"
-    # %%
+# %%
     Tm = Trainer(proj, conf, run_name)
-    # %%
+# %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -407,27 +417,27 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-    # %%
+# %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-    # %%
+# %%
     Tm.fit()
     # model(inputs)
-    # %%
+# %%
 
     conf["dataset_params"]["ds_type"]
     conf["dataset_params"]["cache_rate"]
-    # %%
-    # SECTION:-------------------- LITSMC -------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# %%
+# SECTION:-------------------- LITSMC -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     run_name = run_litsmc
     run_name = run_none
     conf = conf_litsmc
     proj = "litsmc"
     conf["dataset_params"]["cache_rate"] = 0.5
-    # %%
+# %%
     Tm = Trainer(proj, conf, run_name)
-    # %%
+# %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -439,22 +449,22 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-    # %%
+# %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-    # %%
+# %%
     Tm.fit()
     # model(inputs)
-    # %%
-    # SECTION:-------------------- NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# %%
+# SECTION:-------------------- NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     run_name = run_nodes
     run_name = None
     conf = conf_nodes
     proj = "nodes"
 
-    # %%
+# %%
     Tm = Trainer(proj, conf, run_name)
-    # %%
+# %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -466,13 +476,13 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-    # %%
+# %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()
-    # %%
+# %%
 
-    # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm.D.prepare_data()
     Tm.D.setup()
@@ -481,7 +491,7 @@ if __name__ == "__main__":
     dlv = Tm.D.valid_dataloader()
     iteri = iter(dl)
     b = next(iteri)
-    # %%
+# %%
 
     D = Tm.D
     dlt = D.train_dataloader()
@@ -489,7 +499,7 @@ if __name__ == "__main__":
     ds = Tm.D.valid_ds
     ds = Tm.D.train_ds
     dat = ds[0]
-    # %%
+# %%
 
     cache_rate = 0
     ds_type = Tm.configs["dataset_params"]["ds_type"]
@@ -504,20 +514,20 @@ if __name__ == "__main__":
     D.prepare_data()
     D.setup()
 
-    # %%
+# %%
 
     for i, bb in pbar(enumerate(ds)):
         lm = bb[0]["lm"]
         print(lm.meta["filename_or_obj"])
-    # %%
+# %%
     ds = Tm.D.train_ds
     dici = ds.data[0]
     dat = ds[0]
-    # %%
+# %%
     tm = Tm.D.train_manager
 
     tm.tfms_list
-    # %%
+# %%
 
     dici = tm.tfms_list[0](dici)
     dici = tm.tfms_list[1](dici)
@@ -527,40 +537,40 @@ if __name__ == "__main__":
     tm.tfms_list[4]
     dici = tm.tfms_list[4](dici)
 
-    # %%
+# %%
     dl = Tm.D.train_dataloader()
     dlv = Tm.D.valid_dataloader()
     iteri = iter(dlt)
     # Tm.N.model.to('cpu')
-    # %%
+# %%
     while iter:
         batch = next(iteri)
         print(batch["image"].dtype)
-    # %%
-    # %%
+# %%
+# %%
     pred = Tm.N.model(batch["image"])
-    # %%
+# %%
 
     n = 1
     im = batch["image"][n][0].clone()
     pr = pred[0][n][3].clone()
     lab = batch["lm"][n][0].clone()
     lab_bin = (lab > 1).float()
-    # %%
+# %%
     lab = lab.permute(2, 1, 0)
     im = im.permute(2, 1, 0)
     pr = pr.permute(2, 1, 0)
-    # %%
+# %%
     ImageMaskViewer([im.detach().cpu(), pr.detach().cpu()])
     ImageMaskViewer([im.detach().cpu(), lab_bin.detach().cpu()])
-    # %%
+# %%
     outfldr = Path("/s/fran_storage/misc")
 
-    # %%
+# %%
     torch.save(im, outfldr / "im_no_tum.pt")
     torch.save(pr, outfldr / "pred_no_tum.pt")
     torch.save(lab, outfldr / "lab_no_tum.pt")
-    # %%
+# %%
     while iteri:
         bb = next(iteri)
         lm = bb["lm"]
@@ -575,7 +585,7 @@ if __name__ == "__main__":
             tr()
             print("There are labels less than 0.")
             print(bb["image"].meta["filename_or_obj"])
-    # %%
+# %%
     fns = [
         "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s1210.pt",
         "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0851.pt",
@@ -586,25 +596,25 @@ if __name__ == "__main__":
     for fn in fns:
         lm = torch.load(fn)
         print(lm.unique())
-    # %%
+# %%
     pred = Tm.N(bb["image"])
-    # %%
+# %%
     [x.shape for x in pred]
-    # %%
+# %%
     i = 52
     dd = ds.data[i]
 
-    # %%
+# %%
     im_fn = dd["image"]
     lm_fn = dd["lm"]
     im = torch.load(im_fn)
     lm = torch.load(lm_fn)
     im.shape
     lm.shape
-    # %%
+# %%
     for i, id in enumerate(ds):
         print(i)
-    # %%
+# %%
     dici = ds[7]
     dici = ds.data[7]
     dici = ds.transform(dici)
@@ -656,14 +666,14 @@ if __name__ == "__main__":
     )
 
     Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
-    # %%
+# %%
     D.prepare_data()
     D.setup(None)
-    # %%
+# %%
     dici = D.data_train[0]
     D.valid_ds.data[0]
 
-    # %%
+# %%
     dici = D.valid_ds.data[7]
     dici = L(dici)
     dici = Ind(dici)
@@ -672,15 +682,15 @@ if __name__ == "__main__":
     dici = D.transforms_dict["Rva"](dici)
     dici = Re(dici[1])
 
-    # %%
+# %%
     ImageMaskViewer([dici[0]["image"][0], dici[0]["lm"][0]])
 
-    # %%
+# %%
     Ld = LoadDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
     dici = Ld(dici)
-    # %%
+# %%
 
-    # %%
+# %%
 
     fn = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/images/lits_115.pt"
     fn2 = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/lms/lits_115.pt"
@@ -688,26 +698,26 @@ if __name__ == "__main__":
     tt2 = torch.load(fn2)
     ImageMaskViewer([tt, tt2])
 
-    # %%
+# %%
     dl = Tm.D.train_dataloader()
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
     iteri2 = iter(dl2)
-    # %%
+# %%
     while iteri:
         batch = next(iteri)
         print(batch["image"].shape)
 
-    # %%
+# %%
 
     Re = ResizeWithPadOrCropd(
         keys=["image", "lm"],
         spatial_size=D.dataset_params["patch_size"],
         lazy=False,
     )
-    # %%
+# %%
     dici = Re(dici)
-    # %%
+# %%
     dici = ds[1]
     dici = ds.data[0]
     keys_tr = "L,E,Ind,Rtr,F1,F2,A,Re,N,I"
@@ -715,24 +725,24 @@ if __name__ == "__main__":
     keys_tr = keys_tr.split(",")
     keys_val = keys_val.split(",")
 
-    # %%
+# %%
     dici = ds.data[5].copy()
     for k in keys_val[:3]:
         tfm = D.transforms_dict[k]
         dici = tfm(dici)
-    # %%
+# %%
 
     ind = 0
     dici = ds.data[ind]
     ImageMaskViewer([dici["image"][0], dici["lm"][0]])
     ImageMaskViewer([dici[ind]["image"][0], dici[ind]["lm"][0]])
-    # %%
+# %%
     tfm2 = D.transforms_dict[keys_tr[5]]
 
-    # %%
+# %%
     for didi in dici:
         dd = tfm2(didi)
-    # %%
+# %%
     idx = 0
     ds.set_bboxes_labels(idx)
     if ds.enforce_ratios == True:
@@ -746,7 +756,7 @@ if __name__ == "__main__":
 
     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
     dici = E(dici)
-    # %%
+# %%
     # img = ds.create_metatensor(img_fn)
     # label = ds.create_metatensor(label_fn)
     dici = ds.data[3]
@@ -763,57 +773,57 @@ if __name__ == "__main__":
 
     im.shape
 
-    # %%
+# %%
 
-    # %%
+# %%
     b = next(iteri2)
 
     b["image"].shape
     m = Tm.N.model
     N = Tm.N
 
-    # %%
+# %%
     for x in range(len(ds)):
         casei = ds[x]
         for a in range(len(casei)):
             print(casei[a]["image"].shape)
-    # %%
+# %%
     for i, b in enumerate(dl):
         print("\----------------------------")
         print(b["image"].shape)
         print(b["label"].shape)
-    # %%
+# %%
     # b2 = next(iter(dl2))
     batch = b
     inputs, target, bbox = batch["image"], batch["lm"], batch["bbox"]
 
     [pp(a["filename"]) for a in bbox]
-    # %%
+# %%
     preds = N.model(inputs.cuda())
     pred = preds[0]
     pred = pred.detach().cpu()
     pp(pred.shape)
-    # %%
+# %%
     n = 1
     img = inputs[n, 0]
     mask = target[n, 0]
-    # %%
+# %%
     ImageMaskViewer([img.permute(2, 1, 0), mask.permute(2, 1, 0)])
-    # %%
+# %%
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litsmall/spc_080_080_150/images/lits_4.pt"
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litstp/spc_080_080_150/images/lits_4.pt"
     fn2 = "/home/ub/datasets/preprocessed/lits32/patches/spc_080_080_150/dim_192_192_128/masks/lits_4_1.pt"
     img = torch.load(fn)
     mask = torch.load(fn2)
     pp(img.shape)
-    # %%
+# %%
 
     ImageMaskViewer([img, mask])
-    # %%
-    # %%
+# %%
+# %%
 
     Tm.trainer.callback_metrics
-    # %%
+# %%
     ckpt = Path(
         "/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt"
     )

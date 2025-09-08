@@ -50,7 +50,7 @@ class _DS():
             self.drli_short={'ds':'drli_short','folder': "/s/datasets_bkp/drli_short/","alias":'drli'}
             self.drli={'ds':'drli','folder': "/s/datasets_bkp/drli/","alias":None}
             self.litqsmall={'ds':'litqsmall','folder': "/s/datasets_bkp/litqsmall/","alias":None}
-            self.lidc2={'ds':'lidc2','folder': "/s/xnat_shadow/lidc2","alias":None}
+            self.lidc={'ds':'lidc','folder': "/media/UB/datasets/lidc","alias":None}
             self.lidctmp={'ds':'lidctmp','folder': "/s/xnat_shadow/lidctmp","alias":None}
             self.totalseg={'ds':'totalseg',"folder":"/s//xnat_shadow/totalseg","alias":None}
             self.task6={'ds':'task6','folder': "/s/datasets_bkp/Task06Lung/","alias":'lung'}
@@ -429,9 +429,23 @@ if __name__ == '__main__':
 # %%
    nodes_fldr = "/s/xnat_shadow/nodes"
    nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
+   ln_fldr = DS.lidc['folder']
    ds = Datasource(nodes_fldr,"nodes")
+   ds = Datasource(ln_fldr,"lidc")
    # ds = Datasource(/s/datasets_bkp/litstmp,"litstmp")
    ds.process()
+# %%
+   debug_ = True
+   case_tuple = ds.new_cases[0]
+   ds.outputs = multiprocess_multiarg(
+        func=case_analyzer_wrapper,
+        arguments=args_list,
+        num_processes=num_processes,
+        multiprocess=multiprocess,
+        debug=debug_,
+        logname = "dd.log"
+        )
+# %%
 # %%
    import h5py
    ff = h5py.File(nodes_fn, "r")

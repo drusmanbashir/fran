@@ -24,21 +24,14 @@ if __name__ == '__main__':
     P = Project("litstmp")
     # P.add_data([_DS().litstmp])
     # P.set_labels_all()
-# P.delete()
-
-    DS = _DS()
-    P.global_properties["labels_all"] 
-    
-    # P.add_data([DS.litstmp])
-    # P.global_properties = load_dict("/s/fran_storage/projects/litsmc/global_properties.pkl")
-    # save_dict(P.global_properties, P.global_properties_filename)
-    P.maybe_store_projectwide_properties(overwrite=True)
+    # P.maybe_store_projectwide_properties(overwrite=True)
 
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
     C.setup()
     C.plans
-    plan = conf['plan_train']
+# %%
     conf = C.configs
+    plan = conf['plan_train']
     print(conf["model_params"])
 
     plan = conf["plan_train"]
@@ -55,17 +48,21 @@ if __name__ == '__main__':
     description = None
 
     # device_id = 1
-    device_id = 0
-# %%
+    devices = [0]
+    devices = 2
+
+
+    
     # conf["dataset_params"]["ds_type"] ='lmdb'
     # conf["dataset_params"]["cache_rate"] = None
+# %%
     run_name=None
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
-        devices=[device_id],
+        devices=devices,
         epochs=600 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
