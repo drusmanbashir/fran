@@ -23,7 +23,6 @@ dependencies = [
   "batchgenerators>=0.25",
   "nnunet",
   "connected_components_3d>=3.17.0",
-  "grad_cam>=1.5.3",
   "h5py>=3.12.1",
   "lightning>=2.5.0.post0",
   "lightning_utilities>=0.11.9",
@@ -39,15 +38,20 @@ dependencies = [
   "psutil>=6.0.0",
   "PyYAML>=6.0.2",
   "reportlab>=4.2.5",
-  "roboflow>=1.1.49",
-  "seaborn>=0.13.2",
   "scikit-image",
-  "supervision>=0.25.1",
-  "ultralytics>=8.3.44",
-  "send2trash",
 ]
 
 [project.optional-dependencies]
+
+misc = ["grad_cam>=1.5.3",
+  "seaborn>=0.13.2",
+]
+twod = [
+  "roboflow>=1.1.49",
+  "ultralytics>=8.3.44",
+  "supervision>=0.25.1",
+  "send2trash",
+]
 # packages you previously filtered out in setup.py
 dev-geom = [
   "gudhi>=3.10.1",
