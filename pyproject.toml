@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=69", "setuptools-scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fran"
+description = "FRAN: utilities and pipelines for medical image segmentation and analysis."
+readme = "README.md"
+requires-python = ">=3.9"
+# Version comes from your Git tags (e.g. v0.8.0)
+dynamic = ["version"]
+
+authors = [{ name = "Usman Bashir" }]
+license = { text = "MIT" }
+# Core runtime dependencies (from your requirements, minus dev-only ones)
+dependencies = [
+  "utilz @ git+https://github.com/drusmanbashir/utilz.git@main",
+  "xnat @ git+https://github.com/drusmanbashir/xnat.git@main",
+  "label_analysis @ git+https://github.com/drusmanbashir/label_analysis.git@main",
+  "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main",
+  "torchinfo",
+  "torchio",
+  "batchgenerators>=0.25",
+  "nnunet",
+  "connected_components_3d>=3.17.0",
+  "grad_cam>=1.5.3",
+  "h5py>=3.12.1",
+  "lightning>=2.5.0.post0",
+  "lightning_utilities>=0.11.9",
+  "monai>=1.4.0",
+  "neptune>=1.13.0",
+  "opencv_python>=4.10.0.84",
+  "openpyxl>=3.1.5",
+  "pandas>=2.2.3",
+  "paramiko>=3.5.0",
+  "Pillow>=11.1.0",
+  "plotly>=6.0.0",
+  "prefetch_generator>=1.0.3",
+  "psutil>=6.0.0",
+  "PyYAML>=6.0.2",
+  "reportlab>=4.2.5",
+  "roboflow>=1.1.49",
+  "seaborn>=0.13.2",
+  "scikit-image",
+  "supervision>=0.25.1",
+  "ultralytics>=8.3.44",
+  "send2trash",
+]
+
+[project.optional-dependencies]
+# packages you previously filtered out in setup.py
+dev-geom = [
+  "gudhi>=3.10.1",
+  "nurbspy>=1.1.2",
+]
+
+[tool.setuptools.packages.find]
+include = ["fran*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+fran = ["templates/*.yaml", "templates/*.yml"]
+
+[tool.setuptools_scm]
+# tag your repo like:  v0.8.0
+version_scheme = "guess-next-dev"
+local_scheme = "node-and-date"
+
+# --- your existing mypy config preserved ---
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["monai.*", "lightning.*", "fastcore.*", "plotly.*", "utilz.*"]
+ignore_missing_imports = true
+

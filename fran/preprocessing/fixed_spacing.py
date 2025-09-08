@@ -2,9 +2,7 @@
 from pathlib import Path
 
 import ipdb
-from more_itertools import divide
 import ray
-from fastcore.all import GetAttr
 import itertools as il
 
 from fran.inference.base import list_to_chunks

@@ -17,7 +17,6 @@ __pycache__/
 archived/
 hidden/
 pyrightconfig.json
-pyproject.toml
 tmp*
 vim-debug-configuration.json
 experiments/.neptune/config.json
