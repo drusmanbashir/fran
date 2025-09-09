@@ -38,7 +38,7 @@ dependencies = [
   "psutil>=6.0.0",
   "PyYAML>=6.0.2",
   "reportlab>=4.2.5",
-  "scikit-image",
+  "scikit-image==0.25.2",
 ]
 
 [project.optional-dependencies]
