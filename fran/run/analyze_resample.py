@@ -1,22 +1,23 @@
 # %%
-from utilz.string import headline
 import argparse
 import ast
 import shutil
-from fran.managers.db import find_matching_plan
-from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
-from fran.utils.config_parsers import ConfigMaker
-from fran.managers import Project
 
 from label_analysis.totalseg import TotalSegmenterLabels
+from utilz.fileio import *
+from utilz.helpers import *
+from utilz.string import headline
+
+from fran.managers import Project
+from fran.managers.datasource import DS
+from fran.managers.db import find_matching_plan
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
+from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
-from utilz.fileio import *
-from utilz.helpers import *
-
+from fran.utils.config_parsers import ConfigMaker
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
@@ -58,10 +59,9 @@ class PreprocessingManager:
         P = Project(project_title=args.project_title)
         self.project = P
         C = ConfigMaker(P, raytune=False, configuration_filename=None)
-        C.setup(args.plan_num)
+        C.setup(args.plan)
 
         conf = C.configs
-        # args.overwrite=False
         self.plan = conf["plan_train"]
         # self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
@@ -108,7 +108,7 @@ class PreprocessingManager:
 
         self.R = ResampleDatasetniftiToTorch(
             project=self.project,
-            plan = self.plan,
+            plan=self.plan,
             data_folder=self.project.raw_data_folder,
         )
 
@@ -116,23 +116,25 @@ class PreprocessingManager:
         self.R.process()
         self.resample_output_folder = self.R.output_folder
 
-    def generate_lbd_dataset(self, overwrite=False,device="cpu"):
-        resampled_data_folder = find_matching_plan(self.project.db, self.plan)['data_folder_source']
-        headline("LBD dataset will be based on resampled dataset output_folder {}".format(resampled_data_folder))
+    def generate_lbd_dataset(self, overwrite=False, device="cpu"):
+        resampled_data_folder = find_matching_plan(self.project.db, self.plan)[
+            "data_folder_source"
+        ]
+        headline(
+            "LBD dataset will be based on resampled dataset output_folder {}".format(
+                resampled_data_folder
+            )
+        )
         self.L = LabelBoundedDataGenerator(
             project=self.project,
             plan=self.plan,
             data_folder=resampled_data_folder,
         )
-        self.L.setup(overwrite=overwrite,device=device)
+        self.L.setup(overwrite=overwrite, device=device)
         self.L.process()
 
     def generate_TSlabelboundeddataset(
         self,
-        imported_labels,
-        imported_folder,
-        merge_imported_labels=False,
-        lm_group="lm_group1",
         device="cpu",
         overwrite=False,
     ):
@@ -140,21 +142,10 @@ class PreprocessingManager:
         requires resampled folder to exist. Crops within this folder
         """
         imported_folder = Path(imported_folder)
-
-        TSL = TotalSegmenterLabels()
-        if imported_labels == "lungs":
-            imported_labelsets = TSL.labels("lung", "right"), TSL.labels("lung", "left")
-            remapping = TSL.create_remapping(imported_labelsets, [8, 9])
-
-        else:
-            remapping = None
         self.L = LabelBoundedDataGeneratorImported(
             project=self.project,
             plan=self.plan,
-            folder_suffix=self.plan_name,
-            imported_folder=imported_folder,
-            merge_imported_labels=merge_imported_labels,
-            remapping=remapping,
+            data_folder=self.resample_output_folder,
 
         )
         self.L.setup(overwrite=overwrite, device=device)
@@ -203,7 +194,7 @@ class PreprocessingManager:
 
         if mode is None:
             mode = self.mode
-        #BUG: Throws file not found error, multiple bugs that need fixsing  (see #10)
+        # BUG: Throws file not found error, multiple bugs that need fixsing  (see #10)
         PG = PatchDataGenerator(
             self.project,
             lbd_folder,
@@ -308,13 +299,15 @@ def do_low_res(proj_defaults):
 
 
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 if __name__ == "__main__":
     from fran.utils.common import *
 
     parser = argparse.ArgumentParser(description="Resampler")
 
-    parser.add_argument("-t", help="project title", dest="project_title")
+    parser.add_argument(
+        "-t", "--project-title", help="project title", dest="project_title"
+    )
     parser.add_argument(
         "-n",
         "--num-processes",
@@ -322,59 +315,59 @@ if __name__ == "__main__":
         help="number of parallel processes",
         default=8,
     )
-    parser.add_argument(
-        "-r",
-        "--clip-range",
-        nargs="+",
-        help="Give clip range to compute dataset std and mean",
-    )
-    parser.add_argument(
-        "-m", "--mode", default="fgbg", help="Mode of Patch generator, 'fg' or 'fgbg'"
-    )
-    parser.add_argument(
-        "-p",
-        "--patch-size",
-        nargs="+",
-        default=[192, 192, 128],
-        help="e.g., [192,192,128]if you want a high res patch-based dataset",
-    )
-    parser.add_argument(
-        "-nf",
-        "--no-fix",
-        action="store_false",
-        help="By default if img/mask sitk arrays mismatch in direction, orientation or spacing, FRAN tries to align them. Set this flag to disable",
-    )
-    parser.add_argument("-d", "--debug", action="store_true")
+    parser.add_argument("-p", "--plan", type=int, help="Just a number like 1, 2")
 
+    parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
+# %%
+    args.project_title = "lidc"
+    args.plan = 3
+    args.overwrite = False
 
-    # args.num_processes = 1
-    args.debug = True
-    args.plan_name = "plan2"
-
-    args.project_title = "lidc2"
+# %%
     P = Project(project_title=args.project_title)
+    # P.create(mnemonic="lidc")
+    # P.create(mnemonic="lidc", datasources=[DS["lidc"]])
+    # P.add_data([DS["lidc"]])
+    # P.maybe_store_projectwide_properties()
 
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+# %%
+    I = PreprocessingManager(args)
+    I.resample_dataset()
+    # args.num_processes = 1
 
-    plan = conf[args.plan_name]
+    src_labels = plan["remapping_imported"][0]
+    dest_labels = plan["remapping_imported"][1]
+# %%
+    if I.plan["mode"] == "patch":
+        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+        I.generate_hires_patches_dataset()
+    elif I.plan["mode"] == "lbd":
+        imported_folder = I.plan.get("imported_folder", None)
+        if imported_folder is None:
+            I.generate_lbd_dataset(overwrite=overwrite)
+        else:
+            I.generate_TSlabelboundeddataset(
+                remapping_imported=I.plan["remapping_imported"],
+                imported_folder=I.plan["imported_folder"],
+            )
+
 # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=True)
 
 # %%
-# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
-    I = PreprocessingManager(args)
+# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR> <CR>
     # I.spacing =
 # %%
-# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
-    I.resample_dataset(overwrite=False)
+# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR> <CR>
+    overwrite = args.overwrite
+    I.resample_dataset(overwrite=args.overwrite)
     I.R.get_tensor_folder_stats()
 
 # %%
-# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
-    overwrite = True
+# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR> <CR>
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
@@ -383,14 +376,14 @@ if __name__ == "__main__":
             I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
-                imported_labels=plan["imported_labels"],
+                remapping_imported=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],
                 overwrite=overwrite,
             )
 # %%
 
 # %%
-# SECTION:-------------------- TSL dataset Imported labels-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- TSL dataset Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     # this section uses imported labels from TSL and integrates those into the dataset.
     assert (
@@ -435,7 +428,7 @@ if __name__ == "__main__":
     # I.L.get_tensor_folder_stats()
     # I.L.generate_bboxes()
 # %%
-# SECTION:-------------------- Troubleshooting-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- Troubleshooting-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
 # %%
     imported_folder = plan["imported_folder"]

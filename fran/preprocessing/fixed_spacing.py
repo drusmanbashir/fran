@@ -306,7 +306,7 @@ class ResampleDatasetniftiToTorch(Preprocessor):
     def process(
         self,
     ):
-        if not hasattr(self, "df"):
+        if not hasattr(self, "df") or len(self.df) == 0:
             print("No data loader created. No data to be processed")
             return 0
         self.create_output_folders()
@@ -450,7 +450,7 @@ if __name__ == "__main__":
 
     P = Project("totalseg")
     # P._create_plans_table()
-    # P.add_data([_DS().totalseg])
+    # P.add_data([DS.totalseg])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
     C.setup(6)
     C.plans

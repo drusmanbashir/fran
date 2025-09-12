@@ -12,7 +12,7 @@ from fastcore.basics import GetAttr
 from utilz.helpers import PrintableDict, pbar
 from utilz.string import info_from_filename
 
-from fran.managers import _DS
+from fran.managers import DS
 
 tr = ipdb.set_trace
 
@@ -40,7 +40,6 @@ def unique_idx(total_len, start=1):
         yield (x)
 
 
-DS = _DS()
 
 
 class GlobalProperties(GetAttr):
@@ -145,7 +144,8 @@ class GlobalProperties(GetAttr):
         for dsa in self.global_properties["datasources"]:
             h5fn = dsa["h5_fname"]
             ds_name = dsa["ds"]
-            ds_name_final = DS.resolve_ds_name(ds_name)
+            # ds_name_final = DS.resolve_ds_name(ds_name)
+            ds_name_final=ds_name
             cases_ds = [
                 cid
                 for cid in self.cases_for_sampling
@@ -171,7 +171,8 @@ class GlobalProperties(GetAttr):
             ds_props = []
             h5fn = dsa["h5_fname"]
             ds_name = dsa["ds"]
-            ds_name_final = DS.resolve_ds_name(ds_name)
+            # ds_name_final = DS.resolve_ds_name(ds_name)
+            ds_name_final=ds_name
             cases_ds = [
                 cid
                 for cid in self.cases_for_sampling
@@ -362,6 +363,7 @@ class GlobalProperties(GetAttr):
             shared_labels_gps = self.global_properties[key]["ds"]
             labs_gp = []
             for gp in shared_labels_gps:
+                tr()
                 ds_name = DS.resolve_ds_name(gp)
                 for c in self.case_properties:
                     if ds_name == c["ds"]:

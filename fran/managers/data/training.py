@@ -54,7 +54,7 @@ import re
 import os
 
 
-common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
+common_vars_filename = os.environ["FRAN_COMMON_PATHS"]+"/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 
 tr = ipdb.set_trace

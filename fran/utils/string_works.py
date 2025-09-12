@@ -1,4 +1,5 @@
 from datetime import datetime
+import pandas as pd
 import re
 from pathlib import Path
 from fastcore.basics import Union, listify
@@ -7,6 +8,21 @@ import numpy as np
 
 tr = ipdb.set_trace
 
+def is_excel_None(value):
+    # Real Nones / NaNs
+    if value is None:
+        return True
+    if isinstance(value, float) and pd.isna(value):
+        return True
+    if isinstance(value, (pd.NaT.__class__,)):
+        return True
+    # Strings that represent empties/placeholders
+    if isinstance(value, str):
+        s = value.strip().lower()
+        # Add/remove tokens to taste
+        return s in {"", "nan", "na", "null", "none", "true", "false"}
+    # Everything else (including 0 / 0.0 / False) is NOT None
+    return False
 def regex_matcher(indx=0):
     """
     Decorator that applies regex pattern matching to a function's output.

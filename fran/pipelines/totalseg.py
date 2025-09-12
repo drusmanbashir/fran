@@ -16,7 +16,7 @@ if __name__ == '__main__':
     P = Project("totalseg")
 
     # P._create_plans_table()
-    # P.add_data([_DS().totalseg])
+    # P.add_data([DS.totalseg])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
     C.setup(6)
     C.plans
@@ -95,7 +95,7 @@ if __name__ == '__main__':
 
     
 # P.delete()
-    DS = _DS()
+    DS = DS
     P.add_data([DS.totalseg])
 # %%
 

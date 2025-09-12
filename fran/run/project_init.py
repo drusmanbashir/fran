@@ -1,39 +1,31 @@
 # %%
-import ipdb
-tr = ipdb.set_trace
-
-from fastcore.script import argparse
+import argparse
+from fran.managers.project import Project
+from fran.managers.datasource import DS,MNEMONICS
 
 
 def main(args):
-    project_title = args.t
-    input_folders = args.input_folders
-    P = Project(project_title=project_title); 
-    print("Project: {0}".format(project_title))
-    if not args.delete==True:
-        P.create()
-        if args.input_folders:
-            P.add_data(input_folders)
-        P.create_folds()
-    else:
-        P.delete()
+    P = Project(project_title=args.title)
 
+    if not P.db.exists():
+        P.create(mnemonic=args.mnemonic)
+    if args.datasources:
+        datas = [DS[name] for name in args.datasources]
+        P.add_data(datasources=datas, test=args.test)
 
-# %%
 if __name__ == "__main__":
-
-    from fran.utils.common import *
-
-    parser = argparse.ArgumentParser(description="Create new project or manage existing ones")
-    parser.add_argument("-t", help="project title")
-    parser.add_argument("-i","--input-folders" , help="Dataset parent folder containing subfolders 'images' and 'lms'",nargs='+')
-    parser.add_argument("-d" ,"--delete" ,action='store_true')
-
+    parser = argparse.ArgumentParser(description="Manage FRAN projects")
+    parser.add_argument("-t", "--title", help="Project title")
+    parser.add_argument("-m", "--mnemonic", help="Mnemonic, must be in MNEMONICS: {}".format(MNEMONICS))
+    parser.add_argument("--datasources", nargs="*", default=[], help="Datasources to add, i.e., {}".format(DS.__repr__()))
+    parser.add_argument("--test", action="store_true", help="Mark datasources as test")
 # %%
     args = parser.parse_known_args()[0]
-    # args.t = "l2"
-    # args.delete=True
-    # args.i = "/s/datasets/drli_short/"
+    args.title = 'tmpja'
+    args.mnemonic = 'liver'
+    args.datasources = ['drli_short']
+
+# %%
     main(args)
 # %%
 

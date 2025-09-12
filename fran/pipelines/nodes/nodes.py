@@ -1,37 +1,42 @@
+## %%
+
 # %%
-import argparse
-import pprint as pp
-from pathlib import Path
-
-from utilz.imageviewers import ImageMaskViewer
-
-from fran.managers import _DS, Datasource, Project
-from fran.managers.data import DataManagerDual
+from fran.managers import  Project
 from fran.managers.db import add_plan_to_db, find_matching_plan
-from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
-from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.run.analyze_resample import PreprocessingManager
-from fran.trainers import Trainer
+from fran.trainers.trainer import Trainer
+from fran.utils.common import *
 from fran.utils.config_parsers import ConfigMaker
-
-# %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR>
-if __name__ == "__main__":
+import argparse
+#SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
+if __name__ == '__main__':
     from fran.utils.common import *
-
     P = Project("nodes")
-    # P._create_plan_table()
-    C= ConfigMaker(P, raytune=False, configuration_filename=None)
-    C.setup()
+
+    # P._create_plans_table()
+    # P.add_data([DS.totalseg])
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C.setup(1)
+    C.plans
     conf = C.configs
-    plan = conf["plan_train"]
-    # add_plan_to_db(plan,,P.db)
+    print(conf["model_params"])
+
+    plan = conf['plan_train']
+    pp(plan)
+
+    # plan['mode']
+    # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
+
 # %%
-# SECTION:-------------------- FINE-TUNING RUN-------------------------------------------------------------------------------------- <CR>
-    run_nodes = "LITS-1230"
-    lr = 1e-3
-    bs = 5  # is good if LBD with 2 samples per case
-    compiled = False
+
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    devices = 2
+    devices= [1]
+    bs = 2
+
+    run_name ='LITS-1271'
+    run_name =None
+    compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
@@ -39,23 +44,22 @@ if __name__ == "__main__":
     tags = []
     description = f"Partially trained up to 100 epochs"
 
-    device_id = 1
-    # device_id = 0
-    conf["dataset_params"]["cache_rate"] = 0
-    conf["dataset_params"]["ds_type"] 
+    conf['plan_train']
+
+    conf["dataset_params"]["cache_rate"]=0.0
+    print(conf['model_params']['out_channels'])
+    
+    conf['dataset_params']['cache_rate']
+
 
 # %%
-    run_name = run_nodes
-    run_name = None
     Tm = Trainer(P.project_title, conf, run_name)
-    conf["dataset_params"]
 # %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
-        devices=[device_id],
-        lr=lr,
-        epochs=900 if profiler == False else 1,
+        devices=devices,
+        epochs=600 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
         neptune=neptune,
@@ -63,11 +67,10 @@ if __name__ == "__main__":
         description=description,
     )
 # %%
-    add_plan_to_db(plan,"/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2",P.db)
-
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()
+
 # %%
     N = Tm.N
     Tm.D.setup()
@@ -82,7 +85,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR>
 
     # P.delete()
-    DS = _DS()
+    DS = DS
     P.add_data([DS.nodes, DS.nodesthick])
     # P.add_data([DS.totalseg])
 # %%

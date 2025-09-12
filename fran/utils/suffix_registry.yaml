@@ -1,5 +1,6 @@
   remapping: 
     "TSL.all, TSL.label_minimal": r1
+    "TSL.label_localiser,TSL.lungs": r2
   #
   # ex: expand_by
   # mode:
@@ -26,6 +27,8 @@
     litq: lq
     litqsmall: lqs
     lidc: ldc
+    nodes: nd
+    nodesthick: ndt
 
 
 

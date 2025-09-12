@@ -1,32 +1,24 @@
 # %%
 import ipdb
-import torch
-from monai.transforms.croppad.dictionary import CropForegroundd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
-from monai.transforms.utils import is_positive
 from utilz.imageviewers import ImageMaskViewer
 
 from fran.preprocessing.preprocessor import generate_bboxes_from_lms_folder
-from fran.transforms.imageio import LoadSITKd, LoadTorchd
+from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import BBoxFromPTd
-from fran.transforms.misc_transforms import (ApplyBBox, FgBgToIndicesd2,
-                                             LabelRemapSITKd, MergeLabelmapsd,
-                                             Recastd)
+from fran.transforms.misc_transforms import (ApplyBBox, LabelRemapSITKd,
+                                             MergeLabelmapsd, Recastd)
 from fran.transforms.spatialtransforms import ResizeToTensord
 
 tr = ipdb.set_trace
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from fastcore.all import store_attr
 from label_analysis.totalseg import TotalSegmenterLabels
-from torch.utils.data import DataLoader
-from utilz.helpers import find_matching_fn, pbar, resolve_device
+from utilz.helpers import find_matching_fn, pbar
 from utilz.string import info_from_filename
 
-from fran.data.collate import dict_list_collated
-from fran.preprocessing.dataset import ImporterDataset
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.utils.config_parsers import ConfigMaker
 
@@ -83,63 +75,29 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         self,
         project,
         plan: Dict[str, Any],
-        imported_folder: Union[str, Path],
-        merge_imported_labels: bool = False,
-        remapping_imported: Optional[Dict[int, int]] = None,
-        folder_suffix: Optional[str] = None,
         data_folder: Optional[Union[str, Path]] = None,
         output_folder: Optional[Union[str, Path]] = None,
         mask_label: Optional[Any] = None,
-        expand_by=0,
         device="cpu",
     ) -> None:
 
-        store_attr("merge_imported_labels")
-        self.imported_folder = Path(imported_folder)
 
         super().__init__(
             project=project,
             plan=plan,
-            plan_name=folder_suffix,
             data_folder=data_folder,
             output_folder=output_folder,
             mask_label=mask_label,
-            remapping=remapping_imported,
-            expand_by=expand_by,
         )
+        imported_folder = plan["imported_folder"]
+        self.imported_folder = Path(imported_folder)
+        self.merge_imported_labels = plan["merge_imported_labels"]
         if self.merge_imported_labels == True:
             self.tfms_keys = "R,LS,LT,D,E,Rz,M,B,A,Ind"
         else:
             self.tfms_keys = "R,LS,LT,D,E,Rz,B,A,Ind"
         self.lm_imported_key = "lm_imported"
-        self.tnsr_keys = self.image_key, self.lm_key, self.lm_imported_key
-
-    #CODE: use create_remapping from config_parsers.py
-    def create_remapping_dict(self, remapping):
-
-        if remapping is None:
-            assert (
-                self.merge_imported_labels == False
-            ), "If you are merging imported lms, a remapping for the imported labels must be specified"
-        elif isinstance(remapping, dict):
-            return remapping
-        elif "TSL" in remapping:
-            remapping = TSL.create_remapping(remapping)
-            return remapping
-        else:
-            raise NotImplementedError
-
-        #
-        #         remapping = TSL.create_remapping(
-        #     imported_labelsets,
-        #     [
-        #         1,
-        #     ]
-        #     * len(imported_labelsets),
-        #     localiser=True,
-        # )
-        #     remapping = self.create_TSL_remapping(remapping)
-        # return remapping
+        self.tnsr_keys = self.image_key, self.lm_key ,self.lm_imported_key
 
     def create_data_df(self) -> None:
         """
@@ -176,7 +134,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
                 unmatched_images.append((self.df.image.name, "unknown"))
 
         self.df["lm_imported"] = matched_files
-        self.df["remapping"] = self.remapping
+        self.df["remapping_imported"] = [self.plan["remapping_imported"]] * len(self.df)
 
         nan_mask = self.df["lm_imported"].isna()
         if nan_mask.any():
@@ -190,25 +148,25 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
 
     def create_transforms(self, device):
         super().create_transforms(device=device)
-        self.A = ApplyBBox(keys=[lm_key, image_key], bbox_key="bounding_box")
+        self.A = ApplyBBox(keys=[self.lm_key, self.image_key], bbox_key="bounding_box")
         self.B = BBoxFromPTd(
-            keys=[self.self.lm_imported_key],
-            spacing=self.spacing,
-            expand_by=self.expand_by,
+            keys=[self.lm_imported_key],
+            spacing=self.plan["spacing"],
+            expand_by=self.plan["expand_by"],
         )
 
         self.LS = LoadSITKd(keys=[self.lm_imported_key], image_only=True)
         self.M = MergeLabelmapsd(
-            keys=[self.lm_imported_key, lm_key], meta_key=lm_key, key_output=lm_key
+            keys=[self.lm_imported_key, self.lm_key], meta_key=self.lm_key, key_output=self.lm_key
         )
 
         self.R = LabelRemapSITKd(
-            keys=[self.lm_imported_key], remapping_key="remapping"
+            keys=[self.lm_imported_key], remapping_key="remapping_imported"
         )  # This loads and remaps sitk image. Meta filename is lost!
 
         self.Re = Recastd(keys=[self.lm_imported_key])
         self.Rz = ResizeToTensord(
-            keys=[self.lm_imported_key], key_template_tensor=lm_key, mode="nearest"
+            keys=[self.lm_imported_key], key_template_tensor=self.lm_key, mode="nearest"
         )
         self.transforms_dict.update(
             {
@@ -271,105 +229,6 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
 
-# %%
-    # def process_batch(self, batch: Dict[str, Any]) -> None:
-    #     """
-    #     Process a batch of data and save the processed images and labels.
-    #
-    #     This method processes each item in the batch, validates tensor shapes,
-    #     and saves the processed data to disk along with metadata and indices.
-    #
-    #     Args:
-    #         batch (dict): Batch dictionary containing:
-    #             - image: Tensor images
-    #             - lm: Label mask tensors
-    #             - lm_fg_indices: Foreground voxel indices
-    #             - lm_bg_indices: Background voxel indices
-    #
-    #     Raises:
-    #         AssertionError: If image and label shapes don't match or if images
-    #             aren't 4-dimensional (cxhxwxd format)
-    #     """
-    #     images, lms, fg_inds, bg_inds = (
-    #         batch["image"],
-    #         batch["lm"],
-    #         batch["lm_fg_indices"],
-    #         batch["lm_bg_indices"],
-    #     )
-    #     for (
-    #         image,
-    #         lm,
-    #         fg_ind,
-    #         bg_ind,
-    #     ) in zip(
-    #         images,
-    #         lms,
-    #         fg_inds,
-    #         bg_inds,
-    #     ):
-    #         assert (
-    #             image.shape == lm.shape
-    #         ), f"Shape mismatch: image {image.shape} vs lm {lm.shape}"
-    #         assert image.dim() == 4, "images should be cxhxwxd"
-    #         inds = {
-    #             "lm_fg_indices": fg_ind,
-    #             "lm_bg_indices": bg_ind,
-    #             "meta": image.meta,
-    #         }
-    #         self.save_indices(inds, self.indices_subfolder)
-    #         self.save_pt(image[0], "images")
-    #         self.save_pt(lm[0], "lms")
-    #         self.extract_image_props(image)
-    #
-    # def create_dl(self, batch_size: int = 4, num_workers: int = 4) -> None:
-    #     """
-    #     Create DataLoader for batch processing.
-    #
-    #     This method creates a PyTorch DataLoader with custom collation function
-    #     to handle the imported label data alongside standard image and label tensors.
-    #
-    #     Args:
-    #         batch_size (int, optional): Number of samples per batch. Defaults to 4.
-    #         num_workers (int, optional): Number of worker processes for data loading.
-    #             Defaults to 4.
-    #     """
-    #     self.dl = DataLoader(
-    #         dataset=self.ds,
-    #         num_workers=num_workers,
-    #         collate_fn=dict_list_collated(
-    #             keys=[
-    #                 "image",
-    #                 "lm",
-    #                 "lm_imported",
-    #                 "lm_fg_indices",
-    #                 "lm_bg_indices",
-    #                 "bounding_box",
-    #             ]
-    #         ),
-    #         batch_size=batch_size,
-    #     )
-    #
-    # def get_case_ids_lm_group(self, lm_group: Any) -> List[str]:
-    #     """
-    #     Get case IDs for a specific label mask group.
-    #
-    #
-    #     This method retrieves all case IDs that belong to the datasources
-    #     associated with a given label mask group.
-    #
-    #     Args:
-    #         lm_group: Label mask group identifier from global properties
-    #
-    #     Returns:
-    #         list: List of case IDs belonging to the label mask group
-    #     """
-    #     dsrcs = self.global_properties[lm_group]["ds"]
-    #     cids = []
-    #     for dsrc in dsrcs:
-    #         cds = self.df["case_id"][self.df["ds"] == dsrc].to_list()
-    #         cids.extend(cds)
-    #     return cids
-
     def create_properties_dict(self) -> Dict[str, Any]:
         """
         Create properties dictionary with imported label information.
@@ -385,7 +244,8 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
                 - merge_imported_labels: Boolean flag for label merging
         """
         resampled_dataset_properties = super().create_properties_dict()
-        if self.remapping is None:
+        if self.plan["remapping_imported"] is None :
+            tr()
             labels = None
         else:
             labels = {
@@ -399,7 +259,6 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         return resampled_dataset_properties | additional_props
 
 
-# %%
 
 if __name__ == "__main__":
 # %%
@@ -408,27 +267,31 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    P = Project(project_title="nodes")
-    spacing = [0.8, 0.8, 1.5]
-    P.maybe_store_projectwide_properties()
+    project_title = "lidc"
+    P = Project(project_title=project_title)
+    # P.maybe_store_projectwide_properties()
+    # spacing = [1.5, 1.5, 1.5]
 
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-    plan = conf["plan_valid"]
-    plan_name = "plan2"
-    imported_folder = plan["imported_folder"]
 
-    merge_imported_labels = False
-    remapping = None
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C.setup(3)
+# %%
+    C.plans
+    conf = C.configs
+    print(conf["model_params"])
+
+    plan = conf['plan_train']
+    pp(plan)
+    spacing = plan["spacing"]
+    # plan["remapping_imported"][0]
 # %%
 # SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     L = LabelBoundedDataGeneratorImported(
         project=P,
         plan=plan,
-        folder_suffix=plan_name,
-        imported_folder=imported_folder,
-        merge_imported_labels=merge_imported_labels,
+        data_folder = "/r/datasets/preprocessed/lidc/fixed_spacing/spc_080_080_150_ldc"
 
-        remapping_imported=remapping,
+
     )
 
 # %%
@@ -478,12 +341,35 @@ if __name__ == "__main__":
     L.results = []
     # Load and process single case
 # %%
+
     row = L.df.iloc[0]
-    data = {
-        "image": row["image"],
-        "lm": row["lm"],
-        "lm_imported": row["imported"],
-    }
+    data = row.to_dict()
+    try:
+        # Load and process single case
+        # data = {
+        #     "image": row['image'],
+        #     "lm": row['lm'],
+        #     "lm_imported": row['lm_imported'],
+        # }
+
+        # Apply transforms
+        data = L.transforms(data)
+
+        # Get metadata and indices
+        # Process the case
+        L.process_single_case(
+            data["image"],
+            data["lm"],
+            data["lm_fg_indices"],
+            data["lm_bg_indices"],
+        )
+
+    except Exception as e:
+        print(f"Error processing {row['image'].name}: {str(e)}")
+
+# %%
+    row = L.df.iloc[0]
+    data = row.to_dict()
 # %%
     if L.merge_imported_labels == True:
         L.set_transforms("R,LS,LT,D,E,Rz,M,B,A,Ind")

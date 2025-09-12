@@ -5,7 +5,7 @@ from pathlib import Path
 from monai.data.dataset import GDSDataset
 from utilz.imageviewers import ImageMaskViewer
 
-from fran.managers import _DS, Datasource, Project
+from fran.managers import DS, Datasource, Project
 from fran.managers.data import DataManagerDual
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     bs = 8
     # P._create_plans_table()
-    # P.add_data([_DS().totalseg])
+    # P.add_data([DS.totalseg])
     compiled = False
     profiler = False
     batch_finder = False
@@ -82,7 +82,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     # P.delete()
-    DS = _DS()
+    DS = DS
     P.add_data([DS.litq, DS.lits, DS.drli, DS.litqsmall])
 
     # P.add_data([DS.totalseg])
@@ -167,7 +167,7 @@ if __name__ == "__main__":
             I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
-                imported_labels=plan["imported_labels"],
+                remapping_imported=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],)
 # %%
 

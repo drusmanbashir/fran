@@ -71,7 +71,9 @@ class Preprocessor(GetAttr):
     def create_data_df(self):
         if self.data_folder is not None:
             self.df = create_df_from_folder(self.data_folder)
-            extract_ds = lambda x: DS.resolve_ds_name(x.split("_")[0])
+            # CODE: This might crash
+            extract_ds = lambda x: x.split("_")[0]
+
             # self.df = pd.merge(self.df,self.project.df[['case_id','fold','ds']],how="left",on="case_id")
             self.df["ds"] = self.df["case_id"].apply(extract_ds)
             self.case_ids = self.df["case_id"].tolist()
@@ -101,6 +103,7 @@ class Preprocessor(GetAttr):
         existimg_lm_ids = self._get_existing_ids(self.output_folder / ("lms"))
         existing_img_ids = self._get_existing_ids(self.output_folder / ("images"))
         self.existing_case_ids = existing_img_ids.intersection(existimg_lm_ids)
+        print("Output folder: ", self.output_folder)
         print("Case ids processed in a previous session: ", len(self.existing_case_ids))
 
     def _get_existing_ids(self,subfolder):

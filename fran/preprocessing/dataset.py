@@ -39,7 +39,7 @@ from fran.transforms.misc_transforms import (
     LabelRemapSITKd,
 )
 from fran.transforms.spatialtransforms import ResizeToTensord
-from fran.utils.config_parsers import is_excel_None
+from fran.utils.string_works import is_excel_None
 from utilz.string import info_from_filename
 
 from pathlib import Path
@@ -544,7 +544,7 @@ if __name__ == "__main__":
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
     P = Project("totalseg")
     # P._create_plans_table()
-    # P.add_data([_DS().totalseg])
+    # P.add_data([DS.totalseg])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
     C.setup(6)
     C.plans

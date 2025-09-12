@@ -1,4 +1,5 @@
 # %%
+from __future__ import annotations
 import sqlite3
 import ipdb
 from utilz.string import info_from_filename
@@ -10,14 +11,12 @@ import sys
 from pathlib import Path
 
 from utilz.helpers import *
-
-sys.path += ["/home/ub/Dropbox/code"]
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, Optional
+import yaml
 from utilz.fileio import *
-
-if "XNAT_CONFIG_PATH" in os.environ:
-    from xnat.object_oriented import *
-common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
-COMMON_PATHS = load_yaml(common_vars_filename)
 from contextlib import contextmanager
 
 import ipdb
@@ -31,55 +30,48 @@ from utilz.string import info_from_filename
 from fran.preprocessing.datasetanalyzers import (case_analyzer_wrapper,
                                                  import_h5py)
 
+if "XNAT_CONFIG_PATH" in os.environ:
+    from xnat.object_oriented import *
+# from fran.utils.common import COMMON_PATHS
+DATASET_PATHS= os.environ["FRAN_COMMON_PATHS"]+"/datasets.yaml"
 
-MNEMONICS = ["liver", "lits", "lungs", "nodes", "bones", "lilu", "totalseg"]
-class _DS():
-    '''
-    each folder has subfolder images and lms
-    if a member has a 2-tuple value intead of 1, the send element is alias of the member dataset. This alias is used to match filenames with correct dataset
-    '''
-    def __init__(self) -> None:
-        # for any datasource, an alias matching the {projectname}_ part of the filename should be given if the ds name is non-standard, e.g., drli_short
-            self.lits={'ds': 'lits', 'folder': "/s/datasets_bkp/lits_segs_improved/", 'alias':None}
-            self.litstmp={'ds': 'litstmp', 'folder': "/s/datasets_bkp/litstmp/", 'alias':None}
-            self.litq={'ds':'litq', 'folder': "/s/xnat_shadow/litq", 'alias':None}
-            self.nodes = {'ds': 'nodes', "folder":"/s/xnat_shadow/nodes", "alias":None}
-            self.nodesthick={'ds':'nodesthick',"folder":"/s/xnat_shadow/nodesthick/", "alias": None}
-            self.tcianode={'ds':'tcianode',"folder":"/s/xnat_shadow/tcianode",  'alias':None}
-            self.tcianodeshort={'ds':'tcianodeshort',"folder":"/s/xnat_shadow/tcianodeshort",  'alias':"tcianode"}
-            self.drli_short={'ds':'drli_short','folder': "/s/datasets_bkp/drli_short/","alias":'drli'}
-            self.drli={'ds':'drli','folder': "/s/datasets_bkp/drli/","alias":None}
-            self.litqsmall={'ds':'litqsmall','folder': "/s/datasets_bkp/litqsmall/","alias":None}
-            self.lidc={'ds':'lidc','folder': "/media/UB/datasets/lidc","alias":None}
-            self.lidctmp={'ds':'lidctmp','folder': "/s/xnat_shadow/lidctmp","alias":None}
-            self.totalseg={'ds':'totalseg',"folder":"/s//xnat_shadow/totalseg","alias":None}
-            self.task6={'ds':'task6','folder': "/s/datasets_bkp/Task06Lung/","alias":'lung'}
+@dataclass(frozen=True)
+class DatasetSpec:
+    ds: str
+    folder: Path
+    alias: Optional[str] = None
+    def __len__(self):
+        images_folder = self.folder / "images"
+        if images_folder.exists():
+            return len(list(images_folder.glob("*")))
+        return 0
 
-    def resolve_ds_name(self,ds:str):
+class DatasetRegistry:
+    def __init__(self, cfg_path: Path | None = None):
+        with open(DATASET_PATHS, "r") as f:
+            raw = yaml.safe_load(f) or {}
+        base = raw.get("datasets", {})
 
-        try:
-            ds_dict = getattr(self,ds)
-        except:
-            return None # ds does not exist as a standard DS
-        alias = ds_dict['alias']
-        if alias is not None:
-            return alias
-        else:
-            return ds
+        specs: Dict[str, DatasetSpec] = {}
+        for name, d in base.items():
+            ds   = d.get("ds", name)
+            fld  = Path(os.path.expandvars(os.path.expanduser(d["folder"])))
+            alias = d.get("alias")
+            specs[name] = DatasetSpec(ds=ds, folder=fld, alias=alias)
+        self._specs = specs
 
-    def get_folder(self, ds:str):
-        ds_dict = getattr(self,ds)
-        return ds_dict['folder']
-    def __str__(self):
-        datasrcs = self.__dict__.keys()
-        datasrcs = ",".join([k for k in datasrcs])
-        return "Datasources: "+datasrcs
+    def names(self):
+        return self._specs.keys()
 
-    def __repr__(self):
-        datasrcs = self.__dict__.keys()
-        datasrcs = ",".join([k for k in datasrcs])
-        return "Datasources: "+datasrcs
+    def get(self, name: str) -> DatasetSpec:
+        return self._specs[name]
 
+    def __getitem__(self, name: str) -> DatasetSpec:
+        return self.get(name)
+
+DS = DatasetRegistry()
+MNEMONICS = sorted({spec.ds for spec in DS._specs.values()})
+#
 class Datasource(GetAttr):
     """
 
@@ -367,8 +359,6 @@ class Datasource(GetAttr):
         pass
 
 
-DS= _DS()
-
 
 def val_indices(a, n):
     """
@@ -429,7 +419,7 @@ if __name__ == '__main__':
 # %%
    nodes_fldr = "/s/xnat_shadow/nodes"
    nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
-   ln_fldr = DS.lidc['folder']
+   ln_fldr = DS['lidc']
    ds = Datasource(nodes_fldr,"nodes")
    ds = Datasource(ln_fldr,"lidc")
    # ds = Datasource(/s/datasets_bkp/litstmp,"litstmp")

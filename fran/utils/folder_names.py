@@ -1,14 +1,13 @@
 # %%
 import ipdb
-from utilz.helpers import folder_name_from_list
 
-from fran.utils.config_parsers import is_excel_None
+from fran.utils.string_works import is_excel_None
+
 tr = ipdb.set_trace
 
 import pandas as pd
 from importlib.resources import files
-from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any
 from utilz.string import ast_literal_eval, dec_to_str, int_to_str
 import yaml
 # read a packaged template
@@ -40,7 +39,7 @@ def load_registry() -> Dict[str, Any]:
 
 def nan_parser(func):
     def _inner(reg,key,val):
-        if is_excel_None(val):
+        if is_excel_None (val):
             return ""
         ans = func(reg,key,val)
         return ans
@@ -70,7 +69,7 @@ def datasources_conv(reg,key,val):
     return val3
 
 @nan_parser 
-def remapping_conv(reg,key,val):
+def remapping_conv(reg, key,val):
     val2  = reg.get(key)
     return val2.get(val)
 
@@ -113,18 +112,15 @@ def folder_names_from_plan(plan):
     datasources = plan.get("datasources")
     datasources = datasources_conv(reg,"datasources",datasources)
 
-    remapping_src = plan.get("remapping_source")
-    remapping_src_code =  remapping_conv(reg,"remapping", remapping_src)
+    remapping_src_code =  plan.get("remapping_source_code")
     if remapping_src_code:
         remapping_src_code = "rsc"+remapping_src_code
 
-    remapping_lbd = plan.get("remapping_lbd")
-    remapping_lbd_code =   remapping_conv(reg,"remapping", remapping_lbd)
+    remapping_lbd_code =   plan.get("remapping_lbd_code")
     if remapping_lbd_code:
         remapping_lbd_code = "rlb"+remapping_lbd_code
 
-    remapping_imported = plan.get("remapping_imported")
-    remapping_imported_code =   remapping_conv(reg,"remapping", remapping_imported)
+    remapping_imported_code =   plan.get("remapping_imported_code")
     if remapping_imported_code:
         remapping_imported_code = "ric"+remapping_imported_code
 
@@ -149,6 +145,7 @@ if __name__ == '__main__':
     from fran.utils.common import *
     from fran.managers import Project
     P = Project("totalseg")
+    reg = load_registry()
     df = pd.read_excel("/home/ub/code/fran/configurations/experiment_configs_totalseg.xlsx", sheet_name="plans")
     row = df.iloc[3]
 

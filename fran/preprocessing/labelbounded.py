@@ -65,7 +65,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         data_folder=None,
         output_folder=None,
         mask_label=None,
-        expand_by=0,
     ) -> None:
         """
         Initialize the LabelBoundedDataGenerator.
@@ -78,7 +77,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             mask_label: Specific label value to use for cropping. If None, uses all labels >0
         """
 
-        existing_fldr = find_matching_plan(project.db, plan)['data_folder_lbd']
+        existing_fldr = find_matching_plan(project.db, plan).get('data_folder_lbd',None)
         if existing_fldr is not None:
             headline(
                 "Plan folder already exists in db: {}.\nWill use existing folder to add data".format(
@@ -87,8 +86,8 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             )
             output_folder = existing_fldr
         self.plan = plan
+        
         self.fg_indices_exclude = listify(plan.get("fg_indices_exclude"))
-        self.expand_by = expand_by
         self.mask_label = mask_label
         self.lm_group = self.plan.get("lm_group")
         # self.remapping = self.create_remapping_dict(plan["remapping"])
@@ -109,7 +108,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
 
     def create_data_df(self):
         Preprocessor.create_data_df(self)
-        remapping = self.plan.get("remapping")
+        remapping = self.plan.get("remapipng_lbd")
         self.df = self.df.assign(remapping=[remapping] * len(self.df))
 
     def set_input_output_folders(self, data_folder, output_folder):
@@ -153,27 +152,9 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.set_transforms(self.tfms_keys)
 
     def create_transforms(self, device):
-        """Create transforms for processing images and labels"""
-        keys = ["image", "lm"]
-        transforms = [
-            LoadTorchd(keys=keys),
-            EnsureChannelFirstd(keys=keys),
-            ToDeviced(device=device, keys=keys),
-            FgBgToIndicesd2(keys=keys),
-
-        ]
-        if self.mask_label is not None:
-            transforms.append(
-                CropForegroundd(
-                    keys=["image", "lm"],
-                    source_key="lm",
-                    select_fn=lambda x: x == self.mask_label,
-                )
-            )
-        return Compose(transforms)
-
-    def create_transforms(self, device):
-        margin = [int(self.expand_by / sp) for sp in self.plan['spacing'] ]
+        if self.plan["expand_by"] :
+            margin = [int(self.plan["expand_by"]/ sp) for sp in self.plan['spacing'] ]
+        else: margin = 0
         if self.mask_label is None:
             select_fn = is_positive
         else:
@@ -194,15 +175,12 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             ignore_labels=self.fg_indices_exclude,
             image_threshold=-2600,
         )
-        self.LT = LoadTorchd(keys=self.tnsr_keys)
-
-        if self.plan["remapping"] is not None:
-            self.R = MapLabelValueD(keys=[self.lm_key], orig_labels =self.plan["remapping"][0], target_labels=self.plan["remapping"][1])
+        self.LT = LoadTorchd(keys=[self.image_key, self.lm_key])
+        if self.plan["remapping_lbd"] is not None:
+            self.R = MapLabelValueD(keys=[self.lm_key], orig_labels =self.plan["remapping_lbd"][0], target_labels=self.plan[remapping_lbd][1])
         else:
             self.R = DummyTransform(keys=[self.lm_key])
         # )
-            # keys=[self.lm_key], remapping_key="remapping"
-        # )  # This loads and remaps sitk image. Meta filename is lost!
         self.transforms_dict = {
             "C": self.C,
             "D": self.D,
@@ -379,18 +357,23 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    project_title = "totalseg"
+    project_title = "lidc"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 
-    plan_str = "plan5"
-    plan = conf[plan_str]
-    plan["remapping"]
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C.setup(3)
+    C.plans
+    conf = C.configs
+    print(conf["model_params"])
 
+    plan = conf['plan_train']
+    pp(plan)
     spacing = plan["spacing"]
+    # plan["remapping_imported"][0]
+    existing_fldr = find_matching_plan(P.db, plan).get('data_folder_lbd',None)
 # %%
     plan["remapping"]
 
@@ -411,6 +394,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     # for img_file, lm_file in zip(I.L.image_files, I.L.lm_files):
+    row = L.df.iloc[0]
     img_file, lm_file = L.image_files[1], L.lm_files[1]
     # Load and process single case
     remapping = row["remapping"]

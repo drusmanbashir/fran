@@ -351,3 +351,8 @@ if __name__ == "__main__":
     )
 # %%
     print(summ2)
+# %%
+    input = torch.rand(1,1,128,128,96).to("cuda")
+    output = T.model(input)
+    output.shape
+# %%

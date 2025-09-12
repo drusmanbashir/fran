@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from fran.trainers import Trainer
 
-from fran.managers import Project, Datasource, _DS
+from fran.managers import Project, Datasource, DS
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.run.analyze_resample import PreprocessingManager
 from fran.utils.config_parsers import ConfigMaker
@@ -22,7 +22,7 @@ if __name__ == '__main__':
     from fran.utils.common import *
     
     P = Project("litstmp")
-    # P.add_data([_DS().litstmp])
+    # P.add_data([DS.litstmp])
     # P.set_labels_all()
     # P.maybe_store_projectwide_properties(overwrite=True)
 

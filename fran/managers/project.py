@@ -1,7 +1,7 @@
 # %%
 import sqlite3
 
-from fran.managers.datasource import _DS, val_indices
+from fran.managers.datasource import DS, val_indices
 import ipdb
 from batchgenerators.utilities.file_and_folder_operations import List
 from fastcore.basics import listify
@@ -27,7 +27,7 @@ from utilz.fileio import *
 
 if "XNAT_CONFIG_PATH" in os.environ:
     from xnat.object_oriented import *
-common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
+common_vars_filename = os.environ["FRAN_COMMON_PATHS"]+"/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 import shutil
 import string
@@ -165,14 +165,14 @@ class Project(DictToAttr):
         self.create_tables()
         if datasources:
             self.add_data(datasources, test)
-        self.set_labels_all()
-        self.save_global_properties()
+        else:
+            self.save_global_properties()
         
     def set_labels_all(self):
         labs =[]
         datasources =self.global_properties["datasources"]
         for ds in datasources:
-            labs.extend(ds["labels"])
+            labs.extend(ds['labels'])
         self.global_properties["labels_all"] = list(set(labs))
 
 
@@ -299,15 +299,17 @@ class Project(DictToAttr):
             test
         ), "Unequal lengths of datafolders and (bool) test status"
         headline("Adding rows to tables. Adding datasources entries to global_properties")
-        for ds_dict, test in zip(datasources, test):
-            fldr = ds_dict["folder"]
+        for dataspec, test in zip(datasources, test):
+            fldr = dataspec.folder
             ds = Datasource(
-                folder=fldr, name=ds_dict["ds"], alias=ds_dict["alias"], test=test
+                folder=fldr, name=dataspec.ds, alias=dataspec.alias, test=test
             )
             ds = self.filter_existing_images(ds)
             self.populate_tbl(ds)
         self.populate_raw_data_folder()
         self.register_datasources(datasources)
+        self.set_labels_all()
+        self.save_global_properties()
 
     def _create_folder_tree(self):
         maybe_makedirs(self.project_folder)
@@ -577,13 +579,13 @@ class Project(DictToAttr):
         """
         dicis = []
         for ds in datasources:
-            fldr = Path(ds["folder"])
-            dataset_name = ds["ds"]
+            fldr = Path(ds.folder)
+            dataset_name = ds.ds
             h5_fname = fldr / ("fg_voxels.h5")
             dss = Datasource(fldr)
             dici = {
                 "ds": dataset_name,
-                "alias": ds["alias"],
+                "alias": ds.alias,
                 "folder": str(fldr),
                 "h5_fname": str(h5_fname),
                 "labels": dss.labels,
@@ -917,7 +919,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
     from fran.utils.config_parsers import ConfigMaker
-    DS = _DS()
+    DS = DS
     P = Project(project_title="nodes")
     P.create(mnemonic="nodes")
     P = Project(project_title="totalseg")

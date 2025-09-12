@@ -5,7 +5,7 @@ from utilz.imageviewers import ImageMaskViewer
 from fran.trainers import Trainer
 from pathlib import Path
 from fran.managers import Project
-from fran.managers import Datasource, _DS
+from fran.managers import Datasource, DS
 from fran.run.analyze_resample import PreprocessingManager
 from fran.managers.data import DataManagerDual
 from fran.utils.config_parsers import ConfigMaker
@@ -20,9 +20,9 @@ if __name__ == '__main__':
 
 
     # P._create_plans_table()
-    P.add_data([_DS().lidc2])
+    P.add_data([DS.lidc2])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
-    C.setup()
+    C.setup(3)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -38,7 +38,7 @@ if __name__ == '__main__':
 
     
 # P.delete()
-    DS = _DS()
+    DS = DS
     P.add_data([DS.nodes,DS.nodesthick])
 # P.add_data([DS.totalseg])
 # %%

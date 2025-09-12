@@ -140,7 +140,7 @@ def find_matching_plan(db_path: str, plan: dict) -> dict | None:
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(sql, params).fetchone()
     if row is None:
-        return None
+        return {}
 
     row_out = {
         "id": row[0],
@@ -320,7 +320,7 @@ if __name__ == "__main__":
     # P._create_plans_table()
     # P.create("lits")
 
-    # P.add_data([_DS().litq, _DS().lits, _DS().drli, _DS().litqsmall])
+    # P.add_data([DS.litq, DS.lits, DS.drli, DS.litqsmall])
     # P.create('litsmc')
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf["plan_train"]
@@ -425,7 +425,7 @@ if __name__ == "__main__":
 
     P = Project("totalseg")
     # P._create_plans_table()
-    # P.add_data([_DS().totalseg])
+    # P.add_data([DS.totalseg])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
     C.setup(1, 1)
     C.plans
