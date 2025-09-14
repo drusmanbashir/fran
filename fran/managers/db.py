@@ -26,9 +26,9 @@ COLUMNS_CRITICAL = [
     "fg_indices_exclude",
     "mode",
     "imported_folder",
-    "remapping_source",
-    "remapping_lbd",
-    "remapping_imported",
+    "remapping_source_code",
+    "remapping_lbd_code",
+    "remapping_imported_code",
     "merge_imported_labels",
 ]
 
@@ -40,9 +40,9 @@ COLUMNS_TEXT = [
             "fg_indices_exclude",
             "mode",
             "imported_folder",
-            "remapping_source",
-            "remapping_lbd",
-            "remapping_imported",
+            "remapping_source_code",
+            "remapping_lbd_code",
+            "remapping_imported_code",
             "data_folder_whole",
             "data_folder_patch",
             "data_folder_lbd",
@@ -82,14 +82,8 @@ def _normalize_for_db(v):
 def _init_db(db_path: str = DB_PATH):
     ddl_cols = ", ".join(
         f'"{c}" TEXT'
-        for c in COLUMNS_CRITICAL
-        + [
-            "data_folder_lbd",
-            "data_folder_source",
-            "data_folder_whole",
-            "data_folder_patch",
-            "derived_plans",
-        ]
+        for c in COLUMNS_ALL
+
     )
     sql = f"""
     CREATE TABLE IF NOT EXISTS "{TABLE}" (
@@ -123,7 +117,7 @@ def find_matching_plan(db_path: str, plan: dict) -> dict | None:
     plan = {k: plan.get(k) for k in COLUMNS_CRITICAL}  # align to fixed schema
     keys = [k for k in COLUMNS_CRITICAL if k in plan]
     if not keys:
-        return None
+        return {}
     conds, params = [], []
     for k in keys:
         v = _normalize_for_db(plan[k])
@@ -137,9 +131,13 @@ def find_matching_plan(db_path: str, plan: dict) -> dict | None:
         + " AND ".join(conds)
         + " LIMIT 1"
     )
+
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(sql, params).fetchone()
     if row is None:
+        print("row not found in db. Below is the sql query")
+        headline(sql)
+        headline (params)
         return {}
 
     row_out = {
@@ -164,7 +162,6 @@ def _insert_row(conn: sqlite3.Connection, data: dict, data_folder: str = None) -
     cur = conn.execute(sql, vals)
     conn.commit()
     return cur.lastrowid
-
 
 def add_plan_to_db(
     plan: dict,
@@ -247,7 +244,7 @@ def add_plan_to_db(
     headline("Adding plan to db: {0}".format(db_path))
     existing_row = find_matching_plan(db_path, plan)
 
-    if existing_row is not None:
+    if len(existing_row) >0:
         # Check if the specific data folder field is NULL in existing row
         if existing_row[data_folder_field] is None:
             # Update the existing row with the new data folder value
@@ -312,29 +309,44 @@ def as_dataframe(
 
 if __name__ == "__main__":
 # %%
-# %%
 # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
     from fran.utils.common import *
 
-    P = Project("litsmc")
+    P = Project("litstmp")
     # P._create_plans_table()
+    P = Project("nodes")
     # P.create("lits")
 
     # P.add_data([DS.litq, DS.lits, DS.drli, DS.litqsmall])
     # P.create('litsmc')
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-    plan = conf["plan_train"]
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C.setup(6)
+    plan = C.configs['plan_train']
 
 # %%
     conn = sqlite3.connect(P.db)
     cur = conn.cursor()
-    ss = """ALTER TABLE master_plans ADD COLUMN remapping_imported TEXT"""
+    ss= """DROP TABLE IF EXISTS master_plans"""
     cur.execute(ss)
+    conn.commit()
+    ss = """ALTER TABLE master_plans ADD COLUMN remapping_imported TEXT"""
+    ss = """ALTER TABLE master_plans ADD COLUMN remapping_imported TEXT"""
     ss = """ALTER TABLE master_plans ADD COLUMN  imported_folder TEXT"""
     cur.execute(ss)
     ss = """ALTER TABLE master_plans ADD COLUMN  merge_imported_labels INTEGER DEFAULT 0"""
     cur.execute(ss)
+    conn.commit()
 # %%
+    plan = C.conf['plan_train']
+    find_matching_plan(P.db, plan)
+
+# %%
+#SECTION:-------------------- DELETE ROW BASED ON COL VALUE MATCH--------------------------------------------------------------------------------------
+    conn = sqlite3.connect(P.db)
+    sql = """DELETE FROM master_plans WHERE data_folder_source  ='/r/datasets/preprocessed/litstmp/fixed_spacing/spc_080_080_150_drllqlqslts'"""
+    cur = conn.cursor()
+    cur.execute(sql)
+
 
     pathdad = Path("/s/fran_storage/projects")
     db_paths = list(pathdad.rglob("*.db"))
@@ -487,4 +499,48 @@ if __name__ == "__main__":
     #     db_path = P.db
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(sql, params).fetchone()
+# %%
+
+    """Return row data if a row where all provided key->value pairs match (for known columns)."""
+    plan = {k: plan.get(k) for k in COLUMNS_CRITICAL}  # align to fixed schema
+    keys = [k for k in COLUMNS_CRITICAL if k in plan]
+    conds, params = [], []
+    for k in keys:
+        v_norm = _normalize_for_db(plan[k])  # keep your normalizer
+        if v_norm is None:
+            conds.append(f'"{k}" IS NULL')
+        elif _is_zeroish(v_norm):  # must handle "0", 0, 0.0
+            conds.append(f'("{k}" = ? OR "{k}" IS NULL)')
+            params.append("0")     # TEXT schema → compare as string
+        else:
+            conds.append(f'"{k}" = ?')
+            params.append(v_norm)
+
+    sql = (
+        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_patch '
+        f'FROM "{TABLE}" WHERE ' + " AND ".join(conds) + " LIMIT 1"
+    )
+# %%
+    import sqlite3
+    db_path = P.db
+    sql = 'UPDATE master_plans SET expand_by = 0 WHERE data_folder_source="/r/datasets/preprocessed/nodes/fixed_spacing/spc_080_080_150_ndndt"'
+    con = sqlite3.connect(db_path)
+    cur = con.cursor()
+    cur.execute(sql)
+    con.commit()
+# %%
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(sql, params).fetchone()
+# %%
+
+
+    aa = {
+        "id": row[0],
+        "data_folder_source": row[1],
+        "data_folder_lbd": row[2],
+        "data_folder_whole": row[3],
+        "data_folder_patch": row[4],
+    }
+
 # %%

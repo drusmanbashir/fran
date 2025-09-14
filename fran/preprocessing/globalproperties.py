@@ -145,7 +145,8 @@ class GlobalProperties(GetAttr):
             h5fn = dsa["h5_fname"]
             ds_name = dsa["ds"]
             # ds_name_final = DS.resolve_ds_name(ds_name)
-            ds_name_final=ds_name
+            # ds_name_final=ds_name
+            ds_name_final =dsa["alias"] if dsa["alias"] else dsa["ds"]
             cases_ds = [
                 cid
                 for cid in self.cases_for_sampling
@@ -170,9 +171,8 @@ class GlobalProperties(GetAttr):
         for dsa in self.global_properties["datasources"]:
             ds_props = []
             h5fn = dsa["h5_fname"]
-            ds_name = dsa["ds"]
+            ds_name_final =dsa["alias"] if dsa["alias"] else dsa["ds"]
             # ds_name_final = DS.resolve_ds_name(ds_name)
-            ds_name_final=ds_name
             cases_ds = [
                 cid
                 for cid in self.cases_for_sampling
@@ -443,9 +443,11 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    P = Project(project_title="nodes")
     P = Project(project_title="totalseg")
+    P = Project(project_title="nodes")
+    P = Project(project_title="litstmp")
     G = GlobalProperties(P, max_cases=50)
+    G._retrieve_h5_properties()
     conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
     plan = conf["plan"]
 # %%

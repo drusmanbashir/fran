@@ -70,7 +70,6 @@ class DatasetRegistry:
         return self.get(name)
 
 DS = DatasetRegistry()
-MNEMONICS = sorted({spec.ds for spec in DS._specs.values()})
 #
 class Datasource(GetAttr):
     """
@@ -163,6 +162,7 @@ class Datasource(GetAttr):
             self.name = name
 
         self.integrity_check()
+        headline("Datasource initialized")
         self._filter_unprocessed_cases()
 
     def infer_dataset_name(self):
@@ -232,7 +232,7 @@ class Datasource(GetAttr):
             all_case_ids.append(case_id)
         assert (l1:=len(all_case_ids))==(l2:=len(set(all_case_ids))), "Duplicate case_ids found. Run fix_repeat_caseids() on parent folder"
         new_case_ids = set(all_case_ids).difference(prev_processed_cases)
-        print("Found {0} new cases\nCases already processed in a previous session: {1}".format(len(new_case_ids), len(prev_processed_cases)))
+        # print("Found {0} new cases\nCases already processed in a previous session: {1}".format(len(new_case_ids), len(prev_processed_cases)))
         assert (l:=len(new_case_ids)) == (l2:=(len(all_case_ids)-len(prev_processed_cases))), "Difference in number of new cases"
         if len(new_case_ids) == 0: 
             print("No new cases found.")
@@ -420,8 +420,10 @@ if __name__ == '__main__':
    nodes_fldr = "/s/xnat_shadow/nodes"
    nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
    ln_fldr = DS['lidc']
+   litsmall_fldr = DS['litsmall']
    ds = Datasource(nodes_fldr,"nodes")
    ds = Datasource(ln_fldr,"lidc")
+   ds= Datasource(litsmall_fldr.folder,"litsmall")
    # ds = Datasource(/s/datasets_bkp/litstmp,"litstmp")
    ds.process()
 # %%

@@ -9,7 +9,8 @@ from send2trash import send2trash
 from utilz.string import headline, info_from_filename
 
 from fran.managers import Datasource
-from fran.managers.datasource import db_ops, MNEMONICS
+from fran.managers.datasource import db_ops
+from fran.utils.config_parsers import MNEMONICS
 
 tr = ipdb.set_trace
 
@@ -313,11 +314,7 @@ class Project(DictToAttr):
 
     def _create_folder_tree(self):
         maybe_makedirs(self.project_folder)
-        additional_folders = [
-            self.raw_data_folder / ("images"),
-            self.raw_data_folder / ("lms"),
-        ]
-        for folder in il.chain(self.folders, additional_folders):
+        for folder in self.folders:
             maybe_makedirs(folder)
 
     def populate_raw_data_folder(self):
@@ -871,6 +868,10 @@ class Project(DictToAttr):
         for key, value in self.__dict__.items():
             if isinstance(value, Path) and "folder" in key:
                 self._folders.append(value)
+        additional_folders = [
+            self.raw_data_folder / ("images"),
+            self.raw_data_folder / ("lms")]
+        self._folders.extend(additional_folders)
         return self._folders
 
     @property
@@ -923,10 +924,16 @@ if __name__ == "__main__":
     P = Project(project_title="nodes")
     P.create(mnemonic="nodes")
     P = Project(project_title="totalseg")
-    P.add_data([DS.nodes, DS.nodesthick])
+    P.add_data([DS['nodes'], DS['nodesthick']])
+
+# %%
     P = Project("litstmp")
-    save_json (P.global_properties,"tmp.json")
+    pp(P.global_properties)
+    P.create(mnemonic="lits")
+    P.add_data([DS["litsmall"]])
+    P.delete()
     
+    P.maybe_store_projectwide_properties()
 # %%
     # P.delete()
     P.create(mnemonic="lits")
@@ -935,8 +942,8 @@ if __name__ == "__main__":
     # P.add_data([DS.totalseg])
 
 # %%
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
-
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C.plans
     plans = conf["plantmp"]
     plans = conf["plan2"]
 

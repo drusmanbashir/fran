@@ -1,8 +1,7 @@
 ## %%
 
-# %%
 from fran.managers import  Project
-from fran.managers.db import add_plan_to_db, find_matching_plan
+from fran.managers.db import COLUMNS_CRITICAL, add_plan_to_db, find_matching_plan
 from fran.run.analyze_resample import PreprocessingManager
 from fran.trainers.trainer import Trainer
 from fran.utils.common import *
@@ -13,10 +12,10 @@ if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("nodes")
 
-    # P._create_plans_table()
+    P._create_plans_table()
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
-    C.setup(1)
+    C.setup(6)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -27,8 +26,8 @@ if __name__ == '__main__':
     # plan['mode']
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
 
-# %%
 
+# %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     devices = 2
     devices= [1]
@@ -66,10 +65,49 @@ if __name__ == '__main__':
         tags=tags,
         description=description,
     )
+
 # %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()
+
+# %%
+    matching_plan = find_matching_plan(P.db,plan)
+
+    matching_plan
+
+# %%
+    plan = {k: plan.get(k) for k in COLUMNS_CRITICAL}  # align to fixed schema
+    keys = [k for k in COLUMNS_CRITICAL if k in plan]
+    conds, params = [], []
+# %%
+    for k in keys:
+        v = _normalize_for_db(plan[k])
+        if v is None:
+            conds.append(f'"{k}" IS NULL')
+        else:
+            conds.append(f'"{k}" = ?')
+            params.append(v)
+# %%
+    sql = (
+        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_patch FROM "{TABLE}" WHERE '
+        + " AND ".join(conds)
+        + " LIMIT 1"
+    )
+1
+    db_path =P.db
+# %%
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(sql, params).fetchone()
+# %%
+
+    row_out = {
+        "id": row[0],
+        "data_folder_source": row[1],
+        "data_folder_lbd": row[2],
+        "data_folder_whole": row[3],
+        "data_folder_patch": row[4],
+    }
 
 # %%
     N = Tm.N

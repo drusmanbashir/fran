@@ -546,6 +546,7 @@ if __name__ == "__main__":
     run_whole_image = ["LITS-1088"]
     run_nodes = ["LITS-1110"]
     run_nodes2 = ["LITS-1285"]
+    run_nodes3 = ["LITS-1287"]
     safe_mode = False
 
     proj_litsmc = Project(project_title="litsmc")
@@ -628,6 +629,7 @@ if __name__ == "__main__":
 # %%
 # SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR>
     run = run_nodes2[0]
+    run = run_nodes3[0]
 
     save_channels = False
     safe_mode = True
@@ -641,7 +643,7 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = T.run(img_nodes[2:], chunksize=2, overwrite=overwrite)
+    preds = T.run(img_nodes, chunksize=2, overwrite=overwrite)
 # %%
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     overwrite = True

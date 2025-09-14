@@ -549,7 +549,9 @@ class DataManager(LightningDataModule):
 
     def derive_data_folder(self,mode):
         key = "data_folder_{}".format(mode)
-        data_folder = find_matching_plan(self.project.db,self.plan)[key]
+        matching_plan = find_matching_plan(self.project.db,self.plan)
+        if len(matching_plan)==0: raise ValueError("No matching plan found")
+        data_folder = matching_plan[key]
         data_folder = Path(data_folder)
         return data_folder
 

@@ -22,12 +22,15 @@ if __name__ == '__main__':
     from fran.utils.common import *
     
     P = Project("litstmp")
-    # P.add_data([DS.litstmp])
-    # P.set_labels_all()
-    # P.maybe_store_projectwide_properties(overwrite=True)
+    P.create(mnemonic="litsmall")
+
+    P.add_data([DS['litsmall']])
+    P.set_labels_all()
+    P.maybe_store_projectwide_properties(overwrite=True)
+# %%
 
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
-    C.setup()
+    C.setup(7)
     C.plans
 # %%
     conf = C.configs
@@ -55,6 +58,8 @@ if __name__ == '__main__':
     
     # conf["dataset_params"]["ds_type"] ='lmdb'
     # conf["dataset_params"]["cache_rate"] = None
+    matching_plan = find_matching_plan(P.db,plan)
+    pp(matching_plan)
 # %%
     run_name=None
     Tm = Trainer(P.project_title, conf, run_name)
@@ -70,6 +75,11 @@ if __name__ == '__main__':
         tags=tags,
         description=description,
     )
+
+# %%
+    P.get_train_val_files(
+                conf["dataset_params"]["fold"], plan['datasources']
+            )
 # %%
     # Tm.D.prepare_data()
     # Tm.D.setup()

@@ -11,10 +11,10 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
 from utilz.string import ast_literal_eval
 
-from fran.managers.datasource import MNEMONICS
 from fran.utils.folder_names import load_registry, remapping_conv
 from fran.utils.string_works import is_excel_None
 
+MNEMONICS = ["lits","litsmall", "litq", "lidc", "lungs", "nodes", "totalseg"]
 tr = ipdb.set_trace
 
 if not sys.executable == "":  # workaround for slicer as it does not load ray tune
@@ -162,42 +162,6 @@ def create_remapping(plan, key, as_list=False, as_dict=False):
         raise NotImplementedError
     return remapping
 
-
-def parse_excel_dict(dici):
-    """Recursively parse an Excel plan, handling nested dictionaries
-
-    Args:
-        plan: Dictionary containing plan configuration, possibly with nested dictionaries
-    Returns:
-        Parsed plan with proper types for all values
-    """
-    if not isinstance(dici, dict):
-        return dici
-
-    # keys_maybe_nan = "fg_indices_exclude", "lm_groups", "datasources", "cache_rate", "ce_weight", "remapping_sitk","remapping_train","remapping_imported"
-    keys_str_to_list = "spacing", "patch_size"
-
-    for key, value in dici.items():
-        # Handle nested dictionaries recursively
-        if isinstance(value, dict):
-            dici[key] = parse_excel_dict(value)
-            continue
-
-        # Handle None values
-        if is_excel_None(value):
-            dici[key] = None
-            continue
-
-        # Handle string to list conversion
-        if key in keys_str_to_list and value is not None:
-            try:
-                dici[key] = ast_literal_eval(value)
-            except (ValueError, SyntaxError, TypeError):
-                # Keep original value if conversion fails
-                continue
-
-    dici = maybe_add_patch_size(dici)
-    return dici
 
 
 def parse_excel_dict(dici):
@@ -426,7 +390,9 @@ class ConfigMaker:
             ), "Please provide a valid mnemonic from the list {}".format(MNEMONICS)
         if configuration_mnemonic == "liver" or configuration_mnemonic == "lits":
             return configurations_folder / ("experiment_configs_liver.xlsx")
-        elif configuration_mnemonic == "lungs" or "lidc":
+        elif configuration_mnemonic == "litsmall" :
+            return configurations_folder / ("experiment_configs_litsmall.xlsx")
+        elif configuration_mnemonic in ["lungs" ,"lidc"]:
             return configurations_folder / ("experiment_configs_lungs.xlsx")
         elif configuration_mnemonic == "nodes":
             return configurations_folder / ("experiment_configs_nodes.xlsx")
@@ -485,7 +451,7 @@ class ConfigMaker:
             plan_num: Plan number from dataset_params
             train: Boolean - True for training plan, False for validation plan
         """
-        plan_name = "plan" + str(plan_num)
+        plan_name = plan_num
         plan_selected = self.plans.loc[plan_name]
         plan_selected = dict(plan_selected)
         samples_per_file = plan_selected["samples_per_file"]
@@ -495,6 +461,8 @@ class ConfigMaker:
         plan_key = "plan_train" if train else "plan_valid"
         self.configs[plan_key] = plan_selected
         # self.maybe_merge_source_plan(plan_key)
+        if is_excel_None(plan_selected["expand_by"]):
+            plan_selected["expand_by"] = 0
         self.configs[plan_key] = parse_excel_dict(plan_selected)
         self.configs[plan_key]["plan_name"] = plan_name
 
@@ -508,6 +476,7 @@ class ConfigMaker:
                 as_list = True if value=="list" else False,
 
             )
+
 
 
     def _set_active_plans(self, plan_train: int = None, plan_valid: int = None):

@@ -23,6 +23,7 @@
   datasources:
     totalseg: tsl
     lits : lts
+    litsmall: lss
     drli: drl
     litq: lq
     litqsmall: lqs

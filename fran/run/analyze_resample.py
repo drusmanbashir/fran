@@ -9,8 +9,7 @@ from utilz.helpers import *
 from utilz.string import headline
 
 from fran.managers import Project
-from fran.managers.datasource import DS
-from fran.managers.db import find_matching_plan
+from fran.managers.db import add_plan_to_db, find_matching_plan
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
@@ -141,12 +140,11 @@ class PreprocessingManager:
         """
         requires resampled folder to exist. Crops within this folder
         """
-        imported_folder = Path(imported_folder)
+        Path(imported_folder)
         self.L = LabelBoundedDataGeneratorImported(
             project=self.project,
             plan=self.plan,
             data_folder=self.resample_output_folder,
-
         )
         self.L.setup(overwrite=overwrite, device=device)
         self.L.process()
@@ -298,8 +296,9 @@ def do_low_res(proj_defaults):
     multiprocess_multiarg(resample_img_mask_tensors, args, debug=False)
 
 
+
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     from fran.utils.common import *
 
@@ -320,8 +319,8 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "lidc"
-    args.plan = 3
+    args.project_title = "nodes"
+    args.plan = 6
     args.overwrite = False
 
 # %%
@@ -329,23 +328,21 @@ if __name__ == "__main__":
     # P.create(mnemonic="lidc")
     # P.create(mnemonic="lidc", datasources=[DS["lidc"]])
     # P.add_data([DS["lidc"]])
-    # P.maybe_store_projectwide_properties()
+    P.maybe_store_projectwide_properties()
 
 # %%
     I = PreprocessingManager(args)
     I.resample_dataset()
     # args.num_processes = 1
-
-    src_labels = plan["remapping_imported"][0]
-    dest_labels = plan["remapping_imported"][1]
 # %%
+
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
         imported_folder = I.plan.get("imported_folder", None)
         if imported_folder is None:
-            I.generate_lbd_dataset(overwrite=overwrite)
+            I.generate_lbd_dataset(overwrite=args.overwrite)
         else:
             I.generate_TSlabelboundeddataset(
                 remapping_imported=I.plan["remapping_imported"],
@@ -355,19 +352,19 @@ if __name__ == "__main__":
 # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
-        P.maybe_store_projectwide_properties(overwrite=True)
+        P.maybe_store_projectwide_properties(overwrite=args.overwrite)
 
 # %%
-# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     # I.spacing =
 # %%
-# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR> <CR> <CR>
     overwrite = args.overwrite
     I.resample_dataset(overwrite=args.overwrite)
     I.R.get_tensor_folder_stats()
 
 # %%
-# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR> <CR>
+# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR> <CR> <CR>
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
@@ -383,7 +380,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-# SECTION:-------------------- TSL dataset Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- TSL dataset Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     # this section uses imported labels from TSL and integrates those into the dataset.
     assert (
@@ -428,7 +425,7 @@ if __name__ == "__main__":
     # I.L.get_tensor_folder_stats()
     # I.L.generate_bboxes()
 # %%
-# SECTION:-------------------- Troubleshooting-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- Troubleshooting-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
 # %%
     imported_folder = plan["imported_folder"]
@@ -455,6 +452,7 @@ if __name__ == "__main__":
 # %%
     I.L.setup(overwrite=overwrite)
     I.L.process()
+    find_matching_plan(I.project.db, I.plan)
 # %%
     overwrite = False
     L = LabelBoundedDataGenerator(
@@ -604,4 +602,10 @@ if __name__ == "__main__":
         I.get_resampling_configs()
         I.R.create_dl()
         I.R.process()
+# %
+        aa= find_matching_plan(I.project.db, I.plan)
+# %
+    add_plan_to_db(I.plan, I.project.db, data_folder_source=I.R.output_folder)
+    add_plan_to_db(I.plan, I.project.db, data_folder_lbd=I.L.output_folder)
+
 # %%

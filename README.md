@@ -198,7 +198,7 @@ The project uses SQLite to track all cases with the following schema:
 ```sql
 CREATE TABLE datasources (
     ds TEXT,              -- Dataset name
-    alias TEXT,           -- Dataset alias for filename matching
+    alias TEXT,           -- Dataset alias for filename matching (this is used if datasource title does not match the first token in case names e.g. litstmp)
     case_id TEXT,         -- Unique case identifier
     image TEXT,           -- Original image path
     lm TEXT,              -- Original labelmap path

@@ -1,12 +1,13 @@
-# %%
+# %%from pathlib import Path
+from fastcore.all import GetAttr
 from pathlib import Path
-
 import ipdb
 import ray
 import itertools as il
 
 from fran.inference.base import list_to_chunks
 from fran.managers.db import add_plan_to_db, find_matching_plan
+from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.utils.config_parsers import create_remapping
 from fran.utils.folder_names import folder_names_from_plan
 
@@ -54,11 +55,9 @@ def generate_bboxes_from_lms_folder(
     save_dict(bboxes, bbox_fn)
 
 
-tot_gpus = 2
-n_processes = 16
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=4)
 class NiftiResampler(Preprocessor):
     def __init__(
         self,
@@ -85,15 +84,14 @@ class NiftiResampler(Preprocessor):
         self.device = device
         self.set_normalization_values(mean_std_mode)
         self.create_transforms()
-
     def set_input_output_folders(self, data_folder, output_folder):
         self.data_folder = data_folder
         self.output_folder = output_folder
 
     def _create_data_dicts_from_df(self, df):
         """Create data dictionaries from DataFrame."""
+        remapping= self.plan["remapping_source"]
         data = []
-        remapping = create_remapping(self.plan, "remapping_source", as_dict=True)
         for index in range(len(df)):
             row = df.iloc[index]
             dici = self._dici_from_df_row(row, remapping)
@@ -142,8 +140,8 @@ class NiftiResampler(Preprocessor):
         assert len(data) > 0, "No data found in data folder"
         return data
 
-    def create_transforms(self):
-        self.L = LoadSITKd(keys=["image", "lm"], image_only=True)
+    def create_transforms(self,device='cpu'):
+        self.LS = LoadSITKd(keys=["image", "lm"], image_only=True)
         self.Rem = LabelRemapd(keys=["lm"], remapping_key="remapping_source")
         # self.RemI = LabelRemapd(keys=["lm"], remapping_key="remapping_imported")
         self.Re = Recastd(keys=["image", "lm"])
@@ -194,7 +192,7 @@ class NiftiResampler(Preprocessor):
         self.Ch = ChangeDtyped(keys=["lm"], target_dtype=torch.uint8)
 
         tfms = [
-            self.L,
+            self.LS,
             self.Rem,
             self.T,
             self.Re,
@@ -262,12 +260,18 @@ class ResampleDatasetniftiToTorch(Preprocessor):
             pass
         self.clip_center = clip_center
         self.half_precision = half_precision
+        self.remapping_key = "remapping_source"
         super().__init__(
             project, plan, output_folder=output_folder, data_folder=data_folder
         )
 
+    def create_data_df(self):
+        Preprocessor.create_data_df(self)
+        remapping = self.plan.get(self.remapping_key)
+        self.df = self.df.assign(remapping=[remapping] * len(self.df))
+
     def setup(
-        self, overwrite=False, mean_std_mode="dataset", num_processes=16, device="cpu"
+        self, overwrite=False, mean_std_mode="dataset", num_processes=8, device="cpu"
     ):
         self.create_data_df()
         self.register_existing_files()
@@ -448,7 +452,7 @@ if __name__ == "__main__":
     # chunkify = lambda l, n: [l[i : i + n] for i in range(0, len(l), n)]
     # aa = chunkify(Rs.df,16)
 
-    P = Project("totalseg")
+    P = Project("litstmp")
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
@@ -471,6 +475,13 @@ if __name__ == "__main__":
     n_processes = 12
     Rs.setup(num_processes=n_processes, overwrite=overwrite)
 
+# %%
+
+    num_processes=12
+    Rs.create_data_df()
+    Rs.register_existing_files()
+    mini_df = Rs.mini_dfs[0]
+    Rs.mini_dfs = np.array_split(Rs.df, num_processes)
 # %%
     Rs.process()
     #
@@ -512,8 +523,8 @@ if __name__ == "__main__":
     )
 # %%
     N = NiftiResampler(**actor_kwargs)
-    for mini_df in dds:
-        N.process(mini_df)
+    # for mini_df in dds:
+    N.process(mini_df)
 
 # %%
     remapping = create_remapping(N.plan, "remapping_source", as_dict=True)

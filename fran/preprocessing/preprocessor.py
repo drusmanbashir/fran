@@ -246,6 +246,30 @@ class Preprocessor(GetAttr):
             ]
         )
 
+    def ray_init(self):
+        if not ray.is_initialized():
+            try:
+                ray.init(ignore_reinit_error=True)
+            except Exception as e:
+                print("Ray init warning:", e)
+
+    def ray_prepare(self, actor_cls, actor_kwargs: dict, num_processes: int):
+        self.ray_init()
+        n = max(1, min(len(self.df), int(num_processes))) if len(self.df) else 0
+        self.n_actors = n
+        self.mini_dfs = np.array_split(self.df, n) if n else []
+        self.actors = [actor_cls.remote(**actor_kwargs) for _ in range(n)] if n else []
+
+    def ray_run(self, actor_method: str = "process"):
+        if not getattr(self, "actors", None):
+            print("No actors created. Did you run ray_prepare()?")
+            self.results_df = pd.DataFrame([])
+            return self.results_df
+        futs = [getattr(a, actor_method).remote(mdf) for a, mdf in zip(self.actors, self.mini_dfs)]
+        results_lists = ray.get(futs)
+        flat = list(il.chain.from_iterable(results_lists))
+        self.results_df = pd.DataFrame(flat) if flat else pd.DataFrame([])
+        return self.results_df
     @property
     def indices_subfolder(self):
         indices_subfolder = self.output_folder / ("indices")
@@ -261,4 +285,4 @@ if __name__ == "__main__":
     lms = bboxes_fldr / "lms"
     generate_bboxes_from_lms_folder(lms, debug=False)
 
-# %%
+# %
