@@ -139,6 +139,7 @@ The `add_data` method:
 - Populates the project database with case information
 - Handles duplicate detection and filtering
 - Registers datasources in global properties
+- In a plan,  some datasources may be dropped to change how training occurs, but folders are populated by the full compliment of data
 
 #### 4. Configure Label Groups
 ```python

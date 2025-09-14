@@ -9,7 +9,7 @@ from utilz.helpers import *
 from utilz.string import headline
 
 from fran.managers import Project
-from fran.managers.db import add_plan_to_db, find_matching_plan
+from fran.managers.db import  find_matching_plan
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties

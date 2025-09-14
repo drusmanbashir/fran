@@ -469,7 +469,7 @@ class ConfigMaker:
         for key,value in REMAPPING_DICT_OR_LIST.items():
             reg = load_registry()
             org_val = self.configs[plan_key][key]
-            self.configs[plan_key][key+"_code"] = remapping_conv(reg=reg, key="remapping",val=org_val)
+            # self.configs[plan_key][key+"_code"] = remapping_conv(reg=reg, key="remapping",val=org_val)
             self.configs[plan_key][key] = create_remapping(
                 plan=self.configs[plan_key], key=key,
                 as_dict = True if value=="dict" else False,

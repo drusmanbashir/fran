@@ -42,7 +42,7 @@ from utilz.string import info_from_filename, str_to_path
 tr = ipdb.set_trace
 from pathlib import Path
 
-from fran.managers.db import COLUMNS_ALL
+from fran.managers.db import COLUMNS_ALL, DB_PATH
 
 
 def subscript_generator():
@@ -911,6 +911,86 @@ class Project(DictToAttr):
         cc = [a == "NULL" for a in result]
         all_bool = not all(cc)
         return all_bool
+
+def add_plan_to_db(
+    project:Project,
+    plan: dict,
+    db_path: str = DB_PATH,
+    data_folder_source: str = None,
+    data_folder_lbd: str = None,
+    data_folder_whole: str = None,
+    data_folder_patch: str = None,
+) -> int:
+
+    # Assert that only one data_folder argument has a value
+    data_folders = [
+        data_folder_source,
+        data_folder_lbd,
+        data_folder_whole,
+        data_folder_patch,
+    ]
+    non_none_count = sum(1 for folder in data_folders if folder is not None)
+    assert (
+        non_none_count == 1
+    ), f"Exactly one data_folder argument must be provided, got {non_none_count}"
+
+    # Determine which data folder field is being set
+    data_folder_field = None
+    data_folder_value = None
+    if data_folder_source is not None:
+        data_folder_field = "data_folder_source"
+        data_folder_value = data_folder_source
+    elif data_folder_lbd is not None:
+        data_folder_field = "data_folder_lbd"
+        data_folder_value = data_folder_lbd
+    elif data_folder_whole is not None:
+        data_folder_field = "data_folder_whole"
+        data_folder_value = data_folder_whole
+    elif data_folder_patch is not None:
+        data_folder_field = "data_folder_patch"
+        data_folder_value = data_folder_patch
+
+    folder_names = folder_names_from_plan(project,plan)
+    folder_names[data_folder_field] = data_folder_value
+    
+
+    headline("Adding plan to db: {0}".format(db_path))
+    existing_row = find_matching_plan(db_path, plan)
+
+    if len(existing_row) >0:
+        # Check if the specific data folder field is NULL in existing row
+        if existing_row[data_folder_field] is None:
+            # Update the existing row with the new data folder value
+            with sqlite3.connect(db_path) as conn:
+                sql = f'UPDATE "{TABLE}" SET "{data_folder_field}" = ? WHERE id = ?'
+                conn.execute(
+                    sql, [_normalize_for_db(data_folder_value), existing_row["id"]]
+                )
+                conn.commit()
+                print(
+                    f"Updated existing row {existing_row['id']} with {data_folder_field}: {data_folder_value}"
+                )
+                return existing_row["id"]
+        else:
+            print(
+                f"Row exists with {data_folder_field} already set: {existing_row[data_folder_field]}"
+            )
+            return existing_row["id"]
+
+    # No matching row found, insert new row
+    combined_data = plan.copy()
+    combined_data.update(
+        {
+            "data_folder_source": data_folder_source,
+            "data_folder_lbd": data_folder_lbd,
+            "data_folder_whole": data_folder_whole,
+            "data_folder_patch": data_folder_patch,
+        }
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        return _insert_row(conn, combined_data, None)
+
 
 
 # %%

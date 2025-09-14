@@ -201,6 +201,7 @@ if __name__ == "__main__":
     value = 2
 
 
+# %%
     run_src = "LITS-1120"
     project_title = "totalseg"
     value = 2
@@ -209,11 +210,19 @@ if __name__ == "__main__":
     ckpt_src = checkpoint_from_model_id(run_src)
     dict_src = torch.load(ckpt_src, map_location="cpu", weights_only=False)
 # %%
+# %%
+#SECTION:-------------------- CONFIG --> CONFIGS--------------------------------------------------------------------------------------
+
     dici = dict_src.copy()
+    dici["hyper_parameters"]['configs']= dici["hyper_parameters"]['config'].copy()
+    dici["datamodule_hyper_parameters"]["configs"]=  dici["datamodule_hyper_parameters"]["config"].copy()  # ['plan_train']#=pln
+    torch.save(dici, ckpt_src)
+# %%
     dici.keys()
     pp(dici["hyper_parameters"].keys())
     dici['hyper_parameters']['lr']
     pp(dici["hyper_parameters"]['config'].keys())
+    dici["hyper_parameters"]['configs']= dici["hyper_parameters"]['config'].copy()
     # pln = dici['datamodule_hyper_parameters']['config']['plan{}'.format(value)]
     pln = dici["datamodule_hyper_parameters"]["config"]["plan"]
     datamod = dici["datamodule_hyper_parameters"]["config"]
@@ -254,6 +263,7 @@ if __name__ == "__main__":
     dici["hyper_parameters"]["project_title"] = "total_seg"
     dici["datamodule_hyper_parameters"]["project_title"] = "total_seg"
     dici["datamodule_hyper_parameters"].keys()
+    torch.save(dici, ckpt_src)
     torch.save(dici, ckpt_src)
 
 # %%

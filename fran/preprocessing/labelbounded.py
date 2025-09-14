@@ -16,7 +16,7 @@ from utilz.helpers import *
 from utilz.imageviewers import *
 from utilz.string import ast_literal_eval, headline, info_from_filename
 
-from fran.managers.db import add_plan_to_db, find_matching_plan
+from fran.managers.db import  find_matching_plan
 from fran.preprocessing.preprocessor import (Preprocessor,
                                              generate_bboxes_from_lms_folder)
 from fran.preprocessing.rayworker_base import RayWorkerBase
@@ -252,12 +252,12 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             mask_label: Specific label value to use for cropping. If None, uses all labels >0
         """
 
-        existing_fldr = find_matching_plan(project.db, plan).get(
-            "data_folder_lbd", None
+        existing_fldr = folder_names_from_plan(project, plan).get("data_folder_lbd"
         )
-        if existing_fldr is not None:
+        existing_fldr=Path(existing_fldr)
+        if existing_fldr.exists():
             headline(
-                "Plan folder already exists in db: {}.\nWill use existing folder to add data".format(
+                "Plan folder already exists: {}.\nWill use existing folder to add data".format(
                     existing_fldr
                 )
             )
@@ -286,7 +286,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
     def set_input_output_folders(self, data_folder, output_folder):
         self.data_folder = Path(data_folder)
         if output_folder is None:
-            lbd_subfolder = folder_names_from_plan(self.plan)["lbd_folder"]
+            lbd_subfolder = folder_names_from_plan(self.project,self.plan)["data_folder_lbd"]
             self.output_folder = self.project.lbd_folder / (lbd_subfolder)
         else:
             self.output_folder = Path(output_folder)
@@ -332,9 +332,9 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
-        add_plan_to_db(
-            self.plan, db_path=self.project.db, data_folder_lbd=self.output_folder
-        )
+        # add_plan_to_db(self.project,
+        #     self.plan, db_path=self.project.db, data_folder_lbd=self.output_folder
+        # )
 
     def setup(self, num_processes=8, device="cpu", overwrite=True):
 
@@ -673,17 +673,17 @@ if __name__ == "__main__":
             "since some files skipped, dataset stats are not being stored. run L.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
         )
 # %%
-    add_plan_to_db(
+    add_plan_to_db(L.project,
         L.plan, db_path=L.project.db, data_folder_lbd=L.output_folder
     )
 
 # %%
 
-    add_plan_to_db(
+    add_plan_to_db(L.project,
             I.L.plan, db_path=I.L.project.db, data_folder_lbd=I.L.output_folder
         )
 # %%
-    add_plan_to_db(
+    add_plan_to_db(L.project,
         L.plan, db_path=L.project.db, data_folder_source=L.data_folder,data_folder_lbd=L.output_folder
     )
 # %%

@@ -1,7 +1,7 @@
 ## %%
 
 from fran.managers import  Project
-from fran.managers.db import COLUMNS_CRITICAL, add_plan_to_db, find_matching_plan
+from fran.managers.db import COLUMNS_CRITICAL,  find_matching_plan
 from fran.run.analyze_resample import PreprocessingManager
 from fran.trainers.trainer import Trainer
 from fran.utils.common import *
@@ -31,10 +31,10 @@ if __name__ == '__main__':
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     devices = 2
     devices= [1]
-    bs = 2
+    bs = 6
 
-    run_name ='LITS-1271'
     run_name =None
+    run_name ='LITS-1288'
     compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -48,8 +48,8 @@ if __name__ == '__main__':
     conf["dataset_params"]["cache_rate"]=0.0
     print(conf['model_params']['out_channels'])
     
-    conf['dataset_params']['cache_rate']
 
+    conf['dataset_params']['cache_rate']
 
 # %%
     Tm = Trainer(P.project_title, conf, run_name)

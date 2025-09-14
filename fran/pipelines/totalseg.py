@@ -1,6 +1,6 @@
 # %%
 
-from fran.managers.db import add_plan_to_db, find_matching_plan
+from fran.managers.db import  find_matching_plan
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.run.analyze_resample import PreprocessingManager
 import argparse
@@ -172,7 +172,7 @@ if __name__ == '__main__':
     Rs.setup(overwrite=overwrite)
     Rs.process()
 
-    add_plan_to_db(Rs.plan, db_path=Rs.project.db, data_folder_source = Rs.output_folder)
+    add_plan_to_db(P,Rs.plan, db_path=Rs.project.db, data_folder_source = Rs.output_folder)
     # I.spacing =
 # %%
 #SECTION:-------------------- Resampling --------------------------------------------------------------------------------------

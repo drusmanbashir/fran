@@ -15,7 +15,7 @@ import numpy as np
 from torch.nn.modules import CrossEntropyLoss
 import pandas as pd
 from utilz.string import dec_to_str
-parent_fldr = Path("/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ldc_ricr2_ex000")
+parent_fldr = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex050")
 img_fldr = parent_fldr/"images"
 lms_fldr = parent_fldr/"lms"
 
@@ -23,8 +23,9 @@ lms_fldr = parent_fldr/"lms"
 img_fns = list(img_fldr.glob("*"))
 lab_fns = list(lms_fldr.glob("*"))
 # %%
-img = torch.load(img_fns[0], weights_only=False)
-lm = torch.load(lab_fns[0], weights_only=False)
+n=2
+img = torch.load(img_fns[n], weights_only=False)
+lm = torch.load(lab_fns[n], weights_only=False)
 ImageMaskViewer([img,lm])
 # %%
 lab_fn = "/r/datasets/preprocessed/totalseg/fixed_spacing/spc_100_100_100_rscr1/lms/totalseg_s0591.pt"

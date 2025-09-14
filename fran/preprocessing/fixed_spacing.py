@@ -1,13 +1,9 @@
-# %%from pathlib import Path
-from fastcore.all import GetAttr
 from pathlib import Path
 import ipdb
 import ray
 import itertools as il
 
 from fran.inference.base import list_to_chunks
-from fran.managers.db import add_plan_to_db, find_matching_plan
-from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.utils.config_parsers import create_remapping
 from fran.utils.folder_names import folder_names_from_plan
 
@@ -248,10 +244,11 @@ class ResampleDatasetniftiToTorch(Preprocessor):
     ):
 
         try:
-            existing_fldr = find_matching_plan(project.db, plan)['data_folder_source']
-        # if existing_fldr is not None:
-            print(
-                "Plan folder already exists in db: {}.\nWill use existing folder to add data".format(
+            existing_fldr = folder_names_from_plan(project, plan)['data_folder_source']
+            existing_fldr = Path(existing_fldr)
+            if existing_fldr.exists():
+                print(
+                    "Plan folder already exists:  {}.\nWill use existing folder to add data".format(
                     existing_fldr
                 )
             )
@@ -339,9 +336,9 @@ class ResampleDatasetniftiToTorch(Preprocessor):
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
-        add_plan_to_db(
-            self.plan, db_path=self.project.db, data_folder_source=self.output_folder
-        )
+        # add_plan_to_db(self.project,
+        #     self.plan, db_path=self.project.db, data_folder_source=self.output_folder
+        # )
 
     def generate_bboxes_from_masks_folder(
         self, bg_label=0, debug=False, num_processes=8
@@ -382,13 +379,12 @@ class ResampleDatasetniftiToTorch(Preprocessor):
     #     self.results = pd.DataFrame(results).values
     #     self._store_dataset_properties()
 
-    # CODE: not sure if this is to be here or at NiftiResampler level
     def set_input_output_folders(self, data_folder, output_folder):
         self.data_folder = Path(data_folder)
         if output_folder is not None:
             self.output_folder = Path(output_folder)
         else:
-            src_subfolder = folder_names_from_plan(self.plan)["source_folder"]
+            src_subfolder = folder_names_from_plan(self.project,self.plan)["data_folder_source"]
             self.output_folder = self.project.fixed_spacing_folder / (src_subfolder)
 
 
@@ -452,7 +448,7 @@ if __name__ == "__main__":
     # chunkify = lambda l, n: [l[i : i + n] for i in range(0, len(l), n)]
     # aa = chunkify(Rs.df,16)
 
-    P = Project("litstmp")
+    P = Project("nodes")
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
@@ -460,16 +456,18 @@ if __name__ == "__main__":
     C.plans
     plan = C.configs["plan_train"]
     conf = C.configs
-    print(conf["model_params"])
+
 # %%
 
     plan = conf["plan_train"]
-    print(plan)
+    pp(plan)
     plan["mode"]
 
+    folder_names_from_plan(P, plan)
 # %%
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     Rs = ResampleDatasetniftiToTorch(P, plan, P.raw_data_folder)
+    Rs.output_folder.exists()
 
     overwrite = False
     n_processes = 12

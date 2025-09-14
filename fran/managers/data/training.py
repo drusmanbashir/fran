@@ -53,6 +53,8 @@ from utilz.string import ast_literal_eval, info_from_filename, strip_extension
 import re
 import os
 
+from fran.utils.folder_names import folder_names_from_plan
+
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]+"/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
@@ -549,10 +551,11 @@ class DataManager(LightningDataModule):
 
     def derive_data_folder(self,mode):
         key = "data_folder_{}".format(mode)
-        matching_plan = find_matching_plan(self.project.db,self.plan)
-        if len(matching_plan)==0: raise ValueError("No matching plan found")
-        data_folder = matching_plan[key]
+        folders = folder_names_from_plan(self.project,self.plan)
+        data_folder = folders[key]
         data_folder = Path(data_folder)
+        if not data_folder.exists() or len(list(data_folder.rglob("*.pt"))) == 0:
+            raise Exception(f"Data folder {data_folder} does not exist")
         return data_folder
 
 

@@ -191,7 +191,7 @@ if __name__ == '__main__':
     L.setup(overwrite=overwrite)
     L.process()
 
-    add_plan_to_db(L.plan,L.output_folder, db_path="plans.db")
+    add_plan_to_db(P,L.plan,L.output_folder, db_path="plans.db")
 # %%
 
     

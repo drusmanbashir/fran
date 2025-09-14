@@ -3,7 +3,6 @@ from pathlib import Path
 
 import ipdb
 
-from fran.managers.db import add_plan_to_db
 
 tr = ipdb.set_trace
 

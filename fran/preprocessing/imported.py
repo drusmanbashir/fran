@@ -290,13 +290,13 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    project_title = "lidc"
+    project_title = "nodes"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
-    C.setup(3)
+    C.setup(6)
 # %%
     C.plans
     conf = C.configs
@@ -306,12 +306,13 @@ if __name__ == "__main__":
     pp(plan)
     spacing = plan["spacing"]
     # plan["remapping_imported"][0]
+    plan["expand_by"]
 # %%
 # SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     L = LabelBoundedDataGeneratorImported(
         project=P,
         plan=plan,
-        data_folder="/r/datasets/preprocessed/lidc/fixed_spacing/spc_080_080_150_ldc",
+        data_folder="/r/datasets/preprocessed/nodes/fixed_spacing/spc_080_080_150",
     )
 
 # %%
@@ -319,8 +320,7 @@ if __name__ == "__main__":
     L.setup(overwrite=overwrite)
 
     L.process()
-# %%
-# %%
+# %% %%
     num_processes=16
     L.create_data_df()
     L.register_existing_files()

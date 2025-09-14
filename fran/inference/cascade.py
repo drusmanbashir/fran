@@ -437,6 +437,7 @@ if __name__ == "__main__":
     run_lidc2 = ["LITS-902"]
     run_nodes = ["LITS-1159"]
     run_nodes = ["LITS-1230"]
+    run_nodes = ["LITS-1288"]
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
     run_lidc2 = ["LITS-911"]
