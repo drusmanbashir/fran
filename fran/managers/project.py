@@ -252,7 +252,6 @@ class Project(DictToAttr):
         Create the `datasources` table in the database if it doesn't exist.
         """
         self._create_datasources_table()
-        self._create_plans_table()
 
     def _create_datasources_table(self):
         tbl_name = "datasources"
@@ -263,18 +262,6 @@ class Project(DictToAttr):
                 )
             )
 
-    def _create_plans_table(self):
-        all_cols = ", ".join(COLUMNS_ALL)
-
-        sql = f"""
-        CREATE TABLE IF NOT EXISTS master_plans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT NOT NULL,
-            {all_cols}
-        )"""
-        with sqlite3.connect(self.db) as conn:
-            conn.execute(sql)
-            conn.commit()
 
     def table_exists(self, tbl_name):
         ss = "SELECT name FROM sqlite_schema WHERE type='table' AND name ='{}'".format(
