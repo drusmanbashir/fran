@@ -1,7 +1,8 @@
 # %%
 import argparse
 from fran.managers.project import Project
-from fran.managers.datasource import DS,MNEMONICS
+from fran.managers.datasource import DS
+from fran.utils.config_parsers import MNEMONICS
 
 
 def main(args):
@@ -12,6 +13,7 @@ def main(args):
     if args.datasources:
         datas = [DS[name] for name in args.datasources]
         P.add_data(datasources=datas, test=args.test)
+    P.maybe_store_projectwide_properties(overwrite=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage FRAN projects")
@@ -22,8 +24,8 @@ if __name__ == "__main__":
 # %%
     args = parser.parse_known_args()[0]
     args.title = 'tmp2'
-    args.mnemonic = 'liver'
-    args.datasources = ['litstmp']
+    args.mnemonic = 'litsmall'
+    args.datasources = ['litsmall']
 
 # %%
     main(args)
