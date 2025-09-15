@@ -46,7 +46,7 @@ class PrepRawData():
 
     def rename_and_copy(self):
         args = [[*src_pair,*dest_pair] for src_pair, dest_pair in zip(self.src_file_pairs,self.dest_file_pairs)]
-        multiprocess_multiarg(copy_src_dest, args,self.num_processes,debug=self.debug)
+        multiprocess_multiarg(copy_src_dest, args,self.num_processes,debug=self.debug,io=True)
 
 
 class PrepRawDataLITS(PrepRawData):

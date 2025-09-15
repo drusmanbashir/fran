@@ -259,6 +259,7 @@ class Datasource(GetAttr):
             num_processes=num_processes,
             multiprocess=multiprocess,
             debug=debug,
+            io=True
         )
 
         for output in self.outputs:
@@ -435,7 +436,8 @@ if __name__ == '__main__':
         num_processes=num_processes,
         multiprocess=multiprocess,
         debug=debug_,
-        logname = "dd.log"
+        logname = "dd.log",
+        io=True,
         )
 # %%
 # %%

@@ -304,6 +304,7 @@ class GlobalProperties(GetAttr):
             num_processes=num_processes,
             multiprocess=multiprocess,
             debug=debug,
+            algebra=True
         )
         means_sizes = torch.tensor(means_sizes)
         weighted_mn = torch.multiply(means_sizes[:, 0], means_sizes[:, 1])
@@ -332,6 +333,7 @@ class GlobalProperties(GetAttr):
             num_processes=num_processes,
             multiprocess=multiprocess,
             debug=debug,
+            algebra=True
         )
         std_num = torch.tensor(std_num)
         self.std = torch.sqrt(std_num.sum() / self.total_voxels)

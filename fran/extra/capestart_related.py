@@ -101,7 +101,7 @@ if __name__ == "__main__":
         except:
             print(row['fn_out'])
 
-    # res = multiprocess_multiarg(normalise_sitk_file,args)
+    # res = multiprocess_multiarg(normalise_sitk_file,args,io=True)
 
 # %%
 
@@ -109,7 +109,6 @@ if __name__ == "__main__":
     fn_name = "case_"+str(ind)+".nii.gz"
     img_fn  = img_fns[ind]
 
-    multiprocess_multiarg()
 
 
 

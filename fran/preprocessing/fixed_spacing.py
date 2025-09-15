@@ -375,7 +375,7 @@ class ResampleDatasetniftiToTorch(Preprocessor):
     # def get_tensor_folder_stats(self, debug=True):
     #     img_filenames = (self.output_folder / ("images")).glob("*")
     #     args = [[img_fn] for img_fn in img_filenames]
-    #     results = multiprocess_multiarg(get_tensorfile_stats, args, debug=debug)
+    #     results = multiprocess_multiarg(get_tensorfile_stats, args, debug=debug,io=True)
     #     self.results = pd.DataFrame(results).values
     #     self._store_dataset_properties()
 

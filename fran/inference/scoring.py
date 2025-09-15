@@ -2,7 +2,8 @@
 # %%
 # %matplotlib inline
 # %matplotlib widget
-from fasttransform.transform import typedispatch
+# from fasttransform.transform import typedispatch
+from fastcore import typedispatch
 from monai.utils.enums import LossReduction
 
 from monai.losses import DiceLoss

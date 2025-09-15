@@ -1,23 +1,7 @@
 from ray.util.multiprocessing import Pool as rPool
 from fran.inference.scoring import compute_dice_fran
 from utilz.helpers import *
-
-def multiprocess_multiarg(func,arguments, num_processes=8,multiprocess=True,debug=False,progress_bar=True):
-    results=[]
-    if multiprocess==False or debug==True:
-        for res in pbar(arguments,total=len(arguments)):
-            if debug==True:
-                tr()
-            results.append(func(*res,))
-    else:
-        p = rPool()
-        jobs = [p.apply_async(func=func, args=(*argument, )) for argument in arguments]
-        p.close()
-        pbar_fnc = get_pbar() if progress_bar==True else lambda x: x
-        for job in pbar_fnc(jobs):
-                results.append(job.get())
-    return results
-
+import os
 
 def case_processed_already(img_fn,output_folder):
     img_fn_no_ext = img_fn.name.split(".")[0]
@@ -61,7 +45,7 @@ def main (args):
 
     E = EndToEndPredictor(proj_defaults,run_name_l,run_name_p,use_neptune=use_neptune)
     args = [[E, proj_defaults,run_name_l,run_name_p,use_neptune,*img_mask_pair,overwrite,None] for img_mask_pair in img_mask_pairs]
-    res = multiprocess_multiarg(func=run_prediction,arguments=args,num_processes=n_processes)
+    res = multiprocess_multiarg(func=run_prediction,arguments=args,num_processes=n_processes,io=True)
     tr()
     save_dict(res,"result")
 

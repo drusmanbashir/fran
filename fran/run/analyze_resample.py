@@ -29,7 +29,7 @@ def verify_dataset_integrity(folder: Path, debug=False, fix=False):
     print("Verifying dataset integrity")
     subfolder = list(folder.glob("mask*"))[0]
     args = [[fn, fix] for fn in subfolder.glob("*")]
-    res = multiprocess_multiarg(verify_img_label_match, args, debug=debug)
+    res = multiprocess_multiarg(verify_img_label_match, args, debug=debug, io=True,io=True)
     errors = [item for item in res if re.search("mismatch", item[0], re.IGNORECASE)]
     if len(errors) > 0:
         outname = folder / ("errors.txt")
@@ -293,7 +293,7 @@ def do_low_res(proj_defaults):
     maybe_makedirs(stage1_subfolder)
 
     args = [[fn, stage1_subfolder, low_res_shape, False] for fn in stage0_files]
-    multiprocess_multiarg(resample_img_mask_tensors, args, debug=False)
+    multiprocess_multiarg(resample_img_mask_tensors, args, debug=False,io=True)
 
 
 

@@ -375,7 +375,7 @@ if __name__ == "__main__":
 # %%
 # %%
 
-    res = multiprocess_multiarg(bboxes_function_version, arguments, 16, debug=False)
+    res = multiprocess_multiarg(bboxes_function_version, arguments, 16, debug=False,io=True)
 
 # %%
 
@@ -395,7 +395,7 @@ if __name__ == "__main__":
 
 # %%
 
-    res = multiprocess_multiarg(bboxes_function_version, arguments, 48, debug=False)
+    res = multiprocess_multiarg(bboxes_function_version, arguments, 48, debug=False,io=True)
 # %%
 
     import collections
