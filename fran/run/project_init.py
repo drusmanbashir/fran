@@ -4,7 +4,17 @@ from fran.managers.project import Project
 from fran.managers.datasource import DS
 from fran.utils.config_parsers import MNEMONICS
 
-
+# very top of project_init.py (above any 3rd-party imports)
+import os
+os.environ.setdefault("OPENBLAS_NUM_THREADS","1")
+os.environ.setdefault("OMP_NUM_THREADS","1")
+os.environ.setdefault("MKL_NUM_THREADS","1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS","1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS","1")
+os.environ.setdefault("ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS","1")
+# optional noise reducers:
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL","3")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES","") 
 def main(args):
     P = Project(project_title=args.title)
 
