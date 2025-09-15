@@ -24,7 +24,7 @@ All dataset creation and (some) training blueprints are in excel spreadsheets an
 ### A. Plans
 
 
-## 1. Setting common variables
+## 1. Setting environment variables
 Once you have installed neptune client, and created a new empty project, open the project and you will find instructions to initialize a project like so:
 ```
 run = neptune.init_run( project="{workspacename}/{projectname}",

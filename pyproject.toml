@@ -39,6 +39,7 @@ dependencies = [
   "PyYAML>=6.0.2",
   "reportlab>=4.2.5",
   "scikit-image==0.25.2",
+  "send2trash",
 ]
 
 [project.optional-dependencies]
@@ -50,7 +51,6 @@ twod = [
   "roboflow>=1.1.49",
   "ultralytics>=8.3.44",
   "supervision>=0.25.1",
-  "send2trash",
 ]
 # packages you previously filtered out in setup.py
 dev-geom = [
