@@ -14,7 +14,7 @@ from utilz.string import ast_literal_eval
 from fran.utils.folder_names import load_registry, remapping_conv
 from fran.utils.string_works import is_excel_None
 
-MNEMONICS = ["lits","litsmall", "litq", "lidc", "lungs", "nodes", "totalseg"]
+MNEMONICS = ["litsmall","lits", "litq","liver", "lidc", "lungs", "nodes", "totalseg"]
 tr = ipdb.set_trace
 
 if not sys.executable == "":  # workaround for slicer as it does not load ray tune
@@ -388,7 +388,7 @@ class ConfigMaker:
             assert (
                 configuration_mnemonic in MNEMONICS
             ), "Please provide a valid mnemonic from the list {}".format(MNEMONICS)
-        if configuration_mnemonic == "liver" or configuration_mnemonic == "lits":
+        if configuration_mnemonic in ["liver","lits","litq" ]:
             return configurations_folder / ("experiment_configs_liver.xlsx")
         elif configuration_mnemonic == "litsmall" :
             return configurations_folder / ("experiment_configs_litsmall.xlsx")

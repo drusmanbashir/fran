@@ -21,9 +21,9 @@ if __name__ == "__main__":
     parser.add_argument("--test", action="store_true", help="Mark datasources as test")
 # %%
     args = parser.parse_known_args()[0]
-    args.title = 'tmpja'
+    args.title = 'tmp2'
     args.mnemonic = 'liver'
-    args.datasources = ['drli_short']
+    args.datasources = ['litstmp']
 
 # %%
     main(args)
