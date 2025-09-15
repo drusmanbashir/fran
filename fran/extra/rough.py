@@ -15,6 +15,9 @@ import numpy as np
 from torch.nn.modules import CrossEntropyLoss
 import pandas as pd
 from utilz.string import dec_to_str
+
+# %%
+#SECTION:-------------------- Read and view SITK images--------------------------------------------------------------------------------------
 parent_fldr = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex050")
 img_fldr = parent_fldr/"images"
 lms_fldr = parent_fldr/"lms"
@@ -43,6 +46,9 @@ for img_fn, lab_fn in zip(img_fns,lab_fns):
     mean = img.mean()
     print(mean,median)
 # %%
+# %%
+#SECTION:-------------------- H5 file check--------------------------------------------------------------------------------------
+h5fn = "/s/datasets_bkp/litsmall/fg_voxels.h5"
         # lab[lab>0]=1
 
         # torch.save(lab,lab_fn)

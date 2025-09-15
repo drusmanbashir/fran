@@ -570,8 +570,10 @@ class Project(DictToAttr):
             if not h5_fname.exists():
                 decision = input("Datasource has no h5_fname. Create one? Proceed (Y/y) or Skip (N/n)?: ")
                 if decision == "Y" or decision == "y":
-                    dss.process()
-                else: raise FileNotFoundError
+                    try:
+                        dss.process()
+                    except Exception as e:
+                        print(e)
             dici = {
                 "ds": dataset_name,
                 "alias": ds.alias,
