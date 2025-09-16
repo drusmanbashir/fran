@@ -784,7 +784,7 @@ class Project(DictToAttr):
         self.save_global_properties()
 
     def maybe_store_projectwide_properties(
-        self, clip_range=None, max_cases=100, overwrite=False
+        self, clip_range=None, max_cases=100, overwrite=False,multiprocess=False
     ):
         """
         Store global properties like dataset mean and standard deviation.
@@ -808,7 +808,7 @@ class Project(DictToAttr):
             self.G.collate_lm_labels()
         if not "mean_dataset_clipped" in self.global_properties.keys() or overwrite == True:
             self.G.store_projectwide_properties()
-            self.G.compute_std_mean_dataset()
+            self.G.compute_std_mean_dataset(multiprocess=multiprocess)
 
     def add_plan(self, plan: dict):
         """

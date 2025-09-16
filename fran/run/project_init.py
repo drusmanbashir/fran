@@ -1,5 +1,7 @@
 # %%
 import argparse
+
+from utilz.string import headline
 from fran.managers.project import Project
 from fran.managers.datasource import DS
 from fran.utils.config_parsers import MNEMONICS
@@ -19,6 +21,13 @@ os.environ.setdefault("ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS","1")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL","3")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES","") 
 def main(args):
+    headline("Arguments:")
+    print(f"args.title: {args.title}")
+    print(f"args.mnemonic: {args.mnemonic}")
+    print(f"args.datasources: {args.datasources}")
+    print(f"args.test: {args.test}")
+    print(f"args.multiprocess: {args.multiprocess}")
+    
     P = Project(project_title=args.title)
 
     if not P.db.exists():
@@ -26,7 +35,7 @@ def main(args):
     if args.datasources:
         datas = [DS[name] for name in args.datasources]
         P.add_data(datasources=datas, test=args.test, multiprocess=args.multiprocess)
-    P.maybe_store_projectwide_properties(overwrite=False)
+    P.maybe_store_projectwide_properties(overwrite=False,multiprocess=args.multiprocess)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage FRAN projects")
@@ -37,10 +46,11 @@ if __name__ == "__main__":
     parser.add_argument("--test", action="store_true", help="Mark datasources as test")
 # %%
     args = parser.parse_known_args()[0]
-    args.multiprocess=False
-    args.title = 'tmp2'
-    args.mnemonic = 'litsmall'
-    args.datasources = ['litsmall']
+    # args.multiprocess=False
+    # args.title = 'tmp2'
+    # args.mnemonic = 'litsmall'
+    # args.datasources = ['litsmall']
+
 
 # %%
     main(args)

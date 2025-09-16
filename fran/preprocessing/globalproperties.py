@@ -199,7 +199,7 @@ class GlobalProperties(GetAttr):
         ), "Mismatch in case_ids and case_properties"
         return case_properties
 
-    def store_projectwide_properties(self):
+    def store_projectwide_properties(self,multiprocess=True):
         """
         Stage 1.
         Start here.
