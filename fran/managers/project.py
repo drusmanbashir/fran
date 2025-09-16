@@ -270,7 +270,7 @@ class Project(DictToAttr):
         aa = self.sql_query(ss)
         return True if len(aa) > 0 else False
 
-    def add_data(self, datasources: List, test=False):
+    def add_data(self, datasources: List, test=False, multiprocess=False):
         """
         Add multiple datasources to the project database.
 
@@ -295,7 +295,7 @@ class Project(DictToAttr):
             ds = self.filter_existing_images(ds)
             self.populate_tbl(ds)
         self.populate_raw_data_folder()
-        self.register_datasources(datasources)
+        self.register_datasources(datasources, multiprocess=multiprocess)
         self.set_labels_all()
         self.save_global_properties()
 
@@ -547,7 +547,7 @@ class Project(DictToAttr):
 
             self.update_tbl_folds()
 
-    def register_datasources(self, datasources: list) -> list:
+    def register_datasources(self, datasources: list, multiprocess: bool = False) -> list:
         """
         Register new datasources and save to global properties.
 
@@ -568,12 +568,12 @@ class Project(DictToAttr):
             dss = Datasource(fldr)
             h5_fname = dss.h5_fname
             if not h5_fname.exists():
-                decision = input("Datasource has no h5_fname. Create one? Proceed (Y/y) or Skip (N/n)?: ")
-                if decision == "Y" or decision == "y":
-                    try:
-                        dss.process()
-                    except Exception as e:
-                        print(e)
+                # decision = input("Datasource has no h5_fname. Create one? Proceed (Y/y) or Skip (N/n)?: ")
+                # if decision == "Y" or decision == "y":
+                try:
+                    dss.process(multiprocess=multiprocess)
+                except Exception as e:
+                    print(e)
             dici = {
                 "ds": dataset_name,
                 "alias": ds.alias,
