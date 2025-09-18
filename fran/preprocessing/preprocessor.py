@@ -70,7 +70,7 @@ class Preprocessor(GetAttr):
     def create_data_df(self):
         if self.data_folder is not None:
             self.df = create_df_from_folder(self.data_folder)
-            # CODE: This might crash
+            assert len(self.df) >0 , "No valid case files found in {}".format(self.data_folder)
             extract_ds = lambda x: x.split("_")[0]
 
             # self.df = pd.merge(self.df,self.project.df[['case_id','fold','ds']],how="left",on="case_id")

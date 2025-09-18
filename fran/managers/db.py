@@ -265,7 +265,7 @@ if __name__ == "__main__":
     conn.commit()
 # %%
     plan = C.conf['plan_train']
-    find_matching_plan(P.db, plan)
+    folder_names_from_plan(P, plan)
 
 # %%
 #SECTION:-------------------- DELETE ROW BASED ON COL VALUE MATCH--------------------------------------------------------------------------------------
@@ -401,6 +401,9 @@ if __name__ == "__main__":
     description = None
 
     # device_id = 1
+# %%
+
+
 # %%
     #
     #     """Return id of a row where all provided key->value pairs match (for known columns)."""

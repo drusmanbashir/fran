@@ -9,6 +9,7 @@ from utilz.helpers import *
 from utilz.string import headline
 
 from fran.managers import Project
+from fran.managers.datasource import DS
 from fran.managers.db import  find_matching_plan
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
@@ -17,8 +18,45 @@ from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
 from fran.utils.config_parsers import ConfigMaker
+from fran.utils.folder_names import folder_names_from_plan
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
+
+def main(args):
+    P = Project(project_title=args.project_title)
+    # P.create(mnemonic= "litsmall")
+    # P.add_data([DS["litsmall"]])
+    # P.create(mnemonic="lidc")
+    # P.create(mnemonic="lidc", datasources=[DS["lidc"]])
+    # P.add_data([DS["lidc"]])
+    # P.maybe_store_projectwide_properties()
+
+# %%
+    I = PreprocessingManager(args)
+    I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+    # args.num_processes = 1
+# %%
+
+    if I.plan["mode"] == "patch":
+        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+        I.generate_hires_patches_dataset(overwrite=args.overwrite)
+    elif I.plan["mode"] == "lbd":
+        imported_folder = I.plan.get("imported_folder", None)
+        if imported_folder is None:
+            I.generate_lbd_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+        else:
+            I.generate_TSlabelboundeddataset(
+                remapping_imported=I.plan["remapping_imported"],
+                imported_folder=I.plan["imported_folder"],
+                overwrite=args.overwrite,
+                num_processes=args.num_processes
+            )
+
+# %%
+    if not "labels_all" in P.global_properties.keys():
+        P.set_lm_groups(plan["lm_groups"])
+        P.maybe_store_projectwide_properties(overwrite=args.overwrite)
+
 
 
 @str_to_path(0)
@@ -29,7 +67,7 @@ def verify_dataset_integrity(folder: Path, debug=False, fix=False):
     print("Verifying dataset integrity")
     subfolder = list(folder.glob("mask*"))[0]
     args = [[fn, fix] for fn in subfolder.glob("*")]
-    res = multiprocess_multiarg(verify_img_label_match, args, debug=debug, io=True,io=True)
+    res = multiprocess_multiarg(verify_img_label_match, args, debug=debug, io=True)
     errors = [item for item in res if re.search("mismatch", item[0], re.IGNORECASE)]
     if len(errors) > 0:
         outname = folder / ("errors.txt")
@@ -55,6 +93,7 @@ class PreprocessingManager:
     # dont use getattr
     def __init__(self, args):
         self.assimilate_args(args)
+        self.num_processes = args.num_processes
         P = Project(project_title=args.project_title)
         self.project = P
         C = ConfigMaker(P, raytune=False, configuration_filename=None)
@@ -99,7 +138,7 @@ class PreprocessingManager:
             if reanalyse.lower() == "y":
                 return True
 
-    def resample_dataset(self, overwrite=False):
+    def resample_dataset(self, overwrite=False, num_processes=1):
         """
         Resamples dataset to target spacing and stores it in the cold_storage fixed_spacing_folder.
         Typically this will be a basis for further processing e.g., pbd, lbd dataset which will then be used in training
@@ -111,14 +150,16 @@ class PreprocessingManager:
             data_folder=self.project.raw_data_folder,
         )
 
-        self.R.setup(overwrite=overwrite)
+        self.R.setup(overwrite=overwrite, num_processes=num_processes)
         self.R.process()
         self.resample_output_folder = self.R.output_folder
 
-    def generate_lbd_dataset(self, overwrite=False, device="cpu"):
-        resampled_data_folder = find_matching_plan(self.project.db, self.plan)[
+    def generate_lbd_dataset(self, overwrite=False, device="cpu",num_processes=1):
+
+        resampled_data_folder = folder_names_from_plan(self.project, self.plan)[
             "data_folder_source"
         ]
+        
         headline(
             "LBD dataset will be based on resampled dataset output_folder {}".format(
                 resampled_data_folder
@@ -129,13 +170,14 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=resampled_data_folder,
         )
-        self.L.setup(overwrite=overwrite, device=device)
+        self.L.setup(overwrite=overwrite, device=device, num_processes=num_processes)
         self.L.process()
 
     def generate_TSlabelboundeddataset(
         self,
         device="cpu",
         overwrite=False,
+        num_processes=1,
     ):
         """
         requires resampled folder to exist. Crops within this folder
@@ -146,7 +188,7 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=self.resample_output_folder,
         )
-        self.L.setup(overwrite=overwrite, device=device)
+        self.L.setup(overwrite=overwrite, device=device,num_processes=num_processes)
         self.L.process()
 
     @ask_proceed("Generating low-res whole images to localise organ of interest")
@@ -175,6 +217,7 @@ class PreprocessingManager:
                 arguments=arglist,
                 num_processes=self.num_processes,
                 debug=self.debug,
+                io=True,
             )
         print("Now call bboxes_from_masks_folder")
         generate_bboxes_from_masks_folder(
@@ -312,41 +355,51 @@ if __name__ == "__main__":
         "--num-processes",
         type=int,
         help="number of parallel processes",
-        default=8,
+        default=1,
     )
     parser.add_argument("-p", "--plan", type=int, help="Just a number like 1, 2")
 
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = "nodes"
-    args.plan = 6
-    args.overwrite = False
+    main(args)
+    sys.exit()
+# %%
+
+    args.project_title = "litstmp"
+    args.plan = 7
+    args.overwrite = True
+    args.num_processes = 8
 
 # %%
+
     P = Project(project_title=args.project_title)
+    # P.create(mnemonic= "litsmall")
+    # P.add_data([DS["litsmall"]])
     # P.create(mnemonic="lidc")
     # P.create(mnemonic="lidc", datasources=[DS["lidc"]])
     # P.add_data([DS["lidc"]])
-    P.maybe_store_projectwide_properties()
+    # P.maybe_store_projectwide_properties()
 
 # %%
     I = PreprocessingManager(args)
-    I.resample_dataset()
+    I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
     # args.num_processes = 1
 # %%
 
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
-        I.generate_hires_patches_dataset()
+        I.generate_hires_patches_dataset(overwrite=args.overwrite)
     elif I.plan["mode"] == "lbd":
         imported_folder = I.plan.get("imported_folder", None)
         if imported_folder is None:
-            I.generate_lbd_dataset(overwrite=args.overwrite)
+            I.generate_lbd_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
         else:
             I.generate_TSlabelboundeddataset(
                 remapping_imported=I.plan["remapping_imported"],
                 imported_folder=I.plan["imported_folder"],
+                overwrite=args.overwrite,
+                num_processes=args.num_processes
             )
 
 # %%

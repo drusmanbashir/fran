@@ -156,7 +156,7 @@ if __name__ == '__main__':
     pp(plan)
 #SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
 
-    aa = find_matching_plan(P.db,plan)
+    aa = folder_names_from_plan(P,plan)
     
     I = PreprocessingManager(args)
 

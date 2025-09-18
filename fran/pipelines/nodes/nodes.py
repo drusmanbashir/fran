@@ -72,7 +72,7 @@ if __name__ == '__main__':
     Tm.fit()
 
 # %%
-    matching_plan = find_matching_plan(P.db,plan)
+    matching_plan = folder_names_from_plan(P,plan)
 
     matching_plan
 
@@ -347,7 +347,7 @@ if __name__ == '__main__':
     #     print(batch['image'].shape)
 # %%
 
-    find_matching_plan(P.db, plan)
+    folder_names_from_plan(P, plan)
     add_plan_to_db(
         plan, "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2", P.db
     )

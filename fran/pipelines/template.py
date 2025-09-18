@@ -58,7 +58,7 @@ if __name__ == '__main__':
     
     # conf["dataset_params"]["ds_type"] ='lmdb'
     # conf["dataset_params"]["cache_rate"] = None
-    matching_plan = find_matching_plan(P.db,plan)
+    matching_plan = folder_names_from_plan(P,plan)
     pp(matching_plan)
 # %%
     run_name=None
@@ -107,7 +107,7 @@ if __name__ == '__main__':
         "-n",
         "--num-processes",
         type=int,
-        help="number of parallel processes",
+        help="number of parallel processes, if set to 1, multiprocessing will not be used",
         default=8,
     )
     parser.add_argument(

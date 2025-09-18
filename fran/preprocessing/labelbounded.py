@@ -536,7 +536,7 @@ if __name__ == "__main__":
     pp(plan)
     spacing = plan["spacing"]
     # plan["remapping_imported"][0]
-    existing_fldr = find_matching_plan(P.db, plan).get("data_folder_lbd", None)
+    existing_fldr = folder_names_from_plan(P, plan).get("data_folder_lbd", None)
 # %%
 
 # %%

@@ -1,6 +1,5 @@
 # %%
 import argparse
-
 from utilz.string import headline
 from fran.managers.project import Project
 from fran.managers.datasource import DS
@@ -26,7 +25,8 @@ def main(args):
     print(f"args.mnemonic: {args.mnemonic}")
     print(f"args.datasources: {args.datasources}")
     print(f"args.test: {args.test}")
-    print(f"args.multiprocess: {args.multiprocess}")
+    print(f"args.num_processes: {args.num_processes}")
+    multiprocess = False if args.num_processes == 1 else True
     
     P = Project(project_title=args.title)
 
@@ -34,14 +34,22 @@ def main(args):
         P.create(mnemonic=args.mnemonic)
     if args.datasources:
         datas = [DS[name] for name in args.datasources]
-        P.add_data(datasources=datas, test=args.test, multiprocess=args.multiprocess)
-    P.maybe_store_projectwide_properties(overwrite=False,multiprocess=args.multiprocess)
+        P.add_data(datasources=datas, test=args.test, multiprocess=multiprocess)
+    P.maybe_store_projectwide_properties(overwrite=False,multiprocess=multiprocess)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage FRAN projects")
     parser.add_argument("-t", "--title", help="Project title")
     parser.add_argument("-m", "--mnemonic", help="Mnemonic, must be in MNEMONICS: {}".format(MNEMONICS))
-    parser.add_argument("--multiprocess", action="store_true", help="Run in multiprocess mode")
+    parser.add_argument(
+        "-n",
+        "--num-processes",
+        type=int,
+        help="number of parallel processes. If 1 (default), a single process is used",
+        default=1,
+    )
+
+    # parser.add_argument("-n", "--num")
     parser.add_argument("--datasources", nargs="*", default=[], help="Datasources to add, i.e., {}".format(DS.__repr__()))
     parser.add_argument("--test", action="store_true", help="Mark datasources as test")
 # %%
