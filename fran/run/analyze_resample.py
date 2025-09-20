@@ -1,4 +1,5 @@
 # %%
+import sys
 import argparse
 import ast
 import shutil
@@ -362,14 +363,15 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
-    main(args)
-    sys.exit()
-# %%
 
     args.project_title = "litstmp"
     args.plan = 7
     args.overwrite = True
     args.num_processes = 8
+    main(args)
+    sys.exit()
+# %%
+
 
 # %%
 
