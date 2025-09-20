@@ -32,11 +32,9 @@ def main(args):
     # P.add_data([DS["lidc"]])
     # P.maybe_store_projectwide_properties()
 
-# %%
     I = PreprocessingManager(args)
     I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
     # args.num_processes = 1
-# %%
 
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
@@ -53,7 +51,6 @@ def main(args):
                 num_processes=args.num_processes
             )
 
-# %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=args.overwrite)
@@ -364,14 +361,14 @@ if __name__ == "__main__":
     args = parser.parse_known_args()[0]
 # %%
 
-    args.project_title = "litstmp"
-    args.plan = 7
-    args.overwrite = True
-    args.num_processes = 8
     main(args)
     sys.exit()
 # %%
 
+    args.project_title = "litstmp"
+    args.plan = 7
+    args.overwrite = True
+    args.num_processes = 8
 
 # %%
 
