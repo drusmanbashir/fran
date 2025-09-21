@@ -2,7 +2,7 @@
 import argparse
 from utilz.string import headline
 from fran.managers.project import Project
-from fran.managers.datasource import DS
+from fran.data.dataregistry import DS
 from fran.utils.config_parsers import MNEMONICS
 
 # very top of project_init.py (above any 3rd-party imports)

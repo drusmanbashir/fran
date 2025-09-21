@@ -534,7 +534,7 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
-    from fran.managers import DS
+    from fran.data.dataregistry import DS
     from fran.managers.project import Project
     from fran.utils.common import *
 

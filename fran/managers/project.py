@@ -1,15 +1,15 @@
 # %%
 import sqlite3
 
-from fran.managers.datasource import DS, val_indices
+from fran.data.dataregistry import DS
 import ipdb
 from batchgenerators.utilities.file_and_folder_operations import List
 from fastcore.basics import listify
 from send2trash import send2trash
 from utilz.string import headline, info_from_filename
 
-from fran.managers import Datasource
-from fran.managers.datasource import db_ops
+from fran.data.datasource import Datasource
+from fran.data.datasource import db_ops
 from fran.utils.config_parsers import MNEMONICS
 
 tr = ipdb.set_trace
@@ -121,7 +121,6 @@ class Project(DictToAttr):
     -------
     Typical use case for setting up a project and adding data:
 
-    >>> from fran.utils.common import DS
 
     >>> P = Project(project_title="nodes")
     >>> # Create the project structure

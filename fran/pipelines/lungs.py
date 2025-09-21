@@ -5,7 +5,7 @@ from utilz.imageviewers import ImageMaskViewer
 from fran.trainers import Trainer
 from pathlib import Path
 from fran.managers import Project
-from fran.managers import Datasource, DS
+from fran.data.datasource import Datasource
 from fran.run.analyze_resample import PreprocessingManager
 from fran.managers.data import DataManagerDual
 from fran.utils.config_parsers import ConfigMaker

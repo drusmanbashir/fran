@@ -6,7 +6,8 @@ import argparse
 from pathlib import Path
 from fran.trainers import Trainer
 
-from fran.managers import Project, Datasource, DS
+from fran.managers import Project
+from fran.data.datasource import Datasource
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.run.analyze_resample import PreprocessingManager
 from fran.utils.config_parsers import ConfigMaker

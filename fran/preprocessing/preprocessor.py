@@ -15,7 +15,6 @@ from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg, pbar
 from utilz.string import info_from_filename, strip_extension
 
-from fran.managers import DS
 from fran.preprocessing import bboxes_function_version
 
 

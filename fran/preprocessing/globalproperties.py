@@ -11,8 +11,8 @@ from fastcore.all import store_attr
 from fastcore.basics import GetAttr
 from utilz.helpers import PrintableDict, pbar
 from utilz.string import info_from_filename
-
-from fran.managers import DS
+  
+from fran.data.dataregistry import DS
 
 tr = ipdb.set_trace
 
