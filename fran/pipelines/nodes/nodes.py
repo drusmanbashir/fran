@@ -93,9 +93,7 @@ if __name__ == '__main__':
         + " AND ".join(conds)
         + " LIMIT 1"
     )
-1
     db_path =P.db
-# %%
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(sql, params).fetchone()
 # %%
