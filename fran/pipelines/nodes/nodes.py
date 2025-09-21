@@ -43,6 +43,7 @@ if __name__ == '__main__':
 
     conf['plan_train']
 
+
     conf["dataset_params"]["cache_rate"]=0.0
     print(conf['model_params']['out_channels'])
     
