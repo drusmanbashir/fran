@@ -95,7 +95,21 @@ class Preprocessor(GetAttr):
             fn_name = fn_name + ".pt"
 
         fn = self.output_folder / subfolder / fn_name
-        torch.save(tnsr, fn)
+        try:
+            torch.save(tnsr, fn)
+        except OSError as e:
+            # get filesystem info
+            try:
+                usage = shutil.disk_usage(os.path.dirname(fn))
+                fsinfo = f"Total={usage.total//(1024**3)}G, Used={usage.used//(1024**3)}G, Free={usage.free//(1024**3)}G"
+            except Exception:
+                fsinfo = "disk usage unavailable"
+
+            print(f"[ERROR] Failed saving to {fn}")
+            print(f"[ERROR] Filesystem info: {fsinfo}")
+
+            raise RuntimeError(f"Quota exceeded at path: {fn}") from e
+
 
     def register_existing_files(self):
         existimg_lm_ids = self._get_existing_ids(self.output_folder / ("lms"))

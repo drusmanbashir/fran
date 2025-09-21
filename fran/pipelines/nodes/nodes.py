@@ -12,10 +12,9 @@ if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("nodes")
 
-    P._create_plans_table()
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
-    C.setup(6)
+    C.setup(7)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -28,13 +27,12 @@ if __name__ == '__main__':
 
 
 # %%
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-    devices = 2
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
     devices= [1]
     bs = 6
 
-    run_name =None
     run_name ='LITS-1288'
+    run_name =None
     compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
