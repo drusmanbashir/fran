@@ -31,8 +31,8 @@ if __name__ == '__main__':
     devices= [1]
     bs = 4
 
-    run_name ='LITS-1288'
     run_name =None
+    run_name ='LITS-1290'
     compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally

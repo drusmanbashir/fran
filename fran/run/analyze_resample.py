@@ -46,8 +46,6 @@ def main(args):
             I.generate_lbd_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
         else:
             I.generate_TSlabelboundeddataset(
-                remapping_imported=I.plan["remapping_imported"],
-                imported_folder=I.plan["imported_folder"],
                 overwrite=args.overwrite,
                 num_processes=args.num_processes
             )
@@ -181,11 +179,15 @@ class PreprocessingManager:
         """
         requires resampled folder to exist. Crops within this folder
         """
-        Path(imported_folder)
+
+        resampled_data_folder = folder_names_from_plan(self.project, self.plan)[
+            "data_folder_source"
+        ]
+        # Path(imported_folder)
         self.L = LabelBoundedDataGeneratorImported(
             project=self.project,
             plan=self.plan,
-            data_folder=self.resample_output_folder,
+            data_folder=resampled_data_folder,
         )
         self.L.setup(overwrite=overwrite, device=device,num_processes=num_processes)
         self.L.process()
@@ -361,9 +363,16 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
+    args.project_title="nodes"
+    args.plan = 6
+    args.num_processes = 4
+    args.overwrite=True
 
+#python  analyze_resample.py -t nodes -p 6 -n 4 -o
+
+# %%
     main(args)
-    sys.exit()
+    # sys.exit()
 # %%
 
     args.project_title = "litstmp"
@@ -385,6 +394,12 @@ if __name__ == "__main__":
     I = PreprocessingManager(args)
     I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
     # args.num_processes = 1
+
+# %%
+    I.generate_TSlabelboundeddataset(
+                overwrite=args.overwrite,
+                num_processes=args.num_processes
+            )
 # %%
 
     if I.plan["mode"] == "patch":
