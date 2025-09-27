@@ -363,16 +363,16 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title="nodes"
-    args.plan = 6
-    args.num_processes = 4
-    args.overwrite=True
+    # args.project_title="nodes"
+    # args.plan = 6
+    # args.num_processes = 4
+    # args.overwrite=True
 
 #python  analyze_resample.py -t nodes -p 6 -n 4 -o
 
 # %%
     main(args)
-    # sys.exit()
+    sys.exit()
 # %%
 
     args.project_title = "litstmp"
