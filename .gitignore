@@ -25,4 +25,5 @@ experiments/.neptune/config.json
 *.zip
 *.egg-info/
 build/
-.mpy*
+.mypy*
+cufil*

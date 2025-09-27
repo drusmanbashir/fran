@@ -10,6 +10,17 @@ from fran.managers import Project
 from fran.utils.config_parsers import ConfigMaker
 from fran.trainers.trainer import Trainer
 
+def print_device_info():
+    if not torch.cuda.is_available():
+        print("No CUDA devices found")
+    else:
+        n = torch.cuda.device_count()
+        print(f"Found {n} CUDA device(s).")
+        for i in range(n):
+            props = torch.cuda.get_device_properties(i)
+            print(f"cuda:{i} — {props.name}, {props.total_memory/1024**3:.1f} GB")
+
+
 def parse_devices(dev_arg: str) -> Union[int, List[int]]:
     """
     Parse device argument for Lightning Trainer.
@@ -47,9 +58,12 @@ def main(args):
     conf["dataset_params"]["cache_rate"] = args.cache_rate
     if args.ds_type is not None:
         conf["dataset_params"]["ds_type"] = args.ds_type
+    if args.fold is not None:
+        conf["dataset_params"]["fold"] = args.fold
 
     # --- Trainer --------------------------------------------------------------
-    tr()
+    print_device_info()
+
     Tm = Trainer(P.project_title, conf, args.run_name)
 
     Tm.setup(
@@ -73,6 +87,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--devices", type=parse_devices, default="0", help='GPU devices: "0", "0,1", or count like "2"')
     parser.add_argument("--bs", "--batch-size", dest="batch_size", type=int, default=4, help="Batch size")
+    parser.add_argument("-f", "--fold", type=int, default=None, help="If specified, will override conf['dataset_params']['fold']")
     parser.add_argument("--epochs", type=int, default=600, help="Max epochs")
     parser.add_argument("--compiled", type=str2bool, default=True, help="Compile model (Lightning/torch.compile)")
     parser.add_argument("--profiler", type=str2bool, default=False, help="Enable Lightning profiler")
