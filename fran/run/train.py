@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 # training.py — minimal runner to Tm.fit()
 import ipdb
+import torch
 tr = ipdb.set_trace
 
 import argparse
