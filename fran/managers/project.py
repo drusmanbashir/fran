@@ -614,7 +614,7 @@ class Project(DictToAttr):
         ss_train = self.build_sql_query(fold, ds, is_validation=False)
         train_files = self.fetch_files(ss_train)
 
-        if fold:
+        if fold is not None:
             ss_val = self.build_sql_query(fold, ds, is_validation=True)
             val_files = self.fetch_files(ss_val)
             return train_files, val_files

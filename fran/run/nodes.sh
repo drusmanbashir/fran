@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # nodes.sh — run training.py with nodes.py defaults
 
-python train.py \
+python -m ipdb train.py \
   --project nodes \
   --plan-num 7 \
   --devices 0 \
@@ -10,5 +10,6 @@ python train.py \
   --compiled false\
   --profiler false \
   --neptune true \
-  --run-name LITS-1290 \
-  --cache-rate 0.0
+  --cache-rate 0.0\
+  --fold 0\
+  # --run-name LITS-1290 \

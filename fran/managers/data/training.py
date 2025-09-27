@@ -510,6 +510,10 @@ class DataManager(LightningDataModule):
             train_cases, valid_cases = self.project.get_train_val_files(
                 self.dataset_params["fold"], self.plan['datasources']
             )
+
+            aa = self.project.get_train_val_files(
+                self.dataset_params["fold"], self.plan['datasources']
+            )
             # Store only the cases for this split
             self.cases = train_cases if self.split == 'train' else valid_cases
             assert len(self.cases)>0, "There are no cases, aborting!"

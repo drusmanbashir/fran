@@ -31,8 +31,8 @@ if __name__ == '__main__':
     devices= [1]
     bs = 4
 
-    run_name =None
     run_name ='LITS-1290'
+    run_name =None
     compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -45,6 +45,7 @@ if __name__ == '__main__':
 
 
     conf["dataset_params"]["cache_rate"]=0.0
+    conf["dataset_params"]["fold"]=0
     print(conf['model_params']['out_channels'])
     
 
