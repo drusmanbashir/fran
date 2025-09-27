@@ -9,6 +9,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.profilers import AdvancedProfiler
 from monai.transforms.io.dictionary import LoadImaged
 from utilz.helpers import pp
+from utilz.string import headline
 
 from fran.managers import Project, UNetManager
 from fran.managers.data.training import DataManagerDual
@@ -283,31 +284,35 @@ class Trainer:
         return N
 
     def load_trainer(self, **kwargs):
-        N = UNetManager.load_from_checkpoint(
-            self.ckpt,
-            map_location="cpu",
-            **kwargs,
-        )
-        print("Model loaded from checkpoint: ", self.ckpt)
+        try:
+            N = UNetManager.load_from_checkpoint(
+                self.ckpt,
+                map_location="cpu",
+                **kwargs,
+            )
+            print("Model loaded from checkpoint: ", self.ckpt)
         # except: #CODE: exception should be specific
-        #     tr()
-        #     ckpt_state = self.state_dict["state_dict"]
-        #     ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
-        #     # print(ckpt_state_updated.keys())
-        #     state_dict_neo = self.state_dict.copy()
-        #     state_dict_neo["state_dict"] = ckpt_state_updated
-        #     ckpt_old = self.ckpt.str_replace("_bkp", "")
-        #     ckpt_old = self.ckpt.str_replace(".ckpt", ".ckpt_bkp")
-        #     torch.save(state_dict_neo, self.ckpt)
-        #     shutil.move(self.ckpt, ckpt_old)
-        #
-        #     N = UNetManager.load_from_checkpoint(
-        #         self.ckpt,
-        #         project=self.project,
-        #         plan=self.configs["plan"],
-        #         lr=self.lr,
-        #         **kwargs,
-        #     )
+
+        except RuntimeError as e:
+            msg = str(e)
+            headline(msg)
+            ckpt_state = self.state_dict["state_dict"]
+            ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
+            # print(ckpt_state_updated.keys())
+            state_dict_neo = self.state_dict.copy()
+            state_dict_neo["state_dict"] = ckpt_state_updated
+            ckpt_old = self.ckpt.str_replace("_bkp", "")
+            ckpt_old = self.ckpt.str_replace(".ckpt", ".ckpt_bkp")
+            torch.save(state_dict_neo, self.ckpt)
+            shutil.move(self.ckpt, ckpt_old)
+
+            N = UNetManager.load_from_checkpoint(
+                self.ckpt,
+                project=self.project,
+                plan=self.configs["plan"],
+                lr=self.lr,
+                **kwargs,
+            )
         return N
 
     def load_dm(self, batch_size=None):

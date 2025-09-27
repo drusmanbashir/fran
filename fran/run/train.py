@@ -1,178 +1,89 @@
-# %%
-import ast
+#!/usr/bin/env python3
+# training.py — minimal runner to Tm.fit()
+import ipdb
+tr = ipdb.set_trace
 
-from fran.managers.training import *
-from fran.utils.common import *
+import argparse
+from typing import List, Union
 
-_translations = {
-    "bs": "dataset_params,bs",
-    "fold": "dataset_params,fold",
-    "lr": "model_params,lr",
-    "labels": "dataset_params,remapping_train",
-    "arch": "model_params,arch",
-    "compiled": "model_params,compiled",
-}
+from fran.managers import Project
+from fran.utils.config_parsers import ConfigMaker
+from fran.trainers.trainer import Trainer
 
+def parse_devices(dev_arg: str) -> Union[int, List[int]]:
+    """
+    Parse device argument for Lightning Trainer.
 
-def process_run_name(run_name):
-    if run_name == None:
-        return None
-    elif run_name == "":
-        return "most_recent"
-    else:
-        return run_name
+    Rules:
+      - "0" -> [0]  (CUDA:0 only)
+      - "1" -> [1]  (CUDA:1 only)
+      - "0,1" -> [0,1]
+      - "2"  -> 2   (two devices, Lightning chooses which)
+    """
+    s = str(dev_arg).strip()
+    if "," in s:
+        return [int(x) for x in s.split(",") if x != ""]
+    try:
+        val = int(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid devices spec: {dev_arg}")
 
-
-def override_configs(args, configs: dict):
-    def _alter_config_key(ans, val):
-        if isinstance(ans, str):
-            keys = str_to_key(ans)
-        elif isinstance(ans, dict):
-            keys = str_to_key(ans["config_name"])
-            val = ans[val]
-        inner_dict = {keys[1]: val}
-        # outer_dict = {keys[0]:inner_dict}
-        if keys[0] in configs.keys():
-            configs[keys[0]].update(inner_dict)
-        else:
-            configs[keys[0]] = inner_dict
-
-    str_to_key = lambda x: x.split(",")
-    for key, val in vars(args).items():
-        if key in _translations.keys() and val is not None:
-            ans = _translations[key]
-            _alter_config_key(ans, val)
-    if len(configs) > 0:
-        return configs
-    else:
-        return None
-
-
-def load_and_update_configs(project, args, compute_bs=True):
-    # if recompute_bs==True:
-    # if args.resume is None or args.update == True:
-
-    configs = ConfigMaker(
-        project,
-        raytune=False,
-    ).config
-
-    # else:
-    #     configs = {}
-    updated_configs = override_configs(args, configs)
-    return updated_configs
-
-
-def load_run(project, run_name, args):
-    if args.update == True:
-        updated_configs = load_and_update_configs(project, args)
-    else:
-        updated_configs = None
-    La = Trainer.fromNeptuneRun(
-        project,
-        run_name=run_name,
-        update_nep_run_from_config=updated_configs,
-        device=args.gpu,
-    )
-    return La
-
-
-def initialize_run(project, args):
-
-    configs = load_and_update_configs(project, args)
-    run_name = process_run_name(args.resume)
-    Tm = TrainingManager(project, configs, run_name=run_name)
-    Tm.setup(
-        batch_size=args.bs,
-        lr=args.lr,
-        devices=args.devices,
-        neptune=args.neptune,
-        epochs=args.epochs,
-        compiled=args.compiled,
-        description=args.desc,
-        batchsize_finder=args.batchsize_finder,
-    )
-    return Tm
+    if val in (0, 1):  # treat as explicit GPU id
+        return [val]
+    return val  # for 2, 3, ... treat as count of devices
+def str2bool(v: str) -> bool:
+    return str(v).lower() in {"1", "true", "t", "yes", "y"}
 
 
 def main(args):
-    # %%
-    torch.set_float32_matmul_precision("medium")
-    assert args.t, "No project title given. Restart and set the -t flag"
-    project_title = args.t
-    project = Project(project_title=project_title)
-    print("Project: {0}".format(project_title))
-    Tm = initialize_run(project, args)
-    print(
-        "================================================================\nStarting training...\nTraining LR: {0}\nTotal epochs {1}\n======================================================".format(
-            Tm.N.lr, args.epochs
-        )
+    # --- Project & configs ----------------------------------------------------
+    P = Project(args.project)
+    C = ConfigMaker(P, configuration_filename=None)
+    plan_num = int(args.plan_num)
+    C.setup(plan_num)
+    conf = C.configs
+
+    # Update dataset params from CLI
+    conf["dataset_params"]["cache_rate"] = args.cache_rate
+    if args.ds_type is not None:
+        conf["dataset_params"]["ds_type"] = args.ds_type
+
+    # --- Trainer --------------------------------------------------------------
+    tr()
+    Tm = Trainer(P.project_title, conf, args.run_name)
+
+    Tm.setup(
+        compiled=args.compiled,
+        batch_size=args.batch_size,
+        devices=args.devices,
+        epochs=args.epochs if not args.profiler else 1,
+        profiler=args.profiler,
+        neptune=args.neptune,
+        description=args.description,
     )
+
+    Tm.N.compiled = args.compiled
     Tm.fit()
 
 
-# %%
-
 if __name__ == "__main__":
-    import argparse
+    parser = argparse.ArgumentParser(description="Train FRAN model up to Tm.fit(), no preprocessing.")
+    parser.add_argument("--project", default="nodes", help="Project title (e.g., nodes, totalseg, lidc2)")
+    parser.add_argument("--plan-num", type=int, default=7, help="Active plan index for ConfigMaker.setup()")
 
-    from fran.utils.common import *
+    parser.add_argument("--devices", type=parse_devices, default="0", help='GPU devices: "0", "0,1", or count like "2"')
+    parser.add_argument("--bs", "--batch-size", dest="batch_size", type=int, default=4, help="Batch size")
+    parser.add_argument("--epochs", type=int, default=600, help="Max epochs")
+    parser.add_argument("--compiled", type=str2bool, default=True, help="Compile model (Lightning/torch.compile)")
+    parser.add_argument("--profiler", type=str2bool, default=False, help="Enable Lightning profiler")
+    parser.add_argument("--neptune", type=str2bool, default=True, help="Enable Neptune logging")
+    parser.add_argument("--run-name", default=None, help='Run name (e.g., "LITS-1290")')
+    parser.add_argument("--description", default=None, help="Optional experiment description")
 
-    parser = argparse.ArgumentParser(description="Trainer")
-    parser.add_argument("-t", help="project title")  # , required=True)
-    # parser.add_argument("t", help="project title")
-    parser.add_argument("-e", "--epochs", help="num epochs", default=1000, type=int)
-    parser.add_argument(
-        "-r",
-        "--resume",
-        const="",
-        nargs="?",
-        help="Leave empty to resume last training session or enter a run name.",
-    )  # neptune manager saves last session's name in excel spreadsheet
+    parser.add_argument("--cache-rate", type=float, default=0.0, help="conf['dataset_params']['cache_rate']")
+    parser.add_argument("--ds-type", default=None, choices=[None, "lmdb", "memmap", "zarr"], help="Dataset backend if supported")
 
-    parser.add_argument("-b", "--bs", help="batch size", type=int)
-    parser.add_argument("-bsf", "--batchsize_finder", action="store_true")
-    parser.add_argument("--desc")
-    parser.add_argument("-f", "--fold", type=int, default=0)
-    parser.add_argument("-d", "--devices", type=str, default="1")
-    parser.add_argument("-c", "--compiled", action="store_true")
-    parser.add_argument("-cf", "--conf-fn", default=None)
-    parser.add_argument("--lr", help="learning rate", type=float)
-    parser.add_argument("--gpu", help="gpu id", type=int, default=0)
-
-    parser.add_argument(
-        "-a", "--arch", help="Architecture. Supports: nnUNet, SwinUNETR, DynUNet"
-    )
-    parser.add_argument(
-        "-u",
-        "--update",
-        help="Update existing run from configs excel spreadsheet.",
-        action="store_true",
-    )
-    parser.add_argument("-p", "--patch", default=None)
-    parser.add_argument(
-        "--labels",
-        help="list of mappings source to dest label values, e.e.,g [[0,0],[1,1],[2,1]] will map all foreground to 1",
-    )
-    parser.add_argument("-n", "--neptune", help="No Neptune", action="store_false")
-    # %%
     args = parser.parse_known_args()[0]
-    args.devices = ast.literal_eval(args.devices)
-    # args.neptune = True
-    # args.bs=8
-    # # args.resume="LIT-184"
-    # args.compiled= True
-    # args.t = 'litsmc'
-    # args.bsf=True
-    #
-    # args.conf_fn = "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
-    # args.bs = 8
-    # args.lr = 1.1e-3
-    # args.resume='LITS-709'
-    # args.devices = 2
-    # # args.resume=''
-    # args.update = True
-
-    # %%
-    main(args)
 # %%
+# %%
+    main(args)
