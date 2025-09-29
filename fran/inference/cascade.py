@@ -23,8 +23,6 @@ from monai.transforms.compose import Compose
 # from monai.inferers.merger import *
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import (
-    Activationsd,
-    AsDiscreted,
     Invertd,
     MeanEnsembled,
 )
@@ -437,7 +435,7 @@ if __name__ == "__main__":
     run_lidc2 = ["LITS-902"]
     run_nodes = ["LITS-1159"]
     run_nodes = ["LITS-1230"]
-    run_nodes = ["LITS-1288"]
+    run_nodes = ["LITS-1290"]
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
     run_lidc2 = ["LITS-911"]
@@ -507,8 +505,8 @@ if __name__ == "__main__":
 # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
     safe_mode = False
-    devices = [1]
-    overwrite = True
+    devices = [0]
+    overwrite =False
     save_channels = False
     save_localiser=True
     En = CascadeInferer(

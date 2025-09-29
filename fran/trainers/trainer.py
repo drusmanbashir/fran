@@ -1,5 +1,7 @@
 # %%
+from copy import deepcopy
 import shutil
+import re
 
 from fastcore.all import in_ipython
 import ipdb
@@ -15,7 +17,7 @@ from fran.managers import Project, UNetManager
 from fran.managers.data.training import DataManagerDual
 from fran.managers.unet import maybe_ddp
 from fran.trainers.base import checkpoint_from_model_id
-from fran.utils.config_parsers import ConfigMaker
+from fran.utils.config_parsers import ConfigMaker, parse_neptune_dict
 
 tr = ipdb.set_trace
 
@@ -50,18 +52,20 @@ except:
 import torch
 
 
-def fix_dict_keys(input_dict, old_string, new_string):
-    output_dict = {}
-    for key in input_dict.keys():
-        neo_key = key.replace(old_string, new_string)
-        output_dict[neo_key] = input_dict[key]
-    return output_dict
+def normalize_orig_mod_prefix(sd: dict) -> dict:
+    pat = re.compile(r'^(model)(?:\._orig_mod)+(\.)')
+    return {pat.sub(r'\1\2', k): v for k, v in sd.items()}
 
-
-# class NeptuneCallback(Callback):
-# def on_train_epoch_start(self, trainer, pl_module):
-#     trainer.logger.experiment["training/epoch"] = trainer.current_epoch
-
+def write_normalized_ckpt(ckpt_path: str|Path) -> Path:
+    ckpt_path = Path(ckpt_path)
+    ckpt = torch.load(ckpt_path, map_location="cpu")
+    st = ckpt.get("state_dict", {})
+    if any(k.startswith("model._orig_mod") for k in st):
+        ckpt["state_dict"] = normalize_orig_mod_prefix(st)
+        out = ckpt_path.with_suffix(".norm.ckpt")
+        torch.save(ckpt, out)
+        return out
+    return ckpt_path
 
 class Trainer:
     def __init__(self, project_title, configs, run_name=None):
@@ -84,11 +88,16 @@ class Trainer:
         description="",
         epochs=600,
         batchsize_finder=False,
+        override_dm_checkpoint=False
     ):
+        '''
+        if override_dm_checkpoint=True, will use Trainer configs instead of DM checkpoint loaded configs
+        '''
+
         self.maybe_alter_configs(batch_size, batchsize_finder, compiled)
         self.set_lr(lr)
         self.set_strategy(devices)
-        self.init_dm_unet(epochs, batch_size)
+        self.init_dm_unet(epochs, batch_size,override_dm_checkpoint)
         cbs, logger, profiler = self.init_cbs(neptune, profiler, tags, description)
         self.D.prepare_data()
 
@@ -112,10 +121,13 @@ class Trainer:
             # strategy='ddp_find_unused_parameters_true'
         )
 
-    def init_dm_unet(self, epochs, batch_size):
+    def init_dm_unet(self, epochs, batch_size,override_dm_checkpoint=False):
         if self.ckpt:
             self.D = self.load_dm(batch_size=batch_size)
-            self.configs["dataset_params"] = self.D.configs["dataset_params"]
+            if override_dm_checkpoint == True:
+                self.D.configs = self.configs
+            else:
+                self.configs["dataset_params"] = self.D.configs["dataset_params"]
             self.N = self.load_trainer()
 
         else:
@@ -128,11 +140,17 @@ class Trainer:
             self.lr = lr
         elif lr and self.ckpt:
             self.lr = lr
-            self.state_dict = torch.load(
-                self.ckpt, weights_only=False, map_location="cpu"
-            )
-            self.state_dict["lr_schedulers"][0]["_last_lr"][0] = lr
-            torch.save(self.state_dict, self.ckpt)
+            sd = torch.load(self.ckpt, map_location="cpu")
+
+            for g in sd["optimizer_states"][0]["param_groups"]:
+                g["lr"] = float(self.lr)
+
+            sd["lr_schedulers"][0]["_last_lr"] = [float(self.lr)]
+
+            torch.save(sd, self.ckpt)
+
+
+
 
         elif lr is None and self.ckpt:
             self.state_dict = torch.load(
@@ -163,11 +181,20 @@ class Trainer:
                 log_model_checkpoints=False,  # Update to True to log model checkpoints
                 tags=tags,
                 description=description,
-                capture_stdout=True,
-                capture_stderr=True,
+                capture_stdout=False,
+                capture_stderr=False,
                 capture_traceback=True,
                 capture_hardware_metrics=True,
             )
+            dm_cfg = {
+                "dataset_params": parse_neptune_dict(deepcopy(self.D.configs["dataset_params"])),
+                "plan_train":     parse_neptune_dict(deepcopy(self.D.configs["plan_train"])),
+                "plan_valid":     parse_neptune_dict(deepcopy(self.D.configs["plan_valid"])),
+            }
+# Write to a clear namespace and also register as "hyperparams" so it’s prominent:
+            logger.experiment["configs/datamodule"] = dm_cfg
+            logger.log_hyperparams({"dm/plan_train/patch_size": dm_cfg["plan_train"]["patch_size"]})
+            logger.experiment.wait()
             N = NeptuneImageGridCallback(
                 classes=self.configs["model_params"]["out_channels"],
                 patch_size=self.configs["plan_train"]["patch_size"],
@@ -283,36 +310,22 @@ class Trainer:
         )
         return N
 
+
+
     def load_trainer(self, **kwargs):
         try:
-            N = UNetManager.load_from_checkpoint(
-                self.ckpt,
-                map_location="cpu",
-                **kwargs,
-            )
-            print("Model loaded from checkpoint: ", self.ckpt)
-        # except: #CODE: exception should be specific
+            norm_ckpt = write_normalized_ckpt(self.ckpt)
+            N = UNetManager.load_from_checkpoint(norm_ckpt, map_location="cpu", strict=True, **kwargs)
+            # N = UNetManager.load_from_checkpoint(
+            #     self.ckpt,
+            #     map_location="cpu",
+            #     **kwargs,
+            # )
+            print("Model loaded from checkpoint: ", norm_ckpt)
 
         except RuntimeError as e:
-            msg = str(e)
-            headline(msg)
-            ckpt_state = self.state_dict["state_dict"]
-            ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
-            # print(ckpt_state_updated.keys())
-            state_dict_neo = self.state_dict.copy()
-            state_dict_neo["state_dict"] = ckpt_state_updated
-            ckpt_old = self.ckpt.str_replace("_bkp", "")
-            ckpt_old = self.ckpt.str_replace(".ckpt", ".ckpt_bkp")
-            torch.save(state_dict_neo, self.ckpt)
-            shutil.move(self.ckpt, ckpt_old)
+            print("BUGS")
 
-            N = UNetManager.load_from_checkpoint(
-                self.ckpt,
-                project=self.project,
-                plan=self.configs["plan"],
-                lr=self.lr,
-                **kwargs,
-            )
         return N
 
     def load_dm(self, batch_size=None):
@@ -349,19 +362,6 @@ class Trainer:
 
     def fit(self):
         self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
-
-    def fix_state_dict_keys(self, bad_str="model", good_str="model._orig_mod"):
-        state_dict = torch.load(self.ckpt, map_location="cpu", weights_only=False)
-        ckpt_state = state_dict["state_dict"]
-        ckpt_state_updated = fix_dict_keys(ckpt_state, bad_str, good_str)
-        state_dict_neo = state_dict.copy()
-        state_dict_neo["state_dict"] = ckpt_state_updated
-
-        ckpt_old = self.ckpt.str_replace(".ckpt", ".ckpt_bkp")
-        shutil.move(self.ckpt, ckpt_old)
-
-        torch.save(state_dict_neo, self.ckpt)
-        return ckpt_old
 
 
 # %%

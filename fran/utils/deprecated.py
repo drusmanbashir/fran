@@ -214,13 +214,21 @@ if __name__ == "__main__":
 #SECTION:-------------------- CONFIG --> CONFIGS--------------------------------------------------------------------------------------
 
     dici = dict_src.copy()
+    dici['datamodule_hyper_parameters'].keys()
     dici["hyper_parameters"]['configs']= dici["hyper_parameters"]['config'].copy()
     dici["datamodule_hyper_parameters"]["configs"]=  dici["datamodule_hyper_parameters"]["config"].copy()  # ['plan_train']#=pln
+    dici['datamodule_hyper_parameters']['configs']['plan_train']['remapping'] = None
+    del dici['datamodule_hyper_parameters']['config']
+    del dici['hyper_parameters']['config']
     torch.save(dici, ckpt_src)
 # %%
-    dici.keys()
+# %%
+#SECTION:-------------------- OTHER--------------------------------------------------------------------------------------
+    pp(dici.keys())
     pp(dici["hyper_parameters"].keys())
     dici['hyper_parameters']['lr']
+
+    dici['lr_schedulers']
     pp(dici["hyper_parameters"]['config'].keys())
     dici["hyper_parameters"]['configs']= dici["hyper_parameters"]['config'].copy()
     # pln = dici['datamodule_hyper_parameters']['config']['plan{}'.format(value)]

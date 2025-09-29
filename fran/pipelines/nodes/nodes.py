@@ -14,7 +14,7 @@ if __name__ == '__main__':
 
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
-    C.setup(7)
+    C.setup(5)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -31,8 +31,9 @@ if __name__ == '__main__':
     devices= [1]
     bs = 4
 
-    run_name ='LITS-1290'
     run_name =None
+    # run_name ='LITS-1285'
+    run_name ='LITS-1230'
     compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -53,20 +54,25 @@ if __name__ == '__main__':
 
 # %%
     Tm = Trainer(P.project_title, conf, run_name)
+    Tm.configs
+    Tm.configs['dataset_params']['fold']=4
 # %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
         devices=devices,
-        epochs=600 if profiler == False else 1,
+        epochs=900 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
         neptune=neptune,
         tags=tags,
         description=description,
+        lr=1e-3,
+        override_dm_checkpoint=True
     )
 
 # %%
+    Tm.D.configs = Tm.configs.copy()
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()
@@ -111,10 +117,12 @@ if __name__ == '__main__':
     N = Tm.N
     Tm.D.setup()
     Tm.D.prepare_data()
+    Tm.D.configs['plan_train']['mode']
     dl = Tm.D.val_dataloader()
     batch = next(iter(dl))
 
     image = batch["image"]
+    image.shape
     pred = N(image)
 # %%
 

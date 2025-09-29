@@ -153,8 +153,8 @@ class NeptuneManager(NeptuneLogger):
         nep_run = nt.init_run(
             with_id=run_id,
             mode=nep_mode,
-            capture_stdout=True,
-            capture_stderr=True,
+            capture_stdout=False,
+            capture_stderr=False,
             capture_traceback=True,
             capture_hardware_metrics=True,
         )
