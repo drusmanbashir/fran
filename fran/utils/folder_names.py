@@ -1,5 +1,6 @@
 # %%
 import ipdb
+from typing import Union
 from pathlib import Path
 import hashlib
 
@@ -15,7 +16,7 @@ import yaml
 # read a packaged template
 from importlib.resources import files
 
-def short_code(input_str: str|dict, length: int = 8) -> str:
+def short_code(input_str: Union[str,dict,None], length: int = 8) -> str:
     # Use SHA1 (or MD5 if you want shorter)
     if input_str is None:
         return None

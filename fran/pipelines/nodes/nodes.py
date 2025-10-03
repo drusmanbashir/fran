@@ -39,6 +39,7 @@ if __name__ == '__main__':
     # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
     neptune = True
+    override_dm = True
     tags = []
     description = f"Partially trained up to 100 epochs"
 
@@ -68,7 +69,7 @@ if __name__ == '__main__':
         tags=tags,
         description=description,
         lr=1e-3,
-        override_dm_checkpoint=True
+        override_dm_checkpoint=override_dm
     )
 
 # %%

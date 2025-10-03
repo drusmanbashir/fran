@@ -210,18 +210,22 @@ if __name__ == "__main__":
     ckpt_src = checkpoint_from_model_id(run_src)
     dict_src = torch.load(ckpt_src, map_location="cpu", weights_only=False)
 # %%
-# %%
 #SECTION:-------------------- CONFIG --> CONFIGS--------------------------------------------------------------------------------------
 
     dici = dict_src.copy()
     dici['datamodule_hyper_parameters'].keys()
+    dici['datamodule_hyper_parameters']['configs']
     dici["hyper_parameters"]['configs']= dici["hyper_parameters"]['config'].copy()
     dici["datamodule_hyper_parameters"]["configs"]=  dici["datamodule_hyper_parameters"]["config"].copy()  # ['plan_train']#=pln
-    dici['datamodule_hyper_parameters']['configs']['plan_train']['remapping'] = None
+    dici['datamodule_hyper_parameters']['configs']['plan_train']
     del dici['datamodule_hyper_parameters']['config']
     del dici['hyper_parameters']['config']
     torch.save(dici, ckpt_src)
 # %%
+    dici['datamodule_hyper_parameters']['configs']['plan_train']
+    dici['datamodule_hyper_parameters']['configs'].keys()
+    dici["hyper_parameters"]['configs']
+    dici["hyper_parameters"]['configs']
 # %%
 #SECTION:-------------------- OTHER--------------------------------------------------------------------------------------
     pp(dici.keys())

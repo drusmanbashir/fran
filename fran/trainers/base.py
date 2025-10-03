@@ -1,6 +1,8 @@
+import time
 from pathlib import Path
 import ipdb
 tr = ipdb.set_trace
+import shutil
 from fran.utils.common import COMMON_PATHS
 
 def checkpoint_from_model_id(model_id, sort_method="last"): #CODE: Move this function to utils 
@@ -20,3 +22,20 @@ def checkpoint_from_model_id(model_id, sort_method="last"): #CODE: Move this fun
     elif sort_method == "best":
         tr()
     return ckpt
+
+def backup_ckpt(ckpt):
+    """Create a backup copy of current ckpt under a `backup/` subfolder."""
+    if not ckpt:
+        return None
+    ckpt_path = Path(ckpt)
+    if not ckpt_path.exists():
+        return None
+
+    backup_dir = ckpt_path.parent / "backup"
+    backup_dir.mkdir(exist_ok=True)
+
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    backup_path = backup_dir / f"{ckpt_path.stem}.{timestamp}{ckpt_path.suffix}"
+    shutil.copy2(ckpt_path, backup_path)
+    print(f"Backup created: {backup_path}, before overriding ckpt configuration")
+    return backup_path

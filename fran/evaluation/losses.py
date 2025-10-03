@@ -1,5 +1,6 @@
 # %%
 from fastcore.basics import store_attr
+from typing import Union
 import numpy as np
 from monai.utils.enums import DiceCEReduction, LossReduction
 import lightning.pytorch as pl
@@ -32,7 +33,7 @@ class _DiceCELossMultiOutput(nn.Module):
         other_act: Optional[Callable] = None,
         squared_pred: bool = False,
         jaccard: bool = False,
-        reduction: LossReduction | str = LossReduction.MEAN,
+        reduction: Union[LossReduction , str] = LossReduction.MEAN,
         smooth_nr: float = 1e-5,
         smooth_dr: float = 1e-5,
         batch: bool = False,

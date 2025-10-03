@@ -33,7 +33,7 @@ def setup_inferer(model_name: str):
     try:
         inferer = CascadeInferer(
             run_w=config["run_w"],
-            runs_p=config["run"],
+            run_p=config["run"],
             localiser_labels=config["localiser_labels"],
             devices=[0],  # Assuming GPU 0
             overwrite=True,

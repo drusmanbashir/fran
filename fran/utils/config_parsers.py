@@ -2,6 +2,7 @@
 import ast
 import sys
 import warnings
+from typing import Union
 
 import ipdb
 import numpy as np
@@ -14,7 +15,7 @@ from utilz.string import ast_literal_eval
 from fran.utils.folder_names import load_registry, remapping_conv
 from fran.utils.string_works import is_excel_None
 
-MNEMONICS = ["litsmall","lits", "litq","liver", "lidc", "lungs", "nodes", "totalseg"]
+MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "totalseg"]
 tr = ipdb.set_trace
 
 if not sys.executable == "":  # workaround for slicer as it does not load ray tune
@@ -23,8 +24,14 @@ if not sys.executable == "":  # workaround for slicer as it does not load ray tu
 from openpyxl import load_workbook
 from utilz.helpers import *
 
+REMAPPING_DICT_OR_LIST = {
+    "remapping_source": "dict",
+    "remapping_lbd": "list",
+    "remapping_imported": "dict",
+    "remapping_train": "list",
+}
 
-REMAPPING_DICT_OR_LIST = {"remapping_source":"dict", "remapping_lbd":"list", "remapping_imported":"dict", "remapping_train":"list"}
+
 def _to_py(obj):
     """Recursively convert numpy scalars to Python scalars and cast 1.0 -> 1."""
     # numpy scalar -> Python scalar
@@ -83,7 +90,7 @@ def labels_from_remapping(remapping):
 
 
 # CODE: delete the below if code is not breaking  (see #13)
-def compute_out_labels(plan: dict, global_props: dict | None = None) -> list:
+def compute_out_labels(plan: dict, global_props: Union[dict , None] = None) -> list:
     """
     Priority:
       1) plan['remapping_train']  -> infer mapping, return max(dest)+1
@@ -161,7 +168,6 @@ def create_remapping(plan, key, as_list=False, as_dict=False):
     else:
         raise NotImplementedError
     return remapping
-
 
 
 def parse_excel_dict(dici):
@@ -333,7 +339,11 @@ class ConfigMaker:
             configuration_filename, configuration_mnemonic
         )
         self.plans = pd.read_excel(
-            configuration_filename, sheet_name="plans", index_col="id",keep_default_na=False, na_values=["TRUE", "FALSE",""],
+            configuration_filename,
+            sheet_name="plans",
+            index_col="id",
+            keep_default_na=False,
+            na_values=["TRUE", "FALSE", ""],
         )
         self.configs = load_config_from_workbook(configuration_filename, raytune)
         self.configs = parse_excel_dict(self.configs)
@@ -388,11 +398,11 @@ class ConfigMaker:
             assert (
                 configuration_mnemonic in MNEMONICS
             ), "Please provide a valid mnemonic from the list {}".format(MNEMONICS)
-        if configuration_mnemonic in ["liver","lits","litq" ]:
+        if configuration_mnemonic in ["liver", "lits", "litq"]:
             return configurations_folder / ("experiment_configs_liver.xlsx")
-        elif configuration_mnemonic == "litsmall" :
+        elif configuration_mnemonic == "litsmall":
             return configurations_folder / ("experiment_configs_litsmall.xlsx")
-        elif configuration_mnemonic in ["lungs" ,"lidc"]:
+        elif configuration_mnemonic in ["lungs", "lidc"]:
             return configurations_folder / ("experiment_configs_lungs.xlsx")
         elif configuration_mnemonic == "nodes":
             return configurations_folder / ("experiment_configs_nodes.xlsx")
@@ -466,18 +476,16 @@ class ConfigMaker:
         self.configs[plan_key] = parse_excel_dict(plan_selected)
         self.configs[plan_key]["plan_name"] = plan_name
 
-        for key,value in REMAPPING_DICT_OR_LIST.items():
+        for key, value in REMAPPING_DICT_OR_LIST.items():
             reg = load_registry()
             org_val = self.configs[plan_key][key]
             # self.configs[plan_key][key+"_code"] = remapping_conv(reg=reg, key="remapping",val=org_val)
             self.configs[plan_key][key] = create_remapping(
-                plan=self.configs[plan_key], key=key,
-                as_dict = True if value=="dict" else False,
-                as_list = True if value=="list" else False,
-
+                plan=self.configs[plan_key],
+                key=key,
+                as_dict=True if value == "dict" else False,
+                as_list=True if value == "list" else False,
             )
-
-
 
     def _set_active_plans(self, plan_train: int = None, plan_valid: int = None):
         if plan_train == None:
@@ -561,7 +569,7 @@ def parse_neptune_dict(dic: dict):
 if __name__ == "__main__":
 
 # %%
-    # SECTION:-------------------- setup--------------------------------------------------------------------------------------
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
 
     from fran.managers import Project
 
@@ -577,8 +585,8 @@ if __name__ == "__main__":
 
 # %%
 
-    train=True
-    plan_num=3
+    train = True
+    plan_num = 3
     plan_name = "plan" + str(plan_num)
     plan_selected = C.plans.loc[plan_name]
     plan_selected = dict(plan_selected)
@@ -600,11 +608,12 @@ if __name__ == "__main__":
     for key in REMAPPING_DICT_OR_LIST:
         reg = load_registry()
         org_val = C.configs[plan_key][key]
-        C.configs[plan_key][key+"_code"] = remapping_conv(reg=reg, key="remapping",val=org_val)
+        C.configs[plan_key][key + "_code"] = remapping_conv(
+            reg=reg, key="remapping", val=org_val
+        )
         C.configs[plan_key][key] = create_remapping(
-            plan=C.configs[plan_key], key=key,
-             as_list=True
-            )
+            plan=C.configs[plan_key], key=key, as_list=True
+        )
 # %%
     settingsfilename = (
         "/home/ub/code/fran/configurations/experiment_configs_totalseg.xlsx"
@@ -695,4 +704,3 @@ if __name__ == "__main__":
     TSL = TotalSegmenterLabels()
     remapping = TSL.create_remapping(src, dest, as_list=as_list, as_dict=as_dict)
 # %%
-

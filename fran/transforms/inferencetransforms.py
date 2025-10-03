@@ -1,7 +1,7 @@
 
 # %%
 from collections.abc import Hashable, Mapping
-from typing import Union
+from typing import Any, Sequence, Union
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import KeepLargestConnectedComponentd
@@ -75,6 +75,32 @@ class ArrayToSITKI(Transform):
                 pred_ = set_sitk_props(pred_,self.sitk_props)
                 return pred_
 
+
+
+class SqueezeListofListsd(MapTransform):
+    """
+    If the value at `keys` is a list containing a single list of slices,
+    unwrap it so that [[slice(...), ...]] becomes [slice(...), ...].
+    Leaves other cases unchanged.
+    """
+
+    def __init__(self, keys: Sequence[Hashable]):
+        super().__init__(keys)
+
+    def __call__(self, data: Mapping[Hashable, Any]):
+        d = dict(data)
+        for key in self.keys:
+            if key in d:
+                val = d[key]
+                # check for [[slice,...]]
+                if (
+                    isinstance(val, list)
+                    and len(val) == 1
+                    and isinstance(val[0], list)
+                    and all(isinstance(x, slice) for x in val[0])
+                ):
+                    d[key] = val[0]
+        return d
 
 class BBoxesToLists(Transform):
 

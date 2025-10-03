@@ -1,5 +1,6 @@
 # %%
 import ipdb
+from typing import Union
 import pandas as pd
 from utilz.helpers import folder_name_from_list
 from utilz.string import headline
@@ -113,7 +114,7 @@ def _read_kv_excel(xlsx_path: str, sheet_name=0) -> dict:
     return out
 
 
-def find_matching_plan(db_path: str, plan: dict) -> dict | None:
+def find_matching_plan(db_path: str, plan: dict) ->Union[ dict , None]:
     """Return row data if a row where all provided key->value pairs match (for known columns)."""
     plan = {k: plan.get(k) for k in COLUMNS_CRITICAL}  # align to fixed schema
     keys = [k for k in COLUMNS_CRITICAL if k in plan]
@@ -209,9 +210,9 @@ def add_plan_to_db(
 def as_dataframe(
     db_path: str,
     table: str = "master_plans",
-    where: str | None = None,
+    where: Union[str , None] = None,
     params: tuple = (),
-    limit: int | None = None,
+    limit: Union[int , None ]= None,
 ) -> pd.DataFrame:
     """
     Load a SQLite table into a pandas DataFrame and print it.

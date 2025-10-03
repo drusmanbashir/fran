@@ -8,8 +8,8 @@ from fran.inference.cascade import CascadeInferer
 class SlicerCascadeInferer(CascadeInferer):
     def __init__(
         self,
-        run_name_w,
-        runs_p,
+        run_w,
+        run_p,
         localiser_labels: list[str],  # these labels will be used to create bbox
         devices=[0],
         overwrite=True,
@@ -22,8 +22,8 @@ class SlicerCascadeInferer(CascadeInferer):
         **kwargs
     ):
         super().__init__(
-            run_name_w=run_name_w,
-            runs_p=runs_p,
+            run_w=run_w,
+            run_p=run_p,
             localiser_labels=localiser_labels,
             devices=devices,
             overwrite=overwrite,
