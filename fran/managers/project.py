@@ -8,7 +8,7 @@ from fastcore.basics import listify
 from send2trash import send2trash
 from utilz.string import headline, info_from_filename
 
-from fran.data.datasource import Datasource
+from fran.data.datasource import Datasource, val_indices
 from fran.data.datasource import db_ops
 from fran.utils.config_parsers import MNEMONICS
 
@@ -297,6 +297,7 @@ class Project(DictToAttr):
         self.register_datasources(datasources, multiprocess=multiprocess)
         self.set_labels_all()
         self.save_global_properties()
+        headline("Now consider running maybe_store_projectwide_properties()")
 
     def _create_folder_tree(self):
         maybe_makedirs(self.project_folder)
@@ -809,25 +810,26 @@ class Project(DictToAttr):
             self.G.store_projectwide_properties()
             self.G.compute_std_mean_dataset(multiprocess=multiprocess)
 
-    def add_plan(self, plan: dict):
-        """
-        Adds a plan to the project, which defines datasets, label groups, and preprocessing steps.
-        Each time this is called with a plan contaiing new datasources, the database will be updated accordingly.
-
-        Parameters:
-        ----------
-        plan : dict
-            A dictionary defining the project plan, typically loaded from an Excel sheet.
-            Must include 'datasources' (list of dataset names) and 'lm_groups' (list of label groups).
-        overwrite_global_properties : bool, optional
-            Whether to overwrite existing global properties (default is True). Set it to False if you already computed dataset mean, std, and now only want to add datasources
-        """
-        dss = plan["datasources"]
-        dss = dss.split(",")
-        datasources = [getattr(DS, g) for g in dss]
-        self.add_data(datasources)
-        self.set_lm_groups(plan["lm_groups"])
-        self.maybe_store_projectwide_properties(overwrite=True)
+    #HACK: deprecated so removing add_plan
+    # def add_plan(self, plan: dict):
+    #     """
+    #     Adds a plan to the project, which defines datasets, label groups, and preprocessing steps.
+    #     Each time this is called with a plan contaiing new datasources, the database will be updated accordingly.
+    #
+    #     Parameters:
+    #     ----------
+    #     plan : dict
+    #         A dictionary defining the project plan, typically loaded from an Excel sheet.
+    #         Must include 'datasources' (list of dataset names) and 'lm_groups' (list of label groups).
+    #     overwrite_global_properties : bool, optional
+    #         Whether to overwrite existing global properties (default is True). Set it to False if you already computed dataset mean, std, and now only want to add datasources
+    #     """
+    #     dss = plan["datasources"]
+    #     dss = dss.split(",")
+    #     datasources = [getattr(DS, g) for g in dss]
+    #     self.add_data(datasources)
+    #     self.set_lm_groups(plan["lm_groups"])
+    #     self.maybe_store_projectwide_properties(overwrite=True)
 
     def __len__(self):
         ss = "SELECT COUNT (image )from datasources"
@@ -904,86 +906,87 @@ class Project(DictToAttr):
         cc = [a == "NULL" for a in result]
         all_bool = not all(cc)
         return all_bool
-
-def add_plan_to_db(
-    project:Project,
-    plan: dict,
-    db_path: str = DB_PATH,
-    data_folder_source: str = None,
-    data_folder_lbd: str = None,
-    data_folder_whole: str = None,
-    data_folder_patch: str = None,
-) -> int:
-
-    # Assert that only one data_folder argument has a value
-    data_folders = [
-        data_folder_source,
-        data_folder_lbd,
-        data_folder_whole,
-        data_folder_patch,
-    ]
-    non_none_count = sum(1 for folder in data_folders if folder is not None)
-    assert (
-        non_none_count == 1
-    ), f"Exactly one data_folder argument must be provided, got {non_none_count}"
-
-    # Determine which data folder field is being set
-    data_folder_field = None
-    data_folder_value = None
-    if data_folder_source is not None:
-        data_folder_field = "data_folder_source"
-        data_folder_value = data_folder_source
-    elif data_folder_lbd is not None:
-        data_folder_field = "data_folder_lbd"
-        data_folder_value = data_folder_lbd
-    elif data_folder_whole is not None:
-        data_folder_field = "data_folder_whole"
-        data_folder_value = data_folder_whole
-    elif data_folder_patch is not None:
-        data_folder_field = "data_folder_patch"
-        data_folder_value = data_folder_patch
-
-    folder_names = folder_names_from_plan(project,plan)
-    folder_names[data_folder_field] = data_folder_value
-    
-
-    headline("Adding plan to db: {0}".format(db_path))
-    existing_row = find_matching_plan(db_path, plan)
-
-    if len(existing_row) >0:
-        # Check if the specific data folder field is NULL in existing row
-        if existing_row[data_folder_field] is None:
-            # Update the existing row with the new data folder value
-            with sqlite3.connect(db_path) as conn:
-                sql = f'UPDATE "{TABLE}" SET "{data_folder_field}" = ? WHERE id = ?'
-                conn.execute(
-                    sql, [_normalize_for_db(data_folder_value), existing_row["id"]]
-                )
-                conn.commit()
-                print(
-                    f"Updated existing row {existing_row['id']} with {data_folder_field}: {data_folder_value}"
-                )
-                return existing_row["id"]
-        else:
-            print(
-                f"Row exists with {data_folder_field} already set: {existing_row[data_folder_field]}"
-            )
-            return existing_row["id"]
-
-    # No matching row found, insert new row
-    combined_data = plan.copy()
-    combined_data.update(
-        {
-            "data_folder_source": data_folder_source,
-            "data_folder_lbd": data_folder_lbd,
-            "data_folder_whole": data_folder_whole,
-            "data_folder_patch": data_folder_patch,
-        }
-    )
-
-    with sqlite3.connect(db_path) as conn:
-        return _insert_row(conn, combined_data, None)
-
+#
+#HACK: deprecated
+# def add_plan_to_db(
+#     project:Project,
+#     plan: dict,
+#     db_path: str = DB_PATH,
+#     data_folder_source: str = None,
+#     data_folder_lbd: str = None,
+#     data_folder_whole: str = None,
+#     data_folder_patch: str = None,
+# ) -> int:
+#
+#     # Assert that only one data_folder argument has a value
+#     data_folders = [
+#         data_folder_source,
+#         data_folder_lbd,
+#         data_folder_whole,
+#         data_folder_patch,
+#     ]
+#     non_none_count = sum(1 for folder in data_folders if folder is not None)
+#     assert (
+#         non_none_count == 1
+#     ), f"Exactly one data_folder argument must be provided, got {non_none_count}"
+#
+#     # Determine which data folder field is being set
+#     data_folder_field = None
+#     data_folder_value = None
+#     if data_folder_source is not None:
+#         data_folder_field = "data_folder_source"
+#         data_folder_value = data_folder_source
+#     elif data_folder_lbd is not None:
+#         data_folder_field = "data_folder_lbd"
+#         data_folder_value = data_folder_lbd
+#     elif data_folder_whole is not None:
+#         data_folder_field = "data_folder_whole"
+#         data_folder_value = data_folder_whole
+#     elif data_folder_patch is not None:
+#         data_folder_field = "data_folder_patch"
+#         data_folder_value = data_folder_patch
+#
+#     folder_names = folder_names_from_plan(project,plan)
+#     folder_names[data_folder_field] = data_folder_value
+#     
+#
+#     headline("Adding plan to db: {0}".format(db_path))
+#     existing_row = find_matching_plan(db_path, plan)
+#
+#     if len(existing_row) >0:
+#         # Check if the specific data folder field is NULL in existing row
+#         if existing_row[data_folder_field] is None:
+#             # Update the existing row with the new data folder value
+#             with sqlite3.connect(db_path) as conn:
+#                 sql = f'UPDATE "{TABLE}" SET "{data_folder_field}" = ? WHERE id = ?'
+#                 conn.execute(
+#                     sql, [_normalize_for_db(data_folder_value), existing_row["id"]]
+#                 )
+#                 conn.commit()
+#                 print(
+#                     f"Updated existing row {existing_row['id']} with {data_folder_field}: {data_folder_value}"
+#                 )
+#                 return existing_row["id"]
+#         else:
+#             print(
+#                 f"Row exists with {data_folder_field} already set: {existing_row[data_folder_field]}"
+#             )
+#             return existing_row["id"]
+#
+#     # No matching row found, insert new row
+#     combined_data = plan.copy()
+#     combined_data.update(
+#         {
+#             "data_folder_source": data_folder_source,
+#             "data_folder_lbd": data_folder_lbd,
+#             "data_folder_whole": data_folder_whole,
+#             "data_folder_patch": data_folder_patch,
+#         }
+#     )
+#
+#     with sqlite3.connect(db_path) as conn:
+#         return _insert_row(conn, combined_data, None)
+#
 
 
 # %%

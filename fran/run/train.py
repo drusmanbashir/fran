@@ -23,27 +23,6 @@ def print_device_info():
             print(f"cuda:{i} — {props.name}, {props.total_memory/1024**3:.1f} GB")
 
 
-def parse_devices(dev_arg: str) -> Union[int, List[int]]:
-    """
-    Parse device argument for Lightning Trainer.
-
-    Rules:
-      - "0" -> [0]  (CUDA:0 only)
-      - "1" -> [1]  (CUDA:1 only)
-      - "0,1" -> [0,1]
-      - "2"  -> 2   (two devices, Lightning chooses which)
-    """
-    s = str(dev_arg).strip()
-    if "," in s:
-        return [int(x) for x in s.split(",") if x != ""]
-    try:
-        val = int(s)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid devices spec: {dev_arg}")
-
-    if val in (0, 1):  # treat as explicit GPU id
-        return [val]
-    return val  # for 2, 3, ... treat as count of devices
 def str2bool(v: str) -> bool:
     return str(v).lower() in {"1", "true", "t", "yes", "y"}
 

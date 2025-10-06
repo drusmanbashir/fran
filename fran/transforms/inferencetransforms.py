@@ -3,6 +3,7 @@
 from collections.abc import Hashable, Mapping
 from typing import Any, Sequence, Union
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
+from monai.data.meta_tensor import MetaTensor
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import KeepLargestConnectedComponentd
 from monai.transforms.transform import MapTransform, Transform
@@ -386,6 +387,17 @@ class ToTensorBBoxes(ItemTransform):
     def decodes(self,img):
         return img.detach().cpu().numpy()
         
+
+class MakeWritabled(MapTransform):
+    def __init__(self, keys, allow_missing_keys=False):
+        super().__init__(keys, allow_missing_keys)
+
+    def __call__(self, data: Mapping[Hashable, MetaTensor]):
+        d = dict(data)
+        for k in self.key_iterator(d):
+            # turn “inference tensors” into normal writable tensors
+            d[k] = d[k].clone()
+        return d
 
 class KeepLargestConnectedComponentWithMetad(KeepLargestConnectedComponentd):
     def __init__(self, keys, applied_labels=None, is_onehot= None, independent: bool = True, connectivity = None, num_components: int = 1, allow_missing_keys: bool = False) -> None:

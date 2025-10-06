@@ -7,7 +7,7 @@ import itertools as il
 import torch._dynamo as dynamo
 import ipdb
 from utilz.helpers import pbar
-from utilz.string import ast_literal_eval
+from utilz.string import ast_literal_eval, headline
 
 from fran.managers import Project
 
@@ -129,6 +129,7 @@ class BaseInferer(GetAttr, DictToAttr):
         save_channels=True,
         save=True,
         k_largest=None,  # assign a number if there are organs involved
+        debug=False
     ):
         """
         BaseInferer applies the dataset spacing, normalization and then patch_size to use a sliding window inference over the resulting image
@@ -140,7 +141,7 @@ class BaseInferer(GetAttr, DictToAttr):
             print("CUDA not available. All processes will be on CPU.")
             safe_mode = True
 
-        store_attr("run_name,devices,save_channels, save,safe_mode, k_largest")
+        store_attr("debug,run_name,devices,save_channels, save,safe_mode, k_largest")
         if ckpt is None:
             self.ckpt = checkpoint_from_model_id(run_name)
         else:
@@ -178,6 +179,24 @@ class BaseInferer(GetAttr, DictToAttr):
         self.tfms = "ESN"
         self.safe_mode = safe_mode
 
+    def postprocess(self, preds):
+            if self.debug == False:
+                output = self.postprocess_compose(preds)
+            else:
+                output = self.postprocess_iterate(preds)
+            return output
+    def postprocess_iterate(self,batch):
+        if isinstance(batch,list):
+                batch = batch[0]
+        bbox = batch.get("bounding_box")
+        if bbox and isinstance(bbox[0], list):
+            bbox = bbox[0]
+        batch['bounding_box'] = bbox
+        for tfm in self.pp_transforms.values():
+            headline(tfm)
+            tr()
+            batch=tfm(batch)
+        return batch
     def check_plan_compatibility(self):
         assert (
             self.plan["mode"] == "source"
@@ -189,7 +208,38 @@ class BaseInferer(GetAttr, DictToAttr):
             self.prepare_model()
         # self.create_postprocess_transforms()
 
+    def create_transforms(self):
+        # single letter name is must for each tfm to use with set_transforms
+        spacing = get_patch_spacing(self.run_name)
+        
+        # Store transforms dictionary for individual access
+        self.transforms = {
+            'L': LoadSITKd(
+                keys=["image"],
+                image_only=True,
+                ensure_channel_first=False,
+                simple_keys=True,
+            ),
+            'E': EnsureChannelFirstd(keys=["image"], channel_dim="no_channel"),
+            'S': Spacingd(keys=["image"], pixdim=spacing),
+            'N': NormaliseClipd(
+                keys=["image"],
+                clip_range=self.dataset_params["intensity_clip_range"],
+                mean=self.dataset_params["mean_fg"],
+                std=self.dataset_params["std_fg"],
+            ),
+            'O': Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+        }
+        
+        # Set individual attributes for backward compatibility
+        self.L = self.transforms['L']
+        self.E = self.transforms['E']
+        self.S = self.transforms['S']
+        self.N = self.transforms['N']
+        self.O = self.transforms['O']
+
     def run(self, imgs, chunksize=12, overwrite=True):
+
         """
         chunksize is necessary in large lists to manage system ram
         """
@@ -202,6 +252,13 @@ class BaseInferer(GetAttr, DictToAttr):
         imgs = list_to_chunks(imgs, chunksize)
         for imgs_sublist in imgs:
             output = self.process_imgs_sublist(imgs_sublist)
+        return output
+
+    def postprocess(self, preds):
+        if self.debug == False:
+            output = self.postprocess_compose(preds)
+        else:
+            output = self.postprocess_iterate(preds)
         return output
 
     def filter_existing_preds(self, imgs):
@@ -225,10 +282,9 @@ class BaseInferer(GetAttr, DictToAttr):
 
         outputs = []
         for batch in self.predict():
-            print(batch['image'].shape)
-            batch = self.postprocess_transforms(batch)
-            if self.save:
-                self.save_pred(batch)
+            batch = self.postprocess(batch)
+            # if self.save:
+            #     self.save_pred(batch)
             outputs.append(batch)
 
         if self.safe_mode:
@@ -250,27 +306,30 @@ class BaseInferer(GetAttr, DictToAttr):
     def reset(self):
         torch.cuda.empty_cache()
         # self.setup()
-
-    def create_transforms(self):
-        # single letter name is must for each tfm to use with set_transforms
-        spacing = get_patch_spacing(self.run_name)
-        self.L = LoadSITKd(
-            keys=["image"],
-            image_only=True,
-            ensure_channel_first=False,
-            simple_keys=True,
-        )
-        self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
-
-        self.S = Spacingd(keys=["image"], pixdim=spacing)
-        self.N = NormaliseClipd(
-            keys=["image"],
-            clip_range=self.dataset_params["intensity_clip_range"],
-            mean=self.dataset_params["mean_fg"],
-            std=self.dataset_params["std_fg"],
-        )
-
-        self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+    #
+    # def create_transforms(self):
+    #     # single letter name is must for each tfm to use with set_transforms
+    #     spacing = get_patch_spacing(self.run_name)
+    #     # Store transforms dictionary for individual access
+    #     self.transforms = {
+    #         'L': LoadSITKd(
+    #             keys=["image"],
+    #             image_only=True,
+    #             ensure_channel_first=False,
+    #             simple_keys=True,
+    #         ),
+    #         'E': EnsureChannelFirstd(keys=["image"], channel_dim="no_channel"),
+    #         'S': Spacingd(keys=["image"], pixdim=spacing),
+    #         'N': NormaliseClipd(
+    #             keys=["image"],
+    #             clip_range=self.dataset_params["intensity_clip_range"],
+    #             mean=self.dataset_params["mean_fg"],
+    #             std=self.dataset_params["std_fg"],
+    #         ),
+    #         'O': Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+    #     }
+    #     
+        # Set individual attributes for backward compatibility
 
     def infer_project(self):
         """Recursively search through params dictionary to find 'project' key and set it as attribute"""
@@ -302,7 +361,10 @@ class BaseInferer(GetAttr, DictToAttr):
     def set_transforms(self, tfms: str = ""):
         tfms_final = []
         for tfm in tfms:
-            tfms_final.append(getattr(self, tfm))
+            if hasattr(self, 'transforms') and tfm in self.transforms:
+                tfms_final.append(self.transforms[tfm])
+            else:
+                tfms_final.append(getattr(self, tfm))
         # if self.input_type == "files":
         #     tfms_final.insert(0, self.L)
         transform = Compose(tfms_final)
@@ -369,65 +431,54 @@ class BaseInferer(GetAttr, DictToAttr):
             self.ds, num_workers=nw, batch_size=bs, collate_fn=collate_fn
         )
 
-    def save_pred(self, preds):
+    # def save_pred(self, preds):
+    #     S = SaveImaged(
+    #         keys=["pred"],
+    #         output_dir=self.output_folder,
+    #         output_postfix="",
+    #         separate_folder=False,
+    #     )
+    #
+    #     S(preds)
+
+    def create_postprocess_transforms(self, preprocess_transform):
         S = SaveImaged(
             keys=["pred"],
             output_dir=self.output_folder,
             output_postfix="",
             separate_folder=False,
         )
-
-        S(preds)
-
-    def create_postprocess_transforms(self, preprocess_transform):
         Sq = SqueezeDimd(keys=["pred", "image"], dim=0)
-        # below is expensive on large number of channels and on discrete data I am unsure if it uses nearest neighbours
-        # I = Invertd(
-        #     keys=["pred"], transform=self.ds.transform, orig_keys=["image"]
-        # )  # watchout: use detach beforeharnd. make sure spacing are correct in preds
-        A = Activationsd(keys="pred", softmax=True)
-        D = AsDiscreted(keys=["pred"], argmax=True)  # ,threshold=0.5)
-        U = ToCPUd(keys=["image", "pred"])
-        Sa = SaveMultiChanneld(
-            keys=["pred"],
-            output_dir=self.output_folder,
-            output_postfix="",
-            separate_folder=False,
-        )
+        
         I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
 
         # Store transforms dictionary for individual access
         self.pp_transforms = {
             'Sq': Sq,
-            'Ac': A,
-            'Ds': D,
-            'ToCPU': U,
-            'SaveM': Sa,
+            
             'Re': I
         }
-
         if self.save_channels == True and self.safe_mode == False:
-            tfms = [Sq, Sa, A, D, I]
-        else:
-            tfms = [Sq, I]  # now each minibatch already is argmax and discrete.
+            Sa = SaveMultiChanneld(
+                keys=["pred"],
+                output_dir=self.output_folder,
+                output_postfix="",
+                separate_folder=False,
+            )
+            self.pp_transforms['Sa'] = Sa
+
         if self.k_largest:
             K = KeepLargestConnectedComponentWithMetad(
                 keys=["pred"], independent=False, num_components=self.k_largest
-            )  # label=1 is the organ
+            )
             self.pp_transforms['KL'] = K
-            tfms.insert(-1, K)
-        # if self.safe_mode == True:
-        #     tfms.insert(0, U)
-        # else:
-        #     tfms.append(U)
-        [print(tt) for tt in tfms]
-        C = Compose(tfms)
+        if self.save==True:
+            self.pp_transforms['S'] = S
+            
+        # Create composed transform from dictionary values
+        tfms = list(self.pp_transforms.values())
+        self.postprocess_compose = Compose(tfms)
 
-        # self.postprocess_transforms = C
-    def postprocess_transforms(self, batch):
-        batch1 = self.pp_transforms['Sq'](batch)
-        batch2 = self.pp_transforms['Re'](batch1)
-        return batch2
 
     def prepare_model(self):
         if self.devices == "cpu":
@@ -613,6 +664,7 @@ if __name__ == "__main__":
 
 # %%
 
+# %%
     # preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
     preds = T.run(imgs_lidc, chunksize=2, overwrite=overwrite)
 # %%

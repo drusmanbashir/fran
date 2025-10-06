@@ -186,9 +186,10 @@ def add_subdict(model_id):
 if __name__ == "__main__":
 
     run_src = "LITS-933"
+    run_src = "LITS-1217"
     project_title = "litsmc"
     value = 4
-    run_src = "LITS-911"
+# %%
     project_title = "lidc2"
     value = 3
 # %%
@@ -217,9 +218,11 @@ if __name__ == "__main__":
     dici['datamodule_hyper_parameters']['configs']
     dici["hyper_parameters"]['configs']= dici["hyper_parameters"]['config'].copy()
     dici["datamodule_hyper_parameters"]["configs"]=  dici["datamodule_hyper_parameters"]["config"].copy()  # ['plan_train']#=pln
+    # dici["datamodule_hyper_parameters"]["configs"]
     dici['datamodule_hyper_parameters']['configs']['plan_train']
     del dici['datamodule_hyper_parameters']['config']
     del dici['hyper_parameters']['config']
+    dici['hyper_parameters'].keys()
     torch.save(dici, ckpt_src)
 # %%
     dici['datamodule_hyper_parameters']['configs']['plan_train']

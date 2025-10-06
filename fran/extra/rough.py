@@ -47,8 +47,18 @@ for img_fn, lab_fn in zip(img_fns,lab_fns):
     print(mean,median)
 # %%
 # %%
+#SECTION:-------------------- FILE type ?int--------------------------------------------------------------------------------------
+
+lm_fn = Path("/s/fran_storage/predictions/nodes/LITS-1290/nodes_109_Ta50327_CAP1p5Soft.nii.gz")
+fn = sitk.ReadImage(lm_fn)
+fn.GetPixelID()
+# %%
 #SECTION:-------------------- H5 file check--------------------------------------------------------------------------------------
+import h5py
 h5fn = "/s/datasets_bkp/litsmall/fg_voxels.h5"
+h5fn = "/s/datasets_bkp/lits_segs_improved/fg_voxels.h5"
+f = h5py.File(h5fn)
+pp(f.keys())
         # lab[lab>0]=1
 
         # torch.save(lab,lab_fn)

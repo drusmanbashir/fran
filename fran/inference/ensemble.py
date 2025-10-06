@@ -1,21 +1,21 @@
 # %%
-from fran.managers import Project
-import itertools as il
-
 from __future__ import annotations
 
+import itertools as il
+
 import ipdb
-from fastcore.all import listify
 from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import SaveImaged
-from monai.transforms.post.dictionary import (AsDiscreteD, MeanEnsembled,
-                                              VoteEnsembled)
+from monai.transforms.post.dictionary import MeanEnsembled, VoteEnsembled
+from monai.transforms.utility.dictionary import ToDeviceD
 
 from fran.data.dataset import FillBBoxPatchesd
+from fran.managers import Project
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import (
-    KeepLargestConnectedComponentWithMetad, RenameDictKeys, ToCPUd)
+    KeepLargestConnectedComponentWithMetad, MakeWritabled, ToCPUd)
+from fran.utils.misc import parse_devices
 
 tr = ipdb.set_trace
 
@@ -225,7 +225,7 @@ class EnsembleInferer:
             loc.prepare_data(data, tfms="ESN")
             loc.create_postprocess_transforms(loc.ds.transform)
             for batch in loc.predict():
-                pred = loc.postprocess_transforms(batch)
+                pred = loc.postprocess(batch)
                 pred = post(pred)
                 bb = pred["bounding_box"]
                 if bb is None or (isinstance(bb, (list, tuple)) and len(bb) == 0):
@@ -310,7 +310,7 @@ class EnsembleInferer:
             preds_all_runs[run] = []
             preds = P.predict()
             for batch in preds:
-                output = P.postprocess_compose(batch)
+                output = P.postprocess(batch)
                 output = F(output)
                 if self.save_members == True:
                     S = SaveImaged(
@@ -441,9 +441,9 @@ class EnsembleInferer:
                 inf.create_postprocess_transforms(inf.ds.transform)
                 for num_batches, batch in enumerate(inf.predict(), 1):
                     # for batch in inf.predict():
-                    batch = inf.postprocess_transforms(batch)
-                    if self.save:
-                        inf.save_pred(batch)
+                    batch = inf.postprocess(batch)
+                    # if self.save:
+                    #     inf.save_pred(batch)
                     # batches.append(b)
                     prds_all_base[r].append(batch)
 
@@ -515,7 +515,11 @@ class EnsembleInferer:
         return preds_out
 
     def cascade_postprocess(self, preds):
+        device = self.devices if isinstance(self.devices, int) else self.devices[0]
+        device = parse_devices(device)
         CPU = ToCPUd(keys=self.runs)
+        GPU = ToDeviceD(keys=self.runs, device=device)
+        W = MakeWritabled(keys=self.runs)
 
         MR = VoteEnsembled(
             output_key="pred", keys=self.runs, num_classes=2
@@ -533,14 +537,15 @@ class EnsembleInferer:
             keys=["pred"], independent=False, num_components=self.k_largest
         )  # label=1 is the organ
         # tfms = [MR, A, D, K, F]
-        tfms = [CPU, MR]
+        tfms = [W, GPU, MR, CPU]
         if self.k_largest:
             tfms.append(K)
         if self.save == True:
             tfms.append(S)
         C = Compose(tfms)
 
-        tr()
+        # tr()
+        # pp = W(preds[0])
         output = C(preds)
         return output
 
@@ -566,7 +571,7 @@ class EnsembleInferer:
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     #
     # p = argparse.ArgumentParser()
     # p.add_argument("--runs", type=str, required=True, help="Comma-separated run_names")
@@ -634,15 +639,15 @@ if __name__ == "__main__":
     localiser_labels = [45, 46, 47, 48, 49]
     localiser_labels_litsmc = [1]
     TSL = TotalSegmenterLabels()
-    proj_nodes = Project("nodes"     )
+    proj_nodes = Project("nodes")
 
-# %%
-# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
     runs = run_nodes
     safe_mode = False
     devices = [0]
     overwrite = False
+    overwrite = True
     save_channels = False
     save_localiser = True
     save_members = True
@@ -674,7 +679,7 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = E.run(nodes, chunksize=chunksize)
+    preds = E.run(nodes[:3], chunksize=chunksize,overwrite=overwrite)
     # preds = En.run(img_fns, chunksize=2)
 
 # %%
@@ -685,7 +690,7 @@ if __name__ == "__main__":
     params["configs"]["dataset_params"]["plan_train"]
     # S
 # %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     images = nodes[:2]
     if not isinstance(images, list):
         images = [images]
@@ -717,7 +722,7 @@ if __name__ == "__main__":
         preds_all_patches.extend(pp)
 
 # %%
-# SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     # 3) Run base/whole members directly on full images
     prds_all_base = {}
     for r in E.base_runs:
@@ -744,7 +749,7 @@ if __name__ == "__main__":
             inf.create_postprocess_transforms(inf.ds.transform)
             for num_batches, batch in enumerate(inf.predict(), 1):
                 # for batch in inf.predict():
-                batch = inf.postprocess_transforms(batch)
+                batch = inf.postprocess(batch)
                 if E.save:
                     inf.save_pred(batch)
                 # batches.append(b)

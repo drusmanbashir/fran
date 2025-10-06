@@ -19,12 +19,16 @@ if __name__ == "__main__":
     from fran.utils.common import *
     devices = 2
     P = Project("litsmc")
-    P.set_labels_all()
+    P.delete()
+    P.create(mnemonic="lits", datasources=[DS.lits, DS.drli,DS.litq,DS.litqsmall])
+    
+    # P.set_labels_all()
     # P.global_properties = load_dict("/s/fran_storage/projects/litsmc/global_properties.pkl")
     # save_dict(P.global_properties, P.global_properties_filename)
     # P.global_properties["labels_all"] 
     P.maybe_store_projectwide_properties()
 
+# %%
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
     C.setup()
     C.plans

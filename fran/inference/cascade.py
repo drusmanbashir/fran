@@ -1,11 +1,12 @@
 # %%
-from typing import Union
 import itertools as il
+from fran.utils.misc import parse_devices
 import time
+from typing import Union
 
 import ipdb
 from label_analysis.totalseg import TotalSegmenterLabels
-from monai.transforms.utility.dictionary import SqueezeDimd
+from monai.transforms.utility.dictionary import SqueezeDimd, ToDeviceD
 from utilz.fileio import maybe_makedirs
 
 from fran.trainers.base import checkpoint_from_model_id
@@ -24,14 +25,14 @@ from monai.transforms.compose import Compose
 # from monai.data.box_utils import *
 # from monai.inferers.merger import *
 from monai.transforms.io.dictionary import SaveImaged
-from monai.transforms.post.dictionary import Invertd, MeanEnsembled
+from monai.transforms.post.dictionary import AsDiscreted, Invertd, MeanEnsembled
 from monai.transforms.spatial.dictionary import Resized
 
 from fran.data.dataset import FillBBoxPatchesd
 from fran.inference.base import (BaseInferer, get_patch_spacing,
                                  list_to_chunks, load_params)
 from fran.transforms.inferencetransforms import (
-    BBoxFromPTd, KeepLargestConnectedComponentWithMetad, RenameDictKeys,
+    BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled, RenameDictKeys,
     SaveMultiChanneld, SqueezeListofListsd, ToCPUd)
 
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
@@ -98,10 +99,17 @@ class WholeImageInferer(BaseInferer):
     def create_transforms(self):
 
         super().create_transforms()
-        self.S = Resized(
+        self.transforms['S']= Resized(
             keys=["image"], spatial_size=self.plan["patch_size"]
         )  # KEEP NAME AS S TO AVOID BUGS
 
+        self.S = self.transforms['S']
+
+    def create_postprocess_transforms(self, preprocess_transform):
+        super().create_postprocess_transforms(preprocess_transform)
+        tfms = [self.pp_transforms['Sq'], self.pp_transforms['Re']]
+        C = Compose(tfms)
+        self.postprocess_compose = C
     #
     #
     # def predict_inner(self,batch):
@@ -127,6 +135,7 @@ class PatchInferer(BaseInferer):
         devices=[1],
         save_channels=True,
         params=None,
+        debug=False,
         **kwargs,
     ):
         super().__init__(
@@ -135,23 +144,23 @@ class PatchInferer(BaseInferer):
             save_channels=save_channels,
             save=False,
             params=params,
+            debug=debug,
             **kwargs,
         )
 
     def check_plan_compatibility(self):
         pass
 
-
     def create_postprocess_transforms(self, preprocess_transform):
         self.pp_transforms = {
             "Sq": SqueezeDimd(keys=["image", "pred"], dim=0),
-            "Sq2" : SqueezeListofListsd(keys=["bounding_box"]),
+            "Sq2": SqueezeListofListsd(keys=["bounding_box"]),
             "In": Invertd(
                 keys=["pred"], transform=preprocess_transform, orig_keys=["image"]
             ),  # watchout: use detach beforeharnd. make sure spacing are correct in preds
             "Tc": ToCPUd(keys=["image", "pred"]),
         }
-        
+
         if self.save_channels == True:
             self.pp_transforms["Sa"] = SaveMultiChanneld(
                 keys=["pred"],
@@ -179,6 +188,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         save=True,
         save_localiser=True,
         k_largest=None,  # assign a number if there are organs involved
+        debug=False,
     ):
         """
         Creates a single dataset (cascade dataset) which normalises images once for both patches and whole images. Hence, the model should be developed from the same dataset std, mean values.
@@ -190,6 +200,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             "all",
         ], "Choose one of None , 'dataloading', 'prediction', 'all'"
 
+        self.device= parse_devices(devices)
         self.params = load_params(run_p)
         # CODE:  change params to a different name more aligned and found else where in library
         self.P = PatchInferer(
@@ -198,7 +209,9 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             save_channels=save_channels,
             safe_mode=safe_mode,
             params=self.params,
+            debug=debug,
         )
+
         self.predictions_folder = self.P.project.predictions_folder
         self.localiser_tfms = "ESN"
         WSInf = self.inferer_from_params(run_w)
@@ -207,7 +220,10 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             save_channels=save_channels,
             devices=devices,
             safe_mode=safe_mode,
+            save=save_localiser,
+            debug=debug
         )
+
         store_attr()
 
     def setup(self):
@@ -247,14 +263,17 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             return 1
 
     def process_imgs_sublist(self, imgs_sublist):
+        self.create_postprocess_transforms()
         data = self.load_images(imgs_sublist)
+
         self.bboxes = self.extract_fg_bboxes(data)
+
         data = self.apply_bboxes(data, self.bboxes)
         pred_patches = self.patch_prediction(data)
         pred_patches = self.decollate_patches(pred_patches, self.bboxes)
         output = self.postprocess(pred_patches)
-        if self.save == True:
-            self.save_pred(output)
+        # if self.save == True:
+        #     self.save_pred(output)
         self.cuda_clear()
         return output
 
@@ -267,7 +286,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         return data2
 
     def filter_existing_preds(self, imgs):
-
         print(
             "Filtering existing predictions\nNumber of images provided: {}".format(
                 len(imgs)
@@ -297,15 +315,15 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         print("Number of images remaining to be predicted: {}".format(len(imgs)))
         return imgs
 
-    def save_pred(self, preds: Union[dict,list]):
-        S = SaveImaged(
-            keys=["pred"],
-            output_dir=self.output_folder,
-            output_postfix="",
-            separate_folder=False,
-        )
-        for pred in preds:
-            S(pred)
+    # def save_pred(self, preds: Union[dict, list]):
+    #     S = SaveImaged(
+    #         keys=["pred"],
+    #         output_dir=self.output_folder,
+    #         output_postfix="",
+    #         separate_folder=False,
+    #     )
+    #     for pred in preds:
+    #         S(pred)
 
     def get_mini_bundle(self, patch_bundles, indx):
         patch_bundle = {}
@@ -344,13 +362,11 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         print("Starting localiser data prep and prediction")
         self.W.setup()
         self.W.prepare_data(data, tfms="ESN")
+        self.W.create_postprocess_transforms(self.W.ds.transform)
         bboxes = []
         for batch in self.W.predict():
             # p = self.W.predict()
-            self.W.create_postprocess_transforms(self.W.ds.transform)
-            pred = self.W.postprocess_transforms(batch)
-            if self.save_localiser == True:
-                self.W.save_pred(pred)
+            pred = self.W.postprocess(batch)
             pred = Sel(pred)
             pred = B(pred)
             bb = pred["bounding_box"]
@@ -373,7 +389,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         self.P.prepare_data(data=data, tfms="ESN", collate_fn=img_bbox_collated)
         self.P.create_postprocess_transforms(self.P.ds.transform)
         for batch in self.P.predict():
-            batch = self.P.postprocess_compose(batch)
+            batch = self.P.postprocess(batch)
             # preds = self.P.predict()
             # preds = self.P.postprocess(preds)
             preds_all_runs[self.P.run_name].append(batch)
@@ -385,34 +401,40 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         fldr = self.predictions_folder / self.run_p
         return fldr
 
-    def postprocess(self, preds):
+    def create_postprocess_transforms(self):
         keys = listify(self.run_p)
-        # A = Activationsd(keys="pred", softmax=True)
-        # D = AsDiscreted(keys=["pred"], argmax=True)
-        F = FillBBoxPatchesd()
-        if len(keys) == 1:
-            MR = RenameDictKeys(new_keys=["pred"], keys=keys)
-        else:
-            MR = MeanEnsembled(output_key="pred", keys=keys)
+        self.pp_transforms = {
+            # "U": ToDeviceD(keys=keys, device=self.device),
+             "MR": RenameDictKeys(new_keys=["pred"], keys=keys),
+            # "D": AsDiscreted(keys=["pred"], argmax=True),
+            "W": MakeWritabled(keys=["pred"]),
+        }
+        
         if self.k_largest:
-            K = KeepLargestConnectedComponentWithMetad(
+            self.pp_transforms["K"] = KeepLargestConnectedComponentWithMetad(
                 keys=["pred"], independent=False, num_components=self.k_largest
-            )  # label=1 is the organ
-            # tfms = [MR, A, D, K, F]
-            tfms = [MR, K, F]
-        else:
-            tfms = [MR, F]
-        # S = SaveListd(keys = ['pred'],output_dir=self.output_folder,output_postfix='',separate_folder=False)
+            )
+        
+        self.pp_transforms["F"] = FillBBoxPatchesd()
+        if self.save==True:
+            self.pp_transforms["S"] = SaveImaged(
+                keys=["pred"],
+                output_dir=self.output_folder,
+                output_postfix="",
+                separate_folder=False,
+            )
+        
+        tfms = list(self.pp_transforms.values())
         C = Compose(tfms)
-        output = C(preds)
-        return output
+        self.postprocess_compose = C
+
+    
+
 
 
 # %%
-
 if __name__ == "__main__":
-# %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     # ... run your application ...
     from fran.managers import Project
@@ -459,37 +481,47 @@ if __name__ == "__main__":
     localiser_labels_litsmc = [1]
     TSL = TotalSegmenterLabels()
 # %%
-# %%
-# SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     loc_lidc = [7]  # lung in localiser_label
 
     safe_mode = False
     devices = [1]
     overwrite = True
+    debug_=False
+    debug_=True
     save_channels = False
+    save_localiser=True
 # %%
     En = CascadeInferer(
         run_w,
         run_lidc2,
         save_channels=save_channels,
+        save_localiser=save_localiser,
         devices=devices,
         overwrite=overwrite,
         localiser_labels=loc_lidc,
         safe_mode=safe_mode,
         k_largest=None,
+        debug=debug_
     )
 
 # %%
-    imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
+    # batch = torch.load("batch.pt", map_location="cpu",weights_only=False)
+    # batch['pred'].shape
+    # batch['image'].shape
+    # ImageMaskViewer([batch['image'][0,0],batch['pred'][0,0]])
+# %%
     imgs_tmp = ["/s/insync/datasets/today/mets/201 Axial  iDose (6).nii.gz"]
+    imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
     preds = En.run(imgs_tmp, chunksize=1)
+
 
 # %%
     model = En.Ps[0].model
 
 # %%
-# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
     safe_mode = False
     devices = [0]
@@ -515,26 +547,30 @@ if __name__ == "__main__":
 
 # %%
 
-# SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
+    debug_=True
     safe_mode = False
     run_tot = ["LITS-1088"]
     W = WholeImageInferer(
-        run_tot[0], safe_mode=safe_mode, k_largest=None, save_channels=False
+        run_tot[0], safe_mode=safe_mode, k_largest=None, save_channels=False,debug=debug_
     )
 # %%
 
     # preds = W.run(imgs_crc, chunksize=6)
     nodesthick_imgs = list(nodesthick_fldr.glob("*"))
     nodes_imgs = list(nodes_fldr.glob("*"))
-    preds = W.run(nodes_imgs, chunksize=1, overwrite=False)
+    nodes_imgs=nodes_imgs[:3]
+    preds = W.run(nodes_imgs, chunksize=1, overwrite=True)
 # %%
-    p = preds[0]["pred"][0]
 
+    dl = W.pred_dl
+    iteri = iter(dl)
+    batch = next(iteri)
+    img = batch['image']
+    pred = W.model()
 # %%
-# %%
-# %%
-# SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR> <CR>
 
     localiser_labels = set(TSL.label_localiser)
     safe_mode = True
@@ -560,7 +596,7 @@ if __name__ == "__main__":
     preds = En.run(nodes, chunksize=2)
     # preds = En.run(img_fns, chunksize=2)
 # %%
-# SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     run = run_litsmc2
     localiser_labels_litsmc = [3]
     run_w = "LITS-1088"
@@ -595,6 +631,7 @@ if __name__ == "__main__":
     # imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
     tn = time.time()
     # preds = En.run(imgs_crc[:30], chunksize=4)
+# %%
     preds = En.run(img_fns, chunksize=4)
     t2 = time.time()
     lapse = t2 - tn
@@ -607,8 +644,8 @@ if __name__ == "__main__":
     bboxes = []
 # %%
 
-# SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-# SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 # %%
     spacing = get_patch_spacing(En.run_w)
     Sel = SelectLabels(keys=["pred"], labels=list(En.localiser_labels))
@@ -674,7 +711,7 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
         n = 4
         data = En.load_images(nodes[:5])
         img0 = data[n]["image"]
@@ -691,69 +728,31 @@ if __name__ == "__main__":
         img1 = img1.permute(2, 1, 0)
         ImageMaskViewer([img0, img1])
 # %%
-# SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
-        P = En.Ps[0]
-
-        P.setup()
-        P.prepare_data(data=data, tfms="ESN", collate_fn=img_bbox_collated)
-        batch = next(iter(P.pred_dl))
-
+  
+        imgs_sublist= nodes[:3]
+        data = En.load_images(imgs_sublist)
+        En.bboxes = En.extract_fg_bboxes(data)
+        data = En.apply_bboxes(data, En.bboxes)
 # %%
-        with torch.inference_mode():
-            for i, batch in enumerate(P.pred_dl):
-                with torch.no_grad():
-                    img_input = batch["image"]
-                    img_input = img_input.cuda()
-                    if "filename_or_obj" in img_input.meta.keys():
-                        print("Processing: ", img_input.meta["filename_or_obj"])
-                    output_tensor = P.inferer(inputs=img_input, network=P.model)
+        # pred_patches = En.patch_prediction(data)
 
-                    #
+        print("Starting patch data prep and prediction")
+        preds_all_runs = {}
+        preds_all_runs[En.P.run_name] = []
+        En.P.setup()
+        En.P.prepare_data(data=data, tfms="ESN", collate_fn=img_bbox_collated)
+        En.P.create_postprocess_transforms(En.P.ds.transform)
+        En.P.pp_transforms#['Sq'](batch)
 # %%
-        fldr = "preds"
-        maybe_makedirs(fldr)
-        fn = img_input.meta["filename_or_obj"]
-        fn_name = Path(fn).name
-        fn_out = Path(fldr) / fn_name
-        img_input.shape
-        img_input2 = img_input[0, 0].cpu()
-        img_input2 = torch.permute(img_input2, (2, 1, 0))
-        img_cropped_to_bbox = sitk.GetImageFromArray(img_input2)
-        sitk.WriteImage(img_cropped_to_bbox, str(fn_out))
-        ot = output_tensor
-        imgs = [im.cpu()[0] for im in ot]
-
-        [i.shape for i in imgs]
+        for batch in En.P.predict():
+            batch = En.P.postprocess_compose(batch)
+            # preds = En.P.predict()
+            # preds = En.P.postprocess(preds)
+            preds_all_runs[En.P.run_name].append(batch)
 # %%
-        for ind in range(len(imgs)):
-            for ch, im in enumerate(imgs[ind]):
-                fn_name_pred = fn_name + "_pred_{0}_ch{1}.nii.gz".format(ind, ch)
-                im2 = torch.permute(im, (2, 1, 0))
-                print(im.shape)
-                pred_out = sitk.GetImageFromArray(im2)
-                print(fn_name_pred)
-                sitk.WriteImage(pred_out, Path(fldr) / fn_name_pred)
-                print("\\n")
 
-# %%
-        img_cropped_to_bbox = imgs[ind]
-
-        ImageMaskViewer([ot[0][0][2].cpu(), ot[2][0][2].cpu()])
-# %%
-        # output_tensor = output_tensor[0]
-        # batch["pred"] = output_tensor
-        # batch["pred"].meta = batch["image"].meta.copy()
-
-        pred_patches = En.patch_prediction(data)
-        pred_patches = En.decollate_patches(pred_patches, En.bboxes)
-        output = En.postprocess(pred_patches)
-        if En.save == True:
-            En.save_pred(output)
-        En.cuda_clear()
-
-        batch = torch.load("batch.pt", weights_only=False)
         print(batch.keys())
-        img = batch["image"]
-        preds = batch["pred"]
+        print(batch['pred'].shape)
 # %%

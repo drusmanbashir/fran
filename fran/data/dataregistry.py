@@ -55,9 +55,21 @@ class DatasetRegistry:
     def __getitem__(self, name: str) -> DatasetSpec:
         return self.get(name)
 
+    def __getattr__(self, name: str) -> DatasetSpec:
+        if name in self._specs:
+            return self.get(name)
+        raise AttributeError(f"DatasetRegistry has no attribute {name}")
+
+    def __str__(self):
+        star ="DataRegistry items: "+ ",".join(DS.names()) 
+        return star
+
+    def __repr__(self):
+        return str(self)
 
 DS = DatasetRegistry()
 
 # %%
 if __name__ == "__main__":
     pass
+    

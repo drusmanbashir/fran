@@ -297,8 +297,6 @@ Steps are :
         P, raytune=False, configuration_filename=None
 
     ).config
-    plans = conf['plan1']  # or any other name
-    P.add_plan(plans, overwrite_global_properties=False)
 
 ```
 
