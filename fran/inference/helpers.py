@@ -1,4 +1,5 @@
 import numpy as np 
+from fran.managers import Project
 import torch
 import math
 def get_sitk_target_size_from_spacings(sitk_array,spacing_dest):
@@ -42,4 +43,29 @@ def get_scale_factor_from_spacings (sz_source, spacing_source, spacing_dest):
             sz_dest= [round(a*b )for a,b in zip(sz_source,scale_factor)]
             return sz_dest, scale_factor
 
+
+def infer_project(configs):
+        """Recursively search through params dictionary to find 'project' key and set it as attribute"""
+
+        def find_project(dici):
+            if isinstance(dici, dict):
+                for k, v in dici.items():
+                    if k == "project_title":
+                        return v
+                    result = find_project(v)
+                    if result is not None:
+                        return result
+            elif isinstance(dici, list):
+                for item in dici:
+                    result = find_project(item)
+                    if result is not None:
+                        return result
+            return None
+
+        project_title = find_project(configs)
+        if project_title is not None:
+            project = Project(project_title)
+            return project
+        else:
+            raise ValueError("No 'project_title' key found in params dictionary")
 

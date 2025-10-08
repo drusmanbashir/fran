@@ -31,15 +31,15 @@ if __name__ == '__main__':
     devices= [1]
     bs = 4
 
-    run_name =None
     # run_name ='LITS-1285'
     run_name ='LITS-1230'
+    run_name =None
     compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
     neptune = True
-    override_dm = True
+    override_dm = False
     tags = []
     description = f"Partially trained up to 100 epochs"
 

@@ -29,7 +29,7 @@ from monai.transforms.post.dictionary import AsDiscreted, Invertd, MeanEnsembled
 from monai.transforms.spatial.dictionary import Resized
 
 from fran.data.dataset import FillBBoxPatchesd
-from fran.inference.base import (BaseInferer, get_patch_spacing,
+from fran.inference.base import (BaseInferer, filter_existing_files, get_patch_spacing,
                                  list_to_chunks, load_params)
 from fran.transforms.inferencetransforms import (
     BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled, RenameDictKeys,
@@ -250,7 +250,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         if self.overwrite == False and (
             isinstance(imgs[0], str) or isinstance(imgs[0], Path)
         ):
-            imgs = self.filter_existing_preds(imgs)
+            imgs = filter_existing_files(imgs,  self.output_folder)
         else:
             pass
             # self.save = False  # don't save if input is pure images. Just output those.
@@ -284,18 +284,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             dat["bounding_box"] = self.bboxes[i]
             data2.append(dat)
         return data2
-
-    def filter_existing_preds(self, imgs):
-        print(
-            "Filtering existing predictions\nNumber of images provided: {}".format(
-                len(imgs)
-            )
-        )
-        out_fns = [self.output_folder / img.name for img in imgs]
-        to_do = [not fn.exists() for fn in out_fns]
-        imgs = list(il.compress(imgs, to_do))
-        print("Number of images remaining to be predicted: {}".format(len(imgs)))
-        return imgs
 
     def filter_existing_localisers(self, imgs):
         print(

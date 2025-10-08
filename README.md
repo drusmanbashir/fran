@@ -186,6 +186,7 @@ If you add imported labelmaps to a plan, you have to include a remapping cell, l
 This setting is used mainly by LBD (labelbounded) datasets. It is ignored by:
 - Source dataset
 
+##### c. use_fg_indices. If set to false, training will not use the fg_indices files (hopefully saves some ram)
 
 
 A complex element is output folder naming. This is managed in a project database table called ```master_plans``` 

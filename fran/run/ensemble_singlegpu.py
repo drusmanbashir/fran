@@ -54,7 +54,8 @@ def main(args):
 
 if __name__ == "__main__":
         
-    common_vars_filename=os.environ['FRAN_COMMON_PATHS']
+    common_vars_filename=os.environ['FRAN_COMMON_PATHS']+"/config.yaml"
+    varsi = load_yaml(common_vars_filename)
     # runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436","LITS-445"]
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
 

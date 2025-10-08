@@ -488,10 +488,10 @@ class ConfigMaker:
             )
 
     def _set_active_plans(self, plan_train: int = None, plan_valid: int = None):
-        if plan_train == None:
-            plan_train = self.configs["dataset_params"]["plan_train"]
-        if plan_valid == None:
-            plan_valid = self.configs["dataset_params"]["plan_valid"]
+        # if plan_train == None:
+        #     plan_train = self.configs["dataset_params"]["plan_train"]
+        # if plan_valid == None:
+        #     plan_valid = self.configs["dataset_params"]["plan_valid"]
         self._set_plan(plan_train, True)
         self._set_plan(plan_valid, False)
 

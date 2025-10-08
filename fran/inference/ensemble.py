@@ -27,7 +27,8 @@ import torch
 from fastcore.basics import store_attr
 
 # import your existing inferers
-from fran.inference.base import BaseInferer, load_params
+from fran.inference.base import (BaseInferer, filter_existing_files,
+                                 load_images, load_params)
 from fran.inference.cascade import (CascadeInferer, PatchInferer,
                                     WholeImageInferer, img_bbox_collated)
 
@@ -355,51 +356,6 @@ class EnsembleInferer:
             merged.append(out)
         return merged
 
-    def parse_input(self, imgs_inp):
-        """
-        input types:
-            folder of img_fns
-            nifti img_fns
-            itk imgs (slicer)
-        returns list of img_fns if folder. Otherwise just the imgs
-        """
-
-        if not isinstance(imgs_inp, list):
-            imgs_inp = [imgs_inp]
-        imgs_out = []
-        for dat in imgs_inp:
-            if any([isinstance(dat, str), isinstance(dat, Path)]):
-                self.input_type = "files"
-                dat = Path(dat)
-                if dat.is_dir():
-                    dat = list(dat.glob("*"))
-                else:
-                    dat = [dat]
-            else:
-                self.input_type = "itk"
-                if isinstance(dat, sitk.Image):
-                    pass
-                    # do nothing
-                    # dat = ConvertSimpleItkImageToItkImage(dat, itk.F)
-                elif isinstance(dat, itk.Image):
-                    dat = itm(dat)
-                else:
-                    tr()
-                dat = [dat]
-            imgs_out.extend(dat)
-        imgs_out = [{"image": img} for img in imgs_out]
-        return imgs_out
-
-    def load_images(self, data):
-        """
-        data can be filenames or images. InferenceDatasetNii will resolve data type and add LoadImaged if it is a filename
-        """
-
-        Loader = LoadSITKd(["image"])
-        data = self.parse_input(data)
-        data = [Loader(d) for d in data]
-        return data
-
     # ---------- public API -----------------------------------------------------
     def _cascade_runs(self, data):
         preds_all_patches = []
@@ -458,7 +414,7 @@ class EnsembleInferer:
         if overwrite == False and (
             isinstance(images[0], str) or isinstance(images[0], Path)
         ):
-            images = self.filter_existing_preds(images)
+            images = filter_existing_files(images, self.output_folder)
         chunksize = max(1, chunksize)
 
         all_outputs: List[dict] = []
@@ -466,15 +422,16 @@ class EnsembleInferer:
         for start in range(0, len(images), chunksize):
 
             chunk = images[start : start + chunksize]
-            data = self.load_images(chunk)
+            data = load_images(chunk)
             # 1) Prepare data once for base-like members (they each handle their own transforms)
             # 2) Handle cascade groups: run localiser ONCE per run_w, then fan out to each run_p
-            preds_all_patches = self._cascade_runs(data)
-            preds_all_base = self._base_runs(data)
+            preds_all_patches = self._cascade_runs(data) if len(self.cascade_runs) > 0 else []
+            preds_all_base = self._base_runs(data) if len(self.base_runs) > 0 else []
             # 3) Run base/whole members directly on full images
             preds_all = self.combined_patch_base_preds(
                 preds_all_patches, preds_all_base
             )
+
             preds_final = self.cascade_postprocess(preds_all)
             all_outputs.append(preds_final)
 
@@ -483,24 +440,16 @@ class EnsembleInferer:
 
         return all_outputs
 
-    def filter_existing_preds(self, imgs):
-
-        print(
-            "Filtering existing predictions\nNumber of images provided: {}".format(
-                len(imgs)
-            )
-        )
-        out_fns = [self.output_folder / img.name for img in imgs]
-        to_do = [not fn.exists() for fn in out_fns]
-        imgs = list(il.compress(imgs, to_do))
-        print("Number of images remaining to be predicted: {}".format(len(imgs)))
-        return imgs
-
     def combined_patch_base_preds(self, preds_all_patches, preds_all_base):
         preds_all = []
-        for pred_patch, pred_base in zip(preds_all_patches, preds_all_base):
-            preds_ = pred_patch | pred_base
-            preds_all.append(preds_)
+        if len(preds_all_patches) > 0 and len(preds_all_base) > 0:
+            for pred_patch, pred_base in zip(preds_all_patches, preds_all_base):
+                preds_ = pred_patch | pred_base
+                preds_all.append(preds_)
+        elif len(preds_all_patches) > 0:
+            preds_all = preds_all_patches
+        elif len(preds_all_base) > 0:
+            preds_all = preds_all_base
         return preds_all
 
     def decollate_base_predictions(self, preds):
@@ -571,7 +520,7 @@ class EnsembleInferer:
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     #
     # p = argparse.ArgumentParser()
     # p.add_argument("--runs", type=str, required=True, help="Comma-separated run_names")
@@ -609,7 +558,7 @@ if __name__ == "__main__":
     run_lidc2 = ["LITS-911"]
     run_litsmc = ["LITS-933"]
     run_litsmc2 = ["LITS-1018"]
-    run_litsmc2 = ["LITS-1217"]
+    run_litsmc2 = ["LITS-1217", "LITS-1297"]
     run_ts = ["LITS-827"]
     run_totalseg = ["LITS-1246"]
 
@@ -641,7 +590,7 @@ if __name__ == "__main__":
     TSL = TotalSegmenterLabels()
     proj_nodes = Project("nodes")
 
-# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
     runs = run_nodes
     safe_mode = False
@@ -679,7 +628,7 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = E.run(nodes[:3], chunksize=chunksize,overwrite=overwrite)
+    preds = E.run(nodes[:3], chunksize=chunksize, overwrite=overwrite)
     # preds = En.run(img_fns, chunksize=2)
 
 # %%
@@ -690,7 +639,67 @@ if __name__ == "__main__":
     params["configs"]["dataset_params"]["plan_train"]
     # S
 # %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR>
+
+    run = run_litsmc2
+    localiser_labels_litsmc = [3]
+    devices = [1]
+    overwrite = True
+    safe_mode = True
+    save_localiser = True
+    save_channels = False
+    project = Project(project_title="litsmc")
+    if project.project_title == "litsmc":
+        k_largest = 1
+    else:
+        k_largest = None
+    En = EnsembleInferer(
+        project=project,
+        localiser_run=run_w,
+        runs=run,
+        save_channels=save_channels,
+        devices=devices,
+        localiser_labels=localiser_labels_litsmc,
+        safe_mode=safe_mode,
+        k_largest=k_largest,
+    )
+
+# %%
+
+    preds = En.run(nodes[:3], chunksize=chunksize, overwrite=overwrite)
+    # preds = En.run(imgs_crc[:30], chunksize=4)
+# %%
+
+# %%
+#SECTION:-------------------- TS run()--------------------------------------------------------------------------------------
+
+    images = nodes
+
+    all_outputs: List[dict] = []
+
+    for start in range(0, len(images), chunksize):
+
+        chunk = images[start : start + chunksize]
+        data = load_images(chunk)
+        # 1) Prepare data once for base-like members (they each handle their own transforms)
+        # 2) Handle cascade groups: run localiser ONCE per run_w, then fan out to each run_p
+        preds_all_patches = En._cascade_runs(data) if len(En.cascade_runs) > 0 else []
+        preds_all_base = En._base_runs(data) if len(En.base_runs) > 0 else []
+        # 3) Run base/whole members directly on full images
+        preds_all = En.combined_patch_base_preds(
+            preds_all_patches, preds_all_base
+        )
+
+        preds_final = En.cascade_postprocess(preds_all)
+        all_outputs.append(preds_final)
+
+        torch.cuda.empty_cache()
+        gc.collect()
+
+
+# %%
+
+# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
     images = nodes[:2]
     if not isinstance(images, list):
         images = [images]
@@ -722,7 +731,7 @@ if __name__ == "__main__":
         preds_all_patches.extend(pp)
 
 # %%
-# SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     # 3) Run base/whole members directly on full images
     prds_all_base = {}
     for r in E.base_runs:

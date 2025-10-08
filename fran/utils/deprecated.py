@@ -216,6 +216,7 @@ if __name__ == "__main__":
     dici = dict_src.copy()
     dici['datamodule_hyper_parameters'].keys()
     dici['datamodule_hyper_parameters']['configs']
+    dici["hyper_parameters"]['configs']#
     dici["hyper_parameters"]['configs']= dici["hyper_parameters"]['config'].copy()
     dici["datamodule_hyper_parameters"]["configs"]=  dici["datamodule_hyper_parameters"]["config"].copy()  # ['plan_train']#=pln
     # dici["datamodule_hyper_parameters"]["configs"]

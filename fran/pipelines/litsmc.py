@@ -17,20 +17,19 @@ from fran.data.dataregistry import DS
 # SECTION:-------------------- SETUP----------------------------------------------------------------------------------------------------- <CR>
 if __name__ == "__main__":
     from fran.utils.common import *
-    devices = 2
     P = Project("litsmc")
-    P.delete()
-    P.create(mnemonic="lits", datasources=[DS.lits, DS.drli,DS.litq,DS.litqsmall])
+    # P.delete()
+    # P.create(mnemonic="lits", datasources=[DS.lits, DS.drli,DS.litq,DS.litqsmall])
     
     # P.set_labels_all()
     # P.global_properties = load_dict("/s/fran_storage/projects/litsmc/global_properties.pkl")
     # save_dict(P.global_properties, P.global_properties_filename)
     # P.global_properties["labels_all"] 
-    P.maybe_store_projectwide_properties()
+    # P.maybe_store_projectwide_properties()
 
 # %%
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
-    C.setup()
+    C.setup(7)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -39,7 +38,8 @@ if __name__ == "__main__":
     pp(plan)
 # %%
 
-    bs = 8
+    devices = 2
+    bs = 10
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
     compiled = False
@@ -47,13 +47,14 @@ if __name__ == "__main__":
     batch_finder = False
     neptune = True
     tags = []
-    description = f"trying 2 gpu"
+    override_dm_params = False
+    description = f"main litsmc run"
     # plan['mode']
 # %%
-    # conf["dataset_params"]["ds_type"] ='lmdb'
+    run_name ="LITS-1217" 
+    run_name = None
     # conf["dataset_params"]["cache_rate"] = None
 
-    run_name = None
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
     Tm.setup(
@@ -66,6 +67,7 @@ if __name__ == "__main__":
         neptune=neptune,
         tags=tags,
         description=description,
+        override_dm_checkpoint=override_dm_params
     )
 # %%
     # Tm.D.batch_size=8

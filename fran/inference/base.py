@@ -1,5 +1,7 @@
 # %%
 import os
+
+from fran.inference.helpers import infer_project
 os.environ["TORCHDYNAMO_DISABLE"] = "1"   # set as early as possible in the process
 
 import torch, torch._dynamo as dynamo
@@ -113,6 +115,64 @@ def load_params(model_id):
     return dic_relevant
 
 
+
+def parse_input( imgs_inp):
+        """
+        input types:
+            folder of img_fns
+            nifti img_fns
+            itk imgs (slicer)
+        returns list of img_fns if folder. Otherwise just the imgs
+        """
+
+        if not isinstance(imgs_inp, list):
+            imgs_inp = [imgs_inp]
+        imgs_out = []
+        for dat in imgs_inp:
+            if any([isinstance(dat, str), isinstance(dat, Path)]):
+                dat = Path(dat)
+                if dat.is_dir():
+                    dat = list(dat.glob("*"))
+                else:
+                    dat = [dat]
+            else:
+                if isinstance(dat, sitk.Image):
+                    pass
+                    # do nothing
+                    # dat = ConvertSimpleItkImageToItkImage(dat, itk.F)
+                elif isinstance(dat, itk.Image):
+                    dat = itm(dat)
+                else:
+                    tr()
+                dat = [dat]
+            imgs_out.extend(dat)
+        imgs_out = [{"image": img} for img in imgs_out]
+        return imgs_out
+
+
+def load_images( data):
+        """
+        data can be filenames or images. InferenceDatasetNii will resolve data type and add LoadImaged if it is a filename
+        """
+
+        Loader = LoadSITKd(["image"])
+        data = parse_input(data)
+        data = [Loader(d) for d in data]
+        return data
+
+def filter_existing_files( files, target_folder):
+        files = [Path(img) for img in files]
+        print(
+            "Filtering existing predictions\nNumber of images provided: {}".format(
+                len(files)
+            )
+        )
+        out_fns = [target_folder/ img.name for img in files]
+        to_do = [not fn.exists() for fn in out_fns]
+        files = list(il.compress(files, to_do))
+        print("Number of images not found in folder {0}:  {1}".format(target_folder,len(files)))
+        return files
+
 class BaseInferer(GetAttr, DictToAttr):
     def __init__(
         self,
@@ -153,7 +213,7 @@ class BaseInferer(GetAttr, DictToAttr):
         self.plan = fix_ast(self.params["configs"]["plan_train"], ["spacing"])
         self.check_plan_compatibility()
         self.dataset_params = self.params["configs"]["dataset_params"]
-        self.infer_project()
+        self.project =infer_project(self.params)
 
         sw_device = "cuda"
         if safe_mode == True:
@@ -248,7 +308,7 @@ class BaseInferer(GetAttr, DictToAttr):
         if overwrite == False and (
             isinstance(imgs[0], str) or isinstance(imgs[0], Path)
         ):
-            imgs = self.filter_existing_preds(imgs)
+            imgs = filter_existing_preds(imgs,self.output_folder)
         imgs = list_to_chunks(imgs, chunksize)
         for imgs_sublist in imgs:
             output = self.process_imgs_sublist(imgs_sublist)
@@ -261,21 +321,8 @@ class BaseInferer(GetAttr, DictToAttr):
             output = self.postprocess_iterate(preds)
         return output
 
-    def filter_existing_preds(self, imgs):
-        imgs = [Path(img) for img in imgs]
-        print(
-            "Filtering existing predictions\nNumber of images provided: {}".format(
-                len(imgs)
-            )
-        )
-        out_fns = [self.output_folder / img.name for img in imgs]
-        to_do = [not fn.exists() for fn in out_fns]
-        imgs = list(il.compress(imgs, to_do))
-        print("Number of images remaining to be predicted: {}".format(len(imgs)))
-        return imgs
-
     def process_imgs_sublist(self, imgs_sublist):
-        data = self.load_images(imgs_sublist)
+        data = load_images(imgs_sublist)
         self.prepare_data(data, self.tfms, collate_fn=None)
         # preds = self.predict()
         self.create_postprocess_transforms(self.ds.transform)
@@ -331,30 +378,6 @@ class BaseInferer(GetAttr, DictToAttr):
     #     
         # Set individual attributes for backward compatibility
 
-    def infer_project(self):
-        """Recursively search through params dictionary to find 'project' key and set it as attribute"""
-
-        def find_project(dici):
-            if isinstance(dici, dict):
-                for k, v in dici.items():
-                    if k == "project_title":
-                        return v
-                    result = find_project(v)
-                    if result is not None:
-                        return result
-            elif isinstance(dici, list):
-                for item in dici:
-                    result = find_project(item)
-                    if result is not None:
-                        return result
-            return None
-
-        project_title = find_project(self.params)
-        if project_title is not None:
-            self.project = Project(project_title)
-        else:
-            raise ValueError("No 'project_title' key found in params dictionary")
-
     def __repr__(self) -> str:
         return str(self.__class__)
 
@@ -365,56 +388,8 @@ class BaseInferer(GetAttr, DictToAttr):
                 tfms_final.append(self.transforms[tfm])
             else:
                 tfms_final.append(getattr(self, tfm))
-        # if self.input_type == "files":
-        #     tfms_final.insert(0, self.L)
         transform = Compose(tfms_final)
         return transform
-
-    def load_images(self, data):
-        """
-        data can be filenames or images. InferenceDatasetNii will resolve data type and add LoadImaged if it is a filename
-        """
-
-        Loader = LoadSITKd(["image"])
-        data = self.parse_input(data)
-        data = [Loader(d) for d in data]
-        return data
-
-    def parse_input(self, imgs_inp):
-        """
-        input types:
-            folder of img_fns
-            nifti img_fns
-            itk imgs (slicer)
-        returns list of img_fns if folder. Otherwise just the imgs
-        """
-
-        if not isinstance(imgs_inp, list):
-            imgs_inp = [imgs_inp]
-        imgs_out = []
-        for dat in imgs_inp:
-            if any([isinstance(dat, str), isinstance(dat, Path)]):
-                self.input_type = "files"
-                dat = Path(dat)
-                if dat.is_dir():
-                    dat = list(dat.glob("*"))
-                else:
-                    dat = [dat]
-            else:
-                self.input_type = "itk"
-                if isinstance(dat, sitk.Image):
-                    pass
-                    # do nothing
-                    # dat = ConvertSimpleItkImageToItkImage(dat, itk.F)
-                elif isinstance(dat, itk.Image):
-                    dat = itm(dat)
-                else:
-                    tr()
-                dat = [dat]
-            imgs_out.extend(dat)
-        imgs_out = [{"image": img} for img in imgs_out]
-        return imgs_out
-
     def prepare_data(self, data, tfms, collate_fn=None):
         """
         data: list
@@ -637,6 +612,7 @@ if __name__ == "__main__":
         k_largest=1,
     )
 
+    
 # %%
     preds = L.run(
         imgs_crc,
@@ -651,7 +627,7 @@ if __name__ == "__main__":
     save_channels = False
     safe_mode = True
     bs = 4
-    overwrite = False
+    overwrite = True
     devices = [0]
 
     run = run_tot[0]
@@ -662,7 +638,6 @@ if __name__ == "__main__":
         run, save_channels=save_channels, safe_mode=safe_mode, devices=devices
     )
 
-# %%
 
 # %%
     # preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
