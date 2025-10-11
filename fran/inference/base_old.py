@@ -1,17 +1,13 @@
 # %%
 import os
+os.environ["TORCHDYNAMO_DISABLE"] = "1"   # set as early as possible in the process
 
-from fran.inference.helpers import infer_project
-
-os.environ["TORCHDYNAMO_DISABLE"] = "1"  # set as early as possible in the process
-
+import torch, torch._dynamo as dynamo
 import itertools as il
-
-import ipdb
-import torch
 import torch._dynamo as dynamo
+import ipdb
 from utilz.helpers import pbar
-from utilz.string import ast_literal_eval, headline
+from utilz.string import ast_literal_eval
 
 from fran.managers import Project
 
@@ -33,11 +29,9 @@ from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.inferers.inferer import SlidingWindowInferer
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import SaveImaged
-from monai.transforms.post.dictionary import (Activationsd, AsDiscreteD,
-                                              AsDiscreted, Invertd)
+from monai.transforms.post.dictionary import Activationsd, AsDiscreted
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
-from monai.transforms.utility.dictionary import (CastToTyped,
-                                                 EnsureChannelFirstd,
+from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  SqueezeDimd)
 from utilz.dictopts import DictToAttr, fix_ast
 from utilz.helpers import slice_list
@@ -47,8 +41,7 @@ from fran.managers.unet import UNetManager
 from fran.trainers import checkpoint_from_model_id
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import (
-    KeepLargestConnectedComponentWithMetad, SaveMultiChanneld,
-    SqueezeListofListsd, ToCPUd)
+    KeepLargestConnectedComponentWithMetad, SaveMultiChanneld, ToCPUd)
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 
 
@@ -94,17 +87,15 @@ def get_patch_spacing(run_name):
         src_plan = config["plan_train"]["source_plan"]
         src_plan = config[src_plan]
         spacing = src_plan["spacing"]
+    print(run_name, spacing)
     spacing = ast_literal_eval(spacing)
     return spacing
 
 
 def list_to_chunks(input_list: list, chunksize: int):
-    if len(input_list) < chunksize:
-        print("List too small, setting chunksize to len(list)")
-        chunksize = np.minimum(len(input_list), chunksize)
-    # assert len(input_list) >= chunksize, "Print list size too small: {}".format(
-    #     len(input_list)
-    # )
+    assert len(input_list) >= chunksize, "Print list size too small: {}".format(
+        len(input_list)
+    )
     n_lists = int(np.ceil(len(input_list) / chunksize))
 
     fpl = int(len(input_list) / n_lists)
@@ -122,69 +113,6 @@ def load_params(model_id):
     return dic_relevant
 
 
-def parse_input(imgs_inp):
-    """
-    input types:
-        folder of img_fns
-        nifti img_fns
-        itk imgs (slicer)
-    returns list of img_fns if folder. Otherwise just the imgs
-    """
-
-    if not isinstance(imgs_inp, list):
-        imgs_inp = [imgs_inp]
-    imgs_out = []
-    for dat in imgs_inp:
-        if any([isinstance(dat, str), isinstance(dat, Path)]):
-            dat = Path(dat)
-            if dat.is_dir():
-                dat = list(dat.glob("*"))
-            else:
-                dat = [dat]
-        else:
-            if isinstance(dat, sitk.Image):
-                pass
-                # do nothing
-                # dat = ConvertSimpleItkImageToItkImage(dat, itk.F)
-            elif isinstance(dat, itk.Image):
-                dat = itm(dat)
-            else:
-                tr()
-            dat = [dat]
-        imgs_out.extend(dat)
-    imgs_out = [{"image": img} for img in imgs_out]
-    return imgs_out
-
-
-def load_images(data):
-    """
-    data can be filenames or images. InferenceDatasetNii will resolve data type and add LoadImaged if it is a filename
-    """
-
-    Loader = LoadSITKd(["image"])
-    data = parse_input(data)
-    data = [Loader(d) for d in data]
-    return data
-
-
-def filter_existing_files(files, target_folder):
-    files = [Path(img) for img in files]
-    print(
-        "Filtering existing predictions\nNumber of images provided: {}".format(
-            len(files)
-        )
-    )
-    out_fns = [target_folder / img.name for img in files]
-    to_do = [not fn.exists() for fn in out_fns]
-    files = list(il.compress(files, to_do))
-    print(
-        "Number of images not found in folder {0}:  {1}".format(
-            target_folder, len(files)
-        )
-    )
-    return files
-
-
 class BaseInferer(GetAttr, DictToAttr):
     def __init__(
         self,
@@ -198,10 +126,9 @@ class BaseInferer(GetAttr, DictToAttr):
         devices=[0],
         safe_mode=False,
         # reader=None,
-        save_channels=False,
+        save_channels=True,
         save=True,
         k_largest=None,  # assign a number if there are organs involved
-        debug=False,
     ):
         """
         BaseInferer applies the dataset spacing, normalization and then patch_size to use a sliding window inference over the resulting image
@@ -213,7 +140,7 @@ class BaseInferer(GetAttr, DictToAttr):
             print("CUDA not available. All processes will be on CPU.")
             safe_mode = True
 
-        store_attr("debug,run_name,devices,save_channels, save,safe_mode, k_largest")
+        store_attr("run_name,devices,save_channels, save,safe_mode, k_largest")
         if ckpt is None:
             self.ckpt = checkpoint_from_model_id(run_name)
         else:
@@ -222,13 +149,10 @@ class BaseInferer(GetAttr, DictToAttr):
             self.params = load_params(run_name)
         else:
             self.params = params
-        assert not (
-            safe_mode == True and save_channels == True
-        ), "Safe mode cannot be used with save_channels"
         self.plan = fix_ast(self.params["configs"]["plan_train"], ["spacing"])
         self.check_plan_compatibility()
         self.dataset_params = self.params["configs"]["dataset_params"]
-        self.project = infer_project(self.params)
+        self.infer_project()
 
         sw_device = "cuda"
         if safe_mode == True:
@@ -251,62 +175,8 @@ class BaseInferer(GetAttr, DictToAttr):
             sw_device=sw_device,
             device=device,
         )
+        self.tfms = "ESN"
         self.safe_mode = safe_mode
-
-    def create_and_set_postprocess_transforms(self):
-        self.create_postprocess_transforms(self.ds.transform)
-        self.set_postprocess_tfms_keys()
-        self.set_postprocess_transforms()
-
-
-    def create_and_set_preprocess_transforms(self):
-            self.create_preprocess_transforms()
-            self.set_preprocess_tfms_keys()
-            self.set_preprocess_transforms()
-
-
-    def set_preprocess_tfms_keys(self):
-        self.preprocess_tfms_keys = "E,S,N"
-
-    def set_postprocess_tfms_keys(self):
-        if self.safe_mode == False:
-            self.postprocess_tfms_keys = "Sq,A,Re,Int"
-        else:
-            self.postprocess_tfms_keys = "Sq,Re,Int"
-        self.postprocess_tfms_keys = "Sq,A,Re,Int"
-        if self.save_channels == True:
-            self.postprocess_tfms_keys += ",SaM"
-        if self.k_largest is not None:
-            self.postprocess_tfms_keys += ",K"
-        if self.save == True:
-            self.postprocess_tfms_keys += ",Sav"
-
-    def set_postprocess_transforms(self):
-        self.postprocess_transforms = self.tfms_from_dict(
-            self.postprocess_tfms_keys, self.postprocess_transforms_dict
-        )
-        self.postprocess_compose = Compose(self.postprocess_transforms)
-
-    def set_preprocess_transforms(self):
-        transform = self.tfms_from_dict(
-            self.preprocess_tfms_keys, self.preprocess_transforms_dict
-        )
-        self.preprocess_compose= Compose(transform)
-
-    #             output = self.postprocess_iterate(preds)
-    # return output
-    def postprocess_iterate(self, batch):
-        if isinstance(batch, list):
-            batch = batch[0]
-        bbox = batch.get("bounding_box")
-        if bbox and isinstance(bbox[0], list):
-            bbox = bbox[0]
-        batch["bounding_box"] = bbox
-        for tfm in self.postprocess_transforms:
-            headline(tfm)
-            tr()
-            batch = tfm(batch)
-        return batch
 
     def check_plan_compatibility(self):
         assert (
@@ -315,163 +185,249 @@ class BaseInferer(GetAttr, DictToAttr):
 
     def setup(self):
         if not hasattr(self, "model"):
-            self.create_and_set_preprocess_transforms()
+            self.create_transforms()
             self.prepare_model()
+        # self.create_postprocess_transforms()
 
-    def maybe_filter_images(self, imgs, overwrite=False):
-        imgs = listify(imgs)
-        if overwrite == False and (
-            isinstance(imgs[0], str) or isinstance(imgs[0], Path)
-        ):
-            imgs = filter_existing_files(imgs, self.output_folder)
-        else:
-            pass
-
-        if len(imgs) == 0:
-            print("No images to process after filtering")
-            raise SystemExit("Stopping execution - no images remain")
-        return imgs
-
-    def run(self, imgs: list, chunksize=12, overwrite=False):
+    def run(self, imgs, chunksize=12, overwrite=True):
         """
-        imgs can be a list comprising any of filenames, folder, or images (sitk or itk)
         chunksize is necessary in large lists to manage system ram
         """
         self.setup()
-        imgs = self.maybe_filter_images(imgs, overwrite)
+
+        if overwrite == False and (
+            isinstance(imgs[0], str) or isinstance(imgs[0], Path)
+        ):
+            imgs = self.filter_existing_preds(imgs)
         imgs = list_to_chunks(imgs, chunksize)
         for imgs_sublist in imgs:
             output = self.process_imgs_sublist(imgs_sublist)
         return output
 
-    def postprocess(self, preds):
-        if self.debug == False:
-            output = self.postprocess_compose(preds)
-        else:
-            output = self.postprocess_iterate(preds)
-        return output
+    def filter_existing_preds(self, imgs):
+        imgs = [Path(img) for img in imgs]
+        print(
+            "Filtering existing predictions\nNumber of images provided: {}".format(
+                len(imgs)
+            )
+        )
+        out_fns = [self.output_folder / img.name for img in imgs]
+        to_do = [not fn.exists() for fn in out_fns]
+        imgs = list(il.compress(imgs, to_do))
+        print("Number of images remaining to be predicted: {}".format(len(imgs)))
+        return imgs
 
     def process_imgs_sublist(self, imgs_sublist):
-        data = load_images(imgs_sublist)
-        self.prepare_data(data,  collate_fn=None)
+        data = self.load_images(imgs_sublist)
+        self.prepare_data(data, self.tfms, collate_fn=None)
         # preds = self.predict()
-        self.create_and_set_postprocess_transforms()
+        self.create_postprocess_transforms(self.ds.transform)
 
         outputs = []
         for batch in self.predict():
-            batch = self.postprocess(batch)
+            print(batch['image'].shape)
+            batch = self.postprocess_transforms(batch)
+            if self.save:
+                self.save_pred(batch)
             outputs.append(batch)
 
         if self.safe_mode:
             self.reset()
             outputs.append(None)
 
-        return outputs
+        return outputs 
+        for batch in self.predict():
+            print(batch['image'].shape)
+            batch = self.postprocess_transforms(batch)
+            # batch = self.pp_transforms['Sq'](batch)
+            if self.save == True:
+                self.save_pred(batch)
+            if self.safe_mode == True:
+                self.reset()
+                # return None
+        return batch
 
     def reset(self):
         torch.cuda.empty_cache()
         # self.setup()
 
+    def create_transforms(self):
+        # single letter name is must for each tfm to use with set_transforms
+        spacing = get_patch_spacing(self.run_name)
+        self.L = LoadSITKd(
+            keys=["image"],
+            image_only=True,
+            ensure_channel_first=False,
+            simple_keys=True,
+        )
+        self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
+
+        self.S = Spacingd(keys=["image"], pixdim=spacing)
+        self.N = NormaliseClipd(
+            keys=["image"],
+            clip_range=self.dataset_params["intensity_clip_range"],
+            mean=self.dataset_params["mean_fg"],
+            std=self.dataset_params["std_fg"],
+        )
+
+        self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+
+    def infer_project(self):
+        """Recursively search through params dictionary to find 'project' key and set it as attribute"""
+
+        def find_project(dici):
+            if isinstance(dici, dict):
+                for k, v in dici.items():
+                    if k == "project_title":
+                        return v
+                    result = find_project(v)
+                    if result is not None:
+                        return result
+            elif isinstance(dici, list):
+                for item in dici:
+                    result = find_project(item)
+                    if result is not None:
+                        return result
+            return None
+
+        project_title = find_project(self.params)
+        if project_title is not None:
+            self.project = Project(project_title)
+        else:
+            raise ValueError("No 'project_title' key found in params dictionary")
+
     def __repr__(self) -> str:
         return str(self.__class__)
 
-    def prepare_data(self, data, collate_fn=None):
+    def set_transforms(self, tfms: str = ""):
+        tfms_final = []
+        for tfm in tfms:
+            tfms_final.append(getattr(self, tfm))
+        # if self.input_type == "files":
+        #     tfms_final.insert(0, self.L)
+        transform = Compose(tfms_final)
+        return transform
+
+    def load_images(self, data):
+        """
+        data can be filenames or images. InferenceDatasetNii will resolve data type and add LoadImaged if it is a filename
+        """
+
+        Loader = LoadSITKd(["image"])
+        data = self.parse_input(data)
+        data = [Loader(d) for d in data]
+        return data
+
+    def parse_input(self, imgs_inp):
+        """
+        input types:
+            folder of img_fns
+            nifti img_fns
+            itk imgs (slicer)
+        returns list of img_fns if folder. Otherwise just the imgs
+        """
+
+        if not isinstance(imgs_inp, list):
+            imgs_inp = [imgs_inp]
+        imgs_out = []
+        for dat in imgs_inp:
+            if any([isinstance(dat, str), isinstance(dat, Path)]):
+                self.input_type = "files"
+                dat = Path(dat)
+                if dat.is_dir():
+                    dat = list(dat.glob("*"))
+                else:
+                    dat = [dat]
+            else:
+                self.input_type = "itk"
+                if isinstance(dat, sitk.Image):
+                    pass
+                    # do nothing
+                    # dat = ConvertSimpleItkImageToItkImage(dat, itk.F)
+                elif isinstance(dat, itk.Image):
+                    dat = itm(dat)
+                else:
+                    tr()
+                dat = [dat]
+            imgs_out.extend(dat)
+        imgs_out = [{"image": img} for img in imgs_out]
+        return imgs_out
+
+    def prepare_data(self, data, tfms, collate_fn=None):
         """
         data: list
         """
 
+        # if len(data)<4:
         nw, bs = 0, 1  # Slicer bugs out
-        self.ds = Dataset(data=data, transform=self.preprocess_compose)
+        # else:
+        # nw,bs = 12,12
+        transform = self.set_transforms(tfms)
+        # self.ds = InferenceDatasetNii(self.project, imgs, self.dataset_params)
+        self.ds = Dataset(data=data, transform=transform)
         self.pred_dl = DataLoader(
             self.ds, num_workers=nw, batch_size=bs, collate_fn=collate_fn
         )
 
-    def create_preprocess_transforms(self):
-        spacing = get_patch_spacing(self.run_name)
+    def save_pred(self, preds):
+        S = SaveImaged(
+            keys=["pred"],
+            output_dir=self.output_folder,
+            output_postfix="",
+            separate_folder=False,
+        )
 
-        self.preprocess_transforms_dict = {
-            "L": LoadSITKd(
-                keys=["image"],
-                image_only=True,
-                ensure_channel_first=False,
-                simple_keys=True,
-            ),
-            "E": EnsureChannelFirstd(keys=["image"], channel_dim="no_channel"),
-            "S": Spacingd(keys=["image"], pixdim=spacing),
-            "N": NormaliseClipd(
-                keys=["image"],
-                clip_range=self.dataset_params["intensity_clip_range"],
-                mean=self.dataset_params["mean_fg"],
-                std=self.dataset_params["std_fg"],
-            ),
-            "O": Orientationd(keys=["image"], axcodes="RPS"),  # nOTE RPS
-        }
-
-        # Set individual attributes for backward compatibility
-        for key, value in self.preprocess_transforms_dict.items():
-            setattr(self, key, value)
+        S(preds)
 
     def create_postprocess_transforms(self, preprocess_transform):
-        Sav = SaveImaged(
-            keys=["pred"],
-            output_dir=self.output_folder,
-            output_postfix="",
-            separate_folder=False,
-            output_dtype=np.uint8,
-        )
         Sq = SqueezeDimd(keys=["pred", "image"], dim=0)
-
-        SqL = SqueezeListofListsd(keys=["bounding_box"])
-
-        Re = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
-
-        A = AsDiscreteD(argmax=True, keys=["pred"], dim=1)
-
-        SaM = SaveMultiChanneld(
+        # below is expensive on large number of channels and on discrete data I am unsure if it uses nearest neighbours
+        # I = Invertd(
+        #     keys=["pred"], transform=self.ds.transform, orig_keys=["image"]
+        # )  # watchout: use detach beforeharnd. make sure spacing are correct in preds
+        A = Activationsd(keys="pred", softmax=True)
+        D = AsDiscreted(keys=["pred"], argmax=True)  # ,threshold=0.5)
+        U = ToCPUd(keys=["image", "pred"])
+        Sa = SaveMultiChanneld(
             keys=["pred"],
             output_dir=self.output_folder,
             output_postfix="",
             separate_folder=False,
         )
-        Int = CastToTyped(keys=["pred"], dtype=np.uint8)
+        I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
 
-        K = KeepLargestConnectedComponentWithMetad(
-            keys=["pred"], independent=False, num_components=self.k_largest
-        )
-        CPU = ToCPUd(keys=["image", "pred"])
-
-        self.postprocess_transforms_dict = {
-            "Sq": Sq,
-            "SqL": SqL,
-            "CPU": CPU,
-            "Re": Re,
-            "A": A,
-            "SaM": SaM,
-            "Int": Int,
-            "K": K,
-            "Sav": Sav,
+        # Store transforms dictionary for individual access
+        self.pp_transforms = {
+            'Sq': Sq,
+            'Ac': A,
+            'Ds': D,
+            'ToCPU': U,
+            'SaveM': Sa,
+            'Re': I
         }
 
-        for key, value in self.postprocess_transforms_dict.items():
-            setattr(self, key, value)
+        if self.save_channels == True and self.safe_mode == False:
+            tfms = [Sq, Sa, A, D, I]
+        else:
+            tfms = [Sq, I]  # now each minibatch already is argmax and discrete.
+        if self.k_largest:
+            K = KeepLargestConnectedComponentWithMetad(
+                keys=["pred"], independent=False, num_components=self.k_largest
+            )  # label=1 is the organ
+            self.pp_transforms['KL'] = K
+            tfms.insert(-1, K)
+        # if self.safe_mode == True:
+        #     tfms.insert(0, U)
+        # else:
+        #     tfms.append(U)
+        [print(tt) for tt in tfms]
+        C = Compose(tfms)
 
-    def tfms_from_dict(self, keys: str, tfms_dict):
-        keys = keys.split(",")
-        tfms = []
-        for key in keys:
-            tfm = tfms_dict[key]
-            tfms.append(tfm)
-        return tfms
-
-    # def set_transforms(self, tfms: str = ""):
-    #     tfms_final = []
-    #     for tfm in tfms:
-    #         if hasattr(self, 'transforms') and tfm in self.preprocess_transforms_dict:
-    #             tfms_final.append(self.preprocess_transforms_dict[tfm])
-    #         else:
-    #             tfms_final.append(getattr(self, tfm))
-    #     transform = Compose(tfms_final)
-    #     return transform
+        # self.postprocess_transforms = C
+    def postprocess_transforms(self, batch):
+        batch1 = self.pp_transforms['Sq'](batch)
+        batch2 = self.pp_transforms['Re'](batch1)
+        return batch2
 
     def prepare_model(self):
         if self.devices == "cpu":
@@ -506,7 +462,7 @@ class BaseInferer(GetAttr, DictToAttr):
                 # with torch.no_grad():
                 batch = self.predict_inner(batch)
                 yield batch
-
+                
     @dynamo.disable()
     def _run_swi(self, img):
         # the only thing inside is the SlidingWindowInferer call
@@ -523,7 +479,7 @@ class BaseInferer(GetAttr, DictToAttr):
         if isinstance(logits, tuple):
             logits = logits[0]  # model has deep supervision only 0 channel is needed
         # Collapse channels early; keep on same device
-        if self.safe_mode == True:
+        if self.safe_mode == True or self.save_channels == False:
             labels = torch.argmax(logits, dim=1, keepdim=True)
             labels = labels.to(torch.uint8)
             batch["pred"] = labels
@@ -576,9 +532,9 @@ class BaseInfererTorchScript(BaseInferer):
 
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
-    from fran.data.dataregistry import DS
+    from fran.managers import DS
     from fran.managers.project import Project
     from fran.utils.common import *
 
@@ -588,7 +544,7 @@ if __name__ == "__main__":
     run_tot_big = ["LITS-1271"]
     run_whole_image = ["LITS-1088"]
     run_whole_image = ["LITS-1088"]
-    run_nodes = ["LITS-1230"]
+    run_nodes = ["LITS-1110"]
     run_nodes2 = ["LITS-1285"]
     run_nodes3 = ["LITS-1287"]
     safe_mode = False
@@ -597,7 +553,7 @@ if __name__ == "__main__":
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
-    fldr_lidc = DS["lidc"].folder / ("images")
+    fldr_lidc = DS['lidc'].folder/("images")
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
     img_nodes = list(fldr_nodes.glob("*"))
@@ -613,7 +569,7 @@ if __name__ == "__main__":
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
-# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     run_litsmc = ["LITS-1007"]
     run_litsmc = ["LITS-999"]
@@ -639,29 +595,24 @@ if __name__ == "__main__":
 # %%
     data = P.ds.data[0]
 # %%
-# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     save_channels = False
     safe_mode = True
     bs = 4
-    overwrite = True
-
-    devices = [1]
+    overwrite = False
+    devices = [0]
 
     run = run_tot[0]
     run = run_tot_big[0]
-    debug_ = False
 # %%
 
     T = BaseInferer(
-        run,
-        save_channels=save_channels,
-        safe_mode=safe_mode,
-        devices=devices,
-        debug=debug_,
+        run, save_channels=save_channels, safe_mode=safe_mode, devices=devices
     )
 
 # %%
+
     # preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
     preds = T.run(imgs_lidc, chunksize=2, overwrite=overwrite)
 # %%
@@ -671,37 +622,30 @@ if __name__ == "__main__":
     case_id = "crc_CRC089"
     imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]
     import torch._dynamo
-
     print(torch._dynamo.is_compiled_fn(T.N.forward))
 
     # datamodule_ %%
 # %%
 # %%
-# SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR>
     run = run_nodes2[0]
     run = run_nodes3[0]
-
-    debug_ = False
 
     save_channels = False
     safe_mode = True
     bs = 1
-    overwrite = True
+    overwrite = False
     devices = [1]
     save_channels = False
 
     T = BaseInferer(
-        run,
-        save_channels=save_channels,
-        safe_mode=safe_mode,
-        devices=devices,
-        debug=debug_,
+        run, save_channels=save_channels, safe_mode=safe_mode, devices=devices
     )
 
 # %%
-    preds = T.run(img_nodes[:3], chunksize=2, overwrite=overwrite)
+    preds = T.run(img_nodes, chunksize=2, overwrite=overwrite)
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     overwrite = True
     T.setup()
     imgs = img_nodes
@@ -729,13 +673,13 @@ if __name__ == "__main__":
     #     output = T.process_imgs_sublist(imgs_sublist)
     imgs_sublist = imgs[0]
 # %%
-
+        
     # output = T.process_imgs_sublist(imgs_sublist)
-    # return output
+        # return output
 
     data = T.load_images(imgs_sublist)
-    T.prepare_data(data,  collate_fn=None)
-    # preds = T.predict()
+    T.prepare_data(data, T.tfms, collate_fn=None)
+        # preds = T.predict()
 # %%
     data = T.ds[0]
 # %%
@@ -746,6 +690,7 @@ if __name__ == "__main__":
     batch = next(iteri)
     batch = T.predict_inner(batch)
 # %%
+
 
     # def predict_inner(T, batch):
     img = batch["image"]
@@ -770,13 +715,13 @@ if __name__ == "__main__":
 # %%
     batch = T.postprocess_transforms(batch)
 # %%
-    #     if T.save == True:
-    #         T.save_pred(batch)
-    #     if T.safe_mode == True:
-    #         T.reset()
-    #         return None
-    #     return batch
-# %%
+#     if T.save == True:
+#         T.save_pred(batch)
+#     if T.safe_mode == True:
+#         T.reset()
+#         return None
+#     return batch
+# # %%
 
     """Process a subset of images using the data module"""
     T.pred_dl = T.data_module.setup(imgs_sublist)
@@ -839,7 +784,7 @@ if __name__ == "__main__":
     batch = U(batch)
     batch = I(batch)
 
-    x = torch.rand(1, 1, 128, 128, 96).to("cuda")
+    x = torch.rand(1,1,128,128,96).to("cuda")
     output = T.model(x)
     [a.shape for a in output]
 
@@ -867,5 +812,3 @@ if __name__ == "__main__":
     En.model = fabric.setup(model)
 
 # %%
-    tfms_keys = T.preprocess_tfms_keys
-    transform = T.tfms_from_dict(tfms_keys, T.preprocess_transforms_dict)

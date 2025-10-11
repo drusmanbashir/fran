@@ -57,15 +57,16 @@ class _InferenceSession:
         gc.collect()
 
 
-def _mode_of(run_name: str) -> str:
+def get_mode_outchannels(run_name: str) -> str:
     params = load_params(run_name)
     plan = params["configs"]["plan_train"]
-    return plan.get("mode", "source")
+    out_channels = params['configs']['model_params']["out_channels"]
+    return plan.get("mode", "source"), out_channels
 
 
 def _localiser_for(run_w: str, devices, safe_mode, save_channels):
     """Pick Base or WholeImage localiser based on the localiser run's mode."""
-    mode = _mode_of(run_w)
+    mode,_ = get_mode_outchannels(run_w)
     if mode == "whole":
         return WholeImageInferer(
             run_name=run_w,
@@ -166,6 +167,7 @@ class EnsembleInferer:
         save_channels: bool = False,
         save_members: bool = True,  # save member predictions of ensemble
         save: bool = True,  # save voted out prediction
+        debug: bool = False,
     ):
         store_attr(but="localiser_labels")
         self.localiser_labels = list(localiser_labels) if localiser_labels else None
@@ -176,7 +178,7 @@ class EnsembleInferer:
         self.base_runs: List[str] = []
 
         for r in self.runs:
-            mode = _mode_of(r)
+            mode,out_channels = get_mode_outchannels(r)
             if mode in ("lbd", "patch"):
                 # Resolve localiser run (prefer explicit; else checkpoint hint)
                 params = load_params(r)
@@ -193,6 +195,7 @@ class EnsembleInferer:
             else:
                 self.base_runs.append(r)
 
+        self.out_channels=out_channels
         # Group cascades by their localiser run to share bbox extraction
         self.cascade_groups: Dict[str, List[str]] = {}  # run_w -> [run_p...]
         for run_w, run_p in self.cascade_runs:
@@ -223,7 +226,7 @@ class EnsembleInferer:
         bboxes = []
         W = _localiser_for(run_w, self.devices, self.safe_mode, self.save_channels)
         with _InferenceSession(W) as loc:
-            loc.prepare_data(data, tfms="ESN")
+            loc.prepare_data(data)
             loc.create_postprocess_transforms(loc.ds.transform)
             for batch in loc.predict():
                 pred = loc.postprocess(batch)
@@ -287,7 +290,7 @@ class EnsembleInferer:
         preds_all_runs = []
         with _InferenceSession(P) as pinf:
             pinf.prepare_data(
-                data=cropped_data, tfms="ESN", collate_fn=self._img_bbox_collated
+                data=cropped_data, tfms_keys="ESN", collate_fn=self._img_bbox_collated
             )
             pinf.create_postprocess_transforms(pinf.ds.transform)
             for b in pinf.predict():
@@ -304,9 +307,10 @@ class EnsembleInferer:
                 devices=self.devices,
                 save_channels=self.save_channels,
                 params=load_params(run),
+                debug=self.debug,
             )
             P.setup()
-            P.prepare_data(data=data, tfms="ESN", collate_fn=img_bbox_collated)
+            P.prepare_data(data=data, collate_fn=img_bbox_collated)
             P.create_postprocess_transforms(P.ds.transform)
             preds_all_runs[run] = []
             preds = P.predict()
@@ -376,7 +380,7 @@ class EnsembleInferer:
         prds_all_base = {}
         for r in self.base_runs:
             prds_all_base[r] = []
-            mode = _mode_of(r)
+            mode = get_mode_outchannels(r)
             member = (
                 WholeImageInferer(
                     r,
@@ -393,7 +397,7 @@ class EnsembleInferer:
                 )
             )
             with _InferenceSession(member) as inf:
-                inf.prepare_data(data, tfms=inf.tfms)
+                inf.prepare_data(data, tfms_keys=inf.preprocess_tfms_keys)
                 inf.create_postprocess_transforms(inf.ds.transform)
                 for num_batches, batch in enumerate(inf.predict(), 1):
                     # for batch in inf.predict():
@@ -432,7 +436,7 @@ class EnsembleInferer:
                 preds_all_patches, preds_all_base
             )
 
-            preds_final = self.cascade_postprocess(preds_all)
+            preds_final = self.postprocess(preds_all)
             all_outputs.append(preds_final)
 
             torch.cuda.empty_cache()
@@ -463,7 +467,7 @@ class EnsembleInferer:
             preds_out.append(prds_decolled)
         return preds_out
 
-    def cascade_postprocess(self, preds):
+    def postprocess(self, preds):
         device = self.devices if isinstance(self.devices, int) else self.devices[0]
         device = parse_devices(device)
         CPU = ToCPUd(keys=self.runs)
@@ -471,10 +475,8 @@ class EnsembleInferer:
         W = MakeWritabled(keys=self.runs)
 
         MR = VoteEnsembled(
-            output_key="pred", keys=self.runs, num_classes=2
-        )  # HACK: These num_classes etc shold be fixed for multiclass runs
-        # MR = VoteEnsembled(output_key="pred", keys=self.runs)
-        # MR = MeanEnsembled(output_key="pred", keys=self.runs)
+            output_key="pred", keys=self.runs, num_classes=self.out_channels
+        )  
 
         S = SaveImaged(
             keys=["pred"],
@@ -485,18 +487,38 @@ class EnsembleInferer:
         K = KeepLargestConnectedComponentWithMetad(
             keys=["pred"], independent=False, num_components=self.k_largest
         )  # label=1 is the organ
-        # tfms = [MR, A, D, K, F]
+        
         tfms = [W, GPU, MR, CPU]
         if self.k_largest:
             tfms.append(K)
         if self.save == True:
             tfms.append(S)
-        C = Compose(tfms)
+            
+        self.pp_transforms = {
+            "MakeWritable": W,
+            "ToDevice": GPU, 
+            "VoteEnsemble": MR,
+            "ToCPU": CPU
+        }
+        if self.k_largest:
+            self.pp_transforms["KeepLargest"] = K
+        if self.save == True:
+            self.pp_transforms["SaveImage"] = S
 
-        # tr()
-        # pp = W(preds[0])
-        output = C(preds)
+        if self.debug == False:
+            output = Compose(tfms)(preds)
+        else:
+            output = self.cascade_postprocess_iterate(preds[0])
         return output
+    
+    def cascade_postprocess_iterate(self, batch):
+        from utilz.string import headline
+        
+        for name, tfm in self.pp_transforms.items():
+            headline(f"{name}: {tfm}")
+            tr()
+            batch = tfm(batch)
+        return batch
 
     @property
     def output_folder(self):
@@ -562,7 +584,7 @@ if __name__ == "__main__":
     run_ts = ["LITS-827"]
     run_totalseg = ["LITS-1246"]
 
-    img_fna = "/s/xnat_shadow/litq/test/images_ub/"
+    litq_test_fldr = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
     img_fldr = Path("/s/xnat_shadow/lidc2/images/")
     img_fn2 = "/s/xnat_shadow/crc/wxh/images/crc_CRC198_20170718_CAP1p51.nii.gz"
@@ -602,6 +624,7 @@ if __name__ == "__main__":
     save_members = True
     chunksize = 2
     localiser_run = run_w
+    debug_= True
     # En = CascadeInferer(
 
     #     run_w,
@@ -625,6 +648,7 @@ if __name__ == "__main__":
         safe_mode=safe_mode,
         save_channels=save_channels,
         save_members=save_members,
+        debug=debug_
     )
 
 # %%
@@ -642,6 +666,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR>
 
     run = run_litsmc2
+    debug_=True
     localiser_labels_litsmc = [3]
     devices = [1]
     overwrite = True
@@ -662,11 +687,13 @@ if __name__ == "__main__":
         localiser_labels=localiser_labels_litsmc,
         safe_mode=safe_mode,
         k_largest=k_largest,
+        debug=debug_
     )
 
 # %%
+    fns_litq = list(Path(litq_fldr).glob("*"))
 
-    preds = En.run(nodes[:3], chunksize=chunksize, overwrite=overwrite)
+    preds = En.run(fns_litq, chunksize=chunksize, overwrite=overwrite)
     # preds = En.run(imgs_crc[:30], chunksize=4)
 # %%
 
@@ -677,24 +704,29 @@ if __name__ == "__main__":
 
     all_outputs: List[dict] = []
 
-    for start in range(0, len(images), chunksize):
 
-        chunk = images[start : start + chunksize]
-        data = load_images(chunk)
-        # 1) Prepare data once for base-like members (they each handle their own transforms)
-        # 2) Handle cascade groups: run localiser ONCE per run_w, then fan out to each run_p
-        preds_all_patches = En._cascade_runs(data) if len(En.cascade_runs) > 0 else []
-        preds_all_base = En._base_runs(data) if len(En.base_runs) > 0 else []
-        # 3) Run base/whole members directly on full images
-        preds_all = En.combined_patch_base_preds(
-            preds_all_patches, preds_all_base
-        )
+    start = 0
+    chunk = images[start : start + chunksize]
+    data = load_images(chunk)
+    # 1) Prepare data once for base-like members (they each handle their own transforms)
+    # 2) Handle cascade groups: run localiser ONCE per run_w, then fan out to each run_p
+    preds_all_patches = En._cascade_runs(data) if len(En.cascade_runs) > 0 else []
 
-        preds_final = En.cascade_postprocess(preds_all)
-        all_outputs.append(preds_final)
+    preds_all_patches[0].keys()
+    preds_all_patches[0]["LITS-1217"].dtype
+    preds_all_patches[0]["LITS-1217"].max()
+# %%
+    preds_all_base = En._base_runs(data) if len(En.base_runs) > 0 else []
+    # 3) Run base/whole members directly on full images
+    preds_all = En.combined_patch_base_preds(
+        preds_all_patches, preds_all_base
+    )
 
-        torch.cuda.empty_cache()
-        gc.collect()
+    preds_final = En.postprocess(preds_all)
+    all_outputs.append(preds_final)
+
+    torch.cuda.empty_cache()
+    gc.collect()
 
 
 # %%
@@ -736,7 +768,7 @@ if __name__ == "__main__":
     prds_all_base = {}
     for r in E.base_runs:
         prds_all_base[r] = []
-        mode = _mode_of(r)
+        mode = get_mode_outchannels(r)
         member = (
             WholeImageInferer(
                 r,
@@ -754,7 +786,7 @@ if __name__ == "__main__":
         )
         with _InferenceSession(member) as inf:
             # data = inf.load_images(chunk)
-            inf.prepare_data(data, tfms=inf.tfms)
+            inf.prepare_data(data, tfms_keys=inf.preprocess_tfms_keys)
             inf.create_postprocess_transforms(inf.ds.transform)
             for num_batches, batch in enumerate(inf.predict(), 1):
                 # for batch in inf.predict():
@@ -791,7 +823,7 @@ if __name__ == "__main__":
     output = C(preds_all)
     # [[x['pred'].shape for x in b] for b in per_member_batches  ]
 # %%
-    outs = En.cascade_postprocess(preds_all)
+    outs = En.postprocess(preds_all)
 # %%
 
 # %%
@@ -803,5 +835,34 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     gc.collect()
 
+# %%
+    run_p = En.patch_runs[0]
+    P = PatchInferer(
+        run_name=run_p,
+        devices=En.devices,
+        save_channels=En.save_channels,
+        # save=En.save_members,
+        params=load_params(run_p),
+    )
 
+# %%
+
+    r = En.runs[0]
+        for r in En.runs:
+            mode = get_mode_outchannels(r)
+            if mode in ("lbd", "patch"):
+                # Resolve localiser run (prefer explicit; else checkpoint hint)
+                params = load_params(r)
+                hint = params["configs"]["plan_train"].get("source_plan_run") or params[
+                    "configs"
+                ].get("source_plan_run")
+                run_w = En.localiser_run or hint
+                if not run_w:
+                    raise ValueError(
+                        f"{r} requires a localiser run (set --localiser-run or add 'source_plan_run' in its config)."
+                    )
+                En.cascade_runs.append((run_w, r))
+                En.patch_runs.append(r)
+            else:
+                En.base_runs.append(r)
 # %%

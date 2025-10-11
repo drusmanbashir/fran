@@ -1,11 +1,14 @@
 import time
+import re
+import torch
 from pathlib import Path
+from typing import Union
 import ipdb
 tr = ipdb.set_trace
 import shutil
 from fran.utils.common import COMMON_PATHS
 
-def checkpoint_from_model_id(model_id, sort_method="last"): #CODE: Move this function to utils 
+def checkpoint_from_model_id(model_id, sort_method="last", normalize_keys=True): #CODE: Move this function to utils 
     fldr = Path(COMMON_PATHS["checkpoints_parent_folder"])
     project_fldrs = [f for f in fldr.rglob(model_id) if f.is_dir()]
     if len(project_fldrs) > 1:
@@ -21,6 +24,8 @@ def checkpoint_from_model_id(model_id, sort_method="last"): #CODE: Move this fun
         ckpt = max(list_of_files, key=lambda p: p.stat().st_mtime)
     elif sort_method == "best":
         tr()
+    if normalize_keys==True:
+        ckpt = write_normalized_ckpt(ckpt)
     return ckpt
 
 def backup_ckpt(ckpt):
@@ -39,3 +44,22 @@ def backup_ckpt(ckpt):
     shutil.copy2(ckpt_path, backup_path)
     print(f"Backup created: {backup_path}, before overriding ckpt configuration")
     return backup_path
+
+
+def normalize_orig_mod_prefix(sd: dict) -> dict:
+    pat = re.compile(r"^(model)(?:\._orig_mod)+(\.)")
+    return {pat.sub(r"\1\2", k): v for k, v in sd.items()}
+
+
+def write_normalized_ckpt(ckpt_path: Union[str, Path]) -> Path:
+    ckpt_path = Path(ckpt_path)
+    ckpt = torch.load(ckpt_path, map_location="cpu",weights_only=False)
+    st = ckpt.get("state_dict", {})
+    if any(k.startswith("model._orig_mod") for k in st):
+        ckpt["state_dict"] = normalize_orig_mod_prefix(st)
+        out = ckpt_path.with_suffix(".norm.ckpt")
+        torch.save(ckpt, out)
+        return out
+    return ckpt_path
+
+

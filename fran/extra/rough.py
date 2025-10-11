@@ -17,6 +17,17 @@ import pandas as pd
 from utilz.string import dec_to_str
 
 # %%
+# %%
+#SECTION:-------------------- View torch images--------------------------------------------------------------------------------------
+
+raw = torch.load("raw.pt",weights_only=False)
+rs = torch.load("reszd.pt",weights_only=False)
+asi = torch.load("asint.pt",weights_only=False)
+prr = torch.load("pred.pt",weights_only=False)
+rs.shape
+asi.shape
+ImageMaskViewer([prr[0],prr[0]])
+# %%
 #SECTION:-------------------- Read and view SITK images--------------------------------------------------------------------------------------
 parent_fldr = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex050")
 img_fldr = parent_fldr/"images"

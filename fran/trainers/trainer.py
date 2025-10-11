@@ -1,23 +1,17 @@
 # %%
-import re
 import shutil
 from copy import deepcopy
-from typing import Union
 
 import ipdb
 from fastcore.all import in_ipython
 from label_analysis.merge import pbar
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.profilers import AdvancedProfiler
-from monai.transforms.io.dictionary import LoadImaged
-from utilz.fileio import load_yaml
-from utilz.helpers import pp
 from utilz.string import headline
 
 from fran.callback.modelcheckpoint import ModelCheckpointUB
 from fran.managers import Project, UNetManager
 from fran.managers.data.training import DataManagerDual
-from fran.managers.unet import maybe_ddp
 from fran.trainers.base import backup_ckpt, checkpoint_from_model_id
 from fran.utils.config_parsers import ConfigMaker, parse_neptune_dict
 
@@ -28,10 +22,6 @@ from pathlib import Path
 
 import psutil
 import torch._dynamo
-from monai.transforms.croppad.dictionary import (RandCropByPosNegLabeld,
-                                                 ResizeWithPadOrCropd)
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
-from utilz.imageviewers import ImageMaskViewer
 
 from fran.callback.nep import NeptuneImageGridCallback
 from fran.managers.data import (DataManagerBaseline, DataManagerLBD,
@@ -45,7 +35,6 @@ from lightning.pytorch.callbacks import (DeviceStatsMonitor,
                                          LearningRateMonitor, TQDMProgressBar)
 
 from fran.managers.nep import NeptuneManager
-from fran.utils.common import COMMON_PATHS
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
@@ -69,23 +58,6 @@ def safe_log_dict(exp, base_path: str, d: dict):
                 exp[path].assign(v)
         except Exception as e:
             print(f"[Neptune logging skipped] {path}: {e}")
-
-
-def normalize_orig_mod_prefix(sd: dict) -> dict:
-    pat = re.compile(r"^(model)(?:\._orig_mod)+(\.)")
-    return {pat.sub(r"\1\2", k): v for k, v in sd.items()}
-
-
-def write_normalized_ckpt(ckpt_path: Union[str, Path]) -> Path:
-    ckpt_path = Path(ckpt_path)
-    ckpt = torch.load(ckpt_path, map_location="cpu")
-    st = ckpt.get("state_dict", {})
-    if any(k.startswith("model._orig_mod") for k in st):
-        ckpt["state_dict"] = normalize_orig_mod_prefix(st)
-        out = ckpt_path.with_suffix(".norm.ckpt")
-        torch.save(ckpt, out)
-        return out
-    return ckpt_path
 
 
 class Trainer:
@@ -314,7 +286,7 @@ class Trainer:
 
     def qc_configs(self, configs, project):
         ratios = configs["dataset_params"]["fgbg_ratio"]
-        labels_fg = configs["model_params"]["out_channels"] - 1
+        configs["model_params"]["out_channels"] - 1
         labels_all = configs["plan_train"]["labels_all"]
         if isinstance(ratios, list):
             assert (
@@ -363,18 +335,17 @@ class Trainer:
 
     def load_trainer(self, **kwargs):
         try:
-            norm_ckpt = write_normalized_ckpt(self.ckpt)
             N = UNetManager.load_from_checkpoint(
-                norm_ckpt, map_location="cpu", strict=True, **kwargs
+                self.ckpt, map_location="cpu", strict=True, **kwargs
             )
             # N = UNetManager.load_from_checkpoint(
             #     self.ckpt,
             #     map_location="cpu",
             #     **kwargs,
             # )
-            print("Model loaded from checkpoint: ", norm_ckpt)
+            print("Model loaded from checkpoint: ", self.ckpt)
 
-        except RuntimeError as e:
+        except RuntimeError:
             print("BUGS")
 
         return N
@@ -437,7 +408,6 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("medium")
 
-    from fran.utils.common import *
 
     proj_nodes = Project(project_title="nodes")
     proj_tsl = Project(project_title="totalseg")
