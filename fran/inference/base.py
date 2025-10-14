@@ -272,8 +272,8 @@ class BaseInferer(GetAttr, DictToAttr):
         if self.safe_mode == False:
             self.postprocess_tfms_keys = "Sq,A,Re,Int"
         else:
-            self.postprocess_tfms_keys = "Sq,Re,Int"
-        self.postprocess_tfms_keys = "Sq,A,Re,Int"
+            self.postprocess_tfms_keys = "Sq,Re"
+        # self.postprocess_tfms_keys = "Sq,A,Re,Int"
         if self.save_channels == True:
             self.postprocess_tfms_keys += ",SaM"
         if self.k_largest is not None:
@@ -354,7 +354,6 @@ class BaseInferer(GetAttr, DictToAttr):
     def process_imgs_sublist(self, imgs_sublist):
         data = load_images(imgs_sublist)
         self.prepare_data(data,  collate_fn=None)
-        # preds = self.predict()
         self.create_and_set_postprocess_transforms()
 
         outputs = []
@@ -425,7 +424,7 @@ class BaseInferer(GetAttr, DictToAttr):
 
         Re = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
 
-        A = AsDiscreteD(argmax=True, keys=["pred"], dim=1)
+        A = AsDiscreteD(argmax=True, keys=["pred"], dim=0)
 
         SaM = SaveMultiChanneld(
             keys=["pred"],
@@ -518,7 +517,6 @@ class BaseInferer(GetAttr, DictToAttr):
             img = img.cuda(non_blocking=True)
         if self.safe_mode:
             img = img.to("cpu")
-
         logits = self._run_swi(img)
         if isinstance(logits, tuple):
             logits = logits[0]  # model has deep supervision only 0 channel is needed
@@ -642,7 +640,6 @@ if __name__ == "__main__":
 # SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     save_channels = False
-    safe_mode = True
     bs = 4
     overwrite = True
 
@@ -651,6 +648,10 @@ if __name__ == "__main__":
     run = run_tot[0]
     run = run_tot_big[0]
     debug_ = False
+    debug_ = True
+    safe_mode = True
+    safe_mode = False
+
 # %%
 
     T = BaseInferer(
@@ -680,6 +681,7 @@ if __name__ == "__main__":
 # SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR> <CR>
     run = run_nodes2[0]
     run = run_nodes3[0]
+    run = run_nodes[0]
 
     debug_ = False
 
@@ -699,7 +701,8 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = T.run(img_nodes[:3], chunksize=2, overwrite=overwrite)
+    preds = T.run(img_nodes[1], chunksize=2, overwrite=overwrite)
+    preds[0]['pred'].meta
 # %%
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     overwrite = True
@@ -869,3 +872,6 @@ if __name__ == "__main__":
 # %%
     tfms_keys = T.preprocess_tfms_keys
     transform = T.tfms_from_dict(tfms_keys, T.preprocess_transforms_dict)
+# %%
+    batch['pred'].shape
+# %%

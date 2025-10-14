@@ -24,15 +24,35 @@ raw = torch.load("raw.pt",weights_only=False)
 rs = torch.load("reszd.pt",weights_only=False)
 asi = torch.load("asint.pt",weights_only=False)
 prr = torch.load("pred.pt",weights_only=False)
+prr = torch.load("fran/pred_base.pt",weights_only=False)
 rs.shape
 asi.shape
 ImageMaskViewer([prr[0],prr[0]])
+prr.shape
 # %%
 #SECTION:-------------------- Read and view SITK images--------------------------------------------------------------------------------------
 parent_fldr = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex050")
-img_fldr = parent_fldr/"images"
-lms_fldr = parent_fldr/"lms"
 
+prd_patch1 = Path("/s/fran_storage/predictions/nodes/LITS-1288/nodes_78_410617_CAP1p5.nii.gz")
+prd_fn_base = Path("/s/fran_storage/predictions/nodes/LITS-1230/nodes_78_410617_CAP1p5.nii.gz")
+prd_fn_final = Path("/s/fran_storage/predictions/nodes/LITS-1290_LITS-1230_LITS-1288/nodes_78_410617_CAP1p5.nii.gz")
+img_fn = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images/nodes_78_410617_CAP1p5.nii.gz")
+img = sitk.ReadImage(img_fn)
+print(img.GetSpacing())
+
+# %%
+lm_base = sitk.ReadImage(prd_fn_base)
+lm_base.GetSpacing()
+lm_patch1 = sitk.ReadImage(str(prd_patch1))
+lm_patch1.GetSpacing()
+# %%
+prd_fn_patch = Path("/s/fran_storage/predictions/nodes/LITS-1290_LITS-1230_LITS-1288/nodes_78_410617_CAP1p5_LITS-1290.nii.gz")
+lm_patch = sitk.ReadImage(prd_fn_patch)
+lm_final = sitk.ReadImage(prd_fn_final)
+lm_patch.GetSpacing()
+lm_base.GetOrigin()
+lm_patch.GetOrigin()
+print(lm_final.GetSpacing())
 # %%
 img_fns = list(img_fldr.glob("*"))
 lab_fns = list(lms_fldr.glob("*"))

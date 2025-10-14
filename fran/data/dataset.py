@@ -658,21 +658,34 @@ def fill_bbox(bbox, cropped_tensor):
     return out_tensor
 
 
-class FillBBoxPatchesd(Transform):
-    """
-    Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
-    """
+#
+# class FillBBoxPatchesd(Transform):
+#     """
+#     Based on size of original image and n_channels output by model, it creates a zerofilled tensor. Then it fills locations of input-bbox with data provided
+#     """
+#
+#     def __call__(self, d):
+#         """
+#         d is a dict with keys: 'image','pred','bbox'
+#         """
+#         pred = d["pred"]
+#         bbox = d["bounding_box"]
+#         pred_out = fill_bbox(bbox, pred)
+#         d["pred"] = pred_out
+#         return d
+
+class FillBBoxPatchesd(MapTransform):
+    def __init__(self, keys=["pred"], bbox_key="bounding_box", allow_missing_keys=False):
+        self.bbox_key = bbox_key
+        MapTransform.__init__(self, keys, allow_missing_keys)
 
     def __call__(self, d):
-        """
-        d is a dict with keys: 'image','pred','bbox'
-        """
-        pred = d["pred"]
-        bbox = d["bounding_box"]
-        pred_out = fill_bbox(bbox, pred)
-        d["pred"] = pred_out
+        for key in self.key_iterator(d):
+            pred = d[key]
+            bbox = d[self.bbox_key]
+            pred_out = fill_bbox(bbox, pred)
+            d[key] = pred_out
         return d
-
 
 def fg_in_bboxes(bboxes_unsorted):
     """

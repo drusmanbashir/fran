@@ -6,7 +6,7 @@ import time
 
 import ipdb
 from label_analysis.totalseg import TotalSegmenterLabels
-from monai.transforms.utility.dictionary import CastToTyped, SqueezeDimd
+from monai.transforms.utility.dictionary import CastToTyped
 
 from fran.trainers.base import checkpoint_from_model_id
 from fran.transforms.misc_transforms import SelectLabels
@@ -19,19 +19,15 @@ from pathlib import Path
 import numpy as np
 import torch
 from monai.transforms.compose import Compose
-# from monai.apps.detection.transforms.array import *
-# from monai.data.box_utils import *
-# from monai.inferers.merger import *
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import AsDiscreted, Invertd
 from monai.transforms.spatial.dictionary import Resized
 
 from fran.data.dataset import FillBBoxPatchesd
-from fran.inference.base import (BaseInferer, filter_existing_files, get_patch_spacing,
-                                 list_to_chunks, load_images, load_params)
+from fran.inference.base import (BaseInferer, get_patch_spacing, list_to_chunks,
+                                 load_images, load_params)
 from fran.transforms.inferencetransforms import (
-    BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled, RenameDictKeys,
-    SaveMultiChanneld,  ToCPUd)
+    BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled, RenameDictKeys)
 
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
 
@@ -50,6 +46,15 @@ sys.path += ["/home/ub/Dropbox/code/fran/"]
 
 from fastcore.basics import store_attr
 from utilz.imageviewers import ImageMaskViewer
+
+
+def apply_bboxes( data, bboxes):
+        data2 = []
+        for i, dat in enumerate(data):
+            dat["image"] = dat["image"][bboxes[i][1:]]
+            dat["bounding_box"] = bboxes[i]
+            data2.append(dat)
+        return data2
 
 
 def img_bbox_collated(batch):
@@ -126,6 +131,8 @@ class PatchInferer(BaseInferer):
         grid_mode="gaussian",
         devices=[1],
         save_channels=True,
+        safe_mode=False,
+        save=False,
         params=None,
         debug=False,
         **kwargs,
@@ -134,7 +141,8 @@ class PatchInferer(BaseInferer):
             run_name=run_name,
             devices=devices,
             save_channels=save_channels,
-            save=False,
+            save=save,
+            safe_mode=safe_mode,
             params=params,
             debug=debug,
             **kwargs,
@@ -151,7 +159,9 @@ class PatchInferer(BaseInferer):
         self.postprocess_transforms_dict["InvP"] = InvP
 
     def set_postprocess_tfms_keys(self):
-        self.postprocess_tfms_keys = "Sq,SqL,InvP,CPU"
+        self.postprocess_tfms_keys = "Sq,SqL,InvP"
+        if self.safe_mode==True:
+            self.postprocess_tfms_keys += ",CPU"
         if self.save_channels == True:
             self.postprocess_tfms_keys += ",Sa"
         if self.k_largest is not None:
@@ -247,15 +257,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         #     self.save_pred(output)
         self.cuda_clear()
         return output
-
-    def apply_bboxes(self, data, bboxes):
-        data2 = []
-        for i, dat in enumerate(data):
-            dat["image"] = dat["image"][self.bboxes[i][1:]]
-            dat["bounding_box"] = self.bboxes[i]
-            data2.append(dat)
-        return data2
-
     def filter_existing_localisers(self, imgs):
         print(
             "Filtering existing localisers\nNumber of images provided: {}".format(
@@ -355,7 +356,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         self.postprocess_transforms_dict = {
             # "U": ToDeviceD(keys=keys, device=self.device),
              "MR": RenameDictKeys(new_keys=["pred"], keys=keys),
-            "A": AsDiscreted(keys=["pred"], argmax=True),
+            "A": AsDiscreted(keys=["pred"], argmax=True,),
             "Int" : CastToTyped(keys=["pred"], dtype=np.uint8),
             "W": MakeWritabled(keys=["pred"]),
         
@@ -372,28 +373,11 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
                 output_dtype=np.uint8
             )}
 
-        # if self.k_largest:
-        #     self.postprocess_transforms_dict["K"] = KeepLargestConnectedComponentWithMetad(
-        #         keys=["pred"], independent=False, num_components=self.k_largest
-        #     )
-        
-        # self.postprocess_transforms_dict["F"] = FillBBoxPatchesd()
-        # if self.save==True:
-        #     self.postprocess_transforms_dict["S"] = SaveImaged(
-        #         keys=["pred"],
-        #         output_dir=self.output_folder,
-        #         output_postfix="",
-        #         separate_folder=False,
-        #     )
-        # 
-        # tfms = list(self.postprocess_transforms_dict.values())
-        # C = Compose(tfms)
-        # self.postprocess_compose = C
-
-    
-
     def set_postprocess_tfms_keys(self):
-        self.postprocess_tfms_keys = "MR,A,Int,W"
+        if self.safe_mode==False:
+            self.postprocess_tfms_keys = "MR,A,Int,W"
+        else:
+            self.postprocess_tfms_keys = "MR,W"
         if self.k_largest is not None:
             self.postprocess_tfms_keys+=",K"
         self.postprocess_tfms_keys+=",F"
