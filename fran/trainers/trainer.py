@@ -9,7 +9,7 @@ from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.profilers import AdvancedProfiler
 from utilz.string import headline
 
-from fran.callback.modelcheckpoint import ModelCheckpointUB
+# from fran.callback.modelcheckpoint import ModelCheckpointUB
 from fran.managers import Project, UNetManager
 from fran.managers.data.training import DataManagerDual
 from fran.trainers.base import backup_ckpt, checkpoint_from_model_id
@@ -32,7 +32,7 @@ torch._dynamo.config.suppress_errors = True
 import warnings
 
 from lightning.pytorch.callbacks import (DeviceStatsMonitor,
-                                         LearningRateMonitor, TQDMProgressBar)
+                                         LearningRateMonitor, ModelCheckpoint, TQDMProgressBar)
 
 from fran.managers.nep import NeptuneManager
 
@@ -177,7 +177,7 @@ class Trainer:
 
     def init_cbs(self, neptune, profiler, tags, description):
         cbs = [
-            ModelCheckpointUB(
+            ModelCheckpoint(
                 save_last=True,
                 monitor="val_loss",
                 every_n_epochs=10,
