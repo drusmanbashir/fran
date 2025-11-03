@@ -1,9 +1,13 @@
-import SimpleITK as sitk
-import numpy as np
-import itk
 from typing import List
 
-def ConvertItkImageToSimpleItkImage(_itk_image: itk.Image, _pixel_id_value: int, _direction: List[float]) -> sitk.Image:
+import itk
+import numpy as np
+import SimpleITK as sitk
+
+
+def ConvertItkImageToSimpleItkImage(
+    _itk_image: itk.Image, _pixel_id_value: int, _direction: List[float] = None
+) -> sitk.Image:
     """
     Converts ITK image to SimpleITK image
 
@@ -13,9 +17,14 @@ def ConvertItkImageToSimpleItkImage(_itk_image: itk.Image, _pixel_id_value: int,
     :param _direction: The list of cosines which describes the study coordinate axis direction in the space
     :return: SimpleITK image
     """
+    if _direction is None:
+        _direction = np.array(_itk_image.GetDirection())
+        _direction = tuple(_direction.flatten())
     array: np.ndarray = itk.GetArrayFromImage(_itk_image)
     sitk_image: sitk.Image = sitk.GetImageFromArray(array)
-    sitk_image = CopyImageMetaInformationFromItkImageToSimpleItkImage(sitk_image, _itk_image, _pixel_id_value, _direction)
+    sitk_image = CopyImageMetaInformationFromItkImageToSimpleItkImage(
+        sitk_image, _itk_image, _pixel_id_value, _direction
+    )
     return sitk_image
 
 
@@ -29,13 +38,17 @@ def ConvertSimpleItkImageToItkImage(_sitk_image: sitk.Image, _pixel_id_value):
     """
     array: np.ndarray = sitk.GetArrayFromImage(_sitk_image)
     itk_image: itk.Image = itk.GetImageFromArray(array)
-    itk_image = CopyImageMetaInformationFromSimpleItkImageToItkImage(itk_image, _sitk_image, _pixel_id_value)
+    itk_image = CopyImageMetaInformationFromSimpleItkImageToItkImage(
+        itk_image, _sitk_image, _pixel_id_value
+    )
     return itk_image
-	
-	
-def CopyImageMetaInformationFromSimpleItkImageToItkImage(_itk_image: itk.Image, _reference_sitk_image: sitk.Image, _output_pixel_type) -> itk.Image:
+
+
+def CopyImageMetaInformationFromSimpleItkImageToItkImage(
+    _itk_image: itk.Image, _reference_sitk_image: sitk.Image, _output_pixel_type
+) -> itk.Image:
     """
-	Copies the meta information from SimpleITK image to ITK image
+        Copies the meta information from SimpleITK image to ITK image
 
     :param _itk_image: Source ITK image
     :param _reference_sitk_image: Original SimpleITK image from which will be copied the meta information
@@ -63,9 +76,14 @@ def CopyImageMetaInformationFromSimpleItkImageToItkImage(_itk_image: itk.Image, 
     return result_itk_image
 
 
-def CopyImageMetaInformationFromItkImageToSimpleItkImage(_sitk_image: sitk.Image, _reference_itk_image: itk.Image, _pixel_id_value: int, _direction: List[float]) -> itk.Image:
+def CopyImageMetaInformationFromItkImageToSimpleItkImage(
+    _sitk_image: sitk.Image,
+    _reference_itk_image: itk.Image,
+    _pixel_id_value: int,
+    _direction: List[float],
+) -> itk.Image:
     """
-	Copies the meta information from ITK image to SimpleITK image
+        Copies the meta information from ITK image to SimpleITK image
 
     :param _sitk_image: Source SimpleITK image
     :param _reference_itk_image: Original ITK image from which will be copied the meta information

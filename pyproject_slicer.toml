@@ -1,0 +1,104 @@
+
+[build-system]
+requires = ["setuptools>=69", "setuptools-scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fran"
+description = "FRAN: utilities and pipelines for medical image segmentation and analysis."
+readme = "README.md"
+requires-python = ">=3.9,<3.10"
+dynamic = ["version"]
+authors = [{ name = "Usman Bashir" }]
+license = { text = "MIT" }
+
+# Keep the core tiny for Slicer; avoid ITK/SimpleITK/VTK/Qt/torch/monai here.
+dependencies = [
+  "pandas==2.2.3",
+  "networkx==3.2.1",
+  "pydicom>=2.4.4",
+  "nibabel==5.2.1",
+  "scikit-image==0.21.0",
+  "openpyxl==3.1.5",
+  "reportlab==4.2.5",
+  "send2trash>=1.8.3",
+  "tqdm==4.66.5",
+  "PyYAML==6.0.2"
+]
+
+[project.optional-dependencies]
+# Minimal add-ons that are usually safe wheels on py3.9
+slicer = [
+  # leave empty or add tiny pure-python libs you want auto-pulled in Slicer
+]
+
+# Heavy stacks (install in your normal conda env, NOT in Slicer)
+full = [
+  "fastcore",
+  "torchinfo",
+  "torchio==0.20.22",
+  "batchgenerators>=0.25",
+  "nnunet",
+  "connected_components_3d>=3.17.0",
+  "h5py>=3.12.1",
+  "lightning>=2.5.0.post0",
+  "lightning_utilities>=0.11.9",
+  "monai>=1.4.0",
+  "neptune>=1.13.0",
+  "opencv_python>=4.10.0.84",
+  "paramiko>=3.5.0",
+  "plotly>=6.0.0",
+  "prefetch_generator>=1.0.3",
+  "psutil>=6.0.0",
+  "Pillow>=11.1.0"
+]
+
+misc = [
+  "grad_cam>=1.5.3",
+  "seaborn>=0.13.2",
+  "scikit-image==0.25.2"
+]
+
+twod = [
+  "roboflow>=1.1.49",
+  "ultralytics>=8.3.44",
+  "supervision>=0.25.1"
+]
+
+# Keep internal repos OUT of automatic dependency resolution for Slicer.
+# Install them separately with --no-deps (see commands below).
+# If you really want to group them, create a non-default extra:
+internal = [
+  "utilz @ git+https://github.com/drusmanbashir/utilz.git@main",
+  "xnat @ git+https://github.com/drusmanbashir/xnat.git@main",
+  "label_analysis @ git+https://github.com/drusmanbashir/label_analysis.git@main",
+  "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main"
+]
+
+[tool.setuptools.packages.find]
+include = ["fran*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+fran = ["templates/*.yaml", "templates/*.yml"]
+
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"
+local_scheme = "node-and-date"
+
+# Keep mypy config; runtime doesn’t care.
+[tool.mypy]
+python_version = "3.9"
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["monai.*", "lightning.*", "fastcore.*", "plotly.*", "utilz.*"]
+ignore_missing_imports = true

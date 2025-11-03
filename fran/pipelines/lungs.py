@@ -20,7 +20,6 @@ if __name__ == '__main__':
 
 
     # P._create_plans_table()
-    P.add_data([DS.lidc2])
     C = ConfigMaker(P, raytune=False, configuration_filename=None)
     C.setup(3)
     C.plans

@@ -4,6 +4,7 @@ import sys
 import warnings
 from typing import Union
 
+from cc3d import Any
 import ipdb
 import numpy as np
 import pandas as pd
@@ -32,7 +33,7 @@ REMAPPING_DICT_OR_LIST = {
 }
 
 
-def _to_py(obj):
+def _to_py(obj)->Any:
     """Recursively convert numpy scalars to Python scalars and cast 1.0 -> 1."""
     # numpy scalar -> Python scalar
     if isinstance(obj, np.generic):
@@ -90,7 +91,7 @@ def labels_from_remapping(remapping):
 
 
 # CODE: delete the below if code is not breaking  (see #13)
-def compute_out_labels(plan: dict, global_props: Union[dict , None] = None) -> list:
+def compute_out_labels(plan: dict, global_props: Union[dict, None] = None) -> list:
     """
     Priority:
       1) plan['remapping_train']  -> infer mapping, return max(dest)+1
@@ -170,7 +171,7 @@ def create_remapping(plan, key, as_list=False, as_dict=False):
     return remapping
 
 
-def parse_excel_dict(dici):
+def parse_excel_dict(dici)->dict:
     if not isinstance(dici, dict):
         return _to_py(dici)
 
@@ -345,8 +346,8 @@ class ConfigMaker:
             keep_default_na=False,
             na_values=["TRUE", "FALSE", ""],
         )
-        self.configs = load_config_from_workbook(configuration_filename, raytune)
-        self.configs = parse_excel_dict(self.configs)
+        configs = load_config_from_workbook(configuration_filename, raytune)
+        self.configs = parse_excel_dict(configs)
         if not "mom_low" in self.configs["model_params"].keys() and raytune == True:
             config = {
                 "mom_low": tune.sample_from(
@@ -496,7 +497,7 @@ class ConfigMaker:
         self._set_plan(plan_valid, False)
 
 
-def load_config_from_workbook(settingsfilename, raytune):
+def load_config_from_workbook(settingsfilename, raytune)->dict:
     wb = load_workbook(settingsfilename)
     sheets = wb.sheetnames
     configs_dict = {}
@@ -568,8 +569,8 @@ def parse_neptune_dict(dic: dict):
 # %%
 if __name__ == "__main__":
 
-# %%
-# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
 
     from fran.managers import Project
 
@@ -583,7 +584,7 @@ if __name__ == "__main__":
     conf = C.configs
     pp(conf["plan_train"])
 
-# %%
+    # %%
 
     train = True
     plan_num = 3
@@ -598,11 +599,11 @@ if __name__ == "__main__":
     C.configs[plan_key] = plan_selected
     plan = plan_selected.copy()
     pp(plan)
-# %%
+    # %%
     # C.maybe_merge_source_plan(plan_key)
     C.configs[plan_key] = parse_excel_dict(plan_selected)
     pp(C.configs[plan_key])
-# %%
+    # %%
     C.configs[plan_key]["plan_name"] = plan_name
 
     for key in REMAPPING_DICT_OR_LIST:
@@ -614,7 +615,7 @@ if __name__ == "__main__":
         C.configs[plan_key][key] = create_remapping(
             plan=C.configs[plan_key], key=key, as_list=True
         )
-# %%
+    # %%
     settingsfilename = (
         "/home/ub/code/fran/configurations/experiment_configs_totalseg.xlsx"
     )
@@ -630,7 +631,7 @@ if __name__ == "__main__":
 
     else:
         raise NotImplementedError
-# %%
+    # %%
     config = {}
     rr = df.iloc[1]
     for row in df.iterrows():
@@ -689,12 +690,12 @@ if __name__ == "__main__":
                         val_sample = tune_fnc(*val)
                     config.update({key: val_sample})
 
-# %%
+    # %%
 
     labels_from_remapping = compute_out_labels(
         C.configs["plan_train"], C.project.global_properties
     )
-# %%
+    # %%
     as_list = True
     as_dict = False
     remapping = "TSL.lungs,TSL.lungs"

@@ -6,7 +6,6 @@ from utilz.helpers import *
 
 from utilz.helpers import *
 from utilz.fileio import *
-import cc3d
 
 from label_analysis.utils import SITKImageMaskFixer
 
@@ -108,6 +107,8 @@ def verify_img_label_torch(label_fn:Path):
         return '\nMismatch',img_fn,label_fn,str(img.shape),str(mask.shape)
 
 def get_label_stats(mask, label, separate_islands=True, dusting_threshold: int = None):
+
+    import cc3d
     if torch.is_tensor(mask):
         mask = mask.numpy()
     label_tmp = np.copy(mask.astype(np.uint8))

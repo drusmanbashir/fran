@@ -16,7 +16,7 @@ import yaml
 # read a packaged template
 from importlib.resources import files
 
-def short_code(input_str: Union[str,dict,None], length: int = 8) -> str:
+def short_code(input_str: Union[str,dict,None], length: int = 8) -> str|None:
     # Use SHA1 (or MD5 if you want shorter)
     if input_str is None:
         return None
