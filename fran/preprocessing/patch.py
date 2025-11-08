@@ -309,7 +309,7 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- PATCHGENERATOR-------------------------------------------------------------------------------------- <CR> <CR>
 
-    conf = ConfigMaker(P, raytune=False).config
+    conf = ConfigMaker(P, ).config
     plan = conf["plan"]
     plan_name = "plan" + str(conf["dataset_params"]["plan"])
 

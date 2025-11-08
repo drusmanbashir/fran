@@ -165,7 +165,7 @@ This critical step:
 
 #### 6. Create Configuration Plans
 ```python
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 
 conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
 plans = conf['plan1']  # Select desired plan
@@ -438,7 +438,7 @@ In the fran/run folder, ensemble.sh is a shell script. Please edit it with follo
 Once you have predictions and masks ready, examine the contents of file `inference/scoring.py`. The function `compute_dice_fran` wraps dice function from the monai library. It accepts groundtruth mask and prediction in SimpleITK Image format.
 
 ## 7.Training on HPC Cluster
-See the file hpc.yaml inside templates folder and alter it to your configuration. You will need to create an environment variable HPC_SETTINGS which points to the location of the hpc.yaml file on your system, e.g.:
+See the file hpc.yaml inside fran.templates folder and alter it to your configuration. You will need to create an environment variable HPC_SETTINGS which points to the location of the hpc.yaml file on your system, e.g.:
 
 
 ```

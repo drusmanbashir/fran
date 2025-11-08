@@ -20,7 +20,7 @@ from utilz.helpers import find_matching_fn, pbar
 from utilz.string import info_from_filename
 
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 
 
 class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
@@ -273,7 +273,7 @@ if __name__ == "__main__":
     # spacing = [1.5, 1.5, 1.5]
 
 
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(3)
 # %%
     C.plans

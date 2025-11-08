@@ -8,7 +8,7 @@ from pytorch_grad_cam import (
 import ipdb
 
 from fran.trainers.base import checkpoint_from_model_id
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 from utilz.string import info_from_filename
 tr = ipdb.set_trace
 
@@ -845,7 +845,7 @@ if __name__ == "__main__":
     configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
     configuration_filename = None
 
-    config = ConfigMaker(proj, raytune=False).config
+    config = ConfigMaker(proj, ).config
 
     # conf['model_params']['lr']=1e-3
 

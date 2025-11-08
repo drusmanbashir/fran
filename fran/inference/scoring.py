@@ -47,7 +47,7 @@ if __name__ == "__main__":
     P = Project(project_title="lits"); proj_defaults= P
 
     # %%
-    configs_excel = ConfigMaker(proj_defaults.configuration_filename,raytune=False).config
+    configs_excel = ConfigMaker(proj_defaults.configuration_filename,).config
     train_list, valid_list, test_list = get_fold_case_ids(
             fold=configs_excel['metadata']["fold"],
             json_fname=proj_defaults.validation_folds_filename,

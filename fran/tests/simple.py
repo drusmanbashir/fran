@@ -10,7 +10,7 @@ from fran.managers.unet import maybe_ddp
 from fran.transforms.imageio import TorchReader
 import ipdb
 
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 from utilz.helpers import pp
 
 tr = ipdb.set_trace

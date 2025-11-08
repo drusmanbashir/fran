@@ -1,0 +1,50 @@
+{
+  "base": {
+    "base_ch_opts": {
+      "type": "choice",
+      "value": [
+        16,
+        32
+      ]
+    },
+    "lr": {
+      "type": "qloguniform",
+      "value": [
+        0.0001,
+        0.05
+      ]
+    },
+    "deep_supervision": {
+      "type": "choice",
+      "value": [
+        "[True",
+        "False]"
+      ]
+    }
+  },
+  "projects": {
+    "liver": {
+      "base_ch_opts": {
+        "type": "choice",
+        "value": [
+          16,
+          32
+        ]
+      },
+      "lr": {
+        "type": "qloguniform",
+        "value": [
+          0.0001,
+          0.05
+        ]
+      },
+      "deep_supervision": {
+        "type": "choice",
+        "value": [
+          "[True",
+          "False]"
+        ]
+      }
+    }
+  }
+}

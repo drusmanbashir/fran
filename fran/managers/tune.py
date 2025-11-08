@@ -16,8 +16,8 @@ from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
 from fran.callback.nep import NeptuneImageGridCallback
 from fran.managers.base import load_checkpoint
-from fran.utils.config_parsers import *
-from fran.utils.config_parsers import load_metadata
+from fran.configs.parser import *
+from fran.configs.parser import load_metadata
 
 
 def out_channels_from_dict_or_cell(src_dest_labels):  

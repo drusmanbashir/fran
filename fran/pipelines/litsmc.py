@@ -11,7 +11,7 @@ from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.run.analyze_resample import PreprocessingManager
 from fran.trainers import Trainer
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 from fran.data.dataregistry import DS
 # %%
 # SECTION:-------------------- SETUP----------------------------------------------------------------------------------------------------- <CR>
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # P.maybe_store_projectwide_properties()
 
 # %%
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(7)
     C.plans
     conf = C.configs

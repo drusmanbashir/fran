@@ -8,7 +8,7 @@ from fran.inference.cascade import WholeImageInferer
 from fran.managers import  Project
 from fran.utils.common import *
 from fran.trainers.trainer import Trainer
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 # %%
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(6)
     C.plans
     conf = C.configs

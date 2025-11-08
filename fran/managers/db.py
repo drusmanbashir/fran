@@ -5,7 +5,7 @@ import pandas as pd
 from utilz.helpers import folder_name_from_list
 from utilz.string import headline
 
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 from fran.utils.folder_names import folder_names_from_plan
 
 tr = ipdb.set_trace
@@ -247,7 +247,7 @@ if __name__ == "__main__":
 
     # P.add_data([DS.litq, DS.lits, DS.drli, DS.litqsmall])
     # P.create('litsmc')
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(6)
     plan = C.configs['plan_train']
 
@@ -366,7 +366,7 @@ if __name__ == "__main__":
     P = Project("totalseg")
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(1, 1)
     C.plans
     C.set_active_plans(6)

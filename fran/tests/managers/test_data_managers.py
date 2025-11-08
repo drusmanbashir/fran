@@ -2,7 +2,7 @@ import pytest
 import torch
 from pathlib import Path
 from fran.managers.project import Project
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 from fran.utils.common import *
 from utilz.helpers import load_dict
 from utilz.imageviewers import ImageMaskViewer
@@ -24,11 +24,11 @@ def totalseg_project():
 
 @pytest.fixture
 def litsmc_config(litsmc_project):
-    return ConfigMaker(litsmc_project, raytune=False).config
+    return ConfigMaker(litsmc_project, ).config
 
 @pytest.fixture
 def totalseg_config(totalseg_project):
-    return ConfigMaker(totalseg_project, raytune=False).config
+    return ConfigMaker(totalseg_project, ).config
 
 class TestDataManagerWhole:
     def test_initialization(self, totalseg_project, totalseg_config):

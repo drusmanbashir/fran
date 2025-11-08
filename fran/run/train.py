@@ -9,7 +9,7 @@ import argparse
 from typing import List, Union
 
 from fran.managers import Project
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 from fran.trainers.trainer import Trainer
 
 def print_device_info():

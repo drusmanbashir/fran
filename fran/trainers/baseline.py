@@ -3,7 +3,7 @@ import torch
 from fran.managers import Project
 
 from fran.trainers.trainer import Trainer
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 from utilz.imageviewers import ImageMaskViewer
 
 #
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
     configuration_filename = None
 
-    conf = ConfigMaker(proj, raytune=False).config
+    conf = ConfigMaker(proj ).config
 
     # conf['dataset_params']['ds_type']=None
     # conf['model_params']['lr']=1e-3

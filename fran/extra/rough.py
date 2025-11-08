@@ -15,11 +15,18 @@ import numpy as np
 from torch.nn.modules import CrossEntropyLoss
 import pandas as pd
 from utilz.string import dec_to_str
+import importlib.resources
+import yaml
 
 # %%
 # %%
 #SECTION:-------------------- View torch images--------------------------------------------------------------------------------------
+import fran.templates as tl
+with importlib.resources.files(tl).joinpath("tune.yaml").open("r") as f:
+    cfg = yaml.safe_load(f)
+    base  = cfg.get("base")
 
+# %%
 raw = torch.load("raw.pt",weights_only=False)
 rs = torch.load("reszd.pt",weights_only=False)
 asi = torch.load("asint.pt",weights_only=False)

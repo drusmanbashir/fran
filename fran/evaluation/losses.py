@@ -328,7 +328,7 @@ class DeepSupervisionLoss(pl.LightningModule):
 if __name__ == "__main__":
     softmax_helper = lambda x: F.softmax(x, 1)
     P = Project("nodes")
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+    conf = ConfigMaker(P,  configuration_filename=None).config
     loss_params = conf["loss_params"]
     
     targ = torch.load("tests/files/image.pt", weights_only=False)

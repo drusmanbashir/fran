@@ -40,7 +40,7 @@ from fran.transforms.imageio import TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.spatialtransforms import ExtractContiguousSlicesd
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
-from fran.utils.config_parsers import ConfigMaker, is_excel_None
+from fran.configs.parser import ConfigMaker, is_excel_None
 from utilz.fileio import load_dict, load_yaml 
 from utilz.helpers import find_matching_fn, folder_name_from_list
 from utilz.string import ast_literal_eval, cleanup_fname, info_from_filename, strip_extension

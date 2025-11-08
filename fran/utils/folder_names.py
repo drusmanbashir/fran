@@ -167,7 +167,7 @@ if __name__ == '__main__':
     from fran.utils.common import *
     from fran.managers import Project
     P = Project("nodes")
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(6)
     plan = C.configs["plan_train"]
     df = pd.read_excel("/home/ub/code/fran/configurations/experiment_configs_totalseg.xlsx", sheet_name="plans")

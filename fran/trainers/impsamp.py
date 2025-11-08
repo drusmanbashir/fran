@@ -644,7 +644,7 @@ if __name__ == "__main__":
     configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
     configuration_filename = None
 
-    conf = ConfigMaker(proj, raytune=False).config
+    conf = ConfigMaker(proj, ).config
 
     # conf['model_params']['lr']=1e-3
 

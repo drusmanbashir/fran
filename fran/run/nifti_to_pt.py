@@ -3,7 +3,7 @@ import pandas as pd
 from label_analysis.totalseg import TotalSegmenterLabels
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 
 
 if __name__ == '__main__':
@@ -23,7 +23,7 @@ if __name__ == '__main__':
     spacing = [0.8, 0.8, 1.5]
     P.maybe_store_projectwide_properties()
 
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+    conf = ConfigMaker(P,  configuration_filename=None).config
     plan = conf["plan_valid"]
     nifti_fldr = "/s/xnat_shadow/crc/sampling/nifti"
     fixed_fldr ="/s/xnat_shadow/crc/sampling/tensors/fixed_spacing/"

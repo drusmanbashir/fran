@@ -25,7 +25,7 @@ from utilz.string import info_from_filename
 
 from fran.preprocessing.labelbounded import (LabelBoundedDataGenerator,
                                              LBDSamplerWorkerImpl)
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 
 @ray.remote(num_cpus=4)
 class LBDImportedSamplerWorkerImpl(RayWorkerBase):
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(6)
 # %%
     C.plans

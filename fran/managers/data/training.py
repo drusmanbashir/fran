@@ -45,7 +45,7 @@ from fran.data.dataset import (
 from fran.transforms.imageio import LoadTorchd, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
-from fran.utils.config_parsers import ConfigMaker, is_excel_None
+from fran.configs.parser import ConfigMaker, is_excel_None
 from utilz.fileio import load_dict, load_yaml
 from utilz.helpers import find_matching_fn, folder_name_from_list
 from utilz.imageviewers import ImageMaskViewer
@@ -1114,7 +1114,7 @@ if __name__ == "__main__":
 
 
     CL= ConfigMaker(
-        proj_litsmc, raytune=False, configuration_filename=None
+        proj_litsmc,  configuration_filename=None
     )
     CL.setup()
     config_litsmc = CL.configs
@@ -1123,14 +1123,14 @@ if __name__ == "__main__":
     proj_tot = Project(project_title=project_title)
     proj_nodes = Project(project_title="nodes")
 
-    config_nodes = ConfigMaker(proj_nodes, raytune=False).config
+    config_nodes = ConfigMaker(proj_nodes, ).config
     configuration_filename = (
         "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     )
     configuration_filename = None
 
     CT = ConfigMaker(
-        proj_tot, raytune=False,
+        proj_tot, 
     )
     CT.setup(6)
     config_tot = CT.configs

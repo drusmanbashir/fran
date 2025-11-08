@@ -10,12 +10,12 @@ import torch
 from fran.transforms.spatialtransforms import one_hot
 import neptune
 import ast
-from fran.utils.config_parsers import *
+from fran.configs.parser import *
 from utilz.fileio import load_json, load_yaml
 
 # from fran.managers.learner_plus import *
 from utilz.helpers import *
-from fran.utils.config_parsers import *
+from fran.configs.parser import *
 
 from lightning.pytorch.callbacks import Callback
 try:
@@ -233,7 +233,7 @@ class NeptuneImageGridCallback(Callback):
 if __name__ == "__main__":
     P = Project(project_title="lits")
     proj_defaults = P
-    config = ConfigMaker(proj_defaults.configuration_filename, raytune=False).config
+    config = ConfigMaker(proj_defaults.configuration_filename, ).config
 
 # %%
     def process_html(fname="case_id_dices_valid.html"):

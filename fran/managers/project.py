@@ -10,7 +10,7 @@ from utilz.string import headline, info_from_filename
 
 from fran.data.datasource import Datasource, val_indices
 from fran.data.datasource import db_ops
-from fran.utils.config_parsers import MNEMONICS
+from fran.configs.parser import MNEMONICS
 
 tr = ipdb.set_trace
 
@@ -131,7 +131,7 @@ class Project(DictToAttr):
 
     >>> # Process and store project-wide properties. This also creates  5 folds .  Has to be run atleast once
     >>>conf = ConfigMaker(
-        P, raytune=False, configuration_filename=None
+        P,  configuration_filename=None
 
     ).config
     >>> # Now add a main plan. this creates lm_groups. Also computes dataset properties, mean, std. Vital to do this once. The plan should be the main, default plan with all datasources included.
@@ -995,7 +995,7 @@ class Project(DictToAttr):
 if __name__ == "__main__":
     from fran.utils.common import *
 
-    from fran.utils.config_parsers import ConfigMaker
+    from fran.configs.parser import ConfigMaker
     DS = DS
     P = Project(project_title="nodes")
     P.create(mnemonic="nodes")
@@ -1018,7 +1018,7 @@ if __name__ == "__main__":
     # P.add_data([DS.totalseg])
 
 # %%
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.plans
     plans = conf["plantmp"]
     plans = conf["plan2"]

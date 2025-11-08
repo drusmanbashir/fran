@@ -181,7 +181,7 @@ if __name__ == "__main__":
 # %%
 
     # folder = proj_defaults.stage1_folder/"patches_48_128_128"
-    # train_ds = ImageMaskBBoxDataset(proj_defaults,train_list,bbox_fn= folder/"bboxes_info",,[0,1,2])
+    # train_ds = ImageMaskBBoxDataset(proj_defaults,train_list,bbox_fn= folder/"bboxes_info", [0,1,2])
     ind=23
     a, b, c = train_ds[ind]
 # %%

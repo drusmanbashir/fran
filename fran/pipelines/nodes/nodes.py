@@ -5,7 +5,7 @@ from fran.managers.db import COLUMNS_CRITICAL,  find_matching_plan
 from fran.run.analyze_resample import PreprocessingManager
 from fran.trainers.trainer import Trainer
 from fran.utils.common import *
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 import argparse
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
@@ -13,7 +13,7 @@ if __name__ == '__main__':
     P = Project("nodes")
 
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P , configuration_filename=None)
     C.setup(5)
     C.plans
     conf = C.configs

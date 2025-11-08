@@ -4,7 +4,7 @@ import ray
 import itertools as il
 
 from fran.inference.base import list_to_chunks
-from fran.utils.config_parsers import create_remapping
+from fran.configs.parser import create_remapping
 from fran.utils.folder_names import folder_names_from_plan
 
 tr = ipdb.set_trace
@@ -442,7 +442,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
     from fran.utils.common import *
-    from fran.utils.config_parsers import ConfigMaker
+    from fran.configs.parser import ConfigMaker
 
 # %%
     # chunkify = lambda l, n: [l[i : i + n] for i in range(0, len(l), n)]
@@ -451,7 +451,7 @@ if __name__ == "__main__":
     P = Project("nodes")
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(6)
     C.plans
     plan = C.configs["plan_train"]

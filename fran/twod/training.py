@@ -13,7 +13,7 @@ from utilz.imageviewers import ImageMaskViewer
 
 from fran.managers.project import Project
 from fran.utils.common import *
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 COMMON_PATHS = load_yaml(common_vars_filename)

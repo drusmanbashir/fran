@@ -450,7 +450,7 @@ if __name__ == "__main__":
     P = Project(project_title="litstmp")
     G = GlobalProperties(P, max_cases=50)
     G._retrieve_h5_properties()
-    conf = ConfigMaker(P, raytune=False, configuration_filename=None).config
+    conf = ConfigMaker(P,  configuration_filename=None).config
     plan = conf["plan"]
 # %%
     labs_gp =[]

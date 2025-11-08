@@ -16,7 +16,7 @@ tr = ipdb.set_trace
 
 
 from fran.architectures.unetcraig import nnUNetCraig
-from fran.utils.config_parsers import ConfigMaker, make_patch_size
+from fran.configs.parser import ConfigMaker, make_patch_size
 
 
 def get_batch_size(
@@ -258,7 +258,7 @@ if __name__ == "__main__":
     from fran.managers.project import Project
 
     P = Project(project_title="nodes")
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     config = C.config
 # %%
     patch_size = [192, 192, 96]

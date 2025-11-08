@@ -13,7 +13,7 @@ from utilz.string import headline
 from fran.managers import Project, UNetManager
 from fran.managers.data.training import DataManagerDual
 from fran.trainers.base import backup_ckpt, checkpoint_from_model_id
-from fran.utils.config_parsers import ConfigMaker, parse_neptune_dict
+from fran.configs.parser import ConfigMaker, parse_neptune_dict
 
 tr = ipdb.set_trace
 
@@ -412,9 +412,9 @@ if __name__ == "__main__":
     proj_nodes = Project(project_title="nodes")
     proj_tsl = Project(project_title="totalseg")
     proj_litsmc = Project(project_title="litsmc")
-    conf_litsmc = ConfigMaker(proj_litsmc, raytune=False).configs
-    conf_nodes = ConfigMaker(proj_nodes, raytune=False).configs
-    conf_tsl = ConfigMaker(proj_tsl, raytune=False).configs
+    conf_litsmc = ConfigMaker(proj_litsmc, ).configs
+    conf_nodes = ConfigMaker(proj_nodes, ).configs
+    conf_tsl = ConfigMaker(proj_tsl, ).configs
 
     # conf['model_params']['lr']=1e-3
     conf_litsmc["dataset_params"]["cache_rate"]

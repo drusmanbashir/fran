@@ -19,7 +19,7 @@ from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 from fran.utils.folder_names import folder_names_from_plan
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
@@ -93,7 +93,7 @@ class PreprocessingManager:
         self.num_processes = args.num_processes
         P = Project(project_title=args.project_title)
         self.project = P
-        C = ConfigMaker(P, raytune=False, configuration_filename=None)
+        C = ConfigMaker(P,  configuration_filename=None)
         C.setup(args.plan)
 
         conf = C.configs

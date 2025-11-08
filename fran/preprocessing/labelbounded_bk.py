@@ -18,7 +18,7 @@ from fran.preprocessing.preprocessor import (Preprocessor,
                                              generate_bboxes_from_lms_folder)
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import DummyTransform, FgBgToIndicesd2, LabelRemapSITKd
-from fran.utils.config_parsers import ConfigMaker, is_excel_None
+from fran.configs.parser import ConfigMaker, is_excel_None
 from fran.utils.folder_names import folder_names_from_plan
 
 MIN_SIZE = 32  # min size in a single dimension of any image
@@ -419,7 +419,7 @@ if __name__ == "__main__":
     # spacing = [1.5, 1.5, 1.5]
 
 
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(3)
     C.plans
     conf = C.configs

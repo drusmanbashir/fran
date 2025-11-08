@@ -8,7 +8,7 @@ from fran.managers import Project
 from fran.data.datasource import Datasource
 from fran.run.analyze_resample import PreprocessingManager
 from fran.managers.data import DataManagerDual
-from fran.utils.config_parsers import ConfigMaker
+from fran.configs.parser import ConfigMaker
 
 
 # %%
@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
 
     # P._create_plans_table()
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
     C.setup(3)
     C.plans
     conf = C.configs

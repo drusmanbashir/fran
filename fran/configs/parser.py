@@ -87,7 +87,8 @@ def labels_from_remapping(remapping):
     # remapping = plan.get("remapping_train")
     # pandas cell stored as string/Series -> try literal_eval
     labels_all = _inner(remapping)
-    return set(labels_all)
+    labels_all = set(labels_all)
+    return labels_all
 
 
 # CODE: delete the below if code is not breaking  (see #13)
@@ -192,16 +193,21 @@ def parse_excel_dict(dici)->dict:
         dici[key] = _to_py(value)
 
     dici = maybe_add_patch_size(dici)
+    dici = maybe_add_src_dims(dici)
     return dici
 
 
 def maybe_add_patch_size(plan):
-    if "patch_size" in plan.keys():
-        return plan
+    # if "patch_size" in plan.keys():
+    #     return plan
     if "patch_dim0" and "patch_dim1" in plan.keys():
         plan["patch_size"] = make_patch_size(plan["patch_dim0"], plan["patch_dim1"])
     return plan
 
+def maybe_add_src_dims(dataset_params):
+    if "src_dim0" and "src_dim1" in dataset_params.keys():
+        dataset_params["src_dims"] = make_patch_size(dataset_params["src_dim0"], dataset_params["src_dim1"])
+    return dataset_params
 
 BOOL_ROWS = "patch_based,one_cycles,heavy,deep_supervision,self_attention,fake_tumours,square_in_union,apply_activation"
 
@@ -246,15 +252,7 @@ def get_imagelists_from_config(project, fold, patch_based, dim0, dim1):
 
     return train_list, valid_list
 
-
-def resolve_tune_fnc(tune_type: str):
-    if "_" in tune_type:
-        return getattr(tune, tune_type.split("_")[0])
-    else:
-        return getattr(tune, tune_type)
-
-
-def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd"):
+def load_config_from_worksheet(settingsfilename, sheet_name,  engine="pd"):
     """
     Reads a sheet row-by-row
     """
@@ -275,64 +273,19 @@ def load_config_from_worksheet(settingsfilename, sheet_name, raytune, engine="pd
         var_type = rr["tune_type"]
         key = rr["var_name"]
         if sheet_name == "transform_factors":
-            if raytune == False or rr["tune"] == False:
                 val = parse_excel_cell(rr["manual_value"])
                 prob = rr["manual_p"]
-            else:
-                if rr["tune_type"] == "double_range":
-                    val_lower, val_upper = parse_excel_cell(rr["tune_value"])
-                    val_lower = tune.uniform(lower=val_lower[0], upper=val_lower[1])
-                    val_upper = tune.uniform(lower=val_upper[0], upper=val_upper[1])
-                    val = [val_lower, val_upper]
-
-                    prob = parse_excel_cell(rr["tune_p"])
-                    prob = tune.uniform(lower=prob[0], upper=prob[1])
-            config.update({key: [val, prob]})
+                config.update({key: [val, prob]})
         else:
-            if raytune == False or rr["tune"] == False:
                 val = parse_excel_cell(rr["manual_value"])
                 config.update({key: parse_excel_cell(val)})
-            else:
-                if "spec" in var_type:
-                    pass
-                else:
-                    val = parse_excel_cell(rr["tune_value"])
-                    if "_" in var_type:
-                        tr()
-                        vals = parse_excel_cell(rr["tune_value"])
-                        var_type.split("_")
-                        tune_fnc = resolve_tune_fnc(var_type)
-                        val_sample = [tune_fnc(val[0], val[1]) for val in vals]
-                    elif (
-                        var_type == "randint"
-                        or var_type == "loguniform"
-                        or var_type == "uniform"
-                    ):
-                        tune_fnc = resolve_tune_fnc(var_type)
-                        val_sample = tune_fnc(val[0], val[1])
-                    elif rr["tune_type"] == "double_range":
-                        val_lower, val_upper = parse_excel_cell(rr["tune_value"])
-                        val_lower = tune.uniform(lower=val_lower[0], upper=val_lower[1])
-                        val_upper = tune.uniform(lower=val_upper[0], upper=val_upper[1])
-                        val_sample = [val_lower, val_upper]
-
-                    elif rr["tune_type"] == "choice":
-                        val_sample = tune.choice(val)
-                    else:
-                        tune_fnc = resolve_tune_fnc(var_type)
-                        if tune_fnc.__name__[0] == "q":
-                            val.append(rr["quant"])
-                        val_sample = tune_fnc(*val)
-                    config.update({key: val_sample})
     return config
-
 
 class ConfigMaker:
     def __init__(
         self,
         project,
         configuration_filename=None,
-        raytune=False,
     ):
         store_attr()
         configuration_mnemonic = project.global_properties["mnemonic"]
@@ -346,22 +299,8 @@ class ConfigMaker:
             keep_default_na=False,
             na_values=["TRUE", "FALSE", ""],
         )
-        configs = load_config_from_workbook(configuration_filename, raytune)
+        configs = load_config_from_workbook(configuration_filename )
         self.configs = parse_excel_dict(configs)
-        if not "mom_low" in self.configs["model_params"].keys() and raytune == True:
-            config = {
-                "mom_low": tune.sample_from(
-                    lambda spec: np.random.uniform(0.6, 0.9100)
-                ),
-                "mom_high": tune.sample_from(
-                    lambda spec: np.minimum(
-                        0.99,
-                        spec.config.model_params.mom_low
-                        + np.random.uniform(low=0.05, high=0.35),
-                    )
-                ),
-            }
-            self.configs["model_params"].update(config)
 
     def setup(self, plan_train: int, plan_valid=None):
         if not plan_valid:
@@ -497,7 +436,7 @@ class ConfigMaker:
         self._set_plan(plan_valid, False)
 
 
-def load_config_from_workbook(settingsfilename, raytune)->dict:
+def load_config_from_workbook(settingsfilename )->dict:
     wb = load_workbook(settingsfilename)
     sheets = wb.sheetnames
     configs_dict = {}
@@ -508,7 +447,7 @@ def load_config_from_workbook(settingsfilename, raytune)->dict:
         else:
             # Old behavior for all other sheets
             configs_dict[sheet] = load_config_from_worksheet(
-                settingsfilename, sheet, raytune
+                settingsfilename, sheet
             )
 
     return configs_dict
@@ -570,19 +509,24 @@ def parse_neptune_dict(dic: dict):
 if __name__ == "__main__":
 
     # %%
-    # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
 
     from fran.managers import Project
 
     P = Project(project_title="lidc")
     project = P
 
-    C = ConfigMaker(P, raytune=False, configuration_filename=None)
+    C = ConfigMaker(P,  configuration_filename=None)
+# %%
     C.setup(3)
     C.plans
+# %%
 
     conf = C.configs
+    pp(conf["dataset_params"])
     pp(conf["plan_train"])
+
+# %%
 
     # %%
 
