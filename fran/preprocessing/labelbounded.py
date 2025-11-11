@@ -57,6 +57,23 @@ class LBDSamplerWorkerImpl(RayWorkerBase):
             "remapping": row["remapping"],
         }
         return data
+
+
+    @property
+    def indices_subfolder(self):
+        fg_indices_exclude = self.plan.get("fg_indices_exclude")
+        if fg_indices_exclude is None:
+            fg_indices_exclude = []
+        elif isinstance(fg_indices_exclude, int):
+            fg_indices_exclude = [fg_indices_exclude]
+        if len(fg_indices_exclude) > 0:
+            indices_subfolder = "indices_fg_exclude_{}".format(
+                "".join([str(x) for x in fg_indices_exclude])
+            )
+        else:
+            indices_subfolder = "indices"
+        indices_subfolder = self.output_folder / indices_subfolder
+        return indices_subfolder
     #     super().__init__(
     #         project=project,
     #         plan=plan,
@@ -449,9 +466,11 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         fg_indices_exclude = self.plan.get("fg_indices_exclude")
         if fg_indices_exclude is None:
             fg_indices_exclude = []
+        elif isinstance(fg_indices_exclude, int):
+            fg_indices_exclude = [fg_indices_exclude]
         if len(fg_indices_exclude) > 0:
             indices_subfolder = "indices_fg_exclude_{}".format(
-                "".join([str(x) for x in self.plan["fg_indices_exclude"]])
+                "".join([str(x) for x in fg_indices_exclude])
             )
         else:
             indices_subfolder = "indices"
@@ -504,19 +523,18 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
 
 if __name__ == "__main__":
 # %%
-# %%
 #SECTION:-------------------- setup--------------------------------------------------------------------------------------
 
     from fran.managers import Project
     from fran.utils.common import *
 
-    project_title = "totalseg"
+    project_title = "litsmc"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
     C = ConfigMaker(P,  configuration_filename=None)
-    C.setup(3)
+    C.setup(1)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -528,16 +546,16 @@ if __name__ == "__main__":
     existing_fldr = folder_names_from_plan(P, plan).get("data_folder_lbd", None)
 # %%
 
-# %%
-    num_processes=16
+    num_processes=4
     L = LabelBoundedDataGenerator(
         project=P,
         plan=plan,
-        data_folder="/r/datasets/preprocessed/lidc/fixed_spacing/spc_080_080_150_ldc"
+        data_folder="/r/datasets/preprocessed/litsmc/fixed_spacing/spc_100_100_100"
     )
 
+    L.setup(overwrite=False, device="cpu", num_processes=num_processes)
+    L.process()
 # %%
-    L.setup(overwrite=False, device="cpu")
 # %%
     L.mini_dfs = np.array_split(L.df, num_processes)
     mini_df = L.mini_dfs[0].iloc[:3]

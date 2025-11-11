@@ -526,6 +526,8 @@ if __name__ == "__main__":
     pp(conf["dataset_params"])
     pp(conf["plan_train"])
 
+    conf["dataset_params"]["src_dims"] = make_patch_size(conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"])
+    conf["plan_train"]["patch_size"]= make_patch_size(conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"])
 # %%
 
     # %%

@@ -33,11 +33,14 @@ class SingleCaseAnalyzer:
         case_files_tuple = [Path(fn) for fn in case_files_tuple]
         case_props =  info_from_filename(case_files_tuple[0].name)
         self.case_id = "_".join([case_props['proj_title'],case_props["case_id"]])
-        store_attr("case_files_tuple,bg_label,percentile_range")
+
+        self.case_files_tuple = case_files_tuple
+        self.bg_label = bg_label
+        self.percentile_range = percentile_range
 
     def load_case(self):
         L= LoadSITKd(keys=['image','mask'], image_only=True,ensure_channel_first=False,simple_keys=True,lm_key='mask')
-        dici = {'image':self.case_files_tuple[0],'mask':self.case_files_tuple[1]}
+        dici = {'image':self.case_files_tuple[0],'mask':self.case_files_tuple[1]} 
         dd = L(dici)
         # self.properties['itk_spacing']= self.img.meta['']
         self.img,self.mask = dd['image'],dd['mask']

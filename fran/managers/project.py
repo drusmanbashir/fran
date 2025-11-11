@@ -140,7 +140,7 @@ class Project(DictToAttr):
     """
 
     def __init__(self, project_title):
-        store_attr()
+        self.project_title=project_title
         self.set_folder_file_names()
         self.db = self.project_folder / ("cases.db")
 

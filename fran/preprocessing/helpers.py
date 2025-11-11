@@ -1,4 +1,4 @@
-
+# %%
 from fastcore.basics import   listify
 import numpy as np
 from fran.transforms.totensor import ToTensorT
@@ -106,14 +106,13 @@ def verify_img_label_torch(label_fn:Path):
         print(f"Image mask mismatch {label_fn}")
         return '\nMismatch',img_fn,label_fn,str(img.shape),str(mask.shape)
 
-def get_label_stats(mask, label, separate_islands=True, dusting_threshold: int = None):
-
+def get_label_stats(mask, label, separate_islands=True, dusting_threshold: int = 0):
     import cc3d
     if torch.is_tensor(mask):
         mask = mask.numpy()
     label_tmp = np.copy(mask.astype(np.uint8))
     label_tmp[mask != label] = 0
-    if dusting_threshold :
+    if dusting_threshold >0:
         label_tmp = cc3d.dust(
             label_tmp, threshold=dusting_threshold, connectivity=26, in_place=True
         )
@@ -169,7 +168,10 @@ class BBoxesFromMask(object):
         bg_label=0, # so far unused in this code
     ):
         if not isinstance(filename,Path): filename = Path(filename)
-        self.mask =torch.load(filename,weights_only=False)
+        if filename.suffix == '.pt':
+            self.mask =torch.load(filename,weights_only=False)
+        else:
+            self.mask = sitk.ReadImage(str(filename))
         if isinstance(self.mask,torch.Tensor): self.mask = np.array(self.mask)
         if isinstance(self.mask,sitk.Image): self.mask = sitk.GetArrayFromImage(self.mask)
         case_id = info_from_filename(filename.name,full_caseid=True)['case_id']
@@ -214,4 +216,12 @@ def bboxes_function_version(
     return A()
 
 
-
+if __name__ == '__main__':
+# %%
+    fn = "/s/fran_storage/datasets/raw_data/lidc/lms/lidc_0030.nii.gz"
+    fn = "/s/xnat_shadow/crc/lms/crc_CRC004_20190425_CAP1p5.nii.gz"
+    A = BBoxesFromMask(
+        fn, bg_label=0
+    )
+    A()
+# %%

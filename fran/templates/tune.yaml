@@ -1,5 +1,11 @@
 base:
   # model_params:
+    spacing:
+      type: choice
+      value:
+        - [1.0, 1.0, 1.0]
+        - [0.8, 0.8, 1.5]
+        - [0.8,0.8,0.8]
     base_ch_opts: 
       type: choice
       value:

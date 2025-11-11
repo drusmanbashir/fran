@@ -49,10 +49,10 @@ def main(args):
                 overwrite=args.overwrite,
                 num_processes=args.num_processes
             )
-
-    if not "labels_all" in P.global_properties.keys():
-        P.set_lm_groups(plan["lm_groups"])
-        P.maybe_store_projectwide_properties(overwrite=args.overwrite)
+    #
+    # if not "labels_all" in P.global_properties.keys():
+    #     P.set_lm_groups(plan["lm_groups"])
+        # P.maybe_store_projectwide_properties(overwrite=args.overwrite)
 
 
 
@@ -87,6 +87,11 @@ def user_input(inp: str, out=int):
 
 
 class PreprocessingManager:
+    # Declare attributes that assimilate_args will set
+    project_title: str
+    num_processes: int
+    overwrite: bool
+    debug:bool
     # dont use getattr
     def __init__(self, args):
         self.assimilate_args(args)
@@ -359,19 +364,42 @@ if __name__ == "__main__":
         default=1,
     )
     parser.add_argument("-p", "--plan", type=int, help="Just a number like 1, 2")
+    parser.add_argument("-d", "--debug", action="store_true")
 
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title="nodes"
-    # args.plan = 6
-    # args.num_processes = 4
-    # args.overwrite=True
+    args.project_title="litsmc"
+    args.plan = 6
+    args.num_processes = 4
+    args.overwrite=True
+    args.debug=True
 
 #python  analyze_resample.py -t nodes -p 6 -n 4 -o
 
+
+# %%
+    resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
+        "data_folder_source"
+    ]
+    
+    headline(
+        "LBD dataset will be based on resampled dataset output_folder {}".format(
+            resampled_data_folder
+        )
+    )
+    I.L = LabelBoundedDataGenerator(
+        project=I.project,
+        plan=I.plan,
+        data_folder=resampled_data_folder,
+    )
+# %%
+    overwrite=False
+    num_processes=4
+    device="cpu"
+    I.L.setup(overwrite=overwrite, device=device, num_processes=num_processes)
+    I.L.process()
 # %%
     main(args)
     sys.exit()
-
 # %%

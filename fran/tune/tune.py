@@ -1,12 +1,24 @@
 # %%
+from ray.tune.schedulers import ASHAScheduler
+
+import torch
+import os
+import ray
 import ast
 from pprint import pp
 import re
 from datetime import datetime
+
+from utilz.string import headline
 from fran.managers import Project
 # from fran.architectures.unet3d.model import  *
 from pathlib import Path
 import ipdb
+
+from fran.run.analyze_resample import PreprocessingManager
+from fran.tune.config import RayTuneConfig, out_channels_from_dict_or_cell
+from fran.tune.preprocessing import generate_dataset
+from fran.tune.trainer import RayTrainer
 tr = ipdb.set_trace
 import numpy as np
 
@@ -21,48 +33,15 @@ from utilz.helpers import make_channels, set_autoreload
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
 from fran.callback.nep import NeptuneImageGridCallback
-from fran.managers.base import load_checkpoint, make_patch_size
-from fran.configs.parser import ConfigMaker
+from fran.managers.base import load_checkpoint
+from fran.configs.parser import ConfigMaker, make_patch_size
 from fran.configs.parser import load_metadata
 import yaml
-
-def load_tune_template(project="base"):
-    import importlib.resources
-    import fran.templates as tl
-    with importlib.resources.files(tl).joinpath("tune.yaml").open("r") as f:
-        cfg = yaml.safe_load(f)
-    return cfg[project]
-
-
+from ray.tune.integration.pytorch_lightning import (
+    TuneReportCallback,
+    TuneReportCheckpointCallback,
+)
 #only vars below will be tuned
-TUNE_VARS =[
-    "base_ch_opts",
-    "lr",
-    "deep_supervision",
-    "src_dim0",
-    "src_dim1",
-    "contrast",
-    "shift",
-    "scale",
-    "brightness",
-    "expand_by",
-    "patch_dim0",
-    "patch_dim1",
-    "patch_overlap",
-]
-
-
-def resolve_tune_fnc(tune_type: str):
-    if "_" in tune_type:
-        return getattr(tune, tune_type.split("_")[0])
-    else:
-        return getattr(tune, tune_type)
-
-def out_channels_from_dict_or_cell(src_dest_labels):  
-    if isinstance(src_dest_labels, pd.core.series.Series):
-        src_dest_labels = ast.literal_eval(src_dest_labels.item())
-    out_channels = max([src_dest[1] for src_dest in src_dest_labels])+1
-    return out_channels
 
 def load_model_from_raytune_trial(folder_name,out_channels):
     #requires params.json inside raytune trial
@@ -220,195 +199,138 @@ def tune_from_spec(tune_type: str, tune_value, q=None):
         except TypeError:
             return fn(tune_value)
     return fn(tune_value)
+def train_with_tune(config,project_title,num_epochs=10):
+    # 1) Base configs
+    # 3) Build trainer (disable Neptune for multi-trial speed)
 
-class RayTuneConfig(ConfigMaker):
-    def __init__(self, project, configuration_filename=None):
-        super().__init__(project, configuration_filename=configuration_filename)
-        if not "mom_low" in self.configs["model_params"].keys() :
-            config = {
-                "mom_low": tune.sample_from(
-                    lambda spec: np.random.uniform(0.6, 0.9100)
-                ),
-                "mom_high": tune.sample_from(
-                    lambda spec: np.minimum(
-                        0.99,
-                        spec.config.model_params.mom_low
-                        + np.random.uniform(low=0.05, high=0.35),
-                    )
-                ),
-            }
-            self.configs["model_params"].update(config)
-        self.tune_template=load_tune_template(project="base")
 
-    def setup(self):
-        super().setup(plan_train=1, plan_valid=1)
-        self.insert_tune_vars()
+    # run_name ='LITS-1230'
+    run_name =None
+    compiled = False
+    # NOTE: if Neptune = False, should store checkpoint locally
+    neptune = False
+    override_dm = False
+    tags = []
+    description = f"Ray tune"
+    Tm = RayTrainer(project_title, config, None)
+    bs= 8
+    devices = 1
+    headline(f"Training with config: {config}")
+    lr = config["model_params"]["lr"]
+    config["dataset_params"]["src_dims"] = make_patch_size(config["dataset_params"]["src_dim0"], config["dataset_params"]["src_dim1"])
+    config["plan_train"]["patch_size"]= make_patch_size(config["plan_train"]["patch_dim0"], config["plan_train"]["patch_dim1"])
+    headline(config["dataset_params"]["src_dims"])
+    headline(config["plan_train"]["patch_size"])
 
-    def insert_tune_vars(self):
-        self.patch_dim0_computed,self.src_dim0_computed = False, False
-        self.insert_tune_vars_dict(self.configs["dataset_params"])
-        self.insert_tune_vars_dict(self.configs["model_params"])
-        self.insert_tune_vars_dict(self.configs["plan_train"])
+    generate_dataset(project_title)
 
-    #
-    # def get_tune_variable(self,tune_k)->tuple:
-    #             try:
-    #                 rr= self.tune_template[tune_k]
-    #             except:
-    #
-    #                 if tune_k == "patch_size" :
-    #                     if self.patch_dim0_computed==False:
-    #                         tune_k = "patch_dim0"
-    #                         self.patch_dim0_computed=True
-    #                     else:
-    #                         tune_k = "patch_dim1"
-    #                         tr()
-    #                     rr= self.tune_template[tune_k]
-    #                 elif tune_k == "src_size" :
-    #                     if self.src_dim0_computed==False:
-    #                         tune_k = "src_dim0"
-    #                         self.src_dim0_computed=True
-    #                     else:
-    #                         tune_k = "src_dim1"
-    #                 else:
-    #                     tr()
-    #                 rr = self.tune_template[tune_k]
-    #             return rr, tune_k
 
-    def insert_tune_vars_dict(self, cfg_dict):
-        tune_keys =list(set(cfg_dict.keys()).intersection(set(TUNE_VARS)))
-        for i in range(0,len(tune_keys)):
-            tune_k = tune_keys[i]
-            rr =  self.tune_template[tune_k]
-            var_type = rr['type']
-            if(
-                var_type == "randint"
-                or var_type == "loguniform"
-                or var_type == "uniform"
-            ):
-                tune_fnc = resolve_tune_fnc(var_type)
-                vals = rr["value"]
-                val_sample = tune_fnc(vals[0], vals[1])
-            elif rr["type"] == "double_range":
-                val_lower, val_upper = rr["value"]
-                val_lower = tune.uniform(lower=val_lower[0], upper=val_lower[1])
-                val_upper = tune.uniform(lower=val_upper[0], upper=val_upper[1])
-                val_sample = [val_lower, val_upper]
-            elif rr["type"] == "choice":
-                vals = rr["value"]
-                val_sample = tune.choice(vals)
-            else:
-                tune_fnc = resolve_tune_fnc(var_type)
-                if tune_fnc.__name__[0] == "q":
-                    quant = float(rr["q"])
-
-                val_lower, val_upper = rr["value"]
-                val_sample = tune_fnc(lower=val_lower, upper=val_upper,q=quant)
-
-            try:
-                print(tune_k, val_sample.sample())
-            except:
-
-                print(tune_k, val_sample[0].sample())
-                print("upper: ", val_sample[1].sample())
-
-            cfg_dict[tune_k] = val_sample
-        return cfg_dict
-
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=devices,
+        epochs=num_epochs,
+        batchsize_finder=False,
+        profiler=False,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+        lr=lr,
+        override_dm_checkpoint=override_dm
+)
+    # 5) Setup and attach callback
+    # 6) Fit; TuneReportCallback will emit {'loss': val_loss} each epoch.
+    Tm.fit()
 if __name__ == "__main__":
 # %%
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
     set_autoreload()
 
-    P = Project(project_title="lidc")
+    P = Project(project_title="litsmc")
     project = P
 
     C = RayTuneConfig(P)
     C.setup()
+    conf = C.configs
 # %%
+    import argparse
+    parser = argparse.ArgumentParser(description="Resampler")
+    
+
+    parser.add_argument(
+        "-t", "--project-title", help="project title", dest="project_title"
+    )
+    parser.add_argument(
+        "-n",
+        "--num-processes",
+        type=int,
+        help="number of parallel processes",
+        default=1,
+    )
+    parser.add_argument("-p", "--plan", type=int, help="Just a number like 1, 2")
+
+    parser.add_argument("-o", "--overwrite", action="store_true")
+    args = parser.parse_known_args()[0]
+# %%
+    args.project_title=P.project_title
+    args.plan = conf["plan_train"]
+    args.num_processes = 4
+    args.overwrite=False
+#
+#     from fran.run.analyze_resample import main
+#     main(args)
+# #python  analyze_resample.py -t nodes -p 6 -n 4 -o
+# # %%
+#     conf["dataset_params"]["src_dims"] = make_patch_size(conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"])
+#     conf["dataset_params"]["src_dims"]
+#     conf["plan_train"]["patch_size"]= make_patch_size(conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"])
+#     conf["plan_train"]
+#
+# # %%
+#     patch_dim0 = conf["dataset_params"]["src_dim0"]
+#     patch_dim1 = conf["dataset_params"]["src_dim1"]
+#
+#     patch_size = [
+#         patch_dim0,
+#     ] + [
+#         patch_dim1,
+#     ] * 2
+# # %%
+    # conf["dataset_params"]["src_dims"]
+# %%
+    reporter = tune.CLIReporter(
+        metric_columns=["loss"],
+        # parameter_columns=["lr", "batch_size"],
+    )
+# %%
+    gpus_per_trial = 1
+    resources_per_trial = {"cpu": 8.0, "gpu": gpus_per_trial}
+    num_samples =5
     # C._set_active_plans(1,1)
     # C.add_output_labels()
     # C.add_out_channels()
+
     # C.add_dataset_props()
-
+    num_epochs =10
 # %%
-    C.configs["dataset_params"]
-    C.configs["model_params"]
+    tune_fn_with_params = tune.with_parameters(train_with_tune, project_title=P.project_title,num_epochs=num_epochs)
+
+    scheduler = ASHAScheduler(max_t=num_epochs, grace_period=1, reduction_factor=2)
+    tuner = tune.Tuner(
+        tune.with_resources(tune_fn_with_params, resources=resources_per_trial),
+        tune_config=tune.TuneConfig(
+            metric="loss",
+            mode="min",
+            scheduler=scheduler,
+            num_samples=num_samples,
+        ),
+        run_config=tune.RunConfig(
+            name="tune_UNET",
+            progress_reporter=reporter,
+        ),
+        param_space=conf,
+    )
+    results = tuner.fit()
 # %%
-    conf = C.configs
-    pp(conf['plan_train'])
 
-# %%
-
-    cfg_dict = conf['plan_train']
-    tune_keys =list(set(cfg_dict.keys()).intersection(set(TUNE_VARS)))
-    for i in range(0,len(tune_keys)):
-        tune_k = tune_keys[i]
-        rr , tune_k= C.get_tune_variable(tune_k)
-        if tune_k=="patch_dim1":
-            tr()
-        var_type = rr['type']
-        if(
-            var_type == "randint"
-            or var_type == "loguniform"
-            or var_type == "uniform"
-        ):
-            tune_fnc = resolve_tune_fnc(var_type)
-            vals = rr["value"]
-            val_sample = tune_fnc(vals[0], vals[1])
-        elif rr["type"] == "double_range":
-            val_lower, val_upper = rr["value"]
-            val_lower = tune.uniform(lower=val_lower[0], upper=val_lower[1])
-            val_upper = tune.uniform(lower=val_upper[0], upper=val_upper[1])
-            val_sample = [val_lower, val_upper]
-        elif rr["type"] == "choice":
-            vals = rr["value"]
-            val_sample = tune.choice(vals)
-        else:
-            tune_fnc = resolve_tune_fnc(var_type)
-            if tune_fnc.__name__[0] == "q":
-                quant = float(rr["q"])
-
-            val_lower, val_upper = rr["value"]
-            val_sample = tune_fnc(lower=val_lower, upper=val_upper,q=quant)
-
-        try:
-            print(tune_k, val_sample.sample())
-        except:
-
-            print(tune_k, val_sample[0].sample())
-            print("upper: ", val_sample[1].sample())
-
-        cfg_dict[tune_k] = val_sample
-
-
-    pp(cfg_dict)
-# %%
-    C.plans
-    single_gpu = True
-    if single_gpu == True:
-        try:
-            ray.init(local_mode=True, num_cpus=1, num_gpus=2)
-        except:
-            pass
-    cfg = load_tune_template(project="base")
-    C.configs
-    # dsp = C.configs['dataset_params']
-    # mp = C.configs['model_params']
-    # pl = C.configs['plan_train']
-    # tf = C.configs["transform_factors"]
-    # tune_keys =list(set(dsp.keys()).intersection(set(TUNE_VARS)))
-    # tune_keys =list(set(mp.keys()).intersection(set(TUNE_VARS)))
-    # tune_keys =list(set(pl.keys()).intersection(set(TUNE_VARS)))
-# %%
-# %%
-    debug_mode = False
-    df_ray = pd.read_excel("/home/ub/code/fran/configurations/experiment_configs_liver.xlsx", sheet_name="model_params")
-    # df_ray = df_ray.dropna(subset=["tune_value"])
-    df_ray = df_ray[~df_ray["tune"].isin([0,False])]
-# %%
-    r = RayTuneManager("/home/ub/code/fran/configurations/experiment_configs_liver.xlsx")
-    conf = r.load_config(sheet_name="model_params")
-
-#

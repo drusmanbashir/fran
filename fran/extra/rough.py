@@ -18,7 +18,24 @@ from utilz.string import dec_to_str
 import importlib.resources
 import yaml
 
+
 # %%
+class Container(torch.nn.Module):
+    def __init__(self, my_values):
+        super().__init__()
+        for key in my_values:
+            setattr(self, key, my_values[key])
+# %%
+fn =   "/r/datasets/preprocessed/lidc2/lbd/spc_080_080_150/lms/lidc2_0021.pt";
+im = torch.load(fn,weights_only=False)
+
+# %%
+mt = {
+    "tnsr":im
+}
+
+C = torch.jit.script(Container(mt))
+C.save("/home/ub/code/fran/fran/cpp/files/sample.pt")
 # %%
 #SECTION:-------------------- View torch images--------------------------------------------------------------------------------------
 import fran.templates as tl

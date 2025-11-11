@@ -11,7 +11,7 @@ tr = ipdb.set_trace
 import pandas as pd
 from importlib.resources import files
 from typing import Dict, Any
-from utilz.string import ast_literal_eval, dec_to_str, int_to_str
+from utilz.string import ast_literal_eval, dec_to_str, headline, int_to_str
 import yaml
 # read a packaged template
 from importlib.resources import files
@@ -61,7 +61,10 @@ def nan_parser(func):
 
 @nan_parser
 def expand_by_conv(reg,key,val):
-    val = int(val)
+    try:
+        val = int(val)
+    except Exception:
+        headline(val)
     key2 = reg.get(key)
     val2 = int_to_str(val,3)
     return key2+val2

@@ -14,29 +14,6 @@ def get_epoch(fn:Path):
 
 
 
-def make_patch_size(patch_dim0, patch_dim1):
-    patch_size = [
-        patch_dim0,
-    ] + [
-        patch_dim1,
-    ] * 2
-    return patch_size
-
-def reconcile_keys(local_model_state,ckpt_model_state,ckpt_string,local_string ):
-        chkpt_model_keys = list(ckpt_model_state.keys())
-        local_model_keys = list(local_model_state.keys())
-        conflicting_string in chkpt_model_keys[0]
-        mod_keys_flag = conflicting_string in local_model_keys[0] 
-        chk_keys_flag =  conflicting_string in chkpt_model_keys[0]
-        if not mod_keys_flag == chk_keys_flag:
-                    chkpt_model_state_fixed = {}
-                    for key in ckpt_model_state.keys():
-                        neo_key = key.replace(conflicting_string,'')
-                        chkpt_model_state_fixed[neo_key] = ckpt_model_state[key]
-                      
-                    return chkpt_model_state_fixed
-        else:
-            return ckpt_model_state
 
 
 def reconcile_keys(local_model_state,chkpt_model_state,conflicting_string='module.'):

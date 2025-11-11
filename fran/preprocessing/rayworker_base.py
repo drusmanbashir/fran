@@ -152,7 +152,7 @@ class RayWorkerBase(Preprocessor):
             self.R = MapLabelValueD(
                 keys=[self.lm_key],
                 orig_labels=self.plan["remapping_lbd"][0],
-                target_labels=self.plan[remapping_lbd][1],
+                target_labels=self.plan["remapping_lbd"][1],
             )
         else:
             self.R = DummyTransform(keys=[self.lm_key])

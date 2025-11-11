@@ -282,10 +282,10 @@ class Preprocessor(GetAttr):
         flat = list(il.chain.from_iterable(results_lists))
         self.results_df = pd.DataFrame(flat) if flat else pd.DataFrame([])
         return self.results_df
-    @property
-    def indices_subfolder(self):
-        indices_subfolder = self.output_folder / ("indices")
-        return indices_subfolder
+    # @property
+    # def indices_subfolder(self):
+    #     indices_subfolder = self.output_folder / ("indices")
+    #     return indices_subfolder
 
 
 # %%

@@ -219,7 +219,7 @@ class FgBgToIndicesd2(FgBgToIndicesd):
     def __init__(
         self,
         keys: KeysCollection,
-        ignore_labels: list = None,
+        ignore_labels: list | int= [],
         fg_postfix: str = "_fg_indices",
         bg_postfix: str = "_bg_indices",
         image_key=None,
@@ -236,6 +236,8 @@ class FgBgToIndicesd2(FgBgToIndicesd):
             output_shape,
             allow_missing_keys,
         )
+        if isinstance(ignore_labels, int):
+            ignore_labels = [ignore_labels]
         self.ignore_labels = ignore_labels
 
     def __call__(
