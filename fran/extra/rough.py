@@ -1,5 +1,7 @@
 # %%
 import ipdb
+import itk
+from label_analysis.merge import LabelMapGeometry
 tr = ipdb.set_trace
 from label_analysis.helpers import *
 
@@ -17,18 +19,60 @@ import pandas as pd
 from utilz.string import dec_to_str
 import importlib.resources
 import yaml
+import sys
+import fran
+set_autoreload()
+base = os.path.dirname(fran.__file__)
+rel = os.path.join(base,"cpp","build","debug")
+sys.path.append(rel)
+import fran_hello as fh
+# %%
+
+img_fn = "/s/xnat_shadow/nodes/lms/nodes_20_20190926_CAP1p5.nii.gz"
+# %%
+# LG = LabelMapGeometry(img_fn)
+# LG.nbrhoods
+# fn2 = "/s/xnat_shadow/crc/lms/crc_CRC014_20190923_CAP1p5.nii.gz"
+# %%
+fn3 ="/s/xnat_shadow/crc/lms/crc_CRC004_20190425_CAP1p5.nii.gz"
+img = sitk.ReadImage(fn3)
+img_arr = sitk.GetArrayFromImage(img)
+
+sp = img.GetSpacing()
+org = img.GetOrigin()
+# %%
+# bb['bbox_stats'][-1]
+bb1 = fh.numpy_to_bboxes(img_arr, sp, org, fn3)
+
+df = pd.DataFrame(bb1['rows'])
+# %%
+bb2 = fh.process_file_py(fn3)
+df2 = pd.DataFrame(bb2['rows'])
+
+# %%
+LG2 = LabelMapGeometry(fn3)
+df3 = LG2.nbrhoods
+
+# %%
+#SECTION:-------------------- checking pybind--------------------------------------------------------------------------------------
+# %%
+
 
 
 # %%
+#SECTION:-------------------- tensor -> cpp--------------------------------------------------------------------------------------
 class Container(torch.nn.Module):
     def __init__(self, my_values):
         super().__init__()
         for key in my_values:
             setattr(self, key, my_values[key])
 # %%
+fn = "/tmp/pt_tensor.pt"
 fn =   "/r/datasets/preprocessed/lidc2/lbd/spc_080_080_150/lms/lidc2_0021.pt";
 im = torch.load(fn,weights_only=False)
 
+imm = torch.Tensor(im)
+torch.save(imm,"/home/ub/code/fran/fran/cpp/files/sample_tensor.pt")
 # %%
 mt = {
     "tnsr":im
@@ -750,4 +794,5 @@ if __name__ == "__main__":
         lm = sitk.ReadImage(str(lm_fn))
         labels = get_labels(lm)
         if not labels == [1]:
-            lm = to_binary(lm)
+
+lm = to_binary(lm)

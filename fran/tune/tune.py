@@ -1,6 +1,6 @@
 # %%
 from ray.tune.schedulers import ASHAScheduler
-
+from ray.air.config import FailureConfig
 import torch
 import os
 import ray
@@ -43,6 +43,7 @@ from ray.tune.integration.pytorch_lightning import (
 )
 #only vars below will be tuned
 
+OOM_RE = re.compile(r"CUDA out of memory", re.IGNORECASE)
 def load_model_from_raytune_trial(folder_name,out_channels):
     #requires params.json inside raytune trial
     params_dict = load_json(Path(folder_name)/"params.json")
@@ -222,25 +223,39 @@ def train_with_tune(config,project_title,num_epochs=10):
     headline(config["dataset_params"]["src_dims"])
     headline(config["plan_train"]["patch_size"])
 
-    generate_dataset(project_title)
+    print("CUDA_VISIBLE_DEVICES:", os.environ.get("CUDA_VISIBLE_DEVICES"))
+    print("torch.cuda.device_count():", torch.cuda.device_count())
+
+    while True:
+            try:
+                # re-setup each attempt so dataloaders are rebuilt with new bs
+                Tm.setup(
+                    compiled=compiled,
+                    batch_size=bs,
+                    devices=devices,
+                    epochs=num_epochs,
+                    batchsize_finder=False,
+                    profiler=False,
+                    neptune=neptune,
+                    tags=tags,
+                    description=description,
+                    lr=lr,
+                    override_dm_checkpoint=override_dm,
+                )
+                Tm.fit()  # if this finishes, we’re done
+                break
+            except RuntimeError as e:
+                if OOM_RE.search(str(e)):
+                    new_bs = bs // 2
+                    if new_bs < 2:
+                        raise  # don't go below 2
+                    print(f"[OOM] bs={bs} -> {new_bs}. Retrying...")
+                    torch.cuda.empty_cache()
+                    bs = new_bs
+                    continue
+                raise
 
 
-    Tm.setup(
-        compiled=compiled,
-        batch_size=bs,
-        devices=devices,
-        epochs=num_epochs,
-        batchsize_finder=False,
-        profiler=False,
-        neptune=neptune,
-        tags=tags,
-        description=description,
-        lr=lr,
-        override_dm_checkpoint=override_dm
-)
-    # 5) Setup and attach callback
-    # 6) Fit; TuneReportCallback will emit {'loss': val_loss} each epoch.
-    Tm.fit()
 if __name__ == "__main__":
 # %%
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
@@ -279,7 +294,7 @@ if __name__ == "__main__":
     args.overwrite=False
 #
 #     from fran.run.analyze_resample import main
-#     main(args)
+    # main(args)
 # #python  analyze_resample.py -t nodes -p 6 -n 4 -o
 # # %%
 #     conf["dataset_params"]["src_dims"] = make_patch_size(conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"])
@@ -304,6 +319,7 @@ if __name__ == "__main__":
         # parameter_columns=["lr", "batch_size"],
     )
 # %%
+    num_gpus = 2
     gpus_per_trial = 1
     resources_per_trial = {"cpu": 8.0, "gpu": gpus_per_trial}
     num_samples =5
@@ -314,6 +330,7 @@ if __name__ == "__main__":
     # C.add_dataset_props()
     num_epochs =10
 # %%
+
     tune_fn_with_params = tune.with_parameters(train_with_tune, project_title=P.project_title,num_epochs=num_epochs)
 
     scheduler = ASHAScheduler(max_t=num_epochs, grace_period=1, reduction_factor=2)
@@ -324,13 +341,50 @@ if __name__ == "__main__":
             mode="min",
             scheduler=scheduler,
             num_samples=num_samples,
+            max_concurrent_trials=num_gpus,
         ),
         run_config=tune.RunConfig(
             name="tune_UNET",
             progress_reporter=reporter,
+            failure_config=FailureConfig(max_failures=2),  # retry actor if it crashes
         ),
         param_space=conf,
     )
     results = tuner.fit()
 # %%
 
+    project_title = P.project_title
+    config = conf
+
+    Tm = RayTrainer(project_title, config, None)
+
+    lr = config["model_params"]["lr"]
+    bs= 4
+    devices = 1
+    headline(f"Training with config: {config}")
+    lr = config["model_params"]["lr"]
+    config["dataset_params"]["src_dims"] = make_patch_size(config["dataset_params"]["src_dim0"], config["dataset_params"]["src_dim1"])
+    config["plan_train"]["patch_size"]= make_patch_size(config["plan_train"]["patch_dim0"], config["plan_train"]["patch_dim1"])
+    headline(config["dataset_params"]["src_dims"])
+    headline(config["plan_train"]["patch_size"])
+
+    compiled = False
+    neptune = False
+    tags = None
+    description = ""
+    override_dm = False
+# %%
+
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=devices,
+        epochs=num_epochs,
+        batchsize_finder=False,
+        profiler=False,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+        lr=lr,
+        override_dm_checkpoint=override_dm)
+# %%

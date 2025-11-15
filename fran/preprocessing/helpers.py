@@ -224,4 +224,61 @@ if __name__ == '__main__':
         fn, bg_label=0
     )
     A()
+    print(A.bboxes_info)
+# %%
+    import torch, os, torch.serialization
+    import  zipfile
+    t = torch.arange(6, dtype=torch.float32).reshape(2,3).contiguous()
+
+# Force the zip-format that C++ expects:
+    pth = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_080_ex000/images/drli_001ub.pt"
+    im = torch.load(pth, weights_only=False)
+    im = torch.Tensor(im)
+    torch.save(im, "/tmp/pt_tensor.pt", _use_new_zipfile_serialization=True)
+# %%
+
+    path = "/tmp/pt_tensor.pt"
+
+# 1) Save a single tensor in the new zip format
+    t = torch.arange(6, dtype=torch.float32).reshape(2,3).contiguous()
+    # torch.save(t, path, _use_new_zipfile_serialization=True)
+    torch.jit.save(torch.jit.script(t), path)
+# %%
+    import torch
+    from torch import nn
+     
+    class TensorContainer(nn.Module):
+        def __init__(self, tensor_dict):
+            super().__init__()
+            for key,value in tensor_dict.items():
+                setattr(self, key, value)
+     
+    x = torch.ones(4, 4)
+    tensor_dict = {'x': x}
+    tensors = TensorContainer(tensor_dict)
+    tensors = torch.jit.script(tensors)
+    tensors.save(path)
+# 2) Verify the file format and the object type
+    print("FILE_EXISTS:", os.path.exists(path))                   # True
+    print("IS_ZIPFILE (zipfile):", zipfile.is_zipfile(path))      # True
+
+    with open(path, "rb") as f:
+        print("IS_ZIPFILE (torch):", torch.serialization._is_zipfile(f))  # True
+
+    obj = torch.load(path, map_location="cpu")
+    print("PY_OBJ_TYPE:", type(obj))                              # <class 'torch.Tensor'>
+    print("PY_TENSOR_SHAPE:", obj.shape)
+
+# %%
+    import io
+    x = torch.arange(10)
+    f = io.BytesIO()
+    torch.save(x, f, _use_new_zipfile_serialization=True)
+    # send f wherever
+
+# %%
+    path = "/tmp/pt_tensor.pt"
+    with open(path, "wb") as outfile:
+        # Copy the BytesIO stream to the output file
+        outfile.write(f.getbuffer())
 # %%
