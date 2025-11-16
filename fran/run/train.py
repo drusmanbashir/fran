@@ -28,37 +28,44 @@ def str2bool(v: str) -> bool:
 
 
 def main(args):
-    # --- Project & configs ----------------------------------------------------
-    P = Project(args.project)
-    C = ConfigMaker(P, configuration_filename=None)
-    plan_num = int(args.plan_num)
-    C.setup(plan_num)
-    conf = C.configs
 
-    # Update dataset params from CLI
-    conf["dataset_params"]["cache_rate"] = args.cache_rate
-    if args.ds_type is not None:
-        conf["dataset_params"]["ds_type"] = args.ds_type
-    if args.fold is not None:
-        conf["dataset_params"]["fold"] = args.fold
+    import torch
 
-    # --- Trainer --------------------------------------------------------------
-    print_device_info()
+    if not torch.cuda.is_available():
+        print("CUDA NOT AVAILABLE — running on CPU")
+    else:
+        print("CUDA AVAILABLE — GPUs:", torch.cuda.device_count())
+        # --- Project & configs ----------------------------------------------------
+        P = Project(args.project)
+        C = ConfigMaker(P, configuration_filename=None)
+        plan_num = int(args.plan_num)
+        C.setup(plan_num)
+        conf = C.configs
 
-    Tm = Trainer(P.project_title, conf, args.run_name)
+        # Update dataset params from CLI
+        conf["dataset_params"]["cache_rate"] = args.cache_rate
+        if args.ds_type is not None:
+            conf["dataset_params"]["ds_type"] = args.ds_type
+        if args.fold is not None:
+            conf["dataset_params"]["fold"] = args.fold
 
-    Tm.setup(
-        compiled=args.compiled,
-        batch_size=args.batch_size,
-        devices=args.devices,
-        epochs=args.epochs if not args.profiler else 1,
-        profiler=args.profiler,
-        neptune=args.neptune,
-        description=args.description,
-    )
+        # --- Trainer --------------------------------------------------------------
+        print_device_info()
 
-    Tm.N.compiled = args.compiled
-    Tm.fit()
+        Tm = Trainer(P.project_title, conf, args.run_name)
+
+        Tm.setup(
+            compiled=args.compiled,
+            batch_size=args.batch_size,
+            devices=args.devices,
+            epochs=args.epochs if not args.profiler else 1,
+            profiler=args.profiler,
+            neptune=args.neptune,
+            description=args.description,
+        )
+
+        Tm.N.compiled = args.compiled
+        Tm.fit()
 
 
 if __name__ == "__main__":
