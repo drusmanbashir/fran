@@ -2,9 +2,8 @@
 import ast
 import sys
 import warnings
-from typing import Union
+from typing import Union,Any
 
-from cc3d import Any
 import ipdb
 import numpy as np
 import pandas as pd
