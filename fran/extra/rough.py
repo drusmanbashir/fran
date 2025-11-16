@@ -32,7 +32,7 @@ img_fn = "/s/xnat_shadow/nodes/lms/nodes_20_20190926_CAP1p5.nii.gz"
 # %%
 # LG = LabelMapGeometry(img_fn)
 # LG.nbrhoods
-# fn2 = "/s/xnat_shadow/crc/lms/crc_CRC014_20190923_CAP1p5.nii.gz"
+fn2 = "/s/xnat_shadow/crc/lms/crc_CRC014_20190923_CAP1p5.nii.gz"
 # %%
 fn3 ="/s/xnat_shadow/crc/lms/crc_CRC004_20190425_CAP1p5.nii.gz"
 img = sitk.ReadImage(fn3)
@@ -45,9 +45,11 @@ org = img.GetOrigin()
 bb1 = fh.numpy_to_bboxes(img_arr, sp, org, fn3)
 
 df = pd.DataFrame(bb1['rows'])
+print(df)
 # %%
 bb2 = fh.process_file_py(fn3)
 df2 = pd.DataFrame(bb2['rows'])
+print(df2)
 
 # %%
 LG2 = LabelMapGeometry(fn3)

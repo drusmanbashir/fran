@@ -1,6 +1,14 @@
+# [build-system]
+# requires = ["setuptools>=69", "setuptools-scm>=8", "wheel"]
+# build-backend = "setuptools.build_meta"
+#
 [build-system]
-requires = ["setuptools>=69", "setuptools-scm>=8", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = [
+  "scikit-build-core>=0.11",
+  "setuptools-scm>=8",
+  "pybind11>=2.13",
+]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "fran"
@@ -86,4 +94,14 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = ["monai.*", "lightning.*", "fastcore.*", "plotly.*", "utilz.*"]
 ignore_missing_imports = true
+[tool.scikit-build]
+minimum-version = "0.11"
+cmake.source-dir = "."
+wheel.packages = ["fran"]         # copy the fran package into the wheel
+# optional but safe; ensures templates go into the sdist too
+sdist.include = ["fran/**"]
 
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.setuptools_scm"
+[tool.scikit-build.cmake.define]
+BUILD_BBOX_STATS_ITK = "OFF"

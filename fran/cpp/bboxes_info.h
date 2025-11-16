@@ -103,10 +103,11 @@ CaseBBoxes<Dim> process_image(LabelImage<3>::Pointer img,
           int sz = static_cast<int>(bbox.GetSize()[j]);
           bbox_arr[j + 3] = sz;
         }
+
         bb.bounding_boxes.push_back(bbox_arr);
         bb.centroids.push_back(centroid_arr);
-        std::cout << "Printing bbox\n";
-        std::cout << bbox;
+        // std::cout << "Printing bbox\n";
+        // std::cout << bbox;
       }
     }
     bbi.bbox_stats.push_back(bb);
@@ -120,4 +121,5 @@ CaseBBoxes<Dim> process_file(std::string file_name) {
   CaseBBoxes<3> bbi = process_image<3>(img, file_name);
   return bbi;
 }
+
 
