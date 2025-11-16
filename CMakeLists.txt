@@ -1,21 +1,23 @@
 cmake_minimum_required(VERSION 3.24)
 project(fran LANGUAGES CXX)
 
-# set(FRAN_BUILD_TYPE "Release" CACHE STRING "Build type")
-add_subdirectory(fran/cpp)
-# Option
-option(FRAN_BUILD_CPP "Build C++ extensions" ON)
+# Option to build C++ extensions (default = ON for local dev)
+option(FRAN_BUILD_CPP "Build FRAN C++ extensions" ON)
 
-# Auto-detect ITK: if ITK not found → disable extension
+# Try to find ITK quietly
 find_package(ITK QUIET COMPONENTS ITKCommon)
 
+# Auto-disable if ITK missing
 if(NOT ITK_FOUND)
-    message(WARNING "ITK not found → disabling C++ extensions.")
+    message(STATUS "ITK not found → disabling FRAN C++ extensions.")
     set(FRAN_BUILD_CPP OFF)
 endif()
 
+# Only build C++ if enabled AND ITK found
 if(FRAN_BUILD_CPP)
-    add_subdirectory(cpp)
+    message(STATUS "Building FRAN C++ extensions.")
+    add_subdirectory(fran/cpp)
 else()
     message(STATUS "FRAN_BUILD_CPP=OFF → skipping C++ extension build.")
 endif()
+
