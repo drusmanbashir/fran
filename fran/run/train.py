@@ -2,17 +2,18 @@
 
 # training.py — minimal runner to Tm.fit()
 import ipdb
-import torch
 
 from fran.utils.misc import parse_devices
+
 tr = ipdb.set_trace
 
 import argparse
 from typing import List, Union
 
-from fran.managers import Project
 from fran.configs.parser import ConfigMaker
+from fran.managers import Project
 from fran.trainers.trainer import Trainer
+
 
 def print_device_info():
     if not torch.cuda.is_available():
@@ -31,10 +32,16 @@ def str2bool(v: str) -> bool:
 
 def main(args):
 
-    import torch
+    import torch, os
+    print("CUDA_VISIBLE_DEVICES:", os.environ.get("CUDA_VISIBLE_DEVICES"))
+    print("torch.version.cuda:", torch.version.cuda)
+    print("torch.cuda.is_available():", torch.cuda.is_available())
+    print("torch.cuda.device_count():", torch.cuda.device_count())
 
     if not torch.cuda.is_available():
         print("CUDA NOT AVAILABLE — running on CPU")
+        return
+
     else:
         print("CUDA AVAILABLE — GPUs:", torch.cuda.device_count())
         # --- Project & configs ----------------------------------------------------
@@ -71,23 +78,73 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train FRAN model up to Tm.fit(), no preprocessing.")
-    parser.add_argument("--project", default="nodes", help="Project title (e.g., nodes, totalseg, lidc2)")
-    parser.add_argument("--plan-num", type=int, default=7, help="Active plan index for ConfigMaker.setup()")
-    parser.add_argument("--devices", type=parse_devices, default=1, help='GPU devices: "0", "0,1", or count like "2"')
-    parser.add_argument("--bs", "--batch-size", dest="batch_size", type=int, default=4, help="Batch size")
-    parser.add_argument("-f", "--fold", type=int, default=None, help="If specified, will override conf['dataset_params']['fold']")
+    parser = argparse.ArgumentParser(
+        description="Train FRAN model up to Tm.fit(), no preprocessing."
+    )
+    parser.add_argument(
+        "--project",
+        default="nodes",
+        help="Project title (e.g., nodes, totalseg, lidc2)",
+    )
+    parser.add_argument(
+        "--plan-num",
+        type=int,
+        default=7,
+        help="Active plan index for ConfigMaker.setup()",
+    )
+    parser.add_argument(
+        "--devices",
+        type=parse_devices,
+        default=1,
+        help='GPU devices: "0", "0,1", or count like "2"',
+    )
+    parser.add_argument(
+        "--bs",
+        "--batch-size",
+        dest="batch_size",
+        type=int,
+        default=4,
+        help="Batch size",
+    )
+    parser.add_argument(
+        "-f",
+        "--fold",
+        type=int,
+        default=None,
+        help="If specified, will override conf['dataset_params']['fold']",
+    )
     parser.add_argument("--epochs", type=int, default=600, help="Max epochs")
-    parser.add_argument("--compiled", type=str2bool, default=True, help="Compile model (Lightning/torch.compile)")
-    parser.add_argument("--profiler", type=str2bool, default=False, help="Enable Lightning profiler")
-    parser.add_argument("--neptune", type=str2bool, default=True, help="Enable Neptune logging")
+    parser.add_argument(
+        "--compiled",
+        type=str2bool,
+        default=True,
+        help="Compile model (Lightning/torch.compile)",
+    )
+    parser.add_argument(
+        "--profiler", type=str2bool, default=False, help="Enable Lightning profiler"
+    )
+    parser.add_argument(
+        "--neptune", type=str2bool, default=True, help="Enable Neptune logging"
+    )
     parser.add_argument("--run-name", default=None, help='Run name (e.g., "LITS-1290")')
-    parser.add_argument("--description", default=None, help="Optional experiment description")
+    parser.add_argument(
+        "--description", default=None, help="Optional experiment description"
+    )
 
-    parser.add_argument("--cache-rate", type=float, default=0.0, help="conf['dataset_params']['cache_rate']")
-    parser.add_argument("--ds-type", default=None, choices=[None, "lmdb", "memmap", "zarr"], help="Dataset backend if supported")
+    parser.add_argument(
+        "--cache-rate",
+        type=float,
+        default=0.0,
+        help="conf['dataset_params']['cache_rate']",
+    )
+    parser.add_argument(
+        "--ds-type",
+        default=None,
+        choices=[None, "lmdb", "memmap", "zarr"],
+        help="Dataset backend if supported",
+    )
 
     args = parser.parse_known_args()[0]
-# %%
-# %%
+    # %%
+    # %%
     main(args)
