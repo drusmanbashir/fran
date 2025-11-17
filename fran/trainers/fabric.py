@@ -1,5 +1,4 @@
 import os
-from torch.cuda.amp import autocast
 from collections.abc import Mapping
 from functools import partial
 from typing import Any, Iterable, List, Literal, Optional, Tuple, Union, cast
@@ -12,7 +11,10 @@ from lightning.fabric.strategies import Strategy
 from lightning.fabric.wrappers import _unwrap_objects
 from lightning.pytorch.utilities.model_helpers import is_overridden
 from lightning_utilities import apply_to_collection
+from torch.cuda.amp import autocast
 from tqdm import tqdm
+
+
 class TrainerFabric:
     def __init__(
         self,
@@ -216,9 +218,7 @@ class TrainerFabric:
         optimizer: torch.optim.Optimizer,
         train_loader: torch.utils.data.DataLoader,
         limit_batches: Union[int, float] = float("inf"),
-        scheduler_cfg: Optional[
-            Mapping[str, Union[L.fabric.utilities.types.LRScheduler, bool, str, int]]
-        ] = None,
+        scheduler_cfg: Optional[Mapping[str, Union[Any, bool, str, int]]] = None,
     ):
         """The training loop running a single training epoch.
 
@@ -617,5 +617,3 @@ class TrainerFabric:
 
             if postfix_str:
                 prog_bar.set_postfix_str(postfix_str)
-
-
