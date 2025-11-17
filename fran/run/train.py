@@ -3,6 +3,8 @@
 # training.py — minimal runner to Tm.fit()
 import ipdb
 import torch
+
+from fran.utils.misc import parse_devices
 tr = ipdb.set_trace
 
 import argparse
@@ -73,7 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--project", default="nodes", help="Project title (e.g., nodes, totalseg, lidc2)")
     parser.add_argument("--plan-num", type=int, default=7, help="Active plan index for ConfigMaker.setup()")
 
-    parser.add_argument("--devices", type=parse_devices, default="0", help='GPU devices: "0", "0,1", or count like "2"')
+    parser.add_argument("--devices", type=parse_devices, default=1, help='GPU devices: "0", "0,1", or count like "2"')
     parser.add_argument("--bs", "--batch-size", dest="batch_size", type=int, default=4, help="Batch size")
     parser.add_argument("-f", "--fold", type=int, default=None, help="If specified, will override conf['dataset_params']['fold']")
     parser.add_argument("--epochs", type=int, default=600, help="Max epochs")

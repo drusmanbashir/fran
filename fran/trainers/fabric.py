@@ -389,9 +389,7 @@ class TrainerFabric:
     def step_scheduler(
         self,
         model: L.LightningModule,
-        scheduler_cfg: Optional[
-            Mapping[str, Union[L.fabric.utilities.types.LRScheduler, bool, str, int]]
-        ],
+        scheduler_cfg ,
         level: Literal["step", "epoch"],
         current_value: int,
     ) -> None:
@@ -523,12 +521,7 @@ class TrainerFabric:
 
         return os.path.join(checkpoint_dir, items[-1])
 
-    def _parse_optimizers_schedulers(self, configure_optim_output) -> Tuple[
-        Optional[L.fabric.utilities.types.Optimizable],
-        Optional[
-            Mapping[str, Union[L.fabric.utilities.types.LRScheduler, bool, str, int]]
-        ],
-    ]:
+    def _parse_optimizers_schedulers(self, configure_optim_output) -> Tuple:
         """Recursively parses the output of :meth:`lightning.pytorch.LightningModule.configure_optimizers`.
 
         Args:
