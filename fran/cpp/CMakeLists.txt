@@ -34,17 +34,6 @@ find_package(Torch REQUIRED)
 # ------------------- executables -------------------
 if (NOT SKBUILD)
 
-target_include_directories(bbox_stats_itk PRIVATE
-  /home/ub/code/slicer_cpp
-  /home/ub/code/slicer_cpp/protot
-)
-
-
-target_link_libraries(bbox_stats_itk PRIVATE
-  ${ITK_LIBRARIES}
-  ${TORCH_LIBRARIES}
-)
-
 
 add_executable(bbox_stats_itk
   bbox_stats_itk.cpp
@@ -52,6 +41,16 @@ add_executable(bbox_stats_itk
   /home/ub/code/slicer_cpp/protot/utils.cxx
   /home/ub/code/slicer_cpp/protot/LabelmapGeometry.cxx
 )
+
+target_include_directories(bbox_stats_itk PRIVATE
+  /home/ub/code/slicer_cpp
+  /home/ub/code/slicer_cpp/protot
+)
+target_link_libraries(bbox_stats_itk PRIVATE
+  ${ITK_LIBRARIES}
+  ${TORCH_LIBRARIES}
+)
+
 add_executable(torch_load_check tnsr_check.cpp)
 target_link_libraries(torch_load_check PRIVATE ${TORCH_LIBRARIES})
 endif()
@@ -94,5 +93,5 @@ target_link_libraries(fran_hello PRIVATE
 )
 
 
-install (TARGETS fran_hello LIBRARY DESTINATION fran)
+install (TARGETS fran_hello DESTINATION fran)
 

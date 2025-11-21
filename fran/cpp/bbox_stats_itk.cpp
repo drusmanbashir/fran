@@ -18,11 +18,6 @@ int main() {
 
   // LabelImage<3>::Pointer img = readLabelImage<3>(file_name);
   CaseBBoxes<3> bbi =  process_file<3>(file_name);
-  // bbi.file_name = file_name;
-  // bbi.labels = getUniqueLabels<3>(img);
-  // bbi.case_id = "crc_CRC004_20190425_CAP1p5";
-  // bbi.bbox_stats = bbi.get_bboxes(img);
-  // std::cout << "\nDone";
   //
   // auto th = itk::ThresholdImageFilter<itk::Image<uint16_t, 3>>::New();
   // th->SetInput(img);

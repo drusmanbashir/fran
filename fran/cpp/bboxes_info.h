@@ -61,7 +61,7 @@ CaseBBoxes<Dim> process_image(LabelImage<3>::Pointer img,
   CaseBBoxes<3> bbi;
   bbi.file_name = file_name;
   bbi.labels = getUniqueLabels<3>(img);
-  bbi.case_id = "crc_CRC004_20190425_CAP1p5";
+  bbi.case_id = "crc_CRC004_2019:0425_CAP1p5";
   // bbi.bbox_stats = bbi.get_bboxes(img);
   std::cout << "\nDone";
 
