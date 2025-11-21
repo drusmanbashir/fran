@@ -736,7 +736,6 @@ if __name__ == "__main__":
     # )
     # ens.run(args.images)
     # ... run your application ...
-    pass
 
     run_w2 = "LIT-145"
     run_w = "LITS-1088"  # this run has localiser_labels not full TSL.
@@ -824,7 +823,8 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = E.run(nodes[1], chunksize=chunksize, overwrite=overwrite)
+    node_fn = "/s/insync/datasets/capestart/nodes_nov2025/images/nodes_43_20220805_CAP1p5SoftTissue.nii.gz"
+    preds = E.run(node_fn, chunksize=chunksize, overwrite=overwrite)
     # preds = En.run(img_fns, chunksize=2)
 
 # %%

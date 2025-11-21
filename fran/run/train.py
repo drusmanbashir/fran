@@ -2,6 +2,7 @@
 
 # training.py — minimal runner to Tm.fit()
 import ipdb
+import torch
 
 from fran.utils.misc import parse_devices
 

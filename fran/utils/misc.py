@@ -5,6 +5,8 @@
 import torch
 from typing import List, Union
 
+from utilz.string import ast_literal_eval
+
 def parse_device_str(dev_arg: str) -> Union[int, List[int]]:
     """
     Parse device argument for Lightning Trainer.
@@ -73,8 +75,10 @@ def parse_devices(arg=None):
 # %%
 # parse_device_arg(None)  → all GPUs (e.g., [cuda:0, cuda:1, ...])
 if __name__ == '__main__':
-    aa = parse_devices('1')
-    aa = parse_device_arg([0])
-    aa = parse_device_arg([0,1])
-    aa
+    ast_literal_eval('[1]')
+    aa = parse_devices('[1]')
+    aa = parse_devices('[1]')
+    # aa = parse_device_arg([0])
+    # aa = parse_device_arg([0,1])
+    # aa
 # %%
