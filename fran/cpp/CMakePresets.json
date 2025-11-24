@@ -1,34 +1,87 @@
 {
   "version": 6,
-
   "configurePresets": [
     {
       "name": "base",
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
-
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "WITH_TORCH": "ON"
       }
     },
-
-    { "name": "debug",           "inherits": "base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug"          } },
-    { "name": "release",         "inherits": "base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release"        } },
-    { "name": "relwithdebinfo",  "inherits": "base", "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" } }
+    {
+      "name": "debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS_DEBUG": "-O0 -g1 -fno-omit-frame-pointer",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "debug-fast",
+      "inherits":"debug",
+      "cacheVariables": {
+        "WITH_TORCH": "OFF",
+        "BUILD_VIEWER_ONLY": "ON"
+      }
+    },
+    {
+      "name": "relwithdebinfo",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    }
   ],
-
   "buildPresets": [
-    { "name": "debug",          "configurePreset": "debug" },
-    { "name": "release",        "configurePreset": "release" },
-    { "name": "relwithdebinfo", "configurePreset": "relwithdebinfo" }
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "debug-fast",
+      "configurePreset": "debug-fast"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "relwithdebinfo",
+      "configurePreset": "relwithdebinfo"
+    }
   ],
-
   "testPresets": [
-    { "name": "debug",          "configurePreset": "debug",          "output": { "outputOnFailure": true } },
-    { "name": "release",        "configurePreset": "release",        "output": { "outputOnFailure": true } },
-    { "name": "relwithdebinfo", "configurePreset": "relwithdebinfo", "output": { "outputOnFailure": true } }
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "relwithdebinfo",
+      "configurePreset": "relwithdebinfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
   ]
 }
-

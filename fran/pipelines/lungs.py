@@ -9,6 +9,7 @@ from fran.data.datasource import Datasource
 from fran.run.analyze_resample import PreprocessingManager
 from fran.managers.data import DataManagerDual
 from fran.configs.parser import ConfigMaker
+from fran.data.datasource import Datasource, DS
 
 
 # %%
@@ -21,7 +22,7 @@ if __name__ == '__main__':
 
     # P._create_plans_table()
     C = ConfigMaker(P,  configuration_filename=None)
-    C.setup(3)
+    C.setup(1)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -37,8 +38,7 @@ if __name__ == '__main__':
 
     
 # P.delete()
-    DS = DS
-    P.add_data([DS.nodes,DS.nodesthick])
+    # P.add_data([DS.nodes,DS.nodesthick])
 # P.add_data([DS.totalseg])
 # %%
 #SECTION:-------------------- DATA FOLDER H5PY file--------------------------------------------------------------------------------------
@@ -183,6 +183,7 @@ if __name__ == '__main__':
 #SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
 # %%
     run_nodes = "LITS-1110"
+    run_name = None
     bs = 10  # is good if LBD with 2 samples per case
     compiled = False
     profiler = False
