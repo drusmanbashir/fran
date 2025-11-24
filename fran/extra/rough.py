@@ -90,15 +90,12 @@ with importlib.resources.files(tl).joinpath("tune.yaml").open("r") as f:
     base  = cfg.get("base")
 
 # %%
-raw = torch.load("raw.pt",weights_only=False)
-rs = torch.load("reszd.pt",weights_only=False)
-asi = torch.load("asint.pt",weights_only=False)
-prr = torch.load("pred.pt",weights_only=False)
-prr = torch.load("fran/pred_base.pt",weights_only=False)
-rs.shape
-asi.shape
-ImageMaskViewer([prr[0],prr[0]])
-prr.shape
+img_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/images/lidc_0011.pt"
+lm_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/lms/lidc_0011.pt"
+img = torch.load(img_fn,weights_only=False)
+lm = torch.load(lm_fn,weights_only=False)
+ImageMaskViewer([img,lm])
+# %%
 # %%
 #SECTION:-------------------- Read and view SITK images--------------------------------------------------------------------------------------
 parent_fldr = Path("/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex050")
