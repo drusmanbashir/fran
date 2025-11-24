@@ -231,6 +231,10 @@ class NiftiResampler(Preprocessor):
             self.extract_image_props(dici["image"][0])
         return  self.results
 
+    @property
+    def indices_subfolder(self):
+        indices_subfolder = self.output_folder / "indices"
+        return indices_subfolder
 
 class ResampleDatasetniftiToTorch(Preprocessor):
     def __init__(
@@ -390,17 +394,6 @@ class ResampleDatasetniftiToTorch(Preprocessor):
 
     @property
     def indices_subfolder(self):
-        # fg_indices_exclude = self.plan.get("fg_indices_exclude")
-        # if fg_indices_exclude is None:
-        #     fg_indices_exclude = []
-        # elif isinstance(fg_indices_exclude, int):
-        #     fg_indices_exclude = [fg_indices_exclude]
-        # if len(fg_indices_exclude) > 0:
-        #     indices_subfolder = "indices_fg_exclude_{}".format(
-        #         "".join([str(x) for x in fg_indices_exclude])
-        #     )
-        # else:
-        #     indices_subfolder = "indices"
         indices_subfolder = self.output_folder / "indices"
         return indices_subfolder
 
