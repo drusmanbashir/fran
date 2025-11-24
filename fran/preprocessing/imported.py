@@ -27,6 +27,22 @@ from fran.preprocessing.labelbounded import (LabelBoundedDataGenerator,
                                              LBDSamplerWorkerImpl)
 from fran.configs.parser import ConfigMaker
 
+
+def resolve_relative_path(pth:str)->str:
+        from fran.utils.common import COMMON_PATHS
+        pth2 = pth.split("/")
+        str_out = ""
+        for sub_path in pth2:
+            if "$" in sub_path:
+                sub_path = sub_path.replace("$","")
+                rel_path = COMMON_PATHS[sub_path]
+                str_out += f"{rel_path}/"
+            else:
+                str_out += f"{sub_path}/"
+        return str_out
+
+
+
 @ray.remote(num_cpus=4)
 class LBDImportedSamplerWorkerImpl(RayWorkerBase):
     def __init__(
@@ -172,7 +188,9 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             output_folder=output_folder,
             crop_to_label=mask_label,
         )
-        imported_folder = plan["imported_folder"]
+        imported_folder = plan.get("imported_folder","")
+        if "$" in imported_folder:
+            imported_folder = resolve_relative_path (imported_folder)
         self.imported_folder = Path(imported_folder)
         self.actor_cls = LBDImportedSamplerWorkerImpl
     def create_data_df(self) -> None:
@@ -297,6 +315,23 @@ if __name__ == "__main__":
 
     C = ConfigMaker(P,  configuration_filename=None)
     C.setup(6)
+
+
+    path = "$cold_storage_folder/predictions/totalseg/LITS-1271"
+    
+    from fran.utils.common import COMMON_PATHS
+
+    pt = path.split("/")
+# %%
+
+# %%
+
+
+
+
+    C = ConfigMaker(project_title=project_title, configuration_filename=None)
+    C.setup(6)
+
 # %%
     C.plans
     conf = C.configs

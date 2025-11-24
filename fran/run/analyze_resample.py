@@ -188,7 +188,6 @@ class PreprocessingManager:
         resampled_data_folder = folder_names_from_plan(self.project, self.plan)[
             "data_folder_source"
         ]
-        # Path(imported_folder)
         self.L = LabelBoundedDataGeneratorImported(
             project=self.project,
             plan=self.plan,
