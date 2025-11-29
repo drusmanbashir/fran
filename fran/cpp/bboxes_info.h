@@ -44,3 +44,5 @@ template <unsigned int Dim>
 CaseBBoxes<Dim> process_file(std::string file_name);
 
 
+template <unsigned int Dim>
+CaseBBoxes<Dim> openFile(std::string file_name);

@@ -69,10 +69,12 @@ class Container(torch.nn.Module):
         for key in my_values:
             setattr(self, key, my_values[key])
 # %%
-fn = "/tmp/pt_tensor.pt"
 fn =   "/r/datasets/preprocessed/lidc2/lbd/spc_080_080_150/lms/lidc2_0021.pt";
+x = torch.randn(1, 3, 128, 128)      # Example tensor
+torch.save(x,fn)
+fn = "/tmp/cpp_tnsr.pt"
 im = torch.load(fn,weights_only=False)
-
+print(type(im))
 imm = torch.Tensor(im)
 torch.save(imm,"/home/ub/code/fran/fran/cpp/files/sample_tensor.pt")
 # %%
@@ -92,6 +94,10 @@ with importlib.resources.files(tl).joinpath("tune.yaml").open("r") as f:
 # %%
 img_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/images/lidc_0011.pt"
 lm_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/lms/lidc_0011.pt"
+
+fn = "/tmp/cpp_tnsr.pt"
+aa = torch.Tensor(img)
+torch.save(aa,fn)
 img = torch.load(img_fn,weights_only=False)
 lm = torch.load(lm_fn,weights_only=False)
 ImageMaskViewer([img,lm])
