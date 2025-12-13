@@ -10,7 +10,7 @@ import itertools as il
 import ipdb
 import torch
 import torch._dynamo as dynamo
-from utilz.helpers import pbar
+from tqdm.auto import tqdm as pbar
 from utilz.string import ast_literal_eval, headline
 
 from fran.managers import Project

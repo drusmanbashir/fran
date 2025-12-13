@@ -2,7 +2,6 @@
 // file: vtk_labelmap_view.cxx
 // -----------------------------------------------------------------------------
 #include "vtk_labelmap_view.h"
-
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkRenderer.h>
 #include <vtkRenderWindow.h>

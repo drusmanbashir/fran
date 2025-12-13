@@ -23,9 +23,13 @@ def short_code(input_str: Union[str,dict,None], length: int = 8) -> str|None:
     elif isinstance(input_str, dict):
         input_str = dict(sorted(input_str.items()))
         input_str = str(input_str)
+
+    elif isinstance(input_str, list):
+        input_str = str(input_str)
+    
     input_str = input_str.replace(" ", "").lower()
-    h = hashlib.sha1(input_str.encode()).hexdigest()
-    return h[:length]
+    ha = hashlib.sha1(input_str.encode()).hexdigest()
+    return ha[:length]
 # --- helpers (order-preserving) ---
 # ---------- helpers ----------
 def _remove_spaces_recursive(obj: Any) -> Any:

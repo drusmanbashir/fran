@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTORCC OFF)
 
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 if(ENABLE_ASAN)
@@ -16,24 +16,33 @@ endif()
 
 # find packages
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package (Xlnt  CONFIG REQUIRED)
 find_package(yaml-cpp REQUIRED)
-
 find_package(pybind11 REQUIRED)
 
 
 #=================================
-file(GLOB_RECURSE PROJECT_SOURCES
-     "${CMAKE_SOURCE_DIR}/src/*.cpp"
-     "${CMAKE_SOURCE_DIR}/src/*.cxx"
-   "${CMAKE_SOURCE_DIR}/src/*.ui"
+
+# file (GLOB_RECURSE PROJECT_HEADERS
+#      "${CMAKE_SOURCE_DIR}/include/*.h")
+
+add_library(fran_cpp STATIC
+src/franproject.cpp
 )
-file (GLOB_RECURSE PROJECT_HEADERS
-     "${CMAKE_SOURCE_DIR}/include/*.h")
+
+target_include_directories(fran_cpp
+PRIVATE
+    ${CMAKE_SOURCE_DIR}/include)
+
+target_link_libraries(fran_cpp pybind11::embed Qt6::Widgets xlnt::xlnt)
 
 add_executable(dashboard
-    ${PROJECT_SOURCES}
-    ${PROJECT_HEADERS}
-    # src/mainwindow.ui
+    src/main.cpp
+    src/mainwindow.cpp
+    src/plansmodel.cpp
+    src/mainwindow.ui
+    include/mainwindow.h
+    include/plansmodel.h
 )
 
 target_include_directories(dashboard
@@ -42,4 +51,4 @@ target_include_directories(dashboard
 
 )
 
-target_link_libraries(dashboard PRIVATE Qt6::Widgets yaml-cpp pybind11::embed)
+target_link_libraries(dashboard PRIVATE Qt6::Widgets yaml-cpp fran_cpp)

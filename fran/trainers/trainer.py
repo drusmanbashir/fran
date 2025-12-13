@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import ipdb
 from fastcore.all import in_ipython
-from label_analysis.merge import pbar
+from tqdm.auto import tqdm as pbar
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.profilers import AdvancedProfiler
 from utilz.string import headline

@@ -6,7 +6,7 @@ import torch, torch._dynamo as dynamo
 import itertools as il
 import torch._dynamo as dynamo
 import ipdb
-from utilz.helpers import pbar
+from tqdm.auto import tqdm as pbar
 from utilz.string import ast_literal_eval
 
 from fran.managers import Project

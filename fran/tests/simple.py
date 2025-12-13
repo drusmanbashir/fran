@@ -1,4 +1,4 @@
-from label_analysis.merge import pbar
+from tqdm.auto import tqdm as pbar
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import ModelCheckpoint
 import shutil

@@ -1,5 +1,6 @@
 # %%
 import torch
+from pathlib import Path
 import os
 import random
 import ipdb
@@ -12,13 +13,13 @@ from utilz.helpers import pp
 from utilz.imageviewers import ImageMaskViewer
 
 from fran.managers.project import Project
+from fran.two.5d.datamanagers import DataManagerDual2
 from fran.utils.common import *
 from fran.configs.parser import ConfigMaker
 
-common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
-COMMON_PATHS = load_yaml(common_vars_filename)
 
 tr = ipdb.set_trace
+# %%
 
 #SECTION: -------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == '__main__':
@@ -27,9 +28,12 @@ if __name__ == '__main__':
     project_title = "litsmc"
     proj_litsmc = Project(project_title=project_title)
 
-    config_litsmc = ConfigMaker(
-        proj_litsmc, raytune=False, configuration_filename=None
-    ).config
+    C= ConfigMaker(
+        proj_litsmc
+    )
+    C.setup(1)
+    conf_litsmc= C.configs
+# %%
 
     project_title = "totalseg"
     proj_tot = Project(project_title=project_title)
@@ -39,23 +43,39 @@ if __name__ == '__main__':
     )
     configuration_filename = None
 
-    config_tot = ConfigMaker(
-        proj_tot, raytune=False, configuration_filename=configuration_filename
-    ).config
+    C2= ConfigMaker(
+        proj_tot
+    )
+    C2.setup(1)
+    conf_tot= C2.configs
 
     global_props = load_dict(proj_tot.global_properties_filename)
 
 # %%
 # SECTION:-------------------- LBD-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    conf_litsmc['plan_train']['patch_size']=[256,256]
     batch_size = 8
     ds_type = "lmdb"
+    # D = DataManagerDual2(
+    #     project_title=proj_litsmc.project_title,
+    #     config=conf_litsmc,
+    #     batch_size=batch_size,
+    #     ds_type=ds_type,
+    # )
+    #
+
+
+    data_fldr= Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_ex070/slices")
     D = DataManagerDual2(
         project_title=proj_litsmc.project_title,
-        config=config_litsmc,
+        config=conf_litsmc,
         batch_size=batch_size,
         ds_type=ds_type,
+        data_folder=data_fldr
     )
 
+    tm = D.train_manager
+    tm.data_folder
     # D.train_manager.plan['patch_size']=[128,128]
     # D.valid_manager.plan['patch_size']
 
@@ -149,8 +169,8 @@ if __name__ == '__main__':
     pp(dici["image"].min())
     pp(dici[0]["image"].shape)
     dici = tm.transforms_dict["Ex"](dici)
-
     pp(dici["lm"].shape)
+
 # %%
     dici = Rtr(dici)
 # %%

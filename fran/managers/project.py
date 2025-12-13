@@ -1,6 +1,5 @@
 # %%
 import sqlite3
-
 from fran.data.dataregistry import DS
 import ipdb
 from batchgenerators.utilities.file_and_folder_operations import List
@@ -19,7 +18,6 @@ import os
 import sys
 from pathlib import Path
 
-from fastcore.basics import store_attr
 from utilz.helpers import *
 from utilz.helpers import DictToAttr, ask_proceed
 
@@ -42,7 +40,6 @@ from utilz.string import info_from_filename, str_to_path
 tr = ipdb.set_trace
 from pathlib import Path
 
-from fran.managers.db import COLUMNS_ALL, DB_PATH
 
 
 def subscript_generator():

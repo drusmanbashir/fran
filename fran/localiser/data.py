@@ -1,6 +1,6 @@
 # %%
 
-from utilz.helpers import pbar
+from tqdm.auto import tqdm as pbar
 import torchvision.io as io
 import torch
 import matplotlib.pyplot as plt

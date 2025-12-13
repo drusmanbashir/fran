@@ -1,6 +1,6 @@
 # %%
 from fran.managers import Project
-from utilz.helpers import pbar
+from tqdm.auto import tqdm as pbar
 from pathlib import Path
 from pytorch_grad_cam import (
     GradCAM,

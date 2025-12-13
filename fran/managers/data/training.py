@@ -5,7 +5,7 @@ from typing import Union
 from fran.managers.db import find_matching_plan
 from monai.data import GridPatchDataset, PatchIterd
 from lightning import LightningDataModule
-from utilz.helpers import pbar, resolve_device
+from tqdm.auto import tqdm as pbar, resolve_device
 from monai.transforms.transform import RandomizableTransform
 from fran.preprocessing.helpers import bbox_bg_only
 from functools import reduce

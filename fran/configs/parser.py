@@ -2,7 +2,7 @@
 import ast
 import sys
 import warnings
-from typing import Union,Any
+from typing import Any, Union
 
 import ipdb
 import numpy as np
@@ -12,7 +12,8 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
 from utilz.string import ast_literal_eval
 
-from fran.utils.folder_names import load_registry, remapping_conv
+from fran.utils.folder_names import (folder_names_from_plan, load_registry,
+                                     remapping_conv)
 from fran.utils.string_works import is_excel_None
 
 MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "totalseg"]
@@ -23,7 +24,7 @@ if not sys.executable == "":  # workaround for slicer as it does not load ray tu
 
 from openpyxl import load_workbook
 from utilz.helpers import *
-
+#HACK: this may bug out later
 REMAPPING_DICT_OR_LIST = {
     "remapping_source": "dict",
     "remapping_lbd": "list",
@@ -32,7 +33,7 @@ REMAPPING_DICT_OR_LIST = {
 }
 
 
-def _to_py(obj)->Any:
+def _to_py(obj) -> Any:
     """Recursively convert numpy scalars to Python scalars and cast 1.0 -> 1."""
     # numpy scalar -> Python scalar
     if isinstance(obj, np.generic):
@@ -73,6 +74,8 @@ def labels_from_remapping(remapping):
                 attr = remapping.replace("TSL.", "").split(",")[1]
                 # use the class-ids list to keep rule: max(dest)+1
                 dest = getattr(TSL, attr)
+            elif isinstance(remapping, dict):
+                dest = list(remapping.values())
                 # return int(max(dest)) + 1
             if 0 not in dest:
                 dest = [0] + dest
@@ -171,7 +174,7 @@ def create_remapping(plan, key, as_list=False, as_dict=False):
     return remapping
 
 
-def parse_excel_dict(dici)->dict:
+def parse_excel_dict(dici) -> dict:
     if not isinstance(dici, dict):
         return _to_py(dici)
 
@@ -203,10 +206,14 @@ def maybe_add_patch_size(plan):
         plan["patch_size"] = make_patch_size(plan["patch_dim0"], plan["patch_dim1"])
     return plan
 
+
 def maybe_add_src_dims(dataset_params):
     if "src_dim0" and "src_dim1" in dataset_params.keys():
-        dataset_params["src_dims"] = make_patch_size(dataset_params["src_dim0"], dataset_params["src_dim1"])
+        dataset_params["src_dims"] = make_patch_size(
+            dataset_params["src_dim0"], dataset_params["src_dim1"]
+        )
     return dataset_params
+
 
 BOOL_ROWS = "patch_based,one_cycles,heavy,deep_supervision,self_attention,fake_tumours,square_in_union,apply_activation"
 
@@ -251,7 +258,8 @@ def get_imagelists_from_config(project, fold, patch_based, dim0, dim1):
 
     return train_list, valid_list
 
-def load_config_from_worksheet(settingsfilename, sheet_name,  engine="pd"):
+
+def load_config_from_worksheet(settingsfilename, sheet_name, engine="pd"):
     """
     Reads a sheet row-by-row
     """
@@ -272,13 +280,14 @@ def load_config_from_worksheet(settingsfilename, sheet_name,  engine="pd"):
         var_type = rr["tune_type"]
         key = rr["var_name"]
         if sheet_name == "transform_factors":
-                val = parse_excel_cell(rr["manual_value"])
-                prob = rr["manual_p"]
-                config.update({key: [val, prob]})
+            val = parse_excel_cell(rr["manual_value"])
+            prob = rr["manual_p"]
+            config.update({key: [val, prob]})
         else:
-                val = parse_excel_cell(rr["manual_value"])
-                config.update({key: parse_excel_cell(val)})
+            val = parse_excel_cell(rr["manual_value"])
+            config.update({key: parse_excel_cell(val)})
     return config
+
 
 class ConfigMaker:
     def __init__(
@@ -298,7 +307,8 @@ class ConfigMaker:
             keep_default_na=False,
             na_values=["TRUE", "FALSE", ""],
         )
-        configs = load_config_from_workbook(configuration_filename )
+        self.plans.insert(0,"plan_id", self.plans.index)
+        configs = load_config_from_workbook(configuration_filename)
         self.configs = parse_excel_dict(configs)
 
     def setup(self, plan_train: int, plan_valid=None):
@@ -416,15 +426,16 @@ class ConfigMaker:
         self.configs[plan_key]["plan_name"] = plan_name
 
         for key, value in REMAPPING_DICT_OR_LIST.items():
-            reg = load_registry()
-            org_val = self.configs[plan_key][key]
+            # reg = load_registry()
+            # org_val = self.configs[plan_key][key]
             # self.configs[plan_key][key+"_code"] = remapping_conv(reg=reg, key="remapping",val=org_val)
-            self.configs[plan_key][key] = create_remapping(
-                plan=self.configs[plan_key],
-                key=key,
-                as_dict=True if value == "dict" else False,
-                as_list=True if value == "list" else False,
-            )
+            if key in self.configs[plan_key].keys():
+                self.configs[plan_key][key] = create_remapping(
+                    plan=self.configs[plan_key],
+                    key=key,
+                    as_dict=True if value == "dict" else False,
+                    as_list=True if value == "list" else False,
+                )
 
     def _set_active_plans(self, plan_train: int = None, plan_valid: int = None):
         # if plan_train == None:
@@ -434,8 +445,50 @@ class ConfigMaker:
         self._set_plan(plan_train, True)
         self._set_plan(plan_valid, False)
 
+    def add_preprocess_status(self):
+        """Add preprocessing status column to plans dataframe"""
+        from fran.cpp.helpers import cases_in_folder
 
-def load_config_from_workbook(settingsfilename )->dict:
+        preprocess = []
+        n_cases = len(self.project)
+
+        for plan_id in self.plans.index:
+            self.setup(plan_id)
+            conf = self.configs
+            plan = conf["plan_train"]
+            folders = folder_names_from_plan(self.project, plan)
+            existing_src_fldr = folders["data_folder_source"]
+            cases_in_src_folder = cases_in_folder(existing_src_fldr)
+            src_fldr_full = n_cases == cases_in_src_folder
+
+            mode = plan.get("mode")
+            if mode == "lbd":
+                existing_final_fldr = folders["data_folder_lbd"]
+            elif mode in ["patch", "pbd"]:
+                existing_final_fldr = folders["data_folder_patch"]
+            elif mode == "whole":
+                existing_final_fldr = folders["data_folder_whole"]
+            else:
+                existing_final_fldr = folders["data_folder_source"]
+            # else:
+            #     raise NotImplementedError(f"Unknown mode: {mode}")
+
+            cases_in_final_folder = cases_in_folder(existing_final_fldr)
+            final_fldr_full = n_cases == cases_in_final_folder
+
+            if all([src_fldr_full, final_fldr_full]):
+                status = "both"
+            elif any([src_fldr_full, final_fldr_full]):
+                status = "one"
+            else:
+                status = "none"
+
+            preprocess.append(status)
+
+        self.plans["preprocessed"] = preprocess
+
+
+def load_config_from_workbook(settingsfilename) -> dict:
     wb = load_workbook(settingsfilename)
     sheets = wb.sheetnames
     configs_dict = {}
@@ -445,9 +498,7 @@ def load_config_from_workbook(settingsfilename )->dict:
             pass
         else:
             # Old behavior for all other sheets
-            configs_dict[sheet] = load_config_from_worksheet(
-                settingsfilename, sheet
-            )
+            configs_dict[sheet] = load_config_from_worksheet(settingsfilename, sheet)
 
     return configs_dict
     # sheets.remove("metadata")
@@ -457,26 +508,6 @@ def load_metadata(settingsfilename):
     df = pd.read_excel(settingsfilename, sheet_name="metadata", index_col=None)
     return df
 
-
-def parse_excel_cell(cell_val):
-    if isinstance(cell_val, (int, float)):
-        return cell_val
-    if isinstance(cell_val, str):
-
-        if any(pattern in cell_val for pattern in ("[", "{", "(")):
-            try:
-                cell_val = ast.literal_eval(cell_val)
-                return cell_val
-            except:
-                return cell_val
-            return
-        else:
-            try:
-                return ast.literal_eval(cell_val)
-            except:
-                return cell_val
-    else:
-        return cell_val
 
 
 def parse_excel_cell(cell_val):
@@ -507,29 +538,51 @@ def parse_neptune_dict(dic: dict):
 # %%
 if __name__ == "__main__":
 
-    # %%
-# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR>
 
     from fran.managers import Project
 
-    P = Project(project_title="lidc")
+    P = Project(project_title="totalseg")
     project = P
 
-    C = ConfigMaker(P,  configuration_filename=None)
+    C = ConfigMaker(P, configuration_filename=None)
 # %%
-    C.setup(3)
-    C.plans
+    C.add_preprocess_status()
 # %%
-
+    C.plans["mode"]
+# %%
+    df = C.plans
+# %%
     conf = C.configs
     pp(conf["dataset_params"])
     pp(conf["plan_train"])
-
-    conf["dataset_params"]["src_dims"] = make_patch_size(conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"])
-    conf["plan_train"]["patch_size"]= make_patch_size(conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"])
 # %%
 
-    # %%
+    plan = C.configs["plan_train"]
+    existing_fldr = folder_names_from_plan(project, plan)["data_folder_source"]
+    img_fldr = existing_fldr / ("images")
+    len(list(img_fldr.glob("*"))) == len(project)
+# %%
+
+    lbd_subfolder = folder_names_from_plan(project, plan)["data_folder_lbd"]
+    lbd_img_fldr = Path(lbd_subfolder) / ("images")
+    len(list(lbd_img_fldr.glob("*")))
+# %%
+    df = C.plans
+    row = df.iloc[0]
+
+    result = C.plans.to_dict("list")
+# %%
+
+    conf["dataset_params"]["src_dims"] = make_patch_size(
+        conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"]
+    )
+    conf["plan_train"]["patch_size"] = make_patch_size(
+        conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"]
+    )
+# %%
+
+# %%
 
     train = True
     plan_num = 3
@@ -544,11 +597,11 @@ if __name__ == "__main__":
     C.configs[plan_key] = plan_selected
     plan = plan_selected.copy()
     pp(plan)
-    # %%
+# %%
     # C.maybe_merge_source_plan(plan_key)
     C.configs[plan_key] = parse_excel_dict(plan_selected)
     pp(C.configs[plan_key])
-    # %%
+# %%
     C.configs[plan_key]["plan_name"] = plan_name
 
     for key in REMAPPING_DICT_OR_LIST:
@@ -560,7 +613,7 @@ if __name__ == "__main__":
         C.configs[plan_key][key] = create_remapping(
             plan=C.configs[plan_key], key=key, as_list=True
         )
-    # %%
+# %%
     settingsfilename = (
         "/home/ub/code/fran/configurations/experiment_configs_totalseg.xlsx"
     )
@@ -576,7 +629,7 @@ if __name__ == "__main__":
 
     else:
         raise NotImplementedError
-    # %%
+# %%
     config = {}
     rr = df.iloc[1]
     for row in df.iterrows():
@@ -608,7 +661,6 @@ if __name__ == "__main__":
                 else:
                     val = parse_excel_cell(rr["tune_value"])
                     if "_" in var_type:
-                        tr()
                         vals = parse_excel_cell(rr["tune_value"])
                         var_type.split("_")
                         tune_fnc = resolve_tune_fnc(var_type)
@@ -635,12 +687,12 @@ if __name__ == "__main__":
                         val_sample = tune_fnc(*val)
                     config.update({key: val_sample})
 
-    # %%
+# %%
 
     labels_from_remapping = compute_out_labels(
         C.configs["plan_train"], C.project.global_properties
     )
-    # %%
+# %%
     as_list = True
     as_dict = False
     remapping = "TSL.lungs,TSL.lungs"

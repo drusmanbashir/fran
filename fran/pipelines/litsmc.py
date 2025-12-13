@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # P.maybe_store_projectwide_properties()
 
 # %%
-    C = ConfigMaker(P,  configuration_filename=None)
+    C = ConfigMaker(P, raytune=False, configuration_filename=None)
     C.setup(7)
     C.plans
     conf = C.configs

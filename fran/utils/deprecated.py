@@ -1,7 +1,7 @@
 # %%
 # NOTE: UTILITY functions to reconcile previous version with new.
 from fran.trainers.base import checkpoint_from_model_id
-from utilz.helpers import pbar
+from tqdm.auto import tqdm as pbar
 
 import itertools as il
 from pathlib import Path

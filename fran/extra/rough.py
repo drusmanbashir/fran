@@ -2,30 +2,33 @@
 import ipdb
 import itk
 from label_analysis.merge import LabelMapGeometry
-tr = ipdb.set_trace
-from label_analysis.helpers import *
 
-import shutil
+tr = ipdb.set_trace
+import importlib.resources
 import re
-from utilz.imageviewers import ImageMaskViewer
-from utilz.helpers import *
-import SimpleITK as sitk
-import torch
+import shutil
+import sys
 from pathlib import Path
+
+import fran
 import matplotlib.pyplot as plt
 import numpy as np
-from torch.nn.modules import CrossEntropyLoss
 import pandas as pd
-from utilz.string import dec_to_str
-import importlib.resources
+import SimpleITK as sitk
+import torch
 import yaml
-import sys
-import fran
+from label_analysis.helpers import *
+from torch.nn.modules import CrossEntropyLoss
+from utilz.helpers import *
+from utilz.imageviewers import ImageMaskViewer
+from utilz.string import dec_to_str
+
 set_autoreload()
 base = os.path.dirname(fran.__file__)
 rel = os.path.join(base,"cpp","build","debug")
 sys.path.append(rel)
 import fran_hello as fh
+
 # %%
 
 img_fn = "/s/xnat_shadow/nodes/lms/nodes_20_20190926_CAP1p5.nii.gz"
@@ -87,6 +90,7 @@ C.save("/home/ub/code/fran/fran/cpp/files/sample.pt")
 # %%
 #SECTION:-------------------- View torch images--------------------------------------------------------------------------------------
 import fran.templates as tl
+
 with importlib.resources.files(tl).joinpath("tune.yaml").open("r") as f:
     cfg = yaml.safe_load(f)
     base  = cfg.get("base")
@@ -159,6 +163,7 @@ fn.GetPixelID()
 # %%
 #SECTION:-------------------- H5 file check--------------------------------------------------------------------------------------
 import h5py
+
 h5fn = "/s/datasets_bkp/litsmall/fg_voxels.h5"
 h5fn = "/s/datasets_bkp/lits_segs_improved/fg_voxels.h5"
 f = h5py.File(h5fn)
@@ -183,14 +188,11 @@ print(lab.max())
 img=img.permute(2,1,0)
 lab=lab.permute(2,1,0)
 ImageMaskViewer([img,lab])
+from pathlib import Path
+
 # %%
 import pandas as pd
 
-from pathlib import Path
-
-
-import pandas as pd
-from pathlib import Path
 
 def replace_key_in_first_column(
     root, 
@@ -240,8 +242,10 @@ def replace_key_in_first_column(
 # %%
 #SECTION:-------------------- REMAPPING_TRAIN --------------------------------------------------------------------------------------
 
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+
 
 def build_plans_sheet_for_file(xlsx_path: Path, plan_prefix="plan", out_sheet="plans"):
     xls = pd.ExcelFile(xlsx_path)
@@ -477,31 +481,26 @@ ce_loss = CrossEntropyLoss()
 output_sample = output_sample.unsqueeze(0)
 lab2 = lab[0].unsqueeze(0)
 loss_ce = ce_loss(output_sample, lab2[:].long())
+import re
 # %%
 import shutil
-from matplotlib import pyplot as plt
-from torch import nn
-
-from gudhi.cubical_complex import CubicalComplex
-import cudf
-import cugraph
-from send2trash import send2trash
-
-from utilz.helpers import find_matching_fn, info_from_filename, pbar, relabel
-import torch
-import SimpleITK as sitk
-import re
 from pathlib import Path
 
-from label_analysis.helpers import get_labels, to_binary
-from utilz.fileio import load_dict, maybe_makedirs
-from utilz.imageviewers import ImageMaskViewer
-
-
-import torch
-import torch.nn as nn
+import cudf
+import cugraph
 import matplotlib.pyplot as plt
 import numpy as np
+import SimpleITK as sitk
+import torch
+import torch.nn as nn
+from gudhi.cubical_complex import CubicalComplex
+from label_analysis.helpers import get_labels, to_binary
+from matplotlib import pyplot as plt
+from send2trash import send2trash
+from torch import nn
+from utilz.fileio import load_dict, maybe_makedirs
+from utilz.helpers import find_matching_fn, info_from_filename, pbar, relabel
+from utilz.imageviewers import ImageMaskViewer
 
 # %%
 fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150/bboxes_info.pkl"
@@ -733,8 +732,8 @@ if __name__ == "__main__":
     # 2. Test cuML Installation
     try:
         print("Testing cuML...")
-        from cuml.linear_model import LinearRegression
         import numpy as np
+        from cuml.linear_model import LinearRegression
 
         # Create some simple data
         X = np.array([[1.0], [2.0], [3.0], [4.0], [5.0]])
@@ -800,4 +799,36 @@ if __name__ == "__main__":
         labels = get_labels(lm)
         if not labels == [1]:
 
-lm = to_binary(lm)
+# %%
+#SECTION:-------------------- Gradients--------------------------------------------------------------------------------------
+        from torch import nn
+        x = torch.tensor([0.0,2], requires_grad=True)
+        y = (x>0.5).float()
+
+
+
+        class HardT(nn.Module):
+            def forward(self,x):
+                return (x>0.5).float()
+# %%
+        class STET(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx,x):
+                return (x>0.5).float()  
+            @staticmethod
+            def backward(ctx,grad_output):
+                return grad_output
+# %%
+        x= torch.tensor([0.4], requires_grad=True)
+        ste_t = STET.apply
+        y_hard =HardT()(x)
+        loss_h = (y_hard - 1)**2
+        loss_h.backward()
+        x.grad
+
+# %%
+        y_ste = ste_t(x)
+        loss_s = (y_ste - 1)**2
+        loss_s.backward()
+        x.grad
+# %%
