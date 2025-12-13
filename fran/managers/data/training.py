@@ -5,7 +5,7 @@ from typing import Union
 from fran.managers.db import find_matching_plan
 from monai.data import GridPatchDataset, PatchIterd
 from lightning import LightningDataModule
-from tqdm.auto import tqdm as pbar, resolve_device
+from tqdm.auto import tqdm as pbar
 from monai.transforms.transform import RandomizableTransform
 from fran.preprocessing.helpers import bbox_bg_only
 from functools import reduce
@@ -47,7 +47,7 @@ from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
 from fran.configs.parser import ConfigMaker, is_excel_None
 from utilz.fileio import load_dict, load_yaml
-from utilz.helpers import find_matching_fn, folder_name_from_list
+from utilz.helpers import find_matching_fn, folder_name_from_list, resolve_device
 from utilz.imageviewers import ImageMaskViewer
 from utilz.string import ast_literal_eval, info_from_filename, strip_extension
 import re

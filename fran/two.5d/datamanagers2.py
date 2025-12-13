@@ -40,6 +40,7 @@ from monai.transforms.utility.dictionary import (
     MapLabelValued,
     ToDeviceD,
 )
+from utilz.helpers import resolve_device
 
 from fran.configs.parser import is_excel_None
 from fran.managers.project import Project
@@ -48,7 +49,8 @@ from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.spatialtransforms import ExtractContiguousSlicesd
 from fran.transforms.misc_transforms import DummyTransform
 from utilz.fileio import load_dict, load_yaml
-from tqdm.auto import tqdm as pbar, resolve_device
+from tqdm.auto import tqdm as pbar
+
 from utilz.string import ast_literal_eval, strip_extension
 
 import os
