@@ -19,8 +19,6 @@ from fran.utils.string_works import is_excel_None
 MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "totalseg"]
 tr = ipdb.set_trace
 
-if not sys.executable == "":  # workaround for slicer as it does not load ray tune
-    from ray import tune
 
 from openpyxl import load_workbook
 from utilz.helpers import *

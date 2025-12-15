@@ -7,16 +7,17 @@ build-backend = "setuptools.build_meta"
 name = "fran"
 description = "FRAN: utilities and pipelines for medical image segmentation and analysis."
 readme = "README.md"
-requires-python = ">=3.9,<3.10"
+requires-python = ">=3.9"
 dynamic = ["version"]
 authors = [{ name = "Usman Bashir" }]
 license = { text = "MIT" }
 
 # Keep the core tiny for Slicer; avoid ITK/SimpleITK/VTK/Qt/torch/monai here.
 dependencies = [
+  "torch==2.9.1+cu128",
   "pandas==2.2.3",
   "networkx==3.2.1",
-  "pydicom>=2.4.4",
+  "pydicom==2.4.4",
   "nibabel==5.2.1",
   "scikit-image==0.21.0",
   "openpyxl==3.1.5",

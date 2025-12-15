@@ -16,7 +16,7 @@ endif()
 # Only build C++ if enabled AND ITK found
 if(FRAN_BUILD_CPP)
     message(STATUS "Building FRAN C++ extensions.")
-    add_subdirectory(fran/cpp)
+    add_subdirectory(fran/cpp/dashboard)
 else()
     message(STATUS "FRAN_BUILD_CPP=OFF → skipping C++ extension build.")
 endif()
