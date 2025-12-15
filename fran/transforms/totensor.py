@@ -6,7 +6,7 @@ from fastcore.basics import GetAttr
 
 import numpy as np
 import SimpleITK as sitk
-from batchgenerators.dataloading.multi_threaded_augmenter import torch
+import torch
 from fasttransform.transform import ItemTransform, Transform, store_attr
 from torch.functional import Tensor
 from fran.transforms.base import KeepBBoxTransform
