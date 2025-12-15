@@ -27,11 +27,17 @@ set_autoreload()
 base = os.path.dirname(fran.__file__)
 rel = os.path.join(base,"cpp","build","debug")
 sys.path.append(rel)
-import fran_hello as fh
 
 # %%
 
 img_fn = "/s/xnat_shadow/nodes/lms/nodes_20_20190926_CAP1p5.nii.gz"
+img_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/lms/lidc_0011.pt"
+img_fn = "/tmp/plain_tensor.pt"
+img = torch.load(img_fn, weights_only=False)
+type(img)
+img.keys()
+img["data"].shape
+img['meta']
 # %%
 # LG = LabelMapGeometry(img_fn)
 # LG.nbrhoods

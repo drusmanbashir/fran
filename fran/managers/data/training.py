@@ -1,4 +1,5 @@
 # %%
+from cc3d import Optional
 from fran.managers.project import Project
 from typing import Union
 
@@ -113,6 +114,7 @@ class DataManagerDual(LightningDataModule):
         save_hyperparameters=True,
         keys_tr = "L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
         keys_val = "L,N,Remap,Ld,E,ResizePC",
+        data_folder: Optional[str | Path] = None,
     ):
         super().__init__()
         self.project = Project(project_title)
@@ -123,6 +125,7 @@ class DataManagerDual(LightningDataModule):
         self.ds_type = ds_type
         self.keys_tr = keys_tr
         self.keys_val = keys_val
+        self.data_folder = data_folder if data_folder is not None else None
         
         if save_hyperparameters:
             self.save_hyperparameters('project_title', 'configs',logger=False) # logger = False otherwise it clashes with UNet Manager
@@ -143,6 +146,7 @@ class DataManagerDual(LightningDataModule):
             device=self.device,
             ds_type=self.ds_type,
             keys=self.keys_tr,
+            data_folder=self.data_folder
         )
         
         self.valid_manager = manager_class_valid(
@@ -154,6 +158,7 @@ class DataManagerDual(LightningDataModule):
             ds_type=None,
             split='valid',
             keys=self.keys_val,
+            data_folder=self.data_folder
         )
         
         self.train_manager.prepare_data()
@@ -231,6 +236,7 @@ class DataManager(LightningDataModule):
         split='train'  ,# Add sp,lit parameter
         save_hyperparameters=False,
         keys=None,
+        data_folder: Optional[str | Path]=None,
 
     ):
 
@@ -252,7 +258,12 @@ class DataManager(LightningDataModule):
         # self.cache_rate = cache_rate
         # self.ds_type = ds_type
         self.set_effective_batch_size()
-        self.data_folder = self.derive_data_folder(mode=self.plan["mode"])
+        if data_folder is None:
+            self.data_folder = self.derive_data_folder(mode=self.plan["mode"])
+        else:
+            self.data_folder = Path(data_folder)
+            assert self.data_folder.is_dir(), f"Dataset folder {self.data_folder} does not exist or is not a directory"
+        # self.data_folder = self.derive_data_folder(mode=self.plan["mode"])
         self.assimilate_tfm_factors(transform_factors)
         # self.keys=keys
         self.set_collate_fn()
@@ -314,7 +325,9 @@ class DataManager(LightningDataModule):
             Ind: MetaToDict - Convert metadata to dictionary format
             Rtr: RandCropByPosNegLabeld (training) - Random crop with positive/negative sampling
             Rva: RandCropByPosNegLabeld (validation) - Random crop for validation
+            Z: RandZWindowd - Random z-slice selection this is for LTSM sequences
             None: Sets self.transforms with composed transforms
+
         """
         # Initialize transforms dictionary and list
         # Parse transform keys
@@ -380,8 +393,8 @@ class DataManager(LightningDataModule):
                 spatial_size=self.plan["patch_size"],
                 mode=["linear", "nearest"],
                 lazy=True,
-            )
 
+            )
         # Continue similarly for the remaining transforms like L, Ld, Ind, Rtr, Rva...
 
         L = LoadImaged(
@@ -393,6 +406,7 @@ class DataManager(LightningDataModule):
         L.register(TorchReader())
 
             # self.transforms_dict["Ld"] = Ld
+
 
         Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
             # self.transforms_dict["Ind"] = Ind
@@ -478,14 +492,19 @@ class DataManager(LightningDataModule):
         self.transforms= self.tfms_from_dict(keys)
 
     def tfms_from_dict(self, keys: str):
-        keys = keys.split(",")
+        keys = keys.replace(" ", "").split(",")
         tfms = []
         for key in keys:
-            tfm = self.transforms_dict[key]
-            if key == "IntensityTfms":
-                tfms.extend(tfm)
-            else:
-                tfms.append(tfm)
+            try:
+                tfm = self.transforms_dict[key]
+                if key == "IntensityTfms":
+                    tfms.extend(tfm)
+                else:
+                    tfms.append(tfm)
+            except KeyError as e:
+                print("All keys are: ", self.transforms_dict.keys())
+                print(f"Transform {key} not found.")
+                raise e
         tfms = Compose(tfms)
         return tfms
 
@@ -565,7 +584,6 @@ class DataManager(LightningDataModule):
 
     def create_dataloader(self):
             self.dl = DataLoader(
-                
                 self.ds,
                 batch_size=self.effective_batch_size,
                 num_workers=self.effective_batch_size * 2,
@@ -721,20 +739,21 @@ class DataManager(LightningDataModule):
         return instance
 
 class DataManagerSource(DataManager):
-    def __init__(
-        self,
-        project,
-        configs: dict,
-        batch_size=8,
-        **kwargs
-    ):
-        super().__init__(
-            project,
-            configs,
-            batch_size,
-            **kwargs
-        )
-
+    # def __init__(
+    #     self,
+    #     project,
+    #     configs: dict,
+    #     batch_size=8,
+    #
+    #
+    # ):
+    #     super().__init__(
+    #         project,
+    #         configs,
+    #         batch_size,
+    #         **kwargs
+    #     )
+    #
     def set_collate_fn(self):
         if self.split=="train":
             self.collate_fn = source_collated
@@ -822,21 +841,6 @@ class DataManagerWhole(DataManagerSource):
         return data
 
 class DataManagerLBD(DataManagerSource):
-    # def derive_data_folder(self, dataset_mode=None):
-    #     assert self.plan["mode"] == "lbd", f"Dataset mode must be 'lbd' for DataManagerLBD, got '{self.plan['mode']}'"
-    #     spacing = ast_literal_eval(self.plan["spacing"])
-    #     parent_folder = self.project.lbd_folder
-    #     folder_suffix = "plan" + str(self.dataset_params[f"plan_{self.split}"])
-    #     data_folder = folder_name_from_list(
-    #         prefix="spc",
-    #         parent_folder=parent_folder,
-    #         values_list=spacing,
-    #         suffix=folder_suffix,
-    #     )
-    #     assert data_folder.exists(), "Dataset folder {} does not exists".format(
-    #         data_folder
-    #     )
-    #     return data_folder
     def __repr__(self):
         return (f"DataManagerLBD(plan={self.plan}, "
                 f"dataset_params={self.dataset_params}, "
@@ -849,12 +853,6 @@ class DataManagerLBD(DataManagerSource):
                     self.dataset_params,
                     self.project.lbd_folder
                 ))
-
-
-    # def prepare_data(self):
-    #     super().prepare_data()
-    #     self.data_train = self.create_data_dicts(self.train_cases[:32])
-    #     self.data_valid = self.create_data_dicts(self.valid_cases[:16])
 
 
 class DataManagerWID(DataManagerLBD):
@@ -1116,14 +1114,14 @@ if __name__ == "__main__":
     CL= ConfigMaker(
         proj_litsmc,  configuration_filename=None
     )
-    CL.setup()
+    CL.setup(1)
     config_litsmc = CL.configs
 
     project_title = "totalseg"
     proj_tot = Project(project_title=project_title)
     proj_nodes = Project(project_title="nodes")
 
-    config_nodes = ConfigMaker(proj_nodes, ).config
+    config_nodes = ConfigMaker(proj_nodes, ).configs
     configuration_filename = (
         "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     )
@@ -1146,11 +1144,11 @@ if __name__ == "__main__":
     config_litsmc["dataset_params"]["mode"] = None
     config_litsmc["dataset_params"]["cache_rate"] = 0
 
-
+    config_litsmc["plan_train"]
 # %%
     D = DataManagerDual(
         project_title=proj_litsmc.project_title,
-        configs=config_tot,
+        configs=config_litsmc,
         batch_size=batch_size,
         ds_type=ds_type
     )

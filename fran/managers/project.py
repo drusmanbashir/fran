@@ -2,7 +2,7 @@
 import sqlite3
 from fran.data.dataregistry import DS
 import ipdb
-from batchgenerators.utilities.file_and_folder_operations import List
+
 from fastcore.basics import listify
 from send2trash import send2trash
 from utilz.string import headline, info_from_filename
@@ -266,7 +266,7 @@ class Project(DictToAttr):
         aa = self.sql_query(ss)
         return True if len(aa) > 0 else False
 
-    def add_data(self, datasources: List, test=False, multiprocess=False):
+    def add_data(self, datasources: list, test=False, multiprocess=False):
         """
         Add multiple datasources to the project database.
 
@@ -584,7 +584,7 @@ class Project(DictToAttr):
         return dicis
 
     # NOTE: Later functions patch repeated case ids (e.g., LBGgenerator) so that there is 49,49a, 49b also lm_fnames have substrings 'label-' etc. Fix databases so that after LBD generates new tables are added. Consider updating case ids for repeat ids perhaps
-    def get_train_val_files(self, fold: int = None, ds: Union[str, List[str]] = None):
+    def get_train_val_files(self, fold: int = None, ds: Union[str, list[str]] = None):
         """
         Retrieves the file paths (img_symlink) for training and validation sets based on the given fold,
         optionally filtering by the provided datasource(s).
@@ -620,7 +620,7 @@ class Project(DictToAttr):
             return train_files
 
     def build_sql_query(
-        self, fold: int, ds: Union[str, List[str]], is_validation: bool
+        self, fold: int, ds: Union[str, list[str]], is_validation: bool
     ) -> str:
         """
         Builds the SQL query for fetching files based on the fold and datasource.
@@ -661,7 +661,7 @@ class Project(DictToAttr):
 
         return query
 
-    def build_ds_condition(self, ds: Union[str, List[str]]) -> str:
+    def build_ds_condition(self, ds: Union[str, list[str]]) -> str:
         """
         Builds the datasource condition for the SQL query.
 
@@ -682,7 +682,7 @@ class Project(DictToAttr):
 
         return "ds IN ({})".format(", ".join("'{}'".format(d) for d in ds_list))
 
-    def fetch_files(self, query: str) -> List[str]:
+    def fetch_files(self, query: str) -> list[str]:
         """
         Executes the SQL query and returns the list of file names.
 
@@ -772,7 +772,7 @@ class Project(DictToAttr):
         input_fldr : Path
             Folder containing imported labels.
         labelsets : list
-            List of imported label sets.
+            list of imported label sets.
         """
         dici = self.global_properties[lm_group]
         dici["imported_folder1"] = str(input_fldr)

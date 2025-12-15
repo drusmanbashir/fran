@@ -1,5 +1,5 @@
 
-# metatensor_to_cpp.py
+#get_metadata.py
 import sys, io
 import torch
 from monai.data import MetaTensor
@@ -84,10 +84,11 @@ if __name__ == "__main__":
         print("Usage: python get_metadata.py <input.pt> <output.pt>")
         sys.exit(1)
 #
-#     convert(sys.argv[1], sys.argv[2])
+    convert(sys.argv[1], sys.argv[2])
 # #
 #
 #     img_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/lms/lidc_0011.pt"
+      # out_fn = "/tmp/tmp.pt"
 # #
 #     obj = torch.load(img_fn, map_location="cpu", weights_only=False)
 # #     t = torch.Tensor(obj)

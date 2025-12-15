@@ -10,15 +10,13 @@ slices (z-1, z, z+1) for both image and label via ExtractContiguousSlicesd.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
 from functools import reduce
 from operator import add
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-import numpy as np
 import torch
-from fastcore.basics import listify, operator, store_attr
+from fastcore.basics import store_attr
 from lightning import LightningDataModule
 from monai.data import DataLoader, Dataset
 from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
@@ -34,7 +32,6 @@ from monai.transforms.intensity.dictionary import (
 )
 from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
-from monai.transforms.transform import RandomizableTransform
 from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
     MapLabelValued,

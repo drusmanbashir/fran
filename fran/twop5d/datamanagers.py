@@ -26,7 +26,7 @@ from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
 from monai.transforms.transform import RandomizableTransform
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 from utilz.fileio import load_dict, load_yaml
-from utilz.helpers import find_matching_fn, folder_name_from_list, pbar
+from utilz.helpers import find_matching_fn, folder_name_from_list
 from utilz.string import (ast_literal_eval, cleanup_fname, info_from_filename,
                           strip_extension)
 
