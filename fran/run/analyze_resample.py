@@ -368,10 +368,10 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title="lidc"
-    args.plan = 1
-    args.num_processes = 8
-    args.overwrite=True
+    # args.project_title="lidc"
+    # args.plan = 1
+    # args.num_processes = 8
+    # args.overwrite=True
     # args.debug=True
     #
 #python  analyze_resample.py -t nodes -p 6 -n 4 -o
@@ -401,19 +401,5 @@ if __name__ == "__main__":
 # # %%
     main(args)
     # sys.exit()
-
-# %%
-
-        resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
-            "data_folder_source"
-        ]
-# %%
-        I.L = LabelBoundedDataGeneratorImported(
-            project=I.project,
-            plan=I.plan,
-            data_folder=resampled_data_folder,
-        )
-# %%
-        I.L.setup(overwrite=overwrite, device=device,num_processes=num_processes)
 
 # %%

@@ -9,8 +9,8 @@ import numpy as np
 import torch
 from fastcore.all import store_attr
 from fastcore.basics import GetAttr
-from utilz.helpers import PrintableDict, pbar
 from utilz.string import info_from_filename
+from tqdm.auto import tqdm as pbar
   
 from fran.data.dataregistry import DS
 

@@ -1,5 +1,6 @@
 ## %%
-
+from fran.data.datasource import Datasource
+from fran.data.dataregistry import DS
 from fran.managers import  Project
 from fran.managers.db import COLUMNS_CRITICAL,  find_matching_plan
 from fran.run.analyze_resample import PreprocessingManager
@@ -132,6 +133,7 @@ if __name__ == '__main__':
     # P.delete()
     DS = DS
     P.add_data([DS.nodes, DS.nodesthick])
+    len(P)
     # P.add_data([DS.totalseg])
 # %%
 # SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR>

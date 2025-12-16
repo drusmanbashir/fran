@@ -131,7 +131,7 @@ class Datasource(GetAttr):
             self.name = name
 
         self.integrity_check()
-        headline("Datasource initialized")
+        headline("Datasource {} initialized".format(self.name))
         self._filter_unprocessed_cases()
 
     def infer_dataset_name(self):
@@ -409,8 +409,8 @@ def db_ops(db_name):
 
 if __name__ == "__main__":
     # %%
-#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
-# %%
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+    # %%
     nodes_fldr = "/s/xnat_shadow/nodes"
     nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
     lits_fldr = "/s/datasets_bkp/lits_segs_improved"
@@ -420,18 +420,21 @@ if __name__ == "__main__":
     ds = Datasource(ln_fldr, "lidc")
     ds = Datasource(litsmall_fldr.folder, "litsmall")
     ds = Datasource(lits_fldr, "lits")
-# %%
+    # %%
 
     import h5py
+
     h5f = ds.h5_fname
     f = h5py.File(h5f, "r")
+    f.keys()
+    f["nodes_110"].attrs.keys()
     prev_processed_cases = list(f.keys())
     len(prev_processed_cases)
     "lits_18" in prev_processed_cases
 
     # ds = Datasource(/s/datasets_bkp/litstmp,"litstmp")
     ds.process()
-# %%
+    # %%
     debug_ = True
     case_tuple = ds.new_cases[0]
     ds.outputs = multiprocess_multiarg(
@@ -440,11 +443,11 @@ if __name__ == "__main__":
         num_processes=num_processes,
         multiprocess=multiprocess,
         debug=debug_,
-        logname="dd.log",
+        logname="dd.log";
         io=True,
     )
-# %%
-# %%
+    # %%
+    # %%
     import h5py
 
     ff = h5py.File(nodes_fn, "r")
@@ -454,6 +457,8 @@ if __name__ == "__main__":
             labs = obj.attrs["labels"]
             labels.extend(tuple(labs))
     labels = set(labels)
+# %%
+
 #
 # %%
 #     labs_list = []

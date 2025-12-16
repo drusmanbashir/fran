@@ -1,5 +1,6 @@
 # %%
 from __future__ import annotations
+
 from torch.serialization import safe_globals
 from monai.data import ImageWriter
 import warnings

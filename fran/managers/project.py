@@ -993,11 +993,14 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
     from fran.configs.parser import ConfigMaker
-    DS = DS
     # P = Project(project_title="nodes")
     # P.create(mnemonic="nodes")
     # P = Project(project_title="totalseg")
     P = Project(project_title="lidc_tmp")
+    P = Project(project_title="nodes")
+    # P.create("nodes")
+    # P.add_data([DS['nodes'], DS.nodesthick])
+    P.delete()
     P.create(mnemonic="lungs")
     P.add_data([DS['lidc']])
 

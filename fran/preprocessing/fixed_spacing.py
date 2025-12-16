@@ -3,6 +3,8 @@ import ipdb
 import ray
 import itertools as il
 
+from utilz.helpers import multiprocess_multiarg
+
 from fran.inference.base import list_to_chunks
 from fran.configs.parser import create_remapping
 from fran.utils.folder_names import folder_names_from_plan
@@ -18,8 +20,8 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  FgBgToIndicesd, ToDeviceD,
                                                  ToDeviced)
 from utilz.fileio import load_dict, maybe_makedirs, save_dict, save_json
-from utilz.helpers import multiprocess_multiarg, pbar
 from utilz.string import strip_extension
+from tqdm.auto import tqdm as pbar
 
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.preprocessor import Preprocessor

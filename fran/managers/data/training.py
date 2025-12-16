@@ -1,7 +1,7 @@
 # %%
-from cc3d import Optional
 from fran.managers.project import Project
-from typing import Union
+
+from typing import Union, Optional
 
 from fran.managers.db import find_matching_plan
 from monai.data import GridPatchDataset, PatchIterd
