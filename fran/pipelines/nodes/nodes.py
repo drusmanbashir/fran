@@ -30,10 +30,10 @@ if __name__ == '__main__':
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
     devices= [1]
-    bs = 4
+    bs = 2
 
     # run_name ='LITS-1285'
-    run_name ='LITS-1230'
+    run_name ='LITS-1290'
     run_name =None
     compiled = True
     profiler = False
@@ -69,7 +69,7 @@ if __name__ == '__main__':
         neptune=neptune,
         tags=tags,
         description=description,
-        lr=1e-3,
+        lr=1e-2,
         override_dm_checkpoint=override_dm
     )
 

@@ -52,11 +52,11 @@ dependencies = [
   "PyYAML>=6.0.2,<7",
   "reportlab>=4.2.5",
   "send2trash",
+  "xnat @ git+https://github.com/drusmanbashir/xnat.git@main",
 ]
 
 [project.optional-dependencies]
 full = [
-  "xnat @ git+https://github.com/drusmanbashir/xnat.git@main",
   "utilz[full]@ git+https://github.com/drusmanbashir/utilz.git@main",
   "label_analysis[full] @ git+https://github.com/drusmanbashir/label_analysis.git@main",
   "grad_cam>=1.5.3",

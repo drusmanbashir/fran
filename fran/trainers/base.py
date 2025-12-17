@@ -4,6 +4,7 @@ import torch
 from pathlib import Path
 from typing import Union
 import ipdb
+from utilz.string import headline
 tr = ipdb.set_trace
 import shutil
 from fran.utils.common import COMMON_PATHS
@@ -62,4 +63,54 @@ def write_normalized_ckpt(ckpt_path: Union[str, Path]) -> Path:
         return out
     return ckpt_path
 
+
+
+def fix_dict_keys(input_dict, old_string, new_string):
+    output_dict = {}
+    for key in input_dict.keys():
+        neo_key = key.replace(old_string, new_string)
+        output_dict[neo_key] = input_dict[key]
+    return output_dict
+
+def switch_state_keys(state_dict)->dict:
+        ckpt_state = state_dict["state_dict"]
+        k1 = list(ckpt_state.keys())[0]
+        k1_splits = k1.split(".")
+        
+        if k1_splits[1]  == "_orig_mod":
+            bad_str = "model._orig_mod"
+            good_str = "model"
+        else:
+            bad_str = "model"
+            good_str = "model._orig_mod"
+        
+        ckpt_state_updated = fix_dict_keys(ckpt_state, bad_str, good_str)
+        state_dict_neo = state_dict.copy()
+        state_dict_neo["state_dict"] = ckpt_state_updated
+
+        headline ( "Switch keys from {} to {}".format(bad_str, good_str) )
+        return state_dict_neo
+
+def switch_ckpt_keys(ckpt_path: Union[str, Path])->None:
+        state_dict = torch.load(ckpt_path)
+        state_dict_neo = switch_state_keys(state_dict)
+
+        ckpt_old = str(ckpt_path).replace(".ckpt", ".ckpt_bkp")
+        shutil.move(ckpt_path, ckpt_old)
+        torch.save(state_dict_neo, ckpt_path)
+        # print(ckpt_state_updated.keys())
+        print ( "Old ckpt saved as: {}".format(ckpt_old) )
+
+
+# %%
+
+if __name__ == '__main__':
+    ckpt_path = "/s/fran_storage/checkpoints/nodes/nodes/LITS-1290/checkpoints/last.ckpt"
+    ckpt_path2 = "/s/fran_storage/checkpoints/nodes/nodes/LITS-1290/checkpoints/last.ckpt_bkp_bkp_bkp"
+    state_dict = torch.load(ckpt_path)
+    ckpt_state = state_dict["state_dict"]
+    k1 = list(ckpt_state.keys())[0]
+    k1_splits = k1.split(".")
+
+    print(k1)
 

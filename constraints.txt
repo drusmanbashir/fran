@@ -656,3 +656,4 @@ wrapt==2.0.1
     # via deprecated
 yarl==1.22.0
     # via aiohttp
+pathlib!=1.0

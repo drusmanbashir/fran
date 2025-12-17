@@ -27,6 +27,8 @@ from utilz.string import info_from_filename
 from fran.preprocessing.datasetanalyzers import (case_analyzer_wrapper,
                                                  import_h5py)
 
+if "XNAT_CONFIG_PATH" in os.environ:
+    from xnat.object_oriented import *
 
 
 # from fran.utils.common import COMMON_PATHS
@@ -70,7 +72,7 @@ class Datasource(GetAttr):
         Extracts dataset name from first image filename
 
     Case attributes:
-    Each case has following:
+    Each caser has following:
                     ds.attrs['spacing'] = list(output['case']['properties']['spacing'])
                     ds.attrs['labels'] = list(output['case']['properties']['labels'])
                     ds.attrs['numel_fg']= output['case']['properties']['numel_fg']
@@ -187,22 +189,7 @@ class Datasource(GetAttr):
         try:
             with h5py.File(self.h5_fname, "r") as h5f:
                 prev_processed_cases = list(h5f.keys())
-                # Populate raw_dataset_properties from existing h5 file
-                self.raw_dataset_properties = []
-                for case_id in prev_processed_cases:
-                    case_data = {
-                        'case_id': case_id,
-                        'properties': {
-                            'spacing': list(h5f[case_id].attrs['spacing']),
-                            'labels': list(h5f[case_id].attrs['labels']),
-                            'numel_fg': h5f[case_id].attrs['numel_fg'],
-                            'mean_fg': h5f[case_id].attrs['mean_fg'],
-                            'min_fg': h5f[case_id].attrs['min_fg'],
-                            'max_fg': h5f[case_id].attrs['max_fg'],
-                            'std_fg': h5f[case_id].attrs['std_fg']
-                        }
-                    }
-                    self.raw_dataset_properties.append(case_data)
+            # prev_processed_cases = set([b['case_id'] for b in self.raw_dataset_properties])
         except FileNotFoundError:
             print(
                 "First time preprocessing dataset. Will create new file: {}".format(
@@ -422,16 +409,14 @@ def db_ops(db_name):
 
 if __name__ == "__main__":
 # %%
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 # %%
     nodes_fldr = "/s/xnat_shadow/nodes"
     nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
     lits_fldr = "/s/datasets_bkp/lits_segs_improved"
     ln_fldr = DS["lidc"]
     litsmall_fldr = DS["litsmall"]
-# %%
     ds = Datasource(nodes_fldr, "nodes")
-    ds.process()
-# %%
     ds = Datasource(ln_fldr, "lidc")
     ds = Datasource(litsmall_fldr.folder, "litsmall")
     ds = Datasource(lits_fldr, "lits")
@@ -449,6 +434,19 @@ if __name__ == "__main__":
 
     # ds = Datasource(/s/datasets_bkp/litstmp,"litstmp")
     ds.process()
+# %%
+    debug_ = True
+    case_tuple = ds.new_cases[0]
+    ds.outputs = multiprocess_multiarg(
+        func=case_analyzer_wrapper,
+        arguments=args_list,
+        num_processes=num_processes,
+        multiprocess=multiprocess,
+        debug=debug_,
+        logname="dd.log",
+        io=True,
+    )
+# %%
 # %%
     import h5py
 

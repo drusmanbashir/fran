@@ -24,8 +24,8 @@ from utilz.helpers import DictToAttr, ask_proceed
 sys.path += ["/home/ub/Dropbox/code"]
 from utilz.fileio import *
 
-if "XNAT_CONFIG_PATH" in os.environ:
-    from xnat.object_oriented import *
+# if "XNAT_CONFIG_PATH" in os.environ:
+#     from xnat.object_oriented import *
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]+"/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 import shutil
@@ -998,9 +998,10 @@ if __name__ == "__main__":
     # P = Project(project_title="totalseg")
     P = Project(project_title="lidc_tmp")
     P = Project(project_title="nodes")
+    P.maybe_store_projectwide_properties()
     # P.create("nodes")
     # P.add_data([DS['nodes'], DS.nodesthick])
-    P.delete()
+    # P.delete()
     P.create(mnemonic="lungs")
     P.add_data([DS['lidc']])
 

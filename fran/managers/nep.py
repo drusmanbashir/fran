@@ -26,6 +26,38 @@ from utilz.helpers import *
 from lightning.pytorch.loggers.neptune import NeptuneLogger
 
 
+from pathlib import Path
+
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+
+def _to_plain(x):
+    if x is None or isinstance(x, (bool, int, float, str)):
+        return x
+
+    if np is not None and isinstance(x, np.generic):
+        return x.item()
+
+    if isinstance(x, Path):
+        return str(x)
+
+    if isinstance(x, tuple):
+        return [_to_plain(v) for v in x]
+
+    if isinstance(x, list):
+        return [_to_plain(v) for v in x]
+
+    if isinstance(x, set):
+        return [_to_plain(v) for v in sorted(x, key=lambda z: str(z))]
+
+    if isinstance(x, dict):
+        return {str(k): _to_plain(v) for k, v in x.items()}
+
+    return str(x)
+
 def get_neptune_checkpoint(project, run_id):
     nl = NeptuneManager(
         project=project,
@@ -106,6 +138,14 @@ class NeptuneManager(NeptuneLogger):
             prefix=prefix,
             **neptune_run_kwargs
         )
+
+    def log_hyperparams(self, params):
+        # called by Lightning in _log_hyperparams(self)
+        try:
+            key = self._construct_path_with_prefix(self.PARAMETERS_KEY)  # usually "training/parameters"
+            self.run[key] = _to_plain(params)
+        except Exception as e:
+            print(f"[Neptune] log_hyperparams skipped: {e}")
 
     @property
     def nep_run(self):
