@@ -1,24 +1,20 @@
 # %%
-import sys
 import argparse
 import ast
 import shutil
 
-from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.string import headline
 
 from fran.managers import Project
 
-from fran.data.dataregistry import DS
-from fran.managers.db import  find_matching_plan
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-from fran.preprocessing.patch import PatchDataGenerator, PatchGenerator
+from fran.preprocessing.patch import PatchDataGenerator
 from fran.configs.parser import ConfigMaker
 from fran.utils.folder_names import folder_names_from_plan
 
@@ -368,37 +364,15 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title="lidc"
-    # args.plan = 1
-    # args.num_processes = 8
-    # args.overwrite=True
-    # args.debug=True
+    args.project_title="nodes"
+    args.plan = 2
+    args.num_processes = 1
+    args.overwrite=False
+    args.debug=True
     #
-#python  analyze_resample.py -t nodes -p 6 -n 4 -o
-
 
 # %%
-#     resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
-#         "data_folder_source"
-#     ]
-#     
-#     headline(
-#         "LBD dataset will be based on resampled dataset output_folder {}".format(
-#             resampled_data_folder
-#         )
-#     )
-#     I.L = LabelBoundedDataGenerator(
-#         project=I.project,
-#         plan=I.plan,
-#         data_folder=resampled_data_folder,
-#     )
-# # %%
-#     overwrite=False
-#     num_processes=4
-#     device="cpu"
-#     I.L.setup(overwrite=overwrite, device=device, num_processes=num_processes)
-#     I.L.process()
-# # %%
+
     main(args)
     # sys.exit()
 

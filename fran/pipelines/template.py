@@ -23,15 +23,15 @@ if __name__ == '__main__':
     from fran.utils.common import *
     
     P = Project("litstmp")
-    P.create(mnemonic="litsmall")
+    # P.create(mnemonic="litsmall")
 
-    P.add_data([DS['litsmall']])
-    P.set_labels_all()
-    P.maybe_store_projectwide_properties(overwrite=True)
+    # P.add_data([DS['litsmall']])
+    # P.set_labels_all()
+    # P.maybe_store_projectwide_properties(overwrite=True)
 # %%
 
     C = ConfigMaker(P,  configuration_filename=None)
-    C.setup(7)
+    C.setup(1)
     C.plans
 # %%
     conf = C.configs
@@ -138,10 +138,9 @@ if __name__ == '__main__':
     args = parser.parse_known_args()[0]
 
     # args.num_processes = 1
-    args.debug = True
-    args.plan_num = 11
+    args.debug = False
 # %%
-    args.plan = plan
+    args.plan = 11
     args.project_title = "litstmp"
 
     plan = conf["plan10"]

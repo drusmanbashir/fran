@@ -30,11 +30,11 @@ if __name__ == '__main__':
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
     devices= [1]
-    bs = 2
+    bs = 4
 
     # run_name ='LITS-1285'
-    run_name ='LITS-1290'
     run_name =None
+    run_name ='LITS-1288'
     compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -56,8 +56,8 @@ if __name__ == '__main__':
 
 # %%
     Tm = Trainer(P.project_title, conf, run_name)
-    Tm.configs
-    Tm.configs['dataset_params']['fold']=4
+    # Tm.configs
+    Tm.configs['dataset_params']['fold']
 # %%
     Tm.setup(
         compiled=compiled,
@@ -74,7 +74,9 @@ if __name__ == '__main__':
     )
 
 # %%
-    Tm.D.configs = Tm.configs.copy()
+    Tm.configs['plan_train']['mode']
+    Tm.configs['dataset_params']['fold']
+    # Tm.D.configs = Tm.configs.copy()
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()

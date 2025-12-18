@@ -293,7 +293,7 @@ class Preprocessor(GetAttr):
 
 if __name__ == "__main__":
     bboxes_fldr = Path(
-        "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150"
+        "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex000"
     )
     lms = bboxes_fldr / "lms"
     generate_bboxes_from_lms_folder(lms, debug=False)

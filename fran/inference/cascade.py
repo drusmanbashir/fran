@@ -81,13 +81,14 @@ def validate_bbox(box):
 
 # usage
 class WholeImageInferer(BaseInferer):
-    def __init__(self, run_name, devices=[1], save_channels=True, save=True, **kwargs):
+    def __init__(self, run_name, project_title=None, devices=[1], save_channels=True, save=True, **kwargs):
         """
         Resizes image directly to patch_size and applies inference, one model run per image.
         """
 
         super().__init__(
             run_name=run_name,
+            project_title=project_title,
             devices=devices,
             save_channels=save_channels,
             save=save,
@@ -126,6 +127,7 @@ class PatchInferer(BaseInferer):
     def __init__(
         self,
         run_name,
+        project_title=None,
         patch_overlap=0.25,
         bs=1,
         grid_mode="gaussian",
@@ -139,6 +141,7 @@ class PatchInferer(BaseInferer):
     ):
         super().__init__(
             run_name=run_name,
+            project_title=project_title,
             devices=devices,
             save_channels=save_channels,
             save=save,
@@ -146,6 +149,7 @@ class PatchInferer(BaseInferer):
             params=params,
             debug=debug,
             **kwargs,
+        )
         )
 
     def check_plan_compatibility(self):
@@ -170,15 +174,13 @@ class PatchInferer(BaseInferer):
             self.postprocess_tfms_keys+=",Sav"
 
 
-
-
-
 class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
     def __init__(
         self,
         run_w,
         run_p,
         localiser_labels: list[str],  # these labels will be used to create bbox
+        project_title=None,
         devices=[0],
         safe_mode=False,
         profile=None,
@@ -188,6 +190,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         k_largest=None,  # assign a number if there are organs involved
         debug=False,
     ):
+
         """
         Creates a single dataset (cascade dataset) which normalises images once for both patches and whole images. Hence, the model should be developed from the same dataset std, mean values.
         """
@@ -198,11 +201,10 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             "all",
         ], "Choose one of None , 'dataloading', 'prediction', 'all'"
 
-        self.device= parse_devices(devices)
-        self.params = load_params(run_p)
-        # CODE:  change params to a different name more aligned and found else where in library
+        
         self.P = PatchInferer(
             run_name=run_p,
+            project_title=project_title,
             devices=devices,
             save_channels=save_channels,
             safe_mode=safe_mode,
@@ -424,8 +426,12 @@ if __name__ == "__main__":
     imgs_react = list(react_fldr.glob("*"))
     imgs_crc = list(fldr_crc.glob("*"))
     nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
+    nodesthick_imgs = list(nodesthick_fldr.glob("*"))
+
     nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
-    nodes = list(nodes_fldr.glob("*"))
+    nodes_fldr_training = Path("/s/xnat_shadow/nodes/images")
+    nodes_imgs = list(nodes_fldr.glob("*"))
+    nodes_imgs_training = list(nodes_fldr_training.glob("*"))
     capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
     capestart = list(capestart_fldr.glob("*"))
 
@@ -481,7 +487,6 @@ if __name__ == "__main__":
         run_nodes,
         save_channels=save_channels,
         devices=devices,
-        
         localiser_labels=localiser_labels,
         save_localiser=save_localiser,
         safe_mode=safe_mode,
@@ -497,19 +502,18 @@ if __name__ == "__main__":
 
 # SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
-    debug_=True
-    safe_mode = False
+    debug_=False
+    safe_mode = True
     run_tot = ["LITS-1088"]
+
     W = WholeImageInferer(
         run_tot[0], safe_mode=safe_mode, k_largest=None, save_channels=False,debug=debug_
     )
 # %%
 
+    nodes_imgs  = nodes_imgs_training
     # preds = W.run(imgs_crc, chunksize=6)
-    nodesthick_imgs = list(nodesthick_fldr.glob("*"))
-    nodes_imgs = list(nodes_fldr.glob("*"))
-    nodes_imgs=nodes_imgs[:3]
-    preds = W.run(nodes_imgs, chunksize=1, overwrite=True)
+    preds = W.run(nodes_imgs, chunksize=2, overwrite=False)
 # %%
 
     dl = W.pred_dl
@@ -529,6 +533,7 @@ if __name__ == "__main__":
     En = CascadeInferer(
         run_w,
         run_totalseg,
+        project_title="totalseg",
         save_channels=save_channels,
         devices=devices,
         localiser_labels=localiser_labels,

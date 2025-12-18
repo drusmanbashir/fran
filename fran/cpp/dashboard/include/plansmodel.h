@@ -1,5 +1,7 @@
+#pragma once
 #include "franproject.h"
 #include <QAbstractTableModel>
+#include <QStyledItemDelegate>
 #include <iostream>
 
 class PlansModel : public QAbstractTableModel {
@@ -23,7 +25,6 @@ public:
     m_preprocessed = m_plans["preprocessed"];
   }
 
-
   int columnCount(const QModelIndex &) const override;
   int rowCount(const QModelIndex &) const override;
   QVariant data(const QModelIndex &index, int role) const override;
@@ -34,4 +35,28 @@ public:
 private:
   const PlansDF &m_plans;
   std::vector<std::string> m_preprocessed;
+};
+
+
+
+
+class AnalyzeButtonDelegate : public QStyledItemDelegate {
+  Q_OBJECT
+public:
+  explicit AnalyzeButtonDelegate(QObject *parent = nullptr,
+                                 const int num_columns = 0);
+
+signals:
+  void clickedRow(const int row);
+  void clicked(const QModelIndex &index);
+
+protected:
+  void paint(QPainter *painter, const QStyleOptionViewItem &option,
+             const QModelIndex &index) const override;
+  bool editorEvent(QEvent *event, QAbstractItemModel *model,
+                   const QStyleOptionViewItem &option,
+                   const QModelIndex &index) override;
+
+private:
+  int m_columns;
 };

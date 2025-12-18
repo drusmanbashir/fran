@@ -189,6 +189,7 @@ class BaseInferer(GetAttr, DictToAttr):
     def __init__(
         self,
         run_name,
+        project_title=None,
         ckpt=None,
         state_dict=None,
         params=None,
@@ -228,8 +229,12 @@ class BaseInferer(GetAttr, DictToAttr):
         self.plan = fix_ast(self.params["configs"]["plan_train"], ["spacing"])
         self.check_plan_compatibility()
         self.dataset_params = self.params["configs"]["dataset_params"]
-        self.project = infer_project(self.params)
-
+        
+        if project_title is not None:
+            from fran.managers import Project
+            self.project = Project(project_title=project_title)
+        else:
+            self.project = infer_project(self.params)
         sw_device = "cuda"
         if safe_mode == True:
             print(
@@ -598,7 +603,9 @@ if __name__ == "__main__":
     fldr_lidc = DS["lidc"].folder / ("images")
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
+    fldr_nodes2= Path("/s/xnat_shadow/nodes/images")
     img_nodes = list(fldr_nodes.glob("*"))
+    img_nodes2 = list(fldr_nodes2.glob("*"))
     fldr_litsmc = (
         Path(D["litq"].folder),
         Path(D["drli"].folder),
@@ -640,17 +647,19 @@ if __name__ == "__main__":
 # SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     save_channels = False
-    bs = 4
-    overwrite = True
+    overwrite = False
 
     devices = [1]
 
+# %%
     run = run_tot[0]
+    run = run_whole_image[0]
+    debug_ = False
+    safe_mode = False
+# %%
     run = run_tot_big[0]
     debug_ = False
-    debug_ = True
     safe_mode = True
-    safe_mode = False
 
 # %%
 
@@ -667,7 +676,8 @@ if __name__ == "__main__":
     preds = T.run(imgs_lidc, chunksize=2, overwrite=overwrite)
 # %%
     preds = T.run(img_nodes, chunksize=2, overwrite=overwrite)
-    preds = T.run(img_nodes, chunksize=2, overwrite=overwrite)
+    preds = T.run(img_nodes2, chunksize=2, overwrite=overwrite)
+# %%
     print(getattr(T.N, "_torchdynamo_inline", None))
     case_id = "crc_CRC089"
     imgs_crc = [fn for fn in imgs_crc if case_id in fn.name]

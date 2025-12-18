@@ -8,9 +8,8 @@
 *np
 *npy
 *~lock*
-*/cpp/.cache/*
+**/*.cache*
 .idea/
-
 .ipynb_checkpoints/
 .neptune/
 .*rope*

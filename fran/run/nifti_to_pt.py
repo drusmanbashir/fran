@@ -29,7 +29,8 @@ if __name__ == '__main__':
     fixed_fldr ="/s/xnat_shadow/crc/sampling/tensors/fixed_spacing/"
     lbd_fldr ="/s/xnat_shadow/crc/sampling/tensors/lbd"
     fn_results = "/s/fran_storage/predictions/litsmc/LITS-933_fixed_mc/results/summary_LITS-933.xlsx"
-    df_res = pd.read_excel(fn_results)
+    fn = "/home/ub/code/fran/configurations/experiment_configs_liver.xlsx"
+    df_res = pd.read_excel(fn)
     overwrite=False
 # %%
 #SECTION:-------------------- ResampleDatasetniftiToTorch--------------------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 #include "franproject.h"
 #include <filesystem>
 #include <iostream>
+#include <pybind11/pytypes.h>
 #include <xlnt/xlnt.hpp>
 
 namespace fs = std::filesystem;
@@ -23,6 +24,7 @@ FranProject::FranProject() {
   sys.attr("path").attr("insert")(0, fran_dir.string());
   std::cout << fran_dir.string() << std::endl;
   m_proj_mod = py::module_::import("fran.managers.project");
+  m_analyze_resample = py::module_::import("fran.run.analyze_resample");
 }
 
 void FranProject::loadProject(std::string project_name, std::string mnemonic) {
@@ -94,6 +96,7 @@ bool PlansDF::has_column(const std::string &name) const {
 }
 
 size_t PlansDF::rowCount() const {
+
   py::gil_scoped_acquire gil;
   py::tuple shape = m_plans_py.attr("shape").cast<py::tuple>();
   return shape[0].cast<size_t>();
@@ -103,4 +106,26 @@ size_t PlansDF::columnCount() const {
   py::gil_scoped_acquire gil;
   py::tuple shape = m_plans_py.attr("shape").cast<py::tuple>();
   return shape[1].cast<size_t>();
+}
+
+py::object PlansDF::operator()(size_t i, std::string colname) const {
+  py::gil_scoped_acquire gil;
+  py::object column = m_plans_py.attr("__getitem__")(colname.c_str());
+  py::object item = column.attr("iloc")[py::int_(i)];
+  return item;
+}
+
+py::object PlansDF::operator()(size_t i, size_t j) const {
+  return m_plans_py.attr("iloc")[py::make_tuple(i, j)];
+}
+
+void FranProject::run_analyze_resample(int plan_id, int n_procs,
+                                       bool overwrite) {
+  py::gil_scoped_acquire gil;
+  py::module_ argparse = py::module_::import("argparse");
+  py::object js = argparse.attr("Namespace")(
+      py::arg("project_title") = m_project_title, py::arg("plan") = plan_id,
+      py::arg("num_processes") = n_procs, py::arg("overwrite") = overwrite);
+
+  m_analyze_resample.attr("main")(js);
 }

@@ -1,20 +1,19 @@
 # %%
-import pandas as pd
 import itertools as il
 from pathlib import Path
 
-import ray
 import pandas as pd
+import ray
 from fastcore.basics import GetAttr, store_attr
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
 from utilz.string import headline, info_from_filename
 
+from fran.configs.parser import ConfigMaker, is_excel_None
 from fran.preprocessing.preprocessor import (Preprocessor,
                                              generate_bboxes_from_lms_folder)
 from fran.preprocessing.rayworker_base import RayWorkerBase
-from fran.configs.parser import (ConfigMaker, is_excel_None)
 from fran.utils.folder_names import folder_names_from_plan
 
 MIN_SIZE = 32  # min size in a single dimension of any image
@@ -22,7 +21,6 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 # plain, testable class (NOT a Ray actor)
 
 import pandas as pd
-
 
 
 @ray.remote(num_cpus=1)
@@ -36,7 +34,7 @@ class LBDSamplerWorkerImpl(RayWorkerBase):
         output_folder,
         crop_to_label=None,
         device="cpu",
-        tfms_keys  = "LT,E,D,C,R,Ind",
+        tfms_keys="LT,E,D,C,R,Ind",
     ):
         super().__init__(
             project=project,
@@ -45,11 +43,10 @@ class LBDSamplerWorkerImpl(RayWorkerBase):
             output_folder=output_folder,
             crop_to_label=crop_to_label,
             device=device,
-            tfms_keys=tfms_keys
+            tfms_keys=tfms_keys,
         )
 
-
-    def _create_data_dict(self,row):
+    def _create_data_dict(self, row):
 
         data = {
             "image": row["image"],
@@ -57,7 +54,6 @@ class LBDSamplerWorkerImpl(RayWorkerBase):
             "remapping": row["remapping"],
         }
         return data
-
 
     @property
     def indices_subfolder(self):
@@ -74,6 +70,7 @@ class LBDSamplerWorkerImpl(RayWorkerBase):
             indices_subfolder = "indices"
         indices_subfolder = self.output_folder / indices_subfolder
         return indices_subfolder
+
     #     super().__init__(
     #         project=project,
     #         plan=plan,
@@ -197,13 +194,14 @@ class LBDSamplerWorkerImpl(RayWorkerBase):
     #         try:
     #             outs.append(self._process_row(row))
     #         except Exception as e:
-    #             
+    #
     #             img_fn = row.get("image")
     #             print(f"[{self.__class__.__name__}] error: {img_fn}: {e}")
     #             outs.append({"case_id": row.get("case_id"), "ok": False, "err": str(e)})
     #     return outs
     #
     #
+
 
 class LabelBoundedDataGenerator(Preprocessor, GetAttr):
     # CODE: Preprocessor and downstream classes need thorough review and re-writing. E.g., where does expand_by go, in preprocessor or labelboudned?
@@ -258,9 +256,8 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             mask_label: Specific label value to use for cropping. If None, uses all labels >0
         """
 
-        existing_fldr = folder_names_from_plan(project, plan).get("data_folder_lbd"
-        )
-        existing_fldr=Path(existing_fldr)
+        existing_fldr = folder_names_from_plan(project, plan).get("data_folder_lbd")
+        existing_fldr = Path(existing_fldr)
         if existing_fldr.exists():
             headline(
                 "Plan folder already exists: {}.\nWill use existing folder to add data".format(
@@ -292,7 +289,9 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
     def set_input_output_folders(self, data_folder, output_folder):
         self.data_folder = Path(data_folder)
         if output_folder is None:
-            lbd_subfolder = folder_names_from_plan(self.project,self.plan)["data_folder_lbd"]
+            lbd_subfolder = folder_names_from_plan(self.project, self.plan)[
+                "data_folder_lbd"
+            ]
             self.output_folder = self.project.lbd_folder / (lbd_subfolder)
         else:
             self.output_folder = Path(output_folder)
@@ -368,8 +367,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 device=device,
             )
             self.actors = [
-                self.actor_cls.remote(**actor_kwargs)
-                for _ in range(self.n_actors)
+                self.actor_cls.remote(**actor_kwargs) for _ in range(self.n_actors)
             ]
             # self.mini_dfs = list_to_chunks(self.df, num_processes)
 
@@ -509,6 +507,7 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
         if not overwrite:
             self.remove_completed_cases()
 
+        print("Cases remaining to process: ", len(self.df))
         # Setup file lists and transforms
         if len(self.df) > 0:
             self.image_files = sorted(self.data_folder.glob("images/*.pt"))
@@ -523,7 +522,7 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
 
 if __name__ == "__main__":
 # %%
-#SECTION:-------------------- setup--------------------------------------------------------------------------------------
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
 
     from fran.managers import Project
     from fran.utils.common import *
@@ -533,7 +532,7 @@ if __name__ == "__main__":
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
-    C = ConfigMaker(P,  configuration_filename=None)
+    C = ConfigMaker(P, configuration_filename=None)
     C.setup(1)
     C.plans
     conf = C.configs
@@ -546,11 +545,11 @@ if __name__ == "__main__":
     existing_fldr = folder_names_from_plan(P, plan).get("data_folder_lbd", None)
 # %%
 
-    num_processes=4
+    num_processes = 4
     L = LabelBoundedDataGenerator(
         project=P,
         plan=plan,
-        data_folder="/r/datasets/preprocessed/litsmc/fixed_spacing/spc_100_100_100"
+        data_folder="/r/datasets/preprocessed/litsmc/fixed_spacing/spc_100_100_100",
     )
 
     L.setup(overwrite=False, device="cpu", num_processes=num_processes)
@@ -561,8 +560,13 @@ if __name__ == "__main__":
     mini_df = L.mini_dfs[0].iloc[:3]
 # %%
     overwrite = False
-    LL = LBDSamplerWorkerImpl(project=L.project, plan=L.plan, data_folder=L.data_folder, output_folder=L.output_folder)
-    LL.process(mini_df )
+    LL = LBDSamplerWorkerImpl(
+        project=L.project,
+        plan=L.plan,
+        data_folder=L.data_folder,
+        output_folder=L.output_folder,
+    )
+    LL.process(mini_df)
 # %%
 # %%
     row = mini_df.iloc[1]
@@ -572,7 +576,7 @@ if __name__ == "__main__":
         "remapping": row["remapping"],
     }
 # %%
-    data['image']
+    data["image"]
 
     # Apply transforms
     data = LL.transforms(data)
@@ -606,7 +610,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     # for img_file, lm_file in zip(I.L.image_files, I.L.lm_files):
     row = L.df.iloc[0]
@@ -658,7 +662,6 @@ if __name__ == "__main__":
         remap = I.L.plan["remapping"]
         I.L.df = I.L.df.assign(remapping=[remap] * len(I.L.df))
 
-
 # %%
     L.results_df = pd.DataFrame(il.chain.from_iterable(L.results))
 # %%
@@ -680,17 +683,21 @@ if __name__ == "__main__":
             "since some files skipped, dataset stats are not being stored. run L.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
         )
 # %%
-    add_plan_to_db(L.project,
-        L.plan, db_path=L.project.db, data_folder_lbd=L.output_folder
+    add_plan_to_db(
+        L.project, L.plan, db_path=L.project.db, data_folder_lbd=L.output_folder
     )
 
 # %%
 
-    add_plan_to_db(L.project,
-            I.L.plan, db_path=I.L.project.db, data_folder_lbd=I.L.output_folder
-        )
+    add_plan_to_db(
+        L.project, I.L.plan, db_path=I.L.project.db, data_folder_lbd=I.L.output_folder
+    )
 # %%
-    add_plan_to_db(L.project,
-        L.plan, db_path=L.project.db, data_folder_source=L.data_folder,data_folder_lbd=L.output_folder
+    add_plan_to_db(
+        L.project,
+        L.plan,
+        db_path=L.project.db,
+        data_folder_source=L.data_folder,
+        data_folder_lbd=L.output_folder,
     )
 # %%

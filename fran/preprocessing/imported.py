@@ -3,9 +3,7 @@ import ipdb
 import numpy as np
 import ray
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
-from utilz.imageviewers import ImageMaskViewer
 
-from fran.preprocessing.preprocessor import generate_bboxes_from_lms_folder
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import BBoxFromPTd
@@ -18,14 +16,10 @@ tr = ipdb.set_trace
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-from fastcore.all import store_attr
-from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.helpers import find_matching_fn
 from tqdm.auto import tqdm as pbar
-from utilz.string import info_from_filename
 
-from fran.preprocessing.labelbounded import (LabelBoundedDataGenerator,
-                                             LBDSamplerWorkerImpl)
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.configs.parser import ConfigMaker
 
 
@@ -244,7 +238,11 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
                 matched_files.append(matching)
             except Exception as e:
                 print(f"Warning: No match found for {fn.name}: {e}")
-                unmatched_images.append((self.df.image.name, "unknown"))
+                unmatched_images.append(fn)
+        if len(matched_files) != len(self.df):
+            raise ValueError(
+                f"Failed to match all case_ids with imported files: {unmatched_images}"
+            )
 
         self.df["lm_imported"] = matched_files
         self.df["remapping_imported"] = [self.plan["remapping_imported"]] * len(self.df)
@@ -333,26 +331,10 @@ if __name__ == "__main__":
     # spacing = [1.5, 1.5, 1.5]
 
     C = ConfigMaker(P,  configuration_filename=None)
-    C.setup(6)
-
-
-    path = "$cold_storage_folder/predictions/totalseg/LITS-1271"
-    
-    from fran.utils.common import COMMON_PATHS
-
-    pt = path.split("/")
-# %%
+    C.setup(2)
 
 # %%
 
-
-
-
-    C = ConfigMaker(project_title=project_title, configuration_filename=None)
-    C.setup(6)
-
-# %%
-    C.plans
     conf = C.configs
     print(conf["model_params"])
 
@@ -384,13 +366,14 @@ if __name__ == "__main__":
     mini_df = L.mini_dfs[0]
     # mini_df = mini_df.iloc[:3]
 # %%
-    LL = LBDImportedSamplerWorkerImpl(project=L.project, plan=L.plan, data_folder=L.data_folder, output_folder=L.output_folder)
+    LL = LBDImportedSamplerWorkerImpl.remote(project=L.project, plan=L.plan, data_folder=L.data_folder, output_folder=L.output_folder)
     outs = LL.process(mini_df )
 # %%
     row=mini_df.iloc[0]
     dici = {"A": 12}
     dici.update({"A": 13, "B":15})
 
+# %%
     data = {
             "image": row["image"],
             "lm": row["lm"],
@@ -401,7 +384,7 @@ if __name__ == "__main__":
 
 # %%
         # Apply transforms
-    # data = LL.transforms(data)
+    data = LL.transforms(data)
     data2 = LL.transforms_dict["R"](data)
     data2  = LL.transforms_dict["LS"](data2)
     data2  = LL.transforms_dict["LT"](data2)

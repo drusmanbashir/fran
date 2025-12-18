@@ -541,7 +541,7 @@ if __name__ == "__main__":
     from fran.managers import Project
 
     P = Project(project_title="totalseg")
-    project = P
+    project = k
 
     C = ConfigMaker(P, configuration_filename=None)
 # %%
