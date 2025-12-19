@@ -352,7 +352,7 @@ if __name__ == "__main__":
     )
 
 # %%
-    overwrite=True
+    overwrite=False
     L.setup(overwrite=overwrite)
 
     L.process()
@@ -394,4 +394,12 @@ if __name__ == "__main__":
     data2['lm_imported'].shape
     data2['lm'].shape
 # %%
+    fn =Path("/r/datasets/preprocessed/nodes/fixed_spacing/spc_080_080_150/images/nodes_78_20210617_CAP1p5.pt")
+    img = torch.load(fn,weights_only=False)
+# %%
+    import SimpleITK as sitk
+    fn = "/s/fran_storage/predictions/totalseg/LITS-1088/nodes_90_20201201_CAP1p5SoftTissue.nii.gz"
+    im = sitk.ReadImage(fn)
+
+
 # %%

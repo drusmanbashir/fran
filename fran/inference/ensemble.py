@@ -784,8 +784,8 @@ if __name__ == "__main__":
     runs = run_nodes
     safe_mode = True
     devices = [1]
-    overwrite = False
     overwrite = True
+    overwrite = False
     save_channels = False
     save_localiser = True
     save_members = True
@@ -823,8 +823,8 @@ if __name__ == "__main__":
     )
 
 # %%
-    node_fn = "/s/insync/datasets/capestart/nodes_nov2025/images/nodes_43_20220805_CAP1p5SoftTissue.nii.gz"
-    preds = E.run(node_fn, chunksize=chunksize, overwrite=overwrite)
+    # node_fn = "/s/insync/datasets/capestart/nodes_nov2025/images/nodes_43_20220805_CAP1p5SoftTissue.nii.gz"
+    preds = E.run(nodes, chunksize=chunksize, overwrite=overwrite)
     # preds = En.run(img_fns, chunksize=2)
 
 # %%

@@ -30,6 +30,8 @@ class FranProject {
 public:
   static FranProject &instance();
   void loadProject(std::string project_name, std::string mnemonic = "");
+  void loadConfigs();
+  void updatePreprocessedColumn();
   void run_analyze_resample(int plan_id, int n_procs, bool overwrite = false);
   std::string parseDict();
   bool plan_loaded();
@@ -40,6 +42,8 @@ public:
 private:
   py::scoped_interpreter guard_;
   py::object m_proj_mod;
+  py::object m_proj_obj;
+  py::object m_conf_obj;
   py::module  m_analyze_resample;
   py::dict m_global_properties;
   PlansDF m_plansDF;

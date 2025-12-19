@@ -29,15 +29,21 @@ FranProject::FranProject() {
 
 void FranProject::loadProject(std::string project_name, std::string mnemonic) {
   py::gil_scoped_acquire gil;
-  py::object proj_obj = m_proj_mod.attr("Project")(project_name);
-  m_global_properties = proj_obj.attr("global_properties");
+  m_proj_obj = m_proj_mod.attr("Project")(project_name);
+  m_global_properties = m_proj_obj.attr("global_properties");
   m_project_title = m_global_properties["project_title"].cast<std::string>();
-  // QMessageBox::information(nullptr, "Project loaded", title.c_str());
-  py::module conf_mod = py::module_::import("fran.configs.parser");
-  py::object conf_obj = conf_mod.attr("ConfigMaker")(proj_obj);
-  conf_obj.attr("add_preprocess_status")();
-  m_plansDF = PlansDF(conf_obj.attr("plans"));
   // py::object Conf = conf_obj(proj_obj);
+  loadConfigs();
+}
+
+void FranProject::loadConfigs(){
+  py::gil_scoped_acquire gil;
+  py::module conf_mod = py::module_::import("fran.configs.parser");
+  m_conf_obj = conf_mod.attr("ConfigMaker")(m_proj_obj);
+  py::object plans= m_conf_obj.attr("plans");
+  m_plansDF = PlansDF(plans);
+  updatePreprocessedColumn();
+
 }
 
 std::string FranProject::parseDict() {
@@ -126,6 +132,10 @@ void FranProject::run_analyze_resample(int plan_id, int n_procs,
   py::object js = argparse.attr("Namespace")(
       py::arg("project_title") = m_project_title, py::arg("plan") = plan_id,
       py::arg("num_processes") = n_procs, py::arg("overwrite") = overwrite);
-
   m_analyze_resample.attr("main")(js);
 }
+
+void FranProject::updatePreprocessedColumn () {
+  m_conf_obj.attr("add_preprocess_status")();
+}
+

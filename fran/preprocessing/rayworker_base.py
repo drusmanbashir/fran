@@ -1,25 +1,20 @@
 # ray_worker_base.py
 from typing import Any, Dict
-from SimpleITK import Not
-from monai.transforms.croppad.dictionary import CropForegroundd
-from monai.transforms.utils import is_positive
-import pandas as pd
-
+import traceback
 import ipdb
-
-
 import pandas as pd
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  MapLabelValueD, ToDeviced)
 from monai.transforms.utils import is_positive
+from SimpleITK import Not
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
 
 from fran.transforms.imageio import LoadTorchd
-from fran.transforms.misc_transforms import (DummyTransform, FgBgToIndicesd2)
+from fran.transforms.misc_transforms import DummyTransform, FgBgToIndicesd2
 
 MIN_SIZE = 32  # min size in a single dimension of any image
 
@@ -27,14 +22,12 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 from typing import Any, Dict
 
 import pandas as pd
+
 from fran.preprocessing.preprocessor import Preprocessor
 
 tr = ipdb.set_trace
 
 from typing import Any, Dict
-
-
-
 
 
 class RayWorkerBase(Preprocessor):
@@ -171,11 +164,18 @@ class RayWorkerBase(Preprocessor):
         for i,row in mini_df.iterrows():
             try:
                 outs.append(self._process_row(row))
+
             except Exception as e:
-                
-                img_fn = row.get("image")
-                print(f"[{self.__class__.__name__}] error: {img_fn}: {e}")
-                outs.append({"case_id": row.get("case_id"), "ok": False, "err": str(e)})
+                    print(
+                        f"[{self.__class__.__name__}] error:"
+                        f"\n  case_id={row.get('case_id')}"
+                        f"\n  image={row.get('image')}"
+                        f"\n  lm={row.get('lm')}"
+                        f"\n  lm_imported={row.get('lm_imported')}"
+                    )
+                    traceback.print_exc()  # <- this is the key
+                    outs.append({"case_id": row.get("case_id"), "ok": False, "err": repr(e)})
+
         return outs
 
 

@@ -43,13 +43,15 @@ void MainWindow::loadProject() {
   try {
     FranProject::instance().loadProject(projectName.toStdString());
     ui->showPropsBtn->setEnabled(true);
+    populatePlans();
   }
+
 
   catch (const std::exception &e) {
     QMessageBox::critical(this, "Error", e.what());
     ui->showPropsBtn->setEnabled(false);
+    return;
   }
-  populatePlans();
 }
 
 void MainWindow::showProps() {
@@ -60,13 +62,18 @@ void MainWindow::showProps() {
 void MainWindow::onRowAction(int row) {
   QModelIndex idx = m_plansModel->index(row, 0);
   QVariant plan_id = m_plansModel->data(idx, Qt::DisplayRole);
-  ;
   QString message =
       QString("Row: %1\nPlanID: %2").arg(row).arg(plan_id.toString());
   QMessageBox::warning(this, "Message", message);
   std::cout << row;
   FranProject::instance().run_analyze_resample(plan_id.toInt(), 8, false);
+  FranProject::instance().updatePreprocessedColumn();
+  
+
 };
+
+
+
 
 void MainWindow::populatePlans() {
   if (!FranProject::instance().plan_loaded()) {
@@ -78,20 +85,15 @@ void MainWindow::populatePlans() {
   const int actionCol = m_plansModel->columnCount(QModelIndex()) - 1;
   auto *delegate = new AnalyzeButtonDelegate(ui->tableView, actionCol);
   ui->tableView->setItemDelegateForColumn(actionCol, delegate);
-
   connect(delegate, &AnalyzeButtonDelegate::clickedRow, this,
           [this](int row) { onRowAction(row); });
-
   ui->tableView->setMouseTracking(true);
   ui->tableView->setColumnWidth(actionCol, 110);
 }
 
-void analyze_resample( int plan_id, int n_procs,
-                      bool overwrite ) {
-
+void analyze_resample(int plan_id, int n_procs, bool overwrite) {
   std::string project_title_c = FranProject::instance().project_title();
   QString project_title = QString::fromStdString(project_title_c);
-
   QString python = "/home/ub/mambaforge/envs/dl/bin/python";
   QProcess *proc = new QProcess;
   QStringList args = {"/home/ub/code/fran/fran/run/analyze_resample.py",

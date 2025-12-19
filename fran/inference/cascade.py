@@ -1,15 +1,15 @@
 # %%
 import itertools as il
-import SimpleITK as sitk
-from fran.utils.misc import parse_devices
 import time
 
 import ipdb
+import SimpleITK as sitk
 from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms.utility.dictionary import CastToTyped
 
 from fran.trainers.base import checkpoint_from_model_id
 from fran.transforms.misc_transforms import SelectLabels
+from fran.utils.misc import parse_devices
 
 tr = ipdb.set_trace
 
@@ -24,10 +24,11 @@ from monai.transforms.post.dictionary import AsDiscreted, Invertd
 from monai.transforms.spatial.dictionary import Resized
 
 from fran.data.dataset import FillBBoxPatchesd
-from fran.inference.base import (BaseInferer, get_patch_spacing, list_to_chunks,
-                                 load_images, load_params)
+from fran.inference.base import (BaseInferer, get_patch_spacing,
+                                 list_to_chunks, load_images, load_params)
 from fran.transforms.inferencetransforms import (
-    BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled, RenameDictKeys)
+    BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled,
+    RenameDictKeys)
 
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
 
@@ -71,15 +72,14 @@ def img_bbox_collated(batch):
     }
     return output
 
-
 def validate_bbox(box):
     for j, s in enumerate(box):
         if isinstance(s, slice) and s.start == 0 and s.stop == 0:
             raise ValueError(f"Invalid bbox at index {i}, slice {j}: {s}")
-    return box
+    return box# usage
 
 
-# usage
+
 class WholeImageInferer(BaseInferer):
     def __init__(self, run_name, project_title=None, devices=[1], save_channels=True, save=True, **kwargs):
         """
@@ -150,7 +150,7 @@ class PatchInferer(BaseInferer):
             debug=debug,
             **kwargs,
         )
-        )
+        
 
     def check_plan_compatibility(self):
         pass
@@ -389,7 +389,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     # ... run your application ...
     from fran.managers import Project
@@ -440,7 +440,7 @@ if __name__ == "__main__":
     localiser_labels_litsmc = [1]
     TSL = TotalSegmenterLabels()
 # %%
-# SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     loc_lidc = [7]  # lung in localiser_label
 
@@ -475,7 +475,7 @@ if __name__ == "__main__":
     model = En.Ps[0].model
 
 # %%
-# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
     safe_mode = False
     devices = [0]
@@ -500,20 +500,21 @@ if __name__ == "__main__":
 
 # %%
 
-# SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     debug_=False
     safe_mode = True
     run_tot = ["LITS-1088"]
 
     W = WholeImageInferer(
-        run_tot[0], safe_mode=safe_mode, k_largest=None, save_channels=False,debug=debug_
+        run_tot[0], project_title="totalseg",safe_mode=safe_mode, k_largest=None, save_channels=False,debug=debug_
     )
 # %%
 
-    nodes_imgs  = nodes_imgs_training
+    imgs  = nodes_imgs
+    imgs  = nodes_imgs_training
     # preds = W.run(imgs_crc, chunksize=6)
-    preds = W.run(nodes_imgs, chunksize=2, overwrite=False)
+    preds = W.run(imgs, chunksize=2, overwrite=False)
 # %%
 
     dl = W.pred_dl
@@ -522,7 +523,7 @@ if __name__ == "__main__":
     img = batch['image']
     pred = W.model()
 # %%
-# SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     localiser_labels = set(TSL.label_localiser)
     safe_mode = True
@@ -548,7 +549,7 @@ if __name__ == "__main__":
     preds = En.run(nodes, chunksize=2)
     # preds = En.run(img_fns, chunksize=2)
 # %%
-# SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
     run = run_litsmc2
     localiser_labels_litsmc = [3]
     run_w = "LITS-1088"
@@ -595,8 +596,8 @@ if __name__ == "__main__":
     bboxes = []
 # %%
 
-# SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
-# SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
     imgs_sublist = imgs_tmp
 
     En.create_postprocess_transforms()
@@ -612,7 +613,7 @@ if __name__ == "__main__":
     print(output[0]['pred'].shape)
     # if En.save == True:
     #     En.save_pred(output)
-## %%
+# %%
     img = data[0]['image'].cpu().detach()
     prd = pred_patches[0]['LITS-911'].cpu().detach()
     ImageMaskViewer([img,prd[2]])
@@ -709,7 +710,7 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
         n = 4
         data = En.load_images(nodes[:5])
         img0 = data[n]["image"]
@@ -726,7 +727,7 @@ if __name__ == "__main__":
         img1 = img1.permute(2, 1, 0)
         ImageMaskViewer([img0, img1])
 # %%
-# SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
   
         imgs_sublist= nodes[:3]
@@ -759,4 +760,3 @@ if __name__ == "__main__":
 
     lm.GetSize()
 # %%
-

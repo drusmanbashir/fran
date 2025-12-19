@@ -9,7 +9,6 @@ class PlansModel : public QAbstractTableModel {
 public:
   explicit PlansModel(PlansDF &plansDF, QObject *parent = nullptr)
       : QAbstractTableModel(parent), m_plans(plansDF) {
-
     size_t n = m_plans.rowCount();
     for (size_t i = 0; i < n; i++) {
       std::string done = "both";
@@ -21,10 +20,8 @@ public:
 
       std::cout << header[i] << std::endl;
     }
-
     m_preprocessed = m_plans["preprocessed"];
   }
-
   int columnCount(const QModelIndex &) const override;
   int rowCount(const QModelIndex &) const override;
   QVariant data(const QModelIndex &index, int role) const override;
@@ -36,9 +33,6 @@ private:
   const PlansDF &m_plans;
   std::vector<std::string> m_preprocessed;
 };
-
-
-
 
 class AnalyzeButtonDelegate : public QStyledItemDelegate {
   Q_OBJECT
@@ -56,7 +50,6 @@ protected:
   bool editorEvent(QEvent *event, QAbstractItemModel *model,
                    const QStyleOptionViewItem &option,
                    const QModelIndex &index) override;
-
 private:
   int m_columns;
 };

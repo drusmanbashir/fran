@@ -1,8 +1,6 @@
 #pragma once
-#include "franproject.h"
 #include "plansmodel.h"
 #include <QMainWindow>
-// #include "franproject.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -21,6 +19,7 @@ public:
   void showProps();
   void populatePlans();
   void onRowAction(int row);
+  void onPlanAnalyzed();
 
 private:
   Ui::MainWindow *ui;

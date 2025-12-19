@@ -42,6 +42,7 @@ QVariant PlansModel::data(const QModelIndex &index, int role) const {
       return r;
     }
   }
+
   if (role == Qt::DisplayRole) {
     std::vector<std::string> fullRow = m_plans[index.row()];
     std::string val = fullRow[index.column()];
@@ -67,19 +68,15 @@ QColor PlansModel::preproccedStatus(int index) const {
 
 AnalyzeButtonDelegate::AnalyzeButtonDelegate(QObject *parent,
                                              const int num_columns)
-    : QStyledItemDelegate(parent), m_columns(num_columns) {
-
-      };
+    : QStyledItemDelegate(parent), m_columns(num_columns) {};
 
 void AnalyzeButtonDelegate::paint(QPainter *painter,
                                   const QStyleOptionViewItem &option,
                                   const QModelIndex &index) const {
-
   QStyleOptionButton btn;
   btn.rect = option.rect.adjusted(4, 2, -4, -2);
   btn.state = QStyle::State_Enabled | QStyle::State_Raised;
   btn.text = "Analyze";
-
   if (option.state & QStyle::State_MouseOver) {
     btn.state = btn.state | QStyle::State_MouseOver;
   }
@@ -87,7 +84,6 @@ void AnalyzeButtonDelegate::paint(QPainter *painter,
     btn.state &= ~QStyle::State_Raised;
     btn.features = QStyleOptionButton::Flat;
   }
-
   QApplication::style()->drawControl(QStyle::CE_PushButton, &btn, painter);
 }
 

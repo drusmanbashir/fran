@@ -18,7 +18,6 @@ def load_project_cfg(project_name: str, mnemonic: str | None = None):
 
     return proj, cfg
 
-
 def cases_in_folder(fldr) -> int:
     fldr = Path(fldr)
     if not fldr.exists():
