@@ -166,6 +166,7 @@ class Trainer:
 
             sd["lr_schedulers"][0]["_last_lr"] = [float(self.lr)]
 
+            headline("Warning: Overriding CKPT learning rate with Trainer configs: {}".format(self.lr))
             torch.save(sd, self.ckpt)
 
         elif lr is None and self.ckpt:

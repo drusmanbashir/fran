@@ -29,6 +29,8 @@ if __name__ == '__main__':
     # P.set_labels_all()
     # P.maybe_store_projectwide_properties(overwrite=True)
 # %%
+    
+
 
     C = ConfigMaker(P,  configuration_filename=None)
     C.setup(1)
@@ -37,6 +39,7 @@ if __name__ == '__main__':
     conf = C.configs
     plan = conf['plan_train']
     print(conf["model_params"])
+
 
     plan = conf["plan_train"]
 # P.add_data([DS.totalseg])

@@ -20,6 +20,7 @@ find_package (Xlnt  CONFIG REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(pybind11 REQUIRED)
 
+find_package(CUDAToolkit REQUIRED)
 
 #=================================
 
@@ -28,7 +29,17 @@ find_package(pybind11 REQUIRED)
 
 add_library(fran_cpp STATIC
 src/franproject.cpp
+src/inference.cxx
+src/training.cxx
 )
+add_library(cuda_utils  STATIC
+src/cuda_utils.cxx
+)
+target_include_directories(cuda_utils
+PRIVATE
+    ${CMAKE_SOURCE_DIR}/include)
+
+target_link_libraries(cuda_utils PRIVATE CUDA::cudart)
 
 target_include_directories(fran_cpp
 PRIVATE
@@ -41,14 +52,17 @@ add_executable(dashboard
     src/mainwindow.cpp
     src/plansmodel.cpp
     src/mainwindow.ui
+    src/trainingcontroller.cxx
     include/mainwindow.h
+    include/trainingcontroller.h
     include/plansmodel.h
 )
 
 target_include_directories(dashboard
     PRIVATE
         ${CMAKE_SOURCE_DIR}/include
+        ${CUDAToolkit_INCLUDE_DIRS}
 
 )
 
-target_link_libraries(dashboard PRIVATE Qt6::Widgets yaml-cpp fran_cpp)
+target_link_libraries(dashboard PRIVATE Qt6::Widgets yaml-cpp fran_cpp cuda_utils)

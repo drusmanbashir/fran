@@ -3,12 +3,14 @@ from __future__ import annotations
 import warnings
 from typing import Optional
 
+from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
 import torch
 from monai.transforms.transform import MapTransform, Randomizable
 
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
 from fran.managers.data.training import DataManagerDual, DataManagerLBD
+SEQ_LEN = 16
 
 
 class RandZWindowd(Randomizable, MapTransform):
@@ -37,7 +39,7 @@ class RandZWindowd(Randomizable, MapTransform):
 
 class DataManager2(DataManagerLBD):
     def create_transforms(self):
-        self.sequence_length=16
+        self.sequence_length=SEQ_LEN
         super().create_transforms()
         self.transforms_dict["Z"] = RandZWindowd(keys = ["image", "lm"], T = self.sequence_length)
 
@@ -77,6 +79,7 @@ class DataManagerDual2(DataManagerDual):
 
 
 # %%
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 if __name__ == "__main__":
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
@@ -89,7 +92,7 @@ if __name__ == "__main__":
     conf_litsmc = C.configs
 # %%
 
-    conf_litsmc["plan_train"]["patch_size"] = [256, 256]
+    conf_litsmc["plan_train"]["patch_size"] = [256, 256,SEQ_LEN]
     batch_size = 8
     ds_type = "lmdb"
     from pathlib import Path
@@ -130,13 +133,27 @@ if __name__ == "__main__":
     print(dici['image'].shape)
     dici=dm.transforms_dict["N"](dici)
     dici=dm.transforms_dict["Rtr"](dici)
-    print(dici['image'].shape)
-    dici=dm.transforms_dict["F1"](dici)
+    print(dici[1]['image'].shape)
+    dici=dm.transforms_dict["F1"](dici[0])
     dici=dm.transforms_dict["F2"](dici)
+    dici['image'].shape
     dici=dm.transforms_dict["ResizePC"](dici)
     dici=dm.transforms_dict["IntensityTfms"](dici)
 
 # %%
+dici.keys()
+
+ps = dm.plan["patch_size"]+[SEQ_LEN]
+ResizePC= ResizeWithPadOrCropd(
+                keys=["image", "lm"],
+                spatial_size=ps,
+                lazy=True,
+            )
+
+dici= ResizePC(dici)
+dici['image'].shape
+# %%
+
 
     dici['image'][0][0].shape
 

@@ -10,7 +10,7 @@ namespace py = pybind11;
 class PlansDF {
 public:
   PlansDF() : m_plans_py(py::none()) {};
-  PlansDF(py::object plans) : m_plans_py(plans) {} // here a python dateframe plans is passed to constructor
+  PlansDF(py::object plans) : m_plans_py(plans) {} // here a python dateframe plans is passed to con
   explicit operator bool() const { return !m_plans_py.is_none(); };
   std::vector<std::string> operator[](size_t i) const;
   std::vector<std::string> operator [] (std::string colname) const ;
@@ -30,7 +30,6 @@ class FranProject {
 public:
   static FranProject &instance();
   void loadProject(std::string project_name, std::string mnemonic = "");
-  void loadConfigs();
   void updatePreprocessedColumn();
   void run_analyze_resample(int plan_id, int n_procs, bool overwrite = false);
   std::string parseDict();
@@ -40,6 +39,7 @@ public:
   const std::string project_title() const { return m_project_title; }
 
 private:
+  void loadConfigs();
   py::scoped_interpreter guard_;
   py::object m_proj_mod;
   py::object m_proj_obj;

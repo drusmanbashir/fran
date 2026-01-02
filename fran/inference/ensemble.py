@@ -1,9 +1,8 @@
 # %%
+from __future__ import annotations
 import monai
 from utilz.string import headline
-from __future__ import annotations
 from abc import ABC, abstractmethod
-from monai.config import PathLike
 from monai.data.utils import create_file_basename
 from utilz.string import strip_extension
 
@@ -76,7 +75,6 @@ class Formatter:
         self.counter+=1
         self.counter = self.counter % len(self.keys)
         return {"subject": f"{subject}", "idx": patch_index}
-
 
 class _InferenceSession:
     def __init__(self, inferer):
@@ -205,7 +203,7 @@ class EnsembleInferer:
         localiser_labels: Optional[Sequence[int]] = None,
         k_largest: Optional[int] = None,
         save_channels: bool = False,
-        save_members: bool = True,  # save member predictions of ensemble
+        save_casc_preds: bool = False,  # save member predictions of ensemble (only cascaded)
         save: bool = True,  # save voted out prediction
         debug: bool = False,
         debug_base: bool = False,
@@ -358,7 +356,7 @@ class EnsembleInferer:
                 params=load_params(run),
                 debug=self.debug,
                 safe_mode=self.safe_mode,
-                save=self.save_members,
+                save=self.save_casc_preds,
             )
             P.setup()
             P.prepare_data(data=data, collate_fn=img_bbox_collated)
@@ -465,7 +463,7 @@ class EnsembleInferer:
             self.postprocess_tfms_keys_casc = "A,Int,W,F"
         else:
             self.postprocess_tfms_keys_casc = "W,F"
-        if self.save_members == True:
+        if self.save_casc_preds == True:
             self.postprocess_tfms_keys_casc += ",S"
 
     def set_postprocess_transforms_casc(self):
@@ -710,7 +708,7 @@ class EnsembleInferer:
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     #
     # p = argparse.ArgumentParser()
     # p.add_argument("--runs", type=str, required=True, help="Comma-separated run_names")
@@ -742,6 +740,8 @@ if __name__ == "__main__":
 
     run_lidc2 = ["LITS-902"]
     run_nodes = ["LITS-1290", "LITS-1230", "LITS-1288"]
+    run_nodes = ["LITS-1326","LITS-1327", "LITS-1328"]
+
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
     run_lidc2 = ["LITS-911"]
@@ -779,16 +779,16 @@ if __name__ == "__main__":
     TSL = TotalSegmenterLabels()
     proj_nodes = Project("nodes")
 
-# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
     runs = run_nodes
     safe_mode = True
-    devices = [1]
+    devices = [0]
     overwrite = True
     overwrite = False
     save_channels = False
     save_localiser = True
-    save_members = True
+    save_casc_preds = True
     chunksize = 2
     localiser_run = run_w
     debug_ = True
@@ -817,16 +817,21 @@ if __name__ == "__main__":
         localiser_labels=localiser_labels,
         safe_mode=safe_mode,
         save_channels=save_channels,
-        save_members=save_members,
+        save_casc_preds=save_casc_preds,
         debug=debug_,
         debug_base=debug_base,
     )
 
 # %%
+    # nodes = nodes[:3]
+    imgs = nodes
     # node_fn = "/s/insync/datasets/capestart/nodes_nov2025/images/nodes_43_20220805_CAP1p5SoftTissue.nii.gz"
-    preds = E.run(nodes, chunksize=chunksize, overwrite=overwrite)
+    preds = E.run(imgs, chunksize=chunksize, overwrite=overwrite)
+# %%
     # preds = En.run(img_fns, chunksize=2)
 
+    pap = preds[0]
+    pap[0].keys()
 # %%
     # batch['image'].shape
 
@@ -835,7 +840,7 @@ if __name__ == "__main__":
     params["configs"]["dataset_params"]["plan_train"]
     # S
 # %%
-# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     run = run_litsmc2
     debug_ = False
@@ -870,7 +875,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-# SECTION:-------------------- TS run()-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- TS run()-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     images = nodes
 
@@ -899,7 +904,7 @@ if __name__ == "__main__":
 
 # %%
 
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     images = nodes[:2]
     if not isinstance(images, list):
         images = [images]
@@ -978,7 +983,7 @@ if __name__ == "__main__":
 
         preds_all_base = E.decollate_base_predictions(prds_all_base)
 # %%
-# SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     # 3) Run base/whole members directly on full images
     prds_all_base = {}
     for r in E.base_runs:

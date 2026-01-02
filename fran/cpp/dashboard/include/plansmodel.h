@@ -29,6 +29,8 @@ public:
                       int role) const override;
   QColor preproccedStatus(int index) const;
 
+  QVector<QString> getPlanIDs() const; 
+
 private:
   const PlansDF &m_plans;
   std::vector<std::string> m_preprocessed;
@@ -50,6 +52,7 @@ protected:
   bool editorEvent(QEvent *event, QAbstractItemModel *model,
                    const QStyleOptionViewItem &option,
                    const QModelIndex &index) override;
+
 private:
   int m_columns;
 };

@@ -20,7 +20,12 @@ public:
   void populatePlans();
   void onRowAction(int row);
   void onPlanAnalyzed();
+  void populateInferenceTab();
+  void onTrainBtn() ;
 
+signals:
+  void projectLoaded();
+  void plansPopulated(PlansModel*);
 private:
   Ui::MainWindow *ui;
   PlansModel *m_plansModel;

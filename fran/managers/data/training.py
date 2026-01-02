@@ -1432,6 +1432,7 @@ if __name__ == "__main__":
     dici = Re(dici)
 
 # %%
+# %%
     dl = D.train_dataloader()
     iteri = iter(dl)
     aa = D.Train_ds[0]

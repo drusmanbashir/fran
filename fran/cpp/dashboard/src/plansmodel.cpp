@@ -107,3 +107,16 @@ bool AnalyzeButtonDelegate::editorEvent(QEvent *event,
 // QStyledItemDelegate (parent) {
 //
 // };
+
+QVector<QString> PlansModel::getPlanIDs () const {
+  std::vector<std::string> plan_ids = m_plans["plan_id"]; 
+  QVector<QString> planIDs;
+  for (auto stn : plan_ids){
+    QString planID = QString::fromStdString(stn);
+    planIDs.push_back(planID);
+  }
+  return planIDs;
+}
+
+
+

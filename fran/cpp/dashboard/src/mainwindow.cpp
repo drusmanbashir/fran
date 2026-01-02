@@ -1,4 +1,6 @@
 #include "mainwindow.h"
+#include "trainingcontroller.h"
+#include "inference.h"
 #include "ui_mainwindow.h"
 #include <QDir>
 #include <QMessageBox>
@@ -13,12 +15,16 @@ MainWindow::MainWindow(QWidget *parent)
 
   (void)FranProject::instance();
   ui->setupUi(this);
+  TrainingController* inferenceCont = new TrainingController(ui, this);
   populateProjects();
 
   connect(ui->loadProjectBtn, &QPushButton::clicked, this,
           &MainWindow::loadProject);
   connect(ui->showPropsBtn, &QPushButton::clicked, this,
           &MainWindow::showProps);
+  connect(ui->trainBtn, &QPushButton::clicked, this, &MainWindow::onTrainBtn);
+  connect (this, &MainWindow::projectLoaded, this, &MainWindow::populatePlans);
+  connect (this, &MainWindow::plansPopulated, inferenceCont, &TrainingController::populatePlansCB);
 }
 
 MainWindow::~MainWindow() { delete ui; }
@@ -43,15 +49,13 @@ void MainWindow::loadProject() {
   try {
     FranProject::instance().loadProject(projectName.toStdString());
     ui->showPropsBtn->setEnabled(true);
-    populatePlans();
   }
-
-
   catch (const std::exception &e) {
     QMessageBox::critical(this, "Error", e.what());
     ui->showPropsBtn->setEnabled(false);
     return;
   }
+  emit projectLoaded();
 }
 
 void MainWindow::showProps() {
@@ -89,6 +93,7 @@ void MainWindow::populatePlans() {
           [this](int row) { onRowAction(row); });
   ui->tableView->setMouseTracking(true);
   ui->tableView->setColumnWidth(actionCol, 110);
+  emit plansPopulated(m_plansModel);
 }
 
 void analyze_resample(int plan_id, int n_procs, bool overwrite) {
@@ -108,3 +113,12 @@ void analyze_resample(int plan_id, int n_procs, bool overwrite) {
     args << "-o";
   QProcess::startDetached(python, args);
 }
+
+void MainWindow::onTrainBtn() {
+  Inference infMod;
+}
+
+void MainWindow::populateInferenceTab () {
+    
+}
+
