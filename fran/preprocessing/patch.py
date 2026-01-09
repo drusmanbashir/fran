@@ -458,7 +458,7 @@ if __name__ == "__main__":
     fn = fixed_files_out[-1]
     lm_pt = torch.load(fn)
     print(lm_pt.shape)
-    imported_fn = find_matching_fn(fn, imported_folder.glob("*"))
+    imported_fn = find_matching_fn(fn, imported_folder.glob("*")[0])
     lm_imp = sitk.ReadImage(imported_fn)
     print(lm_imp.GetSpacing())
     dici = {"lm": lm_pt, "lm_imported": lm_imp, "remapping": remapping}

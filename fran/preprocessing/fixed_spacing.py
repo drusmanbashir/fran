@@ -125,7 +125,7 @@ class NiftiResampler(Preprocessor):
         data = []
 
         for img_fn in img_fns:
-            lm_fn = find_matching_fn(img_fn.name, masks_folder, "case_id")
+            lm_fn = find_matching_fn(img_fn.name, masks_folder, "case_id")[0]
 
             remapping = None
 

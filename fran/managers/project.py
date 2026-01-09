@@ -66,7 +66,7 @@ def fix_repeat_caseids(parent_folder):
     file_pairs = []
 
     for img_fn in img_fns:
-        lm_fn = find_matching_fn(img_fn, lm_fns, ["all"])
+        lm_fn = find_matching_fn(img_fn, lm_fns, ["all"])[0]
         file_pairs.append([img_fn, lm_fn])
 
     case_ids = []

@@ -228,6 +228,20 @@ class NeptuneImageGridCallback(Callback):
         t6 = torch.clamp(t5,min=0,max=255)
         return t6
 
+class NeptuneLogBestCkpt(Callback):
+    def on_validation_epoch_end(self, trainer, pl_module):
+        ckpt_best = trainer.checkpoint_callback.best_model_path
+        ckpt_last = trainer.checkpoint_callback.last_model_path
+        run = trainer.logger.experiment
+        run["training/last_model_path"] = ckpt_last
+        run["training/best_model_path"] = ckpt_best
+        run.wait()
+
+    # def on_fit_end(self, trainer, pl_module):
+    #     ckpt = trainer.checkpoint_callback.best_model_path
+    #     run = trainer.logger.experiment
+    #     run["training/best_model_path"] = ckpt
+    #     run.wait()
 # %%
 
 if __name__ == "__main__":

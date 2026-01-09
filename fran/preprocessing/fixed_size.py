@@ -120,14 +120,14 @@ class FixedSizeDataGenerator(PatchDataGenerator):
         for img in imgs:
             case_id_info = info_from_filename(img.name, full_caseid=True)
             case_id = case_id_info["case_id"]
-            lm_value = find_matching_fn(img, lms, 'case_id')
+            lm_value = find_matching_fn(img, lms, 'case_id')[0]
 
             # Create the dictionary for the current image
             dic = {"case_id": case_id, "image": img, "lm": lm_value}
 
             # Append the dictionary to the dicis list
             self.dicis.append(dic)
-        # self.dicis= [{"case_id": info_from_filename(img.name, full_caseid=True)['case_id'], "image": img , "lm": find_matching_fn(img,lms,'case_id')} for img in imgs]
+        # self.dicis= [{"case_id": info_from_filename(img.name, full_caseid=True)['case_id'], "image": img , "lm": find_matching_fn(img,lms,'case_id')[0]} for img in imgs]
 
     def remove_completed_cases(self):
         dicis_out = []
@@ -267,7 +267,7 @@ if __name__ == "__main__":
 
     lms = list(lms_fldr.glob("*"))
     imgs = list(images_fldr.glob("*"))
-    pairs = [{"image": img, "lm": find_matching_fn(img, lms, 'case_id')} for img in imgs]
+    pairs = [{"image": img, "lm": find_matching_fn(img, lms, 'case_id')[0]} for img in imgs]
 # %%
     tots = len(pairs)
     n_proc = 32

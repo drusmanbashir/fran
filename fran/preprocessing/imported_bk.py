@@ -127,7 +127,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         matched_files = []
         for fn in pbar(self.df.image):
             try:
-                matching = find_matching_fn(fn, imported_fns, tags=["all"])
+                matching = find_matching_fn(fn, imported_fns, tags=["all"])[0]
                 matched_files.append(matching)
             except Exception as e:
                 print(f"Warning: No match found for {fn.name}: {e}")
@@ -398,7 +398,7 @@ if __name__ == "__main__":
 # %%
     row = L.df.iloc[10]
     img_fn = row["image"]
-    find_matching_fn(img_fn, Path(L.imported_folder))
+    find_matching_fn(img_fn, Path(L.imported_folder)[0])
 
 # %%
     dici = L.transforms_dict["R"](data)
@@ -523,7 +523,7 @@ if __name__ == "__main__":
         for fn in pbar(L.df.image):
             try:
                 # case_id = info_from_filename(fn.name, full_caseid=True)['case_id']
-                matching = find_matching_fn(fn, imported_fns, tags=["all"])
+                matching = find_matching_fn(fn, imported_fns, tags=["all"])[0]
                 matched_files.append(matching)
 
                 # print(case_id)

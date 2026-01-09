@@ -26,7 +26,6 @@ if __name__ == '__main__':
     # P.create(mnemonic="litsmall")
 
     # P.add_data([DS['litsmall']])
-    # P.set_labels_all()
     # P.maybe_store_projectwide_properties(overwrite=True)
 # %%
     

@@ -37,9 +37,9 @@ class Project2DProcessor():
         lms =  list(self.fldr_lms.glob("*"))
         data_dicts= []
         for img in imgs:
-            lm = find_matching_fn(img,lms,tag=['all'])
+            lm = find_matching_fn(img,lms,tag=['all'])[0]
             if lm :
-                dici = {'image':img, 'lm':  find_matching_fn(img,lms,tag=['all'])}
+                dici = {'image':img, 'lm':  find_matching_fn(img,lms,tag=['all'])[0]}
                 data_dicts.append(dici)
 
         L = LoadSITKd(keys=['image','lm'])

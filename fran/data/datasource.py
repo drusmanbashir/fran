@@ -174,7 +174,7 @@ class Datasource(GetAttr):
         )
         self.verified_pairs = []
         for img_fn in images:
-            self.verified_pairs.append([img_fn, find_matching_fn(img_fn, lms, ["all"])])
+            self.verified_pairs.append([img_fn, find_matching_fn(img_fn, lms, ["all"])[0]])
         print("Verified filepairs are matched")
 
     def _filter_unprocessed_cases(self):
@@ -312,7 +312,7 @@ class Datasource(GetAttr):
         verified_pairs = []
         for img_fn in img_fnames:
             verified_pairs.append(
-                [img_fn, find_matching_fn(img_fn, lm_fnames, tags=["all"])]
+                [img_fn, find_matching_fn(img_fn, lm_fnames, tags=["all"])[0]]
             )
         assert self.paths_exist(
             verified_pairs

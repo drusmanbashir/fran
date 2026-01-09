@@ -234,7 +234,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         matched_files = []
         for fn in pbar(self.df.image):
             try:
-                matching = find_matching_fn(fn, imported_fns, tags=["all"])
+                matching = find_matching_fn(fn, imported_fns, tags=["all"])[0]
                 matched_files.append(matching)
             except Exception as e:
                 print(f"Warning: No match found for {fn.name}: {e}")

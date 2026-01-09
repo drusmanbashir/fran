@@ -539,11 +539,9 @@ if __name__ == "__main__":
 # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR>
 
     from fran.managers import Project
-
-    P = Project(project_title="totalseg")
-    project = k
-
+    P = Project(project_title="nodes")
     C = ConfigMaker(P, configuration_filename=None)
+    C.setup(1)
 # %%
     C.add_preprocess_status()
 # %%

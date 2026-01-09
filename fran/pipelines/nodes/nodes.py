@@ -1,4 +1,9 @@
 ## %%
+from tqdm.auto import tqdm
+
+from pathlib import Path
+import SimpleITK as sitk
+from utilz.helpers import find_matching_fn
 from fran.data.datasource import Datasource
 from fran.data.dataregistry import DS
 from fran.managers import  Project
@@ -8,6 +13,9 @@ from fran.trainers.trainer import Trainer
 from fran.utils.common import *
 from fran.configs.parser import ConfigMaker
 import argparse
+import torch
+
+from label_analysis.merge import relabel
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
@@ -24,10 +32,15 @@ if __name__ == '__main__':
 
     plan['mode']
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
-
-
+    # if (lm==3).any():
+    #     print("Bad values 3 ->0")
+    #     lm[lm==3]=1
+    #     torch.save(lm, bad_case_fn)
+    #
+    # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
+    from lightning.pytorch.tuner import Tuner
     devices= [1]
     bs = 2
 
@@ -51,11 +64,11 @@ if __name__ == '__main__':
     conf['dataset_params']['cache_rate']
 
 # %%
-    conf["dataset_params"]["fold"]=4
+    conf["dataset_params"]["fold"]=0
     run_name=None
     lr= 1e-2
 # %%
-    run_name="LITS-1328"
+    run_name="LITS-1327"
     lr= 1e-3
     lr=None
 # %%
@@ -84,56 +97,47 @@ if __name__ == '__main__':
     # Tm.D.configs = Tm.configs.copy()
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
+# %%
+
+    # tuner = Tuner(Tm.trainer)
+    # tuner.scale_batch_size(Tm.N.model,mode="binsearch")
     Tm.fit()
 
 # %%
-    matching_plan = folder_names_from_plan(P,plan)
-
-    matching_plan
-
-# %%
-    plan = {k: plan.get(k) for k in COLUMNS_CRITICAL}  # align to fixed schema
-    keys = [k for k in COLUMNS_CRITICAL if k in plan]
-    conds, params = [], []
-# %%
-    for k in keys:
-        v = _normalize_for_db(plan[k])
-        if v is None:
-            conds.append(f'"{k}" IS NULL')
-        else:
-            conds.append(f'"{k}" = ?')
-            params.append(v)
-# %%
-    sql = (
-        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_patch FROM "{TABLE}" WHERE '
-        + " AND ".join(conds)
-        + " LIMIT 1"
-    )
-    db_path =P.db
-    with sqlite3.connect(db_path) as conn:
-        row = conn.execute(sql, params).fetchone()
-# %%
-
-    row_out = {
-        "id": row[0],
-        "data_folder_source": row[1],
-        "data_folder_lbd": row[2],
-        "data_folder_whole": row[3],
-        "data_folder_patch": row[4],
-    }
-
-# %%
     N = Tm.N
-    Tm.D.setup()
-    Tm.D.prepare_data()
-    Tm.D.configs['plan_train']['mode']
-    dl = Tm.D.val_dataloader()
+    D2 = Tm.D
+# %%
+    from fran.managers.data.training import DataManagerDual
+    from utilz.imageviewers import ImageMaskViewer
+    D= DataManagerDual(project_title=P.project_title, configs=conf, batch_size=2,ds_type=None)
+    D.prepare_data()
+    D.setup()
+    
+    dl=D.val_dataloader()
+# %%
     batch = next(iter(dl))
 
+# %%
     image = batch["image"]
     image.shape
     pred = N(image)
+    pred2 =pred[0]
+
 # %%
+
+
+# %%
+    image = image.permute(0, 1, 4, 2, 3)
+    pred2 = pred2.permute(0, 1, 4, 2, 3)
+    ImageMaskViewer([image[0][0].detach().cpu(), pred2[0][1].detach().cpu()])
+# %%
+    D2.prepare_data()
+    D2.setup()
+    dl2 = D2.val_dataloader()
+    image2 = next(iter(dl2))["image"]
+
+    N.loss_fn(image2, pred2)
+    N.loss_fn(image2, pred2).shape
 
 # SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR>
 
@@ -290,10 +294,11 @@ if __name__ == '__main__':
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
 # %%
-    tm = Tm.D.train_manager
+    tm = Tm.D.valid_manager
     dici = tm.ds[0]
 # %%
     img = dici["image"]
+    print(img.shape)
     lm = dici["lm"]
 
     im = dici[0]["image"]

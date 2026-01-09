@@ -813,8 +813,8 @@ class DataManagerWhole(DataManagerSource):
         # for fn in fnames[400:432]:
         for fn in tqdm(fnames):
             fn = Path(fn)
-            img_fn = find_matching_fn(fn.name, images, "all")
-            lm_fn = find_matching_fn(fn.name, lms_fldr, "all")
+            img_fn = find_matching_fn(fn.name, images, "all")[0]
+            lm_fn = find_matching_fn(fn.name, lms_fldr, "all")[0]
             assert img_fn.exists(), "Missing image {}".format(img_fn)
             assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
             dici = {"image": img_fn, "lm": lm_fn}

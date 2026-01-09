@@ -50,7 +50,7 @@ def get_img_mask_filepairs(parent_folder: Union[str,Path]):
     assert (len(imgs_all)==len(masks_all)), "{0} and {1} folders have unequal number of files!".format(imgs_folder,masks_folder)
     img_label_filepairs= []
     for img_fn in imgs_all:
-            label_fn = find_matching_fn(img_fn,masks_all)
+            label_fn = find_matching_fn(img_fn,masks_all)[0]
             assert label_fn.exists(), f"{label_fn} doest not exist, \ncorresponding to {img_fn}"
             img_label_filepairs.append([img_fn,label_fn])
     return img_label_filepairs

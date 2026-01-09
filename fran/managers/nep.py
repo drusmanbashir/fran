@@ -1,5 +1,3 @@
-
-# %%
 import os
 from typing import Optional
 
@@ -154,14 +152,14 @@ class NeptuneManager(NeptuneLogger):
     @property
     def model_checkpoint(self):
         try:
-            ckpt = self.experiment["training/model/best_model_path"].fetch()
+            ckpt = self.experiment["training/best_model_path"].fetch()
             return ckpt
         except:
             print("No checkpoints in this run")
 
     @model_checkpoint.setter
     def model_checkpoint(self, value):
-        self.experiment["training/model/best_model_path"] = value
+        self.experiment["training/best_model_path"] = value
         self.experiment.wait()
 
     def fetch_project_df(self, columns=None):
@@ -169,10 +167,12 @@ class NeptuneManager(NeptuneLogger):
         project_tmp = get_neptune_project(self.project, "read-only")
         df = project_tmp.fetch_runs_table(columns=columns).to_pandas()
         return df
-
-    def on_fit_start(self):
-        self.experiment["sys/name"] = self.project.project_title
-        self.experiment.wait()
+    #
+    # def on_fit_start(self):
+    #     tr()
+    #     headline("Logging to Neptune")
+    #     self.experiment["sys/name"] = self.project.project_title
+    #     self.experiment.wait()
 
     def load_run(
         self,
@@ -298,4 +298,21 @@ class NeptuneManager(NeptuneLogger):
 
 
 # %%
+if __name__ == '__main__':
+    from fran.managers.project import Project
+    P = Project(project_title="nodes")
+    run_name = "LITS-1339"
+    download_neptune_checkpoint(P,run_name)
+# %%
+    nl = NeptuneManager(
+        project=P,
+        run_id=run_name,  # "LIT-46",
+        log_model_checkpoints=False,  # Update to True to log model checkpoints
+    )
+    nl.download_checkpoints()
+# %%
+    ckpt = nl.model_checkpoint
+    nl.experiment.stop()
 
+
+# %%

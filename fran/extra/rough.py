@@ -28,11 +28,14 @@ base = os.path.dirname(fran.__file__)
 rel = os.path.join(base,"cpp","build","debug")
 sys.path.append(rel)
 
-# %%
+bad_names = "nodes_89_20190421_Abdomen3p0I30f3.pt,nodes_90_20201201_CAP1p5SoftTissue.pt,nodes_82_20210427_CAP1p5SoftTissue.pt,nodes_83_20210427_CAP1p5SoftTissue.pt,nodes_46_20220609_CAP1p5SoftTissue.pt,nodes_47_20220601_CAP1p5SoftTissue.pt,nodes_84_20211129_CAP1p5SoftTissue.pt,nodes_81_20210507_CAP1p5SoftTissue.pt,nodes_25_20201216_CAP1p5SoftTissue.pt,nodes_43_20220805_CAP1p5SoftTissue.pt,nodes_78_20210617_CAP1p5.pt"
 
+# %%
+#SECTION:-------------------- badl labels--------------------------------------------------------------------------------------
+# %%
 img_fn = "/s/xnat_shadow/nodes/lms/nodes_20_20190926_CAP1p5.nii.gz"
-img_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/lms/lidc_0011.pt"
 img_fn = "/tmp/plain_tensor.pt"
+img_fn = "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex050/lms/nodes_73_410705_CAP1p5Br383.pt"
 img = torch.load(img_fn, weights_only=False)
 type(img)
 img.keys()
