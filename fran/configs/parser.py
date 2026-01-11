@@ -310,8 +310,10 @@ class ConfigMaker:
         self.configs = parse_excel_dict(configs)
 
     def setup(self, plan_train: int, plan_valid=None):
+        # by default plan_valid is a fixed plan regardless of train_plan and is set in dataset_params
+        # plan_valid essentially only uses the folder of said plan, and patch_size is kept same as plan_train
         if not plan_valid:
-            plan_valid = plan_train
+            plan_valid =self.configs["dataset_params"]["plan_valid"]
         self._set_active_plans(plan_train, plan_valid)
         self.add_output_labels()
         self.add_out_channels()
@@ -442,6 +444,7 @@ class ConfigMaker:
         #     plan_valid = self.configs["dataset_params"]["plan_valid"]
         self._set_plan(plan_train, True)
         self._set_plan(plan_valid, False)
+        self.configs["plan_valid"]["patch_size"] = self.configs["plan_train"]["patch_size"]
 
     def add_preprocess_status(self):
         """Add preprocessing status column to plans dataframe"""
@@ -542,6 +545,8 @@ if __name__ == "__main__":
     P = Project(project_title="nodes")
     C = ConfigMaker(P, configuration_filename=None)
     C.setup(1)
+    pp(C.configs["plan_train"])
+    pp(C.configs["plan_valid"])
 # %%
     C.add_preprocess_status()
 # %%

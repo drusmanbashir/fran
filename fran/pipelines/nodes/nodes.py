@@ -90,6 +90,7 @@ if __name__ == '__main__':
         override_dm_checkpoint=override_dm
     )
 
+
 # %%
     Tm.configs['plan_train']['mode']
     Tm.configs['plan_train']['patch_size']
@@ -105,11 +106,12 @@ if __name__ == '__main__':
 
 # %%
     N = Tm.N
-    D2 = Tm.D
+    D = Tm.D
 # %%
     from fran.managers.data.training import DataManagerDual
     from utilz.imageviewers import ImageMaskViewer
     D= DataManagerDual(project_title=P.project_title, configs=conf, batch_size=2,ds_type=None)
+# %%
     D.prepare_data()
     D.setup()
     

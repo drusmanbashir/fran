@@ -58,6 +58,7 @@ def img_lm_metadata_lists_collated(batch):
     return output
 
 
+ 
 def as_is_collated(batch):
     keys = batch[0].keys()
     output_dict = {k: [] for k in keys}
@@ -77,7 +78,6 @@ def dict_list_collated(keys):
             for key in keys:
                 output[key].append(item[key])
         return output
-
     return _inner
 
 
@@ -115,25 +115,29 @@ def process_grid_items(item):
 def grid_collated(batch):
     # same as source except each item in a batch is a 2-tuple. The second item in the tuple has locations of the grid which I will ignore in training
     imgs = []
-    labels = []
+    lms = []
     fns_imgs=[]
-    fns_labels = []
+    fns_lms = []
+    patch_coords =[]
+    start_pos =[]
     for i, item in enumerate(batch):
-        # item=item[0]
-        imgs_,labels_,fns_imgs_,fns_labels_ = process_grid_items(item)
+        item2=item[0]
+        patch_coords.append(item[1])
+        imgs_,lms_,fns_imgs_,fns_lms_ = process_grid_items(item2)
+        # patch_coords.append(item["patch_coords"])
+        start_pos.append(item2["start_pos"])
         imgs.extend(imgs_)
-        labels.extend(labels_)
+        lms.extend(lms_)
         fns_imgs.extend(fns_imgs_)
-        fns_labels.extend(fns_labels_)
+        fns_lms.extend(fns_lms_)
     if len(batch) == 1:
         fns_imgs = fns_imgs[0]
-        fns_labels = fns_labels[0]
+        fns_lms = fns_lms[0]
     imgs_out = torch.stack(imgs, 0)
-    lms_out= torch.stack(labels, 0)
-
+    lms_out= torch.stack(lms, 0)
     imgs_out.meta['filename_or_obj']=fns_imgs
-    lms_out.meta['filename_or_obj']=fns_labels
-    output = {"image": imgs_out , "lm": lms_out}
+    lms_out.meta['filename_or_obj']=fns_lms
+    output = {"image": imgs_out , "lm": lms_out, "patch_coords":patch_coords, "start_pos":start_pos}
     return output
 
 def source_collated(batch):

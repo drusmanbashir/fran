@@ -1,10 +1,11 @@
 # %%
 from __future__ import annotations
-import monai
-from utilz.string import headline
+
 from abc import ABC, abstractmethod
+
+import monai
 from monai.data.utils import create_file_basename
-from utilz.string import strip_extension
+from utilz.string import headline, strip_extension
 
 __all__ = ["FolderLayoutBase", "FolderLayout", "default_name_formatter"]
 
@@ -708,7 +709,7 @@ class EnsembleInferer:
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     #
     # p = argparse.ArgumentParser()
     # p.add_argument("--runs", type=str, required=True, help="Comma-separated run_names")
@@ -779,7 +780,7 @@ if __name__ == "__main__":
     TSL = TotalSegmenterLabels()
     proj_nodes = Project("nodes")
 
-# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
     runs = run_nodes
     safe_mode = True
@@ -840,7 +841,7 @@ if __name__ == "__main__":
     params["configs"]["dataset_params"]["plan_train"]
     # S
 # %%
-# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     run = run_litsmc2
     debug_ = False
@@ -875,7 +876,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-# SECTION:-------------------- TS run()-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TS run()-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     images = nodes
 
@@ -904,7 +905,7 @@ if __name__ == "__main__":
 
 # %%
 
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     images = nodes[:2]
     if not isinstance(images, list):
         images = [images]
@@ -983,7 +984,7 @@ if __name__ == "__main__":
 
         preds_all_base = E.decollate_base_predictions(prds_all_base)
 # %%
-# SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     # 3) Run base/whole members directly on full images
     prds_all_base = {}
     for r in E.base_runs:

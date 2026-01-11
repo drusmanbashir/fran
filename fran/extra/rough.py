@@ -36,11 +36,13 @@ bad_names = "nodes_89_20190421_Abdomen3p0I30f3.pt,nodes_90_20201201_CAP1p5SoftTi
 img_fn = "/s/xnat_shadow/nodes/lms/nodes_20_20190926_CAP1p5.nii.gz"
 img_fn = "/tmp/plain_tensor.pt"
 img_fn = "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex050/lms/nodes_73_410705_CAP1p5Br383.pt"
+img_fn = '/r/datasets/preprocessed/nodes/fixed_spacing/spc_080_080_150/images/nodesthick_21b_20210202_Abdomen0p75I30f3_thick.pt'
 img = torch.load(img_fn, weights_only=False)
 type(img)
 img.keys()
 img["data"].shape
 img['meta']
+ImageMaskViewer([img,img])
 # %%
 # LG = LabelMapGeometry(img_fn)
 # LG.nbrhoods
