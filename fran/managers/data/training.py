@@ -85,7 +85,7 @@ class RandomPatch(RandomizableTransform):
         return dici
 
 
-class DataManagerDual(LightningDataModule):
+class DataManagerMulti(LightningDataModule):
     """
     A higher-level DataManager that manages separate training and validation DataManagers
     """
@@ -100,7 +100,8 @@ class DataManagerDual(LightningDataModule):
         ds_type=None,
         save_hyperparameters=True,
         keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
-        keys_val="L,N,Remap,E",
+        keys_val = "L,N,Remap,Ld,E,ResizePC",
+        keys_test = "L,E,N,Remap",
         data_folder: Optional[str | Path] = None,
     ):
         super().__init__()
@@ -112,6 +113,7 @@ class DataManagerDual(LightningDataModule):
         self.ds_type = ds_type
         self.keys_tr = keys_tr
         self.keys_val = keys_val
+        self.keys_test = keys_test
         self.data_folder = data_folder if data_folder is not None else None
 
         if save_hyperparameters:
@@ -122,7 +124,7 @@ class DataManagerDual(LightningDataModule):
     def prepare_data(self):
         """Prepare both training and validation data"""
 
-        manager_class_train, manager_class_valid = self.infer_manager_classes(
+        manager_class_train, manager_class_valid , manager_class_test = self.infer_manager_classes(
             self.configs
         )
 
@@ -145,14 +147,26 @@ class DataManagerDual(LightningDataModule):
             batch_size=self.batch_size,
             cache_rate=self.cache_rate,
             device=self.device,
-            ds_type=None,
+            ds_type=self.ds_type,
             split="valid",
             keys=self.keys_val,
+            data_folder=self.data_folder,
+        )
+        self.test_manager = manager_class_test(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            device=self.device,
+            ds_type=None,
+            split="test",
+            keys=self.keys_test,
             data_folder=self.data_folder,
         )
 
         self.train_manager.prepare_data()
         self.valid_manager.prepare_data()
+        self.test_manager.prepare_data()
 
     def setup(self, stage=None):
         """Set up both managers"""
@@ -168,6 +182,10 @@ class DataManagerDual(LightningDataModule):
         """Return validation dataloader"""
         return self.valid_manager.dl
 
+    def test_dataloader(self):
+        """Return test dataloader"""
+        return self.test_manager.dl
+
     @property
     def train_ds(self):
         """Access to training dataset"""
@@ -177,6 +195,11 @@ class DataManagerDual(LightningDataModule):
     def valid_ds(self):
         """Access to validation dataset"""
         return self.valid_manager.ds
+
+    @property
+    def test_ds(self):
+        """Access to test dataset"""
+        return self.test_manager.ds
 
     def infer_manager_classes(self, configs):
         """
@@ -194,6 +217,7 @@ class DataManagerDual(LightningDataModule):
         """
         train_mode = configs["plan_train"]["mode"]
         valid_mode = configs["plan_valid"]["mode"]
+        test_mode = configs["plan_test"]["mode"]
 
         # Ensure train and valid modes match
         # Map modes to manager classes
@@ -211,7 +235,7 @@ class DataManagerDual(LightningDataModule):
                 f"Unrecognized mode: {train_mode}. Must be one of {list(mode_to_class.keys())}"
             )
 
-        return mode_to_class[train_mode], mode_to_class[valid_mode]
+        return mode_to_class[train_mode], mode_to_class[valid_mode], mode_to_class[test_mode]
 
 
 class DataManager(LightningDataModule):
@@ -233,7 +257,16 @@ class DataManager(LightningDataModule):
         if save_hyperparameters:
             self.save_hyperparameters("project", "configs", "split", logger=False)
         device = resolve_device(device)
-        store_attr()
+
+        self.project = project
+        self.configs = configs
+        self.batch_size = batch_size
+        self.cache_rate = cache_rate
+        self.device = device
+        self.ds_type = ds_type
+        self.split = split
+        self.keys = keys
+
         self.plan = configs[f"plan_{split}"]
         global_properties = load_dict(project.global_properties_filename)
         self.dataset_params = configs["dataset_params"]
@@ -260,6 +293,7 @@ class DataManager(LightningDataModule):
         self.set_collate_fn()
 
     def set_collate_fn(self):
+        self.collate_fn = None
         raise NotImplementedError
 
     def __str__(self):
@@ -730,10 +764,10 @@ class DataManager(LightningDataModule):
 
 class DataManagerSource(DataManager):
     def set_collate_fn(self):
-        if self.split == "train":
-            self.collate_fn = source_collated
-        else:
+        if self.split == "test":
             self.collate_fn = grid_collated
+        else:
+            self.collate_fn = source_collated
 
     def __str__(self):
         return "DataManagerSource instance with parameters: " + ", ".join(
@@ -754,10 +788,7 @@ class DataManagerWhole(DataManagerSource):
         self.keys_val = "L,E,ResizeW,N"
 
     def set_collate_fn(self):
-        if self.split == "train":
-            self.collate_fn = whole_collated
-        else:
-            self.collate_fn = grid_collated
+            self.collate_fn = whole_collated 
 
     def __str__(self):
         return "DataManagerWhole instance with parameters: " + ", ".join(
@@ -1096,10 +1127,11 @@ if __name__ == "__main__":
     CT.setup(6)
     config_tot = CT.configs
 
+# %%
     CN = ConfigMaker(
         proj_nodes,
     )
-    CN.setup(1)
+    CN.setup(5)
     config_nodes = CN.configs
 
 # %%
@@ -1109,16 +1141,9 @@ if __name__ == "__main__":
     ds_type = None
     config_nodes["dataset_params"]["mode"] = "lbd"
     config_nodes["dataset_params"]["cache_rate"] = 0
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project_title=proj_nodes.project_title,
         configs=config_nodes,
-        batch_size=batch_size,
-        ds_type=ds_type,
-    )
-# %%
-    D = DataManagerDual(
-        project_title=proj_litsmc.project_title,
-        configs=config_litsmc,
         batch_size=batch_size,
         ds_type=ds_type,
     )
@@ -1126,12 +1151,12 @@ if __name__ == "__main__":
 # %%
     D.prepare_data()
     D.setup()
-    tm = D.valid_manager
-    tm2 = D.train_manager
-    tm.transforms_dict
+    tmv = D.valid_manager
+    tmt = D.train_manager
+    tmv.transforms_dict
 # %%
     dl = D.val_dataloader()
-    dl = tm.dl
+    dl = tmv.dl
     iteri = iter(dl)
     # while iteri:
     #     print(batch['image'].shape)
@@ -1157,7 +1182,7 @@ if __name__ == "__main__":
     iteri2 = iter(dl2)
     # while iteri:
     #     print(batch['image'].shape)
-    img_fn =  tm.data[0]['image']
+    img_fn =  tmv.data[0]['image']
     img = torch.load(img_fn,weights_only=False)
     ImageMaskViewer([img,img])
 # %%
@@ -1174,10 +1199,10 @@ if __name__ == "__main__":
 
 
 # %%
-    ds = tm.ds
+    ds = tmv.ds
     dat = ds[0]
     dici = ds.data[0]
-    tm.tfms_list
+    tmv.tfms_list
 
 # %%
 
@@ -1193,6 +1218,16 @@ if __name__ == "__main__":
     dici = ds1[0]
 # %%
 # %%
+#SECTION:-------------------- LIVER--------------------------------------------------------------------------------------
+
+# %%
+    D = DataManagerMulti(
+        project_title=proj_litsmc.project_title,
+        configs=config_litsmc,
+        batch_size=batch_size,
+        ds_type=ds_type,
+    )
+# %%
 # SECTION:-------------------- LBD-------------------------------------------------------------------------------------- <CR>
     batch_size = 2
     ds_type = "lmdb"
@@ -1202,7 +1237,7 @@ if __name__ == "__main__":
 
     config_litsmc["plan_train"]
 # %%
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project_title=proj_litsmc.project_title,
         configs=config_litsmc,
         batch_size=batch_size,
@@ -1219,12 +1254,12 @@ if __name__ == "__main__":
 # SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 # %%
     # Test DataManagerWhole with DataManagerDual
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project=proj_tot, configs=config_tot, batch_size=4, ds_type=None
     )
     D.prepare_data()
     D.setup()
-    tm = D.train_manager
+    tmv = D.train_manager
 # %%
 
     # Now use train_manager or valid_manager to access the data
@@ -1256,7 +1291,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- DataManagerPlain-------------------------------------------------------------------------------------- <CR>
 # %%
     batch_size = 2
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None
     )
     # D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
@@ -1266,7 +1301,7 @@ if __name__ == "__main__":
     b = D.train_ds[0]
     b["image"].shape
 
-    D = tm.transforms_dict["Dev"]
+    D = tmv.transforms_dict["Dev"]
 
     b2 = D(b[0])
 # %%
@@ -1285,7 +1320,7 @@ if __name__ == "__main__":
 
 # %%
     batch_size = 2
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None
     )
     D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
@@ -1310,7 +1345,7 @@ if __name__ == "__main__":
     proj_tot = proj_litsmc
     config_tot = config_litsmc
     batch_size = 2
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None
     )
 
@@ -1356,13 +1391,13 @@ if __name__ == "__main__":
 
     D.prepare_data()
     D.setup()
-    tm = D.train_manager
-    tm.transforms_dict
+    tmv = D.train_manager
+    tmv.transforms_dict
 # %%
-    ds = tm.ds
+    ds = tmv.ds
     dici = ds.data[0]
-    dici2 = tm.transforms(dici)
-    tm.tfms_list
+    dici2 = tmv.transforms(dici)
+    tmv.tfms_list
 
     dv = resolve_device(0)
     Dev = ToDeviceD(keys=["image", "lm"], device=dv)

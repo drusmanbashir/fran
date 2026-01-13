@@ -97,9 +97,9 @@ class UNetManager(LightningModule):
         self.log_losses(loss_dict, prefix="train")
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloder_idx=0 ):
         loss, loss_dict = self._common_step(batch, batch_idx)
-        self.log_losses(loss_dict, prefix="val")
+        self.log_losses(loss_dict, prefix="val{}".format(dataloder_idx))
         return loss
 
     def log_losses(self, loss_dict, prefix):

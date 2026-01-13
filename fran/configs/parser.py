@@ -309,12 +309,17 @@ class ConfigMaker:
         configs = load_config_from_workbook(configuration_filename)
         self.configs = parse_excel_dict(configs)
 
-    def setup(self, plan_train: int, plan_valid=None):
+    def setup(self, plan_train: int):#, plan_valid=None):
         # by default plan_valid is a fixed plan regardless of train_plan and is set in dataset_params
         # plan_valid essentially only uses the folder of said plan, and patch_size is kept same as plan_train
-        if not plan_valid:
-            plan_valid =self.configs["dataset_params"]["plan_valid"]
-        self._set_active_plans(plan_train, plan_valid)
+        plan_valid =self.configs["dataset_params"].get("plan_valid")
+        if is_excel_None(plan_valid):
+            plan_valid = plan_train
+
+        plan_test =self.configs["dataset_params"].get("plan_test")
+        if is_excel_None(plan_test):
+            plan_test = plan_train
+        self._set_active_plans(plan_train, plan_valid, plan_test)
         self.add_output_labels()
         self.add_out_channels()
         self.add_dataset_props()
@@ -404,26 +409,26 @@ class ConfigMaker:
                 if key not in main_plan:
                     main_plan[key] = source_plan[key]
 
-    def _set_plan(self, plan_num, train: bool = True):
+    def _set_plan(self, plan_id, suffix:str):
+        assert suffix in ["train", "valid", "test"], "suffix must be either 'train', 'valid' or 'test'"
         """Helper function to set a plan configuration
         Args:
             plan_num: Plan number from dataset_params
-            train: Boolean - True for training plan, False for validation plan
         """
-        plan_name = plan_num
-        plan_selected = self.plans.loc[plan_name]
+        plan_id = plan_id
+        plan_selected = self.plans.loc[plan_id]
         plan_selected = dict(plan_selected)
         samples_per_file = plan_selected["samples_per_file"]
         plan_selected["samples_per_file"] = (
             int(samples_per_file) if not is_excel_None(samples_per_file) else 1
         )
-        plan_key = "plan_train" if train else "plan_valid"
+        plan_key = "plan_"+ suffix
         self.configs[plan_key] = plan_selected
         # self.maybe_merge_source_plan(plan_key)
         if is_excel_None(plan_selected["expand_by"]):
             plan_selected["expand_by"] = 0
         self.configs[plan_key] = parse_excel_dict(plan_selected)
-        self.configs[plan_key]["plan_name"] = plan_name
+        self.configs[plan_key]["plan_name"] = plan_id
 
         for key, value in REMAPPING_DICT_OR_LIST.items():
             # reg = load_registry()
@@ -437,14 +442,16 @@ class ConfigMaker:
                     as_list=True if value == "list" else False,
                 )
 
-    def _set_active_plans(self, plan_train: int = None, plan_valid: int = None):
+    def _set_active_plans(self, plan_train: int = None, plan_valid: int = None, plan_test: int = None):
         # if plan_train == None:
         #     plan_train = self.configs["dataset_params"]["plan_train"]
         # if plan_valid == None:
         #     plan_valid = self.configs["dataset_params"]["plan_valid"]
-        self._set_plan(plan_train, True)
-        self._set_plan(plan_valid, False)
+        self._set_plan(plan_train, "train")
+        self._set_plan(plan_valid, "valid")
+        self._set_plan(plan_test, "test")
         self.configs["plan_valid"]["patch_size"] = self.configs["plan_train"]["patch_size"]
+        self.configs["plan_test"]["patch_size"] = self.configs["plan_train"]["patch_size"]
 
     def add_preprocess_status(self):
         """Add preprocessing status column to plans dataframe"""

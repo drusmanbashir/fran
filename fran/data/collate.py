@@ -1,6 +1,6 @@
 # %%
-from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
-from monai.transforms.spatial.dictionary import Resized
+from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd, RandCropByPosNegLabeld
+from monai.transforms.spatial.dictionary import Resized, RandAffined, RandFlipd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 import torch
 from torch.utils.data.dataloader import (
@@ -9,6 +9,7 @@ from torch.utils.data.dataloader import (
 )
 
 from fran.transforms.imageio import LoadSITKd
+from fran.data.dataset import NormaliseClipd
 
 _loaders = (_MultiProcessingDataLoaderIter, _SingleProcessDataLoaderIter)
 import ipdb
@@ -203,6 +204,49 @@ if __name__ == "__main__":
             spatial_size=patch_size,
             lazy=False,
         )
+    
+    # Additional transforms for mode='source' as per training.py
+    Rtr = RandCropByPosNegLabeld(
+        keys=["image", "lm"],
+        label_key="lm",
+        image_key="image",
+        spatial_size=patch_size,
+        pos=1,
+        neg=1,
+        num_samples=2,
+        lazy=True,
+        allow_smaller=True,
+    )
+    
+    F1 = RandFlipd(
+        keys=["image", "lm"], 
+        prob=0.5, 
+        spatial_axis=0, 
+        lazy=True
+    )
+    
+    F2 = RandFlipd(
+        keys=["image", "lm"], 
+        prob=0.5, 
+        spatial_axis=1, 
+        lazy=True
+    )
+    
+    Affine = RandAffined(
+        keys=["image", "lm"],
+        mode=["bilinear", "nearest"],
+        prob=0.2,
+        rotate_range=0.1,
+        scale_range=0.1,
+    )
+    
+    N = NormaliseClipd(
+        keys=["image"],
+        clip_range=(-1000, 1000),  # Adjust based on your data
+        mean=0,
+        std=1,
+    )
+
 # %%
 # %%
 #SECTION:--------------------  Whole_collated--------------------------------------------------------------------------------------
@@ -218,6 +262,12 @@ if __name__ == "__main__":
 
     b2 = whole_collated(batch)
 # %%
+# %%
+#SECTION:-------------------- SOURCE COLLATED--------------------------------------------------------------------------------------
+
+    d1 =ResizePC(E( L(d1)))
+    d2 = E(L(d2))
+    d3 = Res(d2)
 # %%
 #SECTION:-------------------- 2--------------------------------------------------------------------------------------
 
