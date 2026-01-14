@@ -10,7 +10,7 @@ from tqdm.auto import tqdm as pbar
 from utilz.string import headline
 
 from fran.configs.parser import ConfigMaker, parse_neptune_dict
-from fran.managers.data.training import DataManagerDual
+from fran.managers.data.training import DataManagerMulti
 # from fran.callback.modelcheckpoint import ModelCheckpointUB
 from fran.managers.project import Project
 from fran.managers.unet import UNetManager
@@ -322,7 +322,7 @@ class Trainer:
 
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
-        D = DataManagerDual(
+        D = DataManagerMulti(
             self.project.project_title,
             configs=self.configs,
             batch_size=self.configs["dataset_params"]["batch_size"],
@@ -373,7 +373,7 @@ class Trainer:
             print("A copy of original ckpt is stored at: ", bckup_ckpt)
             shutil.copy(self.ckpt, bckup_ckpt)
             torch.save(sd, self.ckpt)
-        D = DataManagerDual.load_from_checkpoint(
+        D = DataManagerMulti.load_from_checkpoint(
             self.ckpt,
             project_title=self.project.project_title,
             batch_size=batch_size,
@@ -558,7 +558,7 @@ if __name__ == "__main__":
     cache_rate = 0
     ds_type = Tm.configs["dataset_params"]["ds_type"]
     ds_type = "cache"
-    D = DataManagerDual(
+    D = DataManagerMulti(
         Tm.project,
         configs=Tm.configs,
         batch_size=Tm.configs["dataset_params"]["batch_size"],

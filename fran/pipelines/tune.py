@@ -242,7 +242,7 @@ if __name__ == '__main__':
     conf["dataset_params"]["mode"] = None
     conf["dataset_params"]["cache_rate"] = 0.5
 
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,
@@ -317,7 +317,7 @@ if __name__ == '__main__':
     ds_type = "lmdb"
     ds_type = None
 
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,

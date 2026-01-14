@@ -13,7 +13,7 @@ from utilz.helpers import pp
 from utilz.imageviewers import ImageMaskViewer
 
 from fran.managers.project import Project
-from fran.two.5d.datamanagers import DataManagerDual2
+from fran.two.5d.datamanagers import DataManagerMulti2
 from fran.utils.common import *
 from fran.configs.parser import ConfigMaker
 
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     conf_litsmc['plan_train']['patch_size']=[256,256]
     batch_size = 8
     ds_type = "lmdb"
-    # D = DataManagerDual2(
+    # D = DataManagerMulti2(
     #     project_title=proj_litsmc.project_title,
     #     config=conf_litsmc,
     #     batch_size=batch_size,
@@ -66,7 +66,7 @@ if __name__ == '__main__':
 
 
     data_fldr= Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_ex070/slices")
-    D = DataManagerDual2(
+    D = DataManagerMulti2(
         project_title=proj_litsmc.project_title,
         config=conf_litsmc,
         batch_size=batch_size,

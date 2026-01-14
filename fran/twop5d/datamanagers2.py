@@ -128,7 +128,7 @@ def list_to_fgbg(class_ratios: List[float]) -> Tuple[float, float]:
 # DataManagers
 # --------------------------------------------------------------------------------------
 
-class DataManagerDual(LightningDataModule):
+class DataManagerMulti(LightningDataModule):
     """A higher-level DataManager that manages separate training and validation DataManagers."""
 
     def __init__(

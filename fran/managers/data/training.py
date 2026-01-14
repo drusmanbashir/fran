@@ -1,6 +1,7 @@
 # %%
 import os
 import re
+
 from functools import reduce
 from operator import add
 from pathlib import Path
@@ -100,7 +101,7 @@ class DataManagerMulti(LightningDataModule):
         ds_type=None,
         save_hyperparameters=True,
         keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
-        keys_val = "L,N,Remap,Ld,E,ResizePC",
+        keys_val = "L,Remap,Ld,E,N,Rva, ResizePC",
         keys_test = "L,E,N,Remap",
         data_folder: Optional[str | Path] = None,
     ):
@@ -172,6 +173,7 @@ class DataManagerMulti(LightningDataModule):
         """Set up both managers"""
         self.train_manager.setup(stage)
         self.valid_manager.setup(stage)
+        self.test_manager.setup(stage)
         # Create separate managers for training and validation
 
     def train_dataloader(self):
@@ -622,12 +624,18 @@ class DataManager(LightningDataModule):
 
     def create_dataloader(self):
         shuffle = True if self.split == "train" else False
+        if isinstance(self.ds, GridPatchDataset):
+            num_workers = 0
+            persistent_workers = False
+        else:
+            num_workers = self.effective_batch_size * 2
+            persistent_workers = True
         self.dl = DataLoader(
             self.ds,
             batch_size=self.effective_batch_size,
-            num_workers=self.effective_batch_size * 2,
+            num_workers=num_workers,
             collate_fn=self.collate_fn,
-            persistent_workers=True,
+            persistent_workers=persistent_workers,
             pin_memory=True,
             shuffle=shuffle,
         )
@@ -650,12 +658,12 @@ class DataManager(LightningDataModule):
         if not hasattr(self, "data") or len(self.data) == 0:
             print("No data. DS is not being created at this point.")
             return 0
-        if self.split == "train":
-            self.ds = self._create_train_ds()
+        if self.split == "train" or self.split == "valid":
+            self.ds = self._create_modal_ds()
         else:
-            self.ds = self._create_valid_ds()
+            self.ds = self._create_test_ds()
 
-    def _create_train_ds(self):
+    def _create_modal_ds(self):
         if is_excel_None(self.ds_type):
             self.ds = Dataset(data=self.data, transform=self.transforms)
             print("Vanilla Pytorch Dataset set up.")
@@ -678,7 +686,7 @@ class DataManager(LightningDataModule):
             raise NotImplementedError
         return self.ds
 
-    def _create_valid_ds(self):
+    def _create_test_ds(self):
         """
         valid-ds is a GridPatchDataset to make training runs comparable
         """
@@ -687,7 +695,6 @@ class DataManager(LightningDataModule):
             transform=self.transforms,
             cache_dir=self.cache_folder,
         )
-
         patch_iter = PatchIterd(
             keys=["image", "lm"], patch_size=self.plan["patch_size"], mode="constant"
         )
@@ -732,8 +739,8 @@ class DataManager(LightningDataModule):
             DataManager: Instance initialized with data from the specified folder
         Note: After this do not call setup() and instead jump straight to prepare_data()
         """
-        data_folder = Path(data_folder)
-        assert data_folder.exists(), f"Folder {data_folder} does not exist"
+        data_folder2 = Path(data_folder)
+        assert data_folder2.exists(), f"Folder {data_folder2} does not exist"
         assert split in ["train", "valid"], "Split must be either 'train' or 'valid'"
 
         # Create instance
@@ -745,8 +752,8 @@ class DataManager(LightningDataModule):
         instance.data_folder = data_folder
 
         # Get files from images and lms folders
-        images_folder = data_folder / "images"
-        lms_folder = data_folder / "lms"
+        images_folder = data_folder2 / "images"
+        lms_folder = data_folder2 / "lms"
         assert images_folder.exists(), f"Images folder {images_folder} does not exist"
         assert lms_folder.exists(), f"Labels folder {lms_folder} does not exist"
 
@@ -1153,9 +1160,12 @@ if __name__ == "__main__":
     D.setup()
     tmv = D.valid_manager
     tmt = D.train_manager
+    tme = D.test_manager
     tmv.transforms_dict
 # %%
     dl = D.val_dataloader()
+    dl = D.train_dataloader()
+    dl = D.test_dataloader()
     dl = tmv.dl
     iteri = iter(dl)
     # while iteri:
@@ -1253,7 +1263,7 @@ if __name__ == "__main__":
 
 # SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 # %%
-    # Test DataManagerWhole with DataManagerDual
+    # Test DataManagerWhole with DataManagerMulti
     D = DataManagerMulti(
         project=proj_tot, configs=config_tot, batch_size=4, ds_type=None
     )

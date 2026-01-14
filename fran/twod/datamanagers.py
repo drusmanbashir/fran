@@ -9,7 +9,7 @@ from monai.transforms.transform import MapTransform, Randomizable
 
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
-from fran.managers.data.training import DataManagerDual, DataManagerLBD
+from fran.managers.data.training import DataManagerMulti, DataManagerLBD
 SEQ_LEN = 16
 
 
@@ -44,7 +44,7 @@ class DataManager2(DataManagerLBD):
         self.transforms_dict["Z"] = RandZWindowd(keys = ["image", "lm"], T = self.sequence_length)
 
 
-class DataManagerDual2(DataManagerDual):
+class DataManagerMulti2(DataManagerMulti):
 
     def __init__(
         self,
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     data_fldr = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_ex070/slices")
 # %%
 
-    D = DataManagerDual2(
+    D = DataManagerMulti2(
         project_title=proj_litsmc.project_title,
         configs=conf_litsmc,
         batch_size=batch_size,

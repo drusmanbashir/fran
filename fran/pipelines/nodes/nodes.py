@@ -1,21 +1,14 @@
 ## %%
-from tqdm.auto import tqdm
-
 from pathlib import Path
-import SimpleITK as sitk
-from utilz.helpers import find_matching_fn
 from fran.data.datasource import Datasource
 from fran.data.dataregistry import DS
 from fran.managers import  Project
-from fran.managers.db import COLUMNS_CRITICAL
 from fran.run.analyze_resample import PreprocessingManager
 from fran.trainers.trainer import Trainer
 from fran.utils.common import *
 from fran.configs.parser import ConfigMaker
 import argparse
-import torch
 
-from label_analysis.merge import relabel
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
@@ -40,7 +33,6 @@ if __name__ == '__main__':
     # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
-    from lightning.pytorch.tuner import Tuner
     devices= [1]
     bs = 2
 
@@ -108,9 +100,9 @@ if __name__ == '__main__':
     N = Tm.N
     D = Tm.D
 # %%
-    from fran.managers.data.training import DataManagerDual
+    from fran.managers.data.training import DataManagerMulti
     from utilz.imageviewers import ImageMaskViewer
-    D= DataManagerDual(project_title=P.project_title, configs=conf, batch_size=2,ds_type=None)
+    D= DataManagerMulti(project_title=P.project_title, configs=conf, batch_size=2,ds_type=None)
 # %%
     D.prepare_data()
     D.setup()
@@ -255,7 +247,7 @@ if __name__ == '__main__':
     conf["dataset_params"]["mode"] = None
     conf["dataset_params"]["cache_rate"] = 0.5
 
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,
@@ -331,7 +323,7 @@ if __name__ == '__main__':
     ds_type = "lmdb"
     ds_type = None
 
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,

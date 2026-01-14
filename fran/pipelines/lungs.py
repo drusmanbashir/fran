@@ -7,7 +7,7 @@ from pathlib import Path
 from fran.managers import Project
 from fran.data.datasource import Datasource
 from fran.run.analyze_resample import PreprocessingManager
-from fran.managers.data import DataManagerDual
+from fran.managers.data import DataManagerMulti
 from fran.configs.parser import ConfigMaker
 from fran.data.datasource import Datasource, DS
 
@@ -143,7 +143,7 @@ if __name__ == '__main__':
     conf["dataset_params"]["mode"] = None
     conf["dataset_params"]["cache_rate"] = 0
 
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,
@@ -258,7 +258,7 @@ if __name__ == '__main__':
     ds_type=None
 
 
-    D = DataManagerDual(
+    D = DataManagerMulti(
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,

@@ -11,7 +11,7 @@ from fran.managers import Project
 SEQ_LEN = 16
 
 
-from fran.twod.datamanagers import DataManagerDual2
+from fran.twod.datamanagers import DataManagerMulti2
 
 
 
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     data_fldr = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_ex070/slices")
 # %%
 
-    D = DataManagerDual2(
+    D = DataManagerMulti2(
         project_title=proj_litsmc.project_title,
         configs=conf_litsmc,
         batch_size=batch_size,

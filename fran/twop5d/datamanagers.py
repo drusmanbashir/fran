@@ -129,7 +129,7 @@ class RandomPatch(RandomizableTransform):
         return dici
 
 
-class DataManagerDual(LightningDataModule):
+class DataManagerMulti(LightningDataModule):
     """
     A higher-level DataManager that manages separate training and validation DataManagers
     """
@@ -1110,7 +1110,7 @@ class DataManagerBaseline(DataManagerLBD):
         return parent_folder / (self.data_folder.name + "_baseline")
 
 
-class DataManagerDual2(DataManagerDual):
+class DataManagerMulti2(DataManagerMulti):
     """
     A higher-level DataManager that manages separate training and validation DataManagers
     """
@@ -1180,7 +1180,7 @@ if __name__ == "__main__":
     data_fldr = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_ex070/slices")
     batch_size = 8
     ds_type = "lmdb"
-    D = DataManagerDual2(
+    D = DataManagerMulti2(
         project_title=proj_litsmc.project_title,
         config=conf_litsmc,
         batch_size=batch_size,
