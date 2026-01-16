@@ -1,35 +1,38 @@
-import  os
-from fran.managers.project import Project
+import os
+
 import ipdb
-from lightning.pytorch.utilities.types import STEP_OUTPUT
 import lightning as L
+from lightning.pytorch.utilities.types import STEP_OUTPUT
+
+from fran.managers.project import Project
 
 tr = ipdb.set_trace
 
-from ipdb.__main__ import get_ipython
-import numpy as np
 from typing import Any, Union
-from fastcore.basics import store_attr
+
+import numpy as np
 import torch._dynamo
+from fastcore.basics import store_attr
+from ipdb.__main__ import get_ipython
 
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 
 torch._dynamo.config.suppress_errors = True
 import itertools as il
 import operator
+
+import torch.nn.functional as F
 from lightning.pytorch import LightningModule
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from fran.architectures.create_network import (
-    create_model_from_conf,
-    pool_op_kernels_nnunet,
-)
-import torch.nn.functional as F
+from fran.architectures.create_network import (create_model_from_conf,
+                                               pool_op_kernels_nnunet)
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
 except:
     pass
+
 
 class UNetManager(LightningModule):
     def __init__(
@@ -43,10 +46,10 @@ class UNetManager(LightningModule):
 
         self.sync_dist = sync_dist
         self.project = Project(project_title)
-        self.save_hyperparameters("project_title","configs","lr")
+        self.save_hyperparameters("project_title", "configs", "lr")
         self.plan = configs["plan_train"]
         self.model_params = configs["model_params"]
-        self.loss_params = configs['loss_params']
+        self.loss_params = configs["loss_params"]
         self.lr = lr if lr else self.model_params["lr"]
         self.model = self.create_model()
 
@@ -97,14 +100,25 @@ class UNetManager(LightningModule):
         self.log_losses(loss_dict, prefix="train")
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloder_idx=0 ):
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        if dataloader_idx == 0:
+            loss, loss_dict = self._common_step(batch, batch_idx)
+            self.log_losses(loss_dict, prefix="val0")
+        if dataloader_idx == 1:
+            loss, loss_dict = self._common_step(batch, batch_idx)
+            self.log_losses(loss_dict, prefix="val1")
+        return loss
+
+    def test_step(self, batch, batch_idx):
         loss, loss_dict = self._common_step(batch, batch_idx)
-        self.log_losses(loss_dict, prefix="val{}".format(dataloder_idx))
+        self.log_losses(loss_dict, prefix="test")
         return loss
 
     def log_losses(self, loss_dict, prefix):
         metrics = loss_dict.keys()
-        metrics = [metric for metric in metrics if "batch" not in metric] # too detailed otherwise
+        metrics = [
+            metric for metric in metrics if "batch" not in metric
+        ]  # too detailed otherwise
         renamed = [prefix + "_" + nm for nm in metrics]
         logger_dict = {
             neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
@@ -141,7 +155,7 @@ class UNetManager(LightningModule):
         return model
 
     def create_loss_fnc(self):
-        fg_classes= max(self.model_params["out_channels"]-1,1)
+        fg_classes = max(self.model_params["out_channels"] - 1, 1)
         if self.model_params["arch"] == "nnUNet":
             num_pool = 5
             self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
@@ -157,7 +171,7 @@ class UNetManager(LightningModule):
                 deep_supervision_scales=self.deep_supervision_scales,
                 fg_classes=fg_classes,
             )
-            self.loss_fnc=loss_func
+            self.loss_fnc = loss_func
 
         elif (
             self.model_params["arch"] == "DynUNet"
@@ -190,13 +204,11 @@ class UNetManager(LightningModule):
                 deep_supervision_scales=self.deep_supervision_scales,
                 fg_classes=fg_classes,
             )
-            self.loss_fnc=loss_func
+            self.loss_fnc = loss_func
 
         else:
-            loss_func = CombinedLoss(
-                **self.loss_params, fg_classes=fg_classes
-            )
-            self.loss_fnc=loss_func
+            loss_func = CombinedLoss(**self.loss_params, fg_classes=fg_classes)
+            self.loss_fnc = loss_func
 
 
 def update_nep_run_from_configs(nep_run, configs):
@@ -215,7 +227,6 @@ def maybe_ddp(devices):
     else:
         headling("Using non-interactive shell ddp strategy")
         return "ddp"
-
 
 
 class UNetManagerFabric(UNetManager):
@@ -242,15 +253,14 @@ class UNetManagerFabric(UNetManager):
     ) -> None:
         pass
 
-
     # def training_step(self, batch, batch_idx):
-        # output = self._common_step(batch, batch_idx,"train")
-        # return output
-        # loss = output['loss']
-        # return loss
+    # output = self._common_step(batch, batch_idx,"train")
+    # return output
+    # loss = output['loss']
+    # return loss
 
     # def validation_step(self, batch, batch_idx):
     #     output = self._common_step(batch, batch_idx,"val")
     #     return output
-        # loss = output['loss']
-        # return loss
+    # loss = output['loss']
+    # return loss

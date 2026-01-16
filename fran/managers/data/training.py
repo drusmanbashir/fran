@@ -182,7 +182,7 @@ class DataManagerMulti(LightningDataModule):
 
     def val_dataloader(self):
         """Return validation dataloader"""
-        return self.valid_manager.dl
+        return [self.valid_manager.dl, self.test_manager.dl]
 
     def test_dataloader(self):
         """Return test dataloader"""
@@ -1165,14 +1165,19 @@ if __name__ == "__main__":
 # %%
     dl = D.val_dataloader()
     dl = D.train_dataloader()
-    dl = D.test_dataloader()
     dl = tmv.dl
-    iteri = iter(dl)
+    dl = D.test_dataloader()
+    iteri = iter(dl[1])
     # while iteri:
     #     print(batch['image'].shape)
 
 # %%
+    for batch in iteri:
+        print(batch["image"].shape)
+        print(batch['patch_coords'])
+# %%
     batch = next(iteri)
+    batch['image'].device
 
     batch.keys()
 # %%

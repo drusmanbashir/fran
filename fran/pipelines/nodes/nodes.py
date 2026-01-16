@@ -1,5 +1,6 @@
 ## %%
 from pathlib import Path
+from fran.callback.test import PeriodicTest
 from fran.data.datasource import Datasource
 from fran.data.dataregistry import DS
 from fran.managers import  Project
@@ -34,7 +35,7 @@ if __name__ == '__main__':
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
     devices= [1]
-    bs = 2
+    bs = 1
 
     # run_name ='LITS-1285'
     compiled = False
@@ -48,6 +49,7 @@ if __name__ == '__main__':
 
     conf['plan_train']
 
+    cbs = [PeriodicTest(every_n_epochs=2,limit_batches=10)]
 
     conf["dataset_params"]["cache_rate"]=0.0
     print(conf['model_params']['out_channels'])
@@ -64,7 +66,7 @@ if __name__ == '__main__':
     lr= 1e-3
     lr=None
 # %%
-    Tm = Trainer(P.project_title, conf, run_name)
+    Tm = Trainer(P.project_title, conf, run_name,)
     # Tm.configs
     Tm.configs['dataset_params']['fold']
 # %%
@@ -72,6 +74,7 @@ if __name__ == '__main__':
         compiled=compiled,
         batch_size=bs,
         devices=devices,
+        cbs=cbs,
         epochs=500 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
@@ -97,6 +100,7 @@ if __name__ == '__main__':
     Tm.fit()
 
 # %%
+    tra = Tm.trainer
     N = Tm.N
     D = Tm.D
 # %%

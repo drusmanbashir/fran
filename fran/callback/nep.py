@@ -126,7 +126,7 @@ class NeptuneImageGridCallback(Callback):
         if trainer.store_preds == True:
             self.populate_grid(pl_module, batch)
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if trainer.store_preds == True:
         # if trainer.current_epoch % self.epoch_freq == 0:
             if self.validation_grid_created == False:

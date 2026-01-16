@@ -80,6 +80,7 @@ class Trainer:
         compiled=None,
         neptune=True,
         profiler=False,
+        cbs=[],
         tags=[],
         description="",
         epochs=600,
@@ -94,7 +95,7 @@ class Trainer:
         self.set_lr(lr)
         self.set_strategy(devices)
         self.init_dm_unet(epochs, batch_size, override_dm_checkpoint)
-        cbs, logger, profiler = self.init_cbs(neptune, profiler, tags, description)
+        cbs, logger, profiler = self.init_cbs(cbs, neptune, profiler, tags, description)
         self.D.prepare_data()
 
         # if self.configs["model_params"]["compiled"] == True:
@@ -182,8 +183,8 @@ class Trainer:
         else:
             self.lr = self.configs["model_params"]["lr"]
 
-    def init_cbs(self, neptune, profiler, tags, description):
-        cbs = [
+    def init_cbs(self,cbs, neptune, profiler, tags, description):
+        cbs+= [
             ModelCheckpoint(
                 save_last=True,
                 monitor="val_loss",
