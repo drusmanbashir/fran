@@ -24,7 +24,8 @@ def parse_device_str(dev_arg: str) -> Union[int, List[int]]:
         val = int(sat)
     except ValueError:
         print("Not valid device")
-
+        return None
+        # return [0]  # default to GPU 0
 
     if val in (0, 1):  # treat as explicit GPU id
         return [val]
@@ -32,7 +33,7 @@ def parse_device_str(dev_arg: str) -> Union[int, List[int]]:
 
 
 
-def parse_devices(arg=None):
+def parse_devices(arg=None, format_as_cuda=False):
     """
     Flexible device parser:
       [0]      → device('cuda:0')
@@ -48,6 +49,7 @@ def parse_devices(arg=None):
     n_devices = torch.cuda.device_count()
 
     # --- normalize to list of IDs ---
+    arg = ast_literal_eval(arg)
     if arg is None or arg == []:
         ids = list(range(n_devices))
 
@@ -70,15 +72,25 @@ def parse_devices(arg=None):
     if not ids:
         ids = [0]
 
-    devices = [torch.device(f"cuda:{i}") for i in ids]
-    return devices[0] if len(devices) == 1 else devices# --- examples ---
+    if format_as_cuda ==True:
+        ids = [torch.device(f"cuda:{i}") for i in ids]
+    return ids[0] if len(ids) == 1 else ids# --- examples ---
 # %%
 # parse_device_arg(None)  → all GPUs (e.g., [cuda:0, cuda:1, ...])
 if __name__ == '__main__':
     ast_literal_eval('[1]')
+    parse_device_str('[1]')
     aa = parse_devices('[1]')
+    print(aa)
     aa = parse_devices('[1]')
+    aa = parse_devices(0)
     # aa = parse_device_arg([0])
     # aa = parse_device_arg([0,1])
     # aa
 # %%
+
+
+# %%
+# %%
+# %%
+

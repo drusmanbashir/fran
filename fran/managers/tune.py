@@ -212,7 +212,7 @@ if __name__ == "__main__":
             val_sample = tune_fnc(vals)
         config.update({key:val_sample})
 # %%
-    r = RayTuneManager("/home/ub/code/fran/configurations/experiment_configs_liver.xlsx")
+    r = RayTuneManager("/home/ub/code/fran/configurations/experiment_configs_nodes.xlsx")
     conf = r.load_config(sheet_name="model_params")
 
 # %%

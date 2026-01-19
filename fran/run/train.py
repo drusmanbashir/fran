@@ -4,6 +4,7 @@
 import ipdb
 import torch
 
+from fran.callback.test import PeriodicTest
 from fran.utils.misc import parse_devices
 
 tr = ipdb.set_trace
@@ -47,17 +48,23 @@ def main(args):
         print("CUDA AVAILABLE — GPUs:", torch.cuda.device_count())
         # --- Project & configs ----------------------------------------------------
         P = Project(args.project)
+        devices = parse_devices(args.devices)
         C = ConfigMaker(P, configuration_filename=None)
         plan_num = int(args.plan_num)
         C.setup(plan_num)
         conf = C.configs
 
         # Update dataset params from CLI
+        cbs=[]
         conf["dataset_params"]["cache_rate"] = args.cache_rate
         if args.ds_type is not None:
             conf["dataset_params"]["ds_type"] = args.ds_type
         if args.fold is not None:
             conf["dataset_params"]["fold"] = args.fold
+
+        if args.test > 0:
+            cbs+=[PeriodicTest(every_n_epochs=args.test, limit_batches=50)]
+
 
         # --- Trainer --------------------------------------------------------------
         print_device_info()
@@ -67,7 +74,8 @@ def main(args):
         Tm.setup(
             compiled=args.compiled,
             batch_size=args.batch_size,
-            devices=args.devices,
+            cbs=cbs,
+            devices=devices,
             epochs=args.epochs if not args.profiler else 1,
             profiler=args.profiler,
             neptune=args.neptune,
@@ -144,8 +152,15 @@ if __name__ == "__main__":
         choices=[None, "lmdb", "memmap", "zarr"],
         help="Dataset backend if supported",
     )
+    parser.add_argument("-t", "--test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
 
     args = parser.parse_known_args()[0]
-    # %%
-    # %%
+# %%
+    # args.fold = 1
+    # args.project = "nodes"
+    #
+    # args.devices = '0'
+    #
+# %%
     main(args)
+# %%

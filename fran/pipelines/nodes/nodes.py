@@ -1,4 +1,3 @@
-## %%
 from pathlib import Path
 from fran.callback.test import PeriodicTest
 from fran.data.datasource import Datasource
@@ -49,7 +48,7 @@ if __name__ == '__main__':
 
     conf['plan_train']
 
-    cbs = [PeriodicTest(every_n_epochs=2,limit_batches=10)]
+    cbs = [PeriodicTest(every_n_epochs=1,limit_batches=50)]
 
     conf["dataset_params"]["cache_rate"]=0.0
     print(conf['model_params']['out_channels'])
@@ -61,10 +60,10 @@ if __name__ == '__main__':
     conf["dataset_params"]["fold"]=0
     run_name=None
     lr= 1e-2
-# %%
-    run_name="LITS-1327"
-    lr= 1e-3
-    lr=None
+# # %%
+#     run_name="LITS-1327"
+#     lr= 1e-3
+    # lr=None
 # %%
     Tm = Trainer(P.project_title, conf, run_name,)
     # Tm.configs

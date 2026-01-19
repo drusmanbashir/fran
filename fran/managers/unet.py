@@ -128,6 +128,7 @@ class UNetManager(LightningModule):
             logger=True,
             batch_size=self.batch_size,
             sync_dist=self.sync_dist,
+            add_dataloader_idx=False,
         )
         # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 

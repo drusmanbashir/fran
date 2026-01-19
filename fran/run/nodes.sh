@@ -4,8 +4,9 @@
 python -m ipdb train.py \
   --project nodes \
   --plan-num 7 \
-  --devices 0 \
-  --bs 4 \
+  --devices 1 \
+  --bs 1 \
+  -t 1\
   --epochs 600 \
   --compiled false\
   --profiler false \
