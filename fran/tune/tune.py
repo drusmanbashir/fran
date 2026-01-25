@@ -215,7 +215,7 @@ def train_with_tune(config, project_title, num_epochs=10):
 
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     set_autoreload()
 
@@ -257,7 +257,7 @@ if __name__ == "__main__":
     )
 # %%
     # num_gpus = 2
-    num_gpus = 1
+    num_gpus = 2
     gpus_per_trial = 1
     resources_per_trial = {"cpu": 8.0, "gpu": gpus_per_trial}
     num_samples = 5
@@ -355,7 +355,7 @@ if __name__ == "__main__":
     )
 # %%
 # %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR>
     conf["dataset_params"]["src_dim1"]
     conf2 = conf.copy()
     conf2["dataset_params"]["src_dim0"] = conf["dataset_params"]["src_dim0"].sample()

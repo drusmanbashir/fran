@@ -15,20 +15,41 @@ from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator
-from fran.configs.parser import ConfigMaker
+from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.utils.folder_names import folder_names_from_plan
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
 def main(args):
     P = Project(project_title=args.project_title)
-    # P.create(mnemonic= "litsmall")
-    # P.add_data([DS["litsmall"]])
-    # P.create(mnemonic="lidc")
-    # P.create(mnemonic="lidc", datasources=[DS["lidc"]])
-    # P.add_data([DS["lidc"]])
-    # P.maybe_store_projectwide_properties()
+    C = ConfigMaker(P,  configuration_filename=None)
+    overwrite = args.overwrite
+    
+    if args.plan == 0:
+        # Process all plans
+        plan_ids = C.plans["plan_id"].tolist()
+        for plan_id in plan_ids:
+            C.setup(plan_id)
+            plan = C.configs["plan_train"]
+            completed = confirm_plan_analyzed(P, plan)
+            if overwrite or not all(completed.values()):
+                args.plan = plan_id
+                process_plan(args)
+            else:
+                print(f"Plan {plan_id} already processed. Skipping")
+    else:
+        # Process specific plan
+        C.setup(args.plan)
+        plan = C.configs["plan_train"]
+        completed = confirm_plan_analyzed(P, plan)
+        if overwrite or not all(completed.values()):
+            process_plan(args)
+        else:
+                print(f"Plan {args.plan} already processed. Skipping")
 
+
+
+def process_plan(args):
     I = PreprocessingManager(args)
     I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
     # args.num_processes = 1
@@ -89,15 +110,15 @@ class PreprocessingManager:
     overwrite: bool
     debug:bool
     # dont use getattr
-    def __init__(self, args):
+    def __init__(self, args, conf=None):
         self.assimilate_args(args)
         self.num_processes = args.num_processes
         P = Project(project_title=args.project_title)
         self.project = P
-        C = ConfigMaker(P,  configuration_filename=None)
-        C.setup(args.plan)
-
-        conf = C.configs
+        if conf is None:
+            C = ConfigMaker(P,  configuration_filename=None)
+            C.setup(args.plan)
+            conf = C.configs
         self.plan = conf["plan_train"]
         # self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
 
@@ -358,17 +379,17 @@ if __name__ == "__main__":
         help="number of parallel processes",
         default=1,
     )
-    parser.add_argument("-p", "--plan", type=int, help="Just a number like 1, 2")
+    parser.add_argument("-p", "--plan", type=int,  help="Just a number. If 0 selected, all plans will be analyzed.")
     parser.add_argument("-d", "--debug", action="store_true")
 
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # # %%
-#     args.project_title="nodes"
-#     args.plan = 2
-#     args.num_processes = 1
-#     args.overwrite=False
-#     args.debug=True
+    # args.project_title="nodes"
+    # args.plan = 0
+    # args.num_processes = 1
+    # args.overwrite=False
+    # args.debug=True
 #     #
 
 # %%
