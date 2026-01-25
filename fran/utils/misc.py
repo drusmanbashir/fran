@@ -79,7 +79,7 @@ def parse_devices(arg=None, format_as_cuda=False):
 
     if format_as_cuda ==True:
         ids = [torch.device(f"cuda:{i}") for i in ids]
-    return ids[0] if len(ids) == 1 else ids# --- examples ---
+    return ids
 # %%
 # parse_device_arg(None)  → all GPUs (e.g., [cuda:0, cuda:1, ...])
 if __name__ == '__main__':
