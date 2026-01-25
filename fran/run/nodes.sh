@@ -7,7 +7,6 @@ python -m ipdb train.py \
   --devices 1 \
   --bs 1 \
   --batch-finder true \
-  -t 1\
   --epochs 600 \
   --compiled false\
   --profiler false \

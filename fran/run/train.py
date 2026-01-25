@@ -3,6 +3,7 @@
 # training.py — minimal runner to Tm.fit()
 import ipdb
 import torch
+from utilz.string import headline
 
 from fran.callback.test import PeriodicTest
 from fran.utils.misc import parse_devices
@@ -88,6 +89,7 @@ def main(args):
         Tm.fit()
 
 
+# %%
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train FRAN model up to Tm.fit(), no preprocessing."
@@ -166,9 +168,11 @@ if __name__ == "__main__":
 # %%
     # args.fold = 1
     # args.project = "nodes"
+    # #
+    # args.devices = '1'
     #
-    # args.devices = '0'
-    #
+    headline("DEVS")
+    parse_devices(args.devices)
 # %%
     main(args)
 # %%
