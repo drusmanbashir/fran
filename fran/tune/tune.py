@@ -256,7 +256,8 @@ if __name__ == "__main__":
         # parameter_columns=["lr", "batch_size"],
     )
 # %%
-    num_gpus = 2
+    # num_gpus = 2
+    num_gpus = 1
     gpus_per_trial = 1
     resources_per_trial = {"cpu": 8.0, "gpu": gpus_per_trial}
     num_samples = 5
