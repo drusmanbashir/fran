@@ -15,8 +15,7 @@ if not sys.executable == "":  # workaround for slicer as it does not load ray tu
 
 from utilz.helpers import *
 
-
-TUNE_VARS =[
+TUNE_VARS = [
     "base_ch_opts",
     "lr",
     "deep_supervision",
@@ -33,14 +32,14 @@ TUNE_VARS =[
 ]
 
 
-
 def load_tune_template(project="base"):
     import importlib.resources
+
     import fran.templates as tl
+
     with importlib.resources.files(tl).joinpath("tune.yaml").open("r") as f:
         cfg = yaml.safe_load(f)
     return cfg[project]
-
 
 
 def resolve_tune_fnc(tune_type: str):
@@ -49,15 +48,18 @@ def resolve_tune_fnc(tune_type: str):
     else:
         return getattr(tune, tune_type)
 
-def out_channels_from_dict_or_cell(src_dest_labels):  
+
+def out_channels_from_dict_or_cell(src_dest_labels):
     if isinstance(src_dest_labels, pd.core.series.Series):
         src_dest_labels = ast.literal_eval(src_dest_labels.item())
-    out_channels = max([src_dest[1] for src_dest in src_dest_labels])+1
+    out_channels = max([src_dest[1] for src_dest in src_dest_labels]) + 1
     return out_channels
+
+
 class RayTuneConfig(ConfigMaker):
     def __init__(self, project, configuration_filename=None):
         super().__init__(project, configuration_filename=configuration_filename)
-        if not "mom_low" in self.configs["model_params"].keys() :
+        if not "mom_low" in self.configs["model_params"].keys():
             config = {
                 "mom_low": tune.sample_from(
                     lambda spec: np.random.uniform(0.6, 0.9100)
@@ -71,17 +73,18 @@ class RayTuneConfig(ConfigMaker):
                 ),
             }
             self.configs["model_params"].update(config)
-        self.tune_template=load_tune_template(project="base")
+        self.tune_template = load_tune_template(project="base")
 
     def setup(self):
-        super().setup(plan_train=1, plan_valid=1)
+        super().setup(plan_train=1)
         self.insert_tune_vars()
 
     def insert_tune_vars(self):
-        self.patch_dim0_computed,self.src_dim0_computed = False, False
+        self.patch_dim0_computed, self.src_dim0_computed = False, False
         self.insert_tune_vars_dict(self.configs["dataset_params"])
         self.insert_tune_vars_dict(self.configs["model_params"])
         self.insert_tune_vars_dict(self.configs["plan_train"])
+
     # def get_tune_variable(self,tune_k)->tuple:
     #             try:
     #                 rr= self.tune_template[tune_k]
@@ -107,12 +110,12 @@ class RayTuneConfig(ConfigMaker):
     #             return rr, tune_k
 
     def insert_tune_vars_dict(self, cfg_dict):
-        tune_keys =list(set(cfg_dict.keys()).intersection(set(TUNE_VARS)))
-        for i in range(0,len(tune_keys)):
+        tune_keys = list(set(cfg_dict.keys()).intersection(set(TUNE_VARS)))
+        for i in range(0, len(tune_keys)):
             tune_k = tune_keys[i]
-            rr =  self.tune_template[tune_k]
-            var_type = rr['type']
-            if(
+            rr = self.tune_template[tune_k]
+            var_type = rr["type"]
+            if (
                 var_type == "randint"
                 or var_type == "loguniform"
                 or var_type == "uniform"
@@ -134,7 +137,7 @@ class RayTuneConfig(ConfigMaker):
                     quant = float(rr["q"])
 
                 val_lower, val_upper = rr["value"]
-                val_sample = tune_fnc(lower=val_lower, upper=val_upper,q=quant)
+                val_sample = tune_fnc(lower=val_lower, upper=val_upper, q=quant)
 
             # try:
             #     print(tune_k, val_sample.sample())
@@ -145,7 +148,5 @@ class RayTuneConfig(ConfigMaker):
 
             cfg_dict[tune_k] = val_sample
         return cfg_dict
-
-
 
     #

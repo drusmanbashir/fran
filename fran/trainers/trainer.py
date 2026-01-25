@@ -183,11 +183,11 @@ class Trainer:
         else:
             self.lr = self.configs["model_params"]["lr"]
 
-    def init_cbs(self,cbs, neptune, profiler, tags, description):
+    def init_cbs(self,cbs, neptune, profiler, tags, description=""):
         cbs+= [
             ModelCheckpoint(
                 save_last=True,
-                monitor="val_loss",
+                monitor="val0_loss",
                 every_n_epochs=10,
                 # mode="min",
                 filename="{epoch}-{val_loss:.2f}",
@@ -309,15 +309,7 @@ class Trainer:
             ), "If no list is provided, fgbg_ratio must be an integer"
 
     def heuristic_batch_size(self):
-        total_gb = psutil.virtual_memory().total / 1e9
-        if total_gb < 15:
-            return 6
-        elif total_gb < 32:
-            return 8
-        elif total_gb < 48:
-            return 20
-        else:
-            return 48
+        raise NotImplementedError
 
     def init_dm(self):
 

@@ -6,7 +6,7 @@ from fran.managers import  Project
 from fran.run.analyze_resample import PreprocessingManager
 from fran.trainers.trainer import Trainer
 from fran.utils.common import *
-from fran.configs.parser import ConfigMaker
+from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 import argparse
 
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
@@ -20,10 +20,11 @@ if __name__ == '__main__':
     conf = C.configs
     print(conf["model_params"])
 
-    plan = conf['plan_train']
-    pp(plan)
+    planT = conf['plan_train']
+    planV = conf["plan_valid"]
+    pp(planT)
 
-    plan['mode']
+    planT['mode']
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     # if (lm==3).any():
     #     print("Bad values 3 ->0")
@@ -32,9 +33,14 @@ if __name__ == '__main__':
     #
     # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
 # %%
+#SECTION:-------------------- COnfirm plans exist--------------------------------------------------------------------------------------
+
+    statusesT    = confirm_plan_analyzed(P, planT)
+    statusesV    = confirm_plan_analyzed(P, planV)
+# %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
     devices= [1]
-    bs = 1
+    bs = 3
 
     # run_name ='LITS-1285'
     compiled = False
@@ -196,7 +202,7 @@ if __name__ == '__main__':
     args.plan_name = "plan2"
     args.project_title = "nodes"
 
-    plan = conf[args.plan_name]
+    planT = conf[args.plan_name]
 # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
 # %%
     I = PreprocessingManager(args)
@@ -214,12 +220,12 @@ if __name__ == '__main__':
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
-        if "imported_folder" not in plan.keys():
+        if "imported_folder" not in planT.keys():
             I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
-                imported_labels=plan["imported_labels"],
-                imported_folder=plan["imported_folder"],
+                imported_labels=planT["imported_labels"],
+                imported_folder=planT["imported_folder"],
                 overwrite=overwrite,
             )
 # %%
@@ -228,7 +234,7 @@ if __name__ == '__main__':
 
     L = LabelBoundedDataGeneratorImported(
         project=P,
-        plan=plan,
+        plan=planT,
         folder_suffix=plan_name,
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
@@ -365,9 +371,9 @@ if __name__ == '__main__':
     #     print(batch['image'].shape)
 # %%
 
-    folder_names_from_plan(P, plan)
+    folder_names_from_plan(P, planT)
     add_plan_to_db(
-        plan, "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2", P.db
+        planT, "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2", P.db
     )
 # %%
 # %%

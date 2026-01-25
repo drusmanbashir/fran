@@ -22,13 +22,49 @@ tr = ipdb.set_trace
 
 from openpyxl import load_workbook
 from utilz.helpers import *
-#HACK: this may bug out later
+
+# HACK: this may bug out later
 REMAPPING_DICT_OR_LIST = {
     "remapping_source": "dict",
     "remapping_lbd": "list",
     "remapping_imported": "dict",
     "remapping_train": "list",
 }
+
+
+def cases_in_folder(fldr) -> int:
+    fldr = Path(fldr)
+    if not fldr.exists():
+        return 0
+    img_fldr = fldr / ("images")
+    cases = list(img_fldr.glob("*"))
+    n_cases = len(cases)
+    return n_cases
+
+
+def confirm_plan_analyzed(project, plan):
+
+    n_cases = len(project)
+    folders = folder_names_from_plan(project, plan)
+    existing_src_fldr = folders["data_folder_source"]
+    cases_in_src_folder = cases_in_folder(existing_src_fldr)
+    src_fldr_full = n_cases == cases_in_src_folder
+
+    mode = plan.get("mode")
+    if mode == "lbd":
+        existing_final_fldr = folders["data_folder_lbd"]
+    elif mode in ["patch", "pbd"]:
+        existing_final_fldr = folders["data_folder_patch"]
+    elif mode == "whole":
+        existing_final_fldr = folders["data_folder_whole"]
+    else:
+        existing_final_fldr = folders["data_folder_source"]
+    # else:
+    #     raise NotImplementedError(f"Unknown mode: {mode}")
+
+    cases_in_final_folder = cases_in_folder(existing_final_fldr)
+    final_fldr_full = n_cases == cases_in_final_folder
+    return {"src_fldr_full": src_fldr_full, "final_fldr_full": final_fldr_full}
 
 
 def _to_py(obj) -> Any:
@@ -305,18 +341,18 @@ class ConfigMaker:
             keep_default_na=False,
             na_values=["TRUE", "FALSE", ""],
         )
-        self.plans.insert(0,"plan_id", self.plans.index)
+        self.plans.insert(0, "plan_id", self.plans.index)
         configs = load_config_from_workbook(configuration_filename)
         self.configs = parse_excel_dict(configs)
 
-    def setup(self, plan_train: int):#, plan_valid=None):
+    def setup(self, plan_train: int):  # , plan_valid=None):
         # by default plan_valid is a fixed plan regardless of train_plan and is set in dataset_params
         # plan_valid essentially only uses the folder of said plan, and patch_size is kept same as plan_train
-        plan_valid =self.configs["dataset_params"].get("plan_valid")
+        plan_valid = self.configs["dataset_params"].get("plan_valid")
         if is_excel_None(plan_valid):
             plan_valid = plan_train
 
-        plan_test =self.configs["dataset_params"].get("plan_test")
+        plan_test = self.configs["dataset_params"].get("plan_test")
         if is_excel_None(plan_test):
             plan_test = plan_train
         self._set_active_plans(plan_train, plan_valid, plan_test)
@@ -409,8 +445,12 @@ class ConfigMaker:
                 if key not in main_plan:
                     main_plan[key] = source_plan[key]
 
-    def _set_plan(self, plan_id, suffix:str):
-        assert suffix in ["train", "valid", "test"], "suffix must be either 'train', 'valid' or 'test'"
+    def _set_plan(self, plan_id, suffix: str):
+        assert suffix in [
+            "train",
+            "valid",
+            "test",
+        ], "suffix must be either 'train', 'valid' or 'test'"
         """Helper function to set a plan configuration
         Args:
             plan_num: Plan number from dataset_params
@@ -422,7 +462,7 @@ class ConfigMaker:
         plan_selected["samples_per_file"] = (
             int(samples_per_file) if not is_excel_None(samples_per_file) else 1
         )
-        plan_key = "plan_"+ suffix
+        plan_key = "plan_" + suffix
         self.configs[plan_key] = plan_selected
         # self.maybe_merge_source_plan(plan_key)
         if is_excel_None(plan_selected["expand_by"]):
@@ -442,7 +482,9 @@ class ConfigMaker:
                     as_list=True if value == "list" else False,
                 )
 
-    def _set_active_plans(self, plan_train: int = None, plan_valid: int = None, plan_test: int = None):
+    def _set_active_plans(
+        self, plan_train: int = None, plan_valid: int = None, plan_test: int = None
+    ):
         # if plan_train == None:
         #     plan_train = self.configs["dataset_params"]["plan_train"]
         # if plan_valid == None:
@@ -450,8 +492,12 @@ class ConfigMaker:
         self._set_plan(plan_train, "train")
         self._set_plan(plan_valid, "valid")
         self._set_plan(plan_test, "test")
-        self.configs["plan_valid"]["patch_size"] = self.configs["plan_train"]["patch_size"]
-        self.configs["plan_test"]["patch_size"] = self.configs["plan_train"]["patch_size"]
+        self.configs["plan_valid"]["patch_size"] = self.configs["plan_train"][
+            "patch_size"
+        ]
+        self.configs["plan_test"]["patch_size"] = self.configs["plan_train"][
+            "patch_size"
+        ]
 
     def add_preprocess_status(self):
         """Add preprocessing status column to plans dataframe"""
@@ -464,25 +510,10 @@ class ConfigMaker:
             self.setup(plan_id)
             conf = self.configs
             plan = conf["plan_train"]
-            folders = folder_names_from_plan(self.project, plan)
-            existing_src_fldr = folders["data_folder_source"]
-            cases_in_src_folder = cases_in_folder(existing_src_fldr)
-            src_fldr_full = n_cases == cases_in_src_folder
 
-            mode = plan.get("mode")
-            if mode == "lbd":
-                existing_final_fldr = folders["data_folder_lbd"]
-            elif mode in ["patch", "pbd"]:
-                existing_final_fldr = folders["data_folder_patch"]
-            elif mode == "whole":
-                existing_final_fldr = folders["data_folder_whole"]
-            else:
-                existing_final_fldr = folders["data_folder_source"]
-            # else:
-            #     raise NotImplementedError(f"Unknown mode: {mode}")
-
-            cases_in_final_folder = cases_in_folder(existing_final_fldr)
-            final_fldr_full = n_cases == cases_in_final_folder
+            detailed_status = confirm_plan_analyzed(self.project, plan)
+            src_fldr_full = detailed_status["src_fldr_full"]
+            final_fldr_full = detailed_status["final_fldr_full"]
 
             if all([src_fldr_full, final_fldr_full]):
                 status = "both"
@@ -517,7 +548,6 @@ def load_metadata(settingsfilename):
     return df
 
 
-
 def parse_excel_cell(cell_val):
     if isinstance(cell_val, (int, float)):
         return _to_py(cell_val)
@@ -546,9 +576,10 @@ def parse_neptune_dict(dic: dict):
 # %%
 if __name__ == "__main__":
 
-# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     from fran.managers import Project
+
     P = Project(project_title="nodes")
     C = ConfigMaker(P, configuration_filename=None)
     C.setup(1)

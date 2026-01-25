@@ -17,20 +17,9 @@ def load_project_cfg(project_name: str, mnemonic: str | None = None):
     cfg = ConfigMaker(proj, configuration_filename=None)
 
     return proj, cfg
-
-def cases_in_folder(fldr) -> int:
-    fldr = Path(fldr)
-    if not fldr.exists():
-        return 0
-    img_fldr = fldr / ("images")
-    cases = list(img_fldr.glob("*"))
-    n_cases = len(cases)
-    return n_cases
-
-
 # %%
 if __name__ == "__main__":
-    proj, cfg = load_project_cfg("lidc")
+    proj, cfg = load_project_cfg("nodes")
     cfg.add_preprocess_status()
     print(cfg.plans["preprocessed"])
 # %%

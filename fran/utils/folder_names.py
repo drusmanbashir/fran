@@ -117,6 +117,8 @@ def whole_image_suffix(row):
 
 
 def folder_names_from_plan(project,plan:dict):
+    #Src_fodler: spacing
+    #LBD_folder: src_folder,  expand_by, remapping
 
     reg = load_registry()
     spc = plan.get("spacing")

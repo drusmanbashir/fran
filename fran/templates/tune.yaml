@@ -28,7 +28,6 @@ base:
       value:
       - 160
       - 192
-      - 256
     src_dim1:
       type: choice
       value: 

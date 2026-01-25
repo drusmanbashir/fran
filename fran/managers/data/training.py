@@ -31,7 +31,7 @@ from utilz.fileio import load_dict, load_yaml
 from utilz.helpers import (find_matching_fn, folder_name_from_list,
                            resolve_device)
 from utilz.imageviewers import ImageMaskViewer
-from utilz.string import ast_literal_eval, info_from_filename, strip_extension
+from utilz.string import ast_literal_eval, headline, info_from_filename, strip_extension
 
 from fran.configs.parser import ConfigMaker, is_excel_None
 from fran.data.collate import grid_collated, source_collated, whole_collated
@@ -642,12 +642,16 @@ class DataManager(LightningDataModule):
 
     def setup(self, stage: str = None) -> None:
         # Create transforms for this split
+
+        headline(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
+        print("Src Dims: ", self.configs["dataset_params"]["src_dims"])
+        print("Patch Size: ", self.plan["patch_size"])
         print("Using fg indices: ", self.plan["use_fg_indices"])
 
         self.create_transforms()
         self.set_transforms(self.keys)
         print("Transforms are set up: ", self.keys)
-        print(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
+
         self.create_dataset()
         self.create_dataloader()
 

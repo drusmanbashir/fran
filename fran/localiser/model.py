@@ -370,10 +370,10 @@ if __name__ == "__main__":
             ModelCheckpoint(
                 dirpath="/s/fran_storage/checkpoints/detection",
                 save_last=True,
-                monitor="val_loss",
+                monitor="val1_loss",
                 every_n_epochs=10,
                 # mode="min",
-                filename="{epoch}-{val_loss:.2f}",
+                filename="{epoch}-{val1_loss:.2f}",
                 enable_version_counter=True,
                 auto_insert_metric_name=True,
             ),

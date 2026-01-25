@@ -34,23 +34,6 @@ class DownsampleMaskForDS(Callback):
                 mask_downsampled = F.interpolate(mask,size=size,mode="nearest")
                 output.append(mask_downsampled)
         self.learn.yb = [output]
-        
-class DownsampleMaskForDS_Fastai(CBF):
-    def __init__(self, ds_scales):
-        self.ds_scales = ds_scales
-
-    def before_batch(self):
-        mask = self.learn.y
-        output = []
-        for s in self.ds_scales:
-            if all([i == 1 for i in s]):
-                output.append(mask)
-            else:
-                size = [round(ss*aa) for ss,aa in zip(s,mask.shape[2:])]
-                mask_downsampled = F.interpolate(mask,size=size,mode="nearest")
-                output.append(mask_downsampled)
-        self.learn.yb = [output]
-        
 
 class FixPredNan(Callback):
     "A `Callback` that terminates training if loss is NaN."
@@ -81,29 +64,5 @@ def make_grid_5d_input_numpy_version(a:torch.Tensor,batch_size_to_plot=16):
     plt.imshow(img_grid_np)
 
    
-
-    
-class TerminateOnNaNCallback_ub(CBF):
-    "A `Callback` that terminates training if loss is NaN."
-
-    order = -9
-    def after_batch(self):
-        "Test if `last_loss` is NaN and interrupts training."
-        if torch.isinf(self.loss) or torch.isnan(self.loss):
-            print("NaNs !!")
-            raise CancelFitException
-
-# Cell
-class GradientClip(CBF):
-    "Clip norm of gradients"
-    order = MixedPrecision.order + 1
-
-    def __init__(self, max_norm: float = 1., norm_type: float = 2.0):
-        store_attr()
-
-    def before_step(self):
-        nn.utils.clip_grad_norm_(self.parameters(), self.max_norm, self.norm_type, error_if_nonfinite=True)
-
-
 
 
