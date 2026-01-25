@@ -172,6 +172,8 @@ if __name__ == "__main__":
     # args.devices = '1'
     #
     headline("DEVS")
+    print(args.devices)
+    print("After parse:")
     parse_devices(args.devices)
 # %%
     main(args)
