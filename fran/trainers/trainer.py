@@ -9,6 +9,7 @@ from lightning.pytorch.profilers import AdvancedProfiler
 from tqdm.auto import tqdm as pbar
 from utilz.string import headline
 
+from fran.callback.test import PeriodicTest
 from fran.configs.parser import ConfigMaker, parse_neptune_dict
 from fran.managers.data.training import DataManagerMulti
 # from fran.callback.modelcheckpoint import ModelCheckpointUB
@@ -33,7 +34,7 @@ from fran.managers.data.training import (DataManagerBaseline, DataManagerLBD,
 torch._dynamo.config.suppress_errors = True
 import warnings
 
-from lightning.pytorch.callbacks import (DeviceStatsMonitor,
+from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
                                          LearningRateMonitor, ModelCheckpoint,
                                          TQDMProgressBar)
 
@@ -80,6 +81,8 @@ class Trainer:
         compiled=None,
         neptune=True,
         profiler=False,
+        batch_finder=False,
+        periodic_test=True,
         cbs=[],
         tags=[],
         description="",
@@ -91,11 +94,11 @@ class Trainer:
         if override_dm_checkpoint=True, will use Trainer configs instead of DM checkpoint loaded configs
         """
 
-        self.maybe_alter_configs(batch_size, batchsize_finder, compiled)
+        self.maybe_alter_configs(batch_size,  compiled)
         self.set_lr(lr)
         self.set_strategy(devices)
         self.init_dm_unet(epochs, batch_size, override_dm_checkpoint)
-        cbs, logger, profiler = self.init_cbs(cbs, neptune, profiler, tags, description)
+        cbs, logger, profiler = self.init_cbs(cbs, neptune,batch_finder,periodic_test, profiler, tags, description)
         self.D.prepare_data()
 
         # if self.configs["model_params"]["compiled"] == True:
@@ -183,7 +186,11 @@ class Trainer:
         else:
             self.lr = self.configs["model_params"]["lr"]
 
-    def init_cbs(self,cbs, neptune, profiler, tags, description=""):
+    def init_cbs(self,cbs, neptune, batch_finder, periodic_test, profiler, tags, description=""):
+        if batch_finder==True:
+            cbs+= [BatchSizeFinder(batch_arg_name="batch_size")]
+        if periodic_test==True:   #HACK: if False, it should create only a single val_dataloader
+            cbs+= [PeriodicTest(every_n_epochs=5,limit_batches=50)]
         cbs+= [
             ModelCheckpoint(
                 save_last=True,
@@ -283,12 +290,12 @@ class Trainer:
         self.sync_dist = sync_dist
         self.strategy = strategy
 
-    def maybe_alter_configs(self, batch_size, batchsize_finder, compiled):
+    def maybe_alter_configs(self, batch_size,  compiled):
         if batch_size is not None:
             self.configs["dataset_params"]["batch_size"] = int(batch_size)
 
-        if batchsize_finder is True:
-            self.configs["dataset_params"]["batch_size"] = self.heuristic_batch_size()
+        # if batchsize_finder is True:
+        #     self.configs["dataset_params"]["batch_size"] = self.heuristic_batch_size()
 
         if compiled is not None:
             self.configs["model_params"]["compiled"] = bool(compiled)

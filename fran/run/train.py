@@ -80,6 +80,8 @@ def main(args):
             profiler=args.profiler,
             neptune=args.neptune,
             description=args.description,
+            batch_finder=args.batch_finder,
+            periodic_test=args.periodic_test,
         )
 
         Tm.N.compiled = args.compiled
@@ -153,6 +155,12 @@ if __name__ == "__main__":
         help="Dataset backend if supported",
     )
     parser.add_argument("-t", "--test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
+    parser.add_argument(
+        "--batch-finder", type=str2bool, default=False, help="Enable batch size finder"
+    )
+    parser.add_argument(
+        "--periodic-test", type=str2bool, default=True, help="Enable periodic testing"
+    )
 
     args = parser.parse_known_args()[0]
 # %%
