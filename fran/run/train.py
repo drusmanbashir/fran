@@ -156,7 +156,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("-t", "--test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
     parser.add_argument( "--bsf",
-        "--batch-finder", type=str2bool, default=False, help="Enable batch size finder"
+        "--batch-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batch_finder"
     )
     parser.add_argument(
         "--periodic-test", type=str2bool, default=True, help="Enable periodic testing"
