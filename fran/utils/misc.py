@@ -35,7 +35,7 @@ def parse_device_str(dev_arg: str) -> Union[int, List[int]]:
     return val  # for 2, 3, ... treat as count of devices
 
 
-
+#HACK: align this and simplify this as per lightngin-ai devices arg signature
 def parse_devices(arg=None, format_as_cuda=False):
     """
     Flexible device parser:
