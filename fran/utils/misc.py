@@ -44,6 +44,7 @@ def parse_devices(arg=None, format_as_cuda=False):
       CPU fallback if CUDA unavailable
     """
     if not torch.cuda.is_available():
+        print("No CUDA devices found")
         return torch.device("cpu")
 
     n_devices = torch.cuda.device_count()
