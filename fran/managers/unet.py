@@ -53,10 +53,13 @@ class UNetManager(LightningModule):
         self.lr = lr if lr else self.model_params["lr"]
         self.model = self.create_model()
 
-    def on_fit_start(self):
+    # def on_fit_start(self):
+    #     self.create_loss_fnc()
+    #     super().on_fit_start()
+    #
+    def setup(self, stage="fit"):
         self.create_loss_fnc()
-        super().on_fit_start()
-
+        super().setup(stage="fit")
     def _common_step(self, batch, batch_idx):
         if not hasattr(self, "batch_size"):
             self.batch_size = batch["image"].shape[0]

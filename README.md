@@ -491,4 +491,4 @@ Good
 ## 9. Troubleshooting
 
 ### HPC
-1. `n_processes` in analyze_resample should be kept low to reflect the number of cpus allocated, e.g., 2 to 4.
+1. n_processes in analyze_resample should be kept low to reflect the number of cpus allocated, e.g., 2 to 4.

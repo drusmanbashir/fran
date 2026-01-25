@@ -1,4 +1,6 @@
 from pathlib import Path
+
+from lightning.pytorch.callbacks import BatchSizeFinder
 from fran.callback.test import PeriodicTest
 from fran.data.datasource import Datasource
 from fran.data.dataregistry import DS
@@ -54,7 +56,7 @@ if __name__ == '__main__':
 
     conf['plan_train']
 
-    cbs = [PeriodicTest(every_n_epochs=1,limit_batches=50)]
+    cbs = [PeriodicTest(every_n_epochs=1,limit_batches=50), BatchSizeFinder(batch_arg_name="batch_size")]
 
     conf["dataset_params"]["cache_rate"]=0.0
     print(conf['model_params']['out_channels'])

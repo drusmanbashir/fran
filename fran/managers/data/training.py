@@ -108,7 +108,7 @@ class DataManagerMulti(LightningDataModule):
         super().__init__()
         self.project = Project(project_title)
         self.configs = configs
-        self.batch_size = batch_size
+        self._batch_size = batch_size
         self.cache_rate = cache_rate
         self.device = device
         self.ds_type = ds_type
@@ -239,6 +239,23 @@ class DataManagerMulti(LightningDataModule):
 
         return mode_to_class[train_mode], mode_to_class[valid_mode], mode_to_class[test_mode]
 
+    @property
+    def batch_size(self) -> int:
+        return self._batch_size
+
+    @batch_size.setter
+    def batch_size(self, v: int) -> None:
+        v = int(v)
+        if v == getattr(self, "_batch_size", None):
+            return
+        self._batch_size = v
+
+        # only propagate if managers already exist
+        if hasattr(self, "train_manager"):
+            for m in (self.train_manager, self.valid_manager, self.test_manager):
+                m.batch_size = v
+                m.set_effective_batch_size()
+                m.create_dataloader()  # must rebuild m.dl
 
 class DataManager(LightningDataModule):
     def __init__(
