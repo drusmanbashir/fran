@@ -155,7 +155,7 @@ if __name__ == "__main__":
         help="Dataset backend if supported",
     )
     parser.add_argument("-t", "--test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
-    parser.add_argument(
+    parser.add_argument( "--bsf",
         "--batch-finder", type=str2bool, default=False, help="Enable batch size finder"
     )
     parser.add_argument(
