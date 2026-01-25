@@ -53,7 +53,6 @@ def parse_devices(arg=None, format_as_cuda=False):
     n_devices = torch.cuda.device_count()
 
     # --- normalize to list of IDs ---
-    tr()
     arg = ast_literal_eval(arg)
     if arg is None or arg == []:
         ids = list(range(n_devices))
