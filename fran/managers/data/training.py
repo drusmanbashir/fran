@@ -733,7 +733,7 @@ class DataManager(LightningDataModule):
     @property
     def cache_folder(self):
         parent_folder = Path(COMMON_PATHS["cache_folder"]) / (self.project.project_title)
-        return parent_folder / (self.data_folder.name)
+        return parent_folder / (self.data_folder.name)/(self.split)
 
     @classmethod
     def from_folder(
