@@ -26,9 +26,10 @@ from fran.architectures.unet3d.model import UNet3D
 from fran.configs.parser import (confirm_plan_analyzed, load_metadata,
                                  make_patch_size)
 from fran.managers.base import load_checkpoint
-
 # only vars below will be tuned
+from fran.utils.common import COMMON_PATHS
 
+ray_results_folder = Path(COMMON_PATHS["ray_results_folder"])
 OOM_RE = re.compile(r"CUDA out of memory", re.IGNORECASE)
 
 
@@ -152,10 +153,6 @@ def setup_tune_params(configs):
 
 
 def train_with_tune(config, project_title, num_epochs=10):
-    # 1) Base configs
-    # 3) Build trainer (disable Neptune for multi-trial speed)
-
-    # run_name ='LITS-1230'
     compiled = False
     # NOTE: if Neptune = False, should store checkpoint locally
     neptune = False
@@ -170,7 +167,6 @@ def train_with_tune(config, project_title, num_epochs=10):
     headline(f"Training with config: {config}")
 
     lr = config["model_params"]["lr"]
-
     if config["dataset_params"]["src_dims"][0] > 160:
         bs = 1
     else:
@@ -183,39 +179,54 @@ def train_with_tune(config, project_title, num_epochs=10):
     print("CUDA_VISIBLE_DEVICES:", os.environ.get("CUDA_VISIBLE_DEVICES"))
     print("torch.cuda.device_count():", torch.cuda.device_count())
 
-    while True:
-        try:
-            # re-setup each attempt so dataloaders are rebuilt with new bs
-            Tm.setup(
-                compiled=compiled,
-                batch_size=bs,
-                devices=devices,
-                epochs=num_epochs,
-                batchsize_finder=False,
-                profiler=False,
-                neptune=neptune,
-                tags=tags,
-                description=description,
-                lr=lr,
-                override_dm_checkpoint=override_dm,
-            )
-            Tm.fit()  # if this finishes, we’re done
-            break
-        except RuntimeError as e:
-            if OOM_RE.search(str(e)):
-                new_bs = bs // 2
-                if new_bs < 2:
-                    raise  # don't go below 2
-                print(f"[OOM] bs={bs} -> {new_bs}. Retrying...")
-                torch.cuda.empty_cache()
-                bs = new_bs
-                continue
-            raise
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=devices,
+        epochs=num_epochs,
+        batchsize_finder=True,
+        profiler=False,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+        lr=lr,
+        override_dm_checkpoint=override_dm,
+    )
+    Tm.fit()
+    # while True:
+    #     try:
+    #         # re-setup each attempt so dataloaders are rebuilt with new bs
+    #         Tm.setup(
+    #             compiled=compiled,
+    #             batch_size=bs,
+    #             devices=devices,
+    #             epochs=num_epochs,
+    #             batchsize_finder=True,
+    #             profiler=False,
+    #             neptune=neptune,
+    #             tags=tags,
+    #             description=description,
+    #             lr=lr,
+    #             override_dm_checkpoint=override_dm,
+    #         )
+    #         Tm.fit()  # if this finishes, we’re done
+    #         break
+    #     except RuntimeError as e:
+    #         if OOM_RE.search(str(e)):
+    #             new_bs = bs // 2
+    #             if new_bs < 2:
+    #                 raise  # don't go below 2
+    #             print(f"[OOM] bs={bs} -> {new_bs}. Retrying...")
+    #             torch.cuda.empty_cache()
+    #             bs = new_bs
+    #             continue
+    #         raise
+    #
 
 
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     set_autoreload()
 
@@ -247,7 +258,7 @@ if __name__ == "__main__":
 # %%
     args.project_title = P.project_title
     args.plan = conf["plan_train"]
-    args.num_processes = 4
+    args.num_processes = 8
     args.overwrite = False
     #
 # %%
@@ -260,13 +271,14 @@ if __name__ == "__main__":
     num_gpus = 2
     gpus_per_trial = 1
     resources_per_trial = {"cpu": 8.0, "gpu": gpus_per_trial}
-    num_samples = 5
+    num_samples = 50
     # C._set_active_plans(1,1)
     # C.add_output_labels()
     # C.add_out_channels()
 
     # C.add_dataset_props()
-    num_epochs = 10
+    num_epochs = 300
+    grace_period = 20
 # %%
 
     tune_fn_with_params = tune.with_parameters(
@@ -274,7 +286,7 @@ if __name__ == "__main__":
     )
 
 # %%
-    scheduler = ASHAScheduler(max_t=num_epochs, grace_period=1, reduction_factor=2)
+    scheduler = ASHAScheduler(max_t=num_epochs, grace_period=3, reduction_factor=2)
     tuner = tune.Tuner(
         tune.with_resources(tune_fn_with_params, resources=resources_per_trial),
         tune_config=tune.TuneConfig(
@@ -288,6 +300,7 @@ if __name__ == "__main__":
             name="tune_UNET",
             progress_reporter=reporter,
             failure_config=FailureConfig(max_failures=2),  # retry actor if it crashes
+            storage_path=ray_results_folder,
         ),
         param_space=conf,
     )
@@ -295,90 +308,4 @@ if __name__ == "__main__":
 
     #     from fran.run.analyze_resample import main
     # main(args)
-    # #python  analyze_resample.py -t nodes -p 6 -n 4 -o
-# %%
-    #     conf["dataset_params"]["src_dims"] = make_patch_size(conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"])
-    #     conf["dataset_params"]["src_dims"]
-    #     conf["plan_train"]["patch_size"]= make_patch_size(conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"])
-    #     conf["plan_train"]
-    #
-# %%
-    #     patch_dim0 = conf["dataset_params"]["src_dim0"]
-    #     patch_dim1 = conf["dataset_params"]["src_dim1"]
-    #
-    #     patch_size = [
-    #         patch_dim0,
-    #     ] + [
-    #         patch_dim1,
-    #     ] * 2
-# %%
-    # conf["dataset_params"]["src_dims"]
-# %%
 
-    project_title = P.project_title
-
-    Tm = RayTrainer(project_title, conf, None)
-
-    lr = conf["model_params"]["lr"]
-    bs = 4
-    devices = 1
-    headline(f"Training with conf: {conf}")
-    lr = conf["model_params"]["lr"]
-    conf["dataset_params"]["src_dims"] = make_patch_size(
-        conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"]
-    )
-    conf["plan_train"]["patch_size"] = make_patch_size(
-        conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"]
-    )
-    headline(conf["dataset_params"]["src_dims"])
-    headline(conf["plan_train"]["patch_size"])
-
-    compiled = False
-    neptune = False
-    tags = None
-    description = ""
-    override_dm = False
-# %%
-
-    Tm.setup(
-        compiled=compiled,
-        batch_size=bs,
-        devices=devices,
-        epochs=num_epochs,
-        batchsize_finder=False,
-        profiler=False,
-        neptune=neptune,
-        tags=tags,
-        description=description,
-        lr=lr,
-        override_dm_checkpoint=override_dm,
-    )
-# %%
-# %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR>
-    conf["dataset_params"]["src_dim1"]
-    conf2 = conf.copy()
-    conf2["dataset_params"]["src_dim0"] = conf["dataset_params"]["src_dim0"].sample()
-    conf2["dataset_params"]["src_dim1"] = conf["dataset_params"]["src_dim1"].sample()
-    conf2["plan_train"]["patch_dim0"] = conf["plan_train"]["patch_dim0"].sample()
-    conf2["plan_train"]["patch_dim1"] = conf["plan_train"]["patch_dim1"].sample()
-    conf2["plan_train"]["expand_by"] = conf["plan_train"]["expand_by"].sample()
-# %%
-    conf2["plan_train"]["patch_size"] = make_patch_size(
-        conf2["plan_train"]["patch_dim0"], conf2["plan_train"]["patch_dim1"]
-    )
-    print(conf2["plan_train"]["patch_size"])
-    conf2["dataset_params"]["src_dims"] = make_patch_size(
-        conf2["dataset_params"]["src_dim0"], conf2["dataset_params"]["src_dim1"]
-    )
-# %%
-    print(conf2["dataset_params"]["src_dims"])
-# %%
-
-    plan = conf2["plan_train"]
-    plan["expand_by"]
-    conf2["plan_valid"]
-    conf2["plan_train"]["patch_size"]
-    statuses = confirm_plan_analyzed(P, plan)
-
-# %%

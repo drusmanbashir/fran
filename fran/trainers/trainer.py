@@ -81,7 +81,6 @@ class Trainer:
         compiled=None,
         neptune=True,
         profiler=False,
-        batch_finder=False,
         periodic_test=True,
         cbs=[],
         tags=[],
@@ -98,7 +97,7 @@ class Trainer:
         self.set_lr(lr)
         self.set_strategy(devices)
         self.init_dm_unet(epochs, batch_size, override_dm_checkpoint)
-        cbs, logger, profiler = self.init_cbs(cbs, neptune,batch_finder,periodic_test, profiler, tags, description)
+        cbs, logger, profiler = self.init_cbs(cbs, neptune,batchsize_finder,periodic_test, profiler, tags, description)
         self.D.prepare_data()
 
         # if self.configs["model_params"]["compiled"] == True:
@@ -186,8 +185,8 @@ class Trainer:
         else:
             self.lr = self.configs["model_params"]["lr"]
 
-    def init_cbs(self,cbs, neptune, batch_finder, periodic_test, profiler, tags, description=""):
-        if batch_finder==True:
+    def init_cbs(self,cbs, neptune, batchsize_finder, periodic_test, profiler, tags, description=""):
+        if batchsize_finder==True:
             cbs+= [BatchSizeFinder(batch_arg_name="batch_size")]
         if periodic_test==True:   #HACK: if False, it should create only a single val_dataloader
             cbs+= [PeriodicTest(every_n_epochs=5,limit_batches=50)]
@@ -446,7 +445,7 @@ if __name__ == "__main__":
     compiled = False
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
-    batch_finder = False
+    batchsize_finder = False
     neptune = True
     tags = []
     description = f"Partially trained up to 100 epochs"
@@ -465,7 +464,7 @@ if __name__ == "__main__":
         batch_size=bs,
         devices=[device_id],
         epochs=600 if profiler == False else 1,
-        batchsize_finder=batch_finder,
+        batchsize_finder=batchsize_finder,
         profiler=profiler,
         neptune=neptune,
         tags=tags,
@@ -497,7 +496,7 @@ if __name__ == "__main__":
         batch_size=bs,
         devices=[device_id],
         epochs=600 if profiler == False else 1,
-        batchsize_finder=batch_finder,
+        batchsize_finder=batchsize_finder,
         profiler=profiler,
         neptune=neptune,
         tags=tags,
@@ -524,7 +523,7 @@ if __name__ == "__main__":
         batch_size=bs,
         devices=[device_id],
         epochs=600 if profiler == False else 1,
-        batchsize_finder=batch_finder,
+        batchsize_finder=batchsize_finder,
         profiler=profiler,
         neptune=neptune,
         tags=tags,
