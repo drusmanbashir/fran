@@ -10,6 +10,13 @@ from typing import List, Union
 
 from utilz.string import ast_literal_eval
 
+
+def is_hpc()->bool:
+    import sys
+    if "mpx" in sys.executable:
+        return True
+    return False
+
 def parse_device_str(dev_arg: str) -> Union[int, List[int]]:
     """
     Parse device argument for Lightning Trainer.
