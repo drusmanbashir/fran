@@ -36,10 +36,14 @@ from fastcore.basics import Union
 from utilz.fileio import load_dict, save_dict
 from utilz.helpers import find_matching_fn
 from utilz.string import info_from_filename, str_to_path
-
+from fran.utils.misc import is_hpc
 tr = ipdb.set_trace
 from pathlib import Path
 
+if is_hpc==False:
+    trash_fnc = send2trash
+else:
+    trash_fnc =  shutil.rmtree
 
 
 def subscript_generator():
@@ -712,7 +716,7 @@ class Project(DictToAttr):
         for folder in self.folders:
             if folder.exists() and self.project_title in str(folder):
                 if not folder in exempted_tokens:
-                    send2trash(folder)
+                    trash_fnc(folder)
 
                 # shutil.rmtree(folder)
         print("Deleted all except: {}".format(exempted_folders))
