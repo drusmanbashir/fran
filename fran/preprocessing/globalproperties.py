@@ -196,7 +196,7 @@ class GlobalProperties(GetAttr):
             case_properties.extend(ds_props)
         assert len(self.cases_for_sampling) == len(
             case_properties
-        ), "Mismatch in case_ids and case_properties"
+        ), "Mismatch in case_ids and case_properties - cases_for_sampling = {0} and case_properties = {1}".format(len(self.cases_for_sampling),len(case_properties))
         return case_properties
 
     def store_projectwide_properties(self,multiprocess=True):
@@ -441,7 +441,6 @@ class GlobalProperties(GetAttr):
 if __name__ == "__main__":
 # %%
 #SECTION:--------------------------------------------- SETUPPPPPP--------------------------------------------------------------------------------------
-
     from fran.managers import Project
     from fran.utils.common import *
 
@@ -656,4 +655,34 @@ if __name__ == "__main__":
         G._remap_labels(keys, labels_tot)
     G.maybe_append_imported_labels()
 # %%
-
+        # dsa = G.global_properties["datasources"][]
+#             ds_props = []
+#             h5fn = dsa["h5_fname"]
+#             ds_name_final =dsa["alias"] if dsa["alias"] else dsa["ds"]
+#             # ds_name_final = DS.resolve_ds_name(ds_name)
+#             cases_ds = [
+#                 cid
+#                 for cid in G.cases_for_sampling
+#                 if cid.split("_")[0] == ds_name_final
+#             ]
+#
+#             print(len(cases_ds))
+#             with h5py.File(h5fn, "r") as h5f_file:  # this file has all cases of the ds
+#                 for cid in pbar(cases_ds):
+#                     cs = h5f_file[cid]
+#                     props = {
+#                         "ds": ds_name_final,
+#                         "case_id": cid,
+#                         "spacing": cs.attrs["spacing"],
+#                         "labels": cs.attrs["labels"],
+#                     }
+#                     ds_props.append(props)
+#             assert len(cases_ds) == len(
+#                 ds_props
+#             ), "Mismatch in case_ids and case_properties. "
+#             case_properties.extend(ds_props)
+#         assert len(G.cases_for_sampling) == len(
+#             case_properties
+#         ), "Mismatch in case_ids and case_properties - cases_for_sampling = {0} and case_properties = {1}".format(len(G.cases_for_sampling),len(case_properties))
+#
+# # %%

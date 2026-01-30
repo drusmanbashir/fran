@@ -23,8 +23,7 @@ from utilz.helpers import set_autoreload
 
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
-from fran.configs.parser import (confirm_plan_analyzed, load_metadata,
-                                 make_patch_size)
+from fran.configs.parser import (load_metadata, make_patch_size)
 from fran.managers.base import load_checkpoint
 # only vars below will be tuned
 from fran.utils.common import COMMON_PATHS

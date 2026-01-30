@@ -33,6 +33,9 @@ def main(args):
     multiprocess = False if args.num_processes == 1 else True
 
     P = Project(project_title=args.title)
+    if args.delete:
+        P.delete()
+        return
 
     if not P.db.exists():
         P.create(mnemonic=args.mnemonic)
@@ -63,6 +66,7 @@ if __name__ == "__main__":
         help="Datasources to add, i.e., {}".format(DS.__repr__()),
     )
     parser.add_argument("--test", action="store_true", help="Mark datasources as test")
+    parser.add_argument("--delete", action="store_true", help="Delete project")
 # %%
     args = parser.parse_known_args()[0]
     # args.multiprocess=False

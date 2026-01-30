@@ -379,7 +379,7 @@ if __name__ == "__main__":
         help="number of parallel processes",
         default=1,
     )
-    parser.add_argument("-p", "--plan", type=int,  help="Just a number. If 0 selected, all plans will be analyzed.")
+    parser.add_argument("-p", "--plan", type=int,  help="Just a number. If 0 or None selected, all plans will be analyzed.", default = 0)
     parser.add_argument("-d", "--debug", action="store_true")
 
     parser.add_argument("-o", "--overwrite", action="store_true")

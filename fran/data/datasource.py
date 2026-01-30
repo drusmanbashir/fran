@@ -7,6 +7,7 @@ import ipdb
 from utilz.string import headline, info_from_filename
 
 from fran.data.dataregistry import DS
+from label_analysis.merge import get_labels
 
 tr = ipdb.set_trace
 
@@ -175,7 +176,7 @@ class Datasource(GetAttr):
         self.verified_pairs = []
         for img_fn in images:
             self.verified_pairs.append([img_fn, find_matching_fn(img_fn, lms, ["all"])[0]])
-        print("Verified filepairs are matched")
+        print("{0} Verified filepairs are matched in folder {1}".format(len(self.verified_pairs), self.folder))
 
     def _filter_unprocessed_cases(self):
         """
@@ -187,6 +188,7 @@ class Datasource(GetAttr):
         try:
             with h5py.File(self.h5_fname, "r") as h5f:
                 prev_processed_cases = list(h5f.keys())
+                print("Found {} previously processed cases".format(len(prev_processed_cases)))
                 # Populate raw_dataset_properties from existing h5 file
                 self.raw_dataset_properties = []
                 for case_id in prev_processed_cases:
@@ -228,6 +230,7 @@ class Datasource(GetAttr):
             print("No new cases found.")
             self.new_cases = []
         else:
+            print("Found {0} new cases".format(len(new_case_ids)))
             self.new_cases = [
                 file_tuple
                 for file_tuple in self.verified_pairs
@@ -422,19 +425,21 @@ def db_ops(db_name):
 
 if __name__ == "__main__":
 # %%
-# %%
     nodes_fldr = "/s/xnat_shadow/nodes"
+    nodesthick_fldr = "/s/xnat_shadow/nodesthick"
     nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
     lits_fldr = "/s/datasets_bkp/lits_segs_improved"
     ln_fldr = DS["lidc"]
     litsmall_fldr = DS["litsmall"]
 # %%
     ds = Datasource(nodes_fldr, "nodes")
+    # ds = Datasource(nodesthick_fldr, "nodesthick")
     ds.process()
 # %%
     ds = Datasource(ln_fldr, "lidc")
     ds = Datasource(litsmall_fldr.folder, "litsmall")
     ds = Datasource(lits_fldr, "lits")
+# %%
 # %%
 
     import h5py
@@ -453,14 +458,20 @@ if __name__ == "__main__":
     import h5py
 
     ff = h5py.File(nodes_fn, "r")
+    cases = ff.keys()
     labels = []
     with h5py.File(nodes_fn, "r") as f:
         for case_id, obj in f.items():
             labs = obj.attrs["labels"]
             labels.extend(tuple(labs))
+            if 3 in labs:
+                tr()
     labels = set(labels)
 # %%
 
+    fn = "/s/xnat_shadow/nodes/lms/nodes_73_410705_CAP1p5Br383.nii.gz"
+    lm = sitk.ReadImage(fn)
+    get_labels(lm)
 #
 # %%
 #     labs_list = []

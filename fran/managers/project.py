@@ -701,11 +701,22 @@ class Project(DictToAttr):
 
     @ask_proceed("Remove all project files and folders?")
     def delete(self):
+        exempted_tokens = ["checkpoints", "predictions"]
+        exempted_folders = []
+        all_folders = list(self.folders)
+        for folder in all_folders:
+            for e in exempted_tokens:
+                if e in str(folder):
+                    all_folders.remove(folder)
+                    exempted_folders.append(folder)
         for folder in self.folders:
             if folder.exists() and self.project_title in str(folder):
+                if not folder in exempted_tokens:
+                    send2trash(folder)
+
                 # shutil.rmtree(folder)
-                send2trash(folder)
-        print("Done")
+        print("Deleted all except: {}".format(exempted_folders))
+        print("Delete those manually if you need to")
 
     def set_lm_groups(self, lm_groups: list = None):
         """
@@ -991,13 +1002,14 @@ class Project(DictToAttr):
 
 if __name__ == "__main__":
     from fran.utils.common import *
-
     from fran.configs.parser import ConfigMaker
     # P = Project(project_title="nodes")
     # P.create(mnemonic="nodes")
     # P = Project(project_title="totalseg")
     P = Project(project_title="lidc_tmp")
     P = Project(project_title="nodes")
+    P.create("nodes")
+    P.add_data([DS["nodes"], DS["nodesthick"]])
     P.maybe_store_projectwide_properties()
     # P.create("nodes")
     # P.add_data([DS['nodes'], DS.nodesthick])

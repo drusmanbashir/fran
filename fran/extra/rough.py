@@ -31,6 +31,18 @@ sys.path.append(rel)
 bad_names = "nodes_89_20190421_Abdomen3p0I30f3.pt,nodes_90_20201201_CAP1p5SoftTissue.pt,nodes_82_20210427_CAP1p5SoftTissue.pt,nodes_83_20210427_CAP1p5SoftTissue.pt,nodes_46_20220609_CAP1p5SoftTissue.pt,nodes_47_20220601_CAP1p5SoftTissue.pt,nodes_84_20211129_CAP1p5SoftTissue.pt,nodes_81_20210507_CAP1p5SoftTissue.pt,nodes_25_20201216_CAP1p5SoftTissue.pt,nodes_43_20220805_CAP1p5SoftTissue.pt,nodes_78_20210617_CAP1p5.pt"
 
 # %%
+# %%
+#SECTION:-------------------- READ FOLDER FOR BAD LABELS--------------------------------------------------------------------------------------
+folder = Path("/s/insync/datasets/capestart/jan2026/lm_out")
+folder = Path("/s/xnat_shadow/nodes/lms")
+fns = list(folder.glob("*"))
+for fn in tqdm(fns)
+    lm = sitk.ReadImage(fn)
+    # lm = relabel(lm,{3:1})
+    labs = get_labels(lm)
+    print(fn, labs)
+    # sitk.WriteImage(lm,fn)
+# %%
 #SECTION:-------------------- badl labels--------------------------------------------------------------------------------------
 # %%
 img_fn = "/s/xnat_shadow/nodes/lms/nodes_20_20190926_CAP1p5.nii.gz"
