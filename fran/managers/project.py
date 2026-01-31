@@ -1007,11 +1007,12 @@ class Project(DictToAttr):
 if __name__ == "__main__":
     from fran.utils.common import *
     from fran.configs.parser import ConfigMaker
+    set_autoreload()
     # P = Project(project_title="nodes")
     # P.create(mnemonic="nodes")
     # P = Project(project_title="totalseg")
     P = Project(project_title="lidc_tmp")
-    P = Project(project_title="nodes")
+    P = Project(project_title="nodes2")
     P.create("nodes")
     P.add_data([DS["nodes"], DS["nodesthick"]])
     P.maybe_store_projectwide_properties()

@@ -1,5 +1,8 @@
 # %%
 import argparse
+import ipdb
+tr = ipdb.set_trace
+
 # very top of project_init.py (above any 3rd-party imports)
 import os
 
@@ -58,7 +61,6 @@ if __name__ == "__main__":
         help="number of parallel processes. If 1 (default), a single process is used",
         default=1,
     )
-    # parser.add_argument("-n", "--num")
     parser.add_argument(
         "--datasources",
         nargs="*",

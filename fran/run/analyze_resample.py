@@ -24,6 +24,8 @@ def main(args):
     P = Project(project_title=args.project_title)
     C = ConfigMaker(P,  configuration_filename=None)
     overwrite = args.overwrite
+    if args.num_processes<1:
+        args.num_processes = 1
     
     if args.plan == 0:
         # Process all plans
@@ -384,7 +386,7 @@ if __name__ == "__main__":
 
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
-# # %%
+# %%
     # args.project_title="nodes"
     # args.plan = 0
     # args.num_processes = 1
