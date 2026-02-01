@@ -95,9 +95,7 @@ if __name__ == "__main__":
         description="Train FRAN model up to Tm.fit(), no preprocessing."
     )
     parser.add_argument(
-        "--project",
-        default="nodes",
-        help="Project title (e.g., nodes, totalseg, lidc2)",
+        "-t", "--project-title", help="project title", dest="project_title"
     )
     parser.add_argument(
         "--plan-num",
