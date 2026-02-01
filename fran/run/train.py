@@ -51,8 +51,8 @@ def main(args):
         P = Project(args.project_title)
         devices = parse_devices(args.devices)
         C = ConfigMaker(P, configuration_filename=None)
-        plan_num = int(args.plan_num)
-        C.setup(plan_num)
+        plan = int(args.plan)
+        C.setup(plan)
         conf = C.configs
 
         # Update dataset params from CLI
