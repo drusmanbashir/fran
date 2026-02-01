@@ -63,9 +63,6 @@ def main(args):
         if args.fold is not None:
             conf["dataset_params"]["fold"] = args.fold
 
-        if args.test > 0:
-            cbs+=[PeriodicTest(every_n_epochs=args.test, limit_batches=50)]
-
 
         # --- Trainer --------------------------------------------------------------
         print_device_info()
@@ -98,7 +95,8 @@ if __name__ == "__main__":
         "-t", "--project-title", help="project title", dest="project_title"
     )
     parser.add_argument(
-        "--plan-num",
+        "-p",
+        "--plan",
         type=int,
         default=7,
         help="Active plan index for ConfigMaker.setup()",
@@ -154,7 +152,7 @@ if __name__ == "__main__":
         choices=[None, "lmdb", "memmap", "zarr"],
         help="Dataset backend if supported",
     )
-    parser.add_argument( "--test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
+    parser.add_argument( "--periodic-test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
     parser.add_argument( "--bsf",
         "--batch-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batch_finder"
     )
