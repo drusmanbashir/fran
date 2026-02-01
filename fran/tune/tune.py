@@ -23,7 +23,7 @@ from utilz.helpers import set_autoreload
 
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
-from fran.configs.parser import (load_metadata, make_patch_size)
+from fran.configs.parser import load_metadata, make_patch_size
 from fran.managers.base import load_checkpoint
 # only vars below will be tuned
 from fran.utils.common import COMMON_PATHS
@@ -31,16 +31,13 @@ from fran.utils.common import COMMON_PATHS
 ray_results_folder = Path(COMMON_PATHS["ray_results_folder"])
 OOM_RE = re.compile(r"CUDA out of memory", re.IGNORECASE)
 
+
 def main(args):
-
-
 
     P = Project(project_title=args.project_title)
     C = RayTuneConfig(P)
     C.setup()
     conf = C.configs
-    args.project_title = P.project_title
-    args.plan = conf["plan_train"]
 # %%
     reporter = tune.CLIReporter(
         metric_columns=["loss"],
@@ -82,6 +79,7 @@ def main(args):
         param_space=conf,
     )
     results = tuner.fit()
+
 
 def load_model_from_raytune_trial(folder_name, out_channels):
     # requires params.json inside raytune trial
@@ -276,7 +274,7 @@ def train_with_tune(config, project_title, num_epochs=10):
 
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     # set_autoreload()
 # %%
@@ -289,18 +287,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-n",
-        "--num-processes",
+        "--num-gpus",
         type=int,
-        help="number of parallel processes",
-        default=1,
+        help="number of GPUs to use",
+        default=2,
     )
-    parser.add_argument("-p", "--plan", type=int, help="Just a number like 1, 2")
 
-    parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
     main(args)
 # %%
-    #     from fran.run.analyze_resample import main
-    # main(args)
-
+#     from fran.run.analyze_resample import main
+# main(args)
