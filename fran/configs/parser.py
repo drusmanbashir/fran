@@ -10,7 +10,7 @@ import pandas as pd
 from fastcore.basics import store_attr
 from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
-from utilz.string import ast_literal_eval
+from utilz.string import ast_literal_eval, headline
 
 from fran.utils.folder_names import (folder_names_from_plan, load_registry,
                                      remapping_conv)
@@ -169,6 +169,7 @@ def compute_out_labels(plan: dict, global_props: Union[dict, None] = None) -> li
         labs = ds["labels"]
         labels_all.extend(labs)
         labels_all = set(labels_all)
+        # Note: This print would need verbose parameter passed to compute_out_labels function
         print("Unique labels in all datasets:", labels_all)
         fg = len(labels_all)
         return fg + 1
@@ -270,17 +271,18 @@ def make_patch_size(patch_dim0, patch_dim1):
 def get_imagelists_from_config(project, fold, patch_based, dim0, dim1):
     json_fname = project.validation_folds_filename
     if patch_based == False:
-        folder_name = project.stage1_folder / "{0}_{1}_{1}/images".format(
-            dim0, dim1, dim1
-        )
-        train_list, valid_list, _ = get_train_valid_test_lists_from_json(
-            project_title=project.project_title,
-            fold=fold,
-            json_fname=json_fname,
-            image_folder=folder_name,
-            ext=".pt",
-        )
-        print("Retrieved whole image datasets from folder: {}".format(folder_name))
+            folder_name = project.stage1_folder / "{0}_{1}_{1}/images".format(
+                dim0, dim1, dim1
+            )
+            train_list, valid_list, _ = get_train_valid_test_lists_from_json(
+                project_title=project.project_title,
+                fold=fold,
+                json_fname=json_fname,
+                image_folder=folder_name,
+                ext=".pt",
+            )
+            # Note: This print statement would need verbose parameter passed to this function
+            print("Retrieved whole image datasets from folder: {}".format(folder_name))
     else:
         train_list, valid_list, _ = get_train_valid_test_lists_from_json(
             project_title=project.project_title,
@@ -345,7 +347,7 @@ class ConfigMaker:
         configs = load_config_from_workbook(configuration_filename)
         self.configs = parse_excel_dict(configs)
 
-    def setup(self, plan_train: int):  # , plan_valid=None):
+    def setup(self, plan_train: int, verbose=True):  # , plan_valid=None):
         # by default plan_valid is a fixed plan regardless of train_plan and is set in dataset_params
         # plan_valid essentially only uses the folder of said plan, and patch_size is kept same as plan_train
         plan_valid = self.configs["dataset_params"].get("plan_valid")
@@ -356,19 +358,19 @@ class ConfigMaker:
         if is_excel_None(plan_test):
             plan_test = plan_train
         self._set_active_plans(plan_train, plan_valid, plan_test)
-        self.add_output_labels()
-        self.add_out_channels()
+        self.add_output_labels(verbose=verbose)
+        self.add_out_channels(verbose=verbose)
         self.add_dataset_props()
 
-    def add_output_labels(self):
+    def add_output_labels(self, verbose=True):
         out_labels = compute_out_labels(
             self.configs["plan_train"], self.project.global_properties
         )
         out_labels = set(out_labels)
         out_labels.update([0])
-        print("labels output by Dataloaders, including background: ", out_labels)
+        if verbose == True:
+            headline("labels output by Dataloaders, including background: {}".format(out_labels))
         self.configs["plan_train"]["labels_all"] = out_labels
-        print("-" * 20)
         # self.config[plan]["labels_all"] = labels_all
 
     def resolve_configuration_filename(
@@ -415,11 +417,12 @@ class ConfigMaker:
             except:
                 self.configs["dataset_params"][prop] = None
 
-    def add_out_channels(self):
+    def add_out_channels(self, verbose=True):
         out_ch = len(self.configs["plan_train"]["labels_all"])
         self.configs["model_params"]["out_channels"] = out_ch
-        print("Out channels set to {}".format(out_ch))
-        print("-" * 20)
+        if verbose:
+            print("Out channels set to {}".format(out_ch))
+            print("-" * 20)
 
     def maybe_merge_source_plan(self, plan_key="plan_train"):
         """Merge source plan into the specified plan
@@ -501,13 +504,12 @@ class ConfigMaker:
 
     def add_preprocess_status(self):
         """Add preprocessing status column to plans dataframe"""
-        from fran.cpp.helpers import cases_in_folder
 
         preprocess = []
         n_cases = len(self.project)
 
         for plan_id in self.plans.index:
-            self.setup(plan_id)
+            self.setup(plan_id, False)
             conf = self.configs
             plan = conf["plan_train"]
 

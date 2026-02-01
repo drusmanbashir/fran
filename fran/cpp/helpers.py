@@ -19,6 +19,7 @@ def load_project_cfg(project_name: str, mnemonic: str | None = None):
     return proj, cfg
 # %%
 if __name__ == "__main__":
+
     proj, cfg = load_project_cfg("nodes")
     cfg.add_preprocess_status()
     print(cfg.plans["preprocessed"])

@@ -30,8 +30,10 @@ def main(args):
     if args.plan == 0:
         # Process all plans
         plan_ids = C.plans["plan_id"].tolist()
+        headline("Processing ALL Plans: {}".format(plan_ids))
         for plan_id in plan_ids:
             C.setup(plan_id)
+            headline (plan_id)
             plan = C.configs["plan_train"]
             completed = confirm_plan_analyzed(P, plan)
             if overwrite or not all(completed.values()):
@@ -41,6 +43,7 @@ def main(args):
                 print(f"Plan {plan_id} already processed. Skipping")
     else:
         # Process specific plan
+        headline ("Processing plan {}".format(args.plan))
         C.setup(args.plan)
         plan = C.configs["plan_train"]
         completed = confirm_plan_analyzed(P, plan)

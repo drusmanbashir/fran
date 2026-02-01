@@ -81,7 +81,7 @@ def main(args):
             profiler=args.profiler,
             neptune=args.neptune,
             description=args.description,
-            batch_finder=args.batch_finder,
+            batchsize_finder=args.batch_finder,
             periodic_test=args.periodic_test,
         )
 
