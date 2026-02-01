@@ -31,6 +31,57 @@ from fran.utils.common import COMMON_PATHS
 ray_results_folder = Path(COMMON_PATHS["ray_results_folder"])
 OOM_RE = re.compile(r"CUDA out of memory", re.IGNORECASE)
 
+def main(args):
+
+
+
+    P = Project(project_title=args.project_title)
+    C = RayTuneConfig(P)
+    C.setup()
+    conf = C.configs
+    args.project_title = P.project_title
+    args.plan = conf["plan_train"]
+# %%
+    reporter = tune.CLIReporter(
+        metric_columns=["loss"],
+        # parameter_columns=["lr", "batch_size"],
+    )
+    # num_gpus = 2
+    num_gpus = args.num_gpus
+    gpus_per_trial = 1
+    resources_per_trial = {"cpu": 8.0, "gpu": gpus_per_trial}
+    num_samples = 50
+    # C._set_active_plans(1,1)
+    # C.add_output_labels()
+    # C.add_out_channels()
+
+    # C.add_dataset_props()
+    num_epochs = 300
+    grace_period = 20
+
+    tune_fn_with_params = tune.with_parameters(
+        train_with_tune, project_title=P.project_title, num_epochs=num_epochs
+    )
+
+    scheduler = ASHAScheduler(max_t=num_epochs, grace_period=3, reduction_factor=2)
+    tuner = tune.Tuner(
+        tune.with_resources(tune_fn_with_params, resources=resources_per_trial),
+        tune_config=tune.TuneConfig(
+            metric="loss",
+            mode="min",
+            scheduler=scheduler,
+            num_samples=num_samples,
+            max_concurrent_trials=num_gpus,
+        ),
+        run_config=tune.RunConfig(
+            name="tune_UNET",
+            progress_reporter=reporter,
+            failure_config=FailureConfig(max_failures=2),  # retry actor if it crashes
+            storage_path=ray_results_folder,
+        ),
+        param_space=conf,
+    )
+    results = tuner.fit()
 
 def load_model_from_raytune_trial(folder_name, out_channels):
     # requires params.json inside raytune trial
@@ -227,14 +278,7 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
-    set_autoreload()
-
-    P = Project(project_title="nodes")
-    project = P
-
-    C = RayTuneConfig(P)
-    C.setup()
-    conf = C.configs
+    # set_autoreload()
 # %%
     import argparse
 
@@ -255,56 +299,8 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title = P.project_title
-    args.plan = conf["plan_train"]
-    args.num_processes = 8
-    args.overwrite = False
-    #
+    main(args)
 # %%
-    reporter = tune.CLIReporter(
-        metric_columns=["loss"],
-        # parameter_columns=["lr", "batch_size"],
-    )
-# %%
-    # num_gpus = 2
-    num_gpus = 2
-    gpus_per_trial = 1
-    resources_per_trial = {"cpu": 8.0, "gpu": gpus_per_trial}
-    num_samples = 50
-    # C._set_active_plans(1,1)
-    # C.add_output_labels()
-    # C.add_out_channels()
-
-    # C.add_dataset_props()
-    num_epochs = 300
-    grace_period = 20
-# %%
-
-    tune_fn_with_params = tune.with_parameters(
-        train_with_tune, project_title=P.project_title, num_epochs=num_epochs
-    )
-
-# %%
-    scheduler = ASHAScheduler(max_t=num_epochs, grace_period=3, reduction_factor=2)
-    tuner = tune.Tuner(
-        tune.with_resources(tune_fn_with_params, resources=resources_per_trial),
-        tune_config=tune.TuneConfig(
-            metric="loss",
-            mode="min",
-            scheduler=scheduler,
-            num_samples=num_samples,
-            max_concurrent_trials=num_gpus,
-        ),
-        run_config=tune.RunConfig(
-            name="tune_UNET",
-            progress_reporter=reporter,
-            failure_config=FailureConfig(max_failures=2),  # retry actor if it crashes
-            storage_path=ray_results_folder,
-        ),
-        param_space=conf,
-    )
-    results = tuner.fit()
-
     #     from fran.run.analyze_resample import main
     # main(args)
 

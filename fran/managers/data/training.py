@@ -157,7 +157,7 @@ class DataManagerMulti(LightningDataModule):
             project=self.project,
             configs=self.configs,
             batch_size=self.batch_size,
-            cache_rate=self.cache_rate,
+            cache_rate=0,
             device=self.device,
             ds_type=None,
             split="test",
@@ -688,7 +688,7 @@ class DataManager(LightningDataModule):
         if is_excel_None(self.ds_type):
             self.ds = Dataset(data=self.data, transform=self.transforms)
             print("Vanilla Pytorch Dataset set up.")
-        elif self.ds_type == "cache":
+        elif self.ds_type == "cache" and self.cache_rate > 0.0:
             self.ds = CacheDataset(
                 data=self.data,
                 transform=self.transforms,
