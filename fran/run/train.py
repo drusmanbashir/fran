@@ -48,7 +48,7 @@ def main(args):
     else:
         print("CUDA AVAILABLE — GPUs:", torch.cuda.device_count())
         # --- Project & configs ----------------------------------------------------
-        P = Project(args.project)
+        P = Project(args.project_title)
         devices = parse_devices(args.devices)
         C = ConfigMaker(P, configuration_filename=None)
         plan_num = int(args.plan_num)
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         default=None,
         help="If specified, will override conf['dataset_params']['fold']",
     )
-    parser.add_argument("--epochs", type=int, default=600, help="Max epochs")
+    parser.add_argument("-e" , "--epochs", type=int, default=600, help="Max epochs")
     parser.add_argument(
         "--compiled",
         type=str2bool,
@@ -154,12 +154,9 @@ if __name__ == "__main__":
         choices=[None, "lmdb", "memmap", "zarr"],
         help="Dataset backend if supported",
     )
-    parser.add_argument("-t", "--test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
+    parser.add_argument( "--test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
     parser.add_argument( "--bsf",
         "--batch-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batch_finder"
-    )
-    parser.add_argument(
-        "--periodic-test", type=str2bool, default=True, help="Enable periodic testing"
     )
 
     args = parser.parse_known_args()[0]
