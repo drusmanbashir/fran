@@ -67,18 +67,20 @@ def main(args):
         # --- Trainer --------------------------------------------------------------
         print_device_info()
 
-        Tm = Trainer(P.project_title, conf, args.run_name)
+        Tm = Trainer(project_title=P.project_title, configs= conf,run_name=  args.run_name)
 
         Tm.setup(
+
             compiled=args.compiled,
             batch_size=args.batch_size,
             cbs=cbs,
             devices=devices,
             epochs=args.epochs if not args.profiler else 1,
+            lr = args.lr,
             profiler=args.profiler,
             neptune=args.neptune,
             description=args.description,
-            batchsize_finder=args.batch_finder,
+            batchsize_finder=args.batchsize_finder,
             periodic_test=args.periodic_test,
         )
 
@@ -106,6 +108,9 @@ if __name__ == "__main__":
         type=parse_devices,
         default=1,
         help='GPU devices: "0", "0,1", or count like "2"',
+    )
+    parser.add_argument(
+        "-lr", "--learning-rate", dest="lr", type=float, default=None
     )
     parser.add_argument(
         "--bs",
@@ -154,7 +159,7 @@ if __name__ == "__main__":
     )
     parser.add_argument( "--periodic-test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
     parser.add_argument( "--bsf",
-        "--batch-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batch_finder"
+        "--batchsize-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batchsize_finder"
     )
 
     args = parser.parse_known_args()[0]
