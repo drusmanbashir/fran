@@ -238,22 +238,28 @@ class NeptuneManager(NeptuneLogger):
             self.nep_run.wait()
 
     def shadow_remote_ckpts(self, remote_dir):
-        hpc_settings = load_yaml(hpc_settings_fn)
+        hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
         local_dir = (
             self.project.checkpoints_parent_folder
-            / ("Untitled")
             / self.run_id
             / ("checkpoints")
         )
         print("\nSSH to remote folder {}".format(remote_dir))
         client = SSHClient()
         client.load_system_host_keys()
+
+        # client.connect(
+        #     "login.hpc.qmul.ac.uk",
+        #     username=hpc_settings["username"],
+        #     password=hpc_settings["password"],
+        # )
         client.connect(
             hpc_settings["host"],
             username=hpc_settings["username"],
             password=hpc_settings["password"],
         )
         ftp_client = client.open_sftp()
+        tr()
         try:
             fnames = []
             for f in sorted(
@@ -275,13 +281,18 @@ class NeptuneManager(NeptuneLogger):
         remote_fnames = [os.path.join(remote_dir, f) for f in fnames]
         local_fnames = [os.path.join(local_dir, f) for f in fnames]
         maybe_makedirs(local_dir)
+        downloaded_files = []
         for rem, loc in zip(remote_fnames, local_fnames):
+
             if Path(loc).exists():
                 print("Local file {} exists already.".format(loc))
+                downloaded_files.append(loc)
             else:
                 print("Copying file {0} to local folder {1}".format(rem, local_dir))
                 ftp_client.get(rem, loc)
-        latest_ckpt = local_fnames[0]
+                downloaded_files.append(loc)
+        # Get the latest file by modification time from downloaded files
+        latest_ckpt = max(downloaded_files, key=lambda f: Path(f).stat().st_mtime)
         return latest_ckpt
 
     def stop(self):
@@ -298,10 +309,12 @@ class NeptuneManager(NeptuneLogger):
 
 
 # %%
+# %%
+#SECTION:-------------------- SETTING
 if __name__ == '__main__':
     from fran.managers.project import Project
     P = Project(project_title="nodes")
-    run_name = "LITS-1339"
+    run_name = "LITS-1416"
     download_neptune_checkpoint(P,run_name)
 # %%
     nl = NeptuneManager(
@@ -314,5 +327,81 @@ if __name__ == '__main__':
     ckpt = nl.model_checkpoint
     nl.experiment.stop()
 
+    hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
 
+    client = SSHClient()
+    client.load_system_host_keys()
+
+    client.connect(
+            "login.hpc.qmul.ac.uk",
+            username=hpc_settings["username"],
+            password=hpc_settings["password"],
+    )
+
+    remote_dir = str(Path(nl.model_checkpoint).parent)
+
+#p %%
+# %%
+
+
+    # def download_checkpoints(self):
+    remote_dir = str(Path(self.model_checkpoint).parent)
+    latest_ckpt = self.shadow_remote_ckpts(remote_dir)
+    if latest_ckpt:
+            self.nep_run["training"]["model"]["best_model_path"] = latest_ckpt
+#SECTION:-------------------- TRBOUE--------------------------------------------------------------------------------------
+    hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
+    local_dir = (
+        nl.project.checkpoints_parent_folder
+        / nl.run_id
+        / ("checkpoints")
+    )
+# %%
+    print("\nSSH to remote folder {}".format(remote_dir))
+    client = SSHClient()
+    client.load_system_host_keys()
+
+    # client.connect(
+    #     "login.hpc.qmul.ac.uk",
+    #     username=hpc_settings["username"],
+    #     password=hpc_settings["password"],
+    # )
+    client.connect(
+        hpc_settings["host"],
+        username=hpc_settings["username"],
+        password=hpc_settings["password"],
+    )
+    ftp_client = client.open_sftp()
+    try:
+        fnames = []
+        for f in sorted(
+            ftp_client.listdir_attr(remote_dir),
+            key=lambda k: k.st_mtime,
+            reverse=True,
+        ):
+            fnames.append(f.filename)
+    except FileNotFoundError:
+        print(
+            "\n------------------------------------------------------------------"
+        )
+        print(
+            "Error:Could not find {}.\nIs this a remote folder and exists?\n".format(
+                remote_dir
+            )
+        )
+        return
+    remote_fnames = [os.path.join(remote_dir, f) for f in fnames]
+    local_fnames = [os.path.join(local_dir, f) for f in fnames]
+    maybe_makedirs(local_dir)
+    downloaded_files = []
+    for rem, loc in zip(remote_fnames, local_fnames):
+
+        if Path(loc).exists():
+            print("Local file {} exists already.".format(loc))
+            downloaded_files.append(loc)
+        else:
+            print("Copying file {0} to local folder {1}".format(rem, local_dir))
+            ftp_client.get(rem, loc)
+            downloaded_files.append(loc)
+    # Get the latest file by modification time from downloaded files
 # %%
