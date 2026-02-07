@@ -89,13 +89,27 @@ def process_items(items):
     labels = []
     fns_imgs = []
     fns_labels = []
-    
     for item in items:
         imgs.append(item["image"])
         fns_imgs.append(item["image"].meta['filename_or_obj'])
         labels.append(item["lm"])
         fns_labels.append(item["lm"].meta['filename_or_obj'])
-        
+    return imgs, labels, fns_imgs, fns_labels
+
+
+def process_items_whole(items):
+    #items is a list of list of  dictionaries  (as ooposed to above)
+
+    imgs = []
+    labels = []
+    fns_imgs = []
+    fns_labels = []
+    for item in items:
+        item = item[0] #  
+        imgs.append(item["image"])
+        fns_imgs.append(item["image"].meta['filename_or_obj'])
+        labels.append(item["lm"])
+        fns_labels.append(item["lm"].meta['filename_or_obj'])
     return imgs, labels, fns_imgs, fns_labels
 
 def process_grid_items(item):
@@ -166,8 +180,9 @@ def source_collated(batch):
 
 
 def whole_collated(batch):
-    imgs,labels,fns_imgs,fns_labels = process_items(batch)
-
+    # print(type(batch))
+    # print(len(batch))
+    imgs,labels,fns_imgs,fns_labels = process_items_whole(batch)
     if len(batch) == 1:
         fns_imgs = fns_imgs[0]
         fns_labels = fns_labels[0]

@@ -14,6 +14,7 @@ import argparse
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
+    set_autoreload()
     P = Project("totalseg")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P , configuration_filename=None)
@@ -95,11 +96,6 @@ if __name__ == '__main__':
         lr=lr,
         override_dm_checkpoint=override_dm
     )
-
-
-
-
-
 # %%
     Tm.configs['plan_train']['mode']
     Tm.configs['plan_train']['patch_size']
@@ -114,78 +110,6 @@ if __name__ == '__main__':
     Tm.fit()
 
 # %%
-
-from fran.managers.db import  find_matching_plan
-from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
-from fran.run.analyze_resample import PreprocessingManager
-import argparse
-from fran.inference.cascade import WholeImageInferer
-from fran.managers import  Project
-from fran.utils.common import *
-from fran.trainers.trainer import Trainer
-from fran.configs.parser import ConfigMaker
-# %%
-#SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
-if __name__ == '__main__':
-    from fran.utils.common import *
-    P = Project("totalseg")
-
-    # P._create_plans_table()
-    # P.add_data([DS.totalseg])
-    C = ConfigMaker(P,  configuration_filename=None)
-    C.setup(6)
-    C.plans
-    conf = C.configs
-    print(conf["model_params"])
-
-    plan = conf['plan_train']
-    pp(plan)
-
-    # plan['mode']
-    # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
-
-# %%
-
-# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-    devices = 2
-    devices= [1]
-    bs = 4
-
-    run_name =None
-    run_name ='LITS-1271'
-    compiled = True
-    profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
-    batch_finder = False
-    neptune = True
-    tags = []
-    description = f"Partially trained up to 100 epochs"
-
-    conf['plan_train']
-
-    conf["dataset_params"]["cache_rate"]=0.0
-    print(conf['model_params']['out_channels'])
-    
-    conf['dataset_params']['cache_rate']
-# %%
-    Tm = Trainer(P.project_title, conf, run_name)
-# %%
-    Tm.setup(
-        compiled=compiled,
-        batch_size=bs,
-        devices=devices,
-        epochs=600 if profiler == False else 1,
-        batchsize_finder=batch_finder,
-        profiler=profiler,
-        neptune=neptune,
-        tags=tags,
-        description=description,
-    )
-# %%
-    # Tm.D.batch_size=8
-    Tm.N.compiled = compiled
-    Tm.fit()
-
 # %%
 #SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
 # %%
@@ -204,6 +128,25 @@ if __name__ == '__main__':
     batch['image'].shape
     # model(inputs)
 # %%
+    dici = D.train_ds[0]
+# %%
+    keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"
+    keys = keys_tr.split(",")
+    tm = D.train_manager
+    tfms = tm.transforms_dict
+    dat =  tm.data[0]
+
+    dat2 = tfms[keys[0]](dat)
+    dat3 = tfms[keys[1]](dat2)
+    dat4 = tfms[keys[2]](dat3)
+    dat5=tfms[keys[3]](dat4)
+    dat6 = tfms[keys[4]](dat5)
+    dat7 = tfms[keys[5]](dat6)
+    dat8 = tfms[keys[6]](dat7)
+    dat9 = tfms[keys[8]](dat8)
+    
+
+
 #SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
 
 

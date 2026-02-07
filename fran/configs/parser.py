@@ -495,12 +495,19 @@ class ConfigMaker:
         self._set_plan(plan_train, "train")
         self._set_plan(plan_valid, "valid")
         self._set_plan(plan_test, "test")
+        self.validate_plans()
         self.configs["plan_valid"]["patch_size"] = self.configs["plan_train"][
             "patch_size"
         ]
         self.configs["plan_test"]["patch_size"] = self.configs["plan_train"][
             "patch_size"
         ]
+
+
+    def validate_plans(self):
+        for remp_key in ["remapping_source", "remapping_lbd", "remapping_imported","remapping_train"]:
+            for plan_name in "plan_valid", "plan_test":
+                assert self.configs[plan_name][remp_key] == self.configs["plan_train"][remp_key], f"{plan_name} {remp_key} is not the same as plan_train {remp_key}"
 
     def add_preprocess_status(self):
         """Add preprocessing status column to plans dataframe"""
