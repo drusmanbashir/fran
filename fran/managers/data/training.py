@@ -44,6 +44,7 @@ from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import (DummyTransform, LoadTorchDict,
                                              MetaToDict)
 from fran.utils.folder_names import folder_names_from_plan
+from fran.utils.misc import convert_remapping
 
 common_vars_filename = os.environ["FRAN_COMMON_PATHS"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
@@ -287,6 +288,7 @@ class DataManager(LightningDataModule):
         self.keys = keys
 
         self.plan = configs[f"plan_{split}"]
+        self.maybe_fix_remapping_dtype()
         global_properties = load_dict(project.global_properties_filename)
         self.dataset_params = configs["dataset_params"]
         self.dataset_params["intensity_clip_range"] = global_properties[
@@ -310,6 +312,13 @@ class DataManager(LightningDataModule):
         self.assimilate_tfm_factors(transform_factors)
         # self.keys=keys
         self.set_collate_fn()
+
+    def maybe_fix_remapping_dtype(self):
+        if isinstance (self.plan["remapping_train"], dict):
+            self.plan["remapping_train"]= convert_remapping(self.plan["remapping_train"])
+
+
+
 
     def set_collate_fn(self):
         self.collate_fn = None
@@ -416,10 +425,6 @@ class DataManager(LightningDataModule):
         if not is_excel_None(
             self.plan["remapping_train"]
         ):  # note this is a very expensive transform
-            assert (
-                isinstance(self.plan["remapping_train"], (tuple, list))
-                and len(self.plan["remapping_train"]) == 2
-            ), "remapping_train must be a tuple or list of length 2"
             orig_labels = self.plan["remapping_train"][0]
             dest_labels = self.plan["remapping_train"][1]
             Remap = MapLabelValued(

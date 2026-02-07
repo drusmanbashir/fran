@@ -26,9 +26,9 @@ from utilz.helpers import *
 # HACK: this may bug out later
 REMAPPING_DICT_OR_LIST = {
     "remapping_source": "dict",
-    "remapping_lbd": "list",
+    "remapping_lbd": "dict",
     "remapping_imported": "dict",
-    "remapping_train": "list",
+    "remapping_train": "dict",
 }
 
 

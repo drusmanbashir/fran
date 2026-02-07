@@ -220,6 +220,10 @@ class PreprocessingManager:
 
     @ask_proceed("Generating low-res whole images to localise organ of interest")
     def generate_whole_images_dataset(self):
+
+
+
+
         if not hasattr(self, "spacing"):
             self.set_spacing()
         output_shape = ast.literal_eval(

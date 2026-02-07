@@ -1,5 +1,4 @@
 # %%
-
 # training.py — minimal runner to Tm.fit()
 import ipdb
 tr = ipdb.set_trace
@@ -40,6 +39,21 @@ def parse_device_str(dev_arg: str) -> Union[int, List[int]]:
     if val in (0, 1):  # treat as explicit GPU id
         return [val]
     return val  # for 2, 3, ... treat as count of devices
+
+def convert_remapping(rem: dict|tuple|list):
+    #if remapping is list/tuple -> output dict
+    #if remapping is dict -> output list
+    if isinstance (rem , tuple|list) and len(rem)==2:
+        src = rem[0]
+        dst = rem[1]
+        dici = {a:b for a,b in zip(src,dst)}
+        return dici
+    if isinstance (rem , dict):
+        src = list(rem.keys())
+        dst = list(rem.values())
+        list_out = [src,dst]
+        return list_out
+
 
 
 #HACK: align this and simplify this as per lightngin-ai devices arg signature

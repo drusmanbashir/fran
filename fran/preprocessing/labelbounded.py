@@ -292,7 +292,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             lbd_subfolder = folder_names_from_plan(self.project, self.plan)[
                 "data_folder_lbd"
             ]
-            self.output_folder = self.project.lbd_folder / (lbd_subfolder)
+            self.output_folder =  Path(lbd_subfolder)
         else:
             self.output_folder = Path(output_folder)
 
@@ -552,6 +552,7 @@ if __name__ == "__main__":
         data_folder="/r/datasets/preprocessed/litsmc/fixed_spacing/spc_100_100_100",
     )
 
+# %%
     L.setup(overwrite=False, device="cpu", num_processes=num_processes)
     L.process()
 # %%
@@ -701,3 +702,4 @@ if __name__ == "__main__":
         data_folder_lbd=L.output_folder,
     )
 # %%
+

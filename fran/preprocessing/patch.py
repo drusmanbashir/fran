@@ -267,7 +267,7 @@ class PatchDataGenerator(Preprocessor):
         }
         save_dict(patches_config, self.patches_config_fn)
 
-    def set_output_folder(self):
+    def set_input_output_folders(self):
         data_folder_name = self.data_folder.name
         pat = re.compile("_plan\d+")
         data_folder_name = pat.sub("", data_folder_name)

@@ -1,4 +1,119 @@
 # %%
+from lightning.pytorch.callbacks import BatchSizeFinder
+from fran.callback.test import PeriodicTest
+from fran.data.datasource import Datasource
+from fran.data.dataregistry import DS
+from fran.managers import  Project
+from fran.run.analyze_resample import PreprocessingManager
+from fran.trainers.trainer import Trainer
+from fran.utils.common import *
+from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
+import argparse
+
+# %%
+#SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
+if __name__ == '__main__':
+    from fran.utils.common import *
+    P = Project("totalseg")
+    # P.add_data([DS.totalseg])
+    C = ConfigMaker(P , configuration_filename=None)
+    C.setup(2)
+    C.plans
+    conf = C.configs
+    print(conf["model_params"])
+
+    planT = conf['plan_train']
+    planV = conf["plan_valid"]
+    conf["plan_valid"] = conf["plan_train"].copy()
+    pp(planT)
+
+    planT['mode']
+    # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
+    # if (lm==3).any():
+    #     print("Bad values 3 ->0")
+    #     lm[lm==3]=1
+    #     torch.save(lm, bad_case_fn)
+    #
+    # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
+# %%
+#SECTION:-------------------- COnfirm plans exist--------------------------------------------------------------------------------------
+
+    statusesT    = confirm_plan_analyzed(P, planT)
+    statusesV    = confirm_plan_analyzed(P, planV)
+    print("Training:", statusesT, "Validation:", statusesV)
+# %%
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
+    devices= [1]
+    bs = 8
+
+    # run_name ='LITS-1285'
+    compiled = False
+    profiler = False
+    # NOTE: if Neptune = False, should store checkpoint locally
+    batch_finder = False
+    neptune = True
+    override_dm = False
+    tags = []
+    description = f"Partially trained up to 100 epochs"
+
+    conf['plan_train']
+
+    # cbs = [PeriodicTest(every_n_epochs=1,limit_batches=50), BatchSizeFinder(batch_arg_name="batch_size")]
+    cbs =[]
+
+    conf["dataset_params"]["cache_rate"]=0.0
+    print(conf['model_params']['out_channels'])
+    
+
+    conf['dataset_params']['cache_rate']
+
+# %%
+    conf["dataset_params"]["fold"]=0
+    run_name=None
+    lr= 1e-2
+# # %%
+#     run_name="LITS-1327"
+#     lr= 1e-3
+    # lr=None
+# %%
+    Tm = Trainer(P.project_title, conf, run_name,)
+    # Tm.configs
+    Tm.configs['dataset_params']['fold']
+# %%
+    Tm.setup(
+        compiled=compiled,
+        periodic_test=0,
+        batch_size=bs,
+        devices=devices,
+        cbs=cbs,
+        epochs=500 if profiler == False else 1,
+        batchsize_finder=batch_finder,
+        profiler=profiler,
+        neptune=neptune,
+        tags=tags,
+        description=description,
+        lr=lr,
+        override_dm_checkpoint=override_dm
+    )
+
+
+
+
+
+# %%
+    Tm.configs['plan_train']['mode']
+    Tm.configs['plan_train']['patch_size']
+    Tm.configs['dataset_params']['fold']
+    # Tm.D.configs = Tm.configs.copy()
+    # Tm.D.batch_size=8
+    Tm.N.compiled = compiled
+# %%
+
+    # tuner = Tuner(Tm.trainer)
+    # tuner.scale_batch_size(Tm.N.model,mode="binsearch")
+    Tm.fit()
+
+# %%
 
 from fran.managers.db import  find_matching_plan
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch

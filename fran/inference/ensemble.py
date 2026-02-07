@@ -711,37 +711,13 @@ class EnsembleInferer:
 if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     #
-    # p = argparse.ArgumentParser()
-    # p.add_argument("--runs", type=str, required=True, help="Comma-separated run_names")
-    # p.add_argument("--images", type=str, nargs="+", required=True)
-    # p.add_argument("--devices", type=str, default="0")
-    # p.add_argument("--localiser-run", type=str, default=None)
-    # p.add_argument("--localiser-labels", type=int, nargs="*", default=None)
-    # p.add_argument("--chunksize", type=int, default=8)
-    # p.add_argument("--safe-mode", action="store_true")
-    # p.add_argument("--save-channels", action="store_true")
-    # args = p.parse_args()
-    #
-    # runs = [r.strip() for r in args.runs.split(",") if r.strip()]
-    # devices = [int(d) for d in args.devices.split(",")]
-    # ens = EnsembleInferer(
-    #     runs=runs,
-    #     devices=devices,
-    #     safe_mode=args.safe_mode,
-    #     save_channels=args.save_channels,
-    #     chunksize=args.chunksize,
-    #     localiser_run=args.localiser_run,
-    #     localiser_labels=args.localiser_labels,
-    # )
-    # ens.run(args.images)
-    # ... run your application ...
-
     run_w2 = "LIT-145"
     run_w = "LITS-1088"  # this run has localiser_labels not full TSL.
 
     run_lidc2 = ["LITS-902"]
     run_nodes = ["LITS-1290", "LITS-1230", "LITS-1288"]
-    run_nodes = ["LITS-1326","LITS-1327", "LITS-1328"]
+    run_nodes1 = ["LITS-1326","LITS-1327", "LITS-1328"]
+    run_nodes2 = ["LITS-1405","LITS-1416", "LITS-1417"]
 
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
@@ -770,6 +746,8 @@ if __name__ == "__main__":
     imgs_crc = list(fldr_crc.glob("*"))
     nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
     nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
+    nodes_fldr_test =Path("/s/xnat_shadow/nodes/images_test")
+    nodes_test = list(nodes_fldr_test.glob("*"))
     nodes = list(nodes_fldr.glob("*"))
     capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
     capestart = list(capestart_fldr.glob("*"))
@@ -780,9 +758,10 @@ if __name__ == "__main__":
     TSL = TotalSegmenterLabels()
     proj_nodes = Project("nodes")
 
+# %%
 # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
-    runs = run_nodes
+    runs = run_nodes2
     safe_mode = True
     devices = [0]
     overwrite = True
@@ -825,7 +804,7 @@ if __name__ == "__main__":
 
 # %%
     # nodes = nodes[:3]
-    imgs = nodes
+    imgs = nodes_test
     # node_fn = "/s/insync/datasets/capestart/nodes_nov2025/images/nodes_43_20220805_CAP1p5SoftTissue.nii.gz"
     preds = E.run(imgs, chunksize=chunksize, overwrite=overwrite)
 # %%
