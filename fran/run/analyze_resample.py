@@ -121,7 +121,7 @@ class PreprocessingManager:
         P = Project(project_title=args.project_title)
         self.project = P
         if conf is None:
-            C = ConfigMaker(P,  configuration_filename=None)
+            C = ConfigMaker(P)
             C.setup(args.plan)
             conf = C.configs
         self.plan = conf["plan_train"]
