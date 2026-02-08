@@ -72,7 +72,7 @@ def main(args):
         Tm.setup(
 
             compiled=args.compiled,
-            batch_size=6
+            batch_size=6,
             cbs=cbs,
             devices=devices,
             epochs=args.epochs if not args.profiler else 1,
