@@ -9,6 +9,7 @@ from lightning.pytorch.profilers import AdvancedProfiler
 from tqdm.auto import tqdm as pbar
 from utilz.string import headline
 
+from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.test import PeriodicTest
 from fran.configs.parser import ConfigMaker, parse_neptune_dict
 from fran.managers.data.training import DataManagerDual, DataManagerMulti
@@ -270,7 +271,7 @@ class Trainer:
         description="",
     ):
         if batchsize_finder == True:
-            cbs += [BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch")]
+            cbs += [BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"), BatchSizeSafetyMargin(buffer=1)]
         if (
             periodic_test > 0
         ):  # HACK: if False, it should create only a single val_dataloader

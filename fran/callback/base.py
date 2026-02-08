@@ -12,6 +12,26 @@ import ray
 tr2 = ray.util.pdb.set_trace
 # %%
 
+class BatchSizeSafetyMargin(Callback):
+    def __init__(self, buffer: int = 1, min_bs: int = 1):
+        self.buffer = buffer
+        self.min_bs = min_bs
+
+    def on_fit_start(self, trainer, pl_module):
+        # BatchSizeFinder has already run at this point
+        dm = trainer.datamodule
+
+        if not hasattr(dm, "batch_size"):
+            return
+
+        bs = int(dm.batch_size)
+        safe_bs = max(self.min_bs, bs - self.buffer)
+
+        if safe_bs != bs:
+            dm.batch_size = safe_bs
+            trainer.print(
+                f"[BatchSizeSafetyMargin] Reducing batch_size {bs} → {safe_bs}"
+            )
 class PredAsList(Callback):
     def after_pred(self):
         self.learn.pred= listify(self.learn.pred)

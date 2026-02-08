@@ -17,7 +17,7 @@ if __name__ == '__main__':
     P = Project("nodes")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
-    C.setup(7)
+    C.setup(6)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -41,8 +41,8 @@ if __name__ == '__main__':
     statusesV    = confirm_plan_analyzed(P, planV)
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
-    devices= [1]
-    bs = 3
+    devices= [0]
+    bs = 2
 
     # run_name ='LITS-1285'
     compiled = False
