@@ -205,7 +205,7 @@ class Trainer:
         description="",
     ):
         if batchsize_finder == True:
-            cbs += [BatchSizeFinder(batch_arg_name="batch_size"), mode="binsearch"]
+            cbs += [BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch")]
         if (
             periodic_test > 0
         ):  # HACK: if False, it should create only a single val_dataloader
