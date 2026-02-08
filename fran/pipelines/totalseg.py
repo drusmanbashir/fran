@@ -18,7 +18,7 @@ if __name__ == '__main__':
     P = Project("totalseg")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
-    C.setup(2)
+    C.setup(6)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -46,7 +46,7 @@ if __name__ == '__main__':
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
     periodic_test = planT["periodic_test"]
     devices= [1]
-    bs = 8
+    bs = 6
 
     compiled = False
     profiler = False
@@ -71,10 +71,11 @@ if __name__ == '__main__':
 # %%
     conf["dataset_params"]["fold"]=0
     run_name=None
-    lr= 1e-2
-# # %%
-    run_name="LITS-1425"
-    lr= 1e-2
+    lr=None
+    # lr= 1e-2
+# %%
+    # run_name="LITS-1425"
+    # lr= 1e-2
 # %%
     Tm = Trainer(P.project_title, conf, run_name,)
     # Tm.configs

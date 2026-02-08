@@ -22,7 +22,7 @@ common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
 
 def main(args):
     P = Project(project_title=args.project_title)
-    C = ConfigMaker(P,  configuration_filename=None)
+    C = ConfigMaker(P)
     overwrite = args.overwrite
     if args.num_processes<1:
         args.num_processes = 1
