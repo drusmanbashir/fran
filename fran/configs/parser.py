@@ -348,6 +348,7 @@ class ConfigMaker:
         self.plans = plans.loc[plans["mnemonic"] == configuration_mnemonic]
         self.plans = self.plans.drop(columns=["mnemonic"])
         self.plans.insert(0, "plan_id", self.plans.index)
+        self.plans = self.plans.set_index("plan_id", drop=False)
         configs = load_config_from_workbook(configuration_filename)
         self.configs = parse_excel_dict(configs)
 
@@ -355,9 +356,9 @@ class ConfigMaker:
         # by default plan_valid is a fixed plan regardless of train_plan and is set in dataset_params
         # plan_valid essentially only uses the folder of said plan, and patch_size is kept same as plan_train
         if plan_valid is None:
-            plan_valid = self.plans.iloc[plan_train]["plan_valid"]
+            plan_valid = self.plans.loc[plan_train]["plan_valid"]
         if plan_test is None:
-            plan_test = self.plans.iloc[plan_train]["plan_test"]
+            plan_test = self.plans.loc[plan_train]["plan_test"]
         if is_excel_None(plan_valid):
             plan_valid = plan_train
         if is_excel_None(plan_test):
