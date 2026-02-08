@@ -44,10 +44,10 @@ if __name__ == '__main__':
     print("Training:", statusesT, "Validation:", statusesV)
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
+    periodic_test = planT["periodic_test"]
     devices= [1]
     bs = 8
 
-    # run_name ='LITS-1285'
     compiled = False
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -73,9 +73,8 @@ if __name__ == '__main__':
     run_name=None
     lr= 1e-2
 # # %%
-#     run_name="LITS-1327"
-#     lr= 1e-3
-    # lr=None
+    run_name="LITS-1425"
+    lr= 1e-2
 # %%
     Tm = Trainer(P.project_title, conf, run_name,)
     # Tm.configs
