@@ -841,8 +841,6 @@ if __name__ == "__main__":
 
     conf = ConfigMaker(
         proj,
-        raytune=False,
-        configuration_filename="/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx",
     ).config
 # configs = ConfigMaker(project, raytune=False).config
 

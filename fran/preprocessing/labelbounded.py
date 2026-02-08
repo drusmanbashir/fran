@@ -532,7 +532,7 @@ if __name__ == "__main__":
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
-    C = ConfigMaker(P, configuration_filename=None)
+    C = ConfigMaker(P)
     C.setup(1)
     C.plans
     conf = C.configs

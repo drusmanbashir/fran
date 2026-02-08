@@ -329,32 +329,37 @@ class ConfigMaker:
     def __init__(
         self,
         project,
-        configuration_filename=None,
     ):
         store_attr()
         configuration_mnemonic = project.global_properties["mnemonic"]
+        common_vars_filename = os.environ["FRAN_COMMON_PATHS"] + "/config.yaml"
+        common_paths = load_yaml(common_vars_filename)
+        
         configuration_filename = self.resolve_configuration_filename(
-            configuration_filename, configuration_mnemonic
+            
         )
-        self.plans = pd.read_excel(
+        plans = pd.read_excel(
             configuration_filename,
             sheet_name="plans",
             index_col="id",
             keep_default_na=False,
             na_values=["TRUE", "FALSE", ""],
         )
+        self.plans = plans.loc[plans["mnemonic"] == configuration_mnemonic]
+        self.plans = self.plans.drop(columns=["mnemonic"])
         self.plans.insert(0, "plan_id", self.plans.index)
         configs = load_config_from_workbook(configuration_filename)
         self.configs = parse_excel_dict(configs)
 
-    def setup(self, plan_train: int, verbose=True):  # , plan_valid=None):
+    def setup(self, plan_train: int, plan_valid:int = None,plan_test:int = None, verbose=True):  # , plan_valid=None):
         # by default plan_valid is a fixed plan regardless of train_plan and is set in dataset_params
         # plan_valid essentially only uses the folder of said plan, and patch_size is kept same as plan_train
-        plan_valid = self.configs["dataset_params"].get("plan_valid")
+        if plan_valid is None:
+            plan_valid = self.plans.iloc[plan_train]["plan_valid"]
+        if plan_test is None:
+            plan_test = self.plans.iloc[plan_train]["plan_test"]
         if is_excel_None(plan_valid):
             plan_valid = plan_train
-
-        plan_test = self.configs["dataset_params"].get("plan_test")
         if is_excel_None(plan_test):
             plan_test = plan_train
         self._set_active_plans(plan_train, plan_valid, plan_test)
@@ -374,32 +379,13 @@ class ConfigMaker:
         # self.config[plan]["labels_all"] = labels_all
 
     def resolve_configuration_filename(
-        self, configuration_filename, configuration_mnemonic
+        self
     ):
-
-        if configuration_filename:
-            return configuration_filename
-        assert (
-            configuration_filename or configuration_mnemonic
-        ), "Provide either a configuration filename or a configuration mnemonic"
 
         common_vars_filename = os.environ["FRAN_COMMON_PATHS"] + "/config.yaml"
         common_paths = load_yaml(common_vars_filename)
         configurations_folder = Path(common_paths["configurations_folder"])
-        if configuration_mnemonic:
-            assert (
-                configuration_mnemonic in MNEMONICS
-            ), "Please provide a valid mnemonic from the list {}".format(MNEMONICS)
-        if configuration_mnemonic in ["liver", "lits", "litq"]:
-            return configurations_folder / ("experiment_configs_liver.xlsx")
-        elif configuration_mnemonic == "litsmall":
-            return configurations_folder / ("experiment_configs_litsmall.xlsx")
-        elif configuration_mnemonic in ["lungs", "lidc"]:
-            return configurations_folder / ("experiment_configs_lungs.xlsx")
-        elif configuration_mnemonic == "nodes":
-            return configurations_folder / ("experiment_configs_nodes.xlsx")
-        elif configuration_mnemonic == "totalseg":
-            return configurations_folder / ("experiment_configs_totalseg.xlsx")
+        return configurations_folder / ("experiment_configs.xlsx")
 
     def add_dataset_props(self):
         props = [
@@ -505,7 +491,7 @@ class ConfigMaker:
 
 
     def validate_plans(self):
-        for remp_key in ["remapping_source", "remapping_lbd", "remapping_imported","remapping_train"]:
+        for remp_key in ["remapping_source", "remapping_lbd" ]:
             for plan_name in "plan_valid", "plan_test":
                 assert self.configs[plan_name][remp_key] == self.configs["plan_train"][remp_key], f"{plan_name} {remp_key} is not the same as plan_train {remp_key}"
 
@@ -590,7 +576,7 @@ if __name__ == "__main__":
     from fran.managers import Project
 
     P = Project(project_title="nodes")
-    C = ConfigMaker(P, configuration_filename=None)
+    C = ConfigMaker(P)
     C.setup(1)
     pp(C.configs["plan_train"])
     pp(C.configs["plan_valid"])

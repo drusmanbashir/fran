@@ -50,7 +50,7 @@ def main(args):
         # --- Project & configs ----------------------------------------------------
         P = Project(args.project_title)
         devices = parse_devices(args.devices)
-        C = ConfigMaker(P, configuration_filename=None)
+        C = ConfigMaker(P)
         plan = int(args.plan)
         C.setup(plan)
         conf = C.configs

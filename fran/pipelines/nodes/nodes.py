@@ -16,7 +16,7 @@ if __name__ == '__main__':
     from fran.utils.common import *
     P = Project("nodes")
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P , configuration_filename=None)
+    C = ConfigMaker(P )
     C.setup(7)
     C.plans
     conf = C.configs

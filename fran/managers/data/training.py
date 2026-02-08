@@ -1138,7 +1138,7 @@ if __name__ == "__main__":
     project_title = "litsmc"
     proj_litsmc = Project(project_title=project_title)
 
-    CL = ConfigMaker(proj_litsmc, configuration_filename=None)
+    CL = ConfigMaker(proj_litsmc)
     CL.setup(3)
     config_litsmc = CL.configs
 

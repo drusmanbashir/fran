@@ -14,7 +14,7 @@ def load_project_cfg(project_name: str, mnemonic: str | None = None):
     - returns whatever C++ needs
     """
     proj = Project(project_name)
-    cfg = ConfigMaker(proj, configuration_filename=None)
+    cfg = ConfigMaker(proj)
 
     return proj, cfg
 # %%

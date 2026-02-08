@@ -104,7 +104,7 @@ if __name__ == "__main__":
     # conf['model_params']['lr']=1e-3
 
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P, configuration_filename=None)
+    C = ConfigMaker(P)
     C.setup(1)
     C.plans
     conf = C.configs
