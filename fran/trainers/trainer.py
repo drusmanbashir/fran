@@ -11,7 +11,7 @@ from utilz.string import headline
 
 from fran.callback.test import PeriodicTest
 from fran.configs.parser import ConfigMaker, parse_neptune_dict
-from fran.managers.data.training import DataManagerMulti
+from fran.managers.data.training import DataManagerDual, DataManagerMulti
 # from fran.callback.modelcheckpoint import ModelCheckpointUB
 from fran.managers.project import Project
 from fran.managers.unet import UNetManager
@@ -63,6 +63,22 @@ def safe_log_dict(exp, base_path: str, d: dict):
         except Exception as e:
             print(f"[Neptune logging skipped] {path}: {e}")
 
+def _dm_class_for_periodic_test(periodic_test: int):
+    return DataManagerMulti if int(periodic_test) > 0 else DataManagerDual
+
+
+def _dm_class_from_ckpt(ckpt_path: str | Path):
+    """
+    Decide which DM class the checkpoint expects, using datamodule hyperparams.
+    Minimises crash risk when periodic_test differs from the run that created the ckpt.
+    """
+    sd = torch.load(ckpt_path, map_location="cpu")
+    hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
+    # your DMs store keys_test only on Multi
+    return DataManagerMulti if "keys_test" in hp else DataManagerDual
+
+
+
 
 class Trainer:
     def __init__(self, project_title, configs, run_name=None):
@@ -71,6 +87,8 @@ class Trainer:
         self.run_name = run_name
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
+
+        self.periodic_test = 0  # default
 
     def setup(
         self,
@@ -89,9 +107,7 @@ class Trainer:
         batchsize_finder=False,
         override_dm_checkpoint=False,
     ):
-        """
-        if override_dm_checkpoint=True, will use Trainer configs instead of DM checkpoint loaded configs
-        """
+        self.periodic_test = int(periodic_test)
 
         self.maybe_alter_configs(batch_size, compiled)
         self.set_lr(lr)
@@ -102,16 +118,12 @@ class Trainer:
             cbs=cbs,
             neptune=neptune,
             batchsize_finder=batchsize_finder,
-            periodic_test=periodic_test,
+            periodic_test=self.periodic_test,
             profiler=profiler,
             tags=tags,
             description=description,
         )
         self.D.prepare_data()
-
-        # if self.configs["model_params"]["compiled"] == True:
-        #     self.N.model = torch.compile(self.N.model, dynamic=True)
-        # self.N = torch.compile(self.N)
 
         self.trainer = TrainerL(
             callbacks=cbs,
@@ -126,8 +138,61 @@ class Trainer:
             enable_checkpointing=True,
             default_root_dir=self.project.checkpoints_parent_folder,
             strategy=self.strategy,
-            # strategy='ddp_find_unused_parameters_true'
         )
+
+    def init_dm(self):
+        cache_rate = self.configs["dataset_params"]["cache_rate"]
+        ds_type = self.configs["dataset_params"]["ds_type"]
+
+        DM = _dm_class_for_periodic_test(self.periodic_test)
+        return DM(
+            self.project.project_title,
+            configs=self.configs,
+            batch_size=self.configs["dataset_params"]["batch_size"],
+            cache_rate=cache_rate,
+            device=self.configs["dataset_params"].get("device", "cuda"),
+            ds_type=ds_type,
+        )
+
+    def load_dm(self, batch_size=None, override_dm_checkpoint=False):
+        if override_dm_checkpoint:
+            sd = torch.load(self.ckpt, map_location="cpu")
+            backup_ckpt(self.ckpt)
+            sd["datamodule_hyper_parameters"]["configs"] = self.configs
+            headline("Overriding datamodule checkpoint.")
+            out_fname = self.run_name + ".ckpt"
+            bckup_ckpt = Path(self.project.log_folder) / out_fname
+            shutil.copy(self.ckpt, bckup_ckpt)
+            torch.save(sd, self.ckpt)
+
+        # Prefer the class the checkpoint was created with.
+        DM_from_ckpt = _dm_class_from_ckpt(self.ckpt)
+        DM_wanted = _dm_class_for_periodic_test(self.periodic_test)
+
+        # If they disagree, do NOT force DM_wanted; load what the ckpt expects.
+        # That avoids crashes from missing stored hyperparams / attributes.
+        DM = DM_from_ckpt
+
+        D = DM.load_from_checkpoint(
+            self.ckpt,
+            project_title=self.project.project_title,
+            batch_size=batch_size,
+            map_location="cpu",
+        )
+
+        if batch_size:
+            D.configs["dataset_params"]["batch_size"] = int(batch_size)
+
+        # Optional: warn (but don’t crash) if user asked for periodic testing but ckpt is Dual
+        if (DM_from_ckpt is DataManagerDual) and (DM_wanted is DataManagerMulti):
+            headline(
+                "Note: checkpoint datamodule is Dual (no test). periodic_test>0 was requested, "
+                "but DM is loaded from checkpoint to avoid incompatibility."
+            )
+
+        return D
+
+
 
     def init_dm_unet(self, epochs, batch_size, override_dm_checkpoint=False):
         if self.ckpt:
@@ -337,19 +402,7 @@ class Trainer:
     def heuristic_batch_size(self):
         raise NotImplementedError
 
-    def init_dm(self):
 
-        cache_rate = self.configs["dataset_params"]["cache_rate"]
-        ds_type = self.configs["dataset_params"]["ds_type"]
-        D = DataManagerMulti(
-            self.project.project_title,
-            configs=self.configs,
-            batch_size=self.configs["dataset_params"]["batch_size"],
-            cache_rate=cache_rate,
-            ds_type=ds_type,
-        )
-
-        return D
 
     def init_trainer(self, epochs):
         N = UNetManager(
@@ -380,30 +433,7 @@ class Trainer:
         print("Model loaded from checkpoint: ", self.ckpt)
         return N
 
-    def load_dm(self, batch_size=None, override_dm_checkpoint=False):
-        if override_dm_checkpoint == True:
-            sd = torch.load(self.ckpt, map_location="cpu")
-            backup_ckpt(self.ckpt)
-            sd["datamodule_hyper_parameters"]["configs"] = self.configs
-            headline("Overriding datamodule checkpoint.")
-            out_fname = self.run_name + ".ckpt"
-            bckup_ckpt = Path(self.project.log_folder) / (out_fname)
-            print("Datamodule checkpoint has been overwritten with Trainer configs.")
-            print("A copy of original ckpt is stored at: ", bckup_ckpt)
-            shutil.copy(self.ckpt, bckup_ckpt)
-            torch.save(sd, self.ckpt)
-        D = DataManagerMulti.load_from_checkpoint(
-            self.ckpt,
-            project_title=self.project.project_title,
-            batch_size=batch_size,
-            map_location="cpu",
-        )
-        if batch_size:
-            # project_title = self.project.project_title
-            D.configs["dataset_params"]["batch_size"] = batch_size
-            # D.save_hyperparameters('project_title', 'configs',logger=False) # logger = False otherwise it clashes with UNet Manager
-        return D
-
+  
     def resolve_datamanager(self, mode: str):
         if mode == "patch":
             DMClass = DataManagerPatch
@@ -428,7 +458,6 @@ class Trainer:
 
 
 # %%
-
 
 if __name__ == "__main__":
     # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- - <CR>

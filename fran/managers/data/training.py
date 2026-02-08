@@ -1,16 +1,23 @@
 # %%
 import os
 import re
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional, Tuple
+
+from lightning.pytorch import LightningDataModule
+
 
 from functools import reduce
 from operator import add
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import ipdb
 import numpy as np
 import torch
-from fastcore.basics import listify, operator, store_attr, warnings
+from fastcore.basics import listify, operator, warnings
 from lightning import LightningDataModule
 from monai.data import DataLoader, Dataset, GridPatchDataset, PatchIterd
 from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
@@ -28,15 +35,13 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  MapLabelValued, ToDeviceD)
 from tqdm.auto import tqdm as pbar
 from utilz.fileio import load_dict, load_yaml
-from utilz.helpers import (find_matching_fn, folder_name_from_list,
-                           resolve_device)
+from utilz.helpers import (find_matching_fn, resolve_device)
 from utilz.imageviewers import ImageMaskViewer
 from utilz.string import ast_literal_eval, headline, info_from_filename, strip_extension
 
 from fran.configs.parser import ConfigMaker, is_excel_None
 from fran.data.collate import grid_collated, source_collated, whole_collated
 from fran.data.dataset import NormaliseClipd, fg_in_bboxes
-from fran.managers.db import find_matching_plan
 from fran.managers.project import Project
 from fran.preprocessing.helpers import bbox_bg_only
 from fran.transforms.imageio import LoadTorchd, TorchReader
@@ -87,9 +92,10 @@ class RandomPatch(RandomizableTransform):
         return dici
 
 
-class DataManagerMulti(LightningDataModule):
+
+class DataManagerDual(LightningDataModule):
     """
-    A higher-level DataManager that manages separate training and validation DataManagers
+    Train + valid only.
     """
 
     def __init__(
@@ -102,143 +108,49 @@ class DataManagerMulti(LightningDataModule):
         ds_type=None,
         save_hyperparameters=True,
         keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
-        keys_val = "L,Remap,Ld,E,N,Rva, ResizePC",
-        keys_test = "L,E,N,Remap,ResizeP",
+        keys_val="L,Remap,Ld,E,N,Rva, ResizePC",
         data_folder: Optional[str | Path] = None,
     ):
         super().__init__()
         self.project = Project(project_title)
         self.configs = configs
-        self._batch_size = batch_size
+        self._batch_size = int(batch_size)
         self.cache_rate = cache_rate
         self.device = device
         self.ds_type = ds_type
         self.keys_tr = keys_tr
         self.keys_val = keys_val
-        self.keys_test = keys_test
         self.data_folder = data_folder if data_folder is not None else None
 
         if save_hyperparameters:
-            self.save_hyperparameters(
-                "project_title", "configs", logger=False
-            )  # logger = False otherwise it clashes with UNet Manager
+            self.save_hyperparameters("project_title", "configs", logger=False)
+
+    # ---- core lifecycle -------------------------------------------------
 
     def prepare_data(self):
-        """Prepare both training and validation data"""
-
-        manager_class_train, manager_class_valid , manager_class_test = self.infer_manager_classes(
-            self.configs
-        )
-
-        # Create separate managers for training and validation
-        self.train_manager = manager_class_train(
-            project=self.project,
-            configs=self.configs,
-            batch_size=self.batch_size,
-            cache_rate=self.cache_rate,
-            split="train",
-            device=self.device,
-            ds_type=self.ds_type,
-            keys=self.keys_tr,
-            data_folder=self.data_folder,
-        )
-
-        self.valid_manager = manager_class_valid(
-            project=self.project,
-            configs=self.configs,
-            batch_size=self.batch_size,
-            cache_rate=self.cache_rate,
-            device=self.device,
-            ds_type=self.ds_type,
-            split="valid",
-            keys=self.keys_val,
-            data_folder=self.data_folder,
-        )
-        self.test_manager = manager_class_test(
-            project=self.project,
-            configs=self.configs,
-            batch_size=self.batch_size,
-            cache_rate=0,
-            device=self.device,
-            ds_type=None,
-            split="test",
-            keys=self.keys_test,
-            data_folder=self.data_folder,
-        )
-
-        self.train_manager.prepare_data()
-        self.valid_manager.prepare_data()
-        self.test_manager.prepare_data()
+        self._build_managers()
+        self._call_prepare_data()
 
     def setup(self, stage=None):
-        """Set up both managers"""
-        self.train_manager.setup(stage)
-        self.valid_manager.setup(stage)
-        self.test_manager.setup(stage)
-        # Create separate managers for training and validation
+        self._call_setup(stage)
 
     def train_dataloader(self):
-        """Return training dataloader"""
         return self.train_manager.dl
 
     def val_dataloader(self):
-        """Return validation dataloader"""
-        return [self.valid_manager.dl, self.test_manager.dl]
+        return self.valid_manager.dl
 
-    def test_dataloader(self):
-        """Return test dataloader"""
-        return self.test_manager.dl
+    # ---- datasets -------------------------------------------------------
 
     @property
     def train_ds(self):
-        """Access to training dataset"""
         return self.train_manager.ds
 
     @property
     def valid_ds(self):
-        """Access to validation dataset"""
         return self.valid_manager.ds
 
-    @property
-    def test_ds(self):
-        """Access to test dataset"""
-        return self.test_manager.ds
-
-    def infer_manager_classes(self, configs):
-        """
-        Infer the appropriate DataManager class based on the mode in config
-
-        Args:
-            config (dict): Configuration dictionary containing plan_train and plan_valid
-
-        Returns:
-            class: The appropriate DataManager class
-
-        Raises:
-            AssertionError: If train and valid modes don't match
-            ValueError: If mode is not recognized
-        """
-        train_mode = configs["plan_train"]["mode"]
-        valid_mode = configs["plan_valid"]["mode"]
-        test_mode = configs["plan_test"]["mode"]
-
-        # Ensure train and valid modes match
-        # Map modes to manager classes
-        mode_to_class = {
-            "source": DataManagerSource,
-            "whole": DataManagerWhole,
-            "patch": DataManagerPatch,
-            "lbd": DataManagerLBD,
-            "baseline": DataManagerBaseline,
-            "pbd": DataManagerWID,
-        }
-
-        if train_mode not in mode_to_class:
-            raise ValueError(
-                f"Unrecognized mode: {train_mode}. Must be one of {list(mode_to_class.keys())}"
-            )
-
-        return mode_to_class[train_mode], mode_to_class[valid_mode], mode_to_class[test_mode]
+    # ---- batch size propagation ----------------------------------------
 
     @property
     def batch_size(self) -> int:
@@ -250,14 +162,331 @@ class DataManagerMulti(LightningDataModule):
         if v == getattr(self, "_batch_size", None):
             return
         self._batch_size = v
-
-        # only propagate if managers already exist
         if hasattr(self, "train_manager"):
-            for m in (self.train_manager, self.valid_manager, self.test_manager):
+            for m in self._iter_managers():
                 m.batch_size = v
                 m.set_effective_batch_size()
-                m.create_dataloader()  # must rebuild m.dl
+                m.create_dataloader()
 
+    # ---- internal helpers ----------------------------------------------
+
+    def _iter_managers(self):
+        # Dual managers only
+        return (self.train_manager, self.valid_manager)
+
+    def _build_managers(self):
+        cls_tr, cls_val = self.infer_manager_classes(self.configs)
+
+        self.train_manager = cls_tr(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="train",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_tr,
+            data_folder=self.data_folder,
+        )
+        self.valid_manager = cls_val(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="valid",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_val,
+            data_folder=self.data_folder,
+        )
+
+    def _call_prepare_data(self):
+        for m in self._iter_managers():
+            m.prepare_data()
+
+    def _call_setup(self, stage=None):
+        for m in self._iter_managers():
+            m.setup(stage)
+
+    def infer_manager_classes(self, configs) -> Tuple[type, type]:
+        train_mode = configs["plan_train"]["mode"]
+        valid_mode = configs["plan_valid"]["mode"]
+
+        mode_to_class = {
+            "source": DataManagerSource,
+            "whole": DataManagerWhole,
+            "patch": DataManagerPatch,
+            "lbd": DataManagerLBD,
+            "baseline": DataManagerBaseline,
+            "pbd": DataManagerWID,
+        }
+
+        for mode in (train_mode, valid_mode):
+            if mode not in mode_to_class:
+                raise ValueError(
+                    f"Unrecognized mode: {mode}. Must be one of {list(mode_to_class.keys())}"
+                )
+
+        return mode_to_class[train_mode], mode_to_class[valid_mode]
+
+
+class DataManagerMulti(DataManagerDual):
+    """
+    Train + valid + test.
+    """
+
+    def __init__(
+        self,
+        project_title,
+        configs: dict,
+        batch_size: int,
+        cache_rate=0.0,
+        device="cuda",
+        ds_type=None,
+        save_hyperparameters=True,
+        keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
+        keys_val="L,Remap,Ld,E,N,Rva, ResizePC",
+        keys_test="L,E,N,Remap,ResizeP",
+        data_folder: Optional[str | Path] = None,
+    ):
+        super().__init__(
+            project_title=project_title,
+            configs=configs,
+            batch_size=batch_size,
+            cache_rate=cache_rate,
+            device=device,
+            ds_type=ds_type,
+            save_hyperparameters=save_hyperparameters,
+            keys_tr=keys_tr,
+            keys_val=keys_val,
+            data_folder=data_folder,
+        )
+        self.keys_test = keys_test
+
+    def _iter_managers(self):
+        return (self.train_manager, self.valid_manager, self.test_manager)
+
+    def _build_managers(self):
+        cls_tr, cls_val, cls_test = self.infer_manager_classes(self.configs)
+
+        # build train/valid via parent, then append test
+        super()._build_managers()
+
+        self.test_manager = cls_test(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=0,
+            split="test",
+            device=self.device,
+            ds_type=None,
+            keys=self.keys_test,
+            data_folder=self.data_folder,
+        )
+
+    def val_dataloader(self):
+        return [self.valid_manager.dl, self.test_manager.dl]
+
+    def test_dataloader(self):
+        return self.test_manager.dl
+
+    @property
+    def test_ds(self):
+        return self.test_manager.ds
+
+    def infer_manager_classes(self, configs) -> Tuple[type, type, type]:
+        train_mode = configs["plan_train"]["mode"]
+        valid_mode = configs["plan_valid"]["mode"]
+        test_mode = configs["plan_test"]["mode"]
+
+        mode_to_class = {
+            "source": DataManagerSource,
+            "whole": DataManagerWhole,
+            "patch": DataManagerPatch,
+            "lbd": DataManagerLBD,
+            "baseline": DataManagerBaseline,
+            "pbd": DataManagerWID,
+        }
+
+        for mode in (train_mode, valid_mode, test_mode):
+            if mode not in mode_to_class:
+                raise ValueError(
+                    f"Unrecognized mode: {mode}. Must be one of {list(mode_to_class.keys())}"
+                )
+
+        return mode_to_class[train_mode], mode_to_class[valid_mode], mode_to_class[test_mode]
+
+# class DataManagerMulti(LightningDataModule):
+#     """
+#     A higher-level DataManager that manages separate training and validation DataManagers
+#     """
+#
+#     def __init__(
+#         self,
+#         project_title,
+#         configs: dict,
+#         batch_size: int,
+#         cache_rate=0.0,
+#         device="cuda",
+#         ds_type=None,
+#         save_hyperparameters=True,
+#         keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
+#         keys_val = "L,Remap,Ld,E,N,Rva, ResizePC",
+#         keys_test = "L,E,N,Remap,ResizeP",
+#         data_folder: Optional[str | Path] = None,
+#     ):
+#         super().__init__()
+#         self.project = Project(project_title)
+#         self.configs = configs
+#         self._batch_size = batch_size
+#         self.cache_rate = cache_rate
+#         self.device = device
+#         self.ds_type = ds_type
+#         self.keys_tr = keys_tr
+#         self.keys_val = keys_val
+#         self.keys_test = keys_test
+#         self.data_folder = data_folder if data_folder is not None else None
+#
+#         if save_hyperparameters:
+#             self.save_hyperparameters(
+#                 "project_title", "configs", logger=False
+#             )  # logger = False otherwise it clashes with UNet Manager
+#
+#     def prepare_data(self):
+#         """Prepare both training and validation data"""
+#
+#         manager_class_train, manager_class_valid , manager_class_test = self.infer_manager_classes(
+#             self.configs
+#         )
+#
+#         # Create separate managers for training and validation
+#         self.train_manager = manager_class_train(
+#             project=self.project,
+#             configs=self.configs,
+#             batch_size=self.batch_size,
+#             cache_rate=self.cache_rate,
+#             split="train",
+#             device=self.device,
+#             ds_type=self.ds_type,
+#             keys=self.keys_tr,
+#             data_folder=self.data_folder,
+#         )
+#
+#         self.valid_manager = manager_class_valid(
+#             project=self.project,
+#             configs=self.configs,
+#             batch_size=self.batch_size,
+#             cache_rate=self.cache_rate,
+#             device=self.device,
+#             ds_type=self.ds_type,
+#             split="valid",
+#             keys=self.keys_val,
+#             data_folder=self.data_folder,
+#         )
+#         self.test_manager = manager_class_test(
+#             project=self.project,
+#             configs=self.configs,
+#             batch_size=self.batch_size,
+#             cache_rate=0,
+#             device=self.device,
+#             ds_type=None,
+#             split="test",
+#             keys=self.keys_test,
+#             data_folder=self.data_folder,
+#         )
+#
+#         self.train_manager.prepare_data()
+#         self.valid_manager.prepare_data()
+#         self.test_manager.prepare_data()
+#
+#     def setup(self, stage=None):
+#         """Set up both managers"""
+#         self.train_manager.setup(stage)
+#         self.valid_manager.setup(stage)
+#         self.test_manager.setup(stage)
+#         # Create separate managers for training and validation
+#
+#     def train_dataloader(self):
+#         """Return training dataloader"""
+#         return self.train_manager.dl
+#
+#     def val_dataloader(self):
+#         """Return validation dataloader"""
+#         return [self.valid_manager.dl, self.test_manager.dl]
+#
+#     def test_dataloader(self):
+#         """Return test dataloader"""
+#         return self.test_manager.dl
+#
+#     @property
+#     def train_ds(self):
+#         """Access to training dataset"""
+#         return self.train_manager.ds
+#
+#     @property
+#     def valid_ds(self):
+#         """Access to validation dataset"""
+#         return self.valid_manager.ds
+#
+#     @property
+#     def test_ds(self):
+#         """Access to test dataset"""
+#         return self.test_manager.ds
+#
+#     def infer_manager_classes(self, configs):
+#         """
+#         Infer the appropriate DataManager class based on the mode in config
+#
+#         Args:
+#             config (dict): Configuration dictionary containing plan_train and plan_valid
+#
+#         Returns:
+#             class: The appropriate DataManager class
+#
+#         Raises:
+#             AssertionError: If train and valid modes don't match
+#             ValueError: If mode is not recognized
+#         """
+#         train_mode = configs["plan_train"]["mode"]
+#         valid_mode = configs["plan_valid"]["mode"]
+#         test_mode = configs["plan_test"]["mode"]
+#
+#         # Ensure train and valid modes match
+#         # Map modes to manager classes
+#         mode_to_class = {
+#             "source": DataManagerSource,
+#             "whole": DataManagerWhole,
+#             "patch": DataManagerPatch,
+#             "lbd": DataManagerLBD,
+#             "baseline": DataManagerBaseline,
+#             "pbd": DataManagerWID,
+#         }
+#
+#         if train_mode not in mode_to_class:
+#             raise ValueError(
+#                 f"Unrecognized mode: {train_mode}. Must be one of {list(mode_to_class.keys())}"
+#             )
+#
+#         return mode_to_class[train_mode], mode_to_class[valid_mode], mode_to_class[test_mode]
+#
+#     @property
+#     def batch_size(self) -> int:
+#         return self._batch_size
+#
+#     @batch_size.setter
+#     def batch_size(self, v: int) -> None:
+#         v = int(v)
+#         if v == getattr(self, "_batch_size", None):
+#             return
+#         self._batch_size = v
+#
+#         # only propagate if managers already exist
+#         if hasattr(self, "train_manager"):
+#             for m in (self.train_manager, self.valid_manager, self.test_manager):
+#                 m.batch_size = v
+#                 m.set_effective_batch_size()
+#                 m.create_dataloader()  # must rebuild m.dl
+#
 class DataManager(LightningDataModule):
     def __init__(
         self,
