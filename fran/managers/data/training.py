@@ -17,7 +17,7 @@ from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
 from monai.transforms.compose import Compose
 from monai.transforms.croppad.dictionary import (RandCropByPosNegLabeld,
                                                  RandSpatialCropSamplesD,
-                                                 ResizeWithPadOrCropd)
+                                                 ResizeWithPadOrCropd, SpatialPadd)
 from monai.transforms.intensity.dictionary import (RandAdjustContrastd,
                                                    RandScaleIntensityd,
                                                    RandShiftIntensityd)
@@ -103,7 +103,7 @@ class DataManagerMulti(LightningDataModule):
         save_hyperparameters=True,
         keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
         keys_val = "L,Remap,Ld,E,N,Rva, ResizePC",
-        keys_test = "L,E,N,Remap",
+        keys_test = "L,E,N,Remap,ResizeP",
         data_folder: Optional[str | Path] = None,
     ):
         super().__init__()
@@ -438,6 +438,14 @@ class DataManager(LightningDataModule):
             lazy=True,
         )
 
+
+        ResizeP = SpatialPadd(
+            keys=["image", "lm"],
+            spatial_size=self.plan["patch_size"],
+            mode = "constant",
+            lazy=True,
+        )
+
         ResizeW = Resized(
             keys=["image", "lm"],
             spatial_size=self.plan["patch_size"],
@@ -519,6 +527,7 @@ class DataManager(LightningDataModule):
             "IntensityTfms": IntensityTfms,
             "Affine": Affine,
             "ResizePC": ResizePC,
+            "ResizeP": ResizeP,
             "ResizeW": ResizeW,
             "L": L,
             "Ld": Ld,
