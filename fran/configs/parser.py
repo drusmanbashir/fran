@@ -27,6 +27,7 @@ from utilz.helpers import *
 REMAPPING_DICT_OR_LIST = {
     "remapping_source": "dict",
     "remapping_lbd": "dict",
+    "remapping_whole": "dict",
     "remapping_imported": "dict",
     "remapping_train": "dict",
 }
@@ -140,6 +141,7 @@ def compute_out_labels(plan: dict, global_props: Union[dict, None] = None) -> li
     rmt = plan.get("remapping_train")
     rms = plan.get("remapping_source")
     rml = plan.get("remapping_lbd")
+    rmw = plan.get("remapping_whole")
     mode = plan.get("mode")
     # if all([rmt,rms,rml]) is False:
     #     return global_props["labels_all"]
@@ -150,6 +152,9 @@ def compute_out_labels(plan: dict, global_props: Union[dict, None] = None) -> li
     # else: labels_all = global_props["labels_all"]
     elif mode == "lbd" and rml:
         labels_all = labels_from_remapping(rml)
+
+    elif mode == "whole" and rmw:
+        labels_all = labels_from_remapping(rmw)
     # else: return global_props["labels_all"]
     else:
         labels_all = global_props["labels_all"]
@@ -576,9 +581,9 @@ if __name__ == "__main__":
 
     from fran.managers import Project
 
-    P = Project(project_title="nodes")
+    P = Project(project_title="totalseg")
     C = ConfigMaker(P)
-    C.setup(1)
+    C.setup(2)
     pp(C.configs["plan_train"])
     pp(C.configs["plan_valid"])
 # %%

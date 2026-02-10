@@ -116,7 +116,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
             case_id = case_id_info["case_id"]
             lm_value = find_matching_fn(img, lms, ["case_id"])[0]
             # Create the dictionary for the current image
-            dic = {"case_id": case_id, "image": img, "lm": lm_value, "remapping": self.plan["remapping_train"]}
+            dic = {"case_id": case_id, "image": img, "lm": lm_value, "remapping": self.plan["remapping_whole"]}
             # Append the dictionary to the dicis list
             self.dicis.append(dic)
 
@@ -135,7 +135,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
     def create_tensors(self, num_processes):
         dicis = list(chunks(self.dicis, num_processes))
         actors = [FixedSizeMaker.remote() for _ in range(num_processes)]
-        if self.plan["remapping_train"] is not None:
+        if self.plan["remapping_whole"] is not None:
             remapping =True
         else:
             remapping =False
@@ -199,12 +199,13 @@ if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.managers import Project
     from fran.utils.common import *
+    set_autoreload()
 
     P = Project(project_title="totalseg")
     C = ConfigMaker(P)
     C.setup(2)
     conf = C.configs
-    P.maybe_store_projectwide_properties()
+    # P.maybe_store_projectwide_properties()
 
 # %%
     plan = conf["plan_train"]
@@ -216,13 +217,14 @@ if __name__ == "__main__":
         data_folder=None,
     )
 # %%
-    F.setup(overwrite=False)
+    F.setup(overwrite=True)
 
 # %%
     F.process()
 # %%
-    img_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/images/totalseg_s0310.pt"
-    lm_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/lms/totalseg_s0310.pt"
+
+    img_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/images/totalseg_s0889.pt"
+    lm_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/lms/totalseg_s0889.pt"
     img = torch.load(img_fn, weights_only=False)
     lm = torch.load(lm_fn, weights_only=False)
     ImageMaskViewer([img,lm])

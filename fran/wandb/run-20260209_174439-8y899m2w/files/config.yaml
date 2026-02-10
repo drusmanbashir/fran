@@ -1,0 +1,84 @@
+_wandb:
+    value:
+        cli_version: 0.24.2
+        e:
+            z14yzg0810jx8aqsjkulctkb4fc2gm5q:
+                args:
+                    - --no-autoindent
+                cpu_count: 24
+                cpu_count_logical: 48
+                cudaVersion: "12.2"
+                disk:
+                    /:
+                        total: "966611075072"
+                        used: "668906905600"
+                email: drusmanbashir@gmail.com
+                executable: /home/ub/mambaforge/envs/dl/bin/python3.12
+                git:
+                    commit: 797056c1cbc7f3b514035e1be941618531d8a24a
+                    remote: https://github.com/drusmanbashir/fran
+                gpu: NVIDIA GeForce RTX 3090
+                gpu_count: 2
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-a9edf255-7c38-b3d7-a76d-c6dca4f3e8b2
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-121f63ee-4400-2c13-6d14-5949d4cb4590
+                host: Sinclair
+                memory:
+                    total: "134921723904"
+                os: Linux-6.14.0-37-generic-x86_64-with-glibc2.39
+                program: <python with no main file>
+                python: CPython 3.12.6
+                root: .
+                startedAt: "2026-02-09T17:44:39.241438Z"
+                writerId: z14yzg0810jx8aqsjkulctkb4fc2gm5q
+        m:
+            - "1": trainer/global_step
+              "6":
+                - 3
+              "7": []
+            - "2": '*'
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.12.6
+        t:
+            "1":
+                - 1
+                - 2
+                - 3
+                - 5
+                - 10
+                - 41
+                - 48
+                - 53
+                - 106
+            "2":
+                - 1
+                - 2
+                - 3
+                - 5
+                - 10
+                - 41
+                - 48
+                - 53
+                - 106
+            "3":
+                - 2
+                - 7
+                - 13
+                - 66
+            "4": 3.12.6
+            "5": 0.24.2
+            "8":
+                - 13
+            "12": 0.24.2
+            "13": linux-x86_64

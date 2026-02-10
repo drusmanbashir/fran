@@ -888,7 +888,7 @@ class DataManager(LightningDataModule):
             num_workers = 0
             persistent_workers = False
         else:
-            num_workers = self.effective_batch_size * 2
+            num_workers = min(8,self.effective_batch_size * 2)
             persistent_workers = True
         self.dl = DataLoader(
             self.ds,

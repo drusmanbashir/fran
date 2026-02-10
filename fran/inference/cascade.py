@@ -403,9 +403,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    run_w2 = "LIT-145"
-    run_w = "LITS-1088"  # this run has localiser_labels not full TSL.
-
+    run_w= "LITS-1439"
     run_nodes = "LITS-1319"
     run_lidc2 = "LITS-842"
     run_lidc2 = "LITS-913"
@@ -452,7 +450,7 @@ if __name__ == "__main__":
     loc_lidc = [7]  # lung in localiser_label
 
     safe_mode = False
-    devices = [1]
+    devices = [0]
     overwrite = True
     debug_ = True
     debug_ = False
@@ -508,31 +506,37 @@ if __name__ == "__main__":
 
 # SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
+    devices = [0]
     debug_ = False
     safe_mode = True
-    run_tot = ["LITS-1088"]
 
     W = WholeImageInferer(
-        run_tot[0],
+        run_w,
         project_title="totalseg",
         safe_mode=safe_mode,
         k_largest=None,
         save_channels=False,
         debug=debug_,
+        devices=devices,
     )
 # %%
 
-    imgs = nodes_imgs
     imgs = nodes_imgs_training
+    imgs = nodes_imgs[:2]
     # preds = W.run(imgs_crc, chunksize=6)
-    preds = W.run(imgs, chunksize=2, overwrite=False)
+    preds = W.run(imgs, chunksize=2, overwrite=True)
 # %%
 
     dl = W.pred_dl
     iteri = iter(dl)
     batch = next(iteri)
     img = batch["image"]
-    pred = W.model()
+    img = img.to("cuda:1")
+    pred = W.model(img)
+
+    pred = pred[0]
+    pred2 = torch.argmax(pred, dim=1)
+    ImageMaskViewer([img[0, 0].detach().cpu(), pred2[0].detach().cpu()])
 # %%
 # SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 

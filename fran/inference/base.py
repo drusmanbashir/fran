@@ -1,5 +1,6 @@
 # %%
 import os
+from utilz.cprint import cprint
 
 from fran.inference.helpers import infer_project
 
@@ -91,9 +92,17 @@ def get_patch_spacing(run_name):
     config = dic1["datamodule_hyper_parameters"]["configs"]
     spacing = config["plan_train"].get("spacing")
     if spacing is None:
-        src_plan = config["plan_train"]["source_plan"]
-        src_plan = config[src_plan]
-        spacing = src_plan["spacing"]
+        mode = config["plan_train"]["mode"] 
+        if  mode == "whole":
+            spacing = [.8,1.5,1.5]
+            cprint("Mode is {0}. Using dummy spacing: {1}".format(mode, spacing),color= "red",bold=True,bg="yellow")
+            print(spacing)
+        else:
+            raise NotImplementedError
+
+        # src_plan = config["plan_train"]["source_plan"]
+        # src_plan = config[src_plan]
+        # spacing = src_plan["spacing"]
     spacing = ast_literal_eval(spacing)
     return spacing
 
@@ -491,7 +500,7 @@ class BaseInferer(GetAttr, DictToAttr):
             plan=self.plan,
             project_title=self.project.project_title,
             dataset_params=self.dataset_params,
-            strict=False,
+            strict=True,
             map_location=device,
         )
         model.eval()

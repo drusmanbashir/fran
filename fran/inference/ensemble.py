@@ -711,8 +711,7 @@ class EnsembleInferer:
 if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     #
-    run_w2 = "LIT-145"
-    run_w = "LITS-1088"  # this run has localiser_labels not full TSL.
+    run_w = "LITS-1439"  # this run has localiser_labels not full TSL.
 
     run_lidc2 = ["LITS-902"]
     run_nodes = ["LITS-1290", "LITS-1230", "LITS-1288"]
@@ -763,7 +762,7 @@ if __name__ == "__main__":
     localiser_labels = set(TSL.label_localiser)
     runs = run_nodes2
     safe_mode = True
-    devices = [0]
+    devices = [1]
     overwrite = True
     overwrite = False
     save_channels = False
@@ -805,6 +804,7 @@ if __name__ == "__main__":
 # %%
     # nodes = nodes[:3]
     imgs = nodes_test
+    imgs = nodes
     # node_fn = "/s/insync/datasets/capestart/nodes_nov2025/images/nodes_43_20220805_CAP1p5SoftTissue.nii.gz"
     preds = E.run(imgs, chunksize=chunksize, overwrite=overwrite)
 # %%

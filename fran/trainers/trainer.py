@@ -461,8 +461,8 @@ class Trainer:
 # %%
 
 if __name__ == "__main__":
-    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- - <CR>
-    # %%
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- - <CR> <CR>
+# %%
 
     # CODE: Project or configs should be the only arg not both
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
@@ -499,16 +499,16 @@ if __name__ == "__main__":
     neptune = True
     tags = []
     description = f"Partially trained up to 100 epochs"
-    # %%
-    # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# %%
+# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     run_name = run_tsl
 
     run_name = run_none
     conf = conf_tsl
     proj = "totalseg"
-    # %%
+# %%
     Tm = Trainer(proj, conf, run_name)
-    # %%
+# %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -520,27 +520,27 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-    # %%
+# %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-    # %%
+# %%
     Tm.fit()
     # model(inputs)
-    # %%
+# %%
 
     conf["dataset_params"]["ds_type"]
     conf["dataset_params"]["cache_rate"]
-    # %%
-    # SECTION:-------------------- LITSMC -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# %%
+# SECTION:-------------------- LITSMC -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     run_name = run_litsmc
     run_name = run_none
     conf = conf_litsmc
     proj = "litsmc"
     conf["dataset_params"]["cache_rate"] = 0.5
-    # %%
+# %%
     Tm = Trainer(proj, conf, run_name)
-    # %%
+# %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -552,22 +552,22 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-    # %%
+# %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-    # %%
+# %%
     Tm.fit()
     # model(inputs)
-    # %%
-    # SECTION:-------------------- NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# %%
+# SECTION:-------------------- NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     run_name = run_nodes
     run_name = None
     conf = conf_nodes
     proj = "nodes"
 
-    # %%
+# %%
     Tm = Trainer(proj, conf, run_name)
-    # %%
+# %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -579,13 +579,13 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-    # %%
+# %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()
-    # %%
+# %%
 
-    # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm.D.prepare_data()
     Tm.D.setup()
@@ -594,7 +594,7 @@ if __name__ == "__main__":
     dlv = Tm.D.valid_dataloader()
     iteri = iter(dl)
     b = next(iteri)
-    # %%
+# %%
 
     D = Tm.D
     dlt = D.train_dataloader()
@@ -602,7 +602,7 @@ if __name__ == "__main__":
     ds = Tm.D.valid_ds
     ds = Tm.D.train_ds
     dat = ds[0]
-    # %%
+# %%
 
     cache_rate = 0
     ds_type = Tm.configs["dataset_params"]["ds_type"]
@@ -617,20 +617,20 @@ if __name__ == "__main__":
     D.prepare_data()
     D.setup()
 
-    # %%
+# %%
 
     for i, bb in pbar(enumerate(ds)):
         lm = bb[0]["lm"]
         print(lm.meta["filename_or_obj"])
-    # %%
+# %%
     ds = Tm.D.train_ds
     dici = ds.data[0]
     dat = ds[0]
-    # %%
+# %%
     tm = Tm.D.train_manager
 
     tm.tfms_list
-    # %%
+# %%
 
     dici = tm.tfms_list[0](dici)
     dici = tm.tfms_list[1](dici)
@@ -640,12 +640,12 @@ if __name__ == "__main__":
     tm.tfms_list[4]
     dici = tm.tfms_list[4](dici)
 
-    # %%
+# %%
     dl = Tm.D.train_dataloader()
     dlv = Tm.D.valid_dataloader()
     iteri = iter(dlt)
     # Tm.N.model.to('cpu')
-    # %%
+# %%
     while iter:
         batch = next(iteri)
         print(batch["image"].dtype)

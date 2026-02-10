@@ -31,6 +31,20 @@ sys.path.append(rel)
 bad_names = "nodes_89_20190421_Abdomen3p0I30f3.pt,nodes_90_20201201_CAP1p5SoftTissue.pt,nodes_82_20210427_CAP1p5SoftTissue.pt,nodes_83_20210427_CAP1p5SoftTissue.pt,nodes_46_20220609_CAP1p5SoftTissue.pt,nodes_47_20220601_CAP1p5SoftTissue.pt,nodes_84_20211129_CAP1p5SoftTissue.pt,nodes_81_20210507_CAP1p5SoftTissue.pt,nodes_25_20201216_CAP1p5SoftTissue.pt,nodes_43_20220805_CAP1p5SoftTissue.pt,nodes_78_20210617_CAP1p5.pt"
 
 # %%
+fldr = "/s/xnat_shadow/nodes/images"
+fns = list(Path(fldr).glob("*"))
+fldr_pending = "/s/xnat_shadow/nodes/images_pending/thin_slice/images"
+fns_pending = list(Path(fldr_pending).glob("*"))
+
+set(fns).intersection(set(fns_pending))
+
+
+for fn in fns:
+    img = sitk.ReadImage(fn)
+    # img = relabel(img,{3:1})
+    labs = get_labels(img)
+    print(fn, labs)
+    # sitk.WriteImage(img,fn)
 # %%
 #SECTION:-------------------- READ FOLDER FOR BAD LABELS--------------------------------------------------------------------------------------
 folder = Path("/s/insync/datasets/capestart/jan2026/lm_out")
@@ -112,19 +126,10 @@ C = torch.jit.script(Container(mt))
 C.save("/home/ub/code/fran/fran/cpp/files/sample.pt")
 # %%
 #SECTION:-------------------- View torch images--------------------------------------------------------------------------------------
-import fran.templates as tl
-
-with importlib.resources.files(tl).joinpath("tune.yaml").open("r") as f:
-    cfg = yaml.safe_load(f)
-    base  = cfg.get("base")
-
 # %%
-img_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/images/lidc_0011.pt"
-lm_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/lms/lidc_0011.pt"
+img_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/images/totalseg_s1346.pt"
+lm_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/lms/totalseg_s1346.pt"
 
-fn = "/tmp/cpp_tnsr.pt"
-aa = torch.Tensor(img)
-torch.save(aa,fn)
 img = torch.load(img_fn,weights_only=False)
 lm = torch.load(lm_fn,weights_only=False)
 ImageMaskViewer([img,lm])
