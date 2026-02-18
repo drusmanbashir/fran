@@ -5,11 +5,12 @@ from abc import ABC, abstractmethod
 
 import monai
 from monai.data.utils import create_file_basename
-from utilz.string import headline, strip_extension
+from utilz.stringz import headline, strip_extension
 
 __all__ = ["FolderLayoutBase", "FolderLayout", "default_name_formatter"]
 
 import itertools as il
+import random
 
 import ipdb
 import numpy as np
@@ -103,7 +104,7 @@ def get_mode_outchannels(run_name: str) -> str:
     return plan.get("mode", "source"), out_channels
 
 
-def _localiser_for(run_w: str, devices, safe_mode, save_channels):
+def _localiser_for(run_w: str, devices, safe_mode, save_channels, patch_overlap=0.2):
     """Pick Base or WholeImage localiser based on the localiser run's mode."""
     mode, _ = get_mode_outchannels(run_w)
     if mode == "whole":
@@ -112,6 +113,7 @@ def _localiser_for(run_w: str, devices, safe_mode, save_channels):
             devices=devices,
             safe_mode=safe_mode,
             save_channels=save_channels,
+            patch_overlap=0.0,
         )
     # default: source
     return BaseInferer(
@@ -119,68 +121,7 @@ def _localiser_for(run_w: str, devices, safe_mode, save_channels):
         devices=devices,
         safe_mode=safe_mode,
         save_channels=save_channels,
-    )
-
-
-def _decide_inferer_for_run(
-    run_name: str,
-    devices: Union[str, List[int]] = [0],
-    safe_mode: bool = False,
-    save_channels: bool = False,
-    localiser_run: Optional[str] = None,
-    localiser_labels: Optional[Sequence[int]] = None,
-):
-    """
-    Pick Base, WholeImage, or Cascade based on the run's plan/mode.
-    """
-    params = load_params(run_name)
-    plan = params["configs"]["plan_train"]
-    mode = plan.get("mode", "source")
-
-    if mode == "source":
-        return BaseInferer(
-            run_name=run_name,
-            devices=devices,
-            safe_mode=safe_mode,
-            save_channels=save_channels,
-        )
-
-    if mode == "whole":
-        return WholeImageInferer(
-            run_name=run_name,
-            devices=devices,
-            safe_mode=safe_mode,
-            save_channels=save_channels,
-        )
-
-    if mode in ("lbd", "patch"):
-        hint = plan.get("source_plan_run") or params["configs"].get("source_plan_run")
-        run_w = localiser_run or hint
-        if run_w is None:
-            raise ValueError(
-                f"{run_name} requires a whole-image localiser run ('source_plan_run' or --localiser-run)."
-            )
-        if localiser_labels is None:
-            localiser_labels = params["configs"].get("label_localiser", None)
-            if isinstance(localiser_labels, set):
-                localiser_labels = list(localiser_labels)
-
-        return CascadeInferer(
-            run_w=run_w,
-            run_p=run_name,
-            localiser_labels=list(localiser_labels) if localiser_labels else [],
-            devices=devices,
-            safe_mode=safe_mode,
-            save_channels=save_channels,
-            save=True,
-        )
-
-    # fallback
-    return BaseInferer(
-        run_name=run_name,
-        devices=devices,
-        safe_mode=safe_mode,
-        save_channels=save_channels,
+        patch_overlap=patch_overlap,
     )
 
 
@@ -199,6 +140,7 @@ class EnsembleInferer:
         project: Project,
         runs: Sequence[str],
         devices: Union[str, List[int]] = [0],
+        patch_overlap: Union[float, str] = 0.2,
         safe_mode: bool = False,
         localiser_run: Optional[str] = None,
         localiser_labels: Optional[Sequence[int]] = None,
@@ -210,6 +152,7 @@ class EnsembleInferer:
         debug_base: bool = False,
         debug_patch: bool = False,
     ):
+
         if debug==True:
             debug_base = True
             debug_patch= True
@@ -344,12 +287,17 @@ class EnsembleInferer:
             pinf.create_postprocess_transforms(pinf.ds.transform)
             for b in pinf.predict():
                 preds_all_runs.append(pinf.postprocess_transforms(b))
-        return preds_all_runs
-
+        
     def patch_prediction(self, data, runs_p):
         preds_all_runs = {}
         print("Starting patch data prep and prediction")
         for run in runs_p:
+            # Determine patch overlap for this run
+            if self.patch_overlap == "randomize":
+                current_overlap = random.uniform(0.2, 0.3)
+            else:
+                current_overlap = self.patch_overlap
+                
             P = PatchInferer(
                 run_name=run,
                 devices=self.devices,
@@ -358,6 +306,7 @@ class EnsembleInferer:
                 debug=self.debug,
                 safe_mode=self.safe_mode,
                 save=self.save_casc_preds,
+                patch_overlap=current_overlap,
             )
             P.setup()
             P.prepare_data(data=data, collate_fn=img_bbox_collated)
@@ -710,7 +659,6 @@ class EnsembleInferer:
 # %%
 if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-    #
     run_w = "LITS-1439"  # this run has localiser_labels not full TSL.
 
     run_lidc2 = ["LITS-902"]
@@ -751,6 +699,8 @@ if __name__ == "__main__":
     capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
     capestart = list(capestart_fldr.glob("*"))
 
+    fldr_misc =  Path("/s/xnat_shadow/misc/images")
+    imgs_misc = list(fldr_misc.glob("*"))
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
     localiser_labels_litsmc = [1]
@@ -762,9 +712,10 @@ if __name__ == "__main__":
     localiser_labels = set(TSL.label_localiser)
     runs = run_nodes2
     safe_mode = True
+    patch_overlap = 0.2
     devices = [1]
-    overwrite = True
     overwrite = False
+    overwrite = True
     save_channels = False
     save_localiser = True
     save_casc_preds = True
@@ -795,6 +746,7 @@ if __name__ == "__main__":
         localiser_run=localiser_run,
         localiser_labels=localiser_labels,
         safe_mode=safe_mode,
+        patch_overlap=patch_overlap,
         save_channels=save_channels,
         save_casc_preds=save_casc_preds,
         debug=debug_,
@@ -804,7 +756,7 @@ if __name__ == "__main__":
 # %%
     # nodes = nodes[:3]
     imgs = nodes_test
-    imgs = nodes
+    imgs = imgs_misc
     # node_fn = "/s/insync/datasets/capestart/nodes_nov2025/images/nodes_43_20220805_CAP1p5SoftTissue.nii.gz"
     preds = E.run(imgs, chunksize=chunksize, overwrite=overwrite)
 # %%

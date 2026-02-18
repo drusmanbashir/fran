@@ -7,7 +7,7 @@ tr = ipdb.set_trace
 import torch
 from typing import List, Union
 
-from utilz.string import ast_literal_eval
+from utilz.stringz import ast_literal_eval
 
 
 def is_hpc()->bool:

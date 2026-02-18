@@ -25,7 +25,7 @@ from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.spatialtransforms import *
 from utilz.helpers import *
 from utilz.imageviewers import ImageMaskViewer
-from utilz.string import strip_extension
+from utilz.stringz import strip_extension
 
 tr = ipdb.set_trace
 from collections.abc import Callable, Sequence

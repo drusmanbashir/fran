@@ -4,7 +4,7 @@ import torch
 from pathlib import Path
 from typing import Union
 import ipdb
-from utilz.string import headline
+from utilz.stringz import headline
 tr = ipdb.set_trace
 import shutil
 from fran.utils.common import COMMON_PATHS

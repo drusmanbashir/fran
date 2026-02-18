@@ -5,7 +5,7 @@ import shutil
 
 from utilz.fileio import *
 from utilz.helpers import *
-from utilz.string import headline
+from utilz.stringz import headline
 
 from fran.managers import Project
 
@@ -18,7 +18,7 @@ from fran.preprocessing.patch import PatchDataGenerator
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.utils.folder_names import folder_names_from_plan
 
-common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
+common_vars_filename = os.environ["FRAN_CONF"]
 
 def main(args):
     P = Project(project_title=args.project_title)

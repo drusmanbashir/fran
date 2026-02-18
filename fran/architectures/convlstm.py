@@ -2,7 +2,7 @@
 import torch.nn as nn
 import torch
 from torchinfo import summary
-from utilz.string import headline
+from utilz.stringz import headline
 
 
 class ConvLSTMCell(nn.Module):

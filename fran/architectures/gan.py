@@ -223,7 +223,7 @@ if __name__ == "__main__":
                                  ])
 
 # %%
-    common_vars_filename=os.environ['FRAN_COMMON_PATHS']
+    common_vars_filename=os.environ['FRAN_CONF']
     P = Project(project_title="lits"); proj_defaults= P
     
     dim0,dim1=64,160

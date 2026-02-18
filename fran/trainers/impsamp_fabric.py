@@ -9,7 +9,7 @@ import ipdb
 
 from fran.trainers.base import checkpoint_from_model_id
 from fran.configs.parser import ConfigMaker
-from utilz.string import info_from_filename
+from utilz.stringz import info_from_filename
 tr = ipdb.set_trace
 
 from fran.managers import UNetManagerCraig

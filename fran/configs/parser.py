@@ -10,7 +10,7 @@ import pandas as pd
 from fastcore.basics import store_attr
 from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
-from utilz.string import ast_literal_eval, headline
+from utilz.stringz import ast_literal_eval, headline
 
 from fran.utils.folder_names import (folder_names_from_plan, load_registry,
                                      remapping_conv)
@@ -337,7 +337,7 @@ class ConfigMaker:
     ):
         store_attr()
         configuration_mnemonic = project.global_properties["mnemonic"]
-        common_vars_filename = os.environ["FRAN_COMMON_PATHS"] + "/config.yaml"
+        common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
         common_paths = load_yaml(common_vars_filename)
         
         configuration_filename = self.resolve_configuration_filename(
@@ -388,7 +388,7 @@ class ConfigMaker:
         self
     ):
 
-        common_vars_filename = os.environ["FRAN_COMMON_PATHS"] + "/config.yaml"
+        common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
         common_paths = load_yaml(common_vars_filename)
         configurations_folder = Path(common_paths["configurations_folder"])
         return configurations_folder / ("experiment_configs.xlsx")

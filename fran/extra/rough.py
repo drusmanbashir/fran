@@ -21,14 +21,25 @@ from label_analysis.helpers import *
 from torch.nn.modules import CrossEntropyLoss
 from utilz.helpers import *
 from utilz.imageviewers import ImageMaskViewer
-from utilz.string import dec_to_str
+from utilz.stringz import dec_to_str
 
 set_autoreload()
 base = os.path.dirname(fran.__file__)
 rel = os.path.join(base,"cpp","build","debug")
 sys.path.append(rel)
 
-bad_names = "nodes_89_20190421_Abdomen3p0I30f3.pt,nodes_90_20201201_CAP1p5SoftTissue.pt,nodes_82_20210427_CAP1p5SoftTissue.pt,nodes_83_20210427_CAP1p5SoftTissue.pt,nodes_46_20220609_CAP1p5SoftTissue.pt,nodes_47_20220601_CAP1p5SoftTissue.pt,nodes_84_20211129_CAP1p5SoftTissue.pt,nodes_81_20210507_CAP1p5SoftTissue.pt,nodes_25_20201216_CAP1p5SoftTissue.pt,nodes_43_20220805_CAP1p5SoftTissue.pt,nodes_78_20210617_CAP1p5.pt"
+
+fn1 = Path("/s/xnat_shadow/nodes/images_cropped/misc _nodeleftPA_clean2.nrrd")
+lm1= sitk.ReadImage(fn1)
+lm1.GetSize()
+lm1.GetOrigin()
+lm1.GetSpacing()
+fn2 = Path("/s/xnat_shadow/nodes/images_cropped/misc _nodeleftPA_6 cropped.nrrd")
+lm2= sitk.ReadImage(fn2)
+lm2.GetSize()
+lm2.GetOrigin()
+lm2.GetSpacing()
+# %%
 
 # %%
 fldr = "/s/xnat_shadow/nodes/images"

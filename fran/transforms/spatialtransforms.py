@@ -22,7 +22,7 @@ from torch import cos, pi, sin
 
 # from utilz.fileio import *
 from utilz.helpers import *
-from utilz.string import int_to_str
+from utilz.stringz import int_to_str
 
 
 tr = ipdb.set_trace

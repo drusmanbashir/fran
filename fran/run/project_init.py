@@ -6,7 +6,7 @@ tr = ipdb.set_trace
 # very top of project_init.py (above any 3rd-party imports)
 import os
 
-from utilz.string import headline
+from utilz.stringz import headline
 
 from fran.configs.parser import MNEMONICS
 from fran.data.dataregistry import DS

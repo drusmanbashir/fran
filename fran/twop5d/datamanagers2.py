@@ -48,7 +48,7 @@ from fran.transforms.misc_transforms import DummyTransform
 from utilz.fileio import load_dict, load_yaml
 from tqdm.auto import tqdm as pbar
 
-from utilz.string import ast_literal_eval, strip_extension
+from utilz.stringz import ast_literal_eval, strip_extension
 
 import os
 
@@ -107,9 +107,9 @@ def source_collated(batch: List[Any]) -> Dict[str, Any]:
 # Common paths (matches training.py behaviour)
 # --------------------------------------------------------------------------------------
 
-_common_cfg = os.environ.get("FRAN_COMMON_PATHS")
+_common_cfg = os.environ.get("FRAN_CONF")
 if _common_cfg is None:
-    raise RuntimeError("Environment variable FRAN_COMMON_PATHS is not set")
+    raise RuntimeError("Environment variable FRAN_CONF is not set")
 COMMON_PATHS = load_yaml(str(Path(_common_cfg) / "config.yaml"))
 
 

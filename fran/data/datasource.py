@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 
 import ipdb
-from utilz.string import headline, info_from_filename
+from utilz.stringz import headline, info_from_filename
 
 from fran.data.dataregistry import DS
 from label_analysis.merge import get_labels
@@ -23,7 +23,7 @@ from utilz.fileio import *
 from utilz.fileio import load_dict, save_dict
 from utilz.helpers import *
 from utilz.helpers import find_matching_fn, multiprocess_multiarg
-from utilz.string import info_from_filename
+from utilz.stringz import info_from_filename
 
 from fran.preprocessing.datasetanalyzers import (case_analyzer_wrapper,
                                                  import_h5py)

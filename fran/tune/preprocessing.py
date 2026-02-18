@@ -13,7 +13,7 @@ from fran.managers import Project
 from fran.preprocessing.datasetanalyzers import *
 from fran.tune.config import RayTuneConfig, load_tune_template
 
-common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
+common_vars_filename = os.environ["FRAN_CONF"]
 
 
 def generate_dataset(project_title):

@@ -16,7 +16,7 @@ import yaml
 if "XNAT_CONFIG_PATH" in os.environ:
     pass
 # from fran.utils.common import COMMON_PATHS
-DATASET_PATHS = os.environ["FRAN_COMMON_PATHS"] + "/datasets.yaml"
+DATASET_PATHS = os.environ["FRAN_CONF"] + "/datasets.yaml"
 
 
 @dataclass(frozen=True)

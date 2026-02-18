@@ -7,7 +7,7 @@ from fastcore.all import in_ipython
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.profilers import AdvancedProfiler
 from tqdm.auto import tqdm as pbar
-from utilz.string import headline
+from utilz.stringz import headline
 
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.test import PeriodicTest

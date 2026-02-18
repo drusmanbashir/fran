@@ -94,7 +94,7 @@ def main(args):
 if __name__ == "__main__":
 
     from fran.utils.common import *
-    common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
+    common_vars_filename = os.environ["FRAN_CONF"]
     # runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436","LITS-445"]
     # runs_ensemble=["LITS-265","LITS-255","LITS-270","LITS-271","LITS-272"]
 

@@ -9,7 +9,7 @@ from fran.callback.base import *
 import itertools as il
 
 from pathlib import Path
-from utilz.string import cleanup_fname
+from utilz.stringz import cleanup_fname
 
 # %%
 

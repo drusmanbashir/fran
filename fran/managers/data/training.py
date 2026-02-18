@@ -37,7 +37,7 @@ from tqdm.auto import tqdm as pbar
 from utilz.fileio import load_dict, load_yaml
 from utilz.helpers import (find_matching_fn, resolve_device)
 from utilz.imageviewers import ImageMaskViewer
-from utilz.string import ast_literal_eval, headline, info_from_filename, strip_extension
+from utilz.stringz import ast_literal_eval, headline, info_from_filename, strip_extension
 
 from fran.configs.parser import ConfigMaker, is_excel_None
 from fran.data.collate import grid_collated, source_collated, whole_collated
@@ -51,7 +51,7 @@ from fran.transforms.misc_transforms import (DummyTransform, LoadTorchDict,
 from fran.utils.folder_names import folder_names_from_plan
 from fran.utils.misc import convert_remapping
 
-common_vars_filename = os.environ["FRAN_COMMON_PATHS"] + "/config.yaml"
+common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 
 tr = ipdb.set_trace

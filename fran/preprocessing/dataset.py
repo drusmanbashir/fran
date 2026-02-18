@@ -40,7 +40,7 @@ from fran.transforms.misc_transforms import (
 )
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.string_works import is_excel_None
-from utilz.string import info_from_filename
+from utilz.stringz import info_from_filename
 
 from pathlib import Path
 from fastcore.basics import GetAttr, store_attr

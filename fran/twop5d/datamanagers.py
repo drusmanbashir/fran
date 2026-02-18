@@ -27,7 +27,7 @@ from monai.transforms.transform import RandomizableTransform
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 from utilz.fileio import load_dict, load_yaml
 from utilz.helpers import find_matching_fn, folder_name_from_list
-from utilz.string import (ast_literal_eval, cleanup_fname, info_from_filename,
+from utilz.stringz import (ast_literal_eval, cleanup_fname, info_from_filename,
                           strip_extension)
 
 from fran.configs.parser import ConfigMaker, is_excel_None
@@ -88,7 +88,7 @@ def source_collated(batch):
     return output
 
 
-# common_vars_filename = os.environ["FRAN_COMMON_PATHS"]
+# common_vars_filename = os.environ["FRAN_CONF"]
 # COMMON_PATHS = load_yaml(common_vars_filename)
 
 tr = ipdb.set_trace

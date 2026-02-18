@@ -3,7 +3,7 @@ import ipdb
 from typing import Union
 import pandas as pd
 from utilz.helpers import folder_name_from_list
-from utilz.string import headline
+from utilz.stringz import headline
 
 from fran.configs.parser import ConfigMaker
 from fran.utils.folder_names import folder_names_from_plan

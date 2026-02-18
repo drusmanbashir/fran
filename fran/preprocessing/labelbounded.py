@@ -8,7 +8,7 @@ from fastcore.basics import GetAttr, store_attr
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
-from utilz.string import headline, info_from_filename
+from utilz.stringz import headline, info_from_filename
 
 from fran.configs.parser import ConfigMaker, is_excel_None
 from fran.preprocessing.preprocessor import (Preprocessor,

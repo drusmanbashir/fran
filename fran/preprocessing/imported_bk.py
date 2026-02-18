@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Union
 from fastcore.all import store_attr
 from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.helpers import find_matching_fn, pbar
-from utilz.string import info_from_filename
+from utilz.stringz import info_from_filename
 
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.configs.parser import ConfigMaker

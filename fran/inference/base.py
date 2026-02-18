@@ -3,6 +3,7 @@ import os
 from utilz.cprint import cprint
 
 from fran.inference.helpers import infer_project
+from fran.managers.nep import download_neptune_checkpoint
 
 os.environ["TORCHDYNAMO_DISABLE"] = "1"  # set as early as possible in the process
 
@@ -12,7 +13,7 @@ import ipdb
 import torch
 import torch._dynamo as dynamo
 from tqdm.auto import tqdm as pbar
-from utilz.string import ast_literal_eval, headline
+from utilz.stringz import ast_literal_eval, headline
 
 from fran.managers import Project
 
@@ -198,12 +199,12 @@ class BaseInferer(GetAttr, DictToAttr):
     def __init__(
         self,
         run_name,
+        patch_overlap: float,
         project_title=None,
         ckpt=None,
         state_dict=None,
         params=None,
         bs=8,
-        patch_overlap=0.25,
         mode="constant",
         devices=[0],
         safe_mode=False,
@@ -246,13 +247,15 @@ class BaseInferer(GetAttr, DictToAttr):
             self.project = infer_project(self.params)
         sw_device = "cuda"
         if safe_mode == True:
-            print(
+            cprint(
                 "================================================================\nSafe mode is on. Stitching will be on CPU. Slower speed expected\n================================================="
+            ,bg="red"
             )
+            cprint("Patch Overlap: {}".format(patch_overlap),bg="red")
             bs = 1
             mode = "constant"
             device = "cpu"
-            patch_overlap = 0.0
+            # Only set patch_overlap to 0.05 if not explicitly provided
 
         else:
             device = "cuda"
@@ -597,7 +600,7 @@ if __name__ == "__main__":
     D = DS
     proj = Project(project_title="totalseg")
     run_tot = ["LITS-860"]
-    run_tot_big = ["LITS-1271"]
+    run_tot_big = "LITS-1437"
     run_whole_image = ["LITS-1088"]
     run_whole_image = ["LITS-1088"]
     run_nodes = ["LITS-1230"]
@@ -661,11 +664,6 @@ if __name__ == "__main__":
     devices = [1]
 
 # %%
-    run = run_tot[0]
-    run = run_whole_image[0]
-    debug_ = False
-    safe_mode = False
-# %%
     run = run_tot_big[0]
     debug_ = False
     safe_mode = True
@@ -674,6 +672,7 @@ if __name__ == "__main__":
 
     T = BaseInferer(
         run,
+        patch_overlap=0.25,
         save_channels=save_channels,
         safe_mode=safe_mode,
         devices=devices,
@@ -681,8 +680,9 @@ if __name__ == "__main__":
     )
 
 # %%
+    imf_fn = "/s/insync/datasets/bones/1/2 Source.nrrd"
     # preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
-    preds = T.run(imgs_lidc, chunksize=2, overwrite=overwrite)
+    preds = T.run(imf_fn, chunksize=2, overwrite=overwrite)
 # %%
     preds = T.run(img_nodes, chunksize=2, overwrite=overwrite)
     preds = T.run(img_nodes2, chunksize=2, overwrite=overwrite)

@@ -3,7 +3,7 @@ from typing import Dict
 import itertools as il
 import ipdb
 
-from utilz.string import ast_literal_eval
+from utilz.stringz import ast_literal_eval
 tr = ipdb.set_trace
 
 from fran.managers.unet import UNetManager

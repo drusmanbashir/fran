@@ -16,7 +16,7 @@ from fran.transforms.base import KeepBBoxTransform
 from label_analysis.utils import *
 
 from utilz.itk_sitk import get_amount_to_pad, get_scale_factor_from_spacings, rescale_bbox
-from utilz.string import strip_extension
+from utilz.stringz import strip_extension
 
 tr = ipdb.set_trace
 

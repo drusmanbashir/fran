@@ -4,6 +4,7 @@ import time
 
 import ipdb
 import SimpleITK as sitk
+from utilz.cprint import cprint
 from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms.utility.dictionary import CastToTyped
 
@@ -88,11 +89,13 @@ class WholeImageInferer(BaseInferer):
         devices=[1],
         save_channels=True,
         save=True,
+        patch_overlap=0.0,
         **kwargs,
     ):
         """
         Resizes image directly to patch_size and applies inference, one model run per image.
         """
+        cprint("Setting up whole image inference", color="red", bold=True)
 
         super().__init__(
             run_name=run_name,
@@ -100,8 +103,10 @@ class WholeImageInferer(BaseInferer):
             devices=devices,
             save_channels=save_channels,
             save=save,
+            patch_overlap=patch_overlap,
             **kwargs,
         )
+
 
     def set_preprocess_tfms_keys(self):
         self.preprocess_tfms_keys = "E,ResW,N"
@@ -146,6 +151,8 @@ class PatchInferer(BaseInferer):
         debug=False,
         **kwargs,
     ):
+
+        cprint("Setting up Patch inference", color="red", bold=True)
         super().__init__(
             run_name=run_name,
             project_title=project_title,
@@ -153,6 +160,7 @@ class PatchInferer(BaseInferer):
             save_channels=save_channels,
             save=save,
             safe_mode=safe_mode,
+            patch_overlap=patch_overlap,
             params=params,
             debug=debug,
             **kwargs,
@@ -189,6 +197,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         project_title=None,
         devices=[0],
         safe_mode=False,
+        patch_overlap=0.2,
         profile=None,
         save_channels=False,
         save=True,
@@ -212,6 +221,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             run_name=run_p,
             project_title=project_title,
             devices=devices,
+            patch_overlap=patch_overlap,
             save_channels=save_channels,
             safe_mode=safe_mode,
             params=self.params,
@@ -237,7 +247,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
     def inferer_from_params(self, run_w):
         self.ckpt = checkpoint_from_model_id(run_w)
         dic1 = torch.load(self.ckpt, weights_only=False)
-        mode = dic1["datamodule_hyper_parameters"]["config"]["plan_train"][
+        mode = dic1["datamodule_hyper_parameters"]["configs"]["plan_train"][
             "mode"
         ]  # ["dataset_params"]["mode"]
         if mode == "source":
@@ -403,17 +413,14 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    run_w= "LITS-1439"
-    run_nodes = "LITS-1319"
-    run_lidc2 = "LITS-842"
-    run_lidc2 = "LITS-913"
-    run_lidc2 = "LITS-911"
-    run_litsmc = "LITS-933"
-    run_litsmc2 = "LITS-1018"
-    run_litsmc2 = "LITS-1217"
-    run_ts = "LITS-827"
-    run_totalseg = "LITS-1246"
+    conf_fldr = os.environ["FRAN_CONF"]
+    from utilz.fileio import load_yaml
+    best_runs = load_yaml(conf_fldr+"/best_runs.yaml")
+    run_w = best_runs["run_w"]
 
+    print(best_runs)
+
+# %%
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
     img_fldr = Path("/s/xnat_shadow/lidc2/images/")
@@ -433,6 +440,7 @@ if __name__ == "__main__":
     nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
     nodesthick_imgs = list(nodesthick_fldr.glob("*"))
 
+
     nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
     nodes_fldr_training = Path("/s/xnat_shadow/nodes/images")
     nodes_imgs = list(nodes_fldr.glob("*"))
@@ -440,6 +448,8 @@ if __name__ == "__main__":
     capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
     capestart = list(capestart_fldr.glob("*"))
 
+    fldr_misc =  Path("/s/xnat_shadow/misc/images")
+    imgs_misc = list(fldr_misc.glob("*"))
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
     localiser_labels_litsmc = [1]
@@ -480,14 +490,16 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
-    safe_mode = False
-    devices = [0]
+    safe_mode = True
+    patch_overlap=0.0
+    devices = [1]
     overwrite = True
     save_channels = False
     save_localiser = True
     En = CascadeInferer(
         run_w,
         run_nodes,
+        patch_overlap=patch_overlap,
         save_channels=save_channels,
         devices=devices,
         localiser_labels=localiser_labels,
@@ -497,6 +509,7 @@ if __name__ == "__main__":
     )
 
 # %%
+    imgs = imgs_misc
     imgs = nodes_imgs
 
     preds = En.run(imgs, chunksize=1, overwrite=overwrite)

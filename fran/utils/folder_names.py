@@ -11,7 +11,7 @@ tr = ipdb.set_trace
 import pandas as pd
 from importlib.resources import files
 from typing import Dict, Any
-from utilz.string import ast_literal_eval, dec_to_str, headline, int_to_str
+from utilz.stringz import ast_literal_eval, dec_to_str, headline, int_to_str
 import yaml
 # read a packaged template
 from importlib.resources import files

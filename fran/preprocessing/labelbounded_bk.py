@@ -11,7 +11,7 @@ from monai.transforms.utils import is_positive
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
-from utilz.string import ast_literal_eval, headline, info_from_filename
+from utilz.stringz import ast_literal_eval, headline, info_from_filename
 
 from fran.managers.db import add_plan_to_db, find_matching_plan
 from fran.preprocessing.preprocessor import (Preprocessor,

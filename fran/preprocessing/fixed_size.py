@@ -16,7 +16,7 @@ from monai.transforms.utility.dictionary import (DeleteItemsd,
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
-from utilz.string import info_from_filename
+from utilz.stringz import info_from_filename
 
 from fran.configs.parser import ConfigMaker
 from fran.preprocessing.patch import PatchDataGenerator

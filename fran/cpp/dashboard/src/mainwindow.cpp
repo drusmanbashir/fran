@@ -30,7 +30,7 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow() { delete ui; }
 
 void MainWindow::populateProjects() {
-  std::string franStorage = std::getenv("FRAN_COMMON_PATHS");
+  std::string franStorage = std::getenv("FRAN_CONF");
   std::string conf_fname = franStorage + "/config.yaml";
   YAML::Node cfg = YAML::LoadFile(conf_fname);
   std::string projects_folder = cfg["projects_folder"].as<std::string>();

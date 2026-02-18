@@ -5,7 +5,7 @@ import ipdb
 
 from fastcore.basics import listify
 from send2trash import send2trash
-from utilz.string import headline, info_from_filename
+from utilz.stringz import headline, info_from_filename
 
 from fran.data.datasource import Datasource, val_indices
 from fran.data.datasource import db_ops
@@ -26,7 +26,7 @@ from utilz.fileio import *
 
 # if "XNAT_CONFIG_PATH" in os.environ:
 #     from xnat.object_oriented import *
-common_vars_filename = os.environ["FRAN_COMMON_PATHS"]+"/config.yaml"
+common_vars_filename = os.environ["FRAN_CONF"]+"/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 import shutil
 import string
@@ -35,7 +35,7 @@ import ipdb
 from fastcore.basics import Union
 from utilz.fileio import load_dict, save_dict
 from utilz.helpers import find_matching_fn
-from utilz.string import info_from_filename, str_to_path
+from utilz.stringz import info_from_filename, str_to_path
 from fran.utils.misc import is_hpc
 tr = ipdb.set_trace
 from pathlib import Path

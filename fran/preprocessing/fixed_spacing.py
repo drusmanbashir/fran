@@ -20,7 +20,7 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  FgBgToIndicesd, ToDeviceD,
                                                  ToDeviced)
 from utilz.fileio import load_dict, maybe_makedirs, save_dict, save_json
-from utilz.string import strip_extension
+from utilz.stringz import strip_extension
 from tqdm.auto import tqdm as pbar
 
 from fran.preprocessing import bboxes_function_version

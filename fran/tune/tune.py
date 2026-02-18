@@ -9,7 +9,7 @@ from pathlib import Path
 import ipdb
 import torch
 from ray.tune.schedulers import ASHAScheduler
-from utilz.string import headline
+from utilz.stringz import headline
 
 from fran.managers import Project
 from fran.tune.config import RayTuneConfig, out_channels_from_dict_or_cell

@@ -13,7 +13,7 @@ from utilz.helpers import *
 from utilz.fileio import *
 
 from utilz.imageviewers import ImageMaskViewer
-from utilz.string import  headline, info_from_filename
+from utilz.stringz import  headline, info_from_filename
 
 class SingleCaseAnalyzer:
     """

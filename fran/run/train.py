@@ -3,7 +3,7 @@
 # training.py — minimal runner to Tm.fit()
 import ipdb
 import torch
-from utilz.string import headline
+from utilz.stringz import headline
 
 from fran.callback.test import PeriodicTest
 from fran.utils.misc import parse_devices

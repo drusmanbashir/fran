@@ -259,7 +259,6 @@ class NeptuneManager(NeptuneLogger):
             password=hpc_settings["password"],
         )
         ftp_client = client.open_sftp()
-        tr()
         try:
             fnames = []
             for f in sorted(
@@ -310,7 +309,7 @@ class NeptuneManager(NeptuneLogger):
 
 # %%
 # %%
-#SECTION:-------------------- SETTING
+#SECTION:-------------------- SETTING -------------------------------------------------------------------------------------- 
 if __name__ == '__main__':
     from fran.managers.project import Project
     P = Project(project_title="nodes")

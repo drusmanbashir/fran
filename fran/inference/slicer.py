@@ -11,7 +11,8 @@ class SlicerCascadeInferer(CascadeInferer):
         run_w,
         run_p,
         localiser_labels: list[str],  # these labels will be used to create bbox
-        devices=[0],
+        patch_overlap=0.2,
+        devices=[1],
         safe_mode=False,
         profile=None,
         save_channels=False,
@@ -24,6 +25,7 @@ class SlicerCascadeInferer(CascadeInferer):
             run_w=run_w,
             run_p=run_p,
             localiser_labels=localiser_labels,
+            patch_overlap=patch_overlap,
             devices=devices,
             safe_mode=safe_mode,
             profile=profile,
