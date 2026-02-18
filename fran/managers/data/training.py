@@ -831,11 +831,37 @@ class DataManager(LightningDataModule):
             self.dataset_params["fold"], self.plan["datasources"]
         )
 
-        aa = self.project.get_train_val_files(
-            self.dataset_params["fold"], self.plan["datasources"]
-        )
-        # Store only the cases for this split
-        self.cases = train_cases if self.split == "train" else valid_cases
+        # Optional override for curriculum/incremental workflows.
+        # Example keys:
+        #   dataset_params["train_case_ids"] = ["proj_001", ...]
+        #   dataset_params["valid_case_ids"] = [...]
+        #   dataset_params["case_override_source_train"] = "train"|"valid"|"all"
+        split_key = f"{self.split}_case_ids"
+        case_ids_override = self.dataset_params.get(split_key)
+        if case_ids_override:
+            source_key = f"case_override_source_{self.split}"
+            source = str(self.dataset_params.get(source_key, self.split)).lower()
+            if source == "train":
+                source_cases = train_cases
+            elif source == "valid":
+                source_cases = valid_cases
+            elif source == "all":
+                source_cases = train_cases + valid_cases
+            else:
+                raise ValueError(
+                    f"Unknown {source_key}='{source}'. Expected train|valid|all"
+                )
+
+            cases_by_id = {}
+            for fn in source_cases:
+                cid = info_from_filename(Path(fn).name, full_caseid=True)["case_id"]
+                cases_by_id[cid] = fn
+
+            requested = listify(case_ids_override)
+            self.cases = [cases_by_id[cid] for cid in requested if cid in cases_by_id]
+        else:
+            # Default fold split behavior
+            self.cases = train_cases if self.split == "train" else valid_cases
         assert len(self.cases) > 0, "There are no cases, aborting!"
 
     def create_data_dicts(self, fnames):

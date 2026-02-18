@@ -1,6 +1,7 @@
 # %%
 import shutil
 from copy import deepcopy
+from typing import Optional
 
 import ipdb
 from fastcore.all import in_ipython
@@ -10,6 +11,7 @@ from tqdm.auto import tqdm as pbar
 from utilz.stringz import headline
 
 from fran.callback.base import BatchSizeSafetyMargin
+from fran.callback.incremental import LRFloorStop
 from fran.callback.test import PeriodicTest
 from fran.configs.parser import ConfigMaker, parse_neptune_dict
 from fran.managers.data.training import DataManagerDual, DataManagerMulti
@@ -36,7 +38,7 @@ torch._dynamo.config.suppress_errors = True
 import warnings
 
 from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
-                                         LearningRateMonitor, ModelCheckpoint,
+                                         EarlyStopping, LearningRateMonitor, ModelCheckpoint,
                                          TQDMProgressBar)
 
 from fran.managers.nep import NeptuneManager
@@ -79,14 +81,15 @@ def _dm_class_from_ckpt(ckpt_path: str | Path):
     return DataManagerMulti if "keys_test" in hp else DataManagerDual
 
 
-
-
 class Trainer:
-    def __init__(self, project_title, configs, run_name=None):
+    def __init__(self, project_title, configs, run_name=None, ckpt_path: Optional[str | Path] = None):
         self.project = Project(project_title=project_title)
         self.configs = configs
         self.run_name = run_name
-        self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
+        if ckpt_path is not None:
+            self.ckpt = Path(ckpt_path)
+        else:
+            self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
 
         self.periodic_test = 0  # default
@@ -107,6 +110,12 @@ class Trainer:
         epochs=600,
         batchsize_finder=False,
         override_dm_checkpoint=False,
+        early_stopping=False,
+        early_stopping_monitor="val0_loss_dice",
+        early_stopping_mode="min",
+        early_stopping_patience=30,
+        early_stopping_min_delta=0.0,
+        lr_floor=None,
     ):
         self.periodic_test = int(periodic_test)
 
@@ -123,6 +132,12 @@ class Trainer:
             profiler=profiler,
             tags=tags,
             description=description,
+            early_stopping=early_stopping,
+            early_stopping_monitor=early_stopping_monitor,
+            early_stopping_mode=early_stopping_mode,
+            early_stopping_patience=early_stopping_patience,
+            early_stopping_min_delta=early_stopping_min_delta,
+            lr_floor=lr_floor,
         )
         self.D.prepare_data()
 
@@ -269,6 +284,12 @@ class Trainer:
         profiler,
         tags,
         description="",
+        early_stopping=False,
+        early_stopping_monitor="val0_loss_dice",
+        early_stopping_mode="min",
+        early_stopping_patience=30,
+        early_stopping_min_delta=0.0,
+        lr_floor=None,
     ):
         if batchsize_finder == True:
             cbs += [BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"), BatchSizeSafetyMargin(buffer=1)]
@@ -289,6 +310,17 @@ class Trainer:
             LearningRateMonitor(logging_interval="epoch"),
             TQDMProgressBar(refresh_rate=3),
         ]
+        if early_stopping:
+            cbs += [
+                EarlyStopping(
+                    monitor=early_stopping_monitor,
+                    mode=early_stopping_mode,
+                    patience=int(early_stopping_patience),
+                    min_delta=float(early_stopping_min_delta),
+                )
+            ]
+        if lr_floor is not None:
+            cbs += [LRFloorStop(min_lr=lr_floor)]
         if neptune == True:
             logger = NeptuneManager(
                 project=self.project,
@@ -456,6 +488,21 @@ class Trainer:
 
     def fit(self):
         self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+
+    def best_available_checkpoint(self) -> Optional[Path]:
+        """
+        Prefer best checkpoint; fallback to last checkpoint.
+        """
+        model_ckpts = [
+            cb for cb in self.trainer.callbacks if isinstance(cb, ModelCheckpoint)
+        ]
+        if not model_ckpts:
+            return None
+        best = model_ckpts[0].best_model_path
+        if best:
+            return Path(best)
+        last = model_ckpts[0].last_model_path
+        return Path(last) if last else None
 
 
 # %%

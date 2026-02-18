@@ -1,4 +1,6 @@
 import os
+import re
+from pathlib import Path
 
 import ipdb
 import lightning as L
@@ -14,6 +16,7 @@ import numpy as np
 import torch._dynamo
 from fastcore.basics import store_attr
 from ipdb.__main__ import get_ipython
+from utilz.stringz import info_from_filename
 
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 
@@ -153,6 +156,79 @@ class UNetManager(LightningModule):
 
     def forward(self, inputs):
         return self.model(inputs)
+
+    def _case_ids_from_batch(self, batch) -> list[str]:
+        image = batch.get("image")
+        if image is None or not hasattr(image, "meta"):
+            return []
+        meta = image.meta
+        fns = meta.get("filename_or_obj", None) or meta.get("src_filename", None)
+        if fns is None:
+            return []
+        if isinstance(fns, (str, Path)):
+            fns = [fns]
+        out = []
+        for fn in fns:
+            name = Path(str(fn)).name
+            try:
+                cid = info_from_filename(name, full_caseid=True)["case_id"]
+            except Exception:
+                cid = Path(name).stem
+            out.append(cid)
+        return out
+
+    def _per_case_dice_from_loss_dict(self, loss_dict: dict) -> dict[int, float]:
+        grouped = {}
+        for key, val in loss_dict.items():
+            matched = re.match(r"loss_dice_batch(\d+)_label(\d+)", str(key))
+            if not matched:
+                continue
+            batch_idx = int(matched.group(1))
+            dice = max(0.0, min(1.0, 1.0 - float(val)))
+            grouped.setdefault(batch_idx, []).append(dice)
+        return {
+            idx: float(sum(vals) / max(1, len(vals))) for idx, vals in grouped.items()
+        }
+
+    def _predict_metrics_from_logits(self, logits: torch.Tensor):
+        probs = F.softmax(logits, dim=1)
+        eps = 1e-8
+        entropy = -(probs * (probs + eps).log()).sum(dim=1)
+        entropy_case = entropy.flatten(1).mean(dim=1)
+        c = max(2, probs.shape[1])
+        entropy_case = entropy_case / float(
+            torch.log(torch.tensor(float(c), device=logits.device))
+        )
+        flat = probs.flatten(2)
+        mean_c = flat.mean(dim=2)
+        std_c = flat.std(dim=2)
+        emb = torch.cat([mean_c, std_c], dim=1)
+        return entropy_case, emb
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        inputs, target = batch["image"], batch["lm"]
+        pred = self.forward(inputs)
+        logits = pred[0] if isinstance(pred, (list, tuple)) else pred
+        if isinstance(logits, torch.Tensor) and logits.dim() == target.dim() + 2:
+            logits = logits[:, 0]
+        pred_loss, target_loss = self.maybe_apply_ds_scales(pred, target)
+        _ = self.loss_fnc(pred_loss, target_loss)
+        dice_by_idx = self._per_case_dice_from_loss_dict(self.loss_fnc.loss_dict)
+        entropy_case, emb = self._predict_metrics_from_logits(logits)
+        case_ids = self._case_ids_from_batch(batch)
+        rows = []
+        for i, cid in enumerate(case_ids):
+            if i in dice_by_idx:
+                rows.append(
+                    {
+                        "case_id": cid,
+                        "dice": float(dice_by_idx[i]),
+                        "difficulty_dice": float(1.0 - dice_by_idx[i]),
+                        "uncertainty": float(max(0.0, min(1.0, entropy_case[i].item()))),
+                        "embedding": emb[i].detach().cpu().numpy(),
+                    }
+                )
+        return rows
 
     def create_model(self):
         model = create_model_from_conf(self.model_params, self.plan)

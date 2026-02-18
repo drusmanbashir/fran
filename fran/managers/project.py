@@ -17,6 +17,9 @@ import itertools as il
 import os
 import sys
 from pathlib import Path
+from datetime import datetime
+import csv
+import json
 
 from utilz.helpers import *
 from utilz.helpers import DictToAttr, ask_proceed
@@ -488,6 +491,7 @@ class Project(DictToAttr):
         self.whole_images_folder = self.rapid_access_folder / ("whole_images")
         self.raw_dataset_info_filename = self.project_folder / ("raw_dataset_srcs.pkl")
         self.log_folder = self.project_folder / ("logs")
+        self.curriculum_folder = self.project_folder / ("curriculum")
 
     @property
     def case_ids(self):
@@ -702,6 +706,111 @@ class Project(DictToAttr):
         """
         result = self.sql_query(query, True)
         return [Path(fn).name for fn in result]
+
+    def get_train_val_case_ids(self, fold: int = None, ds: Union[str, list[str]] = None):
+        """
+        Same split logic as `get_train_val_files`, but returns `case_id` values.
+        """
+        if not ds:
+            ds = self.datasources
+
+        ss_train = self._build_case_id_query(fold, ds, is_validation=False)
+        train_case_ids = self._fetch_case_ids(ss_train)
+
+        if fold is not None:
+            ss_val = self._build_case_id_query(fold, ds, is_validation=True)
+            val_case_ids = self._fetch_case_ids(ss_val)
+            return train_case_ids, val_case_ids
+        return train_case_ids
+
+    def _build_case_id_query(
+        self, fold: int, ds: Union[str, list[str]], is_validation: bool
+    ) -> str:
+        query = "SELECT DISTINCT case_id FROM datasources"
+        conditions = ["test = 0"]
+        if isinstance(fold, int):
+            fold_condition = (
+                "fold = {}".format(fold) if is_validation else "fold <> {}".format(fold)
+            )
+            conditions.append(fold_condition)
+        if ds:
+            conditions.append(self.build_ds_condition(ds))
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        return query
+
+    def _fetch_case_ids(self, query: str) -> list[str]:
+        result = self.sql_query(query, chain_output=True)
+        return sorted(set(result))
+
+    def init_incremental_run_tracking(self, run_id: str, overwrite: bool = False):
+        """
+        Initialize per-run tracking files under:
+        project_folder/curriculum/<run_id>/
+        """
+        run_folder = self.curriculum_folder / run_id
+        maybe_makedirs(self.curriculum_folder)
+        maybe_makedirs(run_folder)
+        csv_path = run_folder / "stages.csv"
+        json_path = run_folder / "state.json"
+
+        if overwrite or (not csv_path.exists()):
+            with open(csv_path, "w", newline="") as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=[
+                        "timestamp",
+                        "stage_idx",
+                        "active_cases",
+                        "added_cases",
+                        "candidate_pool",
+                        "monitor",
+                        "threshold",
+                        "best_ckpt",
+                        "stop_reason",
+                    ],
+                )
+                writer.writeheader()
+        if overwrite or (not json_path.exists()):
+            with open(json_path, "w") as f:
+                json.dump({"run_id": run_id, "stages": []}, f, indent=2)
+        return run_folder, csv_path, json_path
+
+    def append_incremental_stage(
+        self,
+        run_id: str,
+        stage_idx: int,
+        active_cases: int,
+        added_cases: int,
+        candidate_pool: int,
+        monitor: str,
+        threshold: float,
+        best_ckpt: str,
+        stop_reason: str = "",
+    ):
+        run_folder, csv_path, json_path = self.init_incremental_run_tracking(run_id)
+        stamp = datetime.utcnow().isoformat(timespec="seconds")
+        row = {
+            "timestamp": stamp,
+            "stage_idx": int(stage_idx),
+            "active_cases": int(active_cases),
+            "added_cases": int(added_cases),
+            "candidate_pool": int(candidate_pool),
+            "monitor": monitor,
+            "threshold": float(threshold),
+            "best_ckpt": str(best_ckpt),
+            "stop_reason": stop_reason,
+        }
+        with open(csv_path, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=list(row.keys()))
+            writer.writerow(row)
+
+        with open(json_path, "r") as f:
+            state = json.load(f)
+        state.setdefault("stages", []).append(row)
+        with open(json_path, "w") as f:
+            json.dump(state, f, indent=2)
+        return run_folder, csv_path, json_path
 
     @ask_proceed("Remove all project files and folders?")
     def delete(self):
