@@ -1,72 +1,79 @@
-# [build-system]
-# requires = ["setuptools>=69", "setuptools-scm>=8", "wheel"]
-# build-backend = "setuptools.build_meta"
-#
-
 [build-system]
 requires = ["setuptools>=69", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
-
 
 [project]
 name = "fran"
 description = "FRAN: utilities and pipelines for medical image segmentation and analysis."
 readme = "README.md"
 requires-python = ">=3.9"
-# Version comes from your Git tags (e.g. v0.8.0)
 dynamic = ["version"]
 
 authors = [{ name = "Usman Bashir" }]
 license = { text = "MIT" }
-# Core runtime dependencies (from your requirements, minus dev-only ones)
+
 dependencies = [
-  "torch==2.9.1",
-  "torchmetrics>=1.8.2",
-  "numpy>=2,<2.3",
-  "scipy>=1.16",
-  "scikit-image>=0.25.2",
-
-  "utilz @ git+https://github.com/drusmanbashir/utilz.git@main",
-  "label_analysis @ git+https://github.com/drusmanbashir/label_analysis.git@main",
-  # "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main",
-  "fastcore>=1.7.29",
-
-  "torchinfo",
-  "torchio==0.20.22",
   "batchgenerators>=0.25",
-  "nnunet",
-  "connected_components_3d>=3.17.0",
-  "h5py>=3.12.1",
-  "lightning>=2.5.0.post0",
-  "lightning-utilities>=0.11.9",
-  "monai>=1.4.0",
-  "neptune>=1.13.0",
-  "opencv-python>=4.10.0.84",
-  "openpyxl>=3.1.5",
-  "pandas>=2.2.3",
-  "paramiko>=3.5.0",
-  "Pillow>=11.1.0",
-  "plotly>=6.0.0",
-  "prefetch_generator>=1.0.3",
-  "psutil>=6.0.0",
-  "PyYAML>=6.0.2,<7",
-  "reportlab>=4.2.5",
-  "send2trash",
-  "xnat @ git+https://github.com/drusmanbashir/xnat.git@main",
+  "connected-components-3d>=3.17",
+  "fastcore>=1.7.29",
+  "h5py>=3.8",
+  "itk>=5.4",
+  "numpy>=1.23,<3",
+  "openpyxl>=3.1",
+  "opencv-python>=4.8",
+  "pandas>=1.5",
+  "paramiko>=3.0",
+  "Pillow>=10.0",
+  "psutil>=5.9",
+  "PyYAML>=6",
+  "reportlab>=4.0",
+  "scikit-image>=0.21",
+  "scipy>=1.10",
+  "send2trash>=1.8",
+  "SimpleITK>=2.3",
+
+  "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main",
+  "label_analysis @ git+https://github.com/drusmanbashir/label_analysis.git@main",
+  "utilz @ git+https://github.com/drusmanbashir/utilz.git@main",
 ]
 
 [project.optional-dependencies]
-full = [
-  "utilz[full]@ git+https://github.com/drusmanbashir/utilz.git@main",
-  "label_analysis[full] @ git+https://github.com/drusmanbashir/label_analysis.git@main",
-  "grad_cam>=1.5.3",
-  "seaborn>=0.13.2",
-  "roboflow>=1.1.49",
-  "ultralytics>=8.3.44",
-  "supervision>=0.25.1",
+train = [
+  "lightning>=2.2",
+  "monai>=1.3",
+  "nnunet>=1.7",
+  "prefetch-generator>=1.0.3",
+  "torch>=2.2",
+  "torchaudio>=2.2",
+  "torchinfo>=1.8",
+  "torchio>=0.20",
+  "torchmetrics>=1.3",
+  "torchvision>=0.17",
 ]
-# packages you previously filtered out in setup.py
-dev-geom = ["gudhi>=3.10.1", "nurbspy>=1.1.2"]
+tracking = [
+  "neptune>=1.10",
+  "plotly>=5.0",
+  "seaborn>=0.12",
+]
+detection = [
+  "grad-cam>=1.5.3",
+  "roboflow>=1.1.30",
+  "supervision>=0.25.1",
+  "ultralytics>=8.0",
+]
+geom = [
+  "gudhi>=3.10.1",
+  "nurbspy>=1.1.2",
+]
+tuning = [
+  "ray[tune]>=2.9",
+]
+remote = [
+  "xnat @ git+https://github.com/drusmanbashir/xnat.git@main",
+]
+full = [
+  "fran[train,tracking,detection,geom,tuning]",
+]
 
 [tool.setuptools.packages.find]
 include = ["fran*"]
@@ -78,11 +85,10 @@ include-package-data = true
 fran = ["templates/*.yaml", "templates/*.yml"]
 
 [tool.setuptools_scm]
-# tag your repo like:  v0.8.0
 version_scheme = "guess-next-dev"
 local_scheme = "node-and-date"
+fallback_version = "0.1.0"
 
-# --- your existing mypy config preserved ---
 [tool.mypy]
 python_version = "3.12"
 warn_unused_ignores = true
@@ -96,15 +102,3 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = ["monai.*", "lightning.*", "fastcore.*", "plotly.*", "utilz.*"]
 ignore_missing_imports = true
-[tool.scikit-build]
-minimum-version = "0.11"
-cmake.source-dir = "."
-wheel.packages = ["fran"] # copy the fran package into the wheel
-# optional but safe; ensures templates go into the sdist too
-sdist.include = ["fran/**"]
-
-[tool.scikit-build.metadata.version]
-provider = "scikit_build_core.metadata.setuptools_scm"
-[tool.scikit-build.cmake.define]
-FRAN_BUILD_CPP = "OFF"
-BUILD_BBOX_STATS_ITK = "OFF"
