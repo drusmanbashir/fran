@@ -3,6 +3,10 @@ from __future__ import annotations
 from lightning.pytorch import Callback
 import torch
 
+try:
+    from lightning.pytorch.loggers import WandbLogger
+except Exception:
+    WandbLogger = None
 
 def _log_wandb_metrics(trainer, metrics: dict, step: int | None = None):
     if not getattr(trainer, "is_global_zero", True):
@@ -14,7 +18,11 @@ def _log_wandb_metrics(trainer, metrics: dict, step: int | None = None):
         loggers = [logger] if logger is not None else []
 
     for logger in loggers:
-        if logger is None or logger.__class__.__name__ != "WandbLogger":
+        if logger is None:
+            continue
+        if WandbLogger is not None and isinstance(logger, WandbLogger):
+            pass
+        elif logger.__class__.__name__ not in {"WandbLogger", "WandbManager"}:
             continue
         exp = getattr(logger, "experiment", None)
         if exp is None or not hasattr(exp, "log"):
