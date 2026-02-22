@@ -24,6 +24,7 @@ class DatasetSpec:
     ds: str
     folder: Path
     alias: Optional[str] = None
+    ds_type: str = "full"
 
     def __len__(self):
         images_folder = self.folder / "images"
@@ -43,7 +44,8 @@ class DatasetRegistry:
             ds = d.get("ds", name)
             fld = Path(os.path.expandvars(os.path.expanduser(d["folder"])))
             alias = d.get("alias")
-            specs[name] = DatasetSpec(ds=ds, folder=fld, alias=alias)
+            ds_type = str(d.get("ds_type", "full")).strip().lower()
+            specs[name] = DatasetSpec(ds=ds, folder=fld, alias=alias, ds_type=ds_type)
         self._specs = specs
 
     def names(self):

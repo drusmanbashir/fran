@@ -419,7 +419,10 @@ class Trainer:
 
     def qc_configs(self, configs, project):
         ratios = configs["dataset_params"]["fgbg_ratio"]
-        configs["model_params"]["out_channels"] - 1
+        assert isinstance(
+                ratios, int|float|list
+            ), "If no list is provided, fgbg_ratio must be an integer"
+
         labels_all = configs["plan_train"]["labels_all"]
         if isinstance(ratios, list):
             assert (
@@ -427,10 +430,7 @@ class Trainer:
             ), "Class ratios {0} do not match number of labels in dataset {1}".format(
                 a, b
             )
-        else:
-            assert isinstance(
-                ratios, int
-            ), "If no list is provided, fgbg_ratio must be an integer"
+        
 
     def heuristic_batch_size(self):
         raise NotImplementedError

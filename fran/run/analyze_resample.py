@@ -392,17 +392,25 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--debug", action="store_true")
 
     parser.add_argument("-o", "--overwrite", action="store_true")
+    parser.add_argument(
+        "--help-args",
+        action="store_true",
+        help="Show CLI help and exit.",
+    )
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title="nodes"
-    # args.plan = 0
-    # args.num_processes = 1
-    # args.overwrite=False
+    args.project_title="bones"
+    args.plan = 1
+    args.num_processes = 4
+    args.overwrite=True
     # args.debug=True
 #     #
 
 # %%
 
+    if args.help_args:
+        parser.print_help()
+        raise SystemExit(0)
     main(args)
     # sys.exit()
 

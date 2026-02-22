@@ -5,11 +5,11 @@ scipy==1.15.2
 scikit-learn==1.6.1
 scikit-image==0.25.2
 # ITK family — keep these aligned
-itk==5.4.4
-itk-core==5.4.4
-itk-filtering==5.4.4
-itk-io==5.4.4
-itk-numerics==5.4.4
-itk-registration==5.4.4
-itk-segmentation==5.4.4
-SimpleITK==2.2.1
+itk==5.4.5
+itk-core==5.4.5
+itk-filtering==5.4.5
+itk-io==5.4.5
+itk-numerics==5.4.5
+itk-registration==5.4.5
+itk-segmentation==5.4.5
+SimpleITK==2.5.3

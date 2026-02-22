@@ -2,6 +2,8 @@
 import itertools as il
 import json
 import random
+import sqlite3
+from collections import defaultdict
 from pathlib import Path
 
 import ipdb
@@ -20,9 +22,9 @@ tr = ipdb.set_trace
 from utilz.fileio import save_dict
 from utilz.helpers import multiprocess_multiarg
 
-from fran.preprocessing import (get_img_mask_filepairs, get_intensity_range,
-                                get_means_voxelcounts, get_std_numerator,
-                                import_h5py, percentile_range_to_str)
+from fran.preprocessing import (get_intensity_range, get_means_voxelcounts,
+                                get_std_numerator, import_h5py,
+                                percentile_range_to_str)
 
 
 def unique_idx(total_len, start=1):
@@ -86,17 +88,52 @@ class GlobalProperties(GetAttr):
 
     def collate_project_cases(self):
         """
-        Collates project cases by retrieving image-mask file pairs.
+        Collates project cases by reading rows directly from the project cases DB.
 
         Returns:
         - tuple: Contains lists of case IDs and corresponding image file paths.
         """
-        cases = get_img_mask_filepairs(parent_folder=self.project.raw_data_folder)
+        con = sqlite3.connect(str(self.project.db))
+        try:
+            cur = con.cursor()
+            cols = [row[1] for row in cur.execute("PRAGMA table_info(datasources)").fetchall()]
+            has_ds_type = "ds_type" in cols
+            if has_ds_type:
+                query = "SELECT ds, alias, ds_type, case_id, image, lm FROM datasources"
+            else:
+                query = "SELECT ds, alias, case_id, image, lm FROM datasources"
+            rows = cur.execute(query).fetchall()
+        finally:
+            con.close()
+
+        ds_type_map = {d["ds"]: d.get("ds_type", "full") for d in self.global_properties["datasources"]}
+
+        self.case_rows = []
+        self.case_ids_by_ds = defaultdict(set)
         case_ids, img_filenames = [], []
-        for fpair in cases:
-            case_id = info_from_filename(fpair[0].name, True)["case_id"]
+        for row in rows:
+            if has_ds_type:
+                ds, alias, ds_type_db, case_id, image, lm = row
+            else:
+                ds, alias, case_id, image, lm = row
+                ds_type_db = None
+
+            image = Path(image)
+            lm = Path(lm)
+            case_id = case_id or info_from_filename(image.name, True)["case_id"]
+            ds_type = ds_type_db or ds_type_map.get(ds, "full")
+            row_dict = {
+                "ds": ds,
+                "alias": alias,
+                "ds_type": ds_type,
+                "case_id": case_id,
+                "image": image,
+                "lm": lm,
+            }
+            self.case_rows.append(row_dict)
+            self.case_ids_by_ds[ds].add(case_id)
             case_ids.append(case_id)
-            img_filenames.append(fpair[0])
+            img_filenames.append(image)
         return case_ids, img_filenames
 
     def sample_cases(self):
@@ -106,15 +143,19 @@ class GlobalProperties(GetAttr):
         Returns:
             list: List of case IDs to be used for sampling
         """
+        grouped_rows = defaultdict(list)
+        for row in self.case_rows:
+            grouped_rows[row["case_id"]].append(row)
+        self.case_rows_by_case_id = dict(grouped_rows)
+        unique_case_ids = list(self.case_rows_by_case_id.keys())
+
+        rng = random.Random(42)
+        rng.shuffle(unique_case_ids)  # sample case_ids in random order for both full and patch sources
         if self.max_cases:
-            random.seed(
-                42
-            )  # this ensures same set of cases is created each time this code is run for a specific datasset
-            cases_for_sampling = random.sample(
-                self.case_ids, np.minimum(len(self.case_ids), self.max_cases)
-            )
+            n_cases = int(np.minimum(len(unique_case_ids), self.max_cases))
+            cases_for_sampling = unique_case_ids[:n_cases]
         else:
-            cases_for_sampling = self.case_ids
+            cases_for_sampling = unique_case_ids
         return cases_for_sampling
 
     def filter_img_fnames_for_sampling(self):
@@ -124,12 +165,16 @@ class GlobalProperties(GetAttr):
         Returns:
             list: List of image filenames for sampled cases
         """
+        rng = random.Random(42)
         img_fnames_to_sample = []
-        for img_fname in self.img_fnames:
-            img_case_id = info_from_filename(img_fname.name, True)["case_id"]
-            bools = img_case_id in self.cases_for_sampling
-            img_fnames_to_sample.append(bools)
-        img_fnames_to_sample = list(il.compress(self.img_fnames, img_fnames_to_sample))
+        for case_id in self.cases_for_sampling:
+            rows = self.case_rows_by_case_id[case_id]
+            ds_type = rows[0].get("ds_type", "full")
+            if ds_type == "patch":
+                selected_row = rng.choice(rows)
+            else:
+                selected_row = rows[0]
+            img_fnames_to_sample.append(selected_row["image"])
         return img_fnames_to_sample
 
     def _retrieve_h5_voxels(self):
@@ -144,13 +189,11 @@ class GlobalProperties(GetAttr):
         for dsa in self.global_properties["datasources"]:
             h5fn = dsa["h5_fname"]
             ds_name = dsa["ds"]
-            # ds_name_final = DS.resolve_ds_name(ds_name)
-            # ds_name_final=ds_name
-            ds_name_final =dsa["alias"] if dsa["alias"] else dsa["ds"]
+            case_ids_ds = self.case_ids_by_ds.get(ds_name, set())
             cases_ds = [
                 cid
                 for cid in self.cases_for_sampling
-                if cid.split("_")[0] == ds_name_final
+                if cid in case_ids_ds
             ]
             with h5py.File(h5fn, "r") as h5f_file:
                 for cid in cases_ds:
@@ -171,12 +214,12 @@ class GlobalProperties(GetAttr):
         for dsa in self.global_properties["datasources"]:
             ds_props = []
             h5fn = dsa["h5_fname"]
-            ds_name_final =dsa["alias"] if dsa["alias"] else dsa["ds"]
-            # ds_name_final = DS.resolve_ds_name(ds_name)
+            ds_name_final = dsa["alias"] if dsa["alias"] else dsa["ds"]
+            case_ids_ds = self.case_ids_by_ds.get(dsa["ds"], set())
             cases_ds = [
                 cid
                 for cid in self.cases_for_sampling
-                if cid.split("_")[0] == ds_name_final
+                if cid in case_ids_ds
             ]
 
             print(len(cases_ds))

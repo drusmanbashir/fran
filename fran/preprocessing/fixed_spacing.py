@@ -55,8 +55,7 @@ def generate_bboxes_from_lms_folder(
 
 
 
-@ray.remote(num_cpus=4)
-class NiftiResampler(Preprocessor):
+class _NiftiResamplerBase(Preprocessor):
     def __init__(
         self,
         project,
@@ -231,12 +230,20 @@ class NiftiResampler(Preprocessor):
             self.save_pt(dici["image"][0], "images")
             self.save_pt(dici["lm"][0], "lms")
             self.extract_image_props(dici["image"][0])
-        return  self.results
+        return self.results
 
     @property
     def indices_subfolder(self):
-        indices_subfolder = self.output_folder / "indices"
-        return indices_subfolder
+        return self.output_folder / "indices"
+
+
+@ray.remote(num_cpus=4)
+class NiftiResampler(_NiftiResamplerBase):
+    pass
+
+
+class NiftiResamplerLocal(_NiftiResamplerBase):
+    pass
 
 class ResampleDatasetniftiToTorch(Preprocessor):
     def __init__(
@@ -273,25 +280,40 @@ class ResampleDatasetniftiToTorch(Preprocessor):
         remapping = self.plan.get(self.remapping_key)
         self.df = self.df.assign(remapping=[remapping] * len(self.df))
 
+    def register_existing_files(self):
+        """Track completed files by output filename (not case_id)."""
+        existing_img = {p.name for p in (self.output_folder / "images").glob("*.pt")}
+        existing_lm = {p.name for p in (self.output_folder / "lms").glob("*.pt")}
+        self.existing_output_fnames = existing_img.intersection(existing_lm)
+        print("Output folder: ", self.output_folder)
+        print(
+            "Image files fully processed in a previous session: ",
+            len(self.existing_output_fnames),
+        )
+
+    def remove_completed_cases(self):
+        """Remove rows whose exact output filename already exists."""
+        if not getattr(self, "existing_output_fnames", None):
+            return
+        n_before = len(self.df)
+        keep_mask = self.df["image"].apply(
+            lambda x: strip_extension(Path(x).name) + ".pt"
+            not in self.existing_output_fnames
+        )
+        self.df = self.df[keep_mask]
+        print("Image files remaining to process:", len(self.df), "/", n_before)
+
     def setup(
         self, overwrite=False, mean_std_mode="dataset", num_processes=8, device="cpu"
     ):
+        self.num_processes = max(1, int(num_processes))
         self.create_data_df()
         self.register_existing_files()
         print("Overwrite:", overwrite)
         if overwrite == False:
             self.remove_completed_cases()
         if len(self.df) > 0:
-
-            self.n_actors = min(len(self.df), int(num_processes))
-            # (Optionally) initialise Ray if not already
-            if not ray.is_initialized():
-                try:
-                    ray.init(ignore_reinit_error=True)
-                except Exception as e:
-                    print("Ray init warning:", e)
-
-            actor_kwargs = dict(
+            worker_kwargs = dict(
                 project=self.project,
                 plan=self.plan,
                 data_folder=self.data_folder,
@@ -301,14 +323,19 @@ class ResampleDatasetniftiToTorch(Preprocessor):
                 mean_std_mode=mean_std_mode,
                 device=device,
             )
-            self.actors = [
-                NiftiResampler.remote(**actor_kwargs) for _ in range(self.n_actors)
-            ]
-            # self.mini_dfs = list_to_chunks(self.df, num_processes)
-
-            self.mini_dfs = np.array_split(self.df, num_processes)
-
-            # self.mini_dfs = divide(num_processes, self.df)
+            self.use_ray = self.num_processes > 1
+            if self.use_ray:
+                self.n_actors = min(len(self.df), self.num_processes)
+                if not ray.is_initialized():
+                    try:
+                        ray.init(ignore_reinit_error=True)
+                    except Exception as e:
+                        print("Ray init warning:", e)
+                self.actors = [NiftiResampler.remote(**worker_kwargs) for _ in range(self.n_actors)]
+                self.mini_dfs = np.array_split(self.df, self.num_processes)
+            else:
+                self.local_worker = NiftiResamplerLocal(**worker_kwargs)
+                self.mini_dfs = [self.df]
 
     def process(
         self,
@@ -321,18 +348,23 @@ class ResampleDatasetniftiToTorch(Preprocessor):
         self.shapes = []
         # self.results= pd.DataFrame(self.results).values
 
-        self.results = ray.get(
-            [
-                actor.process.remote(mini_df)
-                for actor, mini_df in zip(self.actors, self.mini_dfs)
-            ]
-        )
+        if getattr(self, "use_ray", False):
+            self.results = ray.get(
+                [
+                    actor.process.remote(mini_df)
+                    for actor, mini_df in zip(self.actors, self.mini_dfs)
+                ]
+            )
+        else:
+            self.results = [self.local_worker.process(self.mini_dfs[0])]
 
         self.results_df= pd.DataFrame(il.chain.from_iterable(self.results))
         ts = self.results_df.shape
         if ts[-1] == 4:  # only store if entire dset is processed
             self._store_dataset_properties()
-            generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
+            generate_bboxes_from_lms_folder(
+                self.output_folder / ("lms"), num_processes=getattr(self, "num_processes", 1)
+            )
         else:
             print(
                 "self.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(

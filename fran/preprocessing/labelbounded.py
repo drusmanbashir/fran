@@ -23,8 +23,7 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 import pandas as pd
 
 
-@ray.remote(num_cpus=1)
-class LBDSamplerWorkerImpl(RayWorkerBase):
+class _LBDSamplerWorkerBase(RayWorkerBase):
 
     def __init__(
         self,
@@ -68,8 +67,16 @@ class LBDSamplerWorkerImpl(RayWorkerBase):
             )
         else:
             indices_subfolder = "indices"
-        indices_subfolder = self.output_folder / indices_subfolder
-        return indices_subfolder
+        return self.output_folder / indices_subfolder
+
+
+@ray.remote(num_cpus=1)
+class LBDSamplerWorkerImpl(_LBDSamplerWorkerBase):
+    pass
+
+
+class LBDSamplerWorkerLocal(_LBDSamplerWorkerBase):
+    pass
 
     #     super().__init__(
     #         project=project,
@@ -314,18 +321,24 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.shapes = []
         # self.results= pd.DataFrame(self.results).values
 
-        self.results = ray.get(
-            [
-                actor.process.remote(mini_df)
-                for actor, mini_df in zip(self.actors, self.mini_dfs)
-            ]
-        )
+        if getattr(self, "use_ray", False):
+            self.results = ray.get(
+                [
+                    actor.process.remote(mini_df)
+                    for actor, mini_df in zip(self.actors, self.mini_dfs)
+                ]
+            )
+        else:
+            self.results = [self.local_worker.process(self.mini_dfs[0])]
 
         self.results_df = pd.DataFrame(il.chain.from_iterable(self.results))
         ts = self.results_df.shape
         if derive_bboxes and ts[-1] == 4:  # only store if entire dset is processed
             self._store_dataset_properties()
-            generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
+            generate_bboxes_from_lms_folder(
+                self.output_folder / ("lms"),
+                num_processes=getattr(self, "num_processes", 1),
+            )
         elif derive_bboxes == False:
             print("No bboxes generated")
         else:
@@ -343,33 +356,35 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
 
     def setup(self, num_processes=8, device="cpu", overwrite=True):
 
+        self.num_processes = max(1, int(num_processes))
         self.create_data_df()
         self.register_existing_files()
         print("Overwrite:", overwrite)
         if overwrite == False:
             self.remove_completed_cases()
         if len(self.df) > 0:
-            self.mini_dfs = np.array_split(self.df, num_processes)
-
-            self.n_actors = min(len(self.df), int(num_processes))
-            # (Optionally) initialise Ray if not already
-            if not ray.is_initialized():
-                try:
-                    ray.init(ignore_reinit_error=True)
-                except Exception as e:
-                    print("Ray init warning:", e)
-
-            actor_kwargs = dict(
+            worker_kwargs = dict(
                 project=self.project,
                 plan=self.plan,
                 data_folder=self.data_folder,
                 output_folder=self.output_folder,
                 device=device,
             )
-            self.actors = [
-                self.actor_cls.remote(**actor_kwargs) for _ in range(self.n_actors)
-            ]
-            # self.mini_dfs = list_to_chunks(self.df, num_processes)
+            self.use_ray = self.num_processes > 1
+            if self.use_ray:
+                self.mini_dfs = np.array_split(self.df, self.num_processes)
+                self.n_actors = min(len(self.df), self.num_processes)
+                if not ray.is_initialized():
+                    try:
+                        ray.init(ignore_reinit_error=True)
+                    except Exception as e:
+                        print("Ray init warning:", e)
+                self.actors = [
+                    self.actor_cls.remote(**worker_kwargs) for _ in range(self.n_actors)
+                ]
+            else:
+                self.mini_dfs = [self.df]
+                self.local_worker = LBDSamplerWorkerLocal(**worker_kwargs)
 
     # def process_files(self, force_store_props=False):
     #     """Process files without using DataLoader"""
@@ -702,4 +717,3 @@ if __name__ == "__main__":
         data_folder_lbd=L.output_folder,
     )
 # %%
-

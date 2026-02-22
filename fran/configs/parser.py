@@ -16,7 +16,7 @@ from fran.utils.folder_names import (folder_names_from_plan, load_registry,
                                      remapping_conv)
 from fran.utils.string_works import is_excel_None
 
-MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "totalseg"]
+MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "totalseg", "bones", "pancreas"]
 tr = ipdb.set_trace
 
 
@@ -58,10 +58,10 @@ def confirm_plan_analyzed(project, plan):
         existing_final_fldr = folders["data_folder_patch"]
     elif mode == "whole":
         existing_final_fldr = folders["data_folder_whole"]
-    else:
+    elif mode == "source" or mode == "sourcepatch":
         existing_final_fldr = folders["data_folder_source"]
-    # else:
-    #     raise NotImplementedError(f"Unknown mode: {mode}")
+    else:
+        raise NotImplementedError(f"Unknown mode: {mode}")
 
     cases_in_final_folder = cases_in_folder(existing_final_fldr)
     final_fldr_full = n_cases == cases_in_final_folder

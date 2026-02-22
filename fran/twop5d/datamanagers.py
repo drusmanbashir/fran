@@ -249,7 +249,7 @@ class DataManager(LightningDataModule):
     def __init__(
         self,
         project,
-        config: dict,
+        configs: dict,
         batch_size=8,
         cache_rate=0.0,
         ds_type=None,
@@ -264,13 +264,13 @@ class DataManager(LightningDataModule):
         if save_hyperparameters:
             self.save_hyperparameters("project", "config", "split", logger=False)
         store_attr()
-        self.plan = config[f"plan_{split}"]
+        self.plan = configs[f"plan_{split}"]
         global_properties = load_dict(project.global_properties_filename)
-        self.dataset_params = config["dataset_params"]
+        self.dataset_params = configs["dataset_params"]
         self.dataset_params["intensity_clip_range"] = global_properties[
             "intensity_clip_range"
         ]
-        transform_factors = config["transform_factors"]
+        transform_factors = configs["transform_factors"]
         self.dataset_params["mean_fg"] = global_properties["mean_fg"]
         self.dataset_params["std_fg"] = global_properties["std_fg"]
         self.batch_size = batch_size

@@ -1,6 +1,7 @@
 # %%
 from fastcore.basics import   listify
 import numpy as np
+import sqlite3
 from fran.transforms.totensor import ToTensorT
 from utilz.helpers import *
 
@@ -37,11 +38,48 @@ def get_intensity_range(global_properties: dict) -> list:
     return key_idx, intensity_range
 
 @str_to_path()
-def get_img_mask_filepairs(parent_folder: Union[str,Path]):
+def get_img_mask_filepairs(parent_folder: Union[str,Path], cases_db: Union[str, Path] = None, return_metadata: bool = False):
     '''
     param: parent_folder. Must contain subfolders labelled masks and images
     Files in either folder belonging to a given case should be identically named.
     '''
+    if cases_db:
+        db_path = Path(cases_db)
+        if db_path.exists():
+            con = sqlite3.connect(str(db_path))
+            try:
+                cur = con.cursor()
+                cols = [row[1] for row in cur.execute("PRAGMA table_info(datasources)").fetchall()]
+                has_ds_type = "ds_type" in cols
+                if has_ds_type:
+                    query = "SELECT ds, alias, ds_type, case_id, image, lm FROM datasources"
+                else:
+                    query = "SELECT ds, alias, case_id, image, lm FROM datasources"
+                rows = cur.execute(query).fetchall()
+            finally:
+                con.close()
+
+            pairs = []
+            for row in rows:
+                if has_ds_type:
+                    ds, alias, ds_type, case_id, image, lm = row
+                else:
+                    ds, alias, case_id, image, lm = row
+                    ds_type = None
+                if return_metadata:
+                    pairs.append(
+                        {
+                            "ds": ds,
+                            "alias": alias,
+                            "ds_type": ds_type,
+                            "case_id": case_id,
+                            "image": Path(image),
+                            "lm": Path(lm),
+                        }
+                    )
+                else:
+                    pairs.append([Path(image), Path(lm)])
+            return pairs
 
     imgs_folder = Path(parent_folder)/'images'
     masks_folder= Path(parent_folder)/'lms'

@@ -440,6 +440,8 @@ if __name__ == "__main__":
     nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
     nodesthick_imgs = list(nodesthick_fldr.glob("*"))
 
+    bones_fldr = Path("/s/xnat_shadow/bones/images")
+    bones_imgs = list(bones_fldr.glob("*"))
 
     nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
     nodes_fldr_training = Path("/s/xnat_shadow/nodes/images")
@@ -514,7 +516,38 @@ if __name__ == "__main__":
 
     preds = En.run(imgs, chunksize=1, overwrite=overwrite)
     # preds = En.run(img_fns, chunksize=2)
+# %%
+#SECTION:-------------------- BONES--------------------------------------------------------------------------------------
 
+    run = best_runs["projects"]["bones"]
+    localiser_labels= run['localiser_labels']
+    if localiser_labels=="TSL.label_localiser":
+        localiser_labels = set(TSL.label_localiser)
+    run_name = run['run_ids'][0]
+# %%
+    safe_mode = True
+    patch_overlap=0.0
+    devices = [1]
+    overwrite = True
+    save_channels = False
+    save_localiser = True
+    En = CascadeInferer(
+        run_w,
+        run_name,
+        patch_overlap=patch_overlap,
+        save_channels=save_channels,
+        devices=devices,
+        localiser_labels=localiser_labels,
+        save_localiser=save_localiser,
+        safe_mode=safe_mode,
+        k_largest=None,
+    )
+
+# %%
+    imgs = bones_imgs
+
+    preds = En.run(imgs, chunksize=1, overwrite=overwrite)
+    # preds = En.run(img_fns, chunksize=2)
 # %%
 
 # SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>

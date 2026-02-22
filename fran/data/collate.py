@@ -97,9 +97,13 @@ def process_items(items):
     return imgs, labels, fns_imgs, fns_labels
 
 
+
+
+
+
+
 def process_items_whole(items):
     #items is a list of list of  dictionaries  (as ooposed to above)
-
     imgs = []
     labels = []
     fns_imgs = []
@@ -154,6 +158,31 @@ def grid_collated(batch):
     lms_out.meta['filename_or_obj']=fns_lms
     output = {"image": imgs_out , "lm": lms_out, "patch_coords":patch_coords, "start_pos":start_pos}
     return output
+
+
+def patch_collated(batch):
+    imgs  =[]
+    labels =[]
+    fns_imgs=[]
+    fns_labels = []
+    for i, item in enumerate(batch):
+        image = item["image"]
+        lm = item["lm"]
+        imgs.append(image)
+        labels.append(lm)
+        fns_imgs.append(image.meta['filename_or_obj'])
+        fns_labels.append(lm.meta['filename_or_obj'])
+    if len(batch) == 1:
+        fns_imgs = fns_imgs[0]
+        fns_labels = fns_labels[0]
+    imgs_out = torch.stack(imgs, 0)
+    lms_out= torch.stack(labels, 0)
+    imgs_out.meta['filename_or_obj']=fns_imgs
+    lms_out.meta['filename_or_obj']=fns_labels
+    output = {"image": imgs_out , "lm": lms_out}
+    return output
+
+
 
 def source_collated(batch):
 

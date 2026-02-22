@@ -2,7 +2,7 @@
 from __future__ import annotations
 import os
 import re
-
+import pandas as pd
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -30,17 +30,17 @@ from monai.transforms.intensity.dictionary import (RandAdjustContrastd,
                                                    RandShiftIntensityd)
 from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
-from monai.transforms.transform import RandomizableTransform
+from monai.transforms.transform import MapTransform, RandomizableTransform
 from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  MapLabelValued, ToDeviceD)
 from tqdm.auto import tqdm as pbar
 from utilz.fileio import load_dict, load_yaml
-from utilz.helpers import (find_matching_fn, resolve_device)
+from utilz.helpers import (find_matching_fn, project_title_from_folder, resolve_device)
 from utilz.imageviewers import ImageMaskViewer
 from utilz.stringz import ast_literal_eval, headline, info_from_filename, strip_extension
 
 from fran.configs.parser import ConfigMaker, is_excel_None
-from fran.data.collate import grid_collated, source_collated, whole_collated
+from fran.data.collate import as_is_collated, grid_collated, patch_collated, source_collated, whole_collated
 from fran.data.dataset import NormaliseClipd, fg_in_bboxes
 from fran.managers.project import Project
 from fran.preprocessing.helpers import bbox_bg_only
@@ -69,7 +69,7 @@ def list_to_fgbg(class_ratios):
     return fg, bg
 
 
-class RandomPatch(RandomizableTransform):
+class RandomPatch(MapTransform, RandomizableTransform):
     """
     to be used by DataManagerPatch
     """
@@ -77,21 +77,13 @@ class RandomPatch(RandomizableTransform):
     def randomize(self, data=None):
         n_patches = data["n_patches"]
         self.indx = self.R.randint(0, n_patches)
-        self.indx = str(self.indx)
 
     def __call__(self, data: list):
         self.randomize(data)
-        image_key = "image_" + self.indx
-        lm_key = "lm_" + self.indx
-        indices_key = "indices_" + self.indx
-        dici = {
-            "image": data[image_key],
-            "lm": data[lm_key],
-            "indices": data[indices_key],
-        }
-        return dici
-
-
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = data[key][self.indx]
+        return d
 
 class DataManagerDual(LightningDataModule):
     """
@@ -110,6 +102,8 @@ class DataManagerDual(LightningDataModule):
         keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
         keys_val="L,Remap,Ld,E,N,Rva, ResizePC",
         data_folder: Optional[str | Path] = None,
+        manager_class_train: Optional[type] = None,
+        manager_class_valid: Optional[type] = None,
     ):
         super().__init__()
         self.project = Project(project_title)
@@ -121,6 +115,8 @@ class DataManagerDual(LightningDataModule):
         self.keys_tr = keys_tr
         self.keys_val = keys_val
         self.data_folder = data_folder if data_folder is not None else None
+        self.manager_class_train = manager_class_train
+        self.manager_class_valid = manager_class_valid
 
         if save_hyperparameters:
             self.save_hyperparameters("project_title", "configs", logger=False)
@@ -175,7 +171,9 @@ class DataManagerDual(LightningDataModule):
         return (self.train_manager, self.valid_manager)
 
     def _build_managers(self):
-        cls_tr, cls_val = self.infer_manager_classes(self.configs)
+        inf_tr, inf_val = self.infer_manager_classes(self.configs)
+        cls_tr = self.manager_class_train or inf_tr
+        cls_val = self.manager_class_valid or inf_val
 
         self.train_manager = cls_tr(
             project=self.project,
@@ -216,6 +214,7 @@ class DataManagerDual(LightningDataModule):
             "source": DataManagerSource,
             "whole": DataManagerWhole,
             "patch": DataManagerPatch,
+            "sourcepatch": DataManagerPatch,
             "lbd": DataManagerLBD,
             "baseline": DataManagerBaseline,
             "pbd": DataManagerWID,
@@ -248,6 +247,9 @@ class DataManagerMulti(DataManagerDual):
         keys_val="L,Remap,Ld,E,N,Rva, ResizePC",
         keys_test="L,E,N,Remap,ResizeP",
         data_folder: Optional[str | Path] = None,
+        manager_class_train: Optional[type] = None,
+        manager_class_valid: Optional[type] = None,
+        manager_class_test: Optional[type] = None,
     ):
         super().__init__(
             project_title=project_title,
@@ -260,17 +262,46 @@ class DataManagerMulti(DataManagerDual):
             keys_tr=keys_tr,
             keys_val=keys_val,
             data_folder=data_folder,
+            manager_class_train=manager_class_train,
+            manager_class_valid=manager_class_valid,
         )
         self.keys_test = keys_test
+        self.manager_class_test = manager_class_test
 
     def _iter_managers(self):
         return (self.train_manager, self.valid_manager, self.test_manager)
 
     def _build_managers(self):
-        cls_tr, cls_val, cls_test = self.infer_manager_classes(self.configs)
+        inf_tr, inf_val, inf_test = self.infer_manager_classes(self.configs)
+        cls_tr = self.manager_class_train or inf_tr
+        cls_val = self.manager_class_valid or inf_val
+        cls_test = self.manager_class_test or inf_test
 
         # build train/valid via parent, then append test
-        super()._build_managers()
+
+
+        self.train_manager = cls_tr(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="train",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_tr,
+            data_folder=self.data_folder,
+        )
+        self.valid_manager = cls_val(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="valid",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_val,
+            data_folder=self.data_folder,
+        )
 
         self.test_manager = cls_test(
             project=self.project,
@@ -301,6 +332,7 @@ class DataManagerMulti(DataManagerDual):
 
         mode_to_class = {
             "source": DataManagerSource,
+            "sourcepatch":DataManagerPatch,
             "whole": DataManagerWhole,
             "patch": DataManagerPatch,
             "lbd": DataManagerLBD,
@@ -487,6 +519,7 @@ class DataManagerMulti(DataManagerDual):
 #                 m.set_effective_batch_size()
 #                 m.create_dataloader()  # must rebuild m.dl
 #
+
 class DataManager(LightningDataModule):
     def __init__(
         self,
@@ -615,7 +648,7 @@ class DataManager(LightningDataModule):
             std=self.dataset_params["std_fg"],
         )
 
-        RP = RandomPatch()
+        RP = RandomPatch(keys = ["image", "lm"])
         # self.transforms_dict["RP"] = RP
 
         F1 = RandFlipd(
@@ -816,6 +849,7 @@ class DataManager(LightningDataModule):
             "baseline",
             "patch",
             "source",
+            "sourcepatch",
             "pbd",
             "lbd",
         ], f"Set a value for mode in 'whole', 'patch' or 'source', got {dataset_mode}"
@@ -831,47 +865,18 @@ class DataManager(LightningDataModule):
             self.dataset_params["fold"], self.plan["datasources"]
         )
 
-        # Optional override for curriculum/incremental workflows.
-        # Example keys:
-        #   dataset_params["train_case_ids"] = ["proj_001", ...]
-        #   dataset_params["valid_case_ids"] = [...]
-        #   dataset_params["case_override_source_train"] = "train"|"valid"|"all"
-        split_key = f"{self.split}_case_ids"
-        case_ids_override = self.dataset_params.get(split_key)
-        if case_ids_override:
-            source_key = f"case_override_source_{self.split}"
-            source = str(self.dataset_params.get(source_key, self.split)).lower()
-            if source == "train":
-                source_cases = train_cases
-            elif source == "valid":
-                source_cases = valid_cases
-            elif source == "all":
-                source_cases = train_cases + valid_cases
-            else:
-                raise ValueError(
-                    f"Unknown {source_key}='{source}'. Expected train|valid|all"
-                )
-
-            cases_by_id = {}
-            for fn in source_cases:
-                cid = info_from_filename(Path(fn).name, full_caseid=True)["case_id"]
-                cases_by_id[cid] = fn
-
-            requested = listify(case_ids_override)
-            self.cases = [cases_by_id[cid] for cid in requested if cid in cases_by_id]
-        else:
-            # Default fold split behavior
-            self.cases = train_cases if self.split == "train" else valid_cases
+        # Store only the cases for this split
+        self.cases = train_cases if self.split == "train" else valid_cases
         assert len(self.cases) > 0, "There are no cases, aborting!"
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
         fnames = [fn + ".pt" for fn in fnames]
-        fnames = fnames
         images_fldr = self.data_folder / ("images")
         lms_fldr = self.data_folder / ("lms")
         inds_fldr = self.infer_inds_fldr(self.plan)
         images = list(images_fldr.glob("*.pt"))
+
         data = []
 
         for fn in pbar(fnames):
@@ -1174,7 +1179,6 @@ class DataManagerWID(DataManagerLBD):
             )
         )
 
-
 class DataManagerShort(DataManager):
     def prepare_data(self):
         super().prepare_data()
@@ -1190,20 +1194,19 @@ class DataManagerShort(DataManager):
 class DataManagerPatch(DataManagerSource):
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
+        self.set_tfm_keys()
+
+    def set_collate_fn(self):
+        if self.split == "test":
+            raise NotImplementedError
+        else:
+            self.collate_fn = patch_collated
 
     def prepare_data(self):
         """Override prepare_data to ensure proper sequence"""
-        self.data_folder = self.derive_data_folder()
         self.load_bboxes()  # Now we can safely load bboxes
         self.fg_bg_prior = fg_in_bboxes(self.bboxes)
-
-        self.train_cases, self.valid_cases = self.project.get_train_val_files(
-            self.dataset_params["fold"], self.plan_train["datasources"]
-        )
-        print("Creating train data dicts from BBoxes")
-        self.data_train = self.create_data_dicts(self.train_cases)
-        print("Creating val data dicts from BBoxes")
-        self.data_valid = self.create_data_dicts(self.valid_cases)
+        super().prepare_data()
 
     def __str__(self):
         return "DataManagerPatch instance with parameters: " + ", ".join(
@@ -1215,60 +1218,27 @@ class DataManagerPatch(DataManagerSource):
         )
 
     def __repr__(self):
-        return f"DataManagerPatch(project={self.project}, configs={self.configs}, batch_size={self.batch_size}, fg_bg_prior={self.fg_bg_prior})"
+        return f"DataManagerPatch(project={self.project}, configs={self.configs}, batch_size={self.batch_size})"
 
-    def get_patch_files(self, bboxes, case_id: str):
-        cids = np.array([bb["case_id"] for bb in bboxes])
-        cid_inds = np.where(cids == case_id)[0]
-        assert len(cid_inds) > 0, "No bboxes for case {0}".format(case_id)
-        n_patches = len(cid_inds)
-        bboxes_out = {"n_patches": n_patches}
-        for ind in cid_inds:
-            bb = bboxes[ind]
-            pat = re.compile(r"_(\d+)\.pt")
-
-            fn = bb["filename"]
-            matched = pat.search(fn.name)
-            indx = matched.groups()[0]
-            strip_extension(fn.name) + "_" + str(indx) + ".pt"
-            lm_fn = Path(fn)
-            img_fn = lm_fn.str_replace("lms", "images")
-            indices_fn = lm_fn.str_replace("lms", "indices")
-            # assert(bb['case_id'] == case_id),"Strange error: {} not in bb".format(case_id)
-            assert all(
-                [fn.exists() for fn in [lm_fn, img_fn, indices_fn]]
-            ), "Image of LM file does not exists {0}, {1}, {2}".format(
-                lm_fn, img_fn, indices_fn
-            )
-            bb_out = {
-                "lm_" + indx: lm_fn,
-                "image_" + indx: img_fn,
-                "indices_" + indx: indices_fn,
-                "bbox_stats_" + indx: bb["bbox_stats"],
-            }
-            # bb.pop("filename")
-            bboxes_out.update(bb_out)
-        return bboxes_out
-
-    def set_tfm_keys(self):
-        if not is_excel_None(self.plan_train["remapping_train"]):
-            self.keys_tr = "RP,L,Ld,E,Rtr,F1,F2,Affine,ResizePC,N,IntensityTfms"
+    def set_tfm_keys(self): #sets own tfm_keys because RP is an addition in this class
+        self.keys_tr="RP, L,Remap,E,N,F1,F2,Affine,ResizePC,IntensityTfms"
+        self.keys_val="RP,L,Remap,E,ResizePC,N "
+        self.keys_test="L,E,N,Remap,ResizeP"  #experimental
+        if self.split == "train":
+            self.keys = self.keys_tr 
+        elif self.split == "valid":
+            self.keys = self.keys_val
+        elif self.split == "test":
+            self.keys = self.keys_test
         else:
-            self.keys_tr = "RP,L,Ld,E,Rva,F1,F2,Affine,ResizePC,N,IntensityTfms"
-        self.keys_val = "RP,L,Ld,E,N"
+            raise ValueError
 
     def load_bboxes(self):
         bbox_fn = self.data_folder / "bboxes_info"
         self.bboxes = load_dict(bbox_fn)
 
-    # def prepare_data(self):
-    #     self.train_cids, self.valid_cids = self.project.get_train_val_files(
-    #         self.dataset_params["fold"]
-    #     )
-    #     print("Creating train data dicts")
-    #     self.data_train = self.create_data_dicts(self.train_cids)
-    #     print("Creating val data dicts")
-    #     self.data_valid = self.create_data_dicts(self.valid_cids)
+    def set_effective_batch_size(self):
+        self.effective_batch_size = self.batch_size  # never sample a file more than once ofc
 
     def get_label_info(self, case_patches):
         indices = []
@@ -1289,31 +1259,77 @@ class DataManagerPatch(DataManagerSource):
             "labels_this_case": labels_this_case,
         }
 
-    def create_data_dicts(self, fnames):
-        patches = []
-        fnames = self.train_cases
-        patches = []
-        for fname in pbar(fnames):
-            cid = info_from_filename(fname, True)["case_id"]
-            dici = {"case_id": fname}
-            patch_fns = self.get_patch_files(self.bboxes, cid)
-            dici.update(patch_fns)
-            patches.append(dici)
-        return patches
+
+    def img_patch_size_match(self) ->bool:
+        resampled_dataset_properties  = load_dict(self.data_folder / "resampled_dataset_properties")
+        min_shape = resampled_dataset_properties["min_shape"]
+        max_shape = resampled_dataset_properties["max_shape"]
+        median_shape = resampled_dataset_properties["median_shape"]
+        patch_size = self.plan["patch_size"]
+
+        arr = np.array([min_shape, max_shape, median_shape, patch_size])
+        same_per_col = np.all(arr == arr[0], axis=0)
+        all_cols_constant = same_per_col.all()
+        return all_cols_constant
+
+
+    def _create_df_from_folder(self):
+            images_fldr = self.data_folder / ("images")
+            lms_fldr = self.data_folder / ("lms")
+            images = list(images_fldr.glob("*.pt"))
+            dicis_all=[]
+            for img_fn in images:
+                case_id  = info_from_filename(img_fn.name,full_caseid=True)['case_id']
+                img_fn_name = img_fn.name
+                lm_match  = lms_fldr/img_fn_name
+                assert lm_match.exists(), "Missing labelmap fn {}. In Patch Data Manager, it is IMPERATIVE that image and lm names are exact matches".format(lm_match)
+                dici = { "case_id": case_id, "image": img_fn, "lm": lm_match}
+                dicis_all.append(dici)
+
+            df = pd.DataFrame(dicis_all)
+            return df
+
+
+    def cases_from_project_split(self):
+        train_cases, valid_cases = self.project.get_train_val_case_ids(
+            self.dataset_params["fold"], self.plan["datasources"]
+        )
+
+        # Store only the cases for this split
+        self.cases = train_cases if self.split == "train" else valid_cases
+
+    def create_data_dicts(self, cids):
+        # this does not use cids
+            df = self._create_df_from_folder()
+            data = []
+            for cid in self.cases:
+                dici0 = df.loc[df["case_id"] == cid]
+                out = (
+                      dici0.groupby("case_id", as_index=True)
+                           .agg(
+                               image=("image", list),
+                               lm=("lm", list),
+                           )
+                           .to_dict(orient="index")
+                  )
+                d = {
+                      "case_id": dici0["case_id"].iloc[0],
+                      "image": dici0["image"].tolist(),
+                      "lm": dici0["lm"].tolist(),
+                        "n_patches": len(dici0)
+                  }
+                data.append(d)
+            return data
+
+
 
     def create_transforms(self):
         super().create_transforms()
+        if self.img_patch_size_match()==True:
+            self.ResizePC = DummyTransform(keys = ["lm"])  # there will be no resizing if patch size and image size are same
 
-    # def derive_data_folder(self):
-    #     assert self.plan_train["mode"] == "patch", f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan_train['mode']}'"
-    #     parent_folder = self.project.patches_folder
-    #     plan_name = "plan" + str(self.dataset_params["plan"])
-    #     source_plan_name = self.plan_train["source_plan"]
-    #     source_plan = self.configs[source_plan_name]
-    #     spacing = ast_literal_eval(source_plan["spacing"])
-    #     subfldr1 = folder_name_from_list("spc", parent_folder, spacing)
-    #     patch_size = ast_literal_eval(self.plan_train["patch_size"])
-    #     return folder_name_from_list("dim", subfldr1, patch_size, plan_name)
+
+
 
     def setup(self, stage: str = None):
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
@@ -1323,7 +1339,7 @@ class DataManagerPatch(DataManagerSource):
 
     @property
     def src_dims(self):
-        return self.plan_train["patch_size"]
+        return self.plan["patch_size"]
 
 
 class DataManagerBaseline(DataManagerLBD):
@@ -1387,9 +1403,8 @@ class DataManagerBaseline(DataManagerLBD):
         )
         return parent_folder / (self.data_folder.name + "_baseline")
 
-
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
 
     import torch
@@ -1408,15 +1423,6 @@ if __name__ == "__main__":
 
     project_title = "totalseg"
     proj_tot = Project(project_title=project_title)
-    proj_nodes = Project(project_title="nodes")
-
-    config_nodes = ConfigMaker(
-        proj_nodes,
-    ).configs
-    configuration_filename = (
-        "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
-    )
-    configuration_filename = None
 
     CT = ConfigMaker(
         proj_tot,
@@ -1424,7 +1430,15 @@ if __name__ == "__main__":
     CT.setup(6)
     config_tot = CT.configs
 
+    proj_bones = Project(project_title="bones")
+    CB = ConfigMaker(
+        proj_bones,
+    )
+    CB.setup(1)
+    config_bones = CB.configs
 # %%
+# %%
+    proj_nodes = Project(project_title="nodes")
     CN = ConfigMaker(
         proj_nodes,
     )
@@ -1471,6 +1485,57 @@ if __name__ == "__main__":
 
     batch.keys()
 # %%
+# %%
+#SECTION:-------------------- BONES--------------------------------------------------------------------------------------
+    
+    batch_size = 3
+    ds_type = None
+    D = DataManagerMulti(
+        project_title=proj_bones.project_title,
+        configs=config_bones,
+        batch_size=batch_size,
+        ds_type=ds_type,
+        manager_class_train=DataManagerPatch,
+        manager_class_valid=DataManagerPatch,
+    )
+
+# %%
+    D.prepare_data()
+    D.setup()
+    tmv = D.valid_manager
+    tmt = D.train_manager
+    tme = D.test_manager
+    tmv.transforms_dict
+
+# %%
+    dat = tmt.ds[0]
+    dat2 = tmt.ds[1]
+    pack = [dat,dat2]
+# %%
+
+
+    dl2 = D.train_dataloader()
+    iteri2 = iter(dl2)
+    batch = next(iteri2)
+    batch['image'].shape
+# %%
+    dat = tmt.data[0]
+    dat['image'].shape
+    dici = tmt.transforms_dict["RP"](dat)
+    # dici =  tmt.transforms_dict["Ld"](dat)
+# %%
+#SECTION:-------------------- Patch manager checks--------------------------------------------------------------------------------------
+
+    P = DataManagerPatch(
+        project=proj_nodes,
+        configs=config_nodes,
+        batch_size=batch_size,
+        data_folder= "/r/datasets/preprocessed/bones/fixed_spacing/spc_100_100_100",
+        ds_type=None,
+    )
+
+    P.prepare_data()
+# %%
     n = 1
     im = batch["image"][n][0]
     lm = batch["lm"][n][0]
@@ -1487,8 +1552,8 @@ if __name__ == "__main__":
     iteri2 = iter(dl2)
     # while iteri:
     #     print(batch['image'].shape)
-    img_fn =  tmv.data[0]['image']
-    img = torch.load(img_fn,weights_only=False)
+    img_fns =  tmv.data[0]['image']
+    img = torch.load(img_fns,weights_only=False)
     ImageMaskViewer([img,img])
 # %%
     batch2 = next(iteri2)
@@ -1533,7 +1598,7 @@ if __name__ == "__main__":
         ds_type=ds_type,
     )
 # %%
-# SECTION:-------------------- LBD-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- LBD-------------------------------------------------------------------------------------- <CR> <CR>
     batch_size = 2
     ds_type = "lmdb"
     ds_type = None
@@ -1551,12 +1616,12 @@ if __name__ == "__main__":
 
 
 # %%
-# SECTION:-------------------- FromFolder-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- FromFolder-------------------------------------------------------------------------------------- <CR> <CR>
 
     Dev = EnsureTyped(keys=["image", "lm"], device=1)
     dat2 = Dev(dat)
 
-# SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 # %%
     # Test DataManagerWhole with DataManagerMulti
     D = DataManagerMulti(
@@ -1593,7 +1658,7 @@ if __name__ == "__main__":
     D3.prepare_data()
     D3.setup()
 
-# SECTION:-------------------- DataManagerPlain-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- DataManagerPlain-------------------------------------------------------------------------------------- <CR> <CR>
 # %%
     batch_size = 2
     D = DataManagerMulti(
@@ -1621,7 +1686,7 @@ if __name__ == "__main__":
     #     im = b['image']
     lm = b["lm"]
     # %
-# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
 # %%
     batch_size = 2
@@ -1645,18 +1710,16 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- Patch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
-    proj_tot = proj_litsmc
-    config_tot = config_litsmc
+
     batch_size = 2
-    D = DataManagerMulti(
-        project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None
+    P = DataManagerPatch(
+        project=proj_bones, configs=config_bones, batch_size=batch_size, ds_type=None, data_folder = "/r/datasets/preprocessed/bones/fixed_spacing/spc_100_100_100"
     )
 
+    P.prepare_data()
 # %%
-    D.prepare_data()
-    D.setup()
 # %%
     dl = D.train_dataloader()
     iteri = iter(dl)
@@ -1692,7 +1755,7 @@ if __name__ == "__main__":
     D.bboxes_per_id.append(bboxes)
 # %%
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR>
 
     D.prepare_data()
     D.setup()
@@ -1708,7 +1771,7 @@ if __name__ == "__main__":
     Dev = ToDeviceD(keys=["image", "lm"], device=dv)
     dat3 = Dev(dat2)
 # %%
-# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
 # %%
 
@@ -1782,7 +1845,6 @@ if __name__ == "__main__":
     lab = b["lm"][ind][0]
     ImageMaskViewer([img, lab])
 # %%
-    for dadd in pbar(dd):
-        for val in dadd.values():
-            assert val.exists(), "{} not existe".format(val)
+# %%
+    resampled_dataset_properties  = load_dict(tmt.data_folder / "resampled_dataset_properties")
 # %%

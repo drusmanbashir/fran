@@ -9,6 +9,7 @@ from utilz.stringz import headline, info_from_filename
 
 from fran.data.datasource import Datasource, val_indices
 from fran.data.datasource import db_ops
+from fran.data.patch_datasource import PatchDatasource
 from fran.configs.parser import MNEMONICS
 
 tr = ipdb.set_trace
@@ -232,7 +233,7 @@ class Project(DictToAttr):
                 output = list(il.chain.from_iterable(output))
         return output
 
-    def vars_to_sql(self, ds_name, ds_alias, img_fn, lm_fn, test):
+    def vars_to_sql(self, ds_name, ds_alias, ds_type, img_fn, lm_fn, test):
         case_id = info_from_filename(img_fn.name, full_caseid=True)["case_id"]
         fold = "NULL"
         img_sym = self.create_raw_ds_fname(img_fn)
@@ -240,6 +241,7 @@ class Project(DictToAttr):
         cols = (
             ds_name,
             ds_alias,
+            ds_type,
             case_id,
             str(img_fn),
             str(lm_fn),
@@ -260,7 +262,7 @@ class Project(DictToAttr):
         tbl_name = "datasources"
         if not self.table_exists(tbl_name):
             self.sql_alter(
-                "CREATE TABLE {} (ds,alias, case_id, image,lm,img_symlink,lm_symlink,fold INTEGER,test)".format(
+                "CREATE TABLE {} (ds,alias,ds_type, case_id, image,lm,img_symlink,lm_symlink,fold INTEGER,test)".format(
                     tbl_name
                 )
             )
@@ -292,9 +294,20 @@ class Project(DictToAttr):
         headline("Adding rows to tables. Adding datasources entries to global_properties")
         for dataspec, test in zip(datasources, test):
             fldr = dataspec.folder
-            ds = Datasource(
-                folder=fldr, name=dataspec.ds, alias=dataspec.alias, test=test
-            )
+            ds_type = getattr(dataspec, "ds_type", "full")
+            if ds_type == "patch":
+                ds = PatchDatasource(
+                    folder=fldr, name=dataspec.ds, alias=dataspec.alias, test=test
+                )
+            elif ds_type == "full":
+                ds = Datasource(
+                    folder=fldr, name=dataspec.ds, alias=dataspec.alias, test=test
+                )
+            else:
+                raise ValueError(
+                    f"Unsupported ds_type '{ds_type}' for datasource '{dataspec.ds}'. "
+                    "Expected one of: full, patch."
+                )
             ds = self.filter_existing_images(ds)
             self.populate_tbl(ds)
         self.populate_raw_data_folder()
@@ -387,12 +400,13 @@ class Project(DictToAttr):
         ds : Datasource
             Datasource object with verified file pairs.
         """
+        ds_type = getattr(ds, "ds_type")
         strs = [
-            self.vars_to_sql(ds.name, ds.alias, *pair, ds.test)
+            self.vars_to_sql(ds.name, ds.alias, ds_type, *pair, ds.test)
             for pair in ds.verified_pairs
         ]
         with db_ops(self.db) as cur:
-            cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?)", strs)
+            cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?,?)", strs)
 
     def add_datasources_xnat(self, xnat_proj: str):
         """
@@ -463,7 +477,7 @@ class Project(DictToAttr):
              ("fixed_spacing")
         )
         self.fixed_size_folder = (
-            self.cold_datasets_folder / ("preprocessed/fixed_size") / self.project_title
+            self.rapid_access_folder / ("preprocessed/fixed_size") / self.project_title
         )
         self.predictions_folder = Path(COMMON_PATHS["cold_storage_folder"]) / (
             "predictions/" + self.project_title
@@ -570,7 +584,16 @@ class Project(DictToAttr):
         for ds in datasources:
             fldr = Path(ds.folder)
             dataset_name = ds.ds
-            dss = Datasource(fldr)
+            ds_type = getattr(ds, "ds_type", "full")
+            if ds_type == "patch":
+                dss = PatchDatasource(folder=fldr, name=dataset_name, alias=ds.alias)
+            elif ds_type == "full":
+                dss = Datasource(folder=fldr, name=dataset_name, alias=ds.alias)
+            else:
+                raise ValueError(
+                    f"Unsupported ds_type '{ds_type}' for datasource '{dataset_name}'. "
+                    "Expected one of: full, patch."
+                )
             h5_fname = dss.h5_fname
             if not h5_fname.exists():
                 # decision = input("Datasource has no h5_fname. Create one? Proceed (Y/y) or Skip (N/n)?: ")
@@ -582,6 +605,7 @@ class Project(DictToAttr):
             dici = {
                 "ds": dataset_name,
                 "alias": ds.alias,
+                "ds_type": ds_type,
                 "folder": str(fldr),
                 "h5_fname": str(h5_fname),
                 "labels": dss.labels,
@@ -1120,16 +1144,19 @@ if __name__ == "__main__":
     # P = Project(project_title="nodes")
     # P.create(mnemonic="nodes")
     # P = Project(project_title="totalseg")
-    P = Project(project_title="nodes2")
-    P.create("nodes")
-    P.add_data([DS["nodes"], DS["nodesthick"]])
+    # P.create("nodes")
+    P = Project(project_title="bones")
+    # P.delete()
+    P.create("bones")
+    P.add_data([DS["uls23_bone"]])
+    # P.add_data([DS["nodes"], DS["nodesthick"]])
     P.maybe_store_projectwide_properties()
-    P = Project(project_title="totalseg")
+    # P = Project(project_title="totalseg")
     # P.create("nodes")
     # P.add_data([DS['nodes'], DS.nodesthick])
     # P.delete()
-    P.create(mnemonic="lungs")
-    P.add_data([DS['lidc']])
+    # P.create(mnemonic="lungs")
+    # P.add_data([DS['lidc']])
 
 # %%
     P = Project("litstmp")
@@ -1314,10 +1341,11 @@ if __name__ == "__main__":
 # %%
 
     strs = [
-        P.vars_to_sql(ds.name, ds.alias, *pair, ds.test) for pair in ds.verified_pairs
+        P.vars_to_sql(ds.name, ds.alias, getattr(ds, "ds_type", "full"), *pair, ds.test)
+        for pair in ds.verified_pairs
     ]
     with db_ops(P.db) as cur:
-        cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?)", strs)
+        cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?,?)", strs)
 # %%
 
     ds_dict = DS.nodes
