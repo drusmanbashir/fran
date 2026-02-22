@@ -7,7 +7,6 @@ import ipdb
 from utilz.stringz import headline, info_from_filename
 
 from fran.data.dataregistry import DS
-from label_analysis.merge import get_labels
 
 tr = ipdb.set_trace
 
@@ -18,7 +17,6 @@ from pathlib import Path
 import ipdb
 import SimpleITK as sitk
 from fastcore.basics import GetAttr, Union
-from label_analysis.helpers import to_binary, to_int
 from utilz.fileio import *
 from utilz.fileio import load_dict, save_dict
 from utilz.helpers import *
@@ -140,6 +138,8 @@ class Datasource(GetAttr):
         return proj_title
 
     def relabel(self, remapping: dict = None, target_label: int = None):
+        # label_analysis has optional heavy deps (e.g. radiomics); import only when relabeling.
+        from label_analysis.helpers import relabel as relabel_labels, to_binary, to_int
         assert (
             remapping or target_label
         ), "Must specify either a remapping_dict or specify a target_label so all labels are converted to it"
@@ -154,9 +154,9 @@ class Datasource(GetAttr):
             if target_label:
                 lm = to_binary(lm)
                 if target_label != 1:
-                    lm = relabel(lm, {1: target_label})
+                    lm = relabel_labels(lm, {1: target_label})
             else:
-                lm = relabel(lm, remapping=remapping)
+                lm = relabel_labels(lm, remapping=remapping)
             lm = to_int(lm)
             sitk.WriteImage(lm, fn)
 
@@ -367,6 +367,9 @@ class Datasource(GetAttr):
     def create_symlinks(self):
         pass
 
+    @property
+    def ds_type(self) -> str:        return "full"
+
 
 def val_indices(a, n):
     """
@@ -431,8 +434,9 @@ if __name__ == "__main__":
     lits_fldr = "/s/datasets_bkp/lits_segs_improved"
     ln_fldr = DS["lidc"]
     litsmall_fldr = DS["litsmall"]
+    bones_fldr = "/s/agent_rw/datasets/fully_annotated/ULS23_Radboudumc_Bone"
 # %%
-    ds = Datasource(nodes_fldr, "nodes")
+    ds = Datasource(bones_fldr, "bones")
     # ds = Datasource(nodesthick_fldr, "nodesthick")
     ds.process()
 # %%

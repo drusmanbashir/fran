@@ -1,17 +1,15 @@
-import ipdb
-tr = ipdb.set_trace
+"""Scratchpad for decorator experiments.
 
-# %%
+Kept intentionally import-safe so package-wide import sweeps don't execute ad-hoc code.
+"""
+
 import logging
-# %%
-# %%
-b = resize(a,[100,100,100])
-# %%
-print(f("/home/ub",2,overwrite= 3 ))
-# %%
-if __name__ == '__main__':
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
-    spam()
-# %%
-# %%
+
+
+def demo() -> None:
+    logging.getLogger(__name__).info("decorators demo placeholder")
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    demo()

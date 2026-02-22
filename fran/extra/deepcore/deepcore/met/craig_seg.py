@@ -1,6 +1,6 @@
 # %%
 import warnings
-from fran.managers.data import source_collated
+from fran.data.collate import source_collated
 from fran.trainers.impsamp import DeepSupervisionLoss, Trainer, pool_op_kernels_nnunet
 import ipdb
 

@@ -7,10 +7,15 @@ from monai.transforms.transform import Randomizable
 from monai.transforms.utils import generate_label_classes_crop_centers, map_classes_to_indices
 from monai.utils.misc import fall_back_tuple
 import numpy as np
-from fastcore.all import ItemTransform, delegates
+from fastcore.all import delegates
+try:
+    from fasttransform.transform import ItemTransform
+except Exception:
+    from fastcore.all import ItemTransform
 from monai.transforms.croppad.array import *
 import ipdb
 from typing import List
+import torch
 
 from torch.functional import Tensor
 tr = ipdb.set_trace
@@ -138,4 +143,3 @@ class RandomCropped(ItemTransform):
             num_samples =  int(np.ceil(ds_median_dim2/spatial_dim2))
             print("Each image will be sampled {} times per epoch based on dataset shape / patch_size / overlap combo.".format(num_samples))
             return num_samples
-

@@ -1,1 +1,16 @@
-#keeping this empty otherwise slicer tries to import lightning and breaks
+"""Optional exports for training-time data managers.
+
+Kept guarded to avoid forcing heavy dependencies in light import contexts.
+"""
+
+try:
+    from .training import (
+        DataManagerBaseline,
+        DataManagerLBD,
+        DataManagerPatch,
+        DataManagerSource,
+        DataManagerWID,
+        DataManagerWhole,
+    )
+except Exception:
+    pass

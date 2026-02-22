@@ -26,7 +26,7 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 # plain, testable class (NOT a Ray actor)
 from typing import Any, Dict
 import pandas as pd
-from ray_worker_base import RayWorkerBase  # your base that extends Preprocessor
+from fran.preprocessing.rayworker_base import RayWorkerBase
 
 class LBDSamplerWorkerImpl(RayWorkerBase):
     def create_transforms(self, device="cpu"):

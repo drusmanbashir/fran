@@ -2,7 +2,6 @@
 from __future__ import annotations
 from lightning.pytorch.callbacks import Callback
 # fran/storage/hpc_fetch.py
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
@@ -37,5 +36,4 @@ def ssh_download_file(
         client.close()
 
     return local_path
-
 

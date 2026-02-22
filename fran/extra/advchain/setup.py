@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
-setup(
-    name='advchain',
-    version='0.0.0',
-    description='Adversarial data augmentation with chained transformation',
-    author='Chen Chen',
-    author_email='chen.chen15@imperial.ac.uk',
-    # REPLACE WITH YOUR OWN GITHUB PROJECT LINK
-    url='https://github.com/cherise215/advchain',
-    install_requires=['torch'],
-    packages=find_packages(),
-)
+
+def main() -> None:
+    setup(
+        name="advchain",
+        version="0.0.0",
+        description="Adversarial data augmentation with chained transformation",
+        author="Chen Chen",
+        author_email="chen.chen15@imperial.ac.uk",
+        url="https://github.com/cherise215/advchain",
+        install_requires=["torch"],
+        packages=find_packages(),
+    )
+
+
+if __name__ == "__main__":
+    main()

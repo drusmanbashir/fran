@@ -1,11 +1,9 @@
 import os
 import torch.nn as nn
 import argparse
-import deepcore.nets as nets
-import deepcore.datasets as datasets
-import deepcore.met as met
+from fran.extra.deepcore.deepcore import datasets, met, nets
 from torchvision import transforms
-from utils import *
+from fran.extra.deepcore.utils import *
 from datetime import datetime
 from time import sleep
 

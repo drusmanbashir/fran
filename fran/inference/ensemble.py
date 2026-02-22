@@ -879,41 +879,41 @@ if __name__ == "__main__":
 # %%
 #SECTION:--------------------  BASE RUN--------------------------------------------------------------------------------------
 
-        chunk = nodes[1]
-        data = load_images(chunk)
-        prds_all_base = {}
-        for r in E.base_runs:
-            r = E.base_runs[0]
-            prds_all_base[r] = []
-            mode ,channels = get_mode_outchannels(r)
-            member = (
-                WholeImageInferer(
-                    r,
-                    devices=E.devices,
-                    safe_mode=E.safe_mode,
-                    save_channels=E.save_channels,
-                )
-                if mode == "whole"
-                else BaseInferer(
-                    r,
-                    devices=E.devices,
-                    safe_mode=E.safe_mode,
-                    save_channels=E.save_channels,
-                )
+    chunk = nodes[1]
+    data = load_images(chunk)
+    prds_all_base = {}
+    for r in E.base_runs:
+        r = E.base_runs[0]
+        prds_all_base[r] = []
+        mode ,channels = get_mode_outchannels(r)
+        member = (
+            WholeImageInferer(
+                r,
+                devices=E.devices,
+                safe_mode=E.safe_mode,
+                save_channels=E.save_channels,
             )
+            if mode == "whole"
+            else BaseInferer(
+                r,
+                devices=E.devices,
+                safe_mode=E.safe_mode,
+                save_channels=E.save_channels,
+            )
+        )
 # %%
-        inf = member
-        inf.debug=True
-        inf.setup()
-        inf.prepare_data(data, collate_fn=None)
-        inf.create_and_set_postprocess_transforms()
-        batch = next(inf.predict())
+    inf = member
+    inf.debug=True
+    inf.setup()
+    inf.prepare_data(data, collate_fn=None)
+    inf.create_and_set_postprocess_transforms()
+    batch = next(inf.predict())
 # %%
-        # for num_batches, batch in enumerate(inf.predict(), 1):
-        batch = inf.postprocess(batch)
-        prds_all_base[r].append(batch)
+    # for num_batches, batch in enumerate(inf.predict(), 1):
+    batch = inf.postprocess(batch)
+    prds_all_base[r].append(batch)
 
-        preds_all_base = E.decollate_base_predictions(prds_all_base)
+    preds_all_base = E.decollate_base_predictions(prds_all_base)
 # %%
 # SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     # 3) Run base/whole members directly on full images

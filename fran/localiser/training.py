@@ -1,5 +1,5 @@
 # %%
-from inference import get_model
+from fran.localiser.inference import get_model
 import supervision as sv
 import SimpleITK as sitk
 from torch.nn.functional import interpolate
@@ -92,4 +92,3 @@ if __name__ == "__main__":
     # Display the image
     sv.plot_image(annotated_image)
 # %%
-

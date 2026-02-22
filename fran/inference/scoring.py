@@ -2,8 +2,11 @@
 # %%
 # %matplotlib inline
 # %matplotlib widget
-# from fasttransform.transform import typedispatch
-from fastcore import typedispatch
+try:
+    from fasttransform.cast import dispatch as typedispatch
+except Exception:
+    from fastcore import typedispatch
+import torch
 from monai.utils.enums import LossReduction
 
 from monai.losses import DiceLoss
