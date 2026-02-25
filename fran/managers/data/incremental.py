@@ -410,6 +410,17 @@ if __name__ == "__main__":
         batch_size=batch_size,
         ds_type=ds_type,
     )
+# %%
+    D.start_n
+    D.prepare_data()
+    D.setup()
+
+    tm = D.train_manager
+
+# %%
+    train_cases, valid_cases = tm.project.get_train_val_files(
+            tm.dataset_params["fold"], tm.plan["datasources"]
+        )
 
 # %%
     D.prepare_data()
