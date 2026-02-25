@@ -487,7 +487,17 @@ class Trainer:
         return DMClass
 
     def fit(self):
-        self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+        try:
+            self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+        except KeyboardInterrupt:
+            try:
+                import wandb
+
+                if wandb.run is not None:
+                    wandb.finish()
+            except Exception:
+                pass
+            raise
 
     def best_available_checkpoint(self) -> Optional[Path]:
         """

@@ -1,14 +1,16 @@
-"""Ad-hoc scratch module.
-
-Historically this file contained notebook-style experiments that should not run during import.
-"""
-
+# %%
 from __future__ import annotations
 
+import torch
+from utilz.imageviewers import ImageMaskViewer
 
-def note() -> str:
-    return "Use dedicated scripts/notebooks for exploratory code."
-
+# %%
 
 if __name__ == "__main__":
-    print(note())
+    image =  torch.load("img.pt",weights_only=False)
+    pred =  torch.load("pred.pt",weights_only=False)
+
+    n=0
+    im = image[n,0].detach().cpu()
+    ImageMaskViewer([image[n,0].detach().cpu(),pred[n,0].detach().cpu()])
+# %%

@@ -580,8 +580,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     from fran.managers import Project
-
-    P = Project(project_title="totalseg")
+    P = Project(project_title="lidc")
     C = ConfigMaker(P)
     C.setup(2)
     pp(C.configs["plan_train"])

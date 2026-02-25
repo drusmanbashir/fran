@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import re
+from collections import defaultdict
+from pathlib import Path
+
 from lightning.pytorch import Callback
 import torch
 
@@ -7,6 +11,11 @@ try:
     from lightning.pytorch.loggers import WandbLogger
 except Exception:
     WandbLogger = None
+import ipdb
+from utilz.cprint import cprint
+
+from fran.callback.case_recorder import CaseIDRecorder
+tr = ipdb.set_trace
 
 def _log_wandb_metrics(trainer, metrics: dict, step: int | None = None):
     if not getattr(trainer, "is_global_zero", True):
@@ -61,6 +70,11 @@ class UpdateDatasetOnPlateau(Callback):
 
         self.best_score = None
         self.wait_count = 0
+        self.scan_pending = False
+        self.scan_active = False
+        self.scan_file_loss_sum = defaultdict(float)
+        self.scan_file_loss_count = defaultdict(int)
+        self.last_selected_files: list[str] = []
 
         if mode not in ("min", "max"):
             raise ValueError("mode must be 'min' or 'max'")
@@ -69,63 +83,83 @@ class UpdateDatasetOnPlateau(Callback):
     def _is_improvement(self, current: float) -> bool:
         if self.best_score is None:
             return True
+        if current < self.best_score - self.min_delta:
+            return True
+        return False
 
-        if self.mode == "min":
-            return current < self.best_score - self.min_delta
-        else:
-            return current > self.best_score + self.min_delta
+    @staticmethod
+    def _extract_filenames(batch: dict) -> list[str]:
+        image = batch.get("image") if isinstance(batch, dict) else None
+        if image is None or not hasattr(image, "meta"):
+            return []
+        meta = image.meta
+        fns = meta.get("filename_or_obj", None) or meta.get("src_filename", None)
+        if fns is None:
+            return []
+        if isinstance(fns, (str, Path)):
+            return [str(fns)]
+        return [str(x) for x in fns]
 
-    def on_validation_epoch_end(self, trainer, pl_module):
+    def _target_loss_by_batch_index(self, pl_module) -> dict[int, float]:
+        loss_dict = getattr(getattr(pl_module, "loss_fnc", None), "loss_dict", None)
+        if not isinstance(loss_dict, dict):
+            return {}
+        out: dict[int, float] = {}
+        pat = re.compile(r"loss_dice_batch(\d+)_label0$")
+        for key, val in loss_dict.items():
+            matched = pat.match(str(key))
+            if not matched:
+                continue
+            batch_index = int(matched.group(1))
+            out[batch_index] = float(val.detach().cpu().item() if isinstance(val, torch.Tensor) else val)
+        return out
 
+    def _start_scan_cycle(self, trainer, pl_module) -> None:
+        cir = [cb for cb in trainer.callbacks if isinstance(cb, CaseIDRecorder)][0]
+        cir.reset()
+        cir.incrementing = True
+        dm = trainer.datamodule
+        dl = dm.train_manager.dl2
+        cprint("Running a validation epoch on remaining training data", color="yellow", bold=True)
+        trainer.validate(model=pl_module, dataloaders=dl)
+
+    def _reset(self):
+        self.wait_count = 0
+        self.best_score = None  # reset plateau tracking
+
+    def on_validation_epoch_start(self, trainer, pl_module) -> None:
+        pass
+
+    def on_train_epoch_end_real(self, trainer, pl_module):
         if trainer.current_epoch < self.grace:
             return
-
-        metrics = trainer.callback_metrics
-
-        if self.monitor not in metrics:
-            return
-
-        current = metrics[self.monitor]
-        if isinstance(current, torch.Tensor):
-            current = current.detach().cpu().item()
-
-        did_add_samples = False
+        current = trainer.callback_metrics[self.monitor]
         if self._is_improvement(current):
             self.best_score = current
             self.wait_count = 0
         else:
             self.wait_count += 1
-
             if self.wait_count >= self.patience:
-                self.wait_count = 0
-                self.best_score = None  # reset plateau tracking
-                did_add_samples = True
-
-                dm = trainer.datamodule
-                train_manager = dm.train_manager
-                fn = getattr(train_manager, self.datamodule_fn)
-                fn(self.n_samples_to_add)
-
+                self._start_scan_cycle(trainer, pl_module)
                 if self.verbose:
                     print(
-                        f"UpdateDatasetOnPlateau: added "
-                        f"{self.n_samples_to_add} samples at epoch "
-                        f"{trainer.current_epoch}"
+                        f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
+                        f"switching to train dataloader 1 for scan"
                     )
+                self._reset()
 
-        if self.log_to_wandb:
-            prefix = self.wandb_prefix
-            _log_wandb_metrics(
-                trainer,
-                {
-                    f"{prefix}/current": float(current),
-                    f"{prefix}/best_score": float("nan") if self.best_score is None else float(self.best_score),
-                    f"{prefix}/min_delta": float(self.min_delta),
-                    f"{prefix}/bad": int(self.wait_count),
-                    f"{prefix}/did_add_samples": int(did_add_samples),
-                },
-                step=int(trainer.global_step),
-            )
+    def on_train_epoch_end(self, trainer, pl_module):
+        if trainer.current_epoch < self.grace:
+            return
+        current = trainer.callback_metrics[self.monitor]
+        if trainer.current_epoch % 5 == 0:
+            self._start_scan_cycle(trainer, pl_module)
+            if self.verbose:
+                print(
+                    f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
+                    f"switching to train dataloader 1 for scan"
+                )
+            self._reset()
 
 
 class UpdateDatasetOnEMAMomentum(Callback):
@@ -153,7 +187,6 @@ class UpdateDatasetOnEMAMomentum(Callback):
         self.datamodule_fn = datamodule_fn
         self.verbose = verbose
         self.log_to_wandb = bool(log_to_wandb)
-        self.wandb_prefix = wandb_prefix
 
         self.ema = None
         self.mom = 0.0

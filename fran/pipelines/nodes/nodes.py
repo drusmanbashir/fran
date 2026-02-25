@@ -1,5 +1,5 @@
 from pathlib import Path
-
+# %matplotlib inline
 from lightning.pytorch.callbacks import BatchSizeFinder
 from fran.callback.test import PeriodicTest
 from fran.data.datasource import Datasource
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     statusesV    = confirm_plan_analyzed(P, planV)
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
-    devices= [0]
+    devices= [1]
     bs = 2
 
     # run_name ='LITS-1285'
@@ -68,10 +68,10 @@ if __name__ == '__main__':
     conf["dataset_params"]["fold"]=0
     run_name=None
     lr= 1e-2
-# # %%
-#     run_name="LITS-1327"
-#     lr= 1e-3
-    # lr=None
+# %%
+    run_name="LITS-1417"
+    lr= 1e-3
+    lr=None
 # %%
     Tm = Trainer(P.project_title, conf, run_name,)
     # Tm.configs
@@ -104,26 +104,61 @@ if __name__ == '__main__':
 
     # tuner = Tuner(Tm.trainer)
     # tuner.scale_batch_size(Tm.N.model,mode="binsearch")
-    Tm.fit()
+    # Tm.fit()
 
-# %%
+ %%
     tra = Tm.trainer
     N = Tm.N
     D = Tm.D
 # %%
     from fran.managers.data.training import DataManagerMulti
     from utilz.imageviewers import ImageMaskViewer
+    D = Tm.D
     D= DataManagerMulti(project_title=P.project_title, configs=conf, batch_size=2,ds_type=None)
 # %%
     D.prepare_data()
     D.setup()
     
-    dl=D.val_dataloader()
-# %%
-    batch = next(iter(dl))
+    tmt = D.train_manager
+    dl=D.val_dataloader()[1]
+    iteri= iter(dl)
 
 # %%
-    image = batch["image"]
+# %%
+    # n=0
+    # while n<250:
+    #     batch = next(iteri)
+    #     image = batch["image"]
+    #     n+=1
+    #
+
+# %%
+    Tm.N.setup()
+    Tm.N.trainer = Tm.trainer
+    Tm.N.trainer.store_preds= True
+    Tm.N.store_preds= True
+# %%
+
+    batch = next(iteri)
+    print(batch["image"].meta["filename_or_obj"])
+    print(batch["patch_coords"])
+    print(batch["is_padded"])
+    aa = Tm.N._common_step(batch,0)
+# %%
+    pred= Tm.N.pred
+    pred = pred[0]
+
+
+# %%
+    n= 1
+    import torch
+    print(aa)
+
+    image = batch['image']
+    im = image[n,0].detach().cpu()
+    ImageMaskViewer([image[n,0].detach().cpu(),pred[n,0].detach().cpu()])
+# %%
+# %%
     image.shape
     pred = N(image)
     pred2 =pred[0]

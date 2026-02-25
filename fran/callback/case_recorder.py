@@ -1,28 +1,29 @@
-import re
 import plotly.express as px
-
-import sys
-import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
-from fran.callback.base import *
 import itertools as il
-
+import re
+import sys
 from pathlib import Path
+from typing import Any
+
+import re
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import seaborn as sns
+from lightning.pytorch.utilities.types import STEP_OUTPUT
+from utilz.cprint import cprint
 from utilz.stringz import cleanup_fname
+
+from fran.callback.base import *
 
 # %%
 
 
-class DropBBox(Callback):
-    order = 2
-    def before_batch(self):
-        self.learn.yb = [self.learn.xb[1]]
-        self.learn.xb = [self.learn.xb[0]]
 
 
 class CaseIDRecorder(Callback):
-    def __init__(self, freq=50, local_folder="/tmp", dpi=300):
+    def __init__(self, freq=5, local_folder="/tmp", dpi=300):
         """
 
         :param freq:
@@ -31,45 +32,86 @@ class CaseIDRecorder(Callback):
         """
         self.nep_field = "metrics/case_id_dices"
         self.set_figure_params(dpi)
-        store_attr()
+        self.freq = freq
+        self.local_folder = Path(local_folder)
 
-    def before_fit(self):
-        self.losses_dice = [], []
-        self.df_titles = ["valid", "train"]
-        self.dfs = {"valid": None, "train": None}
 
-    def before_batch(self):
-        self.files_this_batch = []
-        for i, fn in enumerate(self.learn.yb[0]):
-            self.files_this_batch.append(fn)
+    def on_fit_start(self, trainer, pl_module):
+        self.incrementing=False
+        self.loss_dicts_train = []
+        self.loss_dicts_valid = []
+        self.loss_dicts_train2=[]
+        self.dfs = {}
 
-    def after_batch(self):
-        dict_this_batch = {}
-        full_dicts = []
-        for k, v in self.learn.loss_func.loss_dict.items():
-            if "batch" in k:
-                dict_this_batch.update({k: v})
-        for ind, name in enumerate(self.files_this_batch):
-            pat = r"label\d"
-            dici = {"filename": name}
-            relevant_losses = {
-                re.search(pat, key).group(): dict_this_batch[key]
-                for key in dict_this_batch.keys()
-                if "batch{}".format(ind) in key
-            }
-            dici.update(relevant_losses)
-            full_dicts.append(dici)
-        self.losses_dice[self.training].append(full_dicts)
 
-    def after_epoch(self):
-        for i, label in enumerate(self.df_titles):
-            df = pd.DataFrame.from_dict(il.chain.from_iterable(self.losses_dice[i]))
-            df["case_id"] = case_id_from_series(df.filename)
-            self.append_to_running_df(label, df)
-        if all([self.epoch >= self.freq, self.epoch % self.freq == 0]):
-            if not hasattr(self, "rows_per_plot"):
-                self.compute_rows_per_plot()
-            self.store_results()
+    def _before_batch(self, batch):
+        self.files_this_batch = batch["image"].meta["filename_or_obj"]
+
+    def on_train_batch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", batch: Any, batch_idx: int) -> None:
+        self._before_batch(batch)
+
+
+    def on_validation_batch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", batch: Any, batch_idx: int) -> None:
+        self._before_batch(batch)
+
+
+
+    def on_train_batch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: STEP_OUTPUT, batch: Any, batch_idx: int) -> None:
+        loss_dict_full = pl_module.loss_dict_full
+        self.loss_dicts_train.append(loss_dict_full)
+
+    def on_validation_batch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: STEP_OUTPUT, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
+        loss_dict_full = pl_module.loss_dict_full
+        if self.incrementing == False:
+            self.loss_dicts_valid.append(loss_dict_full)
+        else:
+            self.loss_dicts_train2.append(loss_dict_full)
+
+    def reset(self):
+            self.loss_dicts_valid = []
+            self.loss_dicts_train = []
+            self.loss_dicts_train2=[]
+    
+
+    def on_validation_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        cprint("case recorder ", color = "yellow",bold=True)
+        if trainer.current_epoch % self.freq == 0:
+            self.store_results(trainer)
+            self.reset()
+
+
+    def _store(self,trainer, stage, loss_dict,epoch):
+            mini_df = self.create_limited_df(loss_dict)
+            df_final = self.pivot_batch_cols(mini_df)
+            val_vars  = [var for var in df_final.columns if "dice" in var]
+            df_long = df_final.melt(
+                  id_vars="caseid",
+                  value_vars=val_vars,
+                  var_name="label",
+                  value_name="loss_dice"
+              )
+            df_long.dropna(inplace=True)
+            self.dfs[stage] = df_long
+            fig = self.create_plotly(df_long)
+            fig_fname = f"{self.local_folder}/{stage}_{epoch}.png"
+            fig.write_image(fig_fname, scale=2)
+            try:
+                # trainer.logger.log_image(key = f"{stage}_boxplots", images=[fig_fname])
+                trainer.logger.log_image(key = f"{stage}_boxplots", images=[fig_fname])
+            except AttributeError as e:
+                cprint(e, color = "red")
+
+    def store_results(self, trainer):
+        epoch = trainer.current_epoch
+        self.dfs["epoch"]=epoch
+        cprint("storing results", color = "yellow")
+        if self.incrementing==False:
+            for stage ,loss_dict in zip (["train", "valid"], [self.loss_dicts_train, self.loss_dicts_valid]):
+                self._store(trainer, stage, loss_dict,epoch)
+        else:
+            self._store(trainer, "train2", self.loss_dicts_train2,epoch)
+        trainer.dfs = self.dfs
+
 
     def set_figure_params(self, dpi):
         self.rcs = [
@@ -77,73 +119,44 @@ class CaseIDRecorder(Callback):
             {"figure.dpi": dpi, "figure.figsize": (25, 10)},
         ]  # train
 
-    def append_to_running_df(self, label, df):
-        if isinstance(self.dfs[label], pd.DataFrame):
-            self.dfs[label] = pd.concat([self.dfs[label], df], axis=0)
-        else:
-            self.dfs[label]: self.dfs[label] = df
 
-    def store_results(self):
-        for label in self.df_titles:
-            small_df = self.create_limited_df(self.dfs[label])
-            figure = self.create_plotly(small_df)
-            fname_df = Path(self.local_folder) / ("{}.csv".format(label))
-            self.dfs[label].to_csv(fname_df, index=False)
-            # figure.savefig(fname_plot)
-            if hasattr(self.learn, "nep_run"):
-                # self.nep_run[self.nep_field+"_dataframes/{}".format(storage_string_df)].upload(File.as_html(self.dfs[label]))  TOO LARGE
-                # self.nep_run["_".self.nep_field+"_plots/{}".format(storage_string_plot)].upload(fname_plot)
-                # self.nep_run["_".join([self.nep_field,label])].log(File.as_image(figure))
-
-                field_name = "/".join(
-                    [
-                        self.nep_field,
-                        label,
-                        "epoch_{}".format(self.epoch),
-                        "interactive_img",
-                    ]
-                )
-                self.nep_run[field_name].upload(figure)
-
-    def compute_rows_per_plot(self):
-        self.rows_per_plot = [len(self.dfs[label]) for label in self.df_titles]
-
-    def create_limited_df(self, dfd):
-        dfd = dfd[-self.rows_per_plot[self.training] : :]
-        return dfd
-
-    def df_plottable(self, dfd):
-
-        df2 = dfd.melt(id_vars=["case_id", "filename"])
-        df2 = df2[df2.variable.str.contains("Unnamed") == False]
-        df2.variable = df2.variable.astype("category")
-        return df2
-
-    def create_plotly(self, dfd):
-
-        df2 = self.df_plottable(dfd)
-        figure = px.box(df2, x="case_id", y="value", color="variable")
-        return figure
-
-    def create_plot_sns(self, dfd):
-        sns.set(rc=self.rcs[self.training])
-        plt.ioff()
-        df2 = self.df_plottable(dfd)
-        ax = sns.boxplot(x="case_id", y="value", hue="variable", data=df2)
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
-        figure = ax.figure
-        figure.tight_layout()
-        return figure
+    def create_limited_df(self,dicts):
+        df_train = pd.DataFrame(dicts)
+        bad_cols  = ["loss", "loss_ce", "loss_dice"]
+        others = [col for col in df_train.columns if "filename" in col]
+        others2 = [col for col in df_train.columns if not "batch" in col]
+        bad_cols_all = bad_cols+others+ others2
+        dft = df_train.drop(columns=bad_cols_all)
+        return dft
 
 
-def case_id_from_series(series):
-    output = [cleanup_fname(Path(y).name) for y in series]
-    return output
+    def pivot_batch_cols(self,dft):
+        batch_vars  = [var for var in dft.columns if re.search(r"batch.*id", var)] 
+        num_batches = len(batch_vars)
+        dfs = []
+        for n in range(num_batches):
+            batch_var = "batch"+str(n)
+            df1 = dft.loc[:,dft.columns.str.contains(batch_var)]
+            df1.columns= df1.columns.str.replace(batch_var+"_", "")
+            dfs.append(df1)
+        df_final = pd.concat(dfs, axis=0)
+        return df_final
+
+    def create_plotly(self, df_long):
+            fig = px.box(
+                  df_long,
+                  x="caseid",
+                  y="loss_dice",
+                  facet_col="label",      # separate box plot per label
+                  color="label",
+                  points="outliers"
+              )
+            return fig
+
 
 
 # %%
 if __name__ == "__main__":
-    D = DropBBox()
     # dfd = pd.read_html('~/Downloads/valid.html')
     # rn = 45000
     # df1 = dfd[0]
@@ -179,4 +192,69 @@ if __name__ == "__main__":
     figure = ax.figure
     figure.tight_layout()
     plt.show()
+# %%
+    df_train = pd.DataFrame(cir.loss_dicts_train)
+    batch_size = 2
+    batch_idx = range(2)
+    batch_strings = []
+    for id in batch_idx:
+        batch_strings.append(
+           "batch"+str(id) 
+        )
+
+    batch_str = batch_strings[0]
+
+    small_df = df_train
+    dfd = small_df
+
+# %%
+
+    cid_vars =  [var for var in small_df.columns if "case" in var]
+
+# %%
+
+    dfs = dfd.loc[:,dfd.columns.str.contains(batch_str)]
+    val_cols = [col for col in dfs.columns if "loss_dice" in col]
+    cid_vars =  [var for var in dfs.columns if "case" in var]
+    df2 = dfs.melt(id_vars=cid_vars, value_vars=val_cols)
+
+    import plotly.express as px
+    figure = px.box(df2, x=cid_vars[0], y="value", color="variable")
+    figure.savefig(fname_plot)
+    df= df2
+# %%
+#
+#       out = (
+#           df2.assign(label=df2["variable"].str.extract(r"(label\d+)$", expand=False))
+#              .pivot_table(
+#                  index="batch0_caseid",
+#                  columns="label",
+#                  values="value",
+#                  aggfunc="mean"   # or "first"
+#              )
+#              .reset_index()
+#              .rename_axis(None, axis=1)
+#              .rename(columns={"batch0_caseid": "case_id"})
+#       )
+# # %%
+#     df2.to_csv("tmp2.csv")
+#
+#     df2 = df2[df2.variable.str.contains("Unnamed") == False]
+#     df2.variable = df2.variable.astype("category")
+# # %%
+# %%
+    # cprint("storing results", color = "yellow")
+    # for stage ,loss_dict in zip (["train", "valid"], [cir.loss_dicts_train, cir.loss_dicts_valid]):
+    #     mini_df = cir.create_limited_df(loss_dict)
+    #     df_final = cir.pivot_batch_cols(mini_df)
+    #     val_vars  = [var for var in df_final.columns if "dice" in var]
+    #     df_long = df_final.melt(
+    #           id_vars="caseid",
+    #           value_vars=val_vars,
+    #           var_name="label",
+    #           value_name="loss_dice"
+    #       )
+    #     fig = cir.create_plotly(df_long)
+    #
+# %%
 # %%

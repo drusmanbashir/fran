@@ -37,6 +37,7 @@ except:
     pass
 
 
+
 class UNetManager(LightningModule):
     def __init__(
         self,
@@ -107,12 +108,8 @@ class UNetManager(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        if dataloader_idx == 0:
-            loss, loss_dict = self._common_step(batch, batch_idx)
-            self.log_losses(loss_dict, prefix="val0")
-        if dataloader_idx == 1:
-            loss, loss_dict = self._common_step(batch, batch_idx)
-            self.log_losses(loss_dict, prefix="val1")
+        loss, loss_dict = self._common_step(batch, batch_idx)
+        self.log_losses(loss_dict, prefix="val{}".format(dataloader_idx))
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -121,6 +118,7 @@ class UNetManager(LightningModule):
         return loss
 
     def log_losses(self, loss_dict, prefix):
+        self.loss_dict_full = loss_dict
         metrics = loss_dict.keys()
         metrics = [
             metric for metric in metrics if "batch" not in metric
@@ -290,25 +288,6 @@ class UNetManager(LightningModule):
             loss_func = CombinedLoss(**self.loss_params, fg_classes=fg_classes)
             self.loss_fnc = loss_func
 
-
-def update_nep_run_from_configs(nep_run, configs):
-    for key, value in configs.items():
-        nep_run[key] = value
-    return nep_run
-
-
-def maybe_ddp(devices):
-    if devices == 1 or isinstance(devices, Union[list, str, tuple]):
-        return "auto"
-    ip = get_ipython()
-    if ip:
-        headline("Using interactive-shell ddp strategy")
-        return "ddp_notebook"
-    else:
-        headling("Using non-interactive shell ddp strategy")
-        return "ddp"
-
-
 class UNetManagerFabric(UNetManager):
     def on_train_batch_start(self, trainer, batch, batch_idx):
         pass
@@ -332,15 +311,3 @@ class UNetManagerFabric(UNetManager):
         batch_idx: int,
     ) -> None:
         pass
-
-    # def training_step(self, batch, batch_idx):
-    # output = self._common_step(batch, batch_idx,"train")
-    # return output
-    # loss = output['loss']
-    # return loss
-
-    # def validation_step(self, batch, batch_idx):
-    #     output = self._common_step(batch, batch_idx,"val")
-    #     return output
-    # loss = output['loss']
-    # return loss

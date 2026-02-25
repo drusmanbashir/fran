@@ -1,6 +1,6 @@
 # %%
 import shutil
-from copy import deepcopy
+from utilz.helpers import set_autoreload
 from typing import Optional
 
 import ipdb
@@ -8,14 +8,15 @@ from fastcore.all import in_ipython
 from tqdm.auto import tqdm as pbar
 from utilz.stringz import headline
 
-from fran.callback.incremental import LRFloorStop, UpdateDatasetOnEMAMomentum, UpdateDatasetOnPlateau
+from fran.callback.case_recorder import CaseIDRecorder
+from fran.callback.incremental import UpdateDatasetOnPlateau
 from fran.callback.test import PeriodicTest
 from fran.configs.parser import ConfigMaker
 # from fran.callback.modelcheckpoint import ModelCheckpointUB
 from fran.managers.project import Project
 from fran.managers.unet import UNetManager
 from fran.trainers.base import (backup_ckpt, checkpoint_from_model_id,
-                                switch_ckpt_keys, write_normalized_ckpt)
+                                switch_ckpt_keys)
 from fran.trainers.trainer_bk import TrainerBK
 
 tr = ipdb.set_trace
@@ -23,7 +24,6 @@ tr = ipdb.set_trace
 import os
 from pathlib import Path
 
-import psutil
 import torch._dynamo
 
 from fran.managers.data.incremental import (DataManagerBaselineI,
@@ -34,11 +34,8 @@ from fran.managers.data.incremental import (DataManagerBaselineI,
                                             DataManagerWholeI, DataManagerWIDI)
 
 torch._dynamo.config.suppress_errors = True
-import warnings
 
-from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
-                                         EarlyStopping, LearningRateMonitor,
-                                         ModelCheckpoint, TQDMProgressBar)
+from lightning.pytorch.callbacks import ModelCheckpoint
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
@@ -286,14 +283,15 @@ class IncrementalTrainer (TrainerBK):
             log_incremental_to_wandb = getattr(self, "_log_incremental_to_wandb", False)
 
         cbs += [
+            CaseIDRecorder(freq=10),
             UpdateDatasetOnPlateau(
-                n_samples_to_add=10,
+                n_samples_to_add=30,
                 log_to_wandb=bool(log_incremental_to_wandb),
             ),
-            UpdateDatasetOnEMAMomentum(
-                n_samples_to_add=10,
-                log_to_wandb=bool(log_incremental_to_wandb),
-            ),
+            # UpdateDatasetOnEMAMomentum(
+            #     n_samples_to_add=10,
+            #     log_to_wandb=bool(log_incremental_to_wandb),
+            # ),
         ]
         return cbs, logger, profiler
 
@@ -436,6 +434,7 @@ class IncrementalTrainer (TrainerBK):
 
 if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- - <CR> <CR>
+    set_autoreload()
     from fran.utils.common import *
     P = Project("nodes")
     # P.add_data([DS.totalseg])
@@ -468,7 +467,7 @@ if __name__ == "__main__":
     profiler = False
     # NOTE: if wandb = False, should store checkpoint locally
     batch_finder = False
-    wandb = True
+    wandb = False
     override_dm = False
     tags = []
     description = f"Partially trained up to 100 epochs"
@@ -483,25 +482,22 @@ if __name__ == "__main__":
 
     conf['dataset_params']['cache_rate']
 
-# %%
+# %
     conf["dataset_params"]["fold"]=0
     run_name=None
     lr= 1e-2
-# # %%
-#     run_name="LITS-1327"
-#     lr= 1e-3
-# %%
 #SECTION:-------------------- TRAIN--------------------------------------------------------------------------------------
     Tm = IncrementalTrainer    (P.project_title, conf, run_name)
     device_id = 0
     batchsize_finder=False
-    wandb=True
+    wandb=False
+    epochs =50
 # %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=600 if profiler == False else 1,
+        epochs=epochs,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
         wandb=wandb,
@@ -511,10 +507,8 @@ if __name__ == "__main__":
     )
 # %%
     # Tm.D.batch_size=8
-    Tm.N.compiled = compiled
-# %%
-    Tm.fit()
     # model(inputs)
+    Tm.fit()
 # %%
 
     conf["dataset_params"]["ds_type"]
@@ -522,68 +516,19 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- LITSMC -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
-    run_name = run_litsmc
-    run_name = run_none
-    conf = conf_litsmc
-    proj = "litsmc"
-    conf["dataset_params"]["cache_rate"] = 0.5
-# %%
-    Tm = TrainerBK(proj, conf, run_name)
-# %%
-    Tm.setup(
-        compiled=compiled,
-        batch_size=bs,
-        devices=[device_id],
-        epochs=600 if profiler == False else 1,
-        batchsize_finder=batchsize_finder,
-        profiler=profiler,
-        wandb=wandb,
-        tags=tags,
-        description=description,
-    )
-# %%
-    # Tm.D.batch_size=8
-    Tm.N.compiled = compiled
-# %%
-    Tm.fit()
-    # model(inputs)
-# %%
-# SECTION:-------------------- NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-    run_name = run_nodes
-    run_name = None
-    conf = conf_nodes
-    proj = "nodes"
-
-# %%
-    Tm = TrainerBK(proj, conf, run_name)
-# %%
-    Tm.setup(
-        compiled=compiled,
-        batch_size=bs,
-        devices=[device_id],
-        epochs=600 if profiler == False else 1,
-        batchsize_finder=batchsize_finder,
-        profiler=profiler,
-        wandb=wandb,
-        tags=tags,
-        description=description,
-    )
-# %%
-    # Tm.D.batch_size=8
-    Tm.N.compiled = compiled
-    Tm.fit()
-# %%
-
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm.D.prepare_data()
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
-    dl = Tm.D.train_dataloader()
     dlv = Tm.D.valid_dataloader()
+    dl = Tm.D.train_dataloader()
     iteri = iter(dl)
     b = next(iteri)
 # %%
+    N = Tm.N
+    aa = N._common_step(b,0)
+
 
     D = Tm.D
     dlt = D.train_dataloader()
@@ -635,13 +580,26 @@ if __name__ == "__main__":
     iteri = iter(dlt)
     # Tm.N.model.to('cpu')
 # %%
-    while iter:
-        batch = next(iteri)
-        print(batch["image"].dtype)
-# %%
-#
+    trainer = Tm.trainer
+    model = Tm.N
+    dlv = Tm.D.train_manager.dl2
+    trainer.validate(model=model, dataloaders= dlv)
+    trainer.test(model=model, dataloaders= dlv)
 
-    tmv = D.valid_manager
-    tmt = dm.train_manager
-    tmv.transforms_dict
+    model.loss_dict_full
+    cir = [cb for cb in trainer.callbacks if isinstance(cb, CaseIDRecorder)][0]
+
+# %%
+    iteri = iter(dlv)
+    
+    batch = next(iteri)
+    batch['image'].meta['filename_or_obj']
+# %%
+    tmg  = Tm.D.train_manager
+    tmg.data_df.columns
+    tmg.setup(stage="fit")
+    df = tmg.data_df
+    df.loc[df["used_in_training"]==True, "image"]
+    tmg.create_incremental_dataloaders()
+    len(tmg.ds[0])
 # %%

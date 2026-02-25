@@ -1154,7 +1154,7 @@ if __name__ == "__main__":
     # P = Project(project_title="totalseg")
     # P.create("nodes")
     # P.add_data([DS['nodes'], DS.nodesthick])
-    # P.delete()
+    P.delete()
     # P.create(mnemonic="lungs")
     # P.add_data([DS['lidc']])
 

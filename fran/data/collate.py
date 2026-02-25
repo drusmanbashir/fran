@@ -132,19 +132,27 @@ def process_grid_items(item):
     return imgs, labels, fns_imgs, fns_labels
 
 def grid_collated(batch):
-    # same as source except each item in a batch is a 2-tuple. The second item in the tuple has locations of the grid which I will ignore in training
+    # Supports MONAI GridPatchDataset output as either:
+    # - tuple: (patch_dict, coords), or
+    # - dict: patch_dict (if dataset uses with_coordinates=False).
     imgs = []
     lms = []
     fns_imgs=[]
     fns_lms = []
     patch_coords =[]
     start_pos =[]
+    is_padded = []
     for i, item in enumerate(batch):
-        item2=item[0]
-        patch_coords.append(item[1])
+        if isinstance(item, tuple):
+            item2 = item[0]
+            coords = item[1]
+        else:
+            item2 = item
+            coords = item2.get("patch_coords")
+        patch_coords.append(coords)
         imgs_,lms_,fns_imgs_,fns_lms_ = process_grid_items(item2)
-        # patch_coords.append(item["patch_coords"])
         start_pos.append(item2["start_pos"])
+        is_padded.append(bool(item2.get("is_padded", False)))
         imgs.extend(imgs_)
         lms.extend(lms_)
         fns_imgs.extend(fns_imgs_)
@@ -156,7 +164,13 @@ def grid_collated(batch):
     lms_out= torch.stack(lms, 0)
     imgs_out.meta['filename_or_obj']=fns_imgs
     lms_out.meta['filename_or_obj']=fns_lms
-    output = {"image": imgs_out , "lm": lms_out, "patch_coords":patch_coords, "start_pos":start_pos}
+    output = {
+        "image": imgs_out,
+        "lm": lms_out,
+        "patch_coords": patch_coords,
+        "start_pos": start_pos,
+        "is_padded": is_padded,
+    }
     return output
 
 
@@ -325,6 +339,5 @@ if __name__ == "__main__":
     batch = [d3,d4]
 
     bx = whole_collated(batch)
-
 
 

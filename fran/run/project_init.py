@@ -12,19 +12,6 @@ from fran.configs.parser import MNEMONICS
 from fran.data.dataregistry import DS
 from fran.managers.project import Project
 
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
-os.environ.setdefault("MPLBACKEND", "Agg")  # matplotlib headless
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")  # belt & braces
-os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
-os.environ.setdefault("ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS", "1")
-# optional noise reducers:
-os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
-
 
 def main(args):
     headline("Arguments:")

@@ -1,4 +1,8 @@
 from __future__ import annotations
+from fran.managers import  Project
+from fran.utils.common import *
+from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
+
 
 from copy import deepcopy
 from pathlib import Path
@@ -247,3 +251,112 @@ class TrainerBK(Trainer):
             profiler = None
 
         return cbs, logger, profiler
+
+# %%
+
+#SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
+if __name__ == '__main__':
+    from fran.utils.common import *
+    P = Project("nodes")
+    # P.add_data([DS.totalseg])
+    C = ConfigMaker(P )
+    C.setup(6)
+    C.plans
+    conf = C.configs
+    print(conf["model_params"])
+
+    planT = conf['plan_train']
+    planV = conf["plan_valid"]
+    pp(planT)
+
+    planT['mode']
+    # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
+    # if (lm==3).any():
+    #     print("Bad values 3 ->0")
+    #     lm[lm==3]=1
+    #     torch.save(lm, bad_case_fn)
+    #
+    # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
+# %%
+
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
+    devices= [0]
+    bs = 2
+
+
+    # run_name ='LITS-1285'
+    compiled = False
+    profiler = False
+    # NOTE: if Neptune = False, should store checkpoint locally
+    batchsize_finder = False
+    neptune = True
+    override_dm = False
+    tags = []
+    description = f"Partially trained up to 100 epochs"
+
+    conf['plan_train']
+
+    cbs = [PeriodicTest(every_n_epochs=1,limit_batches=50), BatchSizeFinder(batch_arg_name="batch_size")]
+
+    conf["dataset_params"]["cache_rate"]=0.0
+    print(conf['model_params']['out_channels'])
+    
+
+    conf['dataset_params']['cache_rate']
+
+    device_id = 1
+    conf["dataset_params"]["fold"]=0
+    run_name=None
+    lr= 1e-2
+# %%
+# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+
+    Tm = TrainerBK(P.project_title, conf, run_name)
+    Tm.setup(
+        compiled=compiled,
+        batch_size=bs,
+        devices=[device_id],
+        epochs=600 if profiler == False else 1,
+        batchsize_finder=batchsize_finder,
+        profiler=profiler,
+        wandb=neptune,
+
+        tags=tags,
+        description=description,
+    )
+# %%
+
+    Tm.fit()
+    # model(inputs)
+# %
+    D = Tm.D
+    D.setup()
+    tmt = D.train_manager
+    tmv = D.valid_manager
+
+    tmt.collate_fn
+
+# %%
+    
+    dl=tmt.dl
+    dl=tmv.dl
+    iteri= iter(dl)
+
+# %%
+# %%
+    # n=0
+    # while n<250:
+    #     batch = next(iteri)
+    #     image = batch["image"]
+    #     n+=1
+    #
+
+# %%
+    batch = next(iteri)
+    len(batch["image"].meta["filename_or_obj"])
+    print(batch["image"].meta["filename_or_obj"])
+    print(batch["patch_coords"])
+    print(batch["is_padded"])
+    aa = Tm.N._common_step(batch,0)
+
+# %%

@@ -83,7 +83,7 @@ class WandbImageGridCallback(Callback):
         img = grd3.permute(1, 2, 0).cpu().numpy().astype("uint8")
 
         run = trainer.logger.experiment
-        run.log({"images/grid": wandb.Image(img)}, step=trainer.global_step)
+        run.log({"images/grid": wandb.Image(img)})
 
     def populate_grid(self, pl_module, batch):
         def _randomize():

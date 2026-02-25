@@ -1,6 +1,17 @@
 # %%
 from __future__ import annotations
+
+from torch.utils.data import DataLoader
+from fran.data.collate import grid_collated
+from fran.managers.data.training import PatchIterdWithPaddingFlag
+
+from fran.utils.common import PAD_VALUE
+from monai.data import Dataset
+from monai.data.dataset import PersistentDataset
+from monai.data.grid_dataset import GridPatchDataset, PatchIterd
+import pandas as pd
 import os
+import numpy as np
 
 from pathlib import Path
 from typing import Optional, Tuple
@@ -138,6 +149,8 @@ class DataManagerMultiI(DataManagerMulti):
             mode_to_class[test_mode],
         )
 
+    # def train_dataloader(self):
+    #     return self.train_manager.dl
 
 class DataManagerI(DataManager):
     def __init__(
@@ -168,49 +181,160 @@ class DataManagerI(DataManager):
         )
         self.start_n = start_n
 
+
+    def prepare_data(self):
+        super().prepare_data()
+        self.create_data_df()
+
+
     def setup(self, stage: str = None) -> None:
         # Create transforms for this split
 
-        headline(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
-        print("Src Dims: ", self.configs["dataset_params"]["src_dims"])
-        print("Patch Size: ", self.plan["patch_size"])
-        print("Using fg indices: ", self.plan["use_fg_indices"])
+        print(stage)
+        if stage=="fit":
+            headline(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
+            print("Src Dims: ", self.configs["dataset_params"]["src_dims"])
+            print("Patch Size: ", self.plan["patch_size"])
+            print("Using fg indices: ", self.plan["use_fg_indices"])
 
-        self.create_transforms()
-        self.set_transforms(self.keys)
-        print("Transforms are set up: ", self.keys)
+            self.create_transforms()
+            self.set_transforms(self.keys)
+            print("Transforms are set up: ", self.keys)
 
-        self.create_dataset(self.start_n)
-        self.create_dataloader()
+            cprint("Creating {0} dataset".format(self.split) , color="magenta", italic=True)
+            if self.split=="valid":
+                self.create_dataset()
+                self.create_dataloader()
+            elif self.split=="train":
+                self.create_incremental_datasets(self.start_n)
+                self.create_incremental_dataloaders()
+            else:
+                raise NotImplementedError
+            cprint("Size of dataset: {0}, size of dataloader: {1}".format(len(self.ds), len(self.dl)), color="yellow")
+
+    def create_data_df(self):
+        self.data_df = pd.DataFrame(self.data)
+        self.data_df["used_in_training"] = False
 
 
-    def create_dataset(self, num_train_samples: int):
+    def create_indices(self,indices):
+        if isinstance(indices,int):
+            indices = list(range(indices))
+        else:
+            indices = indices
+        return indices
+
+    
+    def create_incremental_datasets(self, train_samples: int|list):
         if not hasattr(self, "data") or len(self.data) == 0:
             print("No data. DS is not being created at this point.")
             return 0
-        if self.split == "train":
-            data = self.data[:num_train_samples]
-        else:
-            data = self.data
-        cprint("Size of {0} dataset: {1}".format(self.split,len(data)), color="green")
+
+        indices = self.create_indices(train_samples)
+        self.data_df.loc[indices,"used_in_training"] = True
+
+        data1 = self.data_df.iloc[indices]
+        data1= data1.to_dict(orient="records")
+
+        data2 = self.data_df[~self.data_df["used_in_training"]]
+        data2 = data2.to_dict(orient="records")
+        cprint("Size of training dataset: {0}".format(len(data1)), color="green")
+        cprint("Size of leftover dataset: {0}".format(len(data2)), color="green")
         print(f"[DEBUG] Example case: {self.cases[0] if self.cases else 'None'}")
-        original_data = self.data
-        self.data = data
-        try:
-            if self.split in ("train", "valid"):
-                self.ds = super()._create_modal_ds()
-            else:
-                self.ds = super()._create_test_ds()
-            return self.ds
-        finally:
-            self.data = original_data
+
+        ds1 = Dataset(data=data1, transform=self.transforms)
+
+        dstmp = Dataset(
+                    data=data1,
+                    transform=self.transforms,
+                )
+        patch_iter = PatchIterd(
+                    keys=["image", "lm"], patch_size=self.plan["patch_size"], mode="constant", constant_values=PAD_VALUE
+                )
+        patch_iter = PatchIterdWithPaddingFlag(patch_iter)
+        ds2 = GridPatchDataset(data=dstmp, patch_iter=patch_iter, with_coordinates=False)
+        self.ds = [ds1,ds2]
+
+    def create_incremental_dataloaders(self):
+        num_workers1 = min(8,self.effective_batch_size * 2)
+        persistent_workers1 = False
+        collate_fn1 =self.collate_fn
+        shuffle1 = True
+
+
+        num_workers2 = 0
+        persistent_workers2 = False
+        collate_fn2 = grid_collated
+        shuffle2= False
+
+        self.dl1 =  DataLoader(
+            self.ds[0],
+            batch_size=self.effective_batch_size,
+            num_workers=num_workers1,
+            collate_fn=collate_fn1,
+            persistent_workers=persistent_workers1,
+            pin_memory=True,
+            shuffle=shuffle1,
+        )
+
+        self.dl2 =  DataLoader(
+            self.ds[1],
+            batch_size=self.effective_batch_size,
+            num_workers=num_workers2,
+            collate_fn=collate_fn2,
+            persistent_workers=persistent_workers2,
+            pin_memory=False,
+            shuffle=shuffle2,
+        )
+        self.dl = self.dl1
 
 
     def add_new_cases(self,n_samples_to_add):
-        total_cases = self.start_n + n_samples_to_add
-        cprint("Size of {0} dataset: {1}".format(self.split, total_cases), color="green")
-        self.create_dataset(total_cases)
-        self.create_dataloader()
+        ids = self.data_df.index[self.data_df["used_in_training"] == False]
+        next_samples = ids[:int(n_samples_to_add)]
+        existing_samples = self.data_df.index[self.data_df["used_in_training"] == True]
+        cprint("Samples to start {0}, samples to add {1}".format(len(existing_samples), len(next_samples)), color="yellow", bold=True)
+        all_samples = np.append(existing_samples, next_samples)
+        self.start_n = all_samples
+        self.create_incremental_datasets(all_samples)
+        self.create_incremental_dataloaders()
+
+    @staticmethod
+    def _norm_name(value) -> str:
+        return Path(str(value)).name
+
+    def add_cases_by_filenames(self, filenames: list[str]) -> list[int]:
+        if filenames is None or len(filenames) == 0:
+            return []
+
+        target = {self._norm_name(fn) for fn in filenames}
+        if len(target) == 0:
+            return []
+
+        unused = self.data_df[self.data_df["used_in_training"] == False].copy()
+        if len(unused) == 0:
+            return []
+
+        image_names = unused["image"].map(self._norm_name) if "image" in unused.columns else pd.Series("", index=unused.index)
+        lm_names = unused["lm"].map(self._norm_name) if "lm" in unused.columns else pd.Series("", index=unused.index)
+        mask = image_names.isin(target) | lm_names.isin(target)
+        selected_idx = list(unused.index[mask])
+        if len(selected_idx) == 0:
+            return []
+
+        existing_samples = self.data_df.index[self.data_df["used_in_training"] == True]
+        all_samples = np.append(existing_samples, selected_idx)
+        self.start_n = all_samples
+        self.create_incremental_datasets(all_samples)
+        self.create_incremental_dataloaders()
+        cprint(
+            "Added {0} scanned cases by filename. Training set now {1}.".format(
+                len(selected_idx), len(all_samples)
+            ),
+            color="yellow",
+            bold=True,
+        )
+        return selected_idx
 
 
 class DataManagerSourceI(DataManagerSource, DataManagerI):
@@ -293,4 +417,51 @@ if __name__ == "__main__":
     tmt = D.train_manager
     tmv.transforms_dict
 
+# %%
+    df = pd.DataFrame(tmt.data)
+    df["in_use"]=False
+    indices = [0,20]
+
+    df.loc[indices, "in_use"] = True
+
+    data = tmt.data_df.iloc[tmt.indices]
+    data[:3].to_dict(orient="records")
+# %%
+    df.loc["in_use"]==True
+    bads = df.index[df["in_use"] == False]
+
+    df.loc[bads]
+# %%
+    df = tmt.data_df
+    ids = df.index[df["used_in_training"] == False]
+
+    df.loc[ids]["in_use"] = False
+
+# %%
+
+    df = pd.DataFrame(
+
+      {"case": ["a", "b", "c", "d"], "used_in_training": [False, False, False, False]}
+    )
+    indices = [0, 2]
+
+# %%
+    print("Initial:")
+    print(df)
+
+# BUGGY pattern (chained assignment) -> often does NOT update original df
+    df_bug = df.copy()
+    df_bug.loc[indices]["used_in_training"] = True
+    print("\nAfter chained assignment df_bug.loc[indices]['used_in_training'] = True:")
+    print(df_bug)
+    print("num_true:", int(df_bug["used_in_training"].sum()))
+
+# CORRECT pattern (single-step assignment) -> updates original df
+    df_ok = df.copy()
+    df_ok.loc[indices, "used_in_training"] = True
+    print("\nAfter direct assignment df_ok.loc[indices, 'used_in_training'] = True:")
+    print(df_ok)
+    print("num_true:", int(df_ok["used_in_training"].sum()))
+# %%
+        
 # %%

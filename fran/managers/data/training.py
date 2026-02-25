@@ -51,10 +51,59 @@ from fran.transforms.misc_transforms import (DummyTransform, LoadTorchDict,
 from fran.utils.folder_names import folder_names_from_plan
 from fran.utils.misc import convert_remapping
 
+from fran.utils.common import PAD_VALUE
 common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 
 tr = ipdb.set_trace
+
+
+def _is_grid_patch_padded(coords, original_spatial_shape) -> bool:
+    """
+    True when a grid patch goes outside original image bounds and required padding.
+    """
+    if coords is None or original_spatial_shape is None:
+        return False
+
+    coords_arr = np.asarray(coords)
+    shape_arr = np.asarray(original_spatial_shape)
+    if coords_arr.ndim != 2 or coords_arr.shape[1] != 2:
+        return False
+    if coords_arr.shape[0] == shape_arr.shape[0] + 1:
+        spatial_coords = coords_arr[1:]
+    else:
+        spatial_coords = coords_arr[: shape_arr.shape[0]]
+
+    starts = spatial_coords[:, 0]
+    stops = spatial_coords[:, 1]
+    return bool(np.any(starts < 0) or np.any(stops > shape_arr))
+
+
+class PatchIterdWithPaddingFlag:
+    """
+    Shim around MONAI PatchIterd that annotates each yielded patch dictionary
+    with `is_padded` based on coords vs original spatial shape.
+    """
+
+    def __init__(self, base_patch_iter: PatchIterd):
+        self.base_patch_iter = base_patch_iter
+
+    def __call__(self, data):
+        # Some transform chains (e.g. RandCropByPosNegLabeld with num_samples=1)
+        # emit a singleton list of dicts. PatchIterd expects a mapping.
+        if isinstance(data, (list, tuple)):
+            inputs = data
+        else:
+            inputs = (data,)
+
+        for item in inputs:
+            for patch_dict, coords in self.base_patch_iter(item):
+                d = dict(patch_dict)
+                d["is_padded"] = _is_grid_patch_padded(
+                    coords=d.get("patch_coords", coords),
+                    original_spatial_shape=d.get("original_spatial_shape"),
+                )
+                yield d, coords
 
 
 def int_to_ratios(n_fg_labels, fgbg_ratio=3):
@@ -347,178 +396,6 @@ class DataManagerMulti(DataManagerDual):
                 )
 
         return mode_to_class[train_mode], mode_to_class[valid_mode], mode_to_class[test_mode]
-
-# class DataManagerMulti(LightningDataModule):
-#     """
-#     A higher-level DataManager that manages separate training and validation DataManagers
-#     """
-#
-#     def __init__(
-#         self,
-#         project_title,
-#         configs: dict,
-#         batch_size: int,
-#         cache_rate=0.0,
-#         device="cuda",
-#         ds_type=None,
-#         save_hyperparameters=True,
-#         keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
-#         keys_val = "L,Remap,Ld,E,N,Rva, ResizePC",
-#         keys_test = "L,E,N,Remap,ResizeP",
-#         data_folder: Optional[str | Path] = None,
-#     ):
-#         super().__init__()
-#         self.project = Project(project_title)
-#         self.configs = configs
-#         self._batch_size = batch_size
-#         self.cache_rate = cache_rate
-#         self.device = device
-#         self.ds_type = ds_type
-#         self.keys_tr = keys_tr
-#         self.keys_val = keys_val
-#         self.keys_test = keys_test
-#         self.data_folder = data_folder if data_folder is not None else None
-#
-#         if save_hyperparameters:
-#             self.save_hyperparameters(
-#                 "project_title", "configs", logger=False
-#             )  # logger = False otherwise it clashes with UNet Manager
-#
-#     def prepare_data(self):
-#         """Prepare both training and validation data"""
-#
-#         manager_class_train, manager_class_valid , manager_class_test = self.infer_manager_classes(
-#             self.configs
-#         )
-#
-#         # Create separate managers for training and validation
-#         self.train_manager = manager_class_train(
-#             project=self.project,
-#             configs=self.configs,
-#             batch_size=self.batch_size,
-#             cache_rate=self.cache_rate,
-#             split="train",
-#             device=self.device,
-#             ds_type=self.ds_type,
-#             keys=self.keys_tr,
-#             data_folder=self.data_folder,
-#         )
-#
-#         self.valid_manager = manager_class_valid(
-#             project=self.project,
-#             configs=self.configs,
-#             batch_size=self.batch_size,
-#             cache_rate=self.cache_rate,
-#             device=self.device,
-#             ds_type=self.ds_type,
-#             split="valid",
-#             keys=self.keys_val,
-#             data_folder=self.data_folder,
-#         )
-#         self.test_manager = manager_class_test(
-#             project=self.project,
-#             configs=self.configs,
-#             batch_size=self.batch_size,
-#             cache_rate=0,
-#             device=self.device,
-#             ds_type=None,
-#             split="test",
-#             keys=self.keys_test,
-#             data_folder=self.data_folder,
-#         )
-#
-#         self.train_manager.prepare_data()
-#         self.valid_manager.prepare_data()
-#         self.test_manager.prepare_data()
-#
-#     def setup(self, stage=None):
-#         """Set up both managers"""
-#         self.train_manager.setup(stage)
-#         self.valid_manager.setup(stage)
-#         self.test_manager.setup(stage)
-#         # Create separate managers for training and validation
-#
-#     def train_dataloader(self):
-#         """Return training dataloader"""
-#         return self.train_manager.dl
-#
-#     def val_dataloader(self):
-#         """Return validation dataloader"""
-#         return [self.valid_manager.dl, self.test_manager.dl]
-#
-#     def test_dataloader(self):
-#         """Return test dataloader"""
-#         return self.test_manager.dl
-#
-#     @property
-#     def train_ds(self):
-#         """Access to training dataset"""
-#         return self.train_manager.ds
-#
-#     @property
-#     def valid_ds(self):
-#         """Access to validation dataset"""
-#         return self.valid_manager.ds
-#
-#     @property
-#     def test_ds(self):
-#         """Access to test dataset"""
-#         return self.test_manager.ds
-#
-#     def infer_manager_classes(self, configs):
-#         """
-#         Infer the appropriate DataManager class based on the mode in config
-#
-#         Args:
-#             config (dict): Configuration dictionary containing plan_train and plan_valid
-#
-#         Returns:
-#             class: The appropriate DataManager class
-#
-#         Raises:
-#             AssertionError: If train and valid modes don't match
-#             ValueError: If mode is not recognized
-#         """
-#         train_mode = configs["plan_train"]["mode"]
-#         valid_mode = configs["plan_valid"]["mode"]
-#         test_mode = configs["plan_test"]["mode"]
-#
-#         # Ensure train and valid modes match
-#         # Map modes to manager classes
-#         mode_to_class = {
-#             "source": DataManagerSource,
-#             "whole": DataManagerWhole,
-#             "patch": DataManagerPatch,
-#             "lbd": DataManagerLBD,
-#             "baseline": DataManagerBaseline,
-#             "pbd": DataManagerWID,
-#         }
-#
-#         if train_mode not in mode_to_class:
-#             raise ValueError(
-#                 f"Unrecognized mode: {train_mode}. Must be one of {list(mode_to_class.keys())}"
-#             )
-#
-#         return mode_to_class[train_mode], mode_to_class[valid_mode], mode_to_class[test_mode]
-#
-#     @property
-#     def batch_size(self) -> int:
-#         return self._batch_size
-#
-#     @batch_size.setter
-#     def batch_size(self, v: int) -> None:
-#         v = int(v)
-#         if v == getattr(self, "_batch_size", None):
-#             return
-#         self._batch_size = v
-#
-#         # only propagate if managers already exist
-#         if hasattr(self, "train_manager"):
-#             for m in (self.train_manager, self.valid_manager, self.test_manager):
-#                 m.batch_size = v
-#                 m.set_effective_batch_size()
-#                 m.create_dataloader()  # must rebuild m.dl
-#
 
 class DataManager(LightningDataModule):
     def __init__(
@@ -991,9 +868,10 @@ class DataManager(LightningDataModule):
             cache_dir=self.cache_folder,
         )
         patch_iter = PatchIterd(
-            keys=["image", "lm"], patch_size=self.plan["patch_size"], mode="constant"
+            keys=["image", "lm"], patch_size=self.plan["patch_size"], mode="constant", constant_values=PAD_VALUE
         )
-        ds = GridPatchDataset(data=ds1, patch_iter=patch_iter)
+        patch_iter = PatchIterdWithPaddingFlag(patch_iter)
+        ds = GridPatchDataset(data=ds1, patch_iter=patch_iter, with_coordinates=False)
         return ds
 
     @property
@@ -1437,7 +1315,6 @@ if __name__ == "__main__":
     CB.setup(1)
     config_bones = CB.configs
 # %%
-# %%
     proj_nodes = Project(project_title="nodes")
     CN = ConfigMaker(
         proj_nodes,
@@ -1464,8 +1341,8 @@ if __name__ == "__main__":
     D.setup()
     tmv = D.valid_manager
     tmt = D.train_manager
-    tme = D.test_manager
     tmv.transforms_dict
+    tme = D.test_manager
 # %%
     dl = D.val_dataloader()
     dl = D.train_dataloader()

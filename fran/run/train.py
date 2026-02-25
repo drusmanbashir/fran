@@ -68,26 +68,29 @@ def main(args):
         # --- Trainer --------------------------------------------------------------
         print_device_info()
         if args.incremental:
-            inc = IncrementalTrainer(project_title=P.project_title, configs=conf)
-            out = inc.run(
-                initial_samples_n=args.initial_samples,
-                add_samples_y=args.add_samples,
-                epochs_per_stage=args.stage_epochs,
-                max_stages=args.max_stages,
-                selection_threshold=args.selection_threshold,
-                neptune=args.neptune,
-                devices=devices,
-                batch_size=args.batch_size,
-                lr=args.lr,
-                min_lr_to_continue=args.min_lr_to_continue,
-                w_dice=args.w_dice,
-                w_uncertainty=args.w_uncertainty,
-                w_diversity=args.w_diversity,
-                run_id=args.inc_run_id,
-                periodic_test=args.periodic_test,
-                early_stopping_patience=args.early_stopping_patience,
+            inc = IncrementalTrainer(
+                project_title=P.project_title,
+                configs=conf,
+                run_name=args.run_name,
             )
-            headline(f"Incremental training completed: {out}")
+            inc.setup(
+                compiled=args.compiled,
+                batch_size=args.batch_size,
+                cbs=cbs,
+                devices=devices,
+                epochs=args.epochs if not args.profiler else 1,
+                lr=args.lr,
+                profiler=args.profiler,
+                wandb=args.neptune,
+                description=args.description,
+                batchsize_finder=args.batchsize_finder,
+                periodic_test=args.periodic_test,
+                start_n=args.initial_samples,
+                n_samples_to_add=args.add_samples,
+            )
+            inc.N.compiled = args.compiled
+            inc.fit()
+            headline("Incremental training completed")
             return
 
         Tm = Trainer(project_title=P.project_title, configs=conf, run_name=args.run_name)
@@ -184,16 +187,6 @@ if __name__ == "__main__":
     parser.add_argument("--incremental", type=str2bool, default=False, help="Enable incremental curriculum training loop")
     parser.add_argument("--initial-samples", type=int, default=32, help="Initial number of train cases")
     parser.add_argument("--add-samples", type=int, default=16, help="Number of cases to add per stage")
-    parser.add_argument("--stage-epochs", type=int, default=150, help="Max epochs per incremental stage")
-    parser.add_argument("--max-stages", type=int, default=10, help="Maximum incremental stages")
-    parser.add_argument("--selection-threshold", type=float, default=0.7, help="Add only cases with Dice <= threshold")
-    parser.add_argument("--w-dice", type=float, default=0.5, help="Combined score weight for Dice difficulty (1-Dice)")
-    parser.add_argument("--w-uncertainty", type=float, default=0.3, help="Combined score weight for predictive uncertainty")
-    parser.add_argument("--w-diversity", type=float, default=0.2, help="Combined score weight for diversity")
-    parser.add_argument("--min-lr-to-continue", type=float, default=None, help="Stop incremental loop once LR reaches this floor")
-    parser.add_argument("--inc-run-id", default=None, help="Optional run id for curriculum logs")
-    parser.add_argument("--early-stopping-patience", type=int, default=20, help="Patience for stage-wise early stopping")
-
     args = parser.parse_known_args()[0]
 # %%
     # args.fold = 1
