@@ -791,7 +791,7 @@ class DataManager(LightningDataModule):
         return data_folder
 
     def create_dataloader(self):
-        shuffle = True if self.split == "train" else False
+        shuffle = True if self.split == "train1" else False
         if isinstance(self.ds, GridPatchDataset):
             num_workers = 0
             persistent_workers = False

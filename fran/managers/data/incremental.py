@@ -1,5 +1,61 @@
 # %%
+
 from __future__ import annotations
+from __future__ import annotations
+import os
+import re
+import pandas as pd
+from pathlib import Path
+from typing import Optional, Tuple
+
+from lightning.pytorch import LightningDataModule
+
+
+from functools import reduce
+from operator import add
+from pathlib import Path
+from typing import Optional
+
+import ipdb
+import numpy as np
+import torch
+from fastcore.basics import listify, operator, warnings
+from lightning import LightningDataModule
+from monai.data import DataLoader, Dataset, GridPatchDataset, PatchIterd
+from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
+from monai.transforms.compose import Compose
+from monai.transforms.croppad.dictionary import (RandCropByPosNegLabeld,
+                                                 RandSpatialCropSamplesD,
+                                                 ResizeWithPadOrCropd, SpatialPadd)
+from monai.transforms.intensity.dictionary import (RandAdjustContrastd,
+                                                   RandScaleIntensityd,
+                                                   RandShiftIntensityd)
+from monai.transforms.io.dictionary import LoadImaged
+from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
+from monai.transforms.transform import MapTransform, RandomizableTransform
+from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
+                                                 MapLabelValued, ToDeviceD)
+from tqdm.auto import tqdm as pbar
+from utilz.fileio import load_dict, load_yaml
+from utilz.helpers import (find_matching_fn, project_title_from_folder, resolve_device)
+from utilz.imageviewers import ImageMaskViewer
+from utilz.stringz import ast_literal_eval, headline, info_from_filename, strip_extension
+
+from fran.configs.parser import ConfigMaker, is_excel_None
+from fran.data.collate import as_is_collated, grid_collated, patch_collated, source_collated, whole_collated
+from fran.data.dataset import NormaliseClipd, fg_in_bboxes
+from fran.managers.project import Project
+from fran.preprocessing.helpers import bbox_bg_only
+from fran.transforms.imageio import LoadTorchd, TorchReader
+from fran.transforms.intensitytransforms import RandRandGaussianNoised
+from fran.transforms.misc_transforms import (DummyTransform, LoadTorchDict,
+                                             MetaToDict)
+from fran.utils.folder_names import folder_names_from_plan
+from fran.utils.misc import convert_remapping
+
+from fran.utils.common import PAD_VALUE
+common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
+COMMON_PATHS = load_yaml(common_vars_filename)
 
 from torch.utils.data import DataLoader
 from fran.data.collate import grid_collated
@@ -12,6 +68,7 @@ from monai.data.grid_dataset import GridPatchDataset, PatchIterd
 import pandas as pd
 import os
 import numpy as np
+from dataclasses import dataclass, replace
 
 from pathlib import Path
 from typing import Optional, Tuple
@@ -62,7 +119,7 @@ class DataManagerDualI(DataManagerDual):
         keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
         keys_val="L,Remap,Ld,E,N,Rva, ResizePC",
         data_folder: Optional[str | Path] = None,
-        start_n: int = 40,
+        train1_indices: int|list = 40,
         loss_threshold: float = 0.6,
     ):
         super().__init__(
@@ -77,86 +134,104 @@ class DataManagerDualI(DataManagerDual):
             keys_val=keys_val,
             data_folder=data_folder,
         )
-        self.start_n = start_n
+        self.train1_indices = train1_indices
         self.loss_threshold = loss_threshold
 
-    def _build_managers(self):
-        super()._build_managers()
-        if hasattr(self.train_manager, "start_n"):
-            self.train_manager.start_n = self.start_n
 
-    def infer_manager_classes(self, configs) -> Tuple[type, type]:
-        train_mode = configs["plan_train"]["mode"]
-        valid_mode = configs["plan_valid"]["mode"]
-        mode_to_class = _mode_to_class()
-        for mode in (train_mode, valid_mode):
-            if mode not in mode_to_class:
-                raise ValueError(
-                    f"Unrecognized mode: {mode}. Must be one of {list(mode_to_class.keys())}"
-                )
-        return mode_to_class[train_mode], mode_to_class[valid_mode]
+    def prepare_data(self):
+        train_dicts = self.create_data_dicts(train_cases,True)
+        self.train_df = pd.DataFrame(train_dicts)
+        self.train_df["case_id"] = self.train_df["image"].apply(case_id_from_col)
+        self.train_df["used_in_training"] = False
+        if isinstance(train1_indices,int):
+            train1_indices = range(train1_indices)
+        self.train_df.iloc[train1_indices, self.train_df.columns.get_loc("used_in_training")] = True
+        train1_dicts = self.train_df.iloc[train1_indices].to_dict("records")
+        train2_dicts = self.train_df[self.train_df["used_in_training"] == False].to_dict("records")
+        
+
+        valid_dicts = self.create_data_dicts(valid_cases, False)
+
+        self.data_train1, self.data_train2, self.data_valid = train1_dicts, train2_dicts, valid_dicts
+        self._build_managers()
 
 
-class DataManagerMultiI(DataManagerMulti):
-    def __init__(
-        self,
-        project_title,
-        configs: dict,
-        batch_size: int,
-        cache_rate=0.0,
-        device="cuda",
-        ds_type=None,
-        save_hyperparameters=True,
-        keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
-        keys_val="L,Remap,Ld,E,N,Rva, ResizePC",
-        keys_test="L,E,N,Remap,ResizeP",
-        data_folder: Optional[str | Path] = None,
-        start_n: int = 40,
-    ):
-        super().__init__(
-            project_title=project_title,
-            configs=configs,
-            batch_size=batch_size,
-            cache_rate=cache_rate,
-            device=device,
-            ds_type=ds_type,
-            save_hyperparameters=save_hyperparameters,
-            keys_tr=keys_tr,
-            keys_val=keys_val,
-            keys_test=keys_test,
-            data_folder=data_folder,
-        )
-        self.start_n = start_n
 
     def _build_managers(self):
-        super()._build_managers()
-        if hasattr(self.train_manager, "start_n"):
-            self.train_manager.start_n = self.start_n
 
-    def infer_manager_classes(self, configs) -> Tuple[type, type, type]:
-        train_mode = configs["plan_train"]["mode"]
-        valid_mode = configs["plan_valid"]["mode"]
-        test_mode = configs["plan_test"]["mode"]
-        mode_to_class = _mode_to_class()
-        for mode in (train_mode, valid_mode, test_mode):
-            if mode not in mode_to_class:
-                raise ValueError(
-                    f"Unrecognized mode: {mode}. Must be one of {list(mode_to_class.keys())}"
-                )
-        return (
-            mode_to_class[train_mode],
-            mode_to_class[valid_mode],
-            mode_to_class[test_mode],
+        train_mode = self.configs["plan_train"]["mode"]
+        valid_mode = self.configs["plan_valid"]["mode"]
+        tm1_spec  = DataManagerModes.by_mode(train_mode, split="train1")
+        tm2_spec  = DataManagerModes.by_mode(train_mode, split="train2")
+        val_spec  = DataManagerModes.by_mode(valid_mode,split="valid")
+
+
+        self.train_manager1 = tm1_spec.manager_cls(
+            project=self.project,
+            configs=self.configs,
+            collate_fn = tm1_spec.collate_fn_type,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="train1",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_tr,
+            data_folder=self.data_folder,
+        )
+        self.train_manager2 = tm2_spec.manager_cls(
+            project=self.project,
+            collate_fn = tm2_spec.collate_fn_type,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="train2",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_val,
+            data_folder=self.data_folder,
+            configs=self.configs,
+        )
+        self.valid_manager = val_spec.manager_cls(
+            project=self.project,
+            configs=self.configs,
+            collate_fn = val_spec.collate_fn_type,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="valid",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_val,
+            data_folder=self.data_folder,
         )
 
-    # def train_dataloader(self):
-    #     return self.train_manager.dl
+            
+
+    def create_data_dicts(self, fnames, training:bool):
+        split = "train" if training else "valid"
+        fnames = [strip_extension(fn) for fn in fnames]
+        fnames = [fn + ".pt" for fn in fnames]
+        fnames = fnames
+        images_fldr = self.data_folder / ("images")
+        lms_fldr = self.data_folder / ("lms")
+        images = list(images_fldr.glob("*.pt"))
+        data = []
+        # for fn in fnames[400:432]:
+        for fn in pbar(fnames):
+            fn = Path(fn)
+            img_fn = find_matching_fn(fn.name, images, ["all"])[0]
+            lm_fn = find_matching_fn(fn.name, lms_fldr, ["all"])[0]
+            assert img_fn.exists(), "Missing image {}".format(img_fn)
+            assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
+            dici = {"image": img_fn, "lm": lm_fn, "split": split}
+            data.append(dici)
+        return data
+
 
 class DataManagerI(DataManager):
     def __init__(
         self,
         project,
         configs: dict,
+        collate_fn,
         batch_size=8,
         cache_rate=0.0,
         device="cuda:0",
@@ -164,8 +239,8 @@ class DataManagerI(DataManager):
         split="train",
         save_hyperparameters=False,
         keys=None,
+        
         data_folder: Optional[str | Path] = None,
-        start_n: int = 40,
     ):
         super().__init__(
             project=project,
@@ -179,7 +254,6 @@ class DataManagerI(DataManager):
             keys=keys,
             data_folder=data_folder,
         )
-        self.start_n = start_n
 
 
     def prepare_data(self):
@@ -366,17 +440,87 @@ class DataManagerBaselineI(DataManagerBaseline, DataManagerI):
     pass
 
 
-def _mode_to_class():
-    return {
-        "source": DataManagerSourceI,
-        "sourcepatch": DataManagerPatchI,
-        "whole": DataManagerWholeI,
-        "patch": DataManagerPatchI,
-        "lbd": DataManagerLBDI,
-        "baseline": DataManagerBaselineI,
-        "pbd": DataManagerWIDI,
+@dataclass(frozen=True)
+class DataManagerModeSpec:
+    mode: str
+    manager_cls: type
+    collate_fn_type: str
+
+
+class DataManagerModes:
+    SOURCE = DataManagerModeSpec(
+        mode="source",
+        manager_cls=DataManagerSourceI,
+        collate_fn_type="source_collated",
+    )
+    SOURCEPATCH = DataManagerModeSpec(
+        mode="sourcepatch",
+        manager_cls=DataManagerPatchI,
+        collate_fn_type="patch_collated",
+    )
+    WHOLE = DataManagerModeSpec(
+        mode="whole",
+        manager_cls=DataManagerWholeI,
+        collate_fn_type="whole_collated",
+    )
+    PATCH = DataManagerModeSpec(
+        mode="patch",
+        manager_cls=DataManagerPatchI,
+        collate_fn_type="patch_collated",
+    )
+    LBD = DataManagerModeSpec(
+        mode="lbd",
+        manager_cls=DataManagerLBDI,
+        collate_fn_type="source_collated",
+    )
+    BASELINE = DataManagerModeSpec(
+        mode="baseline",
+        manager_cls=DataManagerBaselineI,
+        collate_fn_type="whole_collated",
+    )
+    PBD = DataManagerModeSpec(
+        mode="pbd",
+        manager_cls=DataManagerWIDI,
+        collate_fn_type="source_collated",
+    )
+
+    _BY_MODE = {
+        SOURCE.mode: SOURCE,
+        SOURCEPATCH.mode: SOURCEPATCH,
+        WHOLE.mode: WHOLE,
+        PATCH.mode: PATCH,
+        LBD.mode: LBD,
+        BASELINE.mode: BASELINE,
+        PBD.mode: PBD,
     }
 
+    @classmethod
+    def by_mode(cls, mode: str, split: Optional[str] = None) -> DataManagerModeSpec:
+        try:
+            spec = cls._BY_MODE[mode]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unrecognized mode: {mode}. Must be one of {list(cls._BY_MODE.keys())}"
+            ) from exc
+        if split in {"test", "train2"}:
+            return replace(spec, collate_fn_type="grid_collated")
+        return spec
+
+
+def _mode_to_spec():
+    return DataManagerModes._BY_MODE.copy()
+
+
+def _mode_to_class():
+    return {mode: spec.manager_cls for mode, spec in _mode_to_spec().items()}
+
+def case_id_from_col(filename):
+    if isinstance(filename, str):
+        filename_name = filename.split("/")[-1]
+    else:
+        filename_name= filename.name
+    inf = info_from_filename(filename_name)
+    return inf["case_id"]
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
@@ -411,17 +555,21 @@ if __name__ == "__main__":
         ds_type=ds_type,
     )
 # %%
-    D.start_n
+    D.train1_indices
     D.prepare_data()
     D.setup()
 
     tm = D.train_manager
 
 # %%
+    train1_indices= 40
+# %%
     train_cases, valid_cases = tm.project.get_train_val_files(
             tm.dataset_params["fold"], tm.plan["datasources"]
         )
 
+
+# %%
 # %%
     D.prepare_data()
     D.setup()
@@ -475,5 +623,6 @@ if __name__ == "__main__":
     print(df_ok)
     print("num_true:", int(df_ok["used_in_training"].sum()))
 # %%
-        
+   spec = DataManagerModes.by_mode("patch", split="train1")
+   print(spec.collate_fn_type)  # patch_collated       
 # %%
