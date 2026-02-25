@@ -313,7 +313,7 @@ class DeepSupervisionLoss(pl.LightningModule):
             self.loss_dict[f"loss_dice_label{i}"] = loss.item() if torch.is_tensor(loss) else loss
         for batch_ind in range(bs):
             self.loss_dict[f"batch{batch_ind}_filename"] = filenames[batch_ind]
-            self.loss_dict[f"batch{batch_ind}_caseid"] = case_ids[batch_ind]
+            self.loss_dict[f"batch{batch_ind}_case_id"] = case_ids[batch_ind]
             for class_ind in range(num_classes):
                 val = per_case_class[batch_ind][class_ind]
                 self.loss_dict[f"loss_dice_batch{batch_ind}_label{class_ind}"] = val.item() if torch.is_tensor(val) else val

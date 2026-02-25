@@ -118,10 +118,7 @@ class UpdateDatasetOnPlateau(Callback):
         cir = [cb for cb in trainer.callbacks if isinstance(cb, CaseIDRecorder)][0]
         cir.reset()
         cir.incrementing = True
-        dm = trainer.datamodule
-        dl = dm.train_manager.dl2
-        cprint("Running a validation epoch on remaining training data", color="yellow", bold=True)
-        trainer.validate(model=pl_module, dataloaders=dl)
+        trainer.should_stop=True
 
     def _reset(self):
         self.wait_count = 0
@@ -152,9 +149,10 @@ class UpdateDatasetOnPlateau(Callback):
         if trainer.current_epoch < self.grace:
             return
         current = trainer.callback_metrics[self.monitor]
-        if trainer.current_epoch % 5 == 0:
+        if trainer.current_epoch >0 and trainer.current_epoch % 5 == 0:
             self._start_scan_cycle(trainer, pl_module)
             if self.verbose:
+                print("trainer.current_epoch", trainer.current_epoch)
                 print(
                     f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
                     f"switching to train dataloader 1 for scan"

@@ -1,6 +1,7 @@
 # %%
 import shutil
-from utilz.helpers import set_autoreload
+from tqdm.auto import tqdm as pbar
+from utilz.helpers import info_from_filename, set_autoreload
 from typing import Optional
 
 import ipdb
@@ -283,8 +284,9 @@ class IncrementalTrainer (TrainerBK):
             log_incremental_to_wandb = getattr(self, "_log_incremental_to_wandb", False)
 
         cbs += [
-            CaseIDRecorder(freq=10),
+            CaseIDRecorder(freq=4),
             UpdateDatasetOnPlateau(
+                monitor = "train_loss_dice_label1",
                 n_samples_to_add=30,
                 log_to_wandb=bool(log_incremental_to_wandb),
             ),
@@ -526,6 +528,12 @@ if __name__ == "__main__":
     iteri = iter(dl)
     b = next(iteri)
 # %%
+
+    dm = trainer.datamodule
+    dl = dm.train_manager.dl2
+    cprint("Running a validation epoch on remaining training data", color="yellow", bold=True)
+    trainer.validate(model=pl_module, dataloaders=dl)
+# %%
     N = Tm.N
     aa = N._common_step(b,0)
 
@@ -576,20 +584,61 @@ if __name__ == "__main__":
 
 # %%
     dl = Tm.D.train_dataloader()
-    dlv = Tm.D.valid_dataloader()
     iteri = iter(dlt)
     # Tm.N.model.to('cpu')
 # %%
-    trainer = Tm.trainer
-    model = Tm.N
-    dlv = Tm.D.train_manager.dl2
-    trainer.validate(model=model, dataloaders= dlv)
-    trainer.test(model=model, dataloaders= dlv)
 
     model.loss_dict_full
+    trainer = Tm.trainer
     cir = [cb for cb in trainer.callbacks if isinstance(cb, CaseIDRecorder)][0]
+    cir.dfs['train'].to_csv("train1.csv")
+    cir.dfs['valid'].to_csv("valid1.csv")
+
+    # cir.reset()
+    
+    Tm.D.prepare_data()
+    Tm.D.setup(stage="fit")
+# %%
+    model = Tm.N
+    dlv = Tm.D.train_dataloader()
+
+    trainer.validate(model=model, dataloaders= dlv)
+    cids1=[]
+    dl1 = Tm.D.train_manager.dl
+# %%
+    cir.dfs['train2'].to_csv("train2.csv")
+# %%
+    for b in pbar(dl1):
+        meta  = b["image"].meta
+        fns = meta["filename_or_obj"]
+        for fn in fns:
+            fn_name = fn.split("/")[-1]
+            cids1.append(info_from_filename(fn_name, full_caseid=True)["case_id"])
+    cids1 = set(cids1)
+# %%
+    cids2=[]
+    dl2 = Tm.D.train_manager.dl2
+    for b in pbar(dl2):
+        meta  = b["image"].meta
+        fns = meta["filename_or_obj"]
+        for fn in fns:
+            fn_name = fn.split("/")[-1]
+            cids2.append(info_from_filename(fn_name, full_caseid=True)["case_id"])
+    cids2 = set(cids2)
+# %%
+    cids1 = set(cids1)
+    cids2 = set(cir.dfs['train']['caseid'])
+    cids3 = set(cir.dfs['valid']['caseid'])
+    cids1 == cids2
+
+    iteri = iter(dlv)
+    cir.dfs["train2"]
+    cids = set(cir.dfs['train2']['caseid'])
+    cids2 = set(cir.dfs['train']['caseid'])
+    cids3 = set(cir.dfs['valid']['caseid'])
 
 # %%
+
     iteri = iter(dlv)
     
     batch = next(iteri)

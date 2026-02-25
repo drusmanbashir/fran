@@ -74,8 +74,7 @@ class CaseIDRecorder(Callback):
     
 
     def on_validation_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        cprint("case recorder ", color = "yellow",bold=True)
-        if trainer.current_epoch % self.freq == 0:
+        if trainer.current_epoch >0 and trainer.current_epoch % self.freq == 0 or self.incrementing==True:
             self.store_results(trainer)
             self.reset()
 
@@ -85,7 +84,7 @@ class CaseIDRecorder(Callback):
             df_final = self.pivot_batch_cols(mini_df)
             val_vars  = [var for var in df_final.columns if "dice" in var]
             df_long = df_final.melt(
-                  id_vars="caseid",
+                  id_vars="case_id",
                   value_vars=val_vars,
                   var_name="label",
                   value_name="loss_dice"
@@ -145,7 +144,7 @@ class CaseIDRecorder(Callback):
     def create_plotly(self, df_long):
             fig = px.box(
                   df_long,
-                  x="caseid",
+                  x="case_id",
                   y="loss_dice",
                   facet_col="label",      # separate box plot per label
                   color="label",

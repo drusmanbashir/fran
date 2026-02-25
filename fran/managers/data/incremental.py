@@ -242,7 +242,8 @@ class DataManagerI(DataManager):
         cprint("Size of leftover dataset: {0}".format(len(data2)), color="green")
         print(f"[DEBUG] Example case: {self.cases[0] if self.cases else 'None'}")
 
-        ds1 = Dataset(data=data1, transform=self.transforms)
+        #BUG: self.transforms should be same as valid transforms however
+        ds1 = Dataset(data=data2, transform=self.transforms)
 
         dstmp = Dataset(
                     data=data1,
