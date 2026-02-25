@@ -409,6 +409,7 @@ class DataManager(LightningDataModule):
         split="train",  # Add sp,lit parameter
         save_hyperparameters=False,
         keys=None,
+        collate_fn = None,
         data_folder: Optional[str | Path] = None,
     ):
 
@@ -425,8 +426,8 @@ class DataManager(LightningDataModule):
         self.ds_type = ds_type
         self.split = split
         self.keys = keys
+        self.set_plan()
 
-        self.plan = configs[f"plan_{split}"]
         self.maybe_fix_remapping_dtype()
         global_properties = load_dict(project.global_properties_filename)
         self.dataset_params = configs["dataset_params"]
@@ -441,7 +442,7 @@ class DataManager(LightningDataModule):
         # self.ds_type = ds_type
         self.set_effective_batch_size()
         if data_folder is None:
-            self.data_folder = self.derive_data_folder(mode=self.plan["mode"])
+            self.data_folder = self.derive_data_folder(mode=self.plan)
         else:
             self.data_folder = Path(data_folder)
             assert (
@@ -450,17 +451,32 @@ class DataManager(LightningDataModule):
         # self.data_folder = self.derive_data_folder(mode=self.plan["mode"])
         self.assimilate_tfm_factors(transform_factors)
         # self.keys=keys
-        self.set_collate_fn()
+        self.set_collate_fn(collate_fn)
 
     def maybe_fix_remapping_dtype(self):
         if isinstance (self.plan["remapping_train"], dict):
             self.plan["remapping_train"]= convert_remapping(self.plan["remapping_train"])
 
 
+    def set_plan(self):
+        if "train" in self.split:
+            plan_str = "plan_train"
+        elif "valid" in self.split:
+            plan_str = "plan_valid"
+        elif "test" in self.split:
+            plan_str = "plan_test"
+        else:
+            raise ValueError(f"Unrecognized split: {self.split}")
 
+        self.plan = self.configs[plan_str]
 
-    def set_collate_fn(self):
-        self.collate_fn = None
+    def set_collate_fn(self, collate_fn=None):
+        if collate_fn is not None:
+            self.collate_fn = collate_fn
+        else:
+            self._set_collate_fn()
+
+    def _set_collate_fn(self):
         raise NotImplementedError
 
     def __str__(self):
@@ -781,9 +797,10 @@ class DataManager(LightningDataModule):
             )
         return self.data_folder / (indices_subfolder)
 
-    def derive_data_folder(self, mode):
+    def derive_data_folder(self, plan):
+        mode = plan["mode"]
         key = "data_folder_{}".format(mode)
-        folders = folder_names_from_plan(self.project, self.plan)
+        folders = folder_names_from_plan(self.project, plan)
         data_folder = folders[key]
         data_folder = Path(data_folder)
         if not data_folder.exists() or len(list(data_folder.rglob("*.pt"))) == 0:
@@ -943,7 +960,7 @@ class DataManager(LightningDataModule):
 
 
 class DataManagerSource(DataManager):
-    def set_collate_fn(self):
+    def _set_collate_fn(self):
         if self.split == "test":
             self.collate_fn = grid_collated
         else:
@@ -967,7 +984,7 @@ class DataManagerWhole(DataManagerSource):
         self.keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"
         self.keys_val = "L,E,ResizeW,N"
 
-    def set_collate_fn(self):
+    def _set_collate_fn(self):
             self.collate_fn = whole_collated 
 
     def __str__(self):
@@ -1074,7 +1091,7 @@ class DataManagerPatch(DataManagerSource):
         super().__init__(project, configs, batch_size, **kwargs)
         self.set_tfm_keys()
 
-    def set_collate_fn(self):
+    def _set_collate_fn(self):
         if self.split == "test":
             raise NotImplementedError
         else:

@@ -29,7 +29,6 @@ import torch._dynamo
 
 from fran.managers.data.incremental import (DataManagerBaselineI,
                                             DataManagerDualI, DataManagerLBDI,
-                                            DataManagerMultiI,
                                             DataManagerPatchI,
                                             DataManagerSourceI,
                                             DataManagerWholeI, DataManagerWIDI)
@@ -44,21 +43,6 @@ except:
     pass
 
 import torch
-
-
-def _dm_class_for_periodic_test(periodic_test: int):
-    return DataManagerMultiI if int(periodic_test) > 0 else DataManagerDualI
-
-
-def _dm_class_from_ckpt(ckpt_path: str | Path):
-    """
-    Decide which DM class the checkpoint expects, using datamodule hyperparams.
-    Minimises crash risk when periodic_test differs from the run that created the ckpt.
-    """
-    sd = torch.load(ckpt_path, map_location="cpu")
-    hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
-    # your DMs store keys_test only on Multi
-    return DataManagerMultiI if "keys_test" in hp else DataManagerDualI
 
 
 class IncrementalTrainer (TrainerBK):
@@ -96,11 +80,11 @@ class IncrementalTrainer (TrainerBK):
         early_stopping_patience=30,
         early_stopping_min_delta=0.0,
         lr_floor=None,
-        start_n: int = 40,
+        train1_indices: int = 40,
         wandb_grid_epoch_freq: int = 5,
         log_incremental_to_wandb: bool = True,
     ):
-        self.start_n = start_n
+        self.train1_indices = train1_indices
         self._log_incremental_to_wandb = bool(log_incremental_to_wandb)
         super().setup(
             batch_size=batch_size,
@@ -130,15 +114,15 @@ class IncrementalTrainer (TrainerBK):
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
 
-        DM = _dm_class_for_periodic_test(self.periodic_test)
-        return DM(
+        
+        return DataManagerDualI(
             self.project.project_title,
             configs=self.configs,
             batch_size=self.configs["dataset_params"]["batch_size"],
             cache_rate=cache_rate,
             device=self.configs["dataset_params"].get("device", "cuda"),
             ds_type=ds_type,
-            start_n = self.start_n
+            train1_indices = self.train1_indices
         )
 
     def load_dm(self, batch_size=None, override_dm_checkpoint=False):
@@ -152,15 +136,9 @@ class IncrementalTrainer (TrainerBK):
             shutil.copy(self.ckpt, bckup_ckpt)
             torch.save(sd, self.ckpt)
 
-        # Prefer the class the checkpoint was created with.
-        DM_from_ckpt = _dm_class_from_ckpt(self.ckpt)
-        DM_wanted = _dm_class_for_periodic_test(self.periodic_test)
 
-        # If they disagree, do NOT force DM_wanted; load what the ckpt expects.
-        # That avoids crashes from missing stored hyperparams / attributes.
-        DM = DM_from_ckpt
 
-        D = DM.load_from_checkpoint(
+        D = DataManagerDualI.load_from_checkpoint(
             self.ckpt,
             project_title=self.project.project_title,
             batch_size=batch_size,
@@ -170,12 +148,6 @@ class IncrementalTrainer (TrainerBK):
         if batch_size:
             D.configs["dataset_params"]["batch_size"] = int(batch_size)
 
-        # Optional: warn (but don’t crash) if user asked for periodic testing but ckpt is Dual
-        if (DM_from_ckpt is DataManagerDualI) and (DM_wanted is DataManagerMultiI):
-            headline(
-                "Note: checkpoint datamodule is Dual (no test). periodic_test>0 was requested, "
-                "but DM is loaded from checkpoint to avoid incompatibility."
-            )
 
         return D
 
@@ -505,7 +477,7 @@ if __name__ == "__main__":
         wandb=wandb,
         tags=tags,
         description=description,
-        start_n=10
+        train1_indices=10
     )
 # %%
     # Tm.D.batch_size=8
@@ -521,12 +493,16 @@ if __name__ == "__main__":
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm.D.prepare_data()
-    Tm.D.setup()
+    Tm.D.setup("fit")
     Tm.D.train_manager.keys_tr
     dlv = Tm.D.valid_dataloader()
     dl = Tm.D.train_dataloader()
     iteri = iter(dl)
     b = next(iteri)
+    ds = Tm.D.train_manager1.ds
+    ds[0]
+    tmt = Tm.D.train_manager1
+
 # %%
 
     dm = trainer.datamodule
