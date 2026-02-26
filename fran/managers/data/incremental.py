@@ -156,6 +156,8 @@ class DataManagerDualI(DataManagerDual):
         else: 
             self.data_folder_valid = Path(data_folder_valid)
 
+
+
     def derive_data_folder(self, plan):
         mode = plan["mode"]
         key = "data_folder_{}".format(mode)

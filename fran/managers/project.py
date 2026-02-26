@@ -233,7 +233,7 @@ class Project(DictToAttr):
                 output = list(il.chain.from_iterable(output))
         return output
 
-    def vars_to_sql(self, ds_name, ds_alias, ds_type, img_fn, lm_fn, test):
+    def vars_to_sql(self, ds_name, ds_alias, img_fn, lm_fn, test):
         case_id = info_from_filename(img_fn.name, full_caseid=True)["case_id"]
         fold = "NULL"
         img_sym = self.create_raw_ds_fname(img_fn)
@@ -241,7 +241,6 @@ class Project(DictToAttr):
         cols = (
             ds_name,
             ds_alias,
-            ds_type,
             case_id,
             str(img_fn),
             str(lm_fn),
@@ -262,7 +261,7 @@ class Project(DictToAttr):
         tbl_name = "datasources"
         if not self.table_exists(tbl_name):
             self.sql_alter(
-                "CREATE TABLE {} (ds,alias,ds_type, case_id, image,lm,img_symlink,lm_symlink,fold INTEGER,test)".format(
+                "CREATE TABLE {} (ds,alias,case_id,image,lm,img_symlink,lm_symlink,fold INTEGER,test)".format(
                     tbl_name
                 )
             )
@@ -400,13 +399,12 @@ class Project(DictToAttr):
         ds : Datasource
             Datasource object with verified file pairs.
         """
-        ds_type = getattr(ds, "ds_type")
         strs = [
-            self.vars_to_sql(ds.name, ds.alias, ds_type, *pair, ds.test)
+            self.vars_to_sql(ds.name, ds.alias,  *pair, ds.test)
             for pair in ds.verified_pairs
         ]
         with db_ops(self.db) as cur:
-            cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?,?)", strs)
+            cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?)", strs)
 
     def add_datasources_xnat(self, xnat_proj: str):
         """
@@ -1145,10 +1143,14 @@ if __name__ == "__main__":
     # P.create(mnemonic="nodes")
     # P = Project(project_title="totalseg")
     # P.create("nodes")
-    P = Project(project_title="bones")
+    # P = Project(project_title="bones")
+    P = Project(project_title="lidc2")
     # P.delete()
-    P.create("bones")
-    P.add_data([DS["uls23_bone"]])
+    P.create("lidc")
+    # P.delete()
+    # P.create("bones")
+    P.add_data([DS["lidc"]])
+# %%
     # P.add_data([DS["nodes"], DS["nodesthick"]])
     P.maybe_store_projectwide_properties()
     # P = Project(project_title="totalseg")

@@ -11,6 +11,7 @@ from tqdm.auto import tqdm as pbar
 from utilz.stringz import headline
 
 from fran.callback.case_recorder import CaseIDRecorder
+from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.incremental import UpdateDatasetOnPlateau
 from fran.callback.test import PeriodicTest
 from fran.configs.parser import ConfigMaker
@@ -36,7 +37,7 @@ from fran.managers.data.incremental import (DataManagerBaselineI,
 
 torch._dynamo.config.suppress_errors = True
 
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import BatchSizeFinder, ModelCheckpoint
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
@@ -261,7 +262,7 @@ class IncrementalTrainer (TrainerBK):
         cbs += [
             CaseIDRecorder(freq=10),
             UpdateDatasetOnPlateau(
-                monitor = "train_loss_dice_label1",
+                monitor = "train_loss_dice_epoch",
                 log_to_wandb=bool(log_incremental_to_wandb),
             ),
             # UpdateDatasetOnEMAMomentum(
@@ -389,10 +390,11 @@ class IncrementalTrainer (TrainerBK):
 
     def fit(self, max_restarts= 3):
             self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+            # Only use finder/safety callbacks on the very first fit invocation.
+            self.remove_cbs([BatchSizeFinder, BatchSizeSafetyMargin])
             increment_size = self.data_increment_size
             unused_samples = len(self.D.train_df[self.D.train_df["used_in_training"]==False])
             while unused_samples>0:
-
                 self.trainer.fit(model=self.N, datamodule=self.D)
                 dm = self.D
                 dlv = self.D.train2_dataloader()
@@ -420,16 +422,21 @@ class IncrementalTrainer (TrainerBK):
                 cprint(len(dm.train_df[dm.train_df["used_in_training"]==True]), color="blue", bold=True)
         
             cprint("Full compliment data in used. Removing UpdateDatasetOnPlateau callback", color="blue", bold=True)
-            self.remove_cb(UpdateDatasetOnPlateau)
+            self.remove_cbs([UpdateDatasetOnPlateau])
             cprint("Training will now continue for all  epochs", color="blue", bold=True)
 
             self.trainer.fit(model=self.N, datamodule=self.D)
 
 
-    def remove_cb(self,cb_class):
+    def remove_cbs(self, cb_classes):
+        if not isinstance(cb_classes, (list, tuple, set)):
+            cb_classes = [cb_classes]
+        cb_classes = tuple(cb_classes)
+        matches = [cb for cb in self.trainer.callbacks if isinstance(cb, cb_classes)]
+        if not matches:
+            return
         self.trainer.callbacks = [
-            cb for cb in self.trainer.callbacks
-            if not isinstance(cb, cb_class)
+            cb for cb in self.trainer.callbacks if not isinstance(cb, cb_classes)
         ]
 
     def best_available_checkpoint(self) -> Optional[Path]:
@@ -477,7 +484,7 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- COnfirm plans exist--------------------------------------------------------------------------------------
 
-    device_id = 0
+    device_id = 1
     bs = 4
 
     # run_name ='LITS-1285'
@@ -485,7 +492,7 @@ if __name__ == "__main__":
     profiler = False
     # NOTE: if wandb = False, should store checkpoint locally
     batchsize_finder = True
-    wandb = True
+    wandb = False
     override_dm = False
     tags = []
     description = f"Partially trained up to 100 epochs"
@@ -680,4 +687,11 @@ if __name__ == "__main__":
     df.loc[df["used_in_training"]==True, "image"]
     tmg.create_incremental_dataloaders()
     len(tmg.ds[0])
+# %%
+
+    Tm.trainer.fit(model=Tm.N, datamodule=Tm.D, ckpt_path=Tm.ckpt)
+    D = Tm.D
+    dl = D.train_dataloader()
+    batch = next(iter(dl))
+    batch['image'].shape
 # %%

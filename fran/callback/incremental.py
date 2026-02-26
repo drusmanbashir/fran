@@ -125,20 +125,6 @@ class UpdateDatasetOnPlateau(Callback):
     def on_validation_epoch_start(self, trainer, pl_module) -> None:
         pass
 
-    # def on_train_epoch_end(self, trainer, pl_module):
-    #     if trainer.current_epoch < self.grace:
-    #         return
-    #     current = trainer.callback_metrics[self.monitor]
-    #     if trainer.current_epoch >0 and trainer.current_epoch % 5 == 0:
-    #         self._start_scan_cycle(trainer, pl_module)
-    #         if self.verbose:
-    #             print("trainer.current_epoch", trainer.current_epoch)
-    #             print(
-    #                 f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
-    #                 f"switching to train dataloader 1 for scan"
-    #             )
-    #         self._reset()
-    #
     def on_train_epoch_end(self, trainer, pl_module):
         if trainer.current_epoch < self.grace:
             return

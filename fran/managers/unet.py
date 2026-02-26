@@ -130,6 +130,8 @@ class UNetManager(LightningModule):
         self.log_dict(
             logger_dict,
             logger=True,
+            on_step=True,
+            on_epoch=True,
             batch_size=self.batch_size,
             sync_dist=self.sync_dist,
             add_dataloader_idx=False,

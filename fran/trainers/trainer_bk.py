@@ -187,7 +187,7 @@ class TrainerBK(Trainer):
         if batchsize_finder==True:
             cbs += [
                 BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
-                BatchSizeSafetyMargin(buffer=1),
+                BatchSizeSafetyMargin(),
             ]
 
         if periodic_test > 0:

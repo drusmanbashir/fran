@@ -207,8 +207,7 @@ class DataManagerDual(LightningDataModule):
         if v == getattr(self, "_batch_size", None):
             return
         self._batch_size = v
-        if hasattr(self, "train_manager"):
-            for m in self._iter_managers():
+        for m in self._iter_managers():
                 m.batch_size = v
                 m.set_effective_batch_size()
                 m.create_dataloader()
