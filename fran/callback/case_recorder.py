@@ -131,16 +131,20 @@ class CaseIDRecorder(Callback):
 
 
     def pivot_batch_cols(self,dft):
-        batch_vars  = [var for var in dft.columns if re.search(r"batch.*id", var)] 
-        num_batches = len(batch_vars)
-        dfs = []
-        for n in range(num_batches):
-            batch_var = "batch"+str(n)
-            df1 = dft.loc[:,dft.columns.str.contains(batch_var)]
-            df1.columns= df1.columns.str.replace(batch_var+"_", "")
-            dfs.append(df1)
-        df_final = pd.concat(dfs, axis=0)
-        return df_final
+
+            batch_vars  = [var for var in dft.columns if re.search(r"batch.*id", var)] 
+            dfs = []
+            num_batches = len(batch_vars)
+            for n in range(num_batches):
+                batch_var = "batch"+str(n)+"_"
+                df1 = dft.loc[:,dft.columns.str.contains(batch_var)]
+                df1.columns= df1.columns.str.replace(batch_var, "")
+                print(df1.columns)
+                dfs.append(df1)
+            df_final = pd.concat(dfs, axis=0)
+            df_final.dropna(inplace=True)
+            return df_final
+
 
     def create_plotly(self, df_long):
             fig = px.box(

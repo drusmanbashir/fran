@@ -10,7 +10,7 @@ from utilz.stringz import headline, info_from_filename
 from fran.data.datasource import Datasource, val_indices
 from fran.data.datasource import db_ops
 from fran.data.patch_datasource import PatchDatasource
-from fran.configs.parser import MNEMONICS
+from fran.configs.mnemonics import Mnemonics
 
 tr = ipdb.set_trace
 
@@ -160,7 +160,13 @@ class Project(DictToAttr):
         param datasets: list of datasets to add to raw_data_folder
         param test: list of bool assigning some (or none) as test set(s)
         """
-        assert mnemonic in MNEMONICS, "mnemonic must be one of : {}".format(MNEMONICS)
+        try:
+            mnemonic = Mnemonics.match(mnemonic)
+        except ValueError:
+            allowed = ", ".join(
+                {entry for m in Mnemonics._all for entry in (m.name, *m.aliases)}
+            )
+            raise AssertionError(f"mnemonic must match one of: {allowed}")
 
         assert (
             not self.db.exists()
@@ -1144,7 +1150,7 @@ if __name__ == "__main__":
     # P = Project(project_title="totalseg")
     # P.create("nodes")
     # P = Project(project_title="bones")
-    P = Project(project_title="lidc2")
+    P = Project(project_title="lidc31")
     # P.delete()
     P.create("lidc")
     # P.delete()

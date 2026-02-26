@@ -623,6 +623,43 @@ if __name__ == "__main__":
 
     cir.reset()
     
+    fig = cir.create_plotly(cir.dfs['train'])
+    fig.show()
+# %%
+    df = cir.dfs['train']
+    df.columns
+
+    df = cir.dfs["valid"]
+# %%
+    ld = cir.loss_dicts_train
+    [a.keys() for a in ld]
+# %%
+    df2 = pd.DataFrame(ld)
+    df2.to_csv("tmp.csv")
+
+    mini_df= cir.create_limited_df(ld)
+
+# %%
+
+    import re
+    dft = mini_df
+    batch_vars  = [var for var in dft.columns if re.search(r"batch.*id", var)] 
+# %%
+    dfs = []
+    num_batches = len(batch_vars)
+    for n in range(num_batches):
+        batch_var = "batch"+str(n)+"_"
+        df1 = dft.loc[:,dft.columns.str.contains(batch_var)]
+        df1.columns= df1.columns.str.replace(batch_var, "")
+        print(df1.columns)
+        dfs.append(df1)
+    df_final = pd.concat(dfs, axis=0)
+    df_final.dropna(inplace=True)
+    print(df_final)
+# %%
+    df_final = cir.pivot_batch_cols(mini_df)
+    df_final.to_csv("tmp3.csv")
+# %%
     # Tm.D.prepare_data()
     # Tm.D.setup(stage="fit")
 # %%
