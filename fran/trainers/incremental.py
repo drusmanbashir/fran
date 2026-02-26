@@ -492,7 +492,7 @@ if __name__ == "__main__":
     profiler = False
     # NOTE: if wandb = False, should store checkpoint locally
     batchsize_finder = True
-    wandb = False
+    wandb = True
     override_dm = False
     tags = []
     description = f"Partially trained up to 100 epochs"

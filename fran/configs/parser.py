@@ -1,5 +1,6 @@
 # %%
 import ast
+from dataclasses import dataclass
 import sys
 import warnings
 from typing import Any, Union
@@ -8,6 +9,7 @@ import ipdb
 import numpy as np
 import pandas as pd
 from fastcore.basics import store_attr
+from fran.configs.mnemonics import Mnemonics
 from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
 from utilz.stringz import ast_literal_eval, headline
@@ -16,8 +18,8 @@ from fran.utils.folder_names import (folder_names_from_plan, load_registry,
                                      remapping_conv)
 from fran.utils.string_works import is_excel_None
 
-MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "totalseg", "bones", "pancreas"]
 tr = ipdb.set_trace
+
 
 
 from openpyxl import load_workbook
@@ -350,7 +352,8 @@ class ConfigMaker:
             keep_default_na=False,
             na_values=["TRUE", "FALSE", ""],
         )
-        self.plans = plans.loc[plans["mnemonic"] == configuration_mnemonic]
+        configuration_mnemonic_standardized = Mnemonics.match(configuration_mnemonic)
+        self.plans = plans.loc[plans["mnemonic"] == configuration_mnemonic_standardized]
         self.plans = self.plans.drop(columns=["mnemonic"])
         self.plans.insert(0, "plan_id", self.plans.index)
         self.plans = self.plans.set_index("plan_id", drop=False)
