@@ -48,10 +48,9 @@ class UpdateDatasetOnPlateau(Callback):
         self,
         monitor: str = "val_loss",
         mode: str = "min",
-        min_delta: float = 0.0,
+        min_delta: float = 0.05,
         patience: int = 3,
         grace: int = 0,
-        n_samples_to_add: int = 1,
         datamodule_fn: str = "add_new_cases",
         verbose: bool = True,
         log_to_wandb: bool = False,
@@ -62,7 +61,6 @@ class UpdateDatasetOnPlateau(Callback):
         self.min_delta = float(min_delta)
         self.patience = int(patience)
         self.grace = int(grace)
-        self.n_samples_to_add = int(n_samples_to_add)
         self.datamodule_fn = datamodule_fn
         self.verbose = verbose
         self.log_to_wandb = bool(log_to_wandb)
@@ -127,14 +125,31 @@ class UpdateDatasetOnPlateau(Callback):
     def on_validation_epoch_start(self, trainer, pl_module) -> None:
         pass
 
-    def on_train_epoch_end_real(self, trainer, pl_module):
+    # def on_train_epoch_end(self, trainer, pl_module):
+    #     if trainer.current_epoch < self.grace:
+    #         return
+    #     current = trainer.callback_metrics[self.monitor]
+    #     if trainer.current_epoch >0 and trainer.current_epoch % 5 == 0:
+    #         self._start_scan_cycle(trainer, pl_module)
+    #         if self.verbose:
+    #             print("trainer.current_epoch", trainer.current_epoch)
+    #             print(
+    #                 f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
+    #                 f"switching to train dataloader 1 for scan"
+    #             )
+    #         self._reset()
+    #
+    def on_train_epoch_end(self, trainer, pl_module):
         if trainer.current_epoch < self.grace:
             return
         current = trainer.callback_metrics[self.monitor]
+
         if self._is_improvement(current):
+            cprint("Best score : {0}, current : {1}, imp: True".format(self.best_score, current), color= "red")
             self.best_score = current
             self.wait_count = 0
         else:
+            cprint("Best score : {0}, current : {1}, imp: False, wait_count: {2}".format(self.best_score, current, self.wait_count), color= "red")
             self.wait_count += 1
             if self.wait_count >= self.patience:
                 self._start_scan_cycle(trainer, pl_module)
@@ -144,20 +159,6 @@ class UpdateDatasetOnPlateau(Callback):
                         f"switching to train dataloader 1 for scan"
                     )
                 self._reset()
-
-    def on_train_epoch_end(self, trainer, pl_module):
-        if trainer.current_epoch < self.grace:
-            return
-        current = trainer.callback_metrics[self.monitor]
-        if trainer.current_epoch >0 and trainer.current_epoch % 5 == 0:
-            self._start_scan_cycle(trainer, pl_module)
-            if self.verbose:
-                print("trainer.current_epoch", trainer.current_epoch)
-                print(
-                    f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
-                    f"switching to train dataloader 1 for scan"
-                )
-            self._reset()
 
 
 class UpdateDatasetOnEMAMomentum(Callback):

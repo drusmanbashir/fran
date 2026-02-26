@@ -10,6 +10,7 @@ from fran.transforms.inferencetransforms import BBoxFromPTd
 from fran.transforms.misc_transforms import (ApplyBBox, LabelRemapSITKd,
                                              MergeLabelmapsd, Recastd)
 from fran.transforms.spatialtransforms import ResizeToTensord
+from fran.utils.folder_names import folder_names_from_plan
 
 tr = ipdb.set_trace
 
@@ -325,13 +326,13 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    project_title = "nodes"
+    project_title = "lidc"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
-    C = ConfigMaker(P,  configuration_filename=None)
-    C.setup(2)
+    C = ConfigMaker(P)
+    C.setup(1)
 
 # %%
 
@@ -345,14 +346,17 @@ if __name__ == "__main__":
     plan["expand_by"]
 # %%
 # SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    resampled_data_folder = folder_names_from_plan(P, plan)[
+            "data_folder_source"
+        ]
+
     L = LabelBoundedDataGeneratorImported(
         project=P,
         plan=plan,
-        data_folder="/r/datasets/preprocessed/nodes/fixed_spacing/spc_080_080_150",
+        data_folder=resampled_data_folder
     )
-
 # %%
-    overwrite=False
+    overwrite=True
     L.setup(overwrite=overwrite)
 
     L.process()

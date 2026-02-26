@@ -421,6 +421,10 @@ if __name__ == "__main__":
     print(best_runs)
 
 # %%
+
+    from fran.data.dataregistry import DS
+    fldr_lidc = DS["lidc"].folder / ("images")
+    imgs_lidc = list(fldr_lidc.glob("*"))
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
     img_fldr = Path("/s/xnat_shadow/lidc2/images/")
@@ -552,7 +556,7 @@ if __name__ == "__main__":
 
 # SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
-    devices = [0]
+    devices = [1]
     debug_ = False
     safe_mode = True
 
@@ -569,8 +573,9 @@ if __name__ == "__main__":
 
     imgs = nodes_imgs_training
     imgs = nodes_imgs[:2]
+    imgs = imgs_lidc
     # preds = W.run(imgs_crc, chunksize=6)
-    preds = W.run(imgs, chunksize=2, overwrite=True)
+    preds = W.run(imgs, chunksize=2, overwrite=False)
 # %%
 
     dl = W.pred_dl

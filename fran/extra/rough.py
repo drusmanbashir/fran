@@ -7,10 +7,11 @@ from utilz.imageviewers import ImageMaskViewer
 # %%
 
 if __name__ == "__main__":
-    image =  torch.load("img.pt",weights_only=False)
-    pred =  torch.load("pred.pt",weights_only=False)
+    img_fn ="/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/images/lidc_0001.pt"
+    lm_fn = "/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_ric8c38fe68_ex000/lms/lidc_0001.pt"
+    image = torch.load(img_fn,weights_only=False)
+    lm = torch.load(lm_fn,weights_only=False)
 
-    n=0
-    im = image[n,0].detach().cpu()
-    ImageMaskViewer([image[n,0].detach().cpu(),pred[n,0].detach().cpu()])
+
+    ImageMaskViewer([image,lm])
 # %%

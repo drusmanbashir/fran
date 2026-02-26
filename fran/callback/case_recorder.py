@@ -71,6 +71,7 @@ class CaseIDRecorder(Callback):
             self.loss_dicts_valid = []
             self.loss_dicts_train = []
             self.loss_dicts_train2=[]
+            self.incrementing=False
     
 
     def on_validation_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
@@ -103,7 +104,7 @@ class CaseIDRecorder(Callback):
     def store_results(self, trainer):
         epoch = trainer.current_epoch
         self.dfs["epoch"]=epoch
-        cprint("storing results", color = "yellow")
+        cprint("CaseIDRecorder: Storing results", color = "green", italic=True)
         if self.incrementing==False:
             for stage ,loss_dict in zip (["train", "valid"], [self.loss_dicts_train, self.loss_dicts_valid]):
                 self._store(trainer, stage, loss_dict,epoch)

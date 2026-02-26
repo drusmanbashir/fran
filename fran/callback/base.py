@@ -34,7 +34,6 @@ class BatchSizeSafetyMargin(Callback):
         # Keep config batch size synced to the runtime value chosen after finder/safety margin.
         final_bs = int(dm.batch_size)
         dm.configs["dataset_params"]["batch_size"] = final_bs
-        pl_module.configs["dataset_params"]["batch_size"] = final_bs
 
 
 class PredAsList(Callback):

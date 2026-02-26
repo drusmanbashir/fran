@@ -597,18 +597,26 @@ if __name__ == "__main__":
     from fran.managers.project import Project
     from fran.utils.common import *
 
+
+    # ... run your application ...
+    from fran.managers import Project
+    from fran.utils.common import *
+
+    conf_fldr = os.environ["FRAN_CONF"]
+    from utilz.fileio import load_yaml
+    best_runs = load_yaml(conf_fldr+"/best_runs.yaml")
+    run_w = best_runs["run_w"]
+    runs_tot_all = best_runs["projects"]["totalseg"]
+    run_tot_big = runs_tot_all["run_ids"][0]
+# %%
+    pp(best_runs)
+
     D = DS
     proj = Project(project_title="totalseg")
-    run_tot = ["LITS-860"]
-    run_tot_big = "LITS-1437"
-    run_whole_image = ["LITS-1088"]
-    run_whole_image = ["LITS-1088"]
-    run_nodes = ["LITS-1230"]
-    run_nodes2 = ["LITS-1285"]
-    run_nodes3 = ["LITS-1287"]
-    safe_mode = False
 
-    proj_litsmc = Project(project_title="litsmc")
+# %%
+# %%
+#SECTION:-------------------- FILES and FOLDERS--------------------------------------------------------------------------------------
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
@@ -664,7 +672,7 @@ if __name__ == "__main__":
     devices = [1]
 
 # %%
-    run = run_tot_big[0]
+    run = run_tot_big
     debug_ = False
     safe_mode = True
 
@@ -680,9 +688,10 @@ if __name__ == "__main__":
     )
 
 # %%
-    imf_fn = "/s/insync/datasets/bones/1/2 Source.nrrd"
+
     # preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
-    preds = T.run(imf_fn, chunksize=2, overwrite=overwrite)
+    imgs = imgs_lidc
+    preds = T.run(imgs, chunksize=2, overwrite=overwrite)
 # %%
     preds = T.run(img_nodes, chunksize=2, overwrite=overwrite)
     preds = T.run(img_nodes2, chunksize=2, overwrite=overwrite)

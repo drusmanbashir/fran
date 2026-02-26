@@ -1,6 +1,7 @@
 # %%
 import shutil
 from tqdm.auto import tqdm as pbar
+from utilz.cprint import cprint
 from utilz.helpers import info_from_filename, set_autoreload
 from typing import Optional
 
@@ -61,6 +62,9 @@ class IncrementalTrainer (TrainerBK):
     def setup(
         self,
         batch_size=None,
+        data_start_indices:int|list = 50,
+        data_increment_size:int=30,
+        dice_loss_threshold: float = 0.5,
         logging_freq=25,
         lr=None,
         devices=1,
@@ -79,13 +83,13 @@ class IncrementalTrainer (TrainerBK):
         early_stopping_mode="min",
         early_stopping_patience=30,
         early_stopping_min_delta=0.0,
-        lr_floor=None,
-        train1_indices: int = 40,
         wandb_grid_epoch_freq: int = 5,
         log_incremental_to_wandb: bool = True,
     ):
-        self.train1_indices = train1_indices
+        self.data_start_indices = data_start_indices
         self._log_incremental_to_wandb = bool(log_incremental_to_wandb)
+        self.data_increment_size = data_increment_size
+        self.dice_loss_threshold = dice_loss_threshold
         super().setup(
             batch_size=batch_size,
             logging_freq=logging_freq,
@@ -106,7 +110,6 @@ class IncrementalTrainer (TrainerBK):
             early_stopping_mode=early_stopping_mode,
             early_stopping_patience=early_stopping_patience,
             early_stopping_min_delta=early_stopping_min_delta,
-            lr_floor=lr_floor,
             wandb_grid_epoch_freq=wandb_grid_epoch_freq,
         )
 
@@ -122,7 +125,7 @@ class IncrementalTrainer (TrainerBK):
             cache_rate=cache_rate,
             device=self.configs["dataset_params"].get("device", "cuda"),
             ds_type=ds_type,
-            train1_indices = self.train1_indices
+            train1_indices = self.data_start_indices
         )
 
     def load_dm(self, batch_size=None, override_dm_checkpoint=False):
@@ -256,10 +259,9 @@ class IncrementalTrainer (TrainerBK):
             log_incremental_to_wandb = getattr(self, "_log_incremental_to_wandb", False)
 
         cbs += [
-            CaseIDRecorder(freq=4),
+            CaseIDRecorder(freq=10),
             UpdateDatasetOnPlateau(
                 monitor = "train_loss_dice_label1",
-                n_samples_to_add=30,
                 log_to_wandb=bool(log_incremental_to_wandb),
             ),
             # UpdateDatasetOnEMAMomentum(
@@ -385,8 +387,50 @@ class IncrementalTrainer (TrainerBK):
             )
         return DMClass
 
-    def fit(self):
-        self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+    def fit(self, max_restarts= 3):
+            self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+            increment_size = self.data_increment_size
+            unused_samples = len(self.D.train_df[self.D.train_df["used_in_training"]==False])
+            while unused_samples>0:
+
+                self.trainer.fit(model=self.N, datamodule=self.D)
+                dm = self.D
+                dlv = self.D.train2_dataloader()
+                model = self.N
+                self.trainer.validate(model=model, dataloaders= dlv)
+                df = self.trainer.dfs["train2"]
+                dice_loss  =df.groupby("case_id")["loss_dice"].median()
+                dice_loss = dice_loss.sort_values(ascending=False)
+
+
+                dice_loss = dice_loss[:increment_size]
+                dice_loss = dice_loss[dice_loss>self.dice_loss_threshold]
+                worst_case_ids = dice_loss.index
+                if len(worst_case_ids) == 0:
+                    cprint("No more samples to add", color="blue", bold=True)
+                    dsc_fn = self.project.log_folder/("left_over.csv")
+                    print("Saving left over case_ids to file: ", dsc_fn)
+                    dice_loss.to_csv(dsc_fn)
+                    break
+                
+                indices_new = dm.train_df[dm.train_df["case_id"].isin(worst_case_ids)].index
+                dm.update_dataframe_indices(indices_new)
+                unused_samples = len(self.D.train_df[self.D.train_df["used_in_training"]==False])
+                increment_size = min(self.data_increment_size, unused_samples)
+                cprint(len(dm.train_df[dm.train_df["used_in_training"]==True]), color="blue", bold=True)
+        
+            cprint("Full compliment data in used. Removing UpdateDatasetOnPlateau callback", color="blue", bold=True)
+            self.remove_cb(UpdateDatasetOnPlateau)
+            cprint("Training will now continue for all  epochs", color="blue", bold=True)
+
+            self.trainer.fit(model=self.N, datamodule=self.D)
+
+
+    def remove_cb(self,cb_class):
+        self.trainer.callbacks = [
+            cb for cb in self.trainer.callbacks
+            if not isinstance(cb, cb_class)
+        ]
 
     def best_available_checkpoint(self) -> Optional[Path]:
         """
@@ -433,15 +477,15 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- COnfirm plans exist--------------------------------------------------------------------------------------
 
-    devices= [1]
+    device_id = 0
     bs = 4
 
     # run_name ='LITS-1285'
     compiled = False
     profiler = False
     # NOTE: if wandb = False, should store checkpoint locally
-    batch_finder = False
-    wandb = False
+    batchsize_finder = True
+    wandb = True
     override_dm = False
     tags = []
     description = f"Partially trained up to 100 epochs"
@@ -456,28 +500,27 @@ if __name__ == "__main__":
 
     conf['dataset_params']['cache_rate']
 
-# %
+# %%
     conf["dataset_params"]["fold"]=0
     run_name=None
     lr= 1e-2
+# %%
 #SECTION:-------------------- TRAIN--------------------------------------------------------------------------------------
     Tm = IncrementalTrainer    (P.project_title, conf, run_name)
-    device_id = 0
-    batchsize_finder=False
-    wandb=False
-    epochs =50
+    epochs =400
 # %%
     Tm.setup(
+        data_start_indices=50,
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
+        data_increment_size=20,
         epochs=epochs,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
         wandb=wandb,
         tags=tags,
         description=description,
-        train1_indices=10
     )
 # %%
     # Tm.D.batch_size=8
@@ -494,7 +537,8 @@ if __name__ == "__main__":
 
     Tm.D.prepare_data()
     Tm.D.setup("fit")
-    Tm.D.train_manager.keys_tr
+    Tm.D.train_manager2.keys
+    Tm.D.train_manager2.collate_fn
     dlv = Tm.D.valid_dataloader()
     dl = Tm.D.train_dataloader()
     iteri = iter(dl)
@@ -503,6 +547,7 @@ if __name__ == "__main__":
     ds[0]
     tmt = Tm.D.train_manager1
 
+    unused_samples = len(Tm.D.train_df[Tm.D.train_df["used_in_training"]==False])
 # %%
 
     dm = trainer.datamodule
@@ -564,23 +609,31 @@ if __name__ == "__main__":
     # Tm.N.model.to('cpu')
 # %%
 
-    model.loss_dict_full
     trainer = Tm.trainer
     cir = [cb for cb in trainer.callbacks if isinstance(cb, CaseIDRecorder)][0]
     cir.dfs['train'].to_csv("train1.csv")
     cir.dfs['valid'].to_csv("valid1.csv")
 
-    # cir.reset()
+    cir.reset()
     
-    Tm.D.prepare_data()
-    Tm.D.setup(stage="fit")
+    # Tm.D.prepare_data()
+    # Tm.D.setup(stage="fit")
 # %%
+    dm = Tm.D
+    n_samples = 10
+    dlv = Tm.D.train2_dataloader()
     model = Tm.N
-    dlv = Tm.D.train_dataloader()
-
     trainer.validate(model=model, dataloaders= dlv)
-    cids1=[]
     dl1 = Tm.D.train_manager.dl
+    df = trainer.dfs["train2"]
+    dice_loss  =df.groupby("case_id")["loss_dice"].median()
+    dice_loss = dice_loss.sort_values(ascending=False)
+    print(dice_loss)
+    worst_case_ids = dice_loss[:n_samples].index
+    indices_new = dm.train_df[dm.train_df["case_id"].isin(worst_case_ids)].index
+    dm.update_dataframe_indices(indices_new)
+    len(dm.train_df[dm.train_df["used_in_training"]==True])
+    Tm.fit()
 # %%
     cir.dfs['train2'].to_csv("train2.csv")
 # %%

@@ -384,7 +384,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 ]
             else:
                 self.mini_dfs = [self.df]
-                self.local_worker = LBDSamplerWorkerLocal(**worker_kwargs)
+                self.local_worker = (self.actor_cls.__ray_metadata__.modified_class if self.actor_cls is not LBDSamplerWorkerImpl else LBDSamplerWorkerLocal)(**worker_kwargs)
 
     # def process_files(self, force_store_props=False):
     #     """Process files without using DataLoader"""
