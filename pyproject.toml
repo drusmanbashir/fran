@@ -71,6 +71,14 @@ tuning = [
 remote = [
   "xnat @ git+https://github.com/drusmanbashir/xnat.git@main",
 ]
+deepcore = [
+  "numpy>=1.23,<3",
+  "prefetch-generator>=1.0.3",
+  "requests>=2.31",
+  "scipy>=1.10",
+  "torch>=2.2",
+  "torchvision>=0.17",
+]
 full = [
   "fran[train,tracking,detection,geom,tuning]",
 ]
