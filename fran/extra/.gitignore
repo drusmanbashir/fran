@@ -316,3 +316,16 @@ dmypy.json
 
 *.egg-info
 # End of https://www.toptal.com/developers/gitignore/api/macos,python,linux,visualstudiocode,pycharm,jupyternotebooks
+
+# Standard ignore block
+Thumbs.db
+.idea/
+.vscode/
+.venv/
+.ruff_cache/
+.ipynb_checkpoints/
+.env.*
+*.local
+tmp/
+tmp*/
+.cache/
