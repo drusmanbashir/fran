@@ -8,7 +8,6 @@ import os
 
 from utilz.stringz import headline
 
-from fran.configs.parser import MNEMONICS
 from fran.data.dataregistry import DS
 from fran.managers.project import Project
 
@@ -39,7 +38,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage FRAN projects")
     parser.add_argument("-t", "--title", help="Project title")
     parser.add_argument(
-        "-m", "--mnemonic", help="Mnemonic, must be in MNEMONICS: {}".format(MNEMONICS)
+        "-m", "--mnemonic", help="Mnemonic, must be in MNEMONICS"
     )
     parser.add_argument(
         "-n",

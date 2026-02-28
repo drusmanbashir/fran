@@ -712,9 +712,37 @@ class Project(DictToAttr):
             The datasource condition for the SQL query.
         """
         if isinstance(ds, str) and "," in ds:
-            ds_list = [d.strip() for d in ds.split(",")]
+            ds_tokens = [d.strip() for d in ds.split(",")]
         else:
-            ds_list = [ds] if isinstance(ds, str) else ds
+            ds_tokens = [ds] if isinstance(ds, str) else list(ds)
+
+        # Some plans store project/mnemonic names (e.g. "colon") instead of concrete
+        # datasource IDs (e.g. "colonmsd10"). Expand those to project datasources.
+        project_ds = list(getattr(self, "datasources", []) or [])
+        mnemonic = None
+        if hasattr(self, "global_properties") and isinstance(self.global_properties, dict):
+            mnemonic = self.global_properties.get("mnemonic")
+
+        expanded = []
+        for token in ds_tokens:
+            if token is None:
+                continue
+            token = str(token).strip()
+            if not token:
+                continue
+            if token in {self.project_title, mnemonic}:
+                expanded.extend(project_ds)
+            else:
+                expanded.append(token)
+
+        # Fallback to all project datasources if expansion removed everything.
+        if not expanded:
+            expanded = project_ds
+
+        ds_list = []
+        for d in expanded:
+            if d not in ds_list:
+                ds_list.append(d)
 
         return "ds IN ({})".format(", ".join("'{}'".format(d) for d in ds_list))
 

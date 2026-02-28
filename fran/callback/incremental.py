@@ -55,6 +55,7 @@ class UpdateDatasetOnPlateau(Callback):
         verbose: bool = True,
         log_to_wandb: bool = False,
         wandb_prefix: str = "incremental/plateau",
+        debug = False, #CODE: remove this once this callback is solid
     ):
         self.monitor = monitor
         self.mode = mode
@@ -65,6 +66,7 @@ class UpdateDatasetOnPlateau(Callback):
         self.verbose = verbose
         self.log_to_wandb = bool(log_to_wandb)
         self.wandb_prefix = wandb_prefix
+        self.debug=debug
 
         self.best_score = None
         self.wait_count = 0
@@ -126,25 +128,39 @@ class UpdateDatasetOnPlateau(Callback):
         pass
 
     def on_train_epoch_end(self, trainer, pl_module):
-        if trainer.current_epoch < self.grace:
-            return
-        current = trainer.callback_metrics[self.monitor]
-
-        if self._is_improvement(current):
-            cprint("Best score : {0}, current : {1}, imp: True".format(self.best_score, current), color= "red")
-            self.best_score = current
-            self.wait_count = 0
+        if self.debug == True and trainer.current_epoch > 0 and trainer.current_epoch%2 == 0:
+            self._debug_switch(trainer,pl_module)
         else:
-            cprint("Best score : {0}, current : {1}, imp: False, wait_count: {2}".format(self.best_score, current, self.wait_count), color= "red")
-            self.wait_count += 1
-            if self.wait_count >= self.patience:
-                self._start_scan_cycle(trainer, pl_module)
-                if self.verbose:
+            if trainer.current_epoch < self.grace:
+                return
+            current = trainer.callback_metrics[self.monitor]
+
+            if self._is_improvement(current):
+                cprint("Best score : {0}, current : {1}, imp: True".format(self.best_score, current), color= "red")
+                self.best_score = current
+                self.wait_count = 0
+            else:
+                cprint("Best score : {0}, current : {1}, imp: False, wait_count: {2}".format(self.best_score, current, self.wait_count), color= "red")
+                self.wait_count += 1
+                if self.wait_count >= self.patience:
+                    self._start_scan_cycle(trainer, pl_module)
+                    if self.verbose:
+                        print(
+                            f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
+                            f"switching to train dataloader 1 for scan"
+                        )
+                    self._reset()
+
+    def _debug_switch(self, trainer,pl_module):
+            cprint("Debug mode is one:", color= "red")
+            self._start_scan_cycle(trainer, pl_module)
+            if self.verbose:
                     print(
                         f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
                         f"switching to train dataloader 1 for scan"
                     )
-                self._reset()
+            self._reset()
+
 
 
 class UpdateDatasetOnEMAMomentum(Callback):

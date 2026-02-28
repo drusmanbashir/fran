@@ -16,11 +16,17 @@ from utilz.cprint import cprint
 from utilz.stringz import cleanup_fname
 
 from fran.callback.base import *
+try:
+    from fran.callback.case_ids_json_tracker import update_case_ids_json
+except Exception:
+    update_case_ids_json = None
 
 # %%
 
-
-
+def chunked_case_ids(df, chunk_size=25):
+    cases = sorted(df["case_id"].astype(str).unique())
+    for i in range(0, len(cases), chunk_size):
+        yield cases[i:i+chunk_size]
 
 class CaseIDRecorder(Callback):
     def __init__(self, freq=5, local_folder="/tmp", dpi=300):
@@ -92,14 +98,25 @@ class CaseIDRecorder(Callback):
               )
             df_long.dropna(inplace=True)
             self.dfs[stage] = df_long
-            fig = self.create_plotly(df_long)
-            fig_fname = f"{self.local_folder}/{stage}_{epoch}.png"
-            fig.write_image(fig_fname, scale=2)
-            try:
-                # trainer.logger.log_image(key = f"{stage}_boxplots", images=[fig_fname])
-                trainer.logger.log_image(key = f"{stage}_boxplots", images=[fig_fname])
-            except AttributeError as e:
-                cprint(e, color = "red")
+            figs_labels_caseidchunks = self.create_plotly(df_long)
+            for label in figs_labels_caseidchunks.keys():
+                figs = figs_labels_caseidchunks[label]
+                for ind, fig_casegroup in enumerate(figs):
+                    fig_fname = f"{self.local_folder}/{stage}_{epoch}_{label}_casesgp{ind}.png"
+                    fig_casegroup.write_image(fig_fname, scale=2)
+                    try:
+                        # trainer.logger.log_image(key = f"{stage}_boxplots", images=[fig_fname])
+                        trainer.logger.log_image(key = f"{stage}_{label}_casesgp{ind}_boxplots", images=[fig_fname])
+                    except AttributeError as e:
+                        cprint(e, color = "red")
+            if update_case_ids_json is not None:
+                update_case_ids_json(
+                    trainer=trainer,
+                    pl_module=trainer.lightning_module,
+                    stage=stage,
+                    epoch=epoch,
+                    df_long=df_long,
+                )
 
     def store_results(self, trainer):
         epoch = trainer.current_epoch
@@ -146,17 +163,27 @@ class CaseIDRecorder(Callback):
             return df_final
 
 
-    def create_plotly(self, df_long):
-            fig = px.box(
-                  df_long,
-                  x="case_id",
-                  y="loss_dice",
-                  facet_col="label",      # separate box plot per label
-                  color="label",
-                  points="outliers"
-              )
-            return fig
-
+    def create_plotly(self, df_long)->dict:
+        figs = {}
+        labels = df_long["label"].unique()
+        for label in labels:
+            figs_this_label =[]
+            for cases_chunk in chunked_case_ids(df_long, chunk_size=25):
+                df_chunk = df_long[df_long["case_id"].astype(str).isin(cases_chunk)].copy()
+                df_label = df_chunk[df_chunk["label"] == label]
+                fig = px.box(
+                    df_label,
+                    x="case_id",
+                    y="loss_dice",
+                    points="outliers",
+                    category_orders={"case_id": cases_chunk},
+                    title=f"{label}"
+                )
+                fig.update_xaxes(tickangle=90)
+                figs_this_label.append(fig)
+            figs[label]= figs_this_label
+        return figs
+#
 
 
 # %%

@@ -34,6 +34,16 @@ def str2bool(v: str) -> bool:
     return str(v).lower() in {"1", "true", "t", "yes", "y"}
 
 
+class UniqueArgValue(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        current = getattr(namespace, self.dest, None)
+        if current is not None and current != values:
+            parser.error(
+                f"Conflicting values for {self.dest}: {current!r} vs {values!r}"
+            )
+        setattr(namespace, self.dest, values)
+
+
 def main(args):
 
     import torch, os
@@ -169,7 +179,14 @@ if __name__ == "__main__":
         type=str2bool,
         help="Deprecated alias for --wandb",
     )
-    parser.add_argument("--run-name", default=None, help='Run name (e.g., "LITS-1290")')
+    parser.add_argument(
+        "-r",
+        "--run-name",
+        dest="run_name",
+        default=None,
+        action=UniqueArgValue,
+        help='Run name (e.g., "LITS-1290")',
+    )
     parser.add_argument(
         "--description", default=None, help="Optional experiment description"
     )

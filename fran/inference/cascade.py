@@ -424,7 +424,10 @@ if __name__ == "__main__":
 
     from fran.data.dataregistry import DS
     fldr_lidc = DS["lidc"].folder / ("images")
+    fldr_colonmsd = DS["colonmsd10"].folder/  ("images")
+    imgs_colonmsd = list(fldr_colonmsd.glob("*"))
     imgs_lidc = list(fldr_lidc.glob("*"))
+
     img_fna = "/s/xnat_shadow/litq/test/images_ub/"
     fns = "/s/datasets_bkp/drli_short/images/"
     img_fldr = Path("/s/xnat_shadow/lidc2/images/")
@@ -574,6 +577,7 @@ if __name__ == "__main__":
     imgs = nodes_imgs_training
     imgs = nodes_imgs[:2]
     imgs = imgs_lidc
+    imgs = imgs_colonmsd
     # preds = W.run(imgs_crc, chunksize=6)
     preds = W.run(imgs, chunksize=2, overwrite=False)
 # %%

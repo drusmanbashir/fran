@@ -137,7 +137,7 @@ class DataManagerDualI(DataManagerDual):
             cache_rate=cache_rate,
             device=device,
             ds_type=ds_type,
-            save_hyperparameters=save_hyperparameters,
+            save_hyperparameters=False, # coz this will save its own hyperparams
             keys_tr=keys_tr,
             keys_val=keys_val,
 
@@ -156,6 +156,9 @@ class DataManagerDualI(DataManagerDual):
         else: 
             self.data_folder_valid = Path(data_folder_valid)
 
+
+        if save_hyperparameters==True:
+            self.save_hyperparameters("train1_indices", "project_title", "configs", logger=False)
 
 
     def derive_data_folder(self, plan):
@@ -200,11 +203,31 @@ class DataManagerDualI(DataManagerDual):
         return train1_dicts, train2_dicts, valid_dicts
 
     def update_dataframe_indices(self, indices):
-        self.train_df.iloc[indices, self.train_df.columns.get_loc("used_in_training")] = True
+        self.add_train1_indices(indices)
+
+    def _sync_train1_indices_from_df(self) -> None:
+        self.train1_indices = pd.Index(
+            self.train_df.index[self.train_df["used_in_training"] == True]
+        )
+
+    def add_train1_indices(self, indices) -> None:
+        idx = create_pd_indices(indices)
+        self.train_df.iloc[idx, self.train_df.columns.get_loc("used_in_training")] = True
+        self._sync_train1_indices_from_df()
+
+    # def on_save_checkpoint(self, checkpoint: dict) -> None:
+    #     cprint("Saving train1 indices", color="red", italic=True)
+    #     if hasattr(self, "train_df"):
+    #         self._sync_train1_indices_from_df()
+        # checkpoint["train1_indices"] = [int(i) for i in self.train1_indices]
+
+    def on_load_checkpoint(self, checkpoint: dict) -> None:
+        idx = checkpoint.get("train1_indices")
+        if idx is not None:
+            self.train1_indices = pd.Index(idx)
 
     def access_dataframes(self):
         existing_ = self.train_df.index[self.train_df["used_in_training"] == True]
-
         print("Already used in training {}".format(len(existing_)))
         self.train1_indices = create_pd_indices(self.train1_indices)
         if existing_.equals(self.train1_indices):

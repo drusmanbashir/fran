@@ -135,7 +135,7 @@ class TrainerBK(Trainer):
 
         cbs, logger, profiler = self.init_cbs(
             cbs=cbs,
-            neptune=wandb,
+            wandb=wandb,
             batchsize_finder=batchsize_finder,
             periodic_test=self.periodic_test,
             profiler=profiler,
@@ -170,7 +170,7 @@ class TrainerBK(Trainer):
     def init_cbs(
         self,
         cbs,
-        neptune,
+        wandb,
         batchsize_finder,
         periodic_test,
         profiler,
@@ -220,7 +220,7 @@ class TrainerBK(Trainer):
             cbs += [LRFloorStop(min_lr=lr_floor)]
 
         logger = None
-        if neptune:
+        if wandb:
             logger = WandbManager(
                 project=self.project,
                 run_id=self.run_name,
@@ -257,10 +257,10 @@ class TrainerBK(Trainer):
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
-    P = Project("nodes")
+    P = Project("colon")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
-    C.setup(6)
+    C.setup(1)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -280,7 +280,7 @@ if __name__ == '__main__':
 # %%
 
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
-    devices= [0]
+    devices= [1]
     bs = 2
 
 
@@ -351,12 +351,16 @@ if __name__ == '__main__':
     #     n+=1
     #
 
-# %%
     batch = next(iteri)
+# %%
+    batch['image'].shape
     len(batch["image"].meta["filename_or_obj"])
     print(batch["image"].meta["filename_or_obj"])
     print(batch["patch_coords"])
     print(batch["is_padded"])
     aa = Tm.N._common_step(batch,0)
 
+    bb = [aa]
+    cc = tmt.collate_fn(bb)
+# %%
 # %%

@@ -212,7 +212,7 @@ def source_collated(batch):
         fns_labels.extend(fns_labels_)
     if len(batch) == 1:
         fns_imgs = fns_imgs[0]
-        fns_labels = fns_labels[0]
+        # fns_labels = fns_labels[0]
     imgs_out = torch.stack(imgs, 0)
     lms_out= torch.stack(labels, 0)
 
@@ -239,19 +239,18 @@ def whole_collated(batch):
 
 # %%
 if __name__ == "__main__":
-
-# %%
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
     patch_size = [128,128,96]
     d1 = {
-        "image": "/s/xnat_shadow/crc/images/crc_CRC002_20190415_CAP1p5.nii.gz",
-        "lm": "/s/xnat_shadow/crc/lms/crc_CRC002_20190415_CAP1p5.nrrd",
-    }
+        "image": "/s/xnat_shadow/nodes/images/nodes_100_410107_CAP1p5SoftTissue.nii.gz",
+        "lm": "/s/xnat_shadow/nodes/lms/nodes_100_410107_CAP1p5SoftTissue.nii.gz"}
     d2 = {
-        "image": "/s/xnat_shadow/crc/images/crc_CRC004_20190425_CAP1p5.nii.gz",
-        "lm": "/s/xnat_shadow/crc/lms/crc_CRC004_20190425_CAP1p5.nii.gz",
-    }
+
+        "image": "/s/xnat_shadow/nodes/images/nodes_101_Ta91212_CAP1p5SoftTissue.nii.gz", 
+        "lm": "/s/xnat_shadow/nodes/lms/nodes_101_Ta91212_CAP1p5SoftTissue.nii.gz"
+   }
+# %%
     keys = ["image", "lm"]
     L = LoadSITKd(keys=["image", "lm"])
     E = EnsureChannelFirstd(keys=keys)
@@ -316,9 +315,10 @@ if __name__ == "__main__":
     d4 = Res(d1)
 
 # %%
-    batch = [d3,d4]
+    batch = [[d3],[d4]]
 
-    b2 = whole_collated(batch)
+    b2 = source_collated(batch)
+    # b2 = whole_collated(batch)
 # %%
 # %%
 #SECTION:-------------------- SOURCE COLLATED--------------------------------------------------------------------------------------
