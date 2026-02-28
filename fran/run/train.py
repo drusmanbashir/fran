@@ -16,7 +16,7 @@ from typing import List, Union
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
 from fran.trainers.incremental import IncrementalTrainer
-from fran.trainers.trainer import Trainer
+from fran.trainers.trainer_bk import TrainerBK
 
 
 def print_device_info():
@@ -81,7 +81,7 @@ def main(args):
                 epochs=args.epochs if not args.profiler else 1,
                 lr=args.lr,
                 profiler=args.profiler,
-                wandb=args.neptune,
+                wandb=args.wandb,
                 description=args.description,
                 batchsize_finder=args.batchsize_finder,
                 periodic_test=args.periodic_test,
@@ -93,7 +93,7 @@ def main(args):
             headline("Incremental training completed")
             return
 
-        Tm = Trainer(project_title=P.project_title, configs=conf, run_name=args.run_name)
+        Tm = TrainerBK(project_title=P.project_title, configs=conf, run_name=args.run_name)
         Tm.setup(
             compiled=args.compiled,
             batch_size=args.batch_size,
@@ -102,7 +102,7 @@ def main(args):
             epochs=args.epochs if not args.profiler else 1,
             lr=args.lr,
             profiler=args.profiler,
-            neptune=args.neptune,
+            wandb=args.wandb,
             description=args.description,
             batchsize_finder=args.batchsize_finder,
             periodic_test=args.periodic_test,
@@ -161,7 +161,13 @@ if __name__ == "__main__":
         "--profiler", type=str2bool, default=False, help="Enable Lightning profiler"
     )
     parser.add_argument(
-        "--neptune", type=str2bool, default=True, help="Enable Neptune logging"
+        "--wandb", dest="wandb", type=str2bool, default=True, help="Enable W&B logging"
+    )
+    parser.add_argument(
+        "--neptune",
+        dest="wandb",
+        type=str2bool,
+        help="Deprecated alias for --wandb",
     )
     parser.add_argument("--run-name", default=None, help='Run name (e.g., "LITS-1290")')
     parser.add_argument(

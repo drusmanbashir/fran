@@ -3,7 +3,7 @@
 from fran.managers import  Project
 from fran.managers.db import COLUMNS_CRITICAL,  find_matching_plan
 from fran.run.analyze_resample import PreprocessingManager
-from fran.trainers.trainer import Trainer
+from fran.trainers.trainer_bk import TrainerBK
 from fran.tune.tune import RayTuneConfig
 from fran.utils.common import *
 from fran.configs.parser import ConfigMaker
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     conf['dataset_params']['cache_rate']
 
 # %%
-    Tm = Trainer(P.project_title, conf, run_name)
+    Tm = TrainerBK(P.project_title, conf, run_name)
     Tm.configs
     Tm.configs['dataset_params']['fold']=4
 # %%
@@ -67,7 +67,7 @@ if __name__ == '__main__':
         epochs=900 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
-        neptune=neptune,
+        wandb=neptune,
         tags=tags,
         description=description,
         lr=1e-3,

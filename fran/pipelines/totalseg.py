@@ -10,7 +10,7 @@ from fran.data.dataregistry import DS
 from fran.data.datasource import Datasource
 from fran.managers import Project
 from fran.run.analyze_resample import PreprocessingManager
-from fran.trainers.trainer import Trainer
+from fran.trainers.trainer_bk import TrainerBK
 from fran.utils.common import *
 
 # %%
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     run_name = "LITS-1425"
     # lr= 1e-2
 # %%
-    Tm = Trainer(
+    Tm = TrainerBK(
         P.project_title,
         conf,
         run_name,
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         epochs=500 if profiler == False else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
-        neptune=neptune,
+        wandb=neptune,
         tags=tags,
         description=description,
         lr=lr,

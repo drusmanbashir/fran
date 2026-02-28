@@ -4,7 +4,7 @@ from fran.managers.db import *
 import torch
 import argparse
 from pathlib import Path
-from fran.trainers import Trainer
+from fran.trainers.trainer_bk import TrainerBK
 
 from fran.managers import Project
 from fran.data.datasource import Datasource
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     pp(matching_plan)
 # %%
     run_name=None
-    Tm = Trainer(P.project_title, conf, run_name)
+    Tm = TrainerBK(P.project_title, conf, run_name)
 # %%
     Tm.setup(
         compiled=compiled,
@@ -74,7 +74,7 @@ if __name__ == '__main__':
         epochs=600 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
-        neptune=neptune,
+        wandb=neptune,
         tags=tags,
         description=description,
     )

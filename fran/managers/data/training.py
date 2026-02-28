@@ -441,7 +441,7 @@ class DataManager(LightningDataModule):
         # self.ds_type = ds_type
         self.set_effective_batch_size()
         if data_folder is None:
-            self.data_folder = self.derive_data_folder(mode=self.plan)
+            self.data_folder = self.derive_data_folder(plan=self.plan)
         else:
             self.data_folder = Path(data_folder)
             assert (

@@ -6,7 +6,7 @@ from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.data.dataregistry import DS
 from fran.managers import Project
 from fran.run.analyze_resample import PreprocessingManager
-from fran.trainers.trainer import Trainer
+from fran.trainers.trainer_bk import TrainerBK
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -82,7 +82,7 @@ def ensure_preprocessed(
 
 
 def run_training(project: Project, conf: dict[str, Any], gpu_id: int, epochs: int, batch_size: int) -> None:
-    trainer = Trainer(project.project_title, conf, run_name=None)
+    trainer = TrainerBK(project.project_title, conf, run_name=None)
     trainer.setup(
         compiled=False,
         batch_size=int(batch_size),
@@ -90,7 +90,7 @@ def run_training(project: Project, conf: dict[str, Any], gpu_id: int, epochs: in
         epochs=int(epochs),
         batchsize_finder=False,
         profiler=False,
-        neptune=False,
+        wandb=False,
         periodic_test=0,
         tags=["pipeline:test"],
         description="Quick workflow validation run.",
