@@ -978,7 +978,7 @@ class Project(DictToAttr):
         from fran.preprocessing.globalproperties import GlobalProperties
 
         self._create_folds()
-        labels_all = self.global_properties.get("labels_all")
+        labels_all = self.global_properties.get("labels_all", None)
         self.G = GlobalProperties(self, max_cases=max_cases, clip_range=clip_range)
         if labels_all is None or len(labels_all) == 0:
             headline("Labels have not been collated. Doing it now")

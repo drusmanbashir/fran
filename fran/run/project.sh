@@ -10,5 +10,5 @@
 # python  analyze_resample.py -t totalseg -p 0
 # python project_init.py  -t lungs -i  /s/datasets_bkp/Task06Lung/
 
-python   project_init.py -t pancreas  --mnemonic pancreas  --datasources pancreasmsd07
+python   -m ipdb project_init.py -t pancreas  --mnemonic pancreas  --datasources pancreasmsd07
 python  analyze_resample.py -t pancreas -p 0

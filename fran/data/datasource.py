@@ -166,8 +166,18 @@ class Datasource(GetAttr):
         any other verifications
         """
 
-        images = list((self.folder / ("images")).glob("*"))
-        lms = list((self.folder / ("lms")).glob("*"))
+
+        images = [
+            p for p in (self.folder / "images").iterdir()
+            if p.is_file() and not p.name.startswith(".")
+        ]
+
+        lms = [
+            p for p in (self.folder / "lms").iterdir()
+            if p.is_file() and not p.name.startswith(".")
+        ]
+
+
         assert (a := len(images)) == (
             b := len(lms)
         ), "Different lengths of images {0}, and lms {1}.\nCheck your data folder".format(
