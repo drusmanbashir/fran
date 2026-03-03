@@ -12,7 +12,8 @@ from utilz.stringz import headline, info_from_filename
 
 from fran.configs.parser import ConfigMaker, is_excel_None
 from fran.preprocessing.preprocessor import (Preprocessor,
-                                             generate_bboxes_from_lms_folder)
+                                             generate_bboxes_from_lms_folder,
+                                             store_labels_info)
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.utils.folder_names import folder_names_from_plan
 
@@ -350,6 +351,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
+        store_labels_info(self.output_folder, num_processes=getattr(self, "num_processes", 1))
         # add_plan_to_db(self.project,
         #     self.plan, db_path=self.project.db, data_folder_lbd=self.output_folder
         # )
@@ -358,6 +360,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
 
         self.num_processes = max(1, int(num_processes))
         self.create_data_df()
+        self.set_remapping_per_ds()
         self.register_existing_files()
         print("Overwrite:", overwrite)
         if overwrite == False:
@@ -542,7 +545,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    project_title = "litsmc"
+    project_title = "pancreas"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
@@ -568,6 +571,7 @@ if __name__ == "__main__":
     )
 
 # %%
+    num_processes=1
     L.setup(overwrite=False, device="cpu", num_processes=num_processes)
     L.process()
 # %%

@@ -1,6 +1,5 @@
 # %%
 import sqlite3
-import h5py
 from fran.data.dataregistry import DS
 import ipdb
 
@@ -161,10 +160,8 @@ class Project(DictToAttr):
         param datasets: list of datasets to add to raw_data_folder
         param test: list of bool assigning some (or none) as test set(s)
         """
-        #CODE: allow list of mnemonics (try to abandon mnemonic)
         try:
-            if isinstance(mnemonic, list):
-                mnemonic = [Mnemonics.match(mnem) for mnem in mnemonic]
+            mnemonic = Mnemonics.match(mnemonic)
         except ValueError:
             allowed = ", ".join(
                 {entry for m in Mnemonics._all for entry in (m.name, *m.aliases)}
@@ -242,8 +239,8 @@ class Project(DictToAttr):
                 output = list(il.chain.from_iterable(output))
         return output
 
-    def vars_to_sql(self, ds_name, ds_alias, case_id , img_fn, lm_fn,labels, nnz, test):
-        # case_id = info_from_filename(img_fn.name, full_caseid=True)["case_id"]
+    def vars_to_sql(self, ds_name, ds_alias, img_fn, lm_fn, test):
+        case_id = info_from_filename(img_fn.name, full_caseid=True)["case_id"]
         fold = "NULL"
         img_sym = self.create_raw_ds_fname(img_fn)
         lm_sym = self.create_raw_ds_fname(lm_fn)
@@ -255,8 +252,6 @@ class Project(DictToAttr):
             str(lm_fn),
             str(img_sym),
             str(lm_sym),
-            str(labels),
-            int(bool(nnz)),
             fold,
             test,
         )
@@ -272,7 +267,7 @@ class Project(DictToAttr):
         tbl_name = "datasources"
         if not self.table_exists(tbl_name):
             self.sql_alter(
-                "CREATE TABLE {} (ds,alias,case_id,image,lm,img_symlink,lm_symlink,labels,nnz BOOLEAN NOT NULL CHECK (nnz IN (0,1)),fold INTEGER, test)".format(
+                "CREATE TABLE {} (ds,alias,case_id,image,lm,img_symlink,lm_symlink,fold INTEGER,test)".format(
                     tbl_name
                 )
             )
@@ -410,22 +405,12 @@ class Project(DictToAttr):
         ds : Datasource
             Datasource object with verified file pairs.
         """
-        strs=[]
-        with h5py.File(ds.h5_fname, "r") as h5f:
-            for pair in ds.verified_pairs:
-                fn = pair[0].name
-                case_id = info_from_filename(fn, full_caseid=True)["case_id"]
-                case_this = h5f[case_id]
-                labels = case_this.attrs["labels"]
-                nnz = 0 if len(labels) > 0 else 1
-                labels = list(labels)
-                labels = str(labels)
-                stra =                 self.vars_to_sql(ds.name, ds.alias,case_id,  pair[0],pair[1], labels, nnz,ds.test)
-                strs.append(stra)
-                
+        strs = [
+            self.vars_to_sql(ds.name, ds.alias,  *pair, ds.test)
+            for pair in ds.verified_pairs
+        ]
         with db_ops(self.db) as cur:
-            cur.executemany("INSERT INTO datasources VALUES (?,?,?,?, ?,?,?,?,?,?,?)", strs)
-
+            cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?)", strs)
 
     def add_datasources_xnat(self, xnat_proj: str):
         """
@@ -635,7 +620,7 @@ class Project(DictToAttr):
         return dicis
 
     # NOTE: Later functions patch repeated case ids (e.g., LBGgenerator) so that there is 49,49a, 49b also lm_fnames have substrings 'label-' etc. Fix databases so that after LBD generates new tables are added. Consider updating case ids for repeat ids perhaps
-    def get_train_val_files(self, fold: int = None, ds: Union[str, list[str]] = None, allow_nnz: bool = False):
+    def get_train_val_files(self, fold: int = None, ds: Union[str, list[str]] = None):
         """
         Retrieves the file paths (img_symlink) for training and validation sets based on the given fold,
         optionally filtering by the provided datasource(s).
@@ -660,18 +645,18 @@ class Project(DictToAttr):
             ds = self.datasources
 
         # Build SQL queries
-        ss_train = self.build_sql_query(fold, ds, is_validation=False, allow_nnz=allow_nnz)
+        ss_train = self.build_sql_query(fold, ds, is_validation=False)
         train_files = self.fetch_files(ss_train)
 
         if fold is not None:
-            ss_val = self.build_sql_query(fold, ds, is_validation=True, allow_nnz=allow_nnz)
+            ss_val = self.build_sql_query(fold, ds, is_validation=True)
             val_files = self.fetch_files(ss_val)
             return train_files, val_files
         else:
             return train_files
 
     def build_sql_query(
-        self, fold: int, ds: Union[str, list[str]], is_validation: bool, allow_nnz: bool = True
+        self, fold: int, ds: Union[str, list[str]], is_validation: bool
     ) -> str:
         """
         Builds the SQL query for fetching files based on the fold and datasource.
@@ -700,10 +685,6 @@ class Project(DictToAttr):
                 "fold = {}".format(fold) if is_validation else "fold <> {}".format(fold)
             )
             conditions.append(fold_condition)
-
-        if allow_nnz == False:
-            nnz_condition = "CAST(nnz AS INTEGER) = 0"
-            conditions.append(nnz_condition)
 
         # Add datasource condition
         if ds:
@@ -782,24 +763,24 @@ class Project(DictToAttr):
         result = self.sql_query(query, True)
         return [Path(fn).name for fn in result]
 
-    def get_train_val_case_ids(self, fold: int = None, ds: Union[str, list[str]] = None, allow_nnz: bool = False):
+    def get_train_val_case_ids(self, fold: int = None, ds: Union[str, list[str]] = None):
         """
         Same split logic as `get_train_val_files`, but returns `case_id` values.
         """
         if not ds:
             ds = self.datasources
 
-        ss_train = self._build_case_id_query(fold, ds, is_validation=False, allow_nnz=allow_nnz)
+        ss_train = self._build_case_id_query(fold, ds, is_validation=False)
         train_case_ids = self._fetch_case_ids(ss_train)
 
         if fold is not None:
-            ss_val = self._build_case_id_query(fold, ds, is_validation=True, allow_nnz=allow_nnz)
+            ss_val = self._build_case_id_query(fold, ds, is_validation=True)
             val_case_ids = self._fetch_case_ids(ss_val)
             return train_case_ids, val_case_ids
         return train_case_ids
 
     def _build_case_id_query(
-        self, fold: int, ds: Union[str, list[str]], is_validation: bool, allow_nnz: bool = False
+        self, fold: int, ds: Union[str, list[str]], is_validation: bool
     ) -> str:
         query = "SELECT DISTINCT case_id FROM datasources"
         conditions = ["test = 0"]
@@ -808,8 +789,6 @@ class Project(DictToAttr):
                 "fold = {}".format(fold) if is_validation else "fold <> {}".format(fold)
             )
             conditions.append(fold_condition)
-        if allow_nnz == False:
-            conditions.append("CAST(nnz AS INTEGER) = 0")
         if ds:
             conditions.append(self.build_ds_condition(ds))
         if conditions:
@@ -1194,26 +1173,273 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from fran.configs.parser import ConfigMaker
     set_autoreload()
-    P = Project(project_title="test")
-    P = Project(project_title="pancreas")
-    # P.delete()
-    # P.create(["litsmc", "lidc"])
-    P.create_tables()
+    # P = Project(project_title="nodes")
     # P.create(mnemonic="nodes")
     # P = Project(project_title="totalseg")
     # P.create("nodes")
     # P = Project(project_title="bones")
-    # P.add_data([DS["drli_short"], DS["lidc"]])
-    P.add_data([DS["curvaspdac"], DS["pancreasmsd07"]])
+    P = Project(project_title="lidc31")
+    # P.delete()
+    P.create("lidc")
+    # P.delete()
+    # P.create("bones")
+    # P.add_data([DS["lidc"]])
 # %%
-   
-   
+    # P.add_data([DS["nodes"], DS["nodesthick"]])
     P.maybe_store_projectwide_properties()
-    len(P.get_train_val_case_ids(0, ds="lidc")[0])
+    # P = Project(project_title="totalseg")
+    # P.create("nodes")
+    # P.add_data([DS['nodes'], DS.nodesthick])
+    P.delete()
+    # P.create(mnemonic="lungs")
+    # P.add_data([DS['lidc']])
+
 # %%
-#     pp = os.listdir("/s/fran_storage/projects")
-#     valid_projects = "nodes","lidc","totalseg", "litsmc" ,"pancreas", "colon"
-#     for proj in valid_projects: 
-#         pp.remove(proj)
-# # %%
-#     for ap in pp:
+    P = Project("litstmp")
+    pp(P.global_properties)
+    P.create(mnemonic="lits")
+    P.add_data([DS["litsmall"]])
+    P.delete()
+    
+    P.maybe_store_projectwide_properties()
+# %%
+    # P.delete()
+    P.create(mnemonic="lits")
+    P.add_data([DS.litstmp])
+
+    # P.add_data([DS.totalseg])
+
+# %%
+    C = ConfigMaker(P,  configuration_filename=None)
+    C.plans
+    plans = conf["plantmp"]
+    plans = conf["plan2"]
+
+    P.add_plan(plans)
+# %%
+    # P.maybe_store_projectwide_properties(overwrite=True)
+# %%
+    # P.set_lm_groups([['litq','litqsmall','drli','lits'],['lidc2']])
+    # P.set_lm_groups()
+
+# %%
+    # P.add_data(ds5)
+    # P.create_project([ds,ds2,ds3,ds4])
+    len(P.raw_data_imgs)
+    len(P)
+# %%
+
+    P.train_v
+    if P.has_folds:
+        P.get_train_val_files(0, conf["plan"]["datasources"])
+        aa = P.get_train_val_files(None, "nodes")
+# %%
+    P.imported_labels(
+        "lm_group2",
+        Path("/s/fran_storage/predictions/totalseg/LITS-827/"),
+        labelsets=[lr, ll],
+    )
+
+# %%
+    import sqlite3
+
+    db_name = "/s/fran_storage/projects/litsmc/cases.db"
+    db_name = "/s/fran_storage/projects/nodes/cases.db"
+    db_name = "/s/fran_storage/projects/totalseg/cases.db"
+    db_name = "/s/fran_storage/projects/litstmp/cases.db"
+    conn = sqlite3.connect(db_name)
+    cur = conn.cursor()
+
+# %%
+    ss = """ALTER TABLE master_plans ADD COLUMN remapping"""
+    ss = """ALTER TABLE datasources RENAME COLUMN lm to lm"""
+    ss = """DELETE FROM datasources WHERE case_id='lits_115'"""
+
+    ss = """SELECT case_id FROM datasources WHERE fold IS NOT NULL"""
+
+# %%
+    cur.execute(ss)
+# %%
+    ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{} ".format(1)
+    dss = conf["plan"]["datasources"]
+    dss = ("nodesthick", "nodes")
+
+# %%
+    ds = plans["datasources"]
+    fold = 0
+    ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{}".format(fold)
+    # ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{} AND ds = 'nodes' ".format(fold)
+    ss_val = "SELECT img_symlink FROM datasources WHERE fold={}".format(fold)
+    if isinstance(ds, str) and "," not in ds:
+        # Convert the list of datasources into a SQL-friendly string format
+        # ds_filter = ds
+        ss_train += " AND ds IN ({})".format(ds)
+        ss_val += " AND ds IN ({})".format(ds)
+    elif isinstance(ds, str):
+        ss_train += " AND ds = '{}'".format(ds)
+        ss_val += " AND ds = '{}'".format(ds)
+        # ds = "('{}')".format(ds)
+    # else:
+    # Append the datasource filter to the SQL queries
+    # ss_train += " AND ds IN ({})".format(ds_filter)
+    # ss_val += " AND ds IN ({})".format(ds_filter)
+    train_files, val_files = P.sql_query(ss_train, True), P.sql_query(ss_val, True)
+    train_files = [Path(fn).name for fn in train_files]
+    val_files = [Path(fn).name for fn in val_files]
+
+    # ss_train = "SELECT img_symlink FROM datasources WHERE fold<>{} AND ds in  ('nodesthick', 'nodes') ".format(10)
+
+# %%
+    fold = 0
+    ss_train = """
+    SELECT img_symlink 
+    FROM datasources 
+    WHERE fold <> {} 
+    AND LOWER(TRIM(ds)) IN ('nodesthick', 'nodes')
+    """.format(
+        fold
+    )
+# %%
+    dss = None
+    ss_train = (
+        "SELECT img_symlink FROM datasources WHERE fold<>{0} AND ds in  ('{1}')".format(
+            10, dss
+        )
+    )
+    aa = cur.execute(ss_train)
+    bb = pd.DataFrame(aa)
+    bb
+# %%
+    conn.commit()
+    aa = conn.execute(ss_train)
+
+# %%
+
+# %%
+    P._create_folds()
+    max_cases = 100
+    clip_range = [-300, 300]
+
+    P.G = GlobalProperties(P, max_cases=max_cases, clip_range=clip_range)
+    if not "mean_dataset_clipped" in P.global_properties.keys() or overwrite == True:
+        P.G.store_projectwide_properties()
+        P.G.compute_std_mean_dataset()
+        P.G.collate_lm_labels()
+
+# %%
+    dicis = []
+    for fldr in data_folders:
+        dataset_name = fldr.name
+        fldr = Path(fldr)
+        h5_fname = fldr / ("fg_voxels.h5")
+        dici = {"ds": dataset_name, "folder": str(fldr), "h5_fname": str(h5_fname)}
+        dicis.append(dici)
+
+# %%
+
+    dss = plans["datasources"]
+    dss = dss.split(",")
+    datasources = [getattr(DS, g) for g in dss]
+
+    test = None
+# %%
+# %%
+# SECTION:-------------------- Datasource setup from folder-------------------------------------------------------------------------------------- <CR> <CR>
+    test = False
+    ds = Datasource(
+        folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test
+    )
+    ds = Datasource(
+        folder=Path("/s/datasets_bkp/litstmp"), name="litstmp", alias="tmp", test=test
+    )
+    ds.process()
+
+# %%
+# SECTION:-------------------- get cases-------------------------------------------------------------------------------------- <CR> <CR>
+    fold = 0
+    ds = DS.nodes
+
+    ss_train = P.build_sql_query(fold, ds, is_validation=False)
+
+    ss_val = P.build_sql_query(fold, ds, is_validation=True)
+    query = ss_val
+
+    query = "SELECT img_symlink FROM datasources WHERE fold <> 0 AND ds IN ('nodes', 'nodesthick')"
+    result = P.sql_query(query, True)
+    result = P.sql_query(ss, True)
+    # Execute SQL queries
+    train_files = P.fetch_files(ss_train)
+    val_files = P.fetch_files(ss_val)
+
+    ss = """SELECT NOT EXISTS (SELECT 1 FROM datasources WHERE fold IS NOT NULL) AS all_nulls"""
+
+# %%
+# %%
+
+    strs = [
+        P.vars_to_sql(ds.name, ds.alias, getattr(ds, "ds_type", "full"), *pair, ds.test)
+        for pair in ds.verified_pairs
+    ]
+    with db_ops(P.db) as cur:
+        cur.executemany("INSERT INTO datasources VALUES (?,?, ?,?,?,?,?,?,?,?)", strs)
+# %%
+
+    ds_dict = DS.nodes
+    fldr = ds_dict["folder"]
+    test = False
+    ds = Datasource(folder=fldr, name=ds_dict["ds"], alias=ds_dict["alias"], test=test)
+
+    ss = "SELECT image FROM datasources WHERE ds='{}'".format(ds.name)
+    with db_ops(P.db) as cur:
+        res = cur.execute(ss)
+        pa = res.fetchall()
+    existing_images = list(il.chain.from_iterable(pa))
+    existing_images = [Path(x) for x in existing_images]
+    if len(existing_images) > 0:
+        print(
+            "Datasource {} exists already. Checking for new files in added folder".format(
+                ds.name
+            )
+        )
+        remaining_images_bool = [x not in existing_images for x in ds.images]
+        ds.verified_pairs = list(il.compress(ds.verified_pairs, remaining_images_bool))
+        if (ln := len(ds)) > 0:
+            print("{} new files found. Adding to db.".format(ln))
+        else:
+            print("No new files to add from datasource {}".format(ds.name))
+        datasources = [DS.drli_short]
+        test = False
+        test = [False] * len(datasources) if not test else listify(test)
+        assert len(datasources) == len(
+            test
+        ), "Unequal lengths of datafolders and (bool) test status"
+        for ds_dict, test in zip(datasources, test):
+            fldr = ds_dict["folder"]
+            ds = Datasource(
+                folder=fldr, name=ds_dict["ds"], alias=ds_dict["alias"], test=test
+            )
+            ds = P.filter_existing_images(ds)
+            P.populate_tbl(ds)
+        P.populate_raw_data_folder()
+        P.register_datasources(datasources)
+
+# %%
+        test=False
+
+        mnemonic="totalseg"
+        P.global_properties = {
+            "project_title": P.project_title,
+            "mnemonic": mnemonic,
+        }
+# %%
+        datasources = [DS.totalseg]
+        P = Project(project_title="totalseg")
+        P.add_data([DS.totalseg])
+        P._create_folder_tree()
+        P.create_tables()
+        if datasources:
+            P.add_data(datasources, test)
+        P.save_global_properties()
+
+
+# %%

@@ -611,7 +611,6 @@ if __name__ == "__main__":
 # %%
     pp(best_runs)
 
-    D = DS
     proj = Project(project_title="totalseg")
 
 # %%
@@ -620,6 +619,8 @@ if __name__ == "__main__":
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
+    fldr_curvas = DS["curvaspdac"].folder/  ("images")
+    imgs_curvas = list(fldr_curvas.glob("*"))
     fldr_lidc = DS["lidc"].folder / ("images")
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
@@ -669,10 +670,10 @@ if __name__ == "__main__":
     save_channels = False
     overwrite = False
 
-    devices = [1]
+    devices = [0]
 
 # %%
-    run = run_tot_big
+    run  = best_runs['totalseg']['run_ids'][0]
     debug_ = False
     safe_mode = True
 
@@ -690,7 +691,7 @@ if __name__ == "__main__":
 # %%
 
     # preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
-    imgs = imgs_lidc
+    imgs = imgs_curvas
     preds = T.run(imgs, chunksize=2, overwrite=overwrite)
 # %%
     preds = T.run(img_nodes, chunksize=2, overwrite=overwrite)

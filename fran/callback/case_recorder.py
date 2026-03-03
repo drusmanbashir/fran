@@ -2,6 +2,7 @@ import plotly.express as px
 import itertools as il
 import re
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -11,9 +12,12 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import seaborn as sns
+import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT
+from tqdm.auto import tqdm
 from utilz.cprint import cprint
-from utilz.stringz import cleanup_fname
+from utilz.fileio import load_json, save_json
+from utilz.stringz import cleanup_fname, headline
 
 from fran.callback.base import *
 try:
@@ -28,18 +32,70 @@ def chunked_case_ids(df, chunk_size=25):
     for i in range(0, len(cases), chunk_size):
         yield cases[i:i+chunk_size]
 
+
+def infer_labels_and_update_out_channels(dm, configs: dict):
+
+    labels_all_chunks=[]
+
+    headline("Infer labels and update out_channels")
+    def _scan(dl):
+      for batch in tqdm(dl):
+          labels_all_chunks.append(torch.unique(batch["lm"]))
+
+      # after scanning all loaders
+
+    try:
+        dm.prepare_data()
+        labels_all = load_json(dm.train_manager.data_folder/("labels_all.json"))
+        labels_all = set(labels_all)
+    except FileNotFoundError:
+        cprint("No labels_all.json found. Scanning data loaders.", color="yellow")
+
+        dm.setup(stage="fit")
+        _scan(dm.train_dataloader())
+        val_dl = dm.val_dataloader()
+        if isinstance(val_dl, (list, tuple)):
+            for dl in val_dl:
+                _scan(dl)
+        else:
+            _scan(val_dl)
+
+        labels_all = set(torch.unique(torch.cat(labels_all_chunks)).cpu().tolist())
+        labels_all = set(sorted(int(v) for v in labels_all))
+
+        # Store with same format as Preprocessor.store_labels_info:
+        # sorted JSON list of integer label values.
+        labels_all_sorted = sorted(int(v) for v in labels_all)
+        save_json(labels_all_sorted, dm.train_manager.data_folder / "labels_all.json")
+    max_label = max(labels_all)
+    out_channels = int(max_label) + 1
+
+    if labels_all != set(range(out_channels)):
+        warnings.warn(f"Label values have gaps: {labels_all}", stacklevel=2)
+
+    configs["plan_train"]["labels_all"] = sorted(labels_all)
+    if "plan_valid" in configs:
+        configs["plan_valid"]["labels_all"] = sorted(labels_all)
+    configs["model_params"]["out_channels"] = out_channels
+    cprint(f"Labels: {labels_all}, out_channels: {out_channels}", color="magenta" , bold=True)
+
+    return labels_all, out_channels
+
 class CaseIDRecorder(Callback):
-    def __init__(self, freq=5, local_folder="/tmp", dpi=300):
+    def __init__(self, freq=5, local_folder="/tmp", dpi=300, plot_x=50):
         """
 
         :param freq:
         :param local_folder:
         :param dpi:
+        :param plot_x: number of cases to plot in each subplot, fewer the cases , the more the plots wil be genrated
         """
         self.nep_field = "metrics/case_id_dices"
         self.set_figure_params(dpi)
         self.freq = freq
         self.local_folder = Path(local_folder)
+        self.plot_x = plot_x
+        self.width = 80*self.plot_x+200
 
 
     def on_fit_start(self, trainer, pl_module):
@@ -98,7 +154,7 @@ class CaseIDRecorder(Callback):
               )
             df_long.dropna(inplace=True)
             self.dfs[stage] = df_long
-            figs_labels_caseidchunks = self.create_plotly(df_long)
+            figs_labels_caseidchunks = self.create_plotly(df_long, chunk_size=self.plot_x)
             for label in figs_labels_caseidchunks.keys():
                 figs = figs_labels_caseidchunks[label]
                 for ind, fig_casegroup in enumerate(figs):
@@ -121,7 +177,7 @@ class CaseIDRecorder(Callback):
     def store_results(self, trainer):
         epoch = trainer.current_epoch
         self.dfs["epoch"]=epoch
-        cprint("CaseIDRecorder: Storing results", color = "green", italic=True)
+        # cprint("CaseIDRecorder: Storing results", color = "green", italic=True)
         if self.incrementing==False:
             for stage ,loss_dict in zip (["train", "valid"], [self.loss_dicts_train, self.loss_dicts_valid]):
                 self._store(trainer, stage, loss_dict,epoch)
@@ -156,19 +212,18 @@ class CaseIDRecorder(Callback):
                 batch_var = "batch"+str(n)+"_"
                 df1 = dft.loc[:,dft.columns.str.contains(batch_var)]
                 df1.columns= df1.columns.str.replace(batch_var, "")
-                print(df1.columns)
                 dfs.append(df1)
             df_final = pd.concat(dfs, axis=0)
             df_final.dropna(inplace=True)
             return df_final
 
 
-    def create_plotly(self, df_long)->dict:
+    def create_plotly(self, df_long, chunk_size=25)->dict:
         figs = {}
         labels = df_long["label"].unique()
         for label in labels:
             figs_this_label =[]
-            for cases_chunk in chunked_case_ids(df_long, chunk_size=25):
+            for cases_chunk in chunked_case_ids(df_long, chunk_size=chunk_size):
                 df_chunk = df_long[df_long["case_id"].astype(str).isin(cases_chunk)].copy()
                 df_label = df_chunk[df_chunk["label"] == label]
                 fig = px.box(
@@ -179,6 +234,7 @@ class CaseIDRecorder(Callback):
                     category_orders={"case_id": cases_chunk},
                     title=f"{label}"
                 )
+                fig.update_layout(width=self.width)
                 fig.update_xaxes(tickangle=90)
                 figs_this_label.append(fig)
             figs[label]= figs_this_label

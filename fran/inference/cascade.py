@@ -424,6 +424,9 @@ if __name__ == "__main__":
 
     from fran.data.dataregistry import DS
     fldr_lidc = DS["lidc"].folder / ("images")
+    fldr_curvas = DS["curvaspdac"].folder/  ("images")
+    imgs_curvas = list(fldr_curvas.glob("*"))
+
     fldr_colonmsd = DS["colonmsd10"].folder/  ("images")
     imgs_colonmsd = list(fldr_colonmsd.glob("*"))
     imgs_lidc = list(fldr_lidc.glob("*"))
@@ -526,7 +529,7 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- BONES--------------------------------------------------------------------------------------
 
-    run = best_runs["projects"]["bones"]
+    run = best_runs["bones"]
     localiser_labels= run['localiser_labels']
     if localiser_labels=="TSL.label_localiser":
         localiser_labels = set(TSL.label_localiser)
@@ -596,11 +599,16 @@ if __name__ == "__main__":
 # SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     localiser_labels = set(TSL.label_localiser)
+    
+    TLS = TotalSegmenterLabels()
+    labs_panc = TLS.pancreas
     safe_mode = True
     devices = [0]
     overwrite = False
     save_channels = False
     save_localiser = False
+    run_totalseg = best_runs['totalseg']['run_ids'][0]
+# %%
     En = CascadeInferer(
         run_w,
         run_totalseg,
@@ -620,9 +628,7 @@ if __name__ == "__main__":
     # preds = En.run(img_fns, chunksize=2)
 # %%
 # SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
-    run = run_litsmc2
-    localiser_labels_litsmc = [3]
-    run_w = "LITS-1088"
+    localiser_labels_litsmc = [3] 
     devices = [1]
     overwrite = True
     safe_mode = True

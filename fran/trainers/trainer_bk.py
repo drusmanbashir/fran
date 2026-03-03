@@ -20,12 +20,13 @@ from lightning.pytorch.callbacks import (
 from lightning.pytorch.profilers import AdvancedProfiler
 
 from fran.callback.base import BatchSizeSafetyMargin
+from fran.callback.case_recorder import infer_labels_and_update_out_channels
 from fran.callback.incremental import LRFloorStop
 from fran.callback.test import PeriodicTest
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import parse_neptune_dict
 from fran.managers.wandb import WandbManager
-from fran.trainers.trainer import Trainer
+from fran.trainers.trainer_core import Trainer
 from utilz.stringz import headline
 
 
@@ -123,6 +124,14 @@ class TrainerBK(Trainer):
             strategy = "auto"
 
         self.init_dm_unet(epochs, batch_size, override_dm_checkpoint)
+        self.D.prepare_data()
+        self.D.setup(stage="fit")
+        # infer_labels_and_update_out_channels(
+        #     dm=self.D,
+        #     configs=self.configs,
+        #     pl_module=self.N,
+        #     trainer=self,
+        # )
 
         # Keep loop/step state consistent on resumed runs.
         # BatchSizeFinder runs probe fits and restores a temp checkpoint,
@@ -150,7 +159,6 @@ class TrainerBK(Trainer):
             wandb_grid_epoch_freq=int(wandb_grid_epoch_freq),
         )
         self._ensure_local_ckpt_on_wandb_resume(logger)
-        self.D.prepare_data()
 
         self.trainer = TrainerL(
             callbacks=cbs,
@@ -166,7 +174,6 @@ class TrainerBK(Trainer):
             default_root_dir=self.project.checkpoints_parent_folder,
             strategy=strategy,
         )
-
     def init_cbs(
         self,
         cbs,
@@ -257,7 +264,7 @@ class TrainerBK(Trainer):
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
-    P = Project("colon")
+    P = Project("pancreas")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
     C.setup(1)
@@ -288,7 +295,6 @@ if __name__ == '__main__':
     compiled = False
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
-    batchsize_finder = False
     neptune = True
     override_dm = False
     tags = []
@@ -299,7 +305,7 @@ if __name__ == '__main__':
     cbs = [PeriodicTest(every_n_epochs=1,limit_batches=50), BatchSizeFinder(batch_arg_name="batch_size")]
 
     conf["dataset_params"]["cache_rate"]=0.0
-    print(conf['model_params']['out_channels'])
+    # print(conf['model_params']['out_channels'])
     
 
     conf['dataset_params']['cache_rate']
@@ -308,10 +314,12 @@ if __name__ == '__main__':
     conf["dataset_params"]["fold"]=0
     run_name=None
     lr= 1e-2
+    batchsize_finder = True
 # %%
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm = TrainerBK(P.project_title, conf, run_name)
+# %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -328,6 +336,7 @@ if __name__ == '__main__':
 
     Tm.fit()
     # model(inputs)
+# %%
 # %
     D = Tm.D
     D.setup()

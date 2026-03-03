@@ -207,7 +207,15 @@ if __name__ == "__main__":
     parser.add_argument( "--bsf",
         "--batchsize-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batchsize_finder"
     )
-    parser.add_argument("--incremental", type=str2bool, default=False, help="Enable incremental curriculum training loop")
+    parser.add_argument(
+        "-i",
+        "--incremental",
+        nargs="?",
+        const=True,
+        default=False,
+        type=str2bool,
+        help="Enable incremental curriculum training loop",
+    )
     parser.add_argument("--initial-samples", type=int, default=32, help="Initial number of train cases")
     parser.add_argument("--add-samples", type=int, default=16, help="Number of cases to add per stage")
     args = parser.parse_known_args()[0]

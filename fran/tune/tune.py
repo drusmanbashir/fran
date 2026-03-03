@@ -28,7 +28,7 @@ from fran.managers.base import load_checkpoint
 # only vars below will be tuned
 from fran.utils.common import COMMON_PATHS
 
-ray_results_folder = Path(COMMON_PATHS["ray_results_folder"])
+ray_folder_folder = Path(COMMON_PATHS["ray_folder_folder"])
 OOM_RE = re.compile(r"CUDA out of memory", re.IGNORECASE)
 
 
@@ -74,7 +74,7 @@ def main(args):
             name="tune_UNET",
             progress_reporter=reporter,
             failure_config=FailureConfig(max_failures=2),  # retry actor if it crashes
-            storage_path=ray_results_folder,
+            storage_path=ray_folder_folder,
         ),
         param_space=conf,
     )

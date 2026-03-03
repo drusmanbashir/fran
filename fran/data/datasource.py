@@ -444,9 +444,11 @@ if __name__ == "__main__":
     lits_fldr = "/s/datasets_bkp/lits_segs_improved"
     ln_fldr = DS["lidc"]
     litsmall_fldr = DS["litsmall"]
+    curvas_fldr = DS["curvaspdac"]
     bones_fldr = "/s/agent_rw/datasets/fully_annotated/ULS23_Radboudumc_Bone"
 # %%
     ds = Datasource(bones_fldr, "bones")
+    ds = Datasource(curvas_fldr.folder)
     # ds = Datasource(nodesthick_fldr, "nodesthick")
     ds.process()
 # %%

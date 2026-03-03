@@ -1,23 +1,29 @@
 # %%
+
+MIN_SIZE = 32  # min size in a single dimension of any image
 import ipdb
 import numpy as np
 import ray
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from utilz.imageviewers import ImageMaskViewer
 
+from fran.data.dataregistry import DatasetRegistry, DatasetSpec
 from fran.preprocessing.rayworker_base import RayWorkerBase
+from fran.preprocessing.preprocessor import store_labels_info
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import BBoxFromPTd
 from fran.transforms.misc_transforms import (ApplyBBox, LabelRemapSITKd,
                                              MergeLabelmapsd, Recastd)
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.folder_names import folder_names_from_plan
+from label_analysis.merge import get_labels
 
 tr = ipdb.set_trace
 
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-from utilz.helpers import find_matching_fn
+from utilz.helpers import find_matching_fn, info_from_filename
 from tqdm.auto import tqdm as pbar
 
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
@@ -26,6 +32,7 @@ from fran.configs.parser import ConfigMaker
 
 def resolve_relative_path(pth:str)->str:
         from fran.utils.common import COMMON_PATHS
+        DS= DatasetRegistry()
         pth2 = pth.split("/")
         str_out = ""
         for sub_path in pth2:
@@ -33,6 +40,13 @@ def resolve_relative_path(pth:str)->str:
                 sub_path = sub_path.replace("$","")
                 rel_path = COMMON_PATHS[sub_path]
                 str_out += f"{rel_path}/"
+            elif "DS." in sub_path:
+                ds = sub_path.split(".")[1]
+                ds = DS[ds]
+                fldr_path = ds.folder
+                fldr_path =str(fldr_path)
+                str_out += f"{fldr_path}/"
+                
             else:
                 str_out += f"{sub_path}/"
         return str_out
@@ -164,26 +178,9 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         imported_folder (Path): Path to imported label files
         df (DataFrame): Extended dataframe with 'imported' column for file matching
 
-    Example:
-        >>> from fran.managers import Project
-        >>> P = Project(project_title="my_project")
-        >>> generator = LabelBoundedDataGeneratorImported(
-        ...     project=P,
-        ...     plan=plan_config,
-        ...     imported_folder="/path/to/totalseg/predictions",
-        ...     
-        ...     remapping={1: 1, 2: 2}  # liver labels
-        ... )
-        >>> generator.setup(overwrite=True)
-        >>> generator.process()
-
-    Note:
-        - Imported files are matched to cases using case_id extracted from filenames
-        - A single image/label pair is generated per case after boundary-based cropping
-        - Supports various imported label formats (TotalSegmenter, custom annotations, etc.)
-    """
 
     _default = "project"
+    """
 
     def __init__(
         self,
@@ -202,11 +199,23 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             output_folder=output_folder,
             crop_to_label=mask_label,
         )
-        imported_folder = plan.get("imported_folder","")
-        if "$" in imported_folder:
+        datasources_ = plan.get("datasources")
+        datasources = datasources_.replace(" ","").split(",")
+        imported_folder_ = plan.get("imported_folder","")
+        imported_folder__ = imported_folder_.replace(" ","").split(",")
+        dicis = []
+
+        remappings = plan.get("remapping_imported") or [None] * len(datasources)
+        for ds,imported_folder,remapping in zip(datasources, imported_folder__, remappings):
+            dici={}
+            dici["ds"] = ds
             imported_folder = resolve_relative_path (imported_folder)
-        self.imported_folder = Path(imported_folder)
+            dici["imported_folder"] = imported_folder
+            dici["remapping_imported"] = remapping
+            dicis.append(dici)
+        self.ds_imported_folder_remapping = dicis
         self.actor_cls = LBDImportedSamplerWorkerImpl
+
     def create_data_df(self) -> None:
         """
         Create data DataFrame with imported file matching.
@@ -219,44 +228,62 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         """
         super().create_data_df()
 
-        # Validate imported folder exists
-        if not self.imported_folder.exists():
-            raise FileNotFoundError(
-                f"Imported folder not found: {self.imported_folder}"
-            )
-        # Get imported files
-        imported_fns = list(self.imported_folder.glob("*"))
-        if not imported_fns:
-            raise ValueError(
-                f"No files found in imported folder: {self.imported_folder}"
-            )
 
-        unmatched_images = []
-        matched_files = []
-        for fn in pbar(self.df.image):
-            try:
-                matching = find_matching_fn(fn, imported_fns, tags=["all"])[0]
-                matched_files.append(matching)
-            except Exception as e:
-                print(f"Warning: No match found for {fn.name}: {e}")
-                unmatched_images.append(fn)
-        if len(matched_files) != len(self.df):
-            raise ValueError(
-                f"Failed to match all case_ids with imported files: {unmatched_images}"
-            )
+    def set_remapping_per_ds(self):
+        df = self.df.copy()
+        for dici in self.ds_imported_folder_remapping:
+            ds = dici["ds"]
+            imported_folder= dici["imported_folder"]
+            imported_folder = Path(imported_folder)
+            remapping_imported = dici["remapping_imported"]
+            mask = df["ds"] == ds
+            idx = df.index[mask]
+            # df = df.loc[idx]
 
-        self.df["lm_imported"] = matched_files
-        self.df["remapping_imported"] = [self.plan["remapping_imported"]] * len(self.df)
+            if len(str(imported_folder)) < 3:
+                pass
+            else:
 
-        nan_mask = self.df["lm_imported"].isna()
-        if nan_mask.any():
-            missing_count = nan_mask.sum()
-            print(f"Warning: {missing_count}/{len(self.df)} cases lack imported files:")
-            missing_image_fns = self.df.loc[nan_mask, "image"].tolist()
-            print(f"  Missing image_fns: {missing_image_fns}")
+                if not imported_folder.exists():
+                            raise FileNotFoundError(
+                                f"Imported folder not found: {imported_folder}"
+                            )
 
-        else:
-            print("✓ All case_ids successfully matched with imported files!")
+                df.loc[idx, "imported_folder"] = imported_folder
+                df.loc[idx, "remapping_imported"] = [remapping_imported]*len(idx)
+
+                # df.loc[idx]["imported_folder"]
+                # Validate imported folder exists
+                        # Get imported files
+                imported_fns = list(imported_folder.glob("*"))
+                unmatched_images = []
+                matched_files = []
+                for fn in pbar(df.loc[idx, "image"]):
+                    try:
+                        fn = Path(fn)
+                        matching = find_matching_fn(fn.name, imported_fns, tags=["all"])[0]
+                        matched_files.append(matching)
+                    except Exception as e:
+                        print(f"Warning: No match found for {fn.name}: {e}")
+                        unmatched_images.append(fn)
+                if len(matched_files) != len(idx):
+                    raise ValueError(
+                        f"Failed to match all case_ids with imported files: {unmatched_images}"
+                    )
+
+                df.loc[idx, "lm_imported"] = matched_files
+                nan_mask = df.loc[idx, "lm_imported"].isna()
+                if nan_mask.any():
+
+                    missing_count = nan_mask.sum()
+                    print(f"Warning: {missing_count}/{len(df)} cases lack imported files:")
+                    missing_image_fns = df.loc[idx, "image"].loc[nan_mask].tolist()
+                    print(f"  Missing image_fns: {missing_image_fns}")
+
+                else:
+                    print(f"✓ All case_ids successfully matched with imported files for datasource {ds}!")
+        self.df = df.copy()
+
 
     def create_properties_dict(self) -> Dict[str, Any]:
         """
@@ -326,7 +353,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    project_title = "lidc"
+    project_title = "pancreas"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
@@ -342,24 +369,27 @@ if __name__ == "__main__":
     plan = conf["plan_train"]
     pp(plan)
     spacing = plan["spacing"]
-    # plan["remapping_imported"][0]
-    plan["expand_by"]
+    imported_fldr  = plan["imported_folder"]
+
 # %%
 # SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     resampled_data_folder = folder_names_from_plan(P, plan)[
             "data_folder_source"
         ]
 
+# %%
     L = LabelBoundedDataGeneratorImported(
         project=P,
         plan=plan,
         data_folder=resampled_data_folder
     )
-# %%
-    overwrite=True
-    L.setup(overwrite=overwrite)
 
+# %%
+    num_processes=6
+    overwrite=True
+    L.setup(overwrite=overwrite,num_processes=num_processes)
     L.process()
+    store_labels_info(L.output_folder,16)
 # %% %%
     num_processes=16
     L.create_data_df()
@@ -395,15 +425,7 @@ if __name__ == "__main__":
     data2  = LL.transforms_dict["D"](data2)
     data2  = LL.transforms_dict["E"](data2)
     data3 = LL.transforms_dict["Rz"](data2)
-    data2['lm_imported'].shape
     data2['lm'].shape
-# %%
-    fn =Path("/r/datasets/preprocessed/nodes/fixed_spacing/spc_080_080_150/images/nodes_78_20210617_CAP1p5.pt")
-    img = torch.load(fn,weights_only=False)
-# %%
-    import SimpleITK as sitk
-    fn = "/s/fran_storage/predictions/totalseg/LITS-1088/nodes_90_20201201_CAP1p5SoftTissue.nii.gz"
-    im = sitk.ReadImage(fn)
-
+    data2['lm_imported'].shape
 
 # %%

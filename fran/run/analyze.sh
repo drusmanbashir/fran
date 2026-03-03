@@ -2,4 +2,4 @@
 # python -m ipdb  analyze_resample.py -t lidc -p 1 -n 8
 # python analyze_resample.py -t lidc -p 1 -n 8
 # python analyze_resample.py -t totalseg -p 6
-python analyze_resample.py -t lidc -p 0  -n 6
+python analyze_resample.py -t pancreas -p 2  -n 6

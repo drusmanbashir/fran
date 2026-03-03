@@ -208,6 +208,7 @@ class IncrementalTrainer (TrainerBK):
 
             sd["lr_schedulers"][0]["_last_lr"] = [float(self.lr)]
 
+            sd['hyper_parameters']['lr']= self.lr
             headline(
                 "Warning: Overriding CKPT learning rate with Trainer configs: {}".format(
                     self.lr
@@ -374,7 +375,7 @@ class IncrementalTrainer (TrainerBK):
             DMClass = DataManagerPatchI
         elif mode == "source":
             DMClass = DataManagerSourceI
-        elif mode == "sourcepatch":
+        elif mode == "sourcepbd":
             DMClass = DataManagerPatchI
         elif mode == "whole":
             DMClass = DataManagerWholeI
@@ -468,10 +469,10 @@ if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- - <CR> <CR>
     set_autoreload()
     from fran.utils.common import *
-    P = Project("nodes")
+    P = Project("lidc")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
-    C.setup(4)
+    C.setup(2)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -515,8 +516,8 @@ if __name__ == "__main__":
     conf['dataset_params']['cache_rate']
 
     conf["dataset_params"]["fold"]=0
-    run_name="NODES-0087"
     run_name=None
+    run_name="LIDC-0002"
     lr= 1e-2
     debug=True
     debug=False
@@ -531,6 +532,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
+        lr=lr,
         data_increment_size=20,
         epochs=epochs,
         batchsize_finder=batchsize_finder,
@@ -558,8 +560,14 @@ if __name__ == "__main__":
     Tm.D.train_manager2.collate_fn
     dlv = Tm.D.valid_dataloader()
     dl = Tm.D.train_dataloader()
+    ds = Tm.D.train_manager1.ds
+
+
     iteri = iter(dl)
     b = next(iteri)
+    b['image'].meta
+
+# %%
     ds = Tm.D.train_manager1.ds
     ds[0]
     tmt = Tm.D.train_manager1
@@ -756,4 +764,11 @@ if __name__ == "__main__":
 # %%
 
     used_indices = Tm.D.train_df[Tm.D.train_df["used_in_training"]==True].index
+# %%
+
+    sd = torch.load(Tm.ckpt, map_location="cpu")
+
+    for g in sd["optimizer_states"][0]["param_groups"]:
+        g["lr"] = float(Tm.lr)
+
 # %%

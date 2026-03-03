@@ -399,7 +399,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title="lidc"
+    # args.project_title="pancreas"
     # args.plan = 1
     # args.num_processes = 4
     # args.overwrite=True
@@ -412,5 +412,22 @@ if __name__ == "__main__":
         parser.print_help()
         raise SystemExit(0)
     main(args)
-    # sys.exit()
+    sys.exit()
+
+# %%
+#
+#     I = PreprocessingManager(args)
+#     I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+# # %%
+#     I.R = ResampleDatasetniftiToTorch(
+#         project=I.project,
+#         plan=I.plan,
+#         data_folder=I.project.raw_data_folder,
+#     )
+# # %%
+#
+#     I.R.setup(overwrite=overwrite, num_processes=num_processes)
+#     I.R.process()
+#     I.resample_output_folder = I.R.output_folder
+#
 # %%

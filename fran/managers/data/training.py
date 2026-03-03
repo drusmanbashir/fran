@@ -262,7 +262,7 @@ class DataManagerDual(LightningDataModule):
             "source": DataManagerSource,
             "whole": DataManagerWhole,
             "patch": DataManagerPatch,
-            "sourcepatch": DataManagerPatch,
+            "sourcepbd": DataManagerPatch,
             "lbd": DataManagerLBD,
             "baseline": DataManagerBaseline,
             "pbd": DataManagerWID,
@@ -380,7 +380,7 @@ class DataManagerMulti(DataManagerDual):
 
         mode_to_class = {
             "source": DataManagerSource,
-            "sourcepatch":DataManagerPatch,
+            "sourcepbd":DataManagerPatch,
             "whole": DataManagerWhole,
             "patch": DataManagerPatch,
             "lbd": DataManagerLBD,
@@ -741,7 +741,7 @@ class DataManager(LightningDataModule):
             "baseline",
             "patch",
             "source",
-            "sourcepatch",
+            "sourcepbd",
             "pbd",
             "lbd",
         ], f"Set a value for mode in 'whole', 'patch' or 'source', got {dataset_mode}"

@@ -167,6 +167,30 @@ def get_tensorfile_stats(filename):
     tnsr = torch.load(filename, weights_only=False)
     return get_tensor_stats(tnsr)
 
+def _labels_from_lm_file(filename):
+    lm = torch.load(filename, weights_only=False)
+    labels = torch.unique(lm).detach().cpu().tolist()
+    return [int(v) for v in labels]
+
+def store_labels_info(output_folder, num_processes=16):
+    output_folder = Path(output_folder)
+    lms_folder = output_folder / "lms"
+    lm_files = list(lms_folder.glob("*pt"))
+    labels_all = set()
+    if len(lm_files) > 0:
+        arguments = [[fn] for fn in lm_files]
+        labels_per_file = multiprocess_multiarg(
+            func=_labels_from_lm_file,
+            arguments=arguments,
+            num_processes=num_processes,
+            debug=False,
+        )
+        for labels in labels_per_file:
+            labels_all.update(labels)
+    labels_all = sorted(int(v) for v in labels_all)
+    out_fn = output_folder / "labels_all.json"
+    save_json(labels_all, out_fn)
+
 
 def get_tensor_stats(tnsr)->dict:
     dic = {
@@ -216,7 +240,21 @@ class Preprocessor(GetAttr):
         else:
             self.df = self.project.df
             self.case_ids = self.project.case_ids
+
+        self.df = self.df.applymap(lambda x: x.lower() if isinstance(x, str) else x)
         print("Total number of cases: ", len(self.df))
+
+    def set_remapping_per_ds(self ):
+        datasources = self.plan.get("datasources")
+        datasources = datasources.replace(" ","").split(",")
+        remappings = self.plan.get(self.remapping_key)
+        assert len(remappings) == len(datasources), f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
+        for ds, remapping in zip(datasources, remappings):
+            mask = self.df["ds"] == ds
+            if mask.sum() == 0: raise ValueError(f"Datasource {ds} not found in df")
+            self.df.loc[mask, self.remapping_key] = [remapping] * mask.sum()
+
+
 
     def set_input_output_folders(self, data_folder, output_folder):
         raise NotImplementedError
@@ -424,8 +462,11 @@ class Preprocessor(GetAttr):
 
     def ray_init(self):
         if not ray.is_initialized():
+            from fran.utils.common import COMMON_PATHS
+            ray_fldr = COMMON_PATHS['ray_folder']
+            ray_tmp = Path(ray_fldr)/("tmp")
             try:
-                ray.init(ignore_reinit_error=True)
+                ray.init(ignore_reinit_error=True, _temp_dir=str(ray_tmp))
             except Exception as e:
                 print("Ray init warning:", e)
 

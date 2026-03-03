@@ -561,8 +561,8 @@ class DataManagerModes:
         manager_cls=DataManagerSourceI,
         collate_fn=source_collated,
     )
-    SOURCEPATCH = DataManagerModeSpec(
-        mode="sourcepatch",
+    sourcepbd = DataManagerModeSpec(
+        mode="sourcepbd",
         manager_cls=DataManagerPatchI,
         collate_fn=patch_collated,
     )
@@ -594,7 +594,7 @@ class DataManagerModes:
     #
     _BY_MODE = {
         SOURCE.mode: SOURCE,
-        SOURCEPATCH.mode: SOURCEPATCH,
+        sourcepbd.mode: sourcepbd,
         WHOLE.mode: WHOLE,
         PATCH.mode: PATCH,
         LBD.mode: LBD,
@@ -642,11 +642,11 @@ if __name__ == "__main__":
 
 
 # %%
-    proj_nodes = Project(project_title="nodes")
+    proj_nodes = Project(project_title="lidc")
     CN = ConfigMaker(
         proj_nodes,
     )
-    CN.setup(5)
+    CN.setup(1)
     config_nodes = CN.configs
 
 # %%

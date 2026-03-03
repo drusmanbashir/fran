@@ -206,3 +206,4 @@ class RayWorkerBase(Preprocessor):
 #                 print(f"[{self.__class__.__name__}] error: {name}: {e}")
 #                 out.append({"case_id": row.get("case_id"), "ok": False, "err": str(e)})
 #         return out
+# %%

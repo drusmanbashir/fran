@@ -64,12 +64,14 @@ class GlobalProperties(GetAttr):
             [isinstance(x, float) for x in percentile_range]
         ), "Provide float values for clip percentile_range. Corresponding HUs will be stored in file for future processing."
         store_attr("project,bg_label,percentile_range,clip_range,max_cases")
+        datasources = self.global_properties.get("datasources", [])
+        assert len(datasources) > 0, "No datasources found in project metadata. Run P.add_data([...]) before maybe_store_projectwide_properties()."
         self.case_ids, self.img_fnames = (
             self.collate_project_cases()
         )  #        self.h5ns =[]
         self.cases_for_sampling = self.sample_cases()
         self.img_fnames_for_sampling = self.filter_img_fnames_for_sampling()
-        for ds in self.global_properties["datasources"]:
+        for ds in datasources:
             h5fn = Path(ds["h5_fname"])
             assert (
                 h5fn.exists()
@@ -106,7 +108,7 @@ class GlobalProperties(GetAttr):
         finally:
             con.close()
 
-        ds_type_map = {d["ds"]: d.get("ds_type", "full") for d in self.global_properties["datasources"]}
+        ds_type_map = {d["ds"]: d.get("ds_type", "full") for d in self.global_properties.get("datasources", [])}
 
         self.case_rows = []
         self.case_ids_by_ds = defaultdict(set)
@@ -406,7 +408,7 @@ class GlobalProperties(GetAttr):
         keys = [k for k in self.global_properties.keys() if lmgps in k]
         for key in keys:
             shared_labels_gps = self.global_properties[key]["ds"]
-            labs_gp = []
+            labs_gp = [0]
             for gp in shared_labels_gps:
                 tr()
                 ds_name = DS.resolve_ds_name(gp)
