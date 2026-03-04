@@ -164,7 +164,7 @@ class UNetManagerCraig(UNetManagerFabric):
         grad_L_z= self.loss_fnc.grad_L_z
         return loss,loss_dict,grad_L_z
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
         loss, loss_dict ,grad_L_z = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="val")
         return loss, grad_L_z

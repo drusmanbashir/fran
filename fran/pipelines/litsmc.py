@@ -10,7 +10,7 @@ from fran.managers.data import DataManagerMulti
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.run.analyze_resample import PreprocessingManager
-from fran.trainers.trainer_bk import TrainerBK
+from fran.trainers.trainer import Trainer
 from fran.configs.parser import ConfigMaker
 from fran.data.dataregistry import DS
 # %%
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     run_name = None
     # conf["dataset_params"]["cache_rate"] = None
 
-    Tm = TrainerBK(P.project_title, conf, run_name)
+    Tm = Trainer(P.project_title, conf, run_name)
 # %%
     Tm.setup(
         compiled=compiled,

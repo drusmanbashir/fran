@@ -5,6 +5,8 @@ from pathlib import Path
 import ipdb
 import lightning as L
 from lightning.pytorch.utilities.types import STEP_OUTPUT
+from monai.transforms.post.array import AsDiscrete
+from monai.transforms.post.dictionary import AsDiscreteD
 
 from fran.managers.project import Project
 
@@ -64,6 +66,7 @@ class UNetManager(LightningModule):
     def setup(self, stage="fit"):
         self.create_loss_fnc()
         super().setup(stage="fit")
+
     def _common_step(self, batch, batch_idx):
         if not hasattr(self, "batch_size"):
             self.batch_size = batch["image"].shape[0]
@@ -109,7 +112,7 @@ class UNetManager(LightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         loss, loss_dict = self._common_step(batch, batch_idx)
-        self.log_losses(loss_dict, prefix="val{}".format(dataloader_idx))
+        self.log_losses(loss_dict, prefix="val")
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -290,6 +293,43 @@ class UNetManager(LightningModule):
             loss_func = CombinedLoss(**self.loss_params, fg_classes=fg_classes)
             self.loss_fnc = loss_func
 
+
+class UNetManagerMulti(UNetManager):
+    def __init__(self, project_title, configs, lr=None, sync_dist=False):
+        super().__init__(project_title, configs, lr, sync_dist)
+        self.Discretize = AsDiscrete(argmax=True,  dim=1)
+
+    def _common_step(self, batch, batch_idx, dataloader_idx=0):
+        if not hasattr(self, "batch_size"):
+            self.batch_size = batch["image"].shape[0]
+        inputs, target = batch["image"], batch["lm"]
+        pred = self.forward(
+            inputs
+        )  # self.pred so that NeptuneImageGridCallback can use it
+        if dataloader_idx == 1:
+            pred = pred[0]
+            pred = self.Discretize(pred)
+            loss = self.loss_fnc.LossFunc.dice(pred, target)
+            loss = loss.flatten()
+            loss_dict = {}
+            for x in range(len(loss)):
+                loss_dict["loss_" + str(x)] = loss[x]
+            return loss, loss_dict
+
+        else:
+            pred, target = self.maybe_apply_ds_scales(pred, target)
+            loss = self.loss_fnc(pred, target)
+            loss_dict = self.loss_fnc.loss_dict
+            self.maybe_store_preds(pred)
+            return loss, loss_dict
+
+        
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        loss, loss_dict = self._common_step(batch, batch_idx, dataloader_idx)
+        self.log_losses(loss_dict, prefix="val{}".format(dataloader_idx))
+        return loss
+
 class UNetManagerFabric(UNetManager):
     def on_train_batch_start(self, trainer, batch, batch_idx):
         pass
@@ -313,3 +353,8 @@ class UNetManagerFabric(UNetManager):
         batch_idx: int,
     ) -> None:
         pass
+# %%
+
+# %%
+# %%
+# %%

@@ -2,7 +2,7 @@ import os
 
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
-from fran.trainers.trainer_bk import TrainerBK
+from fran.trainers.trainer import Trainer
 
 
 if __name__ == "__main__":
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     conf["dataset_params"]["cache_rate"] = 0.0
     conf["dataset_params"]["fold"] = 0
 
-    Tm = TrainerBK(P.project_title, conf, run_name)
+    Tm = Trainer(P.project_title, conf, run_name)
     Tm.setup(
         compiled=compiled,
         batch_size=bs,

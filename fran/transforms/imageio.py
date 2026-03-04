@@ -62,6 +62,21 @@ tr = ipdb.set_trace
 
 
 class LoadSITKd(MapTransform):
+    """
+    Load image-like inputs into a MetaTensor.
+
+    This transform accepts a filename/path or a `sitk.Image` for each key and
+    outputs a MONAI `MetaTensor` plus metadata.
+
+    In imported-label pipelines this is intentionally used *after*
+    `LabelRemapSITKd`:
+    1) `LabelRemapSITKd` remaps labels while data is still SITK.
+    2) `LoadSITKd` converts the (possibly remapped) SITK image to tensor/meta.
+
+    It is therefore not a duplicate of remapping logic; this is the tensorization
+    step required before MONAI tensor transforms (for example
+    `EnsureChannelFirstd`, resizing, merges).
+    """
     def __init__(
         self,
         keys: KeysCollection,

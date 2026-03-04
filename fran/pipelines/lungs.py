@@ -2,7 +2,7 @@
 import argparse
 
 from utilz.imageviewers import ImageMaskViewer
-from fran.trainers.trainer_bk import TrainerBK
+from fran.trainers.trainer import Trainer
 from pathlib import Path
 from fran.managers import Project
 from fran.data.datasource import Datasource
@@ -200,7 +200,7 @@ if __name__ == '__main__':
     conf["dataset_params"]["ds_type"] ='lmdb'
 
     run_name=None
-    Tm = TrainerBK(P.project_title, conf, run_name)
+    Tm = Trainer(P.project_title, conf, run_name)
 # %%
     Tm.setup(
         compiled=compiled,

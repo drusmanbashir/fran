@@ -15,7 +15,7 @@ from fastcore.all import store_attr
 from fastcore.foundation import GetAttr
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
-from utilz.stringz import info_from_filename, strip_extension
+from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
 from tqdm.auto import tqdm
 from fran.preprocessing import bboxes_function_version
@@ -248,6 +248,8 @@ class Preprocessor(GetAttr):
         datasources = self.plan.get("datasources")
         datasources = datasources.replace(" ","").split(",")
         remappings = self.plan.get(self.remapping_key)
+        remappings = ast_literal_eval(remappings)
+        if remappings is None: remappings = [None] * len(datasources)
         assert len(remappings) == len(datasources), f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
         for ds, remapping in zip(datasources, remappings):
             mask = self.df["ds"] == ds

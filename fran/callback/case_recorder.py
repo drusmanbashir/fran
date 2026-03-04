@@ -90,7 +90,6 @@ class CaseIDRecorder(Callback):
         :param dpi:
         :param plot_x: number of cases to plot in each subplot, fewer the cases , the more the plots wil be genrated
         """
-        self.nep_field = "metrics/case_id_dices"
         self.set_figure_params(dpi)
         self.freq = freq
         self.local_folder = Path(local_folder)
@@ -154,6 +153,7 @@ class CaseIDRecorder(Callback):
               )
             df_long.dropna(inplace=True)
             self.dfs[stage] = df_long
+            self._log_df_to_wandb(trainer=trainer, df_long=df_long, stage=stage, epoch=epoch)
             figs_labels_caseidchunks = self.create_plotly(df_long, chunk_size=self.plot_x)
             for label in figs_labels_caseidchunks.keys():
                 figs = figs_labels_caseidchunks[label]
@@ -173,6 +173,28 @@ class CaseIDRecorder(Callback):
                     epoch=epoch,
                     df_long=df_long,
                 )
+
+    def _is_wandb_logger(self, trainer) -> bool:
+        logger = getattr(trainer, "logger", None)
+        if logger is None:
+            return False
+        logger_name = logger.__class__.__name__
+        return logger_name in {"WandbLogger", "WandbManager"}
+
+    def _log_df_to_wandb(self, trainer, df_long: pd.DataFrame, stage: str, epoch: int) -> None:
+        if not self._is_wandb_logger(trainer):
+            return
+        try:
+            import wandb
+        except Exception:
+            return
+        try:
+            run = trainer.logger.experiment
+            table = wandb.Table(dataframe=df_long.reset_index(drop=True))
+            key = f"case_recorder/{stage}/df_epoch_{epoch}"
+            run.log({key: table}, step=trainer.global_step)
+        except Exception as e:
+            cprint(f"W&B dataframe logging failed: {e}", color="yellow")
 
     def store_results(self, trainer):
         epoch = trainer.current_epoch

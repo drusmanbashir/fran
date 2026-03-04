@@ -410,10 +410,14 @@ class LabelRemapd(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
-        remapping_key: str,
+        remapping_key: str = None,
+        remapping: dict = None,
         allow_missing_keys: bool = False,
     ) -> None:
         self.remapping_key = remapping_key
+        self.remapping_dict = remapping
+        # XOR: exactly one of remapping or remapping_key should be provided
+        assert bool(remapping) ^ bool(remapping_key), "exactly one of 'remapping' or 'remapping_key' should be provided, not both or neither"
         super().__init__(keys, allow_missing_keys)
 
     def need_remapping(self, remapping):
@@ -424,7 +428,10 @@ class LabelRemapd(MapTransform):
             return not all(same)
 
     def __call__(self, d: dict):
-        remapping = d[self.remapping_key]
+        if self.remapping_key is None:
+            remapping = self.remapping_dict
+        else:
+            remapping = d[self.remapping_key]
 
         for key in self.key_iterator(d):
             d[key] = self.func(d[key], remapping)
@@ -444,7 +451,17 @@ class LabelRemapd(MapTransform):
 
 class LabelRemapSITKd(LabelRemapd):
     """
-    input can be a file or Image
+    Remap label values while data is in SITK form.
+
+    Input for each key can be a path/filename or a `sitk.Image`. If remapping is
+    needed, relabeling is applied using SITK and the output remains a `sitk.Image`.
+
+    In imported-label workflows this is typically followed by `LoadSITKd` on the
+    same key:
+    1) `LabelRemapSITKd` remaps labels in SITK space.
+    2) `LoadSITKd` converts the remapped SITK image to `MetaTensor`.
+
+    Keeping remap and load as separate steps is intentional.
     """
 
     def func(self, lm, remapping):

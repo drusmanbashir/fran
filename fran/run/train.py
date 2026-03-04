@@ -16,7 +16,7 @@ from typing import List, Union
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
 from fran.trainers.incremental import IncrementalTrainer
-from fran.trainers.trainer_bk import TrainerBK
+from fran.trainers.trainer import Trainer
 
 
 def print_device_info():
@@ -103,7 +103,7 @@ def main(args):
             headline("Incremental training completed")
             return
 
-        Tm = TrainerBK(project_title=P.project_title, configs=conf, run_name=args.run_name)
+        Tm = Trainer(project_title=P.project_title, configs=conf, run_name=args.run_name)
         Tm.setup(
             compiled=args.compiled,
             batch_size=args.batch_size,

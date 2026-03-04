@@ -279,7 +279,7 @@ class DataManagerDual(LightningDataModule):
 
 class DataManagerMulti(DataManagerDual):
     """
-    Train + valid + test.
+    Train + valid + test. This packages two valid dataloaders, and must be used together with callback PeriodicTest
     """
 
     def __init__(

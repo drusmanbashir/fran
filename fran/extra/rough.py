@@ -1,6 +1,7 @@
 # %%
 from __future__ import annotations
 
+from monai.losses.dice import DiceLoss
 import torch
 from utilz.imageviewers import ImageMaskViewer
 
@@ -28,4 +29,12 @@ if __name__ == "__main__":
     dat.keys()
 
 
+# %%
+#SECTION:-------------------- DICE--------------------------------------------------------------------------------------
+    pred = torch.load("predub.pt", weights_only=False)
+    target = torch.load("targetub.pt", weights_only=False)
+    pred.shape
+    target.shape
 
+    dsc = DiceLoss()
+    print(dsc(pred, target))

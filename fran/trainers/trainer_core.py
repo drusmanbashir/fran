@@ -14,13 +14,14 @@ from utilz.stringz import headline
 
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import infer_labels_and_update_out_channels
+from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.test import PeriodicTest
-from fran.configs.parser import ConfigMaker, parse_neptune_dict
+from fran.configs.parser import ConfigMaker
 from fran.managers.data.training import DataManagerDual, DataManagerMulti
 # from fran.callback.modelcheckpoint import ModelCheckpointUB
 from fran.managers.project import Project
-from fran.managers.unet import UNetManager
+from fran.managers.unet import UNetManager, UNetManagerMulti
 from fran.trainers.base import (backup_ckpt, checkpoint_from_model_id,
                                 switch_ckpt_keys, write_normalized_ckpt)
 
@@ -32,7 +33,6 @@ from pathlib import Path
 import psutil
 import torch._dynamo
 
-from fran.callback.nep import NeptuneImageGridCallback, NeptuneLogBestCkpt
 from fran.managers.data.training import (DataManagerBaseline, DataManagerLBD,
                                          DataManagerPatch, DataManagerSource,
                                          DataManagerWhole, DataManagerWID)
@@ -43,8 +43,6 @@ import warnings
 from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
                                          EarlyStopping, LearningRateMonitor, ModelCheckpoint,
                                          TQDMProgressBar)
-
-from fran.managers.nep import NeptuneManager
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
@@ -106,6 +104,7 @@ class Trainer:
         compiled=None,
         neptune=True,
         profiler=False,
+        debug: bool = False,
         periodic_test: int = 0,
         cbs=[],
         tags=[],
@@ -121,6 +120,7 @@ class Trainer:
         lr_floor=None,
     ):
         self.periodic_test = int(periodic_test)
+        self.debug = bool(debug)
 
         self.maybe_alter_configs(batch_size, compiled)
         self.set_lr(lr)
@@ -310,6 +310,8 @@ class Trainer:
             periodic_test > 0
         ):  # HACK: if False, it should create only a single val_dataloader
             cbs += [PeriodicTest(every_n_epochs=periodic_test, limit_batches=50)]
+        if getattr(self, "debug", False):
+            cbs += [DebugEpochBatchLimit(n=10)]
         cbs += [
             ModelCheckpoint(
                 save_last=True,
@@ -334,45 +336,12 @@ class Trainer:
             ]
         if lr_floor is not None:
             cbs += [LRFloorStop(min_lr=lr_floor)]
-        if neptune == True:
-            logger = NeptuneManager(
-                project=self.project,
-                run_id=self.run_name,
-                log_model_checkpoints=False,  # Update to True to log model checkpoints
-                tags=tags,
-                description=description,
-                capture_stdout=False,
-                capture_stderr=False,
-                capture_traceback=True,
-                capture_hardware_metrics=True,
+        if neptune:
+            headline(
+                "Neptune is sunset: trainer_core no longer initializes Neptune logger/callbacks. "
+                "Use fran.trainers.trainer.Trainer (W&B path)."
             )
-            dm_cfg = {
-                "dataset_params": parse_neptune_dict(
-                    deepcopy(self.D.configs["dataset_params"])
-                ),
-                "plan_train": parse_neptune_dict(
-                    deepcopy(self.D.configs["plan_train"])
-                ),
-                "plan_valid": parse_neptune_dict(
-                    deepcopy(self.D.configs["plan_valid"])
-                ),
-            }
-            # Write to a clear namespace and also register as "hyperparams" so it’s prominent:
-            safe_log_dict(logger.experiment, "configs/datamodule", dm_cfg)
-            # logger.log_hyperparams(
-            #     {"dm/plan_train/patch_size": dm_cfg["plan_train"]["patch_size"]}
-            # )
-            logger.experiment.wait()
-            N = NeptuneImageGridCallback(
-                classes=self.configs["model_params"]["out_channels"],
-                patch_size=self.configs["plan_train"]["patch_size"],
-                epoch_freq=5,  # skip how many epochs.
-            )
-            N2 = NeptuneLogBestCkpt()
-
-            cbs += [N, N2]
-        else:
-            logger = None
+        logger = None
 
         if profiler == True:
             profiler = AdvancedProfiler(
@@ -455,7 +424,11 @@ class Trainer:
 
 
     def init_trainer(self, epochs):
-        N = UNetManager(
+        if self.periodic_test == True:
+            unet_man = UNetManagerMulti
+        else:
+            unet_man = UNetManager
+        N = unet_man(
             project_title=self.project.project_title,
             configs=self.configs,
             lr=self.lr,

@@ -20,7 +20,7 @@ from fran.managers.project import Project
 from fran.managers.unet import UNetManager
 from fran.trainers.base import (backup_ckpt, checkpoint_from_model_id,
                                 switch_ckpt_keys)
-from fran.trainers.trainer_bk import TrainerBK
+from fran.trainers.trainer import Trainer
 
 tr = ipdb.set_trace
 
@@ -47,7 +47,7 @@ except:
 import torch
 
 
-class IncrementalTrainer (TrainerBK):
+class IncrementalTrainer (Trainer):
     def __init__(self, project_title, configs, run_name=None, ckpt_path: Optional[str | Path] = None, debug=False):
         self.debug=debug
         self.project = Project(project_title=project_title)

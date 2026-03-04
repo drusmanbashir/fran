@@ -1,6 +1,6 @@
 from fran.callback.test import PeriodicTest
 from fran.managers import  Project
-from fran.trainers.trainer_bk import TrainerBK
+from fran.trainers.trainer import Trainer
 from fran.utils.common import *
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 
@@ -67,7 +67,7 @@ if __name__ == '__main__':
 #     lr= 1e-3
     # lr=None
 # %%
-    Tm = TrainerBK(P.project_title, conf, run_name,)
+    Tm = Trainer(P.project_title, conf, run_name,)
     # Tm.configs
     Tm.configs['dataset_params']['fold']
 # %%

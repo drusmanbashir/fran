@@ -399,9 +399,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title="pancreas"
-    # args.plan = 1
-    # args.num_processes = 4
+    args.project_title="lidc"
+    args.plan = 3
+    args.num_processes = 1
     # args.overwrite=True
     # args.debug=True
 #     #

@@ -34,7 +34,8 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
         output_folder,
         crop_to_label=None,
         device="cpu",
-        tfms_keys="LT,E,D,C,R,Ind",
+        debug=False,
+        tfms_keys="LoadT,Chan,Dev,Crop,Remap,Indx",
     ):
         super().__init__(
             project=project,
@@ -43,6 +44,7 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
             output_folder=output_folder,
             crop_to_label=crop_to_label,
             device=device,
+            debug=debug,
             tfms_keys=tfms_keys,
         )
 
@@ -51,6 +53,7 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
         data = {
             "image": row["image"],
             "lm": row["lm"],
+            "ds":row["ds"],
             "remapping": row["remapping"],
         }
         return data
@@ -78,137 +81,6 @@ class LBDSamplerWorkerImpl(_LBDSamplerWorkerBase):
 
 class LBDSamplerWorkerLocal(_LBDSamplerWorkerBase):
     pass
-
-    #     super().__init__(
-    #         project=project,
-    #         plan=plan,
-    #         data_folder=data_folder,
-    #         output_folder=output_folder,
-    #     )
-    #
-    #     self.crop_to_label = crop_to_label  # redundant
-    #     self.image_key = "image"
-    #     self.lm_key = "lm"
-    #     self.tnsr_keys = [self.image_key, self.lm_key]
-    #     self.create_transforms(device=device)
-    #     self.set_transforms(tfms_keys)
-    #
-    # def _process_row(self, row: pd.Series) -> Dict[str, Any]:
-    #     data = {
-    #         "image": row["image"],
-    #         "lm": row["lm"],
-    #         "remapping": row["remapping"],
-    #     }
-    #
-    #     # Apply transforms
-    #     data = self.transforms(data)
-    #     image = data["image"]
-    #     lm = (data["lm"])
-    #     lm_fg_indices = data["lm_fg_indices"]
-    #     lm_bg_indices = data["lm_bg_indices"]
-    #     # Get metadata and indices
-    #     # Process the case
-    #     assert image.shape == lm.shape, "mismatch in shape"
-    #     assert image.dim() == 4, "images should be cxhxwxd"
-    #     assert image.numel() > MIN_SIZE**3, f"image size is too small {image.shape}"
-    #
-    #     inds = {
-    #         "lm_fg_indices": lm_fg_indices,
-    #         "lm_bg_indices": lm_bg_indices,
-    #         "meta": image.meta,
-    #     }
-    #
-    #     self.save_indices(inds, self.indices_subfolder)
-    #     self.save_pt(image[0], "images")
-    #     self.save_pt(lm[0], "lms")
-    #     self.extract_image_props(image)
-    #     results = {
-    #         "case_id": row.get("case_id"),
-    #         "ok": True,
-    #         "shape": list(image.shape),
-    #     }
-    #     return results
-    # def set_transforms(self, keys_tr: str):
-    #     self.transforms = self.tfms_from_dict(keys_tr)
-    #
-    # def tfms_from_dict(self, keys: str):
-    #     keys = keys.replace(" ", "").split(",")
-    #     tfms = []
-    #     for key in keys:
-    #         tfm = self.transforms_dict[key]
-    #         tfms.append(tfm)
-    #     tfms = Compose(tfms)
-    #     return tfms
-    #
-    # def set_input_output_folders(self, data_folder, output_folder):
-    #     self.data_folder = data_folder
-    #     self.output_folder = output_folder
-    #
-    # def _create_data_dicts_from_df(self, df):
-    #     """Create data dictionaries from DataFrame."""
-    #     data = []
-    #     for index in range(len(df)):
-    #         row = df.iloc[index]
-    #         dici = self._dici_from_df_row(row, remapping)
-    #         data.append(dici)
-    #
-    # def create_transforms(self, device):
-    #     if self.plan["expand_by"]:
-    #         margin = [int(self.plan["expand_by"] / sp) for sp in self.plan["spacing"]]
-    #     else:
-    #         margin = 0
-    #     if self.crop_to_label is None:
-    #         select_fn = is_positive
-    #     else:
-    #         select_fn = lambda lm: lm == self.crop_to_label
-    #     # Transform attributes in alphabetical order
-    #     self.C = CropForegroundd(
-    #         keys=self.tnsr_keys,
-    #         source_key=self.lm_key,
-    #         select_fn=select_fn,
-    #         allow_smaller=True,
-    #         margin=margin,
-    #     )
-    #     self.D = ToDeviced(device=device, keys=self.tnsr_keys)
-    #     self.E = EnsureChannelFirstd(keys=self.tnsr_keys, channel_dim="no_channel")
-    #     self.Ind = FgBgToIndicesd2(
-    #         keys=[self.lm_key],
-    #         image_key=self.image_key,
-    #         ignore_labels=self.plan["fg_indices_exclude"],
-    #         image_threshold=-2600,
-    #     )
-    #     self.LT = LoadTorchd(keys=[self.image_key, self.lm_key])
-    #     if self.plan["remapping_lbd"] is not None:
-    #         self.R = MapLabelValueD(
-    #             keys=[self.lm_key],
-    #             orig_labels=self.plan["remapping_lbd"][0],
-    #             target_labels=self.plan[remapping_lbd][1],
-    #         )
-    #     else:
-    #         self.R = DummyTransform(keys=[self.lm_key])
-    #     # )
-    #     self.transforms_dict = {
-    #         "C": self.C,
-    #         "D": self.D,
-    #         "E": self.E,
-    #         "Ind": self.Ind,
-    #         "LT": self.LT,
-    #         "R": self.R,
-    #     }
-    #
-    # def process(self, mini_df):
-    #     outs = []
-    #     for i,row in mini_df.iterrows():
-    #         try:
-    #             outs.append(self._process_row(row))
-    #         except Exception as e:
-    #
-    #             img_fn = row.get("image")
-    #             print(f"[{self.__class__.__name__}] error: {img_fn}: {e}")
-    #             outs.append({"case_id": row.get("case_id"), "ok": False, "err": str(e)})
-    #     return outs
-    #
-    #
 
 
 class LabelBoundedDataGenerator(Preprocessor, GetAttr):
@@ -288,6 +160,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             output_folder=output_folder,
         )
         self.actor_cls = LBDSamplerWorkerImpl
+        self.local_worker_cls = LBDSamplerWorkerLocal
 
     def create_data_df(self):
         Preprocessor.create_data_df(self)
@@ -330,6 +203,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 ]
             )
         else:
+
             self.results = [self.local_worker.process(self.mini_dfs[0])]
 
         self.results_df = pd.DataFrame(il.chain.from_iterable(self.results))
@@ -356,9 +230,10 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         #     self.plan, db_path=self.project.db, data_folder_lbd=self.output_folder
         # )
 
-    def setup(self, num_processes=8, device="cpu", overwrite=True):
+    def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
 
         self.num_processes = max(1, int(num_processes))
+        self.debug = debug
         self.create_data_df()
         self.set_remapping_per_ds()
         self.register_existing_files()
@@ -372,8 +247,12 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 data_folder=self.data_folder,
                 output_folder=self.output_folder,
                 device=device,
+                debug=self.debug,
             )
-            self.use_ray = self.num_processes > 1
+            self.use_ray = (self.num_processes > 1) and (not self.debug)
+            print(
+                f"use_ray={self.use_ray} (num_processes={self.num_processes}, debug={self.debug})"
+            )
             if self.use_ray:
                 self.mini_dfs = np.array_split(self.df, self.num_processes)
                 self.n_actors = min(len(self.df), self.num_processes)
@@ -387,7 +266,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 ]
             else:
                 self.mini_dfs = [self.df]
-                self.local_worker = (self.actor_cls.__ray_metadata__.modified_class if self.actor_cls is not LBDSamplerWorkerImpl else LBDSamplerWorkerLocal)(**worker_kwargs)
+                self.local_worker = self.local_worker_cls(**worker_kwargs)
 
     # def process_files(self, force_store_props=False):
     #     """Process files without using DataLoader"""
@@ -651,12 +530,12 @@ if __name__ == "__main__":
 # %%
     # Apply transforms
 
-    # self.tfms_keys = "LT,E,D,C,R,Ind"
-    data = L.transforms_dict["LT"](data)
-    data = L.transforms_dict["E"](data)
-    data = L.transforms_dict["D"](data)
-    data = L.transforms_dict["C"](data)
-    data = L.transforms_dict["R"](data)
+    # self.tfms_keys = "LoadT,Chan,Dev,Crop,Remap,Indx"
+    data = L.transforms_dict["LoadT"](data)
+    data = L.transforms_dict["Chan"](data)
+    data = L.transforms_dict["Dev"](data)
+    data = L.transforms_dict["Crop"](data)
+    data = L.transforms_dict["Remap"][data["ds"]](data)
     data = L.transforms(data)
 
     # Get metadata and indices

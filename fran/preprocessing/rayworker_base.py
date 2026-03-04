@@ -1,6 +1,7 @@
 # ray_worker_base.py
-from typing import Any, Dict
 import traceback
+from typing import Any, Dict
+
 import ipdb
 import pandas as pd
 from monai.transforms import Compose
@@ -9,10 +10,12 @@ from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  MapLabelValueD, ToDeviced)
 from monai.transforms.utils import is_positive
 from SimpleITK import Not
+from utilz.cprint import cprint
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
 
+from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import DummyTransform, FgBgToIndicesd2
 
@@ -40,7 +43,8 @@ class RayWorkerBase(Preprocessor):
         output_folder,
         crop_to_label=None,
         device="cpu",
-        tfms_keys  = "LT,E,D,C,R,Ind",
+        debug=False,
+        tfms_keys="LoadT,Chan,Dev,Crop,Remap,Indx",
     ):
         super().__init__(
             project=project,
@@ -50,13 +54,14 @@ class RayWorkerBase(Preprocessor):
         )
 
         self.crop_to_label = crop_to_label  # redundant
+        self.debug = debug
         self.image_key = "image"
         self.lm_key = "lm"
         self.tnsr_keys = [self.image_key, self.lm_key]
         self.create_transforms(device=device)
-        self.set_transforms(tfms_keys)
+        self.tfms_keys = tfms_keys
 
-    def _create_data_dict(self,row):
+    def _create_data_dict(self, row):
 
         raise NotImplementedError
 
@@ -64,9 +69,9 @@ class RayWorkerBase(Preprocessor):
         data = self._create_data_dict(row)
 
         # Apply transforms
-        data = self.transforms(data)
+        data = self.apply_transforms(data)
         image = data["image"]
-        lm = (data["lm"])
+        lm = data["lm"]
         lm_fg_indices = data["lm_fg_indices"]
         lm_bg_indices = data["lm_bg_indices"]
         # Get metadata and indices
@@ -91,8 +96,24 @@ class RayWorkerBase(Preprocessor):
             "shape": list(image.shape),
         }
         return results
-    def set_transforms(self, keys_tr: str):
-        self.transforms = self.tfms_from_dict(keys_tr)
+
+    def apply_transforms(self, data: dict):
+        keys = self.tfms_keys
+        keys = keys.replace(" ", "").split(",")
+
+        for key in keys:
+            tfm = self.transforms_dict[key]
+            if self.debug:
+                tr()
+                cprint(f"{key}", color = "yellow")
+            if isinstance(tfm, dict):
+                ds = data["ds"]
+                tfm = tfm[ds]
+            data = tfm(data)
+        return data
+
+    # def set_transforms(self, keys_tr: str):
+    #     self.transforms = self.tfms_from_dict(keys_tr)
 
     def tfms_from_dict(self, keys: str):
         keys = keys.replace(" ", "").split(",")
@@ -112,10 +133,12 @@ class RayWorkerBase(Preprocessor):
         data = []
         for index in range(len(df)):
             row = df.iloc[index]
-            dici = self._dici_from_df_row(row, remapping)
+            dici = self._create_data_dict(row)
             data.append(dici)
+        return data
 
     def create_transforms(self, device):
+
         if self.plan["expand_by"]:
             margin = [int(self.plan["expand_by"] / sp) for sp in self.plan["spacing"]]
         else:
@@ -132,49 +155,64 @@ class RayWorkerBase(Preprocessor):
             allow_smaller=True,
             margin=margin,
         )
-        self.D = ToDeviced(device=device, keys=self.tnsr_keys)
-        self.E = EnsureChannelFirstd(keys=self.tnsr_keys, channel_dim="no_channel")
-        self.Ind = FgBgToIndicesd2(
+        self.Dev = ToDeviced(device=device, keys=self.tnsr_keys)
+        self.Chan = EnsureChannelFirstd(keys=self.tnsr_keys, channel_dim="no_channel")
+        self.Indx = FgBgToIndicesd2(
             keys=[self.lm_key],
             image_key=self.image_key,
-            ignore_labels=self.plan["fg_indices_exclude"],
+            ignore_labels=self.plan.get("fg_indices_exclude", []),
             image_threshold=-2600,
         )
-        self.LT = LoadTorchd(keys=[self.image_key, self.lm_key])
-        if self.plan["remapping_lbd"] is not None:
-            self.R = MapLabelValueD(
-                keys=[self.lm_key],
-                orig_labels=self.plan["remapping_lbd"][0],
-                target_labels=self.plan["remapping_lbd"][1],
-            )
-        else:
-            self.R = DummyTransform(keys=[self.lm_key])
-        # )
+        self.LoadT = LoadTorchd(keys=[self.image_key, self.lm_key])
+        self.Remap = self.create_monai_remapping_per_ds("remapping_lbd", self.lm_key)
+
         self.transforms_dict = {
-            "C": self.C,
-            "D": self.D,
-            "E": self.E,
-            "Ind": self.Ind,
-            "LT": self.LT,
-            "R": self.R,
+            "Crop": self.C,
+            "Dev": self.Dev,
+            "Chan": self.Chan,
+            "Indx": self.Indx,
+            "LoadT": self.LoadT,
+            "Remap": self.Remap,  # dict: datasource -> transform
         }
+
+
+
+    def create_monai_remapping_per_ds(self, remapping_key, lm_key) -> dict:
+        dss = self.plan["datasources"]
+        dss = parse_excel_datasources(dss)
+        rem = self.plan[remapping_key]
+        rem = parse_excel_remapping(rem)
+        Remapping_tfms = {}
+        for rez, ds in zip(rem, dss):
+            if rez is not None:
+                orig = list(rez.keys())
+                target = list(rez.values())
+                R = MapLabelValueD(
+                    keys=[self.lm_key], orig_labels=orig, target_labels=target
+                )
+            else:
+                R = DummyTransform(keys=[lm_key])
+            Remapping_tfms[ds] = R
+        return Remapping_tfms
 
     def process(self, mini_df):
         outs = []
-        for i,row in mini_df.iterrows():
+        for i, row in mini_df.iterrows():
             try:
                 outs.append(self._process_row(row))
 
             except Exception as e:
-                    print(
-                        f"[{self.__class__.__name__}] error:"
-                        f"\n  case_id={row.get('case_id')}"
-                        f"\n  image={row.get('image')}"
-                        f"\n  lm={row.get('lm')}"
-                        f"\n  lm_imported={row.get('lm_imported')}"
-                    )
-                    traceback.print_exc()  # <- this is the key
-                    outs.append({"case_id": row.get("case_id"), "ok": False, "err": repr(e)})
+                print(
+                    f"[{self.__class__.__name__}] error:"
+                    f"\n  case_id={row.get('case_id')}"
+                    f"\n  image={row.get('image')}"
+                    f"\n  lm={row.get('lm')}"
+                    f"\n  lm_imported={row.get('lm_imported')}"
+                )
+                traceback.print_exc()  # <- this is the key
+                outs.append(
+                    {"case_id": row.get("case_id"), "ok": False, "err": repr(e)}
+                )
 
         return outs
 
@@ -207,3 +245,5 @@ class RayWorkerBase(Preprocessor):
 #                 out.append({"case_id": row.get("case_id"), "ok": False, "err": str(e)})
 #         return out
 # %%
+# parse_excel_remapping
+# parse_excel_datasources(self.plan["datasources"])
