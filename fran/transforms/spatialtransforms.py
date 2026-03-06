@@ -1,4 +1,5 @@
 # %%
+from utilz.cprint import cprint
 from utilz.imageviewers import ImageMaskViewer
 import math
 import ipdb
@@ -28,10 +29,12 @@ from utilz.stringz import int_to_str
 tr = ipdb.set_trace
 
 
-from monai.transforms.croppad.dictionary import Padd
+from monai.transforms.croppad.dictionary import CropForegroundd, Padd, ResizeWithPadOrCropd
 
 from fran.transforms.base import *
 
+
+    
 
 def _resize3d(data, spatial_shape, mode):
     data_out = fm.resize(
@@ -48,6 +51,152 @@ def _resize3d(data, spatial_shape, mode):
     )
     return data_out
 
+class CropForegroundMinShaped(MapTransform):
+    """
+    Modes
+    -----
+    a) FG present and bbox >= min_shape:
+        crop FG bbox as-is
+    b) FG present and bbox < min_shape in any dim:
+        expand bbox to >= min_shape, then shift inside image bounds
+        so no padding is used
+    c) FG absent:
+        random crop of size min_shape
+
+    Assumption
+    ----------
+    Image spatial size is >= min_shape in every dim.
+    Otherwise, with allow_smaller=True and no padding, exact min_shape
+    cannot be guaranteed.
+    """
+
+    def __init__(
+        self,
+        keys,
+        source_key,
+        min_shape,
+        margin=0,
+        select_fn=lambda x: x > 0,
+        channel_indices=None,
+        allow_missing_keys=False,
+        lazy=False,
+        mode="constant",
+    ):
+        super().__init__(keys, allow_missing_keys)
+        self.source_key = source_key
+        self.min_shape = tuple(min_shape)
+        self.margin = margin
+        self.lazy = lazy
+        self.mode = mode
+
+        # MONAI-style margin supports int or per-dim sequence.
+        self.cropper = CropForeground(
+            select_fn=select_fn,
+            channel_indices=channel_indices,
+            margin=self.margin,
+            allow_smaller=True,   # required: never pad
+            k_divisible=1,
+            lazy=lazy,
+        )
+
+        # used only when no foreground exists
+        self.rand_crop = RandSpatialCropd(
+            keys=keys,
+            roi_size=self.min_shape,
+            random_center=True,
+            random_size=False,
+            lazy=lazy,
+        )
+
+    @staticmethod
+    def _spatial_shape(x):
+        # channel-first: (C, H, W, D) -> (H, W, D)
+        return tuple(int(v) for v in x.shape[1:])
+
+    @staticmethod
+    def _has_foreground(box_start, box_end):
+        return any(int(e) > int(s) for s, e in zip(box_start, box_end))
+
+    @staticmethod
+    def _fit_box_to_image(box_start, box_end, img_shape, min_shape):
+        """
+        Expand bbox to >= min_shape and shift inside image bounds.
+        No padding.
+        """
+        box_start = np.asarray(box_start, dtype=int)
+        box_end = np.asarray(box_end, dtype=int)
+        img_shape = np.asarray(img_shape, dtype=int)
+        min_shape = np.asarray(min_shape, dtype=int)
+
+        fg_shape = box_end - box_start
+        out_shape = np.maximum(fg_shape, min_shape)
+
+        center = (box_start + box_end) / 2.0
+        new_start = np.floor(center - out_shape / 2.0).astype(int)
+        new_end = new_start + out_shape
+
+        # shift right if start < 0
+        neg = np.minimum(new_start, 0)
+        new_start = new_start - neg
+        new_end = new_end - neg
+
+        # shift left if end > img_shape
+        overflow = np.maximum(new_end - img_shape, 0)
+        new_start = new_start - overflow
+        new_end = new_end - overflow
+
+        # final clamp
+        new_start = np.maximum(new_start, 0)
+        new_end = np.minimum(new_end, img_shape)
+
+        return tuple(int(v) for v in new_start), tuple(int(v) for v in new_end)
+
+    def __call__(self, data, lazy=None):
+        d = dict(data)
+        lazy_ = self.lazy if lazy is None else lazy
+
+        src = d[self.source_key]
+        img_shape = self._spatial_shape(src)
+
+        # prereq check: cannot guarantee >= min_shape without padding
+        if any(i < m for i, m in zip(img_shape, self.min_shape)):
+            raise ValueError(
+                f"Image spatial shape {img_shape} is smaller than min_shape "
+                f"{self.min_shape}. With allow_smaller=True and no padding, "
+                f">= min_shape cannot be guaranteed."
+            )
+
+        box_start, box_end = self.cropper.compute_bounding_box(img=src)
+
+        # mode c: no FG
+        if not self._has_foreground(box_start, box_end):
+            return self.rand_crop(d, lazy=lazy_)
+
+        fg_shape = tuple(int(e - s) for s, e in zip(box_start, box_end))
+
+        # mode a: fg already large enough
+        if all(f >= m for f, m in zip(fg_shape, self.min_shape)):
+            final_start, final_end = tuple(box_start), tuple(box_end)
+
+        # mode b: fg too small -> expand to min_shape, no padding
+        else:
+            final_start, final_end = self._fit_box_to_image(
+                box_start=box_start,
+                box_end=box_end,
+                img_shape=img_shape,
+                min_shape=self.min_shape,
+            )
+
+        for key in self.key_iterator(d):
+            d[key] = self.cropper.crop_pad(
+                img=d[key],
+                box_start=np.asarray(final_start, dtype=int),
+                box_end=np.asarray(final_end, dtype=int),
+                mode=self.mode,
+                lazy=lazy_,
+            )
+
+        return d
 # %%
 class ExtractContiguousSlicesd(RandomizableTransform,MapTransform):
     """

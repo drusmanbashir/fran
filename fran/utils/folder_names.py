@@ -133,6 +133,10 @@ def folder_names_from_plan(project,plan:dict):
     if remapping_src_code:
         remapping_src_code = "rsc"+remapping_src_code
 
+    source_plan_code = short_code(plan.get("source_plan", None))
+    if source_plan_code:
+        source_plan_code = "rsp" + source_plan_code
+
     remapping_lbd=   plan.get("remapping_lbd")
     remapping_lbd_code = short_code(remapping_lbd)
     if remapping_lbd_code:
@@ -144,17 +148,17 @@ def folder_names_from_plan(project,plan:dict):
         remapping_imported_code = "ric"+remapping_imported_code
 
 
-    source_folder_suff = maybe_join([src_prefix,remapping_src_code]) # note source_flder has no plan suffix
+    source_folder_suff = maybe_join([src_prefix, remapping_src_code, source_plan_code]) # note source_flder has no plan suffix
     source_folder= project.fixed_spacing_folder/source_folder_suff
 
-    lbd_folder_suff = maybe_join([src_prefix,remapping_lbd_code,remapping_imported_code,remapping_lbd_code,expand_by])
+    lbd_folder_suff = maybe_join([src_prefix, remapping_lbd_code, remapping_imported_code, remapping_lbd_code, expand_by, source_plan_code])
     lbd_folder = str(project.lbd_folder/lbd_folder_suff)
 
     list_to_str = lambda x: "".join(int_to_str(v,3) for v in x)
     patch_str= list_to_str(plan["patch_size"])
     patch_folder_suff ="_".join([source_folder_suff,patch_str])
     patch_folder = str(project.patches_folder/patch_folder_suff)
-    whole_folder_suff= maybe_join([patch_str,remapping_src_code])
+    whole_folder_suff= maybe_join([patch_str, remapping_src_code, source_plan_code])
     whole_folder = str(project.whole_images_folder/whole_folder_suff)
 
     folders = {
@@ -253,4 +257,3 @@ if __name__ == '__main__':
     project=P
 # %%
 # %%
-
