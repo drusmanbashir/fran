@@ -603,6 +603,7 @@ if __name__ == "__main__":
     P = Project(project_title="test")
     P = Project(project_title="lidc")
     P = Project(project_title="pancreas")
+    P = Project(project_title="kidneys")
 # %%
     P.global_properties
     C = ConfigMaker(P)

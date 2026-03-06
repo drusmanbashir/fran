@@ -663,7 +663,7 @@ class UNetTrainer(LightningModule):
             self.pred = self.forward(inputs)
             pred2= self.pred[0]
             loss = pred2.mean()
-            self.log("val_loss", loss)
+            self.log("val0_loss", loss)
             return loss
     #
     # def validation_step(self, batch, batch_idx):
@@ -682,22 +682,6 @@ class UNetTrainer(LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.SGD(self.model.parameters(), lr=0.01)
-    #
-    # def configure_optimizers(self):
-    #     # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
-    #     optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-    #     scheduler = ReduceLROnPlateau(optimizer, "min", patience=30)
-    #     output = {
-    #         "optimizer": optimizer,
-    #         "lr_scheduler": {
-    #             "scheduler": scheduler,
-    #             "monitor": "train_loss_dice",
-    #             "frequency": 2
-    #             # If "monitor" references validation metrics, then "frequency" should be set to a
-    #             # multiple of "trainer.check_val_every_n_epoch".
-    #         },
-    #     }
-    #     return output
 
     def forward(self, inputs):
         bs = inputs.shape[0]

@@ -89,7 +89,7 @@ def get_device(devices: Optional[List[int]] = None) -> tuple:
 
 def get_patch_spacing(run_name):
     ckpt = checkpoint_from_model_id(run_name)
-    dic1 = torch.load(ckpt, weights_only=False)
+    dic1 = torch.load(ckpt, map_location="cpu", weights_only=False)
     config = dic1["datamodule_hyper_parameters"]["configs"]
     spacing = config["plan_train"].get("spacing")
     if spacing is None:

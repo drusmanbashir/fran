@@ -94,7 +94,7 @@ def main(args):
                 wandb=args.wandb,
                 description=args.description,
                 batchsize_finder=args.batchsize_finder,
-                periodic_test=args.periodic_test,
+                test_every_n_epochs=args.test_every_n_epochs,
                 start_n=args.initial_samples,
                 n_samples_to_add=args.add_samples,
             )
@@ -115,7 +115,7 @@ def main(args):
             wandb=args.wandb,
             description=args.description,
             batchsize_finder=args.batchsize_finder,
-            periodic_test=args.periodic_test,
+            test_every_n_epochs=args.test_every_n_epochs,
         )
         Tm.N.compiled = args.compiled
         Tm.fit()

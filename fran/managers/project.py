@@ -1196,6 +1196,7 @@ if __name__ == "__main__":
     set_autoreload()
     P = Project(project_title="test")
     P = Project(project_title="pancreas")
+    P = Project(project_title="kits")
     # P.delete()
     # P.create(["litsmc", "lidc"])
     P.create_tables()

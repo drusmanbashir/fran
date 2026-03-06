@@ -9,8 +9,7 @@ from pathlib import Path
 # %%
 
 if __name__ == "__main__":
-    img_fn = =Path("/r/datasets/preprocessed/pancreas/lbd/spc_080_080_150_rica8920439_ex050/images/pancreasmsd07_061.pt")
-    img_fn =Path("/r/datasets/preprocessed/pancreas/lbd/spc_080_080_150_rica8920439_ex050/images/CURVASPDAC_00303.pt")
+    img_fn = Path("/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_rlbb6064264_ric4c10827e_rlbb6064264_ex050/images/lidc_0001.pt")
     lm_fn = img_fn.parent.parent/("lms")/img_fn.name
     image = torch.load(img_fn,weights_only=False)
     lm = torch.load(lm_fn,weights_only=False)

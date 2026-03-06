@@ -230,12 +230,12 @@ class UNetTrainer2(LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss_dict = self._common_step(batch, batch_idx)
-        self.log_losses(loss_dict, prefix="train")
+        self.log_losses(loss_dict, prefix="train0")
         return  loss_dict
 
     def validation_step(self, batch, batch_idx):
         loss, loss_dict= self._common_step(batch, batch_idx)
-        self.log_losses(loss_dict, prefix="val")
+        self.log_losses(loss_dict, prefix="val0")
         return loss_dict
 
     def log_losses(self, loss_dict, prefix):
@@ -256,6 +256,7 @@ class UNetTrainer2(LightningModule):
             logger_dict,
             logger=True,
             batch_size=self.batch_size,
+            add_dataloader_idx=False,
         )
         # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
@@ -267,7 +268,7 @@ class UNetTrainer2(LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
-                "monitor": "train_loss_dice",
+                "monitor": "train0_loss_dice",
                 "frequency": 2,
                 "interval":"epoch",
                 # If "monitor" references validation metrics, then "frequency" should be set to a
@@ -436,10 +437,10 @@ class Trainer:
         cbs += [
             ModelCheckpoint(
                 save_last=True,
-                monitor="val_loss",
+                monitor="val0_loss",
                 every_n_epochs=10,
                 # mode="min",
-                filename="{epoch}-{val_loss:.2f}",
+                filename="{epoch}-{val0_loss:.2f}",
                 enable_version_counter=True,
                 auto_insert_metric_name=True,
             ),

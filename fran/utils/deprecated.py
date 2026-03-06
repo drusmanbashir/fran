@@ -37,7 +37,7 @@ def remove_plan_key_add_config(ckpt_fn, config):
 
 
 def move_key_plan_to_dataset_params(ckpt_fn, key):
-    # ckpt_fn = '/s/fran_storage/checkpoints/litsmc/litsmc/LITS-999/checkpoints/epoch=106-val_loss=0.78.ckpt'
+    # ckpt_fn = '/s/fran_storage/checkpoints/litsmc/litsmc/LITS-999/checkpoints/epoch=106-val0_loss=0.78.ckpt'
     ckp = torch.load(ckpt_fn)
     ckp["datamodule_hyper_parameters"].keys()
     config = ckp["datamodule_hyper_parameters"]["config"]

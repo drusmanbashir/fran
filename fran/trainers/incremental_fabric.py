@@ -98,8 +98,8 @@ def _flatten_dict(d: dict, base: str = "") -> dict:
     return out
 
 
-def _dm_class_for_periodic_test(periodic_test: int):
-    return DataManagerMultiI if int(periodic_test) > 0 else DataManagerDualI
+def _dm_class_for_test_every_n_epochs(test_every_n_epochs: int):
+    return DataManagerMultiI if int(test_every_n_epochs) > 0 else DataManagerDualI
 
 
 def _dm_class_from_ckpt(ckpt_path: str | Path):
@@ -752,7 +752,7 @@ class TrainerFabric:
                     possible_monitor_vals["train_" + k] = torch.tensor(float(v), device=self.strategy.root_device)
 
         if isinstance(self._current_val_return, torch.Tensor):
-            possible_monitor_vals["val_loss"] = self._current_val_return
+            possible_monitor_vals["val0_loss"] = self._current_val_return
         elif isinstance(self._current_val_return, Mapping):
             for k, v in self._current_val_return.items():
                 if isinstance(v, torch.Tensor):
@@ -851,7 +851,7 @@ class TrainerFabric:
                 For supported values, please refer to :meth:`lightning.pytorch.LightningModule.configure_optimizers`.
 
         """
-        _lr_sched_defaults = {"interval": "epoch", "frequency": 1, "monitor": "val_loss"}
+        _lr_sched_defaults = {"interval": "epoch", "frequency": 1, "monitor": "val0_loss"}
 
         # single optimizer
         if isinstance(configure_optim_output, L.fabric.utilities.types.Optimizable):
@@ -961,7 +961,7 @@ class IncrementalTrainerMinimal:
         else:
             self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
 
-        self.periodic_test = 0
+        self.test_every_n_epochs = 0
         self._log_incremental_to_wandb = True
         self.start_n = 40
         self._checkpoint_dir: Optional[Path] = None
@@ -986,7 +986,7 @@ class IncrementalTrainerMinimal:
         compiled=None,
         wandb=True,
         profiler=False,
-        periodic_test: int = 0,
+        test_every_n_epochs: int = 0,
         cbs=None,
         tags=None,
         description="",
@@ -1003,7 +1003,7 @@ class IncrementalTrainerMinimal:
         wandb_grid_epoch_freq: int = 5,
         log_incremental_to_wandb: bool = True,
     ):
-        self.periodic_test = int(periodic_test)
+        self.test_every_n_epochs = int(test_every_n_epochs)
         self.start_n = int(start_n)
         self._log_incremental_to_wandb = bool(log_incremental_to_wandb)
         cbs = list(cbs or [])
@@ -1020,7 +1020,7 @@ class IncrementalTrainerMinimal:
             cbs=cbs,
             wandb=wandb,
             batchsize_finder=batchsize_finder,
-            periodic_test=self.periodic_test,
+            test_every_n_epochs=self.test_every_n_epochs,
             profiler=profiler,
             tags=tags,
             description=description,
@@ -1091,7 +1091,7 @@ class IncrementalTrainerMinimal:
         cbs,
         wandb,
         batchsize_finder,
-        periodic_test,
+        test_every_n_epochs,
         profiler,
         tags,
         description="",
@@ -1123,8 +1123,8 @@ class IncrementalTrainerMinimal:
                 BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
                 BatchSizeSafetyMargin(buffer=1),
             ]
-        if periodic_test > 0:
-            cbs += [PeriodicTest(every_n_epochs=periodic_test, limit_batches=50)]
+        if test_every_n_epochs > 0:
+            cbs += [PeriodicTest(every_n_epochs=test_every_n_epochs, limit_batches=50)]
 
         cbs += [
             ModelCheckpoint(
@@ -1197,7 +1197,7 @@ class IncrementalTrainerMinimal:
     def init_dm(self):
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
-        dm_cls = _dm_class_for_periodic_test(self.periodic_test)
+        dm_cls = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
         return dm_cls(
             self.project.project_title,
             configs=self.configs,
@@ -1220,7 +1220,7 @@ class IncrementalTrainerMinimal:
             torch.save(sd, self.ckpt)
 
         dm_from_ckpt = _dm_class_from_ckpt(self.ckpt)
-        dm_wanted = _dm_class_for_periodic_test(self.periodic_test)
+        dm_wanted = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
         dm_cls = dm_from_ckpt
 
         D = dm_cls.load_from_checkpoint(

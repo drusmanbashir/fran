@@ -59,12 +59,12 @@ class IncrementalTrainer (Trainer):
             self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
 
-        self.periodic_test = 0  # default
+        self.test_every_n_epochs = 0  # default
 
     def setup(
         self,
         batch_size=None,
-        train1_indices:int|list = 50,
+        train1_indices=None,
         data_increment_size:int=30,
         dice_loss_threshold: float = 0.5,
         logging_freq=25,
@@ -72,7 +72,7 @@ class IncrementalTrainer (Trainer):
         devices=1,
         compiled=None,
         profiler=False,
-        periodic_test: int = 0,
+        test_every_n_epochs: int = 0,
         cbs=[],
         tags=[],
         description="",
@@ -88,19 +88,19 @@ class IncrementalTrainer (Trainer):
         wandb_grid_epoch_freq: int = 5,
         log_incremental_to_wandb: bool = True,
     ):
-        self.train1_indices = train1_indices
         self._log_incremental_to_wandb = bool(log_incremental_to_wandb)
         self.data_increment_size = data_increment_size
         self.dice_loss_threshold = dice_loss_threshold
         super().setup(
             batch_size=batch_size,
+            train_indices=train1_indices,
             logging_freq=logging_freq,
             lr=lr,
             devices=devices,
             compiled=compiled,
             wandb=wandb,
             profiler=profiler,
-            periodic_test=periodic_test,
+            test_every_n_epochs=test_every_n_epochs,
             cbs=cbs,
             tags=tags,
             description=description,
@@ -229,7 +229,7 @@ class IncrementalTrainer (Trainer):
         cbs,
         wandb,
         batchsize_finder,
-        periodic_test,
+        test_every_n_epochs,
         profiler,
         tags,
         description="",
@@ -246,7 +246,7 @@ class IncrementalTrainer (Trainer):
             cbs=cbs,
             wandb=wandb,
             batchsize_finder=batchsize_finder,
-            periodic_test=periodic_test,
+            test_every_n_epochs=test_every_n_epochs,
             profiler=profiler,
             tags=tags,
             description=description,
@@ -264,7 +264,8 @@ class IncrementalTrainer (Trainer):
         cbs += [
             CaseIDRecorder(freq=5),
             UpdateDatasetOnPlateau(
-                monitor = "train_loss_dice_epoch",
+
+                monitor = "train0_loss_dice_epoch",
                 log_to_wandb=bool(log_incremental_to_wandb), 
                 debug=self.debug,
             ),
@@ -469,10 +470,10 @@ if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- - <CR> <CR>
     set_autoreload()
     from fran.utils.common import *
-    P = Project("lidc")
+    P = Project("kits")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
-    C.setup(2)
+    C.setup(1)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -499,15 +500,15 @@ if __name__ == "__main__":
     compiled = False
     profiler = False
     # NOTE: if wandb = False, should store checkpoint locally
-    batchsize_finder = True
+    batchsize_finder = False
     wandb = True
     override_dm = False
     tags = []
-    description = f"Partially trained up to 100 epochs"
+    description = f"first run on partial ds"
 
     conf['plan_train']
 
-    cbs = [PeriodicTest(every_n_epochs=1,limit_batches=50)]
+    # cbs = [PeriodicTest(every_n_epochs=1,limit_batches=50)]
 
     conf["dataset_params"]["cache_rate"]=0.0
     print(conf['model_params']['out_channels'])
@@ -516,16 +517,16 @@ if __name__ == "__main__":
     conf['dataset_params']['cache_rate']
 
     conf["dataset_params"]["fold"]=0
-    run_name=None
     run_name="LIDC-0002"
+    run_name=None
     lr= 1e-2
     debug=True
     debug=False
+    train_init_indices= 150
 # %%
 #SECTION:-------------------- TRAIN--------------------------------------------------------------------------------------
     Tm = IncrementalTrainer    (P.project_title, conf, run_name, debug=debug)
     epochs =400
-    train_init_indices= 30
 # %%
     Tm.setup(
         train1_indices=train_init_indices,

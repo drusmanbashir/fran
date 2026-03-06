@@ -3,6 +3,7 @@ import argparse
 import ast
 import shutil
 
+from utilz.cprint import cprint
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.stringz import headline
@@ -399,14 +400,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_known_args()[0]
 # %%
-    args.project_title="lidc"
-    args.plan = 3
-    args.num_processes = 1
+    # args.project_title="lidc"
+    # args.plan = 3
+    # args.num_processes = 1
     # args.overwrite=True
     # args.debug=True
 #     #
 
 # %%
+    cprint("Project: {0}".format(args.project_title), color ="green")
 
     if args.help_args:
         parser.print_help()

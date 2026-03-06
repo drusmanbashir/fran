@@ -91,7 +91,7 @@ def run_training(project: Project, conf: dict[str, Any], gpu_id: int, epochs: in
         batchsize_finder=False,
         profiler=False,
         wandb=False,
-        periodic_test=0,
+        test_every_n_epochs=0,
         tags=["pipeline:test"],
         description="Quick workflow validation run.",
     )

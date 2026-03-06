@@ -3,11 +3,14 @@ from fran.managers import  Project
 from fran.utils.common import *
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 
+import shutil
+from typing import Optional
 
 from copy import deepcopy
 from pathlib import Path
 
 import torch
+from fastcore.all import in_ipython
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import (
     BatchSizeFinder,
@@ -26,9 +29,23 @@ from fran.callback.incremental import LRFloorStop
 from fran.callback.test import PeriodicTest
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import parse_neptune_dict
+from fran.managers.data.training import DataManagerDual, DataManagerMulti
+from fran.managers.data.training import (
+    DataManagerBaseline,
+    DataManagerLBD,
+    DataManagerPatch,
+    DataManagerSource,
+    DataManagerWhole,
+    DataManagerWID,
+)
+from fran.managers.data.incremental import DataManagerDualI
+from fran.managers.unet import UNetManager, UNetManagerMulti
 from fran.managers.wandb import WandbManager
-from fran.trainers.trainer_core import Trainer as CoreTrainer
+from fran.trainers.base import backup_ckpt, checkpoint_from_model_id, switch_ckpt_keys
+from utilz.cprint import cprint
 from utilz.stringz import headline
+
+from fran.utils.folder_names import folder_names_from_plan
 
 
 def _flatten_dict(d: dict, base: str = "") -> dict:
@@ -42,8 +59,39 @@ def _flatten_dict(d: dict, base: str = "") -> dict:
     return out
 
 
-class Trainer(CoreTrainer):
+def _dm_class_for_test_every_n_epochs(test_every_n_epochs: int):
+    return DataManagerMulti if int(test_every_n_epochs) > 0 else DataManagerDual
+
+
+def _dm_class_from_ckpt(ckpt_path: str | Path):
+    sd = torch.load(ckpt_path, map_location="cpu")
+    hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
+    # if "train1_indices" in hp and "keys_test" in hp:
+    #     raise NotImplementedError("train1_indices with periodic testing is not implemented")
+    # if "train1_indices" in hp:
+    #     return DataManagerDualI
+    #
+    return DataManagerMulti if "keys_test" in hp else DataManagerDual
+
+
+class Trainer:
     """Trainer variant with W&B logging/callback plumbing."""
+
+    def __init__(
+        self,
+        project_title,
+        configs,
+        run_name=None,
+        ckpt_path: Optional[str | Path] = None,
+    ):
+        self.project = Project(project_title=project_title)
+        self.configs = configs
+        self.run_name = run_name
+        if ckpt_path is not None:
+            self.ckpt = Path(ckpt_path)
+        else:
+            self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
+        self.qc_configs(configs, self.project)
 
     def _ensure_local_ckpt_on_wandb_resume(self, logger: WandbManager | None) -> None:
         """
@@ -85,6 +133,8 @@ class Trainer(CoreTrainer):
     def setup(
         self,
         batch_size=None,
+        train_indices=None,
+        val_indices=None,
         logging_freq=25,
         lr=None,
         devices=1,
@@ -92,7 +142,7 @@ class Trainer(CoreTrainer):
         wandb=True,
         profiler=False,
         debug: bool = False,
-        periodic_test: int = 0,
+        test_every_n_epochs: int = 0,
         cbs=[],
         tags=[],
         description="",
@@ -107,7 +157,11 @@ class Trainer(CoreTrainer):
         lr_floor=None,
         wandb_grid_epoch_freq: int = 5,
     ):
-        self.periodic_test = int(periodic_test)
+        if train_indices is not None and int(test_every_n_epochs) > 0:
+            raise NotImplementedError("train1_indices with periodic testing is not implemented")
+        self.test_every_n_epochs = int(test_every_n_epochs)
+        self.train_indices = train_indices
+        self.val_indices = val_indices
         self.debug = bool(debug)
         self.maybe_alter_configs(batch_size, compiled)
         self.set_lr(lr)
@@ -149,7 +203,7 @@ class Trainer(CoreTrainer):
             cbs=cbs,
             wandb=wandb,
             batchsize_finder=batchsize_finder,
-            periodic_test=self.periodic_test,
+            test_every_n_epochs=self.test_every_n_epochs,
             profiler=profiler,
             tags=tags,
             description=description,
@@ -177,12 +231,121 @@ class Trainer(CoreTrainer):
             default_root_dir=self.project.checkpoints_parent_folder,
             strategy=strategy,
         )
+
+    def init_dm(self):
+        cache_rate = self.configs["dataset_params"]["cache_rate"]
+        ds_type = self.configs["dataset_params"]["ds_type"]
+        DM = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
+        dm = DM(
+            project_title=self.project.project_title,
+            configs=self.configs,
+            batch_size=self.configs["dataset_params"]["batch_size"],
+            cache_rate=cache_rate,
+            device=self.configs["dataset_params"].get("device", "cuda"),
+            ds_type=ds_type,
+            train_indices=self.train_indices,
+            val_indices=self.val_indices,
+        )
+
+        labels_all = self.configs["plan_train"].get("labels_all")
+        if not labels_all:
+            infer_labels_and_update_out_channels(dm=dm, configs=self.configs)
+        return dm
+
+    def load_dm(self, batch_size=None, override_dm_checkpoint=False):
+        if override_dm_checkpoint:
+            sd = torch.load(self.ckpt, map_location="cpu")
+            backup_ckpt(self.ckpt)
+            sd["datamodule_hyper_parameters"]["configs"] = self.configs
+            headline("Overriding datamodule checkpoint.")
+            out_fname = self.run_name + ".ckpt"
+            bckup_ckpt = Path(self.project.log_folder) / out_fname
+            shutil.copy(self.ckpt, bckup_ckpt)
+            torch.save(sd, self.ckpt)
+
+        sd = torch.load(self.ckpt, map_location="cpu")
+        hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
+        ckpt_train1_indices = hp.get("train1_indices", None)
+        if self.train_indices is not None and ckpt_train1_indices is not None:
+            if list(self.train_indices) != list(ckpt_train1_indices):
+                headline(
+                    "train1_indices mismatch between trainer and checkpoint; using checkpoint values."
+                )
+
+        DM_from_ckpt = _dm_class_from_ckpt(self.ckpt)
+        DM_wanted = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
+        DM = DM_from_ckpt
+
+        D = DM.load_from_checkpoint(
+            self.ckpt,
+            project_title=self.project.project_title,
+            batch_size=batch_size,
+            map_location="cpu",
+        )
+
+        if batch_size:
+            D.configs["dataset_params"]["batch_size"] = int(batch_size)
+
+        if (DM_from_ckpt is DataManagerDual) and (DM_wanted is DataManagerMulti):
+            headline(
+                "Note: checkpoint datamodule is Dual (no test). test_every_n_epochs>0 was requested, "
+                "but DM is loaded from checkpoint to avoid incompatibility."
+            )
+
+        return D
+
+    def init_dm_unet(self, epochs, batch_size, override_dm_checkpoint=False):
+        if self.ckpt:
+            self.D = self.load_dm(
+                batch_size=batch_size, override_dm_checkpoint=override_dm_checkpoint
+            )
+            headline(
+                "Loading configs from checkpoints. If you want to override them with Trainer configs, set override_dm_checkpoint=True"
+            )
+            self.configs["dataset_params"] = self.D.configs["dataset_params"]
+            missing_keys = []
+            for key in self.configs.keys():
+                try:
+                    self.configs[key] = self.D.configs[key]
+                except KeyError:
+                    missing_keys.append(key)
+            if len(missing_keys) > 0:
+                headline(
+                    f"Missing keys: {missing_keys}.. If any are critical, please check the datamodule checkpoint."
+                )
+            self.N = self.load_trainer()
+            self.configs["model_params"] = self.N.model_params
+        else:
+            self.D = self.init_dm()
+            self.N = self.init_trainer(epochs)
+        print("Data Manager initialized.\n {}".format(self.D))
+
+    def set_lr(self, lr):
+        if lr and not self.ckpt:
+            self.lr = lr
+        elif lr and self.ckpt:
+            self.lr = lr
+            sd = torch.load(self.ckpt, map_location="cpu")
+            for g in sd["optimizer_states"][0]["param_groups"]:
+                g["lr"] = float(self.lr)
+            sd["lr_schedulers"][0]["_last_lr"] = [float(self.lr)]
+            headline(
+                "Warning: Overriding CKPT learning rate with Trainer configs: {}".format(
+                    self.lr
+                )
+            )
+            torch.save(sd, self.ckpt)
+        elif lr is None and self.ckpt:
+            self.state_dict = torch.load(self.ckpt, weights_only=False, map_location="cpu")
+            self.lr = self.state_dict["lr_schedulers"][0]["_last_lr"][0]
+        else:
+            self.lr = self.configs["model_params"]["lr"]
     def init_cbs(
         self,
         cbs,
         wandb,
         batchsize_finder,
-        periodic_test,
+        test_every_n_epochs,
         profiler,
         tags,
         description="",
@@ -200,18 +363,19 @@ class Trainer(CoreTrainer):
                 BatchSizeSafetyMargin(),
             ]
 
-        if periodic_test > 0:
-            cbs += [PeriodicTest(every_n_epochs=periodic_test, limit_batches=50)]
+        if test_every_n_epochs > 0:
+            cbs += [PeriodicTest(every_n_epochs=test_every_n_epochs, limit_batches=50)]
 
-        if getattr(self, "debug", False):
+        if self.debug==True:
             cbs += [DebugEpochBatchLimit(n=10)]
 
         cbs += [
             ModelCheckpoint(
+                save_top_k=2,
                 save_last=True,
                 monitor="val0_loss",
                 every_n_epochs=10,
-                filename="{epoch}-{val_loss:.2f}",
+                filename="{epoch}-{val0_loss:.2f}",
                 enable_version_counter=True,
                 auto_insert_metric_name=True,
             ),
@@ -247,6 +411,11 @@ class Trainer(CoreTrainer):
             }
             flat_cfg = _flatten_dict(dm_cfg, base="configs/datamodule")
             logger.experiment.config.update(flat_cfg, allow_val_change=True)
+            if getattr(self.D, "train1_indices", None) is not None:
+                logger.experiment.config.update(
+                    {"configs/datamodule/train1_indices": list(self.D.train1_indices)},
+                    allow_val_change=True,
+                )
             cbs += [
                 WandbImageGridCallback(
                     classes=self.configs["model_params"]["out_channels"],
@@ -264,13 +433,123 @@ class Trainer(CoreTrainer):
 
         return cbs, logger, profiler
 
+    def set_strategy(self, devices):
+        if devices in (-1, "auto", None):
+            n_gpus = torch.cuda.device_count()
+            norm_devices = max(1, n_gpus)
+        elif isinstance(devices, int):
+            norm_devices = max(1, devices)
+        elif isinstance(devices, (list, tuple)):
+            norm_devices = max(1, len(devices))
+        else:
+            raise ValueError("devices must be int, list/tuple, -1, 'auto', or None")
+
+        if norm_devices <= 1:
+            strategy = "auto"
+            sync_dist = False
+        else:
+            strategy = "ddp_notebook" if in_ipython() else "ddp"
+            sync_dist = True
+
+        self.devices = norm_devices
+        self.sync_dist = sync_dist
+        self.strategy = strategy
+
+    def maybe_alter_configs(self, batch_size, compiled):
+        if batch_size is not None:
+            self.configs["dataset_params"]["batch_size"] = int(batch_size)
+        if compiled is not None:
+            self.configs["model_params"]["compiled"] = bool(compiled)
+
+    def qc_configs(self, configs, project):
+        ratios = configs["dataset_params"]["fgbg_ratio"]
+        assert isinstance(
+            ratios, int | float | list
+        ), "If no list is provided, fgbg_ratio must be an integer"
+
+        try:
+            labels_all = configs["plan_train"]["labels_all"]
+        except KeyError:
+            cprint("No labels_all found in configs, will be inferred from dataset", color="yellow")
+            return
+
+        if isinstance(ratios, list):
+            assert (a := len(ratios)) == (b := len(labels_all)), (
+                "Class ratios {0} do not match number of labels in dataset {1}".format(a, b)
+            )
+
+    def heuristic_batch_size(self):
+        raise NotImplementedError
+
+    def init_trainer(self, epochs):
+        unet_man = UNetManagerMulti if self.test_every_n_epochs >0 else UNetManager
+        N = unet_man(
+            project_title=self.project.project_title,
+            configs=self.configs,
+            lr=self.lr,
+            sync_dist=self.sync_dist,
+        )
+        return N
+
+    def load_trainer(self, map_location="cpu", **kwargs):
+        try:
+            N = UNetManager.load_from_checkpoint(
+                self.ckpt, map_location=map_location, strict=True, **kwargs
+            )
+        except RuntimeError:
+            switch_ckpt_keys(self.ckpt)
+            N = UNetManager.load_from_checkpoint(
+                self.ckpt, map_location=map_location, strict=True, **kwargs
+            )
+        print("Model loaded from checkpoint: ", self.ckpt)
+        return N
+
+    def resolve_datamanager(self, mode: str):
+        if mode == "patch":
+            DMClass = DataManagerPatch
+        elif mode == "source":
+            DMClass = DataManagerSource
+        elif mode == "whole":
+            DMClass = DataManagerWhole
+        elif mode == "lbd":
+            DMClass = DataManagerLBD
+        elif mode == "pbd":
+            DMClass = DataManagerWID
+        elif mode == "baseline":
+            DMClass = DataManagerBaseline
+        else:
+            raise NotImplementedError("Mode {} is not supported for datamanager".format(mode))
+        return DMClass
+
+    def fit(self):
+        try:
+            self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+        except KeyboardInterrupt:
+            try:
+                import wandb
+                if wandb.run is not None:
+                    wandb.finish()
+            except Exception:
+                pass
+            raise
+
+    def best_available_checkpoint(self) -> Optional[Path]:
+        model_ckpts = [cb for cb in self.trainer.callbacks if isinstance(cb, ModelCheckpoint)]
+        if not model_ckpts:
+            return None
+        best = model_ckpts[0].best_model_path
+        if best:
+            return Path(best)
+        last = model_ckpts[0].last_model_path
+        return Path(last) if last else None
+
 # %%
 
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
-    set_autoreload()
     P = Project("lidc")
+    P = Project("kits")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
     C.setup(3)
@@ -294,7 +573,7 @@ if __name__ == '__main__':
 
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
     device_id = 1
-    bs = 2
+    bs = 10
 
 
     # run_name ='LITS-1285'
@@ -304,12 +583,12 @@ if __name__ == '__main__':
     wandb = True
     override_dm = False
     tags = []
-    description = f"3 types of lung lesion"
+    description = f"First run, using 150 cases"
 
     conf['plan_train']
 
-    periodic_test=10
-    cbs = [TQDMProgressBar(refresh_rate=3),PeriodicTest(every_n_epochs=1,limit_batches=50), BatchSizeFinder(batch_arg_name="batch_size")]
+    test_every_n_epochs=0
+    # cbs = [TQDMProgressBar(refresh_rate=3), BatchSizeFinder(batch_arg_name="batch_size")]
             
 
     conf["dataset_params"]["cache_rate"]=0.0
@@ -319,10 +598,13 @@ if __name__ == '__main__':
     conf['dataset_params']['cache_rate']
 
     conf["dataset_params"]["fold"]=0
+    run_name="LIDC-0010"
     run_name=None
-    lr= 1e-2
+    lr= None
+    batchsize_finder = False
     batchsize_finder = True
-    debug=False
+    debug_=False
+    train_indices = 130
 # %%
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
@@ -330,8 +612,9 @@ if __name__ == '__main__':
 # %%
     Tm.setup(
         compiled=compiled,
-        periodic_test=periodic_test,
-        debug=debug,
+        train_indices=150,
+        test_every_n_epochs=test_every_n_epochs,
+        debug=debug_,
         batch_size=bs,
         devices=[device_id],
         epochs=600 if profiler == False else 1,
@@ -343,6 +626,7 @@ if __name__ == '__main__':
         description=description,
     )
 # %%
+    folder_names_from_plan(P, planT)            
 
     Tm.fit()
     # model(inputs)

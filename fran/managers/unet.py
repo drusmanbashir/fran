@@ -105,14 +105,14 @@ class UNetManager(LightningModule):
             target = target_listed
         return pred, target
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx, dataloader_idx=0):
         loss, loss_dict = self._common_step(batch, batch_idx)
-        self.log_losses(loss_dict, prefix="train")
+        self.log_losses(loss_dict, prefix=f"train{dataloader_idx}")
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         loss, loss_dict = self._common_step(batch, batch_idx)
-        self.log_losses(loss_dict, prefix="val")
+        self.log_losses(loss_dict, prefix=f"val{dataloader_idx}")
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -149,7 +149,7 @@ class UNetManager(LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
-                "monitor": "train_loss_dice",
+                "monitor": "train0_loss_dice",
                 "frequency": 2,
                 # If "monitor" references validation metrics, then "frequency" should be set to a
                 # multiple of "trainer.check_val_every_n_epoch".
@@ -206,8 +206,8 @@ class UNetManager(LightningModule):
         mean_c = flat.mean(dim=2)
         std_c = flat.std(dim=2)
         emb = torch.cat([mean_c, std_c], dim=1)
-        return entropy_case, emb
 
+        return entropy_case, emb
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         inputs, target = batch["image"], batch["lm"]
         pred = self.forward(inputs)
@@ -322,8 +322,6 @@ class UNetManagerMulti(UNetManager):
             loss_dict = self.loss_fnc.loss_dict
             self.maybe_store_preds(pred)
             return loss, loss_dict
-
-        
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         loss, loss_dict = self._common_step(batch, batch_idx, dataloader_idx)

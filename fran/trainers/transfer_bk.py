@@ -1,18 +1,19 @@
-from __future__ import annotations
+# %%
+import ipdb
 
-from pathlib import Path
-from typing import Optional
-
-import torch
-import torch._dynamo
-from torch import nn
-
-from fran.trainers.base import checkpoint_from_model_id, switch_ckpt_keys
-from fran.trainers.trainer import Trainer
+from fran.configs.parser import ConfigMaker
 from fran.managers.unet import UNetManager
-from utilz.stringz import headline
+
+tr = ipdb.set_trace
+import torch._dynamo
 
 torch._dynamo.config.suppress_errors = True
+import warnings
+
+import torch
+from torch import nn
+
+from fran.trainers.trainer import Trainer
 
 # TODO: fix LR  setup in Tranfer learning
 
@@ -21,40 +22,19 @@ class TrainingManagerTransfer(Trainer):
     def __init__(self, project, config, run_name, freeze=None):
         assert freeze in [None, "encoder"], "Freeze either None or encoder"
         assert run_name is not None, "Please specificy a run to transfer learning from"
-        source_ckpt = checkpoint_from_model_id(run_name)
-        assert source_ckpt is not None, f"No checkpoint found for source run: {run_name}"
         super().__init__(
-            project_title=project.project_title,
-            configs=config,
-            run_name=None,
-            ckpt_path=source_ckpt,
+            project_title=project.project_title, configs=config, run_name=run_name
         )
-        self.source_run_name = run_name
-        self.source_ckpt = Path(source_ckpt)
-        # Transfer learning should start a fresh optimization run.
-        self.ckpt = None
         self.freeze = freeze
 
     def init_dm_unet(self, epochs, batch_size=None, override_dm_checkpoint=False):
-        source_manager = self.load_source_trainer(map_location="cpu")
-        self.model_source = source_manager.model
+        Ntmp = self.load_trainer(max_epochs=epochs, map_location="cpu")
+        self.model_source = Ntmp.model
         self.N = self.init_trainer(epochs)
         self.D = self.init_dm()
         self.update_model()
         del self.model_source
-
-    def load_source_trainer(self, map_location: str = "cpu", **kwargs):
-        try:
-            source = UNetManager.load_from_checkpoint(
-                self.source_ckpt, map_location=map_location, strict=True, **kwargs
-            )
-        except RuntimeError:
-            switch_ckpt_keys(self.source_ckpt)
-            source = UNetManager.load_from_checkpoint(
-                self.source_ckpt, map_location=map_location, strict=True, **kwargs
-            )
-        headline(f"Source model loaded from checkpoint: {self.source_ckpt}")
-        return source
+        # self.update_trainer()
 
     def update_trainer(self):
         self.N.model_params = self.configs["model_params"]
@@ -88,39 +68,31 @@ class TrainingManagerTransfer(Trainer):
         )
 
     def copy_weights(self):
-        src_sd = self.model_source.state_dict()
-        tgt_sd = self.N.model.state_dict()
-        copied, skipped = 0, 0
+        tot = 0
+        failed = 0
         with torch.no_grad():
-            for key, src_val in src_sd.items():
-                tgt_val = tgt_sd.get(key)
-                if tgt_val is None or tgt_val.shape != src_val.shape:
-                    skipped += 1
-                    continue
-                tgt_sd[key].copy_(src_val)
-                copied += 1
-        self.N.model.load_state_dict(tgt_sd, strict=False)
-        headline(f"Copied {copied} tensors from source model; skipped {skipped} tensors.")
+            for paramA, paramB in zip(
+                self.N.model.parameters(), self.model_source.parameters()
+            ):
+                num = paramA.numel()
+                try:
+                    paramA.copy_(paramB)
+                    tot += num
+                except Exception as e:
+                    print("!" * 40)
+                    print(e)
+                    failed += num
+        print("Coped total: ", tot)
+        print("Failed: ", failed)
+        print("-" * 40)
 
     def fit(self):
-        try:
-            self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=None)
-        except KeyboardInterrupt:
-            try:
-                import wandb
-                if wandb.run is not None:
-                    wandb.finish()
-            except Exception:
-                pass
-            raise
+        self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=None)
 
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
 if __name__ == "__main__":
-    import warnings
-
-    from fran.configs.parser import ConfigMaker
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
@@ -157,7 +129,7 @@ if __name__ == "__main__":
     profiler = False
 
     batch_finder = False
-    wandb = True
+    neptune = True
     tags = []
     cache_rate = 0.0
     description = f"Transfer learning from {run_name}. Freeze: {freeze}"
@@ -174,7 +146,7 @@ if __name__ == "__main__":
         epochs=500,
         batchsize_finder=batch_finder,
         profiler=profiler,
-        wandb=wandb,
+        neptune=neptune,
         tags=tags,
         description=description,
     )

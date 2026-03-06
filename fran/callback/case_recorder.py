@@ -46,7 +46,7 @@ def infer_labels_and_update_out_channels(dm, configs: dict):
 
     try:
         dm.prepare_data()
-        labels_all = load_json(dm.train_manager.data_folder/("labels_all.json"))
+        labels_all = load_json(dm.data_folder/("labels_all.json"))
         labels_all = set(labels_all)
     except FileNotFoundError:
         cprint("No labels_all.json found. Scanning data loaders.", color="yellow")

@@ -34,6 +34,7 @@ from monai.transforms.transform import MapTransform, RandomizableTransform
 from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  MapLabelValued, ToDeviceD)
 from tqdm.auto import tqdm as pbar
+from utilz.cprint import cprint
 from utilz.fileio import load_dict, load_yaml
 from utilz.helpers import (find_matching_fn, project_title_from_folder, resolve_device)
 from utilz.imageviewers import ImageMaskViewer
@@ -153,6 +154,8 @@ class DataManagerDual(LightningDataModule):
         data_folder: Optional[str | Path] = None,
         manager_class_train: Optional[type] = None,
         manager_class_valid: Optional[type] = None,
+        train_indices = None,
+        val_indices=None
     ):
         super().__init__()
         self.project = Project(project_title)
@@ -166,6 +169,8 @@ class DataManagerDual(LightningDataModule):
         self.data_folder = data_folder if data_folder is not None else None
         self.manager_class_train = manager_class_train
         self.manager_class_valid = manager_class_valid
+        self.train_indices = train_indices
+        self.val_indices = val_indices
 
         if save_hyperparameters:
             self.save_hyperparameters("project_title", "configs", logger=False)
@@ -175,6 +180,13 @@ class DataManagerDual(LightningDataModule):
     def prepare_data(self):
         self._build_managers()
         self._call_prepare_data()
+        if self.train_indices is not None:
+            cprint(f"Limiting training dataset size to{self.train_indices}", color="yellow")
+            self.train_manager.data = self.train_manager.data[:self.train_indices]
+            if self.val_indices is None:
+                self.val_indices  =int( self.train_indices*0.2)
+        if self.val_indices is not None:
+                self.valid_manager.data = self.valid_manager.data[:self.val_indices]
 
     def setup(self, stage=None):
         self._call_setup(stage)
@@ -249,6 +261,7 @@ class DataManagerDual(LightningDataModule):
     def _call_prepare_data(self):
         for m in self._iter_managers():
             m.prepare_data()
+        self.data_folder = self.train_manager.data_folder
 
     def _call_setup(self, stage=None):
         for m in self._iter_managers():
@@ -298,6 +311,8 @@ class DataManagerMulti(DataManagerDual):
         manager_class_train: Optional[type] = None,
         manager_class_valid: Optional[type] = None,
         manager_class_test: Optional[type] = None,
+        train_indices = None,
+        val_indices=None
     ):
         super().__init__(
             project_title=project_title,
@@ -312,6 +327,8 @@ class DataManagerMulti(DataManagerDual):
             data_folder=data_folder,
             manager_class_train=manager_class_train,
             manager_class_valid=manager_class_valid,
+            train_indices=train_indices,
+            val_indices=val_indices
         )
         self.keys_test = keys_test
         self.manager_class_test = manager_class_test
@@ -814,6 +831,14 @@ class DataManager(LightningDataModule):
         else:
             num_workers = min(8,self.effective_batch_size * 2)
             persistent_workers = True
+        force_num_workers = getattr(self, "force_num_workers", None)
+        if force_num_workers is not None:
+            num_workers = int(force_num_workers)
+            force_persistent = getattr(self, "force_persistent_workers", None)
+            if force_persistent is None:
+                persistent_workers = num_workers > 0
+            else:
+                persistent_workers = bool(force_persistent)
         self.dl = DataLoader(
             self.ds,
             batch_size=self.effective_batch_size,
@@ -840,12 +865,12 @@ class DataManager(LightningDataModule):
         self.create_dataloader()
 
     def create_dataset(self):
-        """Create a single dataset based on split type"""
-        print(f"[DEBUG] Number of cases: {len(self.cases)}")
-        print(f"[DEBUG] Example case: {self.cases[0] if self.cases else 'None'}")
         if not hasattr(self, "data") or len(self.data) == 0:
             print("No data. DS is not being created at this point.")
             return 0
+        """Create a single dataset based on split type"""
+        print(f"[DEBUG] Number of cases: {len(self.data)}")
+        print(f"[DEBUG] Example case: {self.data[0]['image'] if self.cases else 'None'}")
         if self.split == "train" or self.split == "valid":
             self.ds = self._create_modal_ds()
         else:

@@ -1,4 +1,4 @@
-This repository combines the powers of **F**astai, **Ra**ytune, and **N**eptune to manage and automate medical image segmentations tasks. Currently, I have developed this specifically using the KiTS21 challenge. I welcome others to test this library on the same challenge initially (or on others if you are feeling adventurous and don't mind debugging). Using the random search implemented in the raytune library, I have achieved very good kidney tumour segmentation results.
+This repository combines the powers of **F**astai and **Ra**ytune to manage and automate medical image segmentation tasks. Currently, I have developed this specifically using the KiTS21 challenge. I welcome others to test this library on the same challenge initially (or on others if you are feeling adventurous and don't mind debugging). Using the random search implemented in the raytune library, I have achieved very good kidney tumour segmentation results.
 
 For an introduction to this codebase, please visit my post on the fastai forum https://forums.fast.ai/t/code-collaboration-opportunity-for-ct-radiology-ai-projects-kits-lits/98992
 
@@ -9,7 +9,6 @@ Simply clone this library and start using it.
 Make sure you have installed and set up:
 - fastai (>=2.7.10)
  - raytune from: https://anaconda.org/conda-forge/ray-tune
- - created an account on neptune-ai at https://neptune.ai/, and 
  - downloaded a dataset (e.g., LITS).
 
 \
@@ -25,12 +24,7 @@ All dataset creation and (some) training blueprints are in excel spreadsheets an
 
 
 ## 1. Setting environment variables
-Once you have installed neptune client, and created a new empty project, open the project and you will find instructions to initialize a project like so:
-```
-run = neptune.init_run( project="{workspacename}/{projectname}",
-    api_token="abc ......")  # your credentials
-```
-Note the workspace name and api token. Then open `nbs/config-test.yaml`. The file provided here has my directory structure which you may emulate if you like. Among other paths, you will need to assign a `{fast_storage}` (used by the library for DL) and a `{slow_storage}`folder (where you download your dataset nifty files). After setting folder paths, you need to store both the api token and project workspacename (NOT project name) inside `config.yaml` provided.
+Open `nbs/config-test.yaml`. The file provided here has my directory structure which you may emulate if you like. Among other paths, you will need to assign a `{fast_storage}` (used by the library for DL) and a `{slow_storage}` folder (where you download your dataset nifti files). After setting folder paths, update `config.yaml` accordingly.
 
 Finally, add path to your `config.yaml` file in `~/.bashrc` as:
 

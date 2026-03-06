@@ -46,7 +46,7 @@ class UpdateDatasetOnPlateau(Callback):
 
     def __init__(
         self,
-        monitor: str = "val_loss",
+        monitor: str = "val0_loss",
         mode: str = "min",
         min_delta: float = 0.05,
         patience: int = 3,

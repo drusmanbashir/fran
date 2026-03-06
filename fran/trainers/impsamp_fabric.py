@@ -630,10 +630,10 @@ class Trainer:
             )
 
         if isinstance(self._current_val_return, torch.Tensor):
-            possible_monitor_vals.update("val_loss", self._current_val_return)
+            possible_monitor_vals.update("val0_loss", self._current_val_return)
 
         if isinstance(self._current_val, tuple):
-            possible_monitor_vals.update("val_loss", self._current_val_return[0])
+            possible_monitor_vals.update("val0_loss", self._current_val_return[0])
         elif isinstance(self._current_val_return, Mapping):
             possible_monitor_vals.update(
                 {
@@ -741,7 +741,7 @@ class Trainer:
         _lr_sched_defaults = {
             "interval": "epoch",
             "frequency": 1,
-            "monitor": "val_loss",
+            "monitor": "val0_loss",
         }
 
         # single optimizer

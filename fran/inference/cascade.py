@@ -246,7 +246,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
     def inferer_from_params(self, run_w):
         self.ckpt = checkpoint_from_model_id(run_w)
-        dic1 = torch.load(self.ckpt, weights_only=False)
+        dic1 = torch.load(self.ckpt, map_location="cpu", weights_only=False)
         mode = dic1["datamodule_hyper_parameters"]["configs"]["plan_train"][
             "mode"
         ]  # ["dataset_params"]["mode"]
@@ -418,7 +418,7 @@ if __name__ == "__main__":
     best_runs = load_yaml(conf_fldr+"/best_runs.yaml")
     run_w = best_runs["run_w"]
 
-    print(best_runs)
+    pp(best_runs)
 
 # %%
 
@@ -466,6 +466,10 @@ if __name__ == "__main__":
     localiser_labels = [45, 46, 47, 48, 49]
     localiser_labels_litsmc = [1]
     TSL = TotalSegmenterLabels()
+    lidc2_fldr = DS.lidc2.folder/("images")
+    imgs_lidc2 = list(lidc2_fldr.glob("*"))
+
+
 # %%
 # SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
@@ -478,6 +482,9 @@ if __name__ == "__main__":
     debug_ = False
     save_channels = False
     save_localiser = True
+    run_lidc2 = best_runs['lidc']['run_ids'][0]
+    localiser_labels=best_runs['lidc']['localiser_labels']
+
 # %%
     En = CascadeInferer(
         run_w,
@@ -494,7 +501,8 @@ if __name__ == "__main__":
 # %%
     imgs_tmp = ["/s/insync/datasets/today/mets/201 Axial  iDose (6).nii.gz"]
     imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
-    preds = En.run(imgs_tmp, chunksize=1, overwrite=overwrite)
+    imgs = imgs_lidc
+    preds = En.run(imgs, chunksize=1, overwrite=overwrite)
 
 # %%
     model = En.Ps[0].model

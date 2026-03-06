@@ -310,17 +310,23 @@ class TrainerFabric:
         }
 
         if isinstance(self._current_train_return, torch.Tensor):
+            possible_monitor_vals["train0_loss"] = self._current_train_return
+            # Backward-compatible alias for older monitor names.
             possible_monitor_vals["train_loss"] = self._current_train_return
         elif isinstance(self._current_train_return, Mapping):
             for k, v in self._current_train_return.get(
                 "losses_for_logging", {}
             ).items():
+                possible_monitor_vals[f"train0_{k}"] = v
                 possible_monitor_vals[f"train_{k}"] = v
 
         if isinstance(self._current_val_return, torch.Tensor):
+            possible_monitor_vals["val0_loss"] = self._current_val_return
+            # Backward-compatible alias for older monitor names.
             possible_monitor_vals["val_loss"] = self._current_val_return
         elif isinstance(self._current_val_return, Mapping):
             for k, v in self._current_val_return.get("losses_for_logging", {}).items():
+                possible_monitor_vals[f"val0_{k}"] = v
                 possible_monitor_vals[f"val_{k}"] = v
 
         monitor_key = cast(Optional[str], scheduler_cfg.get("monitor"))
@@ -383,7 +389,7 @@ class TrainerFabric:
         defaults: dict[str, Any] = {
             "interval": "epoch",
             "frequency": 1,
-            "monitor": "val_loss",
+            "monitor": "val0_loss",
         }
 
         if isinstance(configure_optim_output, Optimizer):

@@ -38,6 +38,7 @@ class BatchSizeSafetyMargin(Callback):
         # Keep config batch size synced to the runtime value chosen after finder/safety margin.
         final_bs = int(dm.batch_size)
         dm.configs["dataset_params"]["batch_size"] = final_bs
+        trainer.logger.experiment.config.update({"configs/datamodule/dataset_params/batch_size": final_bs}, allow_val_change=True)
         self.has_run = True
 
 class PredAsList(Callback):

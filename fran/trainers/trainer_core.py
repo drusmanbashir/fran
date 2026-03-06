@@ -67,14 +67,14 @@ def safe_log_dict(exp, base_path: str, d: dict):
         except Exception as e:
             print(f"[Neptune logging skipped] {path}: {e}")
 
-def _dm_class_for_periodic_test(periodic_test: int):
-    return DataManagerMulti if int(periodic_test) > 0 else DataManagerDual
+def _dm_class_for_test_every_n_epochs(test_every_n_epochs: int):
+    return DataManagerMulti if int(test_every_n_epochs) > 0 else DataManagerDual
 
 
 def _dm_class_from_ckpt(ckpt_path: str | Path):
     """
     Decide which DM class the checkpoint expects, using datamodule hyperparams.
-    Minimises crash risk when periodic_test differs from the run that created the ckpt.
+    Minimises crash risk when test_every_n_epochs differs from the run that created the ckpt.
     """
     sd = torch.load(ckpt_path, map_location="cpu")
     hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
@@ -93,7 +93,7 @@ class Trainer:
             self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
 
-        self.periodic_test = 0  # default
+        self.test_every_n_epochs = 0  # default
 
     def setup(
         self,
@@ -105,7 +105,7 @@ class Trainer:
         neptune=True,
         profiler=False,
         debug: bool = False,
-        periodic_test: int = 0,
+        test_every_n_epochs: int = 0,
         cbs=[],
         tags=[],
         description="",
@@ -119,7 +119,7 @@ class Trainer:
         early_stopping_min_delta=0.0,
         lr_floor=None,
     ):
-        self.periodic_test = int(periodic_test)
+        self.test_every_n_epochs = int(test_every_n_epochs)
         self.debug = bool(debug)
 
         self.maybe_alter_configs(batch_size, compiled)
@@ -131,7 +131,7 @@ class Trainer:
             cbs=cbs,
             neptune=neptune,
             batchsize_finder=batchsize_finder,
-            periodic_test=self.periodic_test,
+            test_every_n_epochs=self.test_every_n_epochs,
             profiler=profiler,
             tags=tags,
             description=description,
@@ -163,7 +163,7 @@ class Trainer:
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
 
-        DM = _dm_class_for_periodic_test(self.periodic_test)
+        DM = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
         dm = DM(
             self.project.project_title,
             configs=self.configs,
@@ -196,7 +196,7 @@ class Trainer:
 
         # Prefer the class the checkpoint was created with.
         DM_from_ckpt = _dm_class_from_ckpt(self.ckpt)
-        DM_wanted = _dm_class_for_periodic_test(self.periodic_test)
+        DM_wanted = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
 
         # If they disagree, do NOT force DM_wanted; load what the ckpt expects.
         # That avoids crashes from missing stored hyperparams / attributes.
@@ -215,7 +215,7 @@ class Trainer:
         # Optional: warn (but don’t crash) if user asked for periodic testing but ckpt is Dual
         if (DM_from_ckpt is DataManagerDual) and (DM_wanted is DataManagerMulti):
             headline(
-                "Note: checkpoint datamodule is Dual (no test). periodic_test>0 was requested, "
+                "Note: checkpoint datamodule is Dual (no test). test_every_n_epochs>0 was requested, "
                 "but DM is loaded from checkpoint to avoid incompatibility."
             )
 
@@ -293,7 +293,7 @@ class Trainer:
         cbs,
         neptune,
         batchsize_finder,
-        periodic_test,
+        test_every_n_epochs,
         profiler,
         tags,
         description="",
@@ -307,9 +307,9 @@ class Trainer:
         if batchsize_finder == True:
             cbs += [BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"), BatchSizeSafetyMargin(buffer=1)]
         if (
-            periodic_test > 0
+            test_every_n_epochs > 0
         ):  # HACK: if False, it should create only a single val_dataloader
-            cbs += [PeriodicTest(every_n_epochs=periodic_test, limit_batches=50)]
+            cbs += [PeriodicTest(every_n_epochs=test_every_n_epochs, limit_batches=50)]
         if getattr(self, "debug", False):
             cbs += [DebugEpochBatchLimit(n=10)]
         cbs += [
@@ -318,7 +318,7 @@ class Trainer:
                 monitor="val0_loss",
                 every_n_epochs=10,
                 # mode="min",
-                filename="{epoch}-{val_loss:.2f}",
+                filename="{epoch}-{val0_loss:.2f}",
                 enable_version_counter=True,
                 auto_insert_metric_name=True,
             ),
@@ -424,7 +424,7 @@ class Trainer:
 
 
     def init_trainer(self, epochs):
-        if self.periodic_test == True:
+        if self.test_every_n_epochs == True:
             unet_man = UNetManagerMulti
         else:
             unet_man = UNetManager

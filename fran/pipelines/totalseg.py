@@ -48,7 +48,7 @@ if __name__ == "__main__":
     print("Training:", statusesT, "Validation:", statusesV)
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR>
-    periodic_test = planT["periodic_test"]
+    test_every_n_epochs = planT["test_every_n_epochs"]
     devices = [1]
     bs = 20
     batchsize_finder=False
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 # %%
     Tm.setup(
         compiled=compiled,
-        periodic_test=0,
+        test_every_n_epochs=0,
         batch_size=bs,
         devices=devices,
         cbs=cbs,

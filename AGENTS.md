@@ -5,6 +5,7 @@
 - Do not edit files.
 - Do not run file-modifying commands (`apply_patch`, `sed -i`, etc.).
 - Provide analysis, recommendations, and optional patch text only.
+- You may create new files without explicit permission.
 
 ## Edit Opt-In
 - Only make code changes when I explicitly request implementation.

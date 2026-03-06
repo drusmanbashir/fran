@@ -182,6 +182,7 @@ class DataManagerDualI(DataManagerDual):
         cprint("Number of files in train2: {}".format(len(self.data_train2)), color="yellow")
         cprint("Number of files in valid: {}".format(len(self.data_valid)), color="yellow")
         self._build_managers()
+        self.data_folder= self.train_manager1.data_folder
 
     def create_dataframes(self):
         train_cases, valid_cases = self.project.get_train_val_files(
