@@ -12,6 +12,7 @@ import torch
 from label_analysis.helpers import listify, relabel
 # from label_analysis.merge import merge_pt
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
+from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
 
@@ -209,6 +210,57 @@ def reassign_labels(remapping, lm):
     for x in range(n_classes):
         lm_out[torch.isin(lm_reassigned[x], 1.0)] = x
     return lm_out
+
+
+class CropForegroundOrCenterd(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        source_key: str,
+        patch_size,
+        no_padding: bool,
+        select_fn,
+        allow_smaller: bool = True,
+        margin=0,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, allow_missing_keys)
+        self.source_key = source_key
+        self.patch_size = [int(x) for x in patch_size]
+        self.no_padding = no_padding
+        self.crop_fg = CropForegroundd(
+            keys=keys,
+            source_key=source_key,
+            select_fn=select_fn,
+            allow_smaller=allow_smaller,
+            margin=margin,
+        )
+
+    def _center_crop_4d(self, t):
+        spatial = list(t.shape[-3:])
+        starts = []
+        ends = []
+        for dim, roi in zip(spatial, self.patch_size):
+            if roi >= dim:
+                start, end = 0, dim
+            else:
+                start = (dim - roi) // 2
+                end = start + roi
+            starts.append(start)
+            ends.append(end)
+        return t[(slice(None),) + tuple(slice(s, e) for s, e in zip(starts, ends))]
+
+    def __call__(self, data):
+        d0 = dict(data)
+        d = self.crop_fg(dict(data))
+        if (
+            d["image"].numel() == 0
+            and self.no_padding
+            and d0[self.source_key].count_nonzero().item() == 0
+        ):
+            for key in self.key_iterator(d0):
+                d[key] = self._center_crop_4d(d0[key])
+        return d
 
 
 class FgBgToIndicesd2(FgBgToIndicesd):

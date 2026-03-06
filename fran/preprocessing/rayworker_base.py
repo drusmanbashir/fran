@@ -5,7 +5,6 @@ from typing import Any, Dict
 import ipdb
 import pandas as pd
 from monai.transforms import Compose
-from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  MapLabelValueD, ToDeviced)
 from monai.transforms.utils import is_positive
@@ -17,7 +16,11 @@ from utilz.imageviewers import *
 
 from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
 from fran.transforms.imageio import LoadTorchd
-from fran.transforms.misc_transforms import DummyTransform, FgBgToIndicesd2
+from fran.transforms.misc_transforms import (
+    CropForegroundOrCenterd,
+    DummyTransform,
+    FgBgToIndicesd2,
+)
 
 MIN_SIZE = 32  # min size in a single dimension of any image
 
@@ -148,9 +151,11 @@ class RayWorkerBase(Preprocessor):
         else:
             select_fn = lambda lm: lm == self.crop_to_label
         # Transform attributes in alphabetical order
-        self.C = CropForegroundd(
+        self.C = CropForegroundOrCenterd(
             keys=self.tnsr_keys,
             source_key=self.lm_key,
+            patch_size=self.plan["patch_size"],
+            no_padding=not bool(self.plan.get("expand_by")),
             select_fn=select_fn,
             allow_smaller=True,
             margin=margin,
