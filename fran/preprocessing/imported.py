@@ -65,7 +65,8 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         debug=False,
     ):
         '''
-        if both remmapping and remapping_imported are present, remapping imported is applied to the imported lm first, then it is cropped, then remapping is kept or discarded, and finally remapping is applied to the lm
+        if both remmapping and remapping_imported are present, remapping imported is applied to the imported lm first,
+        then it is cropped, then remapping is kept or discarded, and finally remapping is applied to the lm
         '''
 
 
@@ -73,9 +74,9 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         self.imported_folder = Path(imported_folder)
         merge_imported_labels = plan["merge_imported_labels"]
         if merge_imported_labels == True:
-            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Rsz,Merg,BBox,AppBx,Remap,Indx"
+            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Rsz,Merg,BBox,AppBx,Remap,Labels,Indx"
         else:
-            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Rsz,BBox,AppBx,Remap,Indx"
+            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Rsz,BBox,AppBx,Remap,Labels,Indx"
         self.lm_imported_key = "lm_imported"
         super().__init__(
             project=project,
@@ -346,7 +347,7 @@ if __name__ == "__main__":
     # spacing = [1.5, 1.5, 1.5]
 
     C = ConfigMaker(P)
-    C.setup(3)
+    C.setup(5)
 
 # %%
 
@@ -369,9 +370,9 @@ if __name__ == "__main__":
 
 # %%
     num_processes = 6
-    debug=True
     debug=False
-    overwrite = True
+    debug=True
+    overwrite = False
     L.setup(overwrite=overwrite, num_processes=num_processes,debug=debug)
     L.process()
     store_labels_info(L.output_folder, 16)

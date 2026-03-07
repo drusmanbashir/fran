@@ -322,7 +322,7 @@ class IncrementalTrainer (Trainer):
             self.configs["model_params"]["compiled"] = bool(compiled)
 
     def qc_configs(self, configs, project):
-        ratios = configs["dataset_params"]["fgbg_ratio"]
+        ratios = configs["plan_train"]["fgbg_ratio"]
         configs["model_params"]["out_channels"] - 1
         labels_all = configs["plan_train"]["labels_all"]
         if isinstance(ratios, list):

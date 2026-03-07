@@ -617,7 +617,7 @@ if __name__ == "__main__":
 # %%
     df = C.plans
 # %%
-    conf = C.configs
+    conf = C.configj
     pp(conf["dataset_params"])
     pp(conf["plan_train"])
     conf["plan_train"]["imported_folder"]

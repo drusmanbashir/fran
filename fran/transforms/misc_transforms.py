@@ -2,7 +2,7 @@
 from collections.abc import Hashable, Mapping
 from functools import partial
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import ipdb
 import SimpleITK as sitk
@@ -212,13 +212,37 @@ def reassign_labels(remapping, lm):
     return lm_out
 
 
+class GetLabelsd(MapTransform):
+    """
+    Extract unique labels from a label-map tensor and store as a list in the output dict.
+    """
+
+    def __init__(
+        self,
+        lm_key: str = "lm",
+        output_key: Optional[str] = None,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys=[lm_key], allow_missing_keys=allow_missing_keys)
+        self.lm_key = lm_key
+        self.output_key = output_key or f"{lm_key}_labels"
+
+    def __call__(self, data):
+        d = dict(data)
+        lm = d[self.lm_key]
+        labels = torch.unique(lm).detach().cpu().tolist()
+        d[self.output_key] = [int(v) for v in labels]
+        return d
+
+
 class CropForegroundOrCenterd(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
         source_key: str,
         patch_size,
-        no_padding: bool,
+        min_shape,
+        expand_by,
         select_fn,
         allow_smaller: bool = True,
         margin=0,
@@ -226,8 +250,9 @@ class CropForegroundOrCenterd(MapTransform):
     ) -> None:
         super().__init__(keys, allow_missing_keys)
         self.source_key = source_key
-        self.patch_size = [int(x) for x in patch_size]
-        self.no_padding = no_padding
+        self.patch_size = patch_size
+        self.min_shape = min_shape
+        self.expand_by = expand_by
         self.crop_fg = CropForegroundd(
             keys=keys,
             source_key=source_key,
@@ -254,8 +279,8 @@ class CropForegroundOrCenterd(MapTransform):
         d0 = dict(data)
         d = self.crop_fg(dict(data))
         if (
-            d["image"].numel() == 0
-            and self.no_padding
+            any(dim < lim for dim, lim in zip(d["image"].shape[-3:], self.min_shape))
+            and self.expand_by == 0
             and d0[self.source_key].count_nonzero().item() == 0
         ):
             for key in self.key_iterator(d0):
@@ -295,21 +320,35 @@ class FgBgToIndicesd2(FgBgToIndicesd):
     def __call__(
         self, data: Mapping[Hashable, NdarrayOrTensor]
     ) -> dict[Hashable, NdarrayOrTensor]:
+        def _plain_tensor(x):
+            # FgBgToIndices from MONAI can fail on batched MetaTensor metadata collation.
+            # Convert to raw tensor for robust indexing/collation.
+            if hasattr(x, "as_tensor"):
+                x = x.as_tensor()
+            if isinstance(x, torch.Tensor):
+                return x
+            return torch.as_tensor(x)
+
         d = dict(data)
-        image = d[self.image_key] if self.image_key else None
+        image = _plain_tensor(d[self.image_key]) if self.image_key else None
         for key in self.key_iterator(d):
+            lm_src = d[key]
             if self.ignore_labels:
-                lm = d[key].clone()  # clone so the original is untouched
+                lm = _plain_tensor(lm_src).clone()
                 for label in self.ignore_labels:
                     lm[lm == label] = 0
                 if lm.max() == 0:
+                    fname = None
+                    meta = getattr(lm_src, "meta", None)
+                    if isinstance(meta, dict):
+                        fname = meta.get("filename_or_obj")
                     print(
-                        "Warning: No foreground in label {}".format(lm.meta["filename_or_obj"])
+                        "Warning: No foreground in label {}".format(fname)
                     )
                     print("Not removing any labels to avoid bugs")
-                    lm = d[key].clone()  # clone so the original is untouched
+                    lm = _plain_tensor(lm_src).clone()
             else:
-                lm = d[key]
+                lm = _plain_tensor(lm_src)
             d[str(key) + self.fg_postfix], d[str(key) + self.bg_postfix] = (
                 self.converter(lm, image)
             )

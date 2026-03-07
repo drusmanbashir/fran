@@ -8,19 +8,16 @@ from monai.transforms import Compose
 from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  MapLabelValueD, ToDeviced)
 from monai.transforms.utils import is_positive
-from SimpleITK import Not
 from utilz.cprint import cprint
-from utilz.fileio import *
-from utilz.helpers import *
-from utilz.imageviewers import *
 
 from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import (
-    CropForegroundOrCenterd,
     DummyTransform,
     FgBgToIndicesd2,
+    GetLabelsd,
 )
+from fran.transforms.spatialtransforms import CropForegroundMinShaped
 
 MIN_SIZE = 32  # min size in a single dimension of any image
 
@@ -47,7 +44,7 @@ class RayWorkerBase(Preprocessor):
         crop_to_label=None,
         device="cpu",
         debug=False,
-        tfms_keys="LoadT,Chan,Dev,Crop,Remap,Indx",
+        tfms_keys="LoadT,Chan,Dev,Crop,Remap,Labels,Indx",
     ):
         super().__init__(
             project=project,
@@ -73,16 +70,17 @@ class RayWorkerBase(Preprocessor):
 
         # Apply transforms
         data = self.apply_transforms(data)
+        labels_key = f"{self.lm_key}_labels"
+        labels = data.get(labels_key)
         image = data["image"]
         lm = data["lm"]
         lm_fg_indices = data["lm_fg_indices"]
         lm_bg_indices = data["lm_bg_indices"]
         # Get metadata and indices
-        # Process the case
+
         assert image.shape == lm.shape, "mismatch in shape"
         assert image.dim() == 4, "images should be cxhxwxd"
         assert image.numel() > MIN_SIZE**3, f"image size is too small {image.shape}"
-
         inds = {
             "lm_fg_indices": lm_fg_indices,
             "lm_bg_indices": lm_bg_indices,
@@ -97,6 +95,7 @@ class RayWorkerBase(Preprocessor):
             "case_id": row.get("case_id"),
             "ok": True,
             "shape": list(image.shape),
+            "labels": labels,
         }
         return results
 
@@ -105,10 +104,10 @@ class RayWorkerBase(Preprocessor):
         keys = keys.replace(" ", "").split(",")
 
         for key in keys:
-            tfm = self.transforms_dict[key]
             if self.debug:
-                tr()
                 cprint(f"{key}", color = "yellow")
+                tr()
+            tfm = self.transforms_dict[key]
             if isinstance(tfm, dict):
                 ds = data["ds"]
                 tfm = tfm[ds]
@@ -151,15 +150,14 @@ class RayWorkerBase(Preprocessor):
         else:
             select_fn = lambda lm: lm == self.crop_to_label
         # Transform attributes in alphabetical order
-        self.C = CropForegroundOrCenterd(
+        self.C = CropForegroundMinShaped(
             keys=self.tnsr_keys,
             source_key=self.lm_key,
-            patch_size=self.plan["patch_size"],
-            no_padding=not bool(self.plan.get("expand_by")),
             select_fn=select_fn,
-            allow_smaller=True,
             margin=margin,
+            min_shape=self.plan["patch_size"],
         )
+        
         self.Dev = ToDeviced(device=device, keys=self.tnsr_keys)
         self.Chan = EnsureChannelFirstd(keys=self.tnsr_keys, channel_dim="no_channel")
         self.Indx = FgBgToIndicesd2(
@@ -168,6 +166,7 @@ class RayWorkerBase(Preprocessor):
             ignore_labels=self.plan.get("fg_indices_exclude", []),
             image_threshold=-2600,
         )
+        self.Labels = GetLabelsd(lm_key=self.lm_key)
         self.LoadT = LoadTorchd(keys=[self.image_key, self.lm_key])
         self.Remap = self.create_monai_remapping_per_ds("remapping_lbd", self.lm_key)
 
@@ -176,6 +175,7 @@ class RayWorkerBase(Preprocessor):
             "Dev": self.Dev,
             "Chan": self.Chan,
             "Indx": self.Indx,
+            "Labels": self.Labels,
             "LoadT": self.LoadT,
             "Remap": self.Remap,  # dict: datasource -> transform
         }
@@ -216,7 +216,12 @@ class RayWorkerBase(Preprocessor):
                 )
                 traceback.print_exc()  # <- this is the key
                 outs.append(
-                    {"case_id": row.get("case_id"), "ok": False, "err": repr(e)}
+                    {
+                        "case_id": row.get("case_id"),
+                        "ok": False,
+                        "err": repr(e),
+                        "labels": None,
+                    }
                 )
 
         return outs

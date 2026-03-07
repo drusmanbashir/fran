@@ -400,7 +400,7 @@ class Trainer:
             self.configs["model_params"]["compiled"] = bool(compiled)
 
     def qc_configs(self, configs, project):
-        ratios = configs["dataset_params"]["fgbg_ratio"]
+        ratios = configs["plan_train"]["fgbg_ratio"]
         assert isinstance(
                 ratios, int|float|list
             ), "If no list is provided, fgbg_ratio must be an integer"

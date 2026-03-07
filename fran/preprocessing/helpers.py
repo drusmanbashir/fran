@@ -2,11 +2,13 @@
 from fastcore.basics import   listify
 import numpy as np
 import sqlite3
+from pathlib import Path
 from fran.transforms.totensor import ToTensorT
 from utilz.helpers import *
 
 from utilz.helpers import *
 from utilz.fileio import *
+from utilz.stringz import info_from_filename
 
 from label_analysis.utils import SITKImageMaskFixer
 
@@ -252,6 +254,57 @@ def bboxes_function_version(
         filename, bg_label=bg_label
     )
     return A()
+
+
+@str_to_path(0)
+def summarize_indices_folder(
+    base_folder: Path,
+    indices_subfolder: str = "indices",
+    output_name: str = "resampled_dataset_properties",
+    save: bool = True,
+):
+    """
+    Summarize per-file FG/BG indices saved in <base_folder>/<indices_subfolder>.
+    Stores and returns a dict with per-patch rows and aggregate fg/bg stats.
+    """
+    base_folder = Path(base_folder)
+    indices_folder = base_folder / indices_subfolder
+    if not indices_folder.exists():
+        raise FileNotFoundError(f"indices folder not found: {indices_folder}")
+
+    rows = []
+    for fn in sorted(indices_folder.glob("*.pt")):
+        inds = torch.load(fn, weights_only=False)
+        fg = inds.get("lm_fg_indices", [])
+        bg = inds.get("lm_bg_indices", [])
+        n_fg = int(len(fg))
+        n_bg = int(len(bg))
+        case_id = info_from_filename(fn.name, full_caseid=True)["case_id"]
+        rows.append(
+            {
+                "case_id": case_id,
+                "fn_name": fn.name,
+                "n_fg": n_fg,
+                "n_bg": n_bg,
+                "has_fg": bool(n_fg > 0),
+            }
+        )
+
+    total_fg = int(sum(r["n_fg"] for r in rows))
+    total_bg = int(sum(r["n_bg"] for r in rows))
+    fg_bg_prior = float(total_fg / max(total_bg, 1))
+    has_fg_ratio = float(sum(1 for r in rows if r["has_fg"]) / max(len(rows), 1))
+    out = {
+        "patch_results": rows,
+        "total_patches": int(len(rows)),
+        "total_fg": total_fg,
+        "total_bg": total_bg,
+        "fg_bg_prior": fg_bg_prior,
+        "has_fg_ratio": has_fg_ratio,
+    }
+    if save:
+        save_dict(out, base_folder / output_name)
+    return out
 
 
 if __name__ == '__main__':

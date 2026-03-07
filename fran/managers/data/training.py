@@ -770,8 +770,9 @@ class DataManager(LightningDataModule):
         self.data = self.create_data_dicts(self.cases)
 
     def cases_from_project_split(self):
+        nnz_allowed = self.plan.get("nnz_allowed", False)
         train_cases, valid_cases = self.project.get_train_val_files(
-            self.dataset_params["fold"], self.plan["datasources"]
+            self.dataset_params["fold"], self.plan["datasources"], nnz_allowed=nnz_allowed
         )
 
         # Store only the cases for this split
@@ -1123,7 +1124,7 @@ class DataManagerPatch(DataManagerSource):
 
     def prepare_data(self):
         """Override prepare_data to ensure proper sequence"""
-        self.load_bboxes()  # Now we can safely load bboxes
+        self.load_indices_info()  # Now we can safely load bboxes
         self.fg_bg_prior = fg_in_bboxes(self.bboxes)
         super().prepare_data()
 
@@ -1152,7 +1153,7 @@ class DataManagerPatch(DataManagerSource):
         else:
             raise ValueError
 
-    def load_bboxes(self):
+    def load_indices_info(self):
         bbox_fn = self.data_folder / "bboxes_info"
         self.bboxes = load_dict(bbox_fn)
 
@@ -1210,8 +1211,9 @@ class DataManagerPatch(DataManagerSource):
 
 
     def cases_from_project_split(self):
+        nnz_allowed = self.plan.get("nnz_allowed", False)
         train_cases, valid_cases = self.project.get_train_val_case_ids(
-            self.dataset_params["fold"], self.plan["datasources"]
+            self.dataset_params["fold"], self.plan["datasources"], nnz_allowed=nnz_allowed
         )
 
         # Store only the cases for this split

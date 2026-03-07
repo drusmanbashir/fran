@@ -1,247 +1,206 @@
 # %%
-import torch
-from fastcore.basics import store_attr
-from fran.preprocessing import bboxes_function_version
-from fran.transforms.misc_transforms import FgBgToIndicesd2
-from pathlib import Path
-import SimpleITK as sitk
-from fastcore.basics import store_attr
 
-from utilz.fileio import *
-from utilz.helpers import *
-from utilz.imageviewers import *
-from label_analysis.totalseg import TotalSegmenterLabels
-import torch
-from utilz.dictopts import DictToAttr
-import torchio as tio
-from fran.transforms.spatialtransforms import PadDeficitImgMask
-from utilz.fileio import load_dict, maybe_makedirs, save_dict
-from utilz.helpers import multiprocess_multiarg
-
+import os
+import shutil
+import traceback
 from pathlib import Path
 
 import ipdb
 import numpy as np
+import pandas as pd
+import ray
 import SimpleITK as sitk
+import torch
+import torchio as tio
 from fastcore.basics import store_attr
+from label_analysis.totalseg import TotalSegmenterLabels
+from monai.transforms.spatial.dictionary import GridPatchd
+from utilz.dictopts import DictToAttr
+from utilz.fileio import *
+from utilz.fileio import load_dict, maybe_makedirs, save_dict
+from utilz.helpers import *
+from utilz.helpers import multiprocess_multiarg
+from utilz.imageviewers import *
+from utilz.stringz import headline
 
-import ipdb
+from fran.configs.parser import ConfigMaker
+from fran.preprocessing import bboxes_function_version
+from fran.preprocessing.helpers import to_even
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from fran.preprocessing.rayworker_base import RayWorkerBase
+from fran.transforms.misc_transforms import FgBgToIndicesd2
+from fran.transforms.spatialtransforms import PadDeficitImgMask
+from fran.utils.folder_names import folder_names_from_plan
 
 tr = ipdb.set_trace
+MIN_SIZE = 32
 
-from fran.preprocessing.preprocessor import Preprocessor
+from fran.preprocessing.preprocessor import Preprocessor, store_labels_info
 
 
-class PatchGenerator(DictToAttr, Preprocessor):
+class _PBDSamplerWorkerBase(RayWorkerBase):
     def __init__(
-        self,
-        dataset_properties: dict,
-        output_folder,
-        output_patch_size,
-        info,
-        patch_overlap=(0, 0, 0),
-        expand_by=None,
-        mode: str = "fg",
+        self, project, plan, data_folder, output_folder, device="cpu", debug=False
     ):
-        """
-        generates function from 'fg' bbox associated with the given case
-        expand_by is specified in mm, i.e., 30 = 30mm.
-        spacings are essential to compute number of array elements to add in case expand_by is required. Default: None
-        """
-        assert mode in ["fg", "fgbg"], "Labels should be fg or fgbg"
-        if mode == "fgbg":
-            assert expand_by in [
-                0,
-                None,
-            ], "Cannot expand bbox if entire image is being patched"
-        store_attr("output_folder,output_patch_size,info,patch_overlap")
-        self.lm_fn = info["filename"]
-        self.img_fn = Path(str(self.lm_fn).replace("lms", "images"))
-        self.assimilate_dict(dataset_properties)
-        bbs = info["bbox_stats"]
-
-        b = [b for b in bbs if b["label"] == "all_fg"][0]
-
-        if mode == "fg":
-            self.bboxes = b["bounding_boxes"][1:]
-        else:
-            self.bboxes = b["bounding_boxes"][0]
-            self.bboxes = [self.bboxes]
-        if expand_by:
-            self.add_to_bbox = [int(expand_by / sp) for sp in self.dataset_spacing]
-        else:
-            self.add_to_bbox = [
-                0.0,
-            ] * 3
-
-    def load_img_lm_padding(self):
-        lm = torch.load(self.lm_fn)
-        img = torch.load(self.img_fn)
-        self.img, self.lm, self.padding = PadDeficitImgMask(
-            patch_size=self.output_patch_size,
-            input_dims=3,
-            pad_values=[self.dataset_min, 0],
-            return_padding_array=True,
-        ).encodes([img, lm])
-        self.shift_bboxes_by = list(self.padding[::2])
-        self.shift_bboxes_by.reverse()
-
-    def maybe_expand_bbox(self, bbox):
-        bbox_new = []
-        for s, shift, ps, imsize, exp_by in zip(
-            bbox,
-            self.shift_bboxes_by,
-            self.output_patch_size,
-            self.img.shape,
-            self.add_to_bbox,
-        ):
-            s = slice(
-                int(np.maximum(0, s.start + shift - exp_by)),
-                int(np.minimum(imsize, s.stop + shift + exp_by)),
-            )
-            sz = int(s.stop - s.start)
-            ps_larger_by = np.maximum(0, ps - sz)
-            start_tentative = int(s.start - np.ceil(ps_larger_by / 2))
-            stop_tentative = int(s.stop + np.floor(ps_larger_by / 2))
-            shift_back = np.minimum(0, imsize - stop_tentative)
-            shift_forward = abs(np.minimum(0, start_tentative))
-            shift_final = shift_forward + shift_back
-            start_new = start_tentative + shift_final
-            stop_new = stop_tentative + shift_final
-            s_new = slice(start_new, stop_new, None)
-            bbox_new.append(s_new)
-        return bbox_new
-
-    def create_grid_sampler_from_patchsize(self, bbox_final):
-        img_f = self.img[tuple(bbox_final)].unsqueeze(0)
-        lm_f = self.lm[tuple(bbox_final)].unsqueeze(0)
-        img_tio = tio.ScalarImage(tensor=img_f)
-        lm_tio = tio.ScalarImage(tensor=lm_f)
-        subject = tio.Subject(image=img_tio, lm=lm_tio)
-        self.grid_sampler = tio.GridSampler(
-            subject=subject,
-            patch_size=self.output_patch_size,
-            patch_overlap=self.patch_overlap,
+        super().__init__(
+            project=project,
+            plan=plan,
+            data_folder=data_folder,
+            output_folder=output_folder,
+            device=device,
+            debug=debug,
+            tfms_keys=None,
         )
+        self.tfms_keys = "LoadT,Chan,Dev,Grid,Labels"
+        self.output_folder = Path(self.output_folder)
 
-    def create_patches_from_grid_sampler(self):
-        print("Processing filepair : ", self.lm_fn)
-        print("Number of patches: ", len(self.grid_sampler))
-        for i, a in enumerate(self.grid_sampler):
-            img = a["image"][tio.DATA]  # .squeeze(0)
-            lm = a["lm"][tio.DATA]  # .squeeze(0)
-            Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
-            dici = {"image": img, "lm": lm}
-            dici = Ind(dici)
+    def create_transforms(self, device="cpu"):
+        super().create_transforms(device=device)
 
-            fg_ind = dici["lm_fg_indices"]
-            bg_ind = dici["lm_bg_indices"]
-            image = dici["image"]
-            lm = dici["lm"]
-            inds = {
-                "lm_fg_indices": fg_ind,
-                "lm_bg_indices": bg_ind,
-                "meta": image.meta,
+        patch_overlap = self.plan.get("patch_overlap", 0.25)
+        patch_size = self.plan["patch_size"]
+        self.G = GridPatchd(
+            keys=self.tnsr_keys, patch_size=patch_size, overlap=patch_overlap
+        )
+        self.transforms_dict["Grid"] = self.G
+
+    def _create_data_dict(self, row):
+        data = {
+            "image": row["image"],
+            "lm": row["lm"],
+        }
+        return data
+
+    def _process_row(self, row: pd.Series):
+        data = self._create_data_dict(row)
+
+        # Apply transforms
+        data = self.apply_transforms(data)
+        # Get metadata and indices
+
+        assert data["image"].shape == data["lm"].shape, "mismatch in shape"
+        assert data["image"].dim() == 5, "images should be n_patchesxcxhxwxd"
+        assert (
+            data["image"].numel() > MIN_SIZE**3
+        ), f"image size is too small {data['image'].shape}"
+
+        case_id = row.get("case_id")
+        row_results = []
+        for n in range(data["image"].shape[0]):
+            patch = {"image": data["image"][n], "lm": data["lm"][n]}  # dic3['image'][n]
+            inds = self.transforms_dict['Indx'](patch)
+            image = patch["image"]
+            lm = patch["lm"]
+            patch_labels = [int(v) for v in torch.unique(lm).detach().cpu().tolist()]
+            fn_name = self.create_patch_fname(image.meta, n)
+            has_fg = inds["lm_fg_indices"].shape[0] > 0
+
+            self.save_indices_patch(inds,fn_name, "indices")
+            self.save_pt_patch(lm[0], fn_name, "lms")
+            self.save_pt_patch(image[0], fn_name, "images")
+            # self.extract_image_props(image)
+            lm_fg_indices = inds["lm_fg_indices"]
+            lm_bg_indices = inds["lm_bg_indices"]
+            results = {
+                "case_id": case_id,
+                "fn_name": fn_name,
+                "shape": list(image.shape),
+                "has_fg": has_fg,
+                "n_fg": len(lm_fg_indices),
+                "n_bg": len(lm_bg_indices),
+                "labels": patch_labels,
             }
 
-            self.save_indices(inds, self.indices_subfolder, suffix=str(i))
-            # self.save_in(inds, self.indices_subfolder,contiguous=False,suffix=str(i))
-            self.save_pt(image[0], "images", suffix=str(i))
-            self.save_pt(lm[0], "lms", suffix=str(i))
+            row_results.append(results)
 
-    def process(self):
-        self.create_output_folders()
-        self.create_patches_from_all_bboxes()
+        return row_results
 
-    def create_patches_from_all_bboxes(self):
-        self.load_img_lm_padding()
-        for bbx in self.bboxes:
-            bbox_new = self.maybe_expand_bbox(bbx)
-            self.create_grid_sampler_from_patchsize(bbox_new)
-            self.create_patches_from_grid_sampler()
-
-
-class PatchDataGenerator(Preprocessor):
-    _default = "project"
-
-    def __init__(
-        self,
-        project,
-        data_folder,
-        patch_size,
-        patch_overlap=0.25,
-        expand_by=None,
-        mode="fgbg",
-        output_suffix=None,
+    def save_pt_patch(
+        self, tnsr, fn_name, subfolder, contiguous=True, suffix: str = None
     ):
-        store_attr()
-        fixed_sp_bboxes_fn = data_folder / ("bboxes_info")
-        self.fixed_sp_bboxes = load_dict(fixed_sp_bboxes_fn)
+        if contiguous == True:
+            tnsr = tnsr.contiguous()
+        fn = self.output_folder / subfolder / fn_name
+        try:
+            torch.save(tnsr, fn)
+        except OSError as e:
+            # get filesystem info
+            try:
+                usage = shutil.disk_usage(os.path.dirname(fn))
+                fsinfo = f"Total={usage.total//(1024**3)}G, Used={usage.used//(1024**3)}G, Free={usage.free//(1024**3)}G"
+            except Exception:
+                fsinfo = "disk usage unavailable"
 
-        dataset_properties_fn = self.data_folder / ("resampled_dataset_properties.json")
-        assert (
-            dataset_properties_fn.exists()
-        ), "Dataset properties file does not exist. Has the Resampling been run to create folder {}?".format(
-            self.data_folder
-        )
-        self.dataset_properties = load_dict(dataset_properties_fn)
-        self.dataset_properties["data_folder"] = str(data_folder)
+            print(f"[ERROR] Failed saving to {fn}")
+            print(f"[ERROR] Filesystem info: {fsinfo}")
 
-        self.patches_config_fn = self.output_folder / ("patches_config.json")
+            raise RuntimeError(f"Quota exceeded at path: {fn}") from e
 
-        if self.patches_config_fn.exists():
-            print(
-                "Patches configs already exist. Overriding given values with those from file"
+    def save_indices_patch(self, indices_dict, fn_name, subfolder):
+        if isinstance(subfolder, Path):
+            fn = subfolder / fn_name
+        else:
+            fn = self.output_folder / subfolder / fn_name
+        torch.save(indices_dict, fn)
+
+    def create_patch_fname(self, meta, n):
+        fn_name = meta["filename_or_obj"]
+        fn_name = Path(fn_name).name
+        fn_name = fn_name.replace(".pt", f"_{n}.pt")
+        return fn_name
+
+
+@ray.remote(num_cpus=1)
+class PBDSamplerWorkerImpl(_PBDSamplerWorkerBase):
+    pass
+
+
+class PBDSamplerWorkerLocal(_PBDSamplerWorkerBase):
+    pass
+
+
+class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
+
+    def __init__(self, project, plan, data_folder, output_folder=None):
+
+        existing_fldr = folder_names_from_plan(project, plan).get("data_folder_patch")
+        existing_fldr = Path(existing_fldr)
+        if existing_fldr.exists():
+            headline(
+                "Plan folder already exists: {}.\nWill use existing folder to add data".format(
+                    existing_fldr
+                )
             )
-            patches_config = load_dict(self.patches_config_fn)
-            print(patches_config)
-            self.patch_overlap = patches_config["patch_overlap"]
-            self.expand_by = patches_config["expand_by"]
+            output_folder = existing_fldr
+        self.plan = plan
 
-    def setup(self, overwrite=False):
-        self.create_data_df()
-        self.register_existing_files()
-        if overwrite == False:
-            self.remove_completed_cases()
-
-    def process(self, debug=False):
-        self.create_output_folders()
-        self.create_patches(debug)
-
-    def remove_completed_cases(self):
-        all_cases = set([bb["case_id"] for bb in self.fixed_sp_bboxes])
-        new_case_ids = all_cases.difference(self.existing_case_ids)
-        print(
-            "Total cases {0}.Found {1} new cases".format(
-                len(all_cases), len(new_case_ids)
-            )
+        Preprocessor.__init__(
+            self,
+            project=project,
+            plan=plan,
+            data_folder=data_folder,
+            output_folder=output_folder,
         )
-        self.fixed_sp_bboxes = [
-            bb for bb in self.fixed_sp_bboxes if bb["case_id"] in new_case_ids
-        ]
+        self.actor_cls = PBDSamplerWorkerImpl
+        self.local_worker_cls = PBDSamplerWorkerLocal
+        self.remapping_key = None
 
-    def create_patches(self, debug=False):
-        patch_overlap = [int(self.patch_overlap * ps) for ps in self.patch_size]
-        patch_overlap = [to_even(ol) for ol in patch_overlap]
-        maybe_makedirs(self.output_folder)
-        self.save_patches_config()
-        args = [
-            [
-                self.dataset_properties,
-                self.output_folder,
-                self.patch_size,
-                bb,
-                patch_overlap,
-                self.expand_by,
-                self.mode,
+    def create_data_df(self):
+        Preprocessor.create_data_df(self)
+
+    def set_input_output_folders(self, data_folder, output_folder):
+        if data_folder is None:
+            data_folder = folder_names_from_plan(self.project, self.plan)[
+                "data_folder_lbd"
             ]
-            for bb in self.fixed_sp_bboxes
-        ]
-
-        res = multiprocess_multiarg(
-            patch_generator_wrapper, args, debug=debug, progress_bar=True
-        )
-        self.generate_bboxes(debug=debug)
+        self.data_folder = Path(data_folder)
+        if output_folder is None:
+            pbd_subfolder = folder_names_from_plan(self.project, self.plan)[
+                "data_folder_patch"
+            ]
+            self.output_folder = Path(pbd_subfolder)
+        else:
+            self.output_folder = Path(output_folder)
 
     def generate_bboxes(self, num_processes=24, debug=False):
         lms_folder = self.output_folder / "lms"
@@ -259,86 +218,180 @@ class PatchDataGenerator(Preprocessor):
         print("Saving bbox stats to {}".format(stats_outfilename))
         save_dict(res_cropped, stats_outfilename)
 
-    def save_patches_config(self):
-        patches_config = {
-            "data_folder": str(self.data_folder),
-            "patch_overlap": self.patch_overlap,
-            "expand_by": self.expand_by,
-        }
-        save_dict(patches_config, self.patches_config_fn)
+    def process(self, derive_bboxes=False):
+        if not hasattr(self, "df") or len(self.df) == 0:
+            print("No data loader created. No data to be processed")
+            return 0
+        self.create_output_folders()
+        if getattr(self, "use_ray", False):
+            self.results = ray.get(
+                [
+                    actor.process.remote(mini_df)
+                    for actor, mini_df in zip(self.actors, self.mini_dfs)
+                ]
+            )
+        else:
+            self.results = [self.local_worker.process(self.mini_dfs[0])]
 
-    def set_input_output_folders(self):
-        data_folder_name = self.data_folder.name
-        pat = re.compile("_plan\d+")
-        data_folder_name = pat.sub("", data_folder_name)
+        # PBD worker returns nested lists: actor -> case -> patch dict.
+        flat_rows = []
 
-        patches_fldr_name = "dim_{0}_{1}_{2}".format(*self.patch_size)
-        if self.output_suffix:
-            patches_fldr_name += "_" + self.output_suffix
+        def _flatten(obj):
+            if isinstance(obj, dict):
+                flat_rows.append(obj)
+                return
+            if isinstance(obj, (list, tuple)):
+                for x in obj:
+                    _flatten(x)
 
-        self.output_folder = self.patches_folder / data_folder_name / patches_fldr_name
-        return self.output_folder
+        _flatten(self.results)
+        self.results_df = pd.DataFrame(flat_rows)
 
+        if derive_bboxes:
+            has_patch_rows = len(self.results_df) > 0
+            if has_patch_rows:
+                self.generate_bboxes(
+                    num_processes=getattr(self, "num_processes", 1),
+                    debug=self.debug,
+                )
+            else:
+                print("No patch rows produced; skipping bbox generation")
+        else:
+            print("No bboxes generated")
 
-def patch_generator_wrapper(
-    dataset_properties, output_folder, patch_size, info, patch_overlap, expand_by, mode
-):
-    P = PatchGenerator(
-        dataset_properties,
-        output_folder,
-        patch_size,
-        info,
-        patch_overlap,
-        expand_by,
-        mode,
-    )
-    P.create_patches_from_all_bboxes()
-    return 1, info["filename"]
+        store_labels_info(
+            self.output_folder, num_processes=getattr(self, "num_processes", 1)
+        )
+
 
 
 # %%
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
-# %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
+    from fran.managers import Project
     from fran.utils.common import *
 
-    P = Project(project_title="litsmc")
-    P.maybe_store_projectwide_properties()
+    project_title = "lidc"
+    P = Project(project_title=project_title)
+    # P.maybe_store_projectwide_properties()
+    # spacing = [1.5, 1.5, 1.5]
 
+    C = ConfigMaker(P)
+    C.setup(6)
+    C.plans
+    conf = C.configs
+    print(conf["model_params"])
+
+    plan = conf["plan_train"]
+    pp(plan)
 # %%
-# SECTION:-------------------- PATCHGENERATOR-------------------------------------------------------------------------------------- <CR> <CR>
+    spacing = plan["spacing"]
+    # plan["remapping_imported"][0]
+    existing_fldrs = folder_names_from_plan(P, plan)
 
-    conf = ConfigMaker(P, ).config
-    plan = conf["plan"]
-    plan_name = "plan" + str(conf["dataset_params"]["plan"])
+    fldr_pbd = existing_fldrs["data_folder_patch"]
 
-    source_plan_name = plan["source_plan"]
-    source_plan = conf[source_plan_name]
-    spacing = ast.literal_eval(source_plan["spacing"])
-    src_data_mode = source_plan["mode"]
-    P.lbd_folder
-    patch_size = ast.literal_eval(plan["patch_size"])
+    src_plan = plan["source_plan"]
+
+    src_plan_idx, src_plan_mode = src_plan.replace(" ", "").split(",")
+    src_plan_idx = int(src_plan_idx)
+    C2 = ConfigMaker(P)
+    C2.setup(src_plan_idx)
+    src_plan_full = C2.configs["plan_train"]
+    data_fldrs = folder_names_from_plan(P, src_plan_full)
+    data_folder = data_fldrs[f"data_folder_{src_plan_mode}"]
+    data_foldre = Path(data_folder)
+    patch_size = plan["patch_size"]
     patch_overlap = plan["patch_overlap"]
-
     deb = False
 # %%
-    data_folder = folder_name_from_list(
-        prefix="spc",
-        parent_folder=P.lbd_folder,
-        values_list=spacing,
-        suffix=source_plan_name,
+# SECTION:-------------------- PATCHGENERATOR-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    img_fldr = data_foldre / "images"
+
+    lm_fldr = data_foldre / "lms"
+
+    output_folder = fldr_pbd
+    P = PatchDataGenerator(
+        project=P, plan=plan, output_folder=output_folder, data_folder=data_folder
+    )
+# %%
+    P.setup()
+    P.process()
+# %%
+    row = P.df.iloc[0]
+    P2 = _PBDSamplerWorkerBase(
+        project=P,
+        plan=plan,
+        data_folder=data_folder,
+        output_folder=output_folder,
+        device="cpu",
     )
 
+    data = P2._create_data_dict(row)
+# %%
+# %%
+    C = P2.transforms_dict["Chan"]
+    CR = P2.transforms_dict["Crop"]
+    LoadT = P2.transforms_dict["LoadT"]
+    Dev = P2.transforms_dict["Dev"]
+    Remap = P2.transforms_dict["Remap"]
+    Indx = P2.transforms_dict["Indx"]
+    Grid = P2.transforms_dict["Grid"]
+# %%
+    dici = LoadT(data)
+    dici2 = C(data)
+    dic2 = Grid(dici2)
+    dic2["image"].shape
+
+    dic2["image"][1].meta
+
+    dic3 = Indx(dic2)
+
+# %%
+
+# %%
+
+    data = P2.apply_transforms(data)
+    image = data["image"]
+    lm = data["lm"]
+    lm_fg_indices = data["lm_fg_indices"]
+    lm_bg_indices = data["lm_bg_indices"]
+    # Get metadata and indices
+
+    assert image.shape == lm.shape, "mismatch in shape"
+    assert image.dim() == 4, "images should be cxhxwxd"
+    assert image.numel() > MIN_SIZE**3, f"image size is too small {image.shape}"
+    inds = {
+        "lm_fg_indices": lm_fg_indices,
+        "lm_bg_indices": lm_bg_indices,
+        "meta": image.meta,
+    }
+
+# %%
+    img_fn = list(img_fldr.glob("*"))[0]
+
+    lm_fn = img_fn.parent.parent / "lms" / img_fn.name
+
+    img = torch.load(img_fn, weights_only=False)
+    lm = torch.load(lm_fn, weights_only=False)
+    img.shape
+    img2 = img.unsqueeze(0)
+    lm2 = lm.unsqueeze(0)
+
+    dici = {"image": img2, "lm": lm2}
+# %%
+    G = GridPatchd(keys=["image", "lm"], patch_size=patch_size, overlap=patch_overlap)
+    patch_overlap = 0.25
+# %%
+    dic2 = G(dici)
+    dic2["image"].shape
 # %%
     data_folder = "/s/xnat_shadow/lidc2"
     PG = PatchDataGenerator(
-        P,
-        data_folder,
-        patch_size=patch_size,
-        patch_overlap=patch_overlap,
-        expand_by=0,
-        output_suffix=plan_name,
+        project=P,
+        plan=plan,
+        data_folder=data_folder,
     )
 # %%
 
@@ -358,7 +411,7 @@ if __name__ == "__main__":
     P.imported_labels(lmg, imported_folder, imported_labelsets)
     # remapping = TSL.create_remapping(imported_labelsets, [8, 9])
 # %%
-# SECTION:-------------------- PATCHGENERATOR Single module-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- PATCHGENERATOR Single module-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 # %%
 
     patch_overlap = 0.25
@@ -401,7 +454,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     img_fn = "/r/datasets/tmp/images/lits_108_0.pt"
     lm_fn = "/r/datasets/tmp/lms/lits_108_0.pt"
 
@@ -564,4 +617,4 @@ if __name__ == "__main__":
     P.img.shape,
     P.add_to_bbox,
 
-# %%
+# %%SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR>

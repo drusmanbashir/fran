@@ -1,7 +1,6 @@
 # %%
 import argparse
 import ast
-import shutil
 
 from utilz.cprint import cprint
 from utilz.fileio import *
@@ -257,40 +256,26 @@ class PreprocessingManager:
         )
 
     def generate_hires_patches_dataset(self, debug=False, overwrite=False, mode=None):
-        lbd_folder = folder_name_from_list(
-            prefix="spc",
-            parent_folder=self.project.lbd_folder,
-            values_list=self.plan["spacing"],
-        )
-        patch_overlap = self.plan["patch_overlap"]
-        expand_by = self.plan["expand_by_patch"]
+        patch_overlap = self.plan.get("patch_overlap", 0.25)
+        expand_by = self.plan.get("expand_by", 0)
 
         if mode is None:
-            mode = self.mode
-        # BUG: Throws file not found error, multiple bugs that need fixsing  (see #10)
+            mode = "fgbg"
         PG = PatchDataGenerator(
-            self.project,
-            lbd_folder,
-            self.patch_size,
+            project=self.project,
+            plan=self.plan,
+            data_folder=None,
+            patch_size=self.plan["patch_size"],
             patch_overlap=patch_overlap,
             expand_by=expand_by,
             mode=mode,
         )
-        PG.create_patches(overwrite=overwrite, debug=debug)
-        print("Generating boundingbox data")
-        PG.generate_bboxes(debug=debug)
-
-        resampled_dataset_properties_fn_org = lbd_folder / (
-            "resampled_dataset_properties.json"
+        PG.setup(
+            overwrite=overwrite,
+            num_processes=self.num_processes,
+            debug=debug,
         )
-        resampled_dataset_properties_fn_dest = (
-            PG.output_folder.parent / resampled_dataset_properties_fn_org.name
-        )
-        if not resampled_dataset_properties_fn_dest.exists():
-            shutil.copy(
-                resampled_dataset_properties_fn_org,
-                resampled_dataset_properties_fn_dest,
-            )
+        PG.process(derive_bboxes=True, debug=debug)
 
     def create_patches_output_folder(self, fixed_spacing_folder, patch_size):
 
@@ -400,11 +385,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_known_args()[0]
 # %%
-    # args.project_title="lidc"
-    # args.plan = 3
-    # args.num_processes = 1
-    # args.overwrite=True
-    # args.debug=True
+    args.project_title="lidc"
+    args.plan = 5
+    args.num_processes = 1
+    args.overwrite=False
+    args.debug=True
 #     #
 
 # %%
@@ -431,5 +416,8 @@ if __name__ == "__main__":
 #     I.R.setup(overwrite=overwrite, num_processes=num_processes)
 #     I.R.process()
 #     I.resample_output_folder = I.R.output_folder
-#
+     # resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
+     #
+     #        "data_folder_source"
+     #    ]
 # %%

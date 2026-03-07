@@ -462,7 +462,7 @@ class Trainer:
             self.configs["model_params"]["compiled"] = bool(compiled)
 
     def qc_configs(self, configs, project):
-        ratios = configs["dataset_params"]["fgbg_ratio"]
+        ratios = configs["plan_train"]["fgbg_ratio"]
         assert isinstance(
             ratios, int | float | list
         ), "If no list is provided, fgbg_ratio must be an integer"
@@ -548,11 +548,11 @@ class Trainer:
 #SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
 if __name__ == '__main__':
     from fran.utils.common import *
-    P = Project("lidc")
     P = Project("kits")
+    P = Project("lidc")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
-    C.setup(3)
+    C.setup(5)
 
     conf = C.configs
     print(conf["model_params"])
@@ -604,7 +604,7 @@ if __name__ == '__main__':
     batchsize_finder = False
     batchsize_finder = True
     debug_=False
-    train_indices = 130
+    train_indices = 160
 # %%
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 

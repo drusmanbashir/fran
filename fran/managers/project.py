@@ -635,7 +635,9 @@ class Project(DictToAttr):
         return dicis
 
     # NOTE: Later functions patch repeated case ids (e.g., LBGgenerator) so that there is 49,49a, 49b also lm_fnames have substrings 'label-' etc. Fix databases so that after LBD generates new tables are added. Consider updating case ids for repeat ids perhaps
-    def get_train_val_files(self, fold: int = None, ds: Union[str, list[str]] = None, allow_nnz: bool = False):
+    def get_train_val_files(
+        self, fold: int = None, ds: Union[str, list[str]] = None, nnz_allowed: bool = False
+    ):
         """
         Retrieves the file paths (img_symlink) for training and validation sets based on the given fold,
         optionally filtering by the provided datasource(s).
@@ -660,18 +662,42 @@ class Project(DictToAttr):
             ds = self.datasources
 
         # Build SQL queries
-        ss_train = self.build_sql_query(fold, ds, is_validation=False, allow_nnz=allow_nnz)
+        ss_train_all = self.build_sql_query(
+            fold, ds, is_validation=False, nnz_allowed=True
+        )
+        ss_train = self.build_sql_query(
+            fold, ds, is_validation=False, nnz_allowed=nnz_allowed
+        )
+        train_files_all = self.fetch_files(ss_train_all)
         train_files = self.fetch_files(ss_train)
+        if nnz_allowed is False:
+            print(
+                "Removed {} nnz train cases".format(
+                    len(train_files_all) - len(train_files)
+                )
+            )
 
         if fold is not None:
-            ss_val = self.build_sql_query(fold, ds, is_validation=True, allow_nnz=allow_nnz)
+            ss_val_all = self.build_sql_query(
+                fold, ds, is_validation=True, nnz_allowed=True
+            )
+            ss_val = self.build_sql_query(
+                fold, ds, is_validation=True, nnz_allowed=nnz_allowed
+            )
+            val_files_all = self.fetch_files(ss_val_all)
             val_files = self.fetch_files(ss_val)
+            if nnz_allowed is False:
+                print(
+                    "Removed {} nnz valid cases".format(
+                        len(val_files_all) - len(val_files)
+                    )
+                )
             return train_files, val_files
         else:
             return train_files
 
     def build_sql_query(
-        self, fold: int, ds: Union[str, list[str]], is_validation: bool, allow_nnz: bool = True
+        self, fold: int, ds: Union[str, list[str]], is_validation: bool, nnz_allowed: bool = True
     ) -> str:
         """
         Builds the SQL query for fetching files based on the fold and datasource.
@@ -701,7 +727,7 @@ class Project(DictToAttr):
             )
             conditions.append(fold_condition)
 
-        if allow_nnz == False:
+        if nnz_allowed is False:
             nnz_condition = "CAST(nnz AS INTEGER) = 0"
             conditions.append(nnz_condition)
 
@@ -782,24 +808,50 @@ class Project(DictToAttr):
         result = self.sql_query(query, True)
         return [Path(fn).name for fn in result]
 
-    def get_train_val_case_ids(self, fold: int = None, ds: Union[str, list[str]] = None, allow_nnz: bool = False):
+    def get_train_val_case_ids(
+        self, fold: int = None, ds: Union[str, list[str]] = None, nnz_allowed: bool = False
+    ):
         """
         Same split logic as `get_train_val_files`, but returns `case_id` values.
         """
         if not ds:
             ds = self.datasources
 
-        ss_train = self._build_case_id_query(fold, ds, is_validation=False, allow_nnz=allow_nnz)
+        ss_train_all = self._build_case_id_query(
+            fold, ds, is_validation=False, nnz_allowed=True
+        )
+        ss_train = self._build_case_id_query(
+            fold, ds, is_validation=False, nnz_allowed=nnz_allowed
+        )
+        train_case_ids_all = self._fetch_case_ids(ss_train_all)
         train_case_ids = self._fetch_case_ids(ss_train)
+        if nnz_allowed is False:
+            print(
+                "Removed {} nnz train case_ids".format(
+                    len(train_case_ids_all) - len(train_case_ids)
+                )
+            )
 
         if fold is not None:
-            ss_val = self._build_case_id_query(fold, ds, is_validation=True, allow_nnz=allow_nnz)
+            ss_val_all = self._build_case_id_query(
+                fold, ds, is_validation=True, nnz_allowed=True
+            )
+            ss_val = self._build_case_id_query(
+                fold, ds, is_validation=True, nnz_allowed=nnz_allowed
+            )
+            val_case_ids_all = self._fetch_case_ids(ss_val_all)
             val_case_ids = self._fetch_case_ids(ss_val)
+            if nnz_allowed is False:
+                print(
+                    "Removed {} nnz valid case_ids".format(
+                        len(val_case_ids_all) - len(val_case_ids)
+                    )
+                )
             return train_case_ids, val_case_ids
         return train_case_ids
 
     def _build_case_id_query(
-        self, fold: int, ds: Union[str, list[str]], is_validation: bool, allow_nnz: bool = False
+        self, fold: int, ds: Union[str, list[str]], is_validation: bool, nnz_allowed: bool = False
     ) -> str:
         query = "SELECT DISTINCT case_id FROM datasources"
         conditions = ["test = 0"]
@@ -808,7 +860,7 @@ class Project(DictToAttr):
                 "fold = {}".format(fold) if is_validation else "fold <> {}".format(fold)
             )
             conditions.append(fold_condition)
-        if allow_nnz == False:
+        if nnz_allowed is False:
             conditions.append("CAST(nnz AS INTEGER) = 0")
         if ds:
             conditions.append(self.build_ds_condition(ds))

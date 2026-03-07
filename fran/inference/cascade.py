@@ -483,6 +483,7 @@ if __name__ == "__main__":
     save_channels = False
     save_localiser = True
     run_lidc2 = best_runs['lidc']['run_ids'][0]
+    run_lidc2 = 'LIDC-0013'
     localiser_labels=best_runs['lidc']['localiser_labels']
 
 # %%
@@ -501,7 +502,7 @@ if __name__ == "__main__":
 # %%
     imgs_tmp = ["/s/insync/datasets/today/mets/201 Axial  iDose (6).nii.gz"]
     imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
-    imgs = imgs_lidc
+    imgs = imgs_lidc2
     preds = En.run(imgs, chunksize=1, overwrite=overwrite)
 
 # %%

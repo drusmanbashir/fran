@@ -10,7 +10,7 @@ from fasttransform.transform import Pipeline
 from monai.config.type_definitions import KeysCollection, SequenceStr
 from monai.data.meta_obj import get_track_meta
 from monai.data.meta_tensor import MetaTensor
-from monai.transforms.croppad.array import SpatialPad
+from monai.transforms.croppad.array import CropForeground, SpatialPad
 from monai.transforms.inverse import InvertibleTransform
 from monai.transforms.transform import (
     LazyTransform,
@@ -29,7 +29,7 @@ from utilz.stringz import int_to_str
 tr = ipdb.set_trace
 
 
-from monai.transforms.croppad.dictionary import CropForegroundd, Padd, ResizeWithPadOrCropd
+from monai.transforms.croppad.dictionary import CropForegroundd, Padd, RandSpatialCropd, ResizeWithPadOrCropd
 
 from fran.transforms.base import *
 

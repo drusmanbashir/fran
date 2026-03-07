@@ -1318,7 +1318,7 @@ class IncrementalTrainerMinimal:
             self.configs["model_params"]["compiled"] = bool(compiled)
 
     def qc_configs(self, configs: dict):
-        ratios = configs["dataset_params"]["fgbg_ratio"]
+        ratios = configs["plan_train"]["fgbg_ratio"]
         labels_all = configs["plan_train"]["labels_all"]
         if isinstance(ratios, list):
             assert len(ratios) == len(

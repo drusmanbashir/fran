@@ -35,7 +35,7 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
         crop_to_label=None,
         device="cpu",
         debug=False,
-        tfms_keys="LoadT,Chan,Dev,Crop,Remap,Indx",
+        tfms_keys="LoadT,Chan,Dev,Crop,Remap,Labels,Indx",
     ):
         super().__init__(
             project=project,
@@ -49,7 +49,6 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
         )
 
     def _create_data_dict(self, row):
-
         data = {
             "image": row["image"],
             "lm": row["lm"],
@@ -231,7 +230,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         # )
 
     def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
-
         self.num_processes = max(1, int(num_processes))
         self.debug = debug
         self.create_data_df()
@@ -268,54 +266,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 self.mini_dfs = [self.df]
                 self.local_worker = self.local_worker_cls(**worker_kwargs)
 
-    # def process_files(self, force_store_props=False):
-    #     """Process files without using DataLoader"""
-    #     self.create_output_folders()
-    #     self.results = []
-    #     self.shapes = []
-    #     # for img_file, lm_file in pbar(zip(self.image_files, self.lm_files), desc="Processing files", total=len(self.image_files)):
-    #     for index, row in pbar(self.df.iterrows(), total=len(self.df)):
-    #         try:
-    #             # Load and process single case
-    #             data = {
-    #                 "image": row["image"],
-    #                 "lm": row["lm"],
-    #                 "remapping": row["remapping"],
-    #             }
-    #
-    #             # Apply transforms
-    #             data = self.transforms(data)
-    #
-    #             # Get metadata and indices
-    #             # Process the case
-    #             self.process_single_case(
-    #                 data["image"],
-    #                 data["lm"],
-    #                 data["lm_fg_indices"],
-    #                 data["lm_bg_indices"],
-    #             )
-    #
-    #         except Exception as e:
-    #             print(f"Error processing {row['image'].name}: {str(e)}")
-    #             continue
-    #
-    #     self.results_df = pd.DataFrame(self.results)
-    #     # self.results= pd.DataFrame(self.results).values
-    #     ts = self.results_df.shape
-    #     if (
-    #         ts[-1] == 4 or force_store_props == True
-    #     ):  # only store if entire dset is processed
-    #         self._store_dataset_properties()
-    #         generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
-    #     else:
-    #         print(
-    #             "self.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(
-    #                 ts, ts[-1]
-    #             )
-    #         )
-    #         print(
-    #             "since some files skipped, dataset stats are not being stored. Either:\na) set force_store_props to True, or\nb) run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
-    # )
 
     def create_properties_dict(self):
         resampled_dataset_properties = Preprocessor.create_properties_dict(self)
@@ -330,23 +280,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             if not key in ignore_keys:
                 resampled_dataset_properties[key] = self.plan[key]
         return resampled_dataset_properties
-
-        # def process_single_case(self, image, lm, fg_inds, bg_inds):
-        #     """Process a single case and save results"""
-        #     assert image.shape == lm.shape, "mismatch in shape"
-        #     assert image.dim() == 4, "images should be cxhxwxd"
-        #     assert image.numel() > MIN_SIZE**3, f"image size is too small {image.shape}"
-        #
-        #     inds = {
-        #         "lm_fg_indices": fg_inds,
-        #         "lm_bg_indices": bg_inds,
-        #         "meta": image.meta,
-        #     }
-        #
-        #     self.save_indices(inds, self.indices_subfolder)
-        #     self.save_pt(image[0], "images")
-        #     self.save_pt(lm[0], "lms")
-        self.extract_image_props(image)
 
     def get_case_ids_lm_group(self, lm_group):
         dsrcs = self.global_properties[lm_group]["ds"]
@@ -414,7 +347,7 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
             print("No cases to process.")
 
     def create_output_folders(self):
-        maybe_makedirs(self.indices_subfolder)
+        maybe_makedirs(self.indices_subfolde)
 
 
 if __name__ == "__main__":
@@ -424,13 +357,13 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    project_title = "pancreas"
+    project_title = "lidc"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
     C = ConfigMaker(P)
-    C.setup(1)
+    C.setup(5)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -439,19 +372,21 @@ if __name__ == "__main__":
     pp(plan)
     spacing = plan["spacing"]
     # plan["remapping_imported"][0]
-    existing_fldr = folder_names_from_plan(P, plan).get("data_folder_lbd", None)
+    existing_fldr = folder_names_from_plan(P, plan).get("data_folder_source", None)
 # %%
 
     num_processes = 4
     L = LabelBoundedDataGenerator(
         project=P,
         plan=plan,
-        data_folder="/r/datasets/preprocessed/litsmc/fixed_spacing/spc_100_100_100",
+        data_folder=existing_fldr
     )
 
 # %%
-    num_processes=1
-    L.setup(overwrite=False, device="cpu", num_processes=num_processes)
+    overwrite=True
+    num_processes=5
+    debug_=False
+    L.setup(overwrite=overwrite, device="cpu", num_processes=num_processes,debug=debug_)
     L.process()
 # %%
 # %%

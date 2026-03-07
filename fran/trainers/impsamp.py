@@ -499,7 +499,7 @@ class Trainer:
             self.config["model_params"]["compiled"] = compiled
 
     def qc_config(self, config, project):
-        ratios = config["dataset_params"]["fgbg_ratio"]
+        ratios = config["plan_train"]["fgbg_ratio"]
         labels_fg = project.global_properties["labels_all"]
         labels = [0] + labels_fg
         if isinstance(ratios, list):
