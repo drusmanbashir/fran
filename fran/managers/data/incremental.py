@@ -93,7 +93,6 @@ from fran.managers.data.training import (
     DataManagerPatch,
     DataManagerShort,
     DataManagerSource,
-    DataManagerWID,
     DataManagerWhole,
 )
 from fran.managers.project import Project
@@ -533,8 +532,6 @@ class DataManagerLBDI(DataManagerLBD, DataManagerI):
     pass
 
 
-class DataManagerWIDI(DataManagerWID, DataManagerI):
-    pass
 
 
 class DataManagerShortI(DataManagerShort, DataManagerI):

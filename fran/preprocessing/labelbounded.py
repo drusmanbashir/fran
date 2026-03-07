@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import ray
 from fastcore.basics import GetAttr, store_attr
+from utilz.cprint import cprint
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
@@ -175,6 +176,8 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             self.output_folder =  Path(lbd_subfolder)
         else:
             self.output_folder = Path(output_folder)
+
+        cprint(f"Data folder is {self.data_folder}", color="yellow")
 
     def create_output_folders(self):
         maybe_makedirs(

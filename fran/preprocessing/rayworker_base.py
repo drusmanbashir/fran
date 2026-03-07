@@ -106,7 +106,7 @@ class RayWorkerBase(Preprocessor):
 
 
     def apply_transforms(self, data: dict):
-        if self.debug:
+        if self.debug==False:
             return self.apply_transforms_compose(data)
         else:
             return self.apply_transforms_debug(data)

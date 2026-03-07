@@ -1269,7 +1269,7 @@ class DataManagerPatch(DataManagerSource):
     def setup(self, stage: str = None):
         fgbg_ratio = self.dataset_params["fgbg_ratio"]
         fgbg_ratio_adjusted = fgbg_ratio / self.fg_bg_prior
-        self.dataset_params["fgbg_ratio"] = fgbg_ratio_adjusted
+        self.dataset_params["fgbg_ratio"] = float(fgbg_ratio_adjusted)
         super().setup(stage)
 
     @property
@@ -1809,4 +1809,3 @@ if __name__ == "__main__":
     dici = Re(dici)
 
 # %%
-

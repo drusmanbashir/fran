@@ -17,9 +17,10 @@ tr2 = ray.util.pdb.set_trace
 
 
 class BatchSizeSafetyMargin(Callback):
-    def __init__(self,  min_bs: int = 1):
+    def __init__(self,  min_bs: int = 1, min_buffer= 2):
         self.has_run = False
         self.min_bs = min_bs
+        self.min_buffer= min_buffer
 
     def on_fit_start(self, trainer, pl_module):
         # BatchSizeFinder has already run at this point
@@ -27,7 +28,7 @@ class BatchSizeSafetyMargin(Callback):
             return
         dm = trainer.datamodule
         bs = int(dm.batch_size)
-        buffer = int(bs/8)
+        buffer =min(self.min_buffer, int(bs/8))
         safe_bs = max(self.min_bs, bs - buffer)
 
         if safe_bs != bs:

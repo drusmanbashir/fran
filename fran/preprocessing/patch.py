@@ -11,6 +11,7 @@ import pandas as pd
 import ray
 import SimpleITK as sitk
 import torch
+from utilz.cprint import cprint
 from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms.spatial.dictionary import GridPatchd
 from utilz.fileio import *
@@ -196,6 +197,7 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
             self.output_folder = Path(pbd_subfolder)
         else:
             self.output_folder = Path(output_folder)
+        cprint(f"Data folder is {self.data_folder}", color="yellow")
 
     def generate_bboxes(self, num_processes=24, debug=False):
         lms_folder = self.output_folder / "lms"

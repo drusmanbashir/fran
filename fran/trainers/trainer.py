@@ -36,7 +36,6 @@ from fran.managers.data.training import (
     DataManagerPatch,
     DataManagerSource,
     DataManagerWhole,
-    DataManagerWID,
 )
 from fran.managers.data.incremental import DataManagerDualI
 from fran.managers.unet import UNetManager, UNetManagerMulti
@@ -64,7 +63,7 @@ def _dm_class_for_test_every_n_epochs(test_every_n_epochs: int):
 
 
 def _dm_class_from_ckpt(ckpt_path: str | Path):
-    sd = torch.load(ckpt_path, map_location="cpu")
+    sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
     # if "train1_indices" in hp and "keys_test" in hp:
     #     raise NotImplementedError("train1_indices with periodic testing is not implemented")
@@ -254,7 +253,7 @@ class Trainer:
 
     def load_dm(self, batch_size=None, override_dm_checkpoint=False):
         if override_dm_checkpoint:
-            sd = torch.load(self.ckpt, map_location="cpu")
+            sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
             backup_ckpt(self.ckpt)
             sd["datamodule_hyper_parameters"]["configs"] = self.configs
             headline("Overriding datamodule checkpoint.")
@@ -263,7 +262,7 @@ class Trainer:
             shutil.copy(self.ckpt, bckup_ckpt)
             torch.save(sd, self.ckpt)
 
-        sd = torch.load(self.ckpt, map_location="cpu")
+        sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
         hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
         ckpt_train1_indices = hp.get("train1_indices", None)
         if self.train_indices is not None and ckpt_train1_indices is not None:
@@ -325,7 +324,7 @@ class Trainer:
             self.lr = lr
         elif lr and self.ckpt:
             self.lr = lr
-            sd = torch.load(self.ckpt, map_location="cpu")
+            sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
             for g in sd["optimizer_states"][0]["param_groups"]:
                 g["lr"] = float(self.lr)
             sd["lr_schedulers"][0]["_last_lr"] = [float(self.lr)]
@@ -506,7 +505,7 @@ class Trainer:
         return N
 
     def resolve_datamanager(self, mode: str):
-        if mode == "patch":
+        if mode == "pbd":
             DMClass = DataManagerPatch
         elif mode == "source":
             DMClass = DataManagerSource
@@ -514,8 +513,6 @@ class Trainer:
             DMClass = DataManagerWhole
         elif mode == "lbd":
             DMClass = DataManagerLBD
-        elif mode == "pbd":
-            DMClass = DataManagerWID
         elif mode == "baseline":
             DMClass = DataManagerBaseline
         else:
@@ -553,7 +550,7 @@ if __name__ == '__main__':
     P = Project("lidc")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
-    C.setup(6)
+    C.setup(7)
 
     conf = C.configs
     print(conf["model_params"])
@@ -572,9 +569,9 @@ if __name__ == '__main__':
     # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
 # %%
 
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
-    device_id = 1
-    bs = 10
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR>
+    device_id = 0
+    bs =8
 
 
     # run_name ='LITS-1285'
@@ -584,7 +581,7 @@ if __name__ == '__main__':
     wandb = True
     override_dm = False
     tags = []
-    description = f"First run, using 150 cases"
+    description = f"Trying single label for binary mask"
 
     conf['plan_train']
 
@@ -599,21 +596,21 @@ if __name__ == '__main__':
     conf['dataset_params']['cache_rate']
 
     conf["dataset_params"]["fold"]=0
-    run_name="LIDC-0010"
     run_name=None
+    run_name="LIDC-0019"
     lr= None
-    batchsize_finder = False
     batchsize_finder = True
+    batchsize_finder = False
     debug_=False
     train_indices = 160
 # %%
-# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
     Tm.setup(
         compiled=compiled,
-        train_indices=150,
+        train_indices=train_indices,
         test_every_n_epochs=test_every_n_epochs,
         debug=debug_,
         batch_size=bs,

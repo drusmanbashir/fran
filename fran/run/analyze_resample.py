@@ -59,8 +59,7 @@ def process_plan(args):
     I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
     # args.num_processes = 1
 
-    if I.plan["mode"] == "patch":
-        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+    if I.plan["mode"] == "pbd":
         I.generate_hires_patches_dataset(overwrite=args.overwrite)
     elif I.plan["mode"] == "lbd":
         imported_folder = I.plan.get("imported_folder", None)
@@ -255,27 +254,33 @@ class PreprocessingManager:
             self.WholeImageTM.output_folder_masks, 0, self.debug, self.num_processes
         )
 
-    def generate_hires_patches_dataset(self, debug=False, overwrite=False, mode=None):
-        patch_overlap = self.plan.get("patch_overlap", 0.25)
-        expand_by = self.plan.get("expand_by", 0)
+    def generate_hires_patches_dataset(self, debug=False, overwrite=False):
 
-        if mode is None:
-            mode = "fgbg"
+        data_folder = self.get_source_data_folder_for_patch()
         PG = PatchDataGenerator(
             project=self.project,
             plan=self.plan,
-            data_folder=None,
-            patch_size=self.plan["patch_size"],
-            patch_overlap=patch_overlap,
-            expand_by=expand_by,
-            mode=mode,
+            data_folder=data_folder,
         )
         PG.setup(
             overwrite=overwrite,
             num_processes=self.num_processes,
             debug=debug,
         )
-        PG.process(derive_bboxes=True, debug=debug)
+        PG.process(derive_bboxes=False)
+
+
+    def get_source_data_folder_for_patch(self):
+        src_plan = self.plan["source_plan"]
+        src_plan_idx, src_plan_mode = src_plan.replace(" ", "").split(",")
+        src_plan_idx = int(src_plan_idx)
+        C2 = ConfigMaker(self.project)
+        C2.setup(src_plan_idx)
+        src_plan_full = C2.configs["plan_train"]
+        data_fldrs = folder_names_from_plan(self.project, src_plan_full)
+        data_folder = data_fldrs[f"data_folder_{src_plan_mode}"]
+        data_foldre = Path(data_folder)
+        return data_foldre
 
     def create_patches_output_folder(self, fixed_spacing_folder, patch_size):
 
@@ -387,8 +392,8 @@ if __name__ == "__main__":
 # %%
     # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
     # args.project_title="lidc"
-    # args.plan = 5
-    # args.num_processes = 1
+    # args.plan = 6
+    # args.num_processes = 8
     # args.overwrite=False
     # args.debug=True
     #
@@ -403,8 +408,8 @@ if __name__ == "__main__":
 
 # %%
 #
-#     I = PreprocessingManager(args)
-#     I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+    I = PreprocessingManager(args)
+    I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
 # # %%
 #     I.R = ResampleDatasetniftiToTorch(
 #         project=I.project,
@@ -420,4 +425,22 @@ if __name__ == "__main__":
      #
      #        "data_folder_source"
      #    ]
+# # %%
+#
+#         data_folder = I.get_source_data_folder_for_patch()
+#         PG = PatchDataGenerator(
+#             project=I.project,
+#             plan=I.plan,
+#             data_folder=data_folder,
+#         )
+#         PG.setup(
+#             overwrite=overwrite,
+#             num_processes=I.num_processes,
+#             debug=debug,
+#         )
+#         PG.process(derive_bboxes=False)
+
+
+
 # %%
+

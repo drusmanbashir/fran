@@ -117,6 +117,7 @@ def whole_image_suffix(row):
 
 
 def folder_names_from_plan(project,plan:dict):
+    list_to_str = lambda x: "".join(int_to_str(v,3) for v in x)
     #Src_fodler: spacing
     #LBD_folder: src_folder,  expand_by, remapping
 
@@ -133,9 +134,10 @@ def folder_names_from_plan(project,plan:dict):
     if remapping_src_code:
         remapping_src_code = "rsc"+remapping_src_code
 
-    source_plan_code = short_code(plan.get("source_plan", None))
-    if source_plan_code:
-        source_plan_code = "rsp" + source_plan_code
+    source_plan=plan.get("source_plan",  None)
+    if source_plan is not None:
+        assert plan['mode'] in ["lbd", "pbd"], "Folder names are not implemented with source_plan unless the mode is lbd or pbd"
+    source_plan_code = short_code(source_plan)
 
     remapping_lbd=   plan.get("remapping_lbd")
     remapping_lbd_code = short_code(remapping_lbd)
@@ -148,15 +150,23 @@ def folder_names_from_plan(project,plan:dict):
         remapping_imported_code = "ric"+remapping_imported_code
 
 
-    source_folder_suff = maybe_join([src_prefix, remapping_src_code, source_plan_code]) # note source_flder has no plan suffix
+    source_folder_suff = maybe_join([src_prefix, remapping_src_code ]) # note source_flder has no plan suffix
     source_folder= project.fixed_spacing_folder/source_folder_suff
 
-    lbd_folder_suff = maybe_join([src_prefix, remapping_lbd_code, remapping_imported_code, remapping_lbd_code, expand_by, source_plan_code])
-    lbd_folder = str(project.lbd_folder/lbd_folder_suff)
+    if source_plan_code:
+        lbd_folder_suff = maybe_join([src_prefix, remapping_lbd_code, remapping_imported_code, remapping_lbd_code, expand_by, source_plan_code])
 
-    list_to_str = lambda x: "".join(int_to_str(v,3) for v in x)
+    else:
+
+        lbd_folder_suff = maybe_join([src_prefix, remapping_lbd_code, remapping_imported_code, remapping_lbd_code, expand_by ])
+
+
+    lbd_folder = str(project.lbd_folder/lbd_folder_suff)
     patch_str= list_to_str(plan["patch_size"])
-    patch_folder_suff ="_".join([source_folder_suff,patch_str])
+    if source_plan_code:
+        patch_folder_suff ="_".join([source_folder_suff,patch_str,source_plan_code])
+    else:
+        patch_folder_suff ="_".join([source_folder_suff,patch_str])
     patch_folder = str(project.patches_folder/patch_folder_suff)
     whole_folder_suff= maybe_join([patch_str, remapping_src_code, source_plan_code])
     whole_folder = str(project.whole_images_folder/whole_folder_suff)
@@ -179,21 +189,23 @@ def folder_names_from_plan(project,plan:dict):
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 if __name__ == '__main__':
     from fran.utils.common import *
+
     from fran.managers import Project
-    P = Project("nodes")
-    C = ConfigMaker(P,  configuration_filename=None)
+    from fran.configs.parser import ConfigMaker
+    P = Project("lidc")
+    C = ConfigMaker(P)
     C.setup(6)
     plan = C.configs["plan_train"]
-    df = pd.read_excel("/home/ub/code/fran/configurations/experiment_configs_totalseg.xlsx", sheet_name="plans")
-    row = df.iloc[3]
+    # df = pd.read_excel("/home/ub/code/fran/configurations/experiment_configs_totalseg.xlsx", sheet_name="plans")
+    # row = df.iloc[3]
 
     folders = folder_names_from_plan(P,plan)
 
 
 
 
-    pp(folders)
     aj = plan["imported_folder"]
+    pp(folders)
     dd = short_code(aj)
 
 # %%
