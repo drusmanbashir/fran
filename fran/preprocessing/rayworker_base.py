@@ -95,6 +95,8 @@ class RayWorkerBase(Preprocessor):
             "case_id": row.get("case_id"),
             "ok": True,
             "shape": list(image.shape),
+            "n_fg": len(lm_fg_indices),
+            "n_bg": len(lm_bg_indices),
             "labels": labels,
         }
         return results

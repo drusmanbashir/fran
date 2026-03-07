@@ -12,6 +12,23 @@ from utilz.stringz import info_from_filename
 
 from label_analysis.utils import SITKImageMaskFixer
 
+
+def sanitize_meta_for_monai(obj):
+    """
+    Recursively convert NumPy scalar values in metadata to native Python types.
+    This avoids MONAI switch_endianness failures on np.int64/np.float* scalars.
+    """
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, dict):
+        return {k: sanitize_meta_for_monai(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_meta_for_monai(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(sanitize_meta_for_monai(v) for v in obj)
+    return obj
+
+
 def to_even(input_num, lower=True):
     np.fnc = np.subtract if lower == True else np.add
     output_num = np.fnc(input_num, input_num % 2)
@@ -258,25 +275,23 @@ def bboxes_function_version(
 
 @str_to_path(0)
 def summarize_indices_folder(
-    base_folder: Path,
-    indices_subfolder: str = "indices",
-    output_name: str = "resampled_dataset_properties",
-    save: bool = True,
-):
+    indices_folder,
+
+) :
     """
     Summarize per-file FG/BG indices saved in <base_folder>/<indices_subfolder>.
     Stores and returns a dict with per-patch rows and aggregate fg/bg stats.
     """
-    base_folder = Path(base_folder)
-    indices_folder = base_folder / indices_subfolder
+    indices_folder = Path(indices_folder)
     if not indices_folder.exists():
         raise FileNotFoundError(f"indices folder not found: {indices_folder}")
 
+    base_folder = indices_folder.parent
     rows = []
     for fn in sorted(indices_folder.glob("*.pt")):
         inds = torch.load(fn, weights_only=False)
-        fg = inds.get("lm_fg_indices", [])
-        bg = inds.get("lm_bg_indices", [])
+        fg = inds["lm_fg_indices"]
+        bg = inds["lm_bg_indices"]
         n_fg = int(len(fg))
         n_bg = int(len(bg))
         case_id = info_from_filename(fn.name, full_caseid=True)["case_id"]
@@ -290,22 +305,21 @@ def summarize_indices_folder(
             }
         )
 
-    total_fg = int(sum(r["n_fg"] for r in rows))
-    total_bg = int(sum(r["n_bg"] for r in rows))
-    fg_bg_prior = float(total_fg / max(total_bg, 1))
-    has_fg_ratio = float(sum(1 for r in rows if r["has_fg"]) / max(len(rows), 1))
-    out = {
-        "patch_results": rows,
-        "total_patches": int(len(rows)),
-        "total_fg": total_fg,
-        "total_bg": total_bg,
-        "fg_bg_prior": fg_bg_prior,
-        "has_fg_ratio": has_fg_ratio,
-    }
-    if save:
-        save_dict(out, base_folder / output_name)
-    return out
+    results_df = pd.DataFrame(rows, index=None)
+    output_csv_name = "resampled_dataset_properties.csv"
+    save_dict(results_df, base_folder / output_csv_name)
+    return results_df
 
+
+def compute_fgbg_ratio(resampled_dataset_properties_df, nnz_allowed):
+    n_fg_total = resampled_dataset_properties_df['n_fg'].sum()
+    if nnz_allowed == True:
+        inds = resampled_dataset_properties_df.index
+    else:
+        inds = resampled_dataset_properties_df.index[resampled_dataset_properties_df["has_fg"] == True]
+    n_bg_total = resampled_dataset_properties_df.loc[inds, 'n_bg'].sum()
+    fgbg_ratio = n_fg_total / n_bg_total
+    return fgbg_ratio
 
 if __name__ == '__main__':
 # %%

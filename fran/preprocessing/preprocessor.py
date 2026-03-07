@@ -19,6 +19,7 @@ from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
 from tqdm.auto import tqdm
 from fran.preprocessing import bboxes_function_version
+from fran.preprocessing.helpers import sanitize_meta_for_monai
 from fran.utils.dataset_properties import analyze_tensor_data_folder
 
 
@@ -264,6 +265,8 @@ class Preprocessor(GetAttr):
     def save_pt(self, tnsr, subfolder, contiguous=True, suffix: str = None):
         if contiguous == True:
             tnsr = tnsr.contiguous()
+        if hasattr(tnsr, "meta") and isinstance(tnsr.meta, dict):
+            tnsr.meta = sanitize_meta_for_monai(dict(tnsr.meta))
         fn = Path(tnsr.meta["filename_or_obj"])
         fn_name = strip_extension(fn.name)
         if suffix:

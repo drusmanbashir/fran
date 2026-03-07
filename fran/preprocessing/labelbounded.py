@@ -224,10 +224,15 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
-        store_labels_info(self.output_folder, num_processes=getattr(self, "num_processes", 1))
-        # add_plan_to_db(self.project,
-        #     self.plan, db_path=self.project.db, data_folder_lbd=self.output_folder
-        # )
+
+        self.store_labels_info()
+        self.results_df.to_csv(self.output_folder / "resampled_dataset_properties.csv", index=False)
+
+    def store_labels_info(self):
+            labels_all  = self.results_df['labels'].sum()
+            labels_all = set(labels_all)
+            out_fn =self.output_folder / "labels_all.json"
+            save_json(labels_all, out_fn)
 
     def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
         self.num_processes = max(1, int(num_processes))

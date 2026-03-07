@@ -2,20 +2,15 @@
 
 import os
 import shutil
-import traceback
 from pathlib import Path
 
 import ipdb
-import numpy as np
 import pandas as pd
 import ray
 import SimpleITK as sitk
 import torch
-import torchio as tio
-from fastcore.basics import store_attr
 from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms.spatial.dictionary import GridPatchd
-from utilz.dictopts import DictToAttr
 from utilz.fileio import *
 from utilz.fileio import load_dict, maybe_makedirs, save_dict
 from utilz.helpers import *
@@ -25,11 +20,10 @@ from utilz.stringz import headline
 
 from fran.configs.parser import ConfigMaker
 from fran.preprocessing import bboxes_function_version
+from fran.preprocessing.helpers import sanitize_meta_for_monai
 from fran.preprocessing.helpers import to_even
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
-from fran.transforms.misc_transforms import FgBgToIndicesd2
-from fran.transforms.spatialtransforms import PadDeficitImgMask
 from fran.utils.folder_names import folder_names_from_plan
 
 tr = ipdb.set_trace
@@ -57,7 +51,7 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
     def create_transforms(self, device="cpu"):
         super().create_transforms(device=device)
 
-        patch_overlap = self.plan.get("patch_overlap", 0.25)
+        patch_overlap = self.plan.get("patch_overlap", 0.20)
         patch_size = self.plan["patch_size"]
         self.G = GridPatchd(
             keys=self.tnsr_keys, patch_size=patch_size, overlap=patch_overlap
@@ -104,7 +98,8 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
             results = {
                 "case_id": case_id,
                 "fn_name": fn_name,
-                "shape": list(image.shape),
+                "ok": True,
+                "shape": list(image.shape[1:]),
                 "has_fg": has_fg,
                 "n_fg": len(lm_fg_indices),
                 "n_bg": len(lm_bg_indices),
@@ -120,6 +115,8 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
     ):
         if contiguous == True:
             tnsr = tnsr.contiguous()
+        if hasattr(tnsr, "meta") and isinstance(tnsr.meta, dict):
+            tnsr.meta = sanitize_meta_for_monai(dict(tnsr.meta))
         fn = self.output_folder / subfolder / fn_name
         try:
             torch.save(tnsr, fn)
@@ -161,7 +158,7 @@ class PBDSamplerWorkerLocal(_PBDSamplerWorkerBase):
 
 class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
 
-    def __init__(self, project, plan, data_folder, output_folder=None):
+    def __init__(self, project, plan, data_folder, output_folder=None, patch_overlap = 0.2):
 
         existing_fldr = folder_names_from_plan(project, plan).get("data_folder_patch")
         existing_fldr = Path(existing_fldr)
@@ -259,9 +256,8 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
         else:
             print("No bboxes generated")
 
-        store_labels_info(
-            self.output_folder, num_processes=getattr(self, "num_processes", 1)
-        )
+        self.results_df.to_csv(self.output_folder / "resampled_dataset_properties.csv", index=False)
+        self.store_labels_info()
 
 
 
@@ -618,3 +614,6 @@ if __name__ == "__main__":
     P.add_to_bbox,
 
 # %%SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR>
+
+
+# %%
