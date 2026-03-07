@@ -59,6 +59,7 @@ class RayWorkerBase(Preprocessor):
         self.lm_key = "lm"
         self.tnsr_keys = [self.image_key, self.lm_key]
         self.create_transforms(device=device)
+        self.set_transforms(tfms_keys)
         self.tfms_keys = tfms_keys
 
     def _create_data_dict(self, row):
@@ -101,7 +102,20 @@ class RayWorkerBase(Preprocessor):
         }
         return results
 
+
+
+
     def apply_transforms(self, data: dict):
+        if self.debug:
+            return self.apply_transforms_compose(data)
+        else:
+            return self.apply_transforms_debug(data)
+
+    def apply_transforms_compose(self, data: dict):
+        data = self.transforms(data)
+        return data
+
+    def apply_transforms_debug(self, data: dict):
         keys = self.tfms_keys
         keys = keys.replace(" ", "").split(",")
 
@@ -116,8 +130,8 @@ class RayWorkerBase(Preprocessor):
             data = tfm(data)
         return data
 
-    # def set_transforms(self, keys_tr: str):
-    #     self.transforms = self.tfms_from_dict(keys_tr)
+    def set_transforms(self, keys_tr: str):
+        self.transforms = self.tfms_from_dict(keys_tr)
 
     def tfms_from_dict(self, keys: str):
         keys = keys.replace(" ", "").split(",")

@@ -165,7 +165,7 @@ def folder_names_from_plan(project,plan:dict):
         "data_folder_source": source_folder,
         "data_folder_lbd": lbd_folder,
         "data_folder_whole": whole_folder,
-        "data_folder_patch": patch_folder,
+        "data_folder_pbd": patch_folder,
         "data_folder_sourcepbd": source_folder
     }
     return folders
@@ -239,7 +239,7 @@ if __name__ == '__main__':
         "data_folder_source": source_folder,
         "data_folder_lbd": lbd_folder,
         "data_folder_whole": whole_folder,
-        "data_folder_patch": patch_folder
+        "data_folder_pbd": patch_folder
     }
 
 

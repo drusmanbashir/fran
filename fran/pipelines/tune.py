@@ -99,7 +99,7 @@ if __name__ == '__main__':
             params.append(v)
 # %%
     sql = (
-        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_patch FROM "{TABLE}" WHERE '
+        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_pbd FROM "{TABLE}" WHERE '
         + " AND ".join(conds)
         + " LIMIT 1"
     )
@@ -113,7 +113,7 @@ if __name__ == '__main__':
         "data_folder_source": row[1],
         "data_folder_lbd": row[2],
         "data_folder_whole": row[3],
-        "data_folder_patch": row[4],
+        "data_folder_pbd": row[4],
     }
 
 # %%

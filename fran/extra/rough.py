@@ -1,26 +1,46 @@
-# %%
-from __future__ import annotations
-from monai.apps.deepgrow.transforms import SpatialCropForegroundd
 
-from monai.losses.dice import DiceLoss
-from monai.transforms.croppad.dictionary import CropForegroundd
-from monai.transforms.utils import is_positive
-import torch
-from utilz.imageviewers import ImageMaskViewer
-
+import os
 from pathlib import Path
-import numpy as np
-from monai.transforms import MapTransform, CropForeground, RandSpatialCropd
-from monai.utils import ensure_tuple_rep
 
+import torch
+from utilz.helpers import multiprocess_multiarg
+
+
+def fixer(img_fn: Path):
+      img = torch.load(img_fn, weights_only=False)
+      meta = img.meta
+      meta["spatial_shape"] = [int(x) for x in meta["spatial_shape"]]
+      img.meta = meta
+      torch.save(img, img_fn)
 
 
 # %%
 if __name__ == "__main__":
+      data_folder = Path(
+          "/r/datasets/preprocessed/lidc/patches/spc_080_080_150_rspbb76320a_128128096"
+      )
+      img_fldr = data_folder / "images"
+      imgs = sorted(img_fldr.glob("*.pt"))
+
+      img = imgs[0]
+      im = torch.load(img, weights_only=False)
+      aa = im.meta['spatial_shape']
+
+      [print(type(a)) for a in aa]
 # %%
+      # multiprocess_multiarg expects iterable of arg-tuples/lists
+      args = [(img,) for img in imgs]
+
+      nproc = min(24, len(args), os.cpu_count() or 1)
+      multiprocess_multiarg(
+          func=fixer,
+          arguments=args,
+          num_processes=nproc,
+          io=True,  # better for file I/O-heavy workloads
+      )# %%
 #SECTION:-------------------- crop--------------------------------------------------------------------------------------
-    img_fn=Path("/r/datasets/preprocessed/lidc/lbd/spc_080_080_150_rlbb6064264_rlbb6064264_ex050/images/lidc_0001.pt")
-    
+
+# %%
     lm_fn = img_fn.parent.parent/("lms")/img_fn.name
     im = torch.load(img_fn,weights_only=False)
     lm = torch.load(lm_fn,weights_only=False)
@@ -58,8 +78,6 @@ if __name__ == "__main__":
     dic3['image'].shape
     dic3['lm'].shape
 
-# %%
-#SECTION:-------------------- H5py analysis--------------------------------------------------------------------------------------
     import h5py
     h5 = "/media/UB/datasets/lidc/fg_voxels.h5"
     f = h5py.File(h5,"r")

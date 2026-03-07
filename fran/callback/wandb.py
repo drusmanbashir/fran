@@ -4,6 +4,7 @@ import random
 from typing import Any
 
 import lightning as pl
+from monai.data.meta_tensor import MetaTensor
 import torch
 import torch.nn.functional as F
 import wandb
@@ -113,7 +114,11 @@ class WandbImageGridCallback(Callback):
         self.grid_labels.append(label)
 
     def img_to_grd(self, batch):
-        return batch[self.batches, :, :, :, self.slices].clone()
+        if isinstance (batch, MetaTensor):
+            bb = torch.Tensor(batch)
+        else: bb = batch
+        bb2  = bb[self.batches, :, :, :, self.slices].clone()
+        return bb2
 
     def assign_colour(self, tnsr):
         argmax_tensor = torch.argmax(tnsr, dim=1)

@@ -1092,7 +1092,7 @@ class Project(DictToAttr):
 #     data_folder_source: str = None,
 #     data_folder_lbd: str = None,
 #     data_folder_whole: str = None,
-#     data_folder_patch: str = None,
+#     data_folder_pbd: str = None,
 # ) -> int:
 #
 #     # Assert that only one data_folder argument has a value
@@ -1100,7 +1100,7 @@ class Project(DictToAttr):
 #         data_folder_source,
 #         data_folder_lbd,
 #         data_folder_whole,
-#         data_folder_patch,
+#         data_folder_pbd,
 #     ]
 #     non_none_count = sum(1 for folder in data_folders if folder is not None)
 #     assert (
@@ -1119,9 +1119,9 @@ class Project(DictToAttr):
 #     elif data_folder_whole is not None:
 #         data_folder_field = "data_folder_whole"
 #         data_folder_value = data_folder_whole
-#     elif data_folder_patch is not None:
-#         data_folder_field = "data_folder_patch"
-#         data_folder_value = data_folder_patch
+#     elif data_folder_pbd is not None:
+#         data_folder_field = "data_folder_pbd"
+#         data_folder_value = data_folder_pbd
 #
 #     folder_names = folder_names_from_plan(project,plan)
 #     folder_names[data_folder_field] = data_folder_value
@@ -1157,7 +1157,7 @@ class Project(DictToAttr):
 #             "data_folder_source": data_folder_source,
 #             "data_folder_lbd": data_folder_lbd,
 #             "data_folder_whole": data_folder_whole,
-#             "data_folder_patch": data_folder_patch,
+#             "data_folder_pbd": data_folder_pbd,
 #         }
 #     )
 #

@@ -231,6 +231,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
     def store_labels_info(self):
             labels_all  = self.results_df['labels'].sum()
             labels_all = set(labels_all)
+            labels_all = list(labels_all)
             out_fn =self.output_folder / "labels_all.json"
             save_json(labels_all, out_fn)
 

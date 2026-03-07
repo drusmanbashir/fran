@@ -70,7 +70,7 @@ def confirm_plan_analyzed(project, plan):
     if mode == "lbd":
         existing_final_fldr = folders["data_folder_lbd"]
     elif mode in ["patch", "pbd"]:
-        existing_final_fldr = folders["data_folder_patch"]
+        existing_final_fldr = folders["data_folder_pbd"]
     elif mode == "whole":
         existing_final_fldr = folders["data_folder_whole"]
     elif mode == "source" or mode == "sourcepbd":

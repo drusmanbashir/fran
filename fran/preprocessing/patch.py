@@ -5,6 +5,8 @@ import shutil
 from pathlib import Path
 
 import ipdb
+from monai.transforms.utility.dictionary import SplitDimD
+from monai.transforms import SqueezeDimD
 import pandas as pd
 import ray
 import SimpleITK as sitk
@@ -43,9 +45,8 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
             output_folder=output_folder,
             device=device,
             debug=debug,
-            tfms_keys=None,
+            tfms_keys="LoadT,Chan,Dev,Grid,Split,Labels, Indx, Sq"
         )
-        self.tfms_keys = "LoadT,Chan,Dev,Grid,Labels"
         self.output_folder = Path(self.output_folder)
 
     def create_transforms(self, device="cpu"):
@@ -56,7 +57,11 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
         self.G = GridPatchd(
             keys=self.tnsr_keys, patch_size=patch_size, overlap=patch_overlap
         )
+        self.Sq = SqueezeDimD(keys=self.tnsr_keys, dim=0)
+        self.Split = SplitDimD(keys=self.tnsr_keys, dim=0, list_output=True,keepdim=False)
         self.transforms_dict["Grid"] = self.G
+        self.transforms_dict["Split"] = self.Split
+        self.transforms_dict["Sq"] = self.Sq
 
     def _create_data_dict(self, row):
         data = {
@@ -65,49 +70,42 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
         }
         return data
 
+
     def _process_row(self, row: pd.Series):
-        data = self._create_data_dict(row)
-
-        # Apply transforms
-        data = self.apply_transforms(data)
-        # Get metadata and indices
-
-        assert data["image"].shape == data["lm"].shape, "mismatch in shape"
-        assert data["image"].dim() == 5, "images should be n_patchesxcxhxwxd"
-        assert (
-            data["image"].numel() > MIN_SIZE**3
-        ), f"image size is too small {data['image'].shape}"
-
-        case_id = row.get("case_id")
+        case_id = row["case_id"]
+        data_ = self._create_data_dict(row)
+        data = self.apply_transforms(data_)
         row_results = []
-        for n in range(data["image"].shape[0]):
-            patch = {"image": data["image"][n], "lm": data["lm"][n]}  # dic3['image'][n]
-            inds = self.transforms_dict['Indx'](patch)
+        for n in range(len(data)):
+            patch = data[n]
+            assert patch["image"].shape == patch["lm"].shape, "mismatch in shape"
+            assert patch["image"].dim() == 3, "images should be n_patchesxhxwxd"
+            assert (
+                patch["image"].numel() > MIN_SIZE**3
+            ), f"image size is too small {patch['image'].shape}"
             image = patch["image"]
             lm = patch["lm"]
-            patch_labels = [int(v) for v in torch.unique(lm).detach().cpu().tolist()]
+            inds = {"lm_fg_indices": patch['lm_fg_indices'],"lm_bg_indices":patch['lm_bg_indices'] }
+
             fn_name = self.create_patch_fname(image.meta, n)
-            has_fg = inds["lm_fg_indices"].shape[0] > 0
+            labels = patch['lm_labels']
+            has_fg = any([l>0 for l in labels])
 
             self.save_indices_patch(inds,fn_name, "indices")
-            self.save_pt_patch(lm[0], fn_name, "lms")
-            self.save_pt_patch(image[0], fn_name, "images")
-            # self.extract_image_props(image)
-            lm_fg_indices = inds["lm_fg_indices"]
-            lm_bg_indices = inds["lm_bg_indices"]
+            self.save_pt_patch(lm, fn_name, "lms")
+            self.save_pt_patch(image, fn_name, "images")
             results = {
                 "case_id": case_id,
                 "fn_name": fn_name,
                 "ok": True,
-                "shape": list(image.shape[1:]),
+                "shape": list(image.shape),
                 "has_fg": has_fg,
-                "n_fg": len(lm_fg_indices),
-                "n_bg": len(lm_bg_indices),
-                "labels": patch_labels,
+                "n_fg": len(patch['lm_fg_indices']),
+                "n_bg": len(patch['lm_bg_indices']),
+                "labels": patch['lm_labels'],
             }
 
             row_results.append(results)
-
         return row_results
 
     def save_pt_patch(
@@ -160,7 +158,7 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
 
     def __init__(self, project, plan, data_folder, output_folder=None, patch_overlap = 0.2):
 
-        existing_fldr = folder_names_from_plan(project, plan).get("data_folder_patch")
+        existing_fldr = folder_names_from_plan(project, plan).get("data_folder_pbd")
         existing_fldr = Path(existing_fldr)
         if existing_fldr.exists():
             headline(
@@ -193,7 +191,7 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
         self.data_folder = Path(data_folder)
         if output_folder is None:
             pbd_subfolder = folder_names_from_plan(self.project, self.plan)[
-                "data_folder_patch"
+                "data_folder_pbd"
             ]
             self.output_folder = Path(pbd_subfolder)
         else:
@@ -286,7 +284,7 @@ if __name__ == "__main__":
     # plan["remapping_imported"][0]
     existing_fldrs = folder_names_from_plan(P, plan)
 
-    fldr_pbd = existing_fldrs["data_folder_patch"]
+    fldr_pbd = existing_fldrs["data_folder_pbd"]
 
     src_plan = plan["source_plan"]
 
@@ -315,7 +313,6 @@ if __name__ == "__main__":
     P.setup()
     P.process()
 # %%
-    row = P.df.iloc[0]
     P2 = _PBDSamplerWorkerBase(
         project=P,
         plan=plan,
@@ -324,9 +321,19 @@ if __name__ == "__main__":
         device="cpu",
     )
 
+# %%
+    row = P.df.iloc[0]
     data = P2._create_data_dict(row)
+
+    data2 = P2.apply_transforms(data)
+
+    data = data2
 # %%
 # %%
+    data2= P2.apply_transforms_compose(data)
+    data2[0]['image'].shape
+# %%
+
     C = P2.transforms_dict["Chan"]
     CR = P2.transforms_dict["Crop"]
     LoadT = P2.transforms_dict["LoadT"]
@@ -334,15 +341,18 @@ if __name__ == "__main__":
     Remap = P2.transforms_dict["Remap"]
     Indx = P2.transforms_dict["Indx"]
     Grid = P2.transforms_dict["Grid"]
+    Split = P2.transforms_dict["Split"]
+    Split = SplitDimD(keys=["image", "lm"], dim=0, keepdim=False, list_output=True)
 # %%
     dici = LoadT(data)
     dici2 = C(data)
     dic2 = Grid(dici2)
     dic2["image"].shape
-
     dic2["image"][1].meta
 
     dic3 = Indx(dic2)
+    dic4 = Split(dic3)
+    dic5 = P2.transforms_dict["Labels"](dic4)
 
 # %%
 

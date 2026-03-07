@@ -46,13 +46,13 @@ COLUMNS_TEXT = [
             "remapping_lbd_code",
             "remapping_imported_code",
             "data_folder_whole",
-            "data_folder_patch",
+            "data_folder_pbd",
             "data_folder_lbd",
             "data_folder_source",
         ]
 
 COLUMNS_NONCRIT = [
-    "data_folder_patch",
+    "data_folder_pbd",
     "data_folder_source",
     "data_folder_lbd",
     "data_folder_whole",
@@ -129,7 +129,7 @@ def find_matching_plan(db_path: str, plan: dict) ->Union[ dict , None]:
             conds.append(f'"{k}" = ?')
             params.append(v)
     sql = (
-        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_patch FROM "{TABLE}" WHERE '
+        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_pbd FROM "{TABLE}" WHERE '
         + " AND ".join(conds)
         + " LIMIT 1"
     )
@@ -147,7 +147,7 @@ def find_matching_plan(db_path: str, plan: dict) ->Union[ dict , None]:
         "data_folder_source": row[1],
         "data_folder_lbd": row[2],
         "data_folder_whole": row[3],
-        "data_folder_patch": row[4],
+        "data_folder_pbd": row[4],
     }
 
     return row_out
@@ -171,7 +171,7 @@ def add_plan_to_db(
     data_folder_source: str = None,
     data_folder_lbd: str = None,
     data_folder_whole: str = None,
-    data_folder_patch: str = None,
+    data_folder_pbd: str = None,
 ) -> int:
 
     # Assert that only one data_folder argument has a value
@@ -179,7 +179,7 @@ def add_plan_to_db(
         data_folder_source,
         data_folder_lbd,
         data_folder_whole,
-        data_folder_patch,
+        data_folder_pbd,
     ]
     non_none_count = sum(1 for folder in data_folders if folder is not None)
     assert (
@@ -193,7 +193,7 @@ def add_plan_to_db(
             "data_folder_source": data_folder_source,
             "data_folder_lbd": data_folder_lbd,
             "data_folder_whole": data_folder_whole,
-            "data_folder_patch": data_folder_patch,
+            "data_folder_pbd": data_folder_pbd,
         }
     )
 
@@ -291,7 +291,7 @@ if __name__ == "__main__":
         "remapping_lbd",
         "remapping_imported",
         "data_folder_whole",
-        "data_folder_patch",
+        "data_folder_pbd",
         "data_folder_lbd",
         "data_folder_source",
     ]
@@ -422,7 +422,7 @@ if __name__ == "__main__":
     #             conds.append(f'"{k}" = ?')
     #             params.append(v)
     #     sql = (
-    #         f'SELECT data_folder_source, data_folder_lbd, data_folder_whole, data_folder_patch FROM "{TABLE}" WHERE '
+    #         f'SELECT data_folder_source, data_folder_lbd, data_folder_whole, data_folder_pbd FROM "{TABLE}" WHERE '
     #         + " AND ".join(conds)
     #         + " LIMIT 1"
     #     )
@@ -448,7 +448,7 @@ if __name__ == "__main__":
             params.append(v_norm)
 
     sql = (
-        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_patch '
+        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_pbd '
         f'FROM "{TABLE}" WHERE ' + " AND ".join(conds) + " LIMIT 1"
     )
 # %%
@@ -471,20 +471,20 @@ if __name__ == "__main__":
         "data_folder_source": row[1],
         "data_folder_lbd": row[2],
         "data_folder_whole": row[3],
-        "data_folder_patch": row[4],
+        "data_folder_pbd": row[4],
     }
 
 # %%
     data_folder_source = I.R.output_folder
     data_folder_lbd = None
     data_folder_whole = None
-    data_folder_patch = None
+    data_folder_pbd = None
 
     data_folders = [
         data_folder_source,
         data_folder_lbd,
         data_folder_whole,
-        data_folder_patch,
+        data_folder_pbd,
     ]
     non_none_count = sum(1 for folder in data_folders if folder is not None)
     assert (
@@ -504,9 +504,9 @@ if __name__ == "__main__":
     elif data_folder_whole is not None:
         data_folder_field = "data_folder_whole"
         data_folder_value = data_folder_whole
-    elif data_folder_patch is not None:
-        data_folder_field = "data_folder_patch"
-        data_folder_value = data_folder_patch
+    elif data_folder_pbd is not None:
+        data_folder_field = "data_folder_pbd"
+        data_folder_value = data_folder_pbd
 
     folder_names = folder_names_from_plan(P,plan)
     folder_names[data_folder_field] = data_folder_value

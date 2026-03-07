@@ -1,4 +1,4 @@
-from __future__ import annotations
+
 from fran.managers import  Project
 from fran.utils.common import *
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
@@ -462,7 +462,8 @@ class Trainer:
             self.configs["model_params"]["compiled"] = bool(compiled)
 
     def qc_configs(self, configs, project):
-        ratios = configs["plan_train"]["fgbg_ratio"]
+        # ratios = configs["plan_train"]["fgbg_ratio"]
+        ratios = configs["dataset_params"]["fgbg_ratio"]
         assert isinstance(
             ratios, int | float | list
         ), "If no list is provided, fgbg_ratio must be an integer"
@@ -552,7 +553,7 @@ if __name__ == '__main__':
     P = Project("lidc")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
-    C.setup(5)
+    C.setup(6)
 
     conf = C.configs
     print(conf["model_params"])
@@ -626,7 +627,6 @@ if __name__ == '__main__':
         description=description,
     )
 # %%
-    folder_names_from_plan(P, planT)            
 
     Tm.fit()
     # model(inputs)
