@@ -261,7 +261,6 @@ if __name__ == "__main__":
     C = ConfigMaker(P,  configuration_filename=None)
     config = C.config
 # %%
-    patch_size = [192, 192, 96]
     x = torch.rand(1, 1, 192, 192, 96)
     model_params = {"in_channels": 1, "out_channels": 3}
     dataset_params = {"patch_size": patch_size}
@@ -269,8 +268,11 @@ if __name__ == "__main__":
     plan = config["plan_train"]
     net = create_model_from_conf_swinunetr(model_params, plan, deep_supervision)
     img = torch.rand(1, 1, 128, 128, 96)
+    patch_size = [192, 192, 96]
     pred = net(img)
 # %%
+    patch_size = [96,96,96]
+    pool_op_kernels_nnunet(patch_size)
     pool_op_kernel_sizes = [[2, 2, 1], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     pool_op_kernel_sizes = [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     # net = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)

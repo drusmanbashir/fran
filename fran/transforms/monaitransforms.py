@@ -126,7 +126,7 @@ class RandomCropped(ItemTransform):
         def encodes(self,x):
             imgs,masks= self.cropper(img=x[0],label=x[1])
             shapes = [im.shape[1:] for im in imgs]
-            if any([list(s)!=[128,128,128] for s in shapes]):
+            if any([list(sh) != [128, 128, 128] for sh in shapes]):
                 tr()
             return torch.stack(imgs),torch.stack(masks)
         def collate_fn(self,x):

@@ -32,7 +32,6 @@ from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
 from monai.transforms.transform import MapTransform, RandomizableTransform
 from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
                                                  MapLabelValued, ToDeviceD)
-from torch.utils.data import RandomSampler
 from tqdm.auto import tqdm as pbar
 from utilz.cprint import cprint
 from utilz.fileio import load_dict, load_yaml
@@ -167,13 +166,12 @@ class DataManagerDual(LightningDataModule):
         ds_type=None,
         save_hyperparameters=True,
         keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
-        keys_val="L,E,N,Remap,ResizeP",
+        keys_val="L,Remap,Ld,E,N,Rva, ResizePC",
         data_folder: Optional[str | Path] = None,
         manager_class_train: Optional[type] = None,
         manager_class_valid: Optional[type] = None,
         train_indices=None,
         val_indices=None,
-        val_sampling=1.0,
     ):
         super().__init__()
         self.project = Project(project_title)
@@ -189,17 +187,9 @@ class DataManagerDual(LightningDataModule):
         self.manager_class_valid = manager_class_valid
         self.train_indices = train_indices
         self.val_indices = val_indices
-        self.val_sampling = float(val_sampling)
 
         if save_hyperparameters:
-            self.save_hyperparameters(
-                "project_title",
-                "configs",
-                "train_indices",
-                "val_indices",
-                "val_sampling",
-                logger=False,
-            )
+            self.save_hyperparameters("project_title", "configs", logger=False)
 
     # ---- core lifecycle -------------------------------------------------
 
@@ -210,13 +200,11 @@ class DataManagerDual(LightningDataModule):
             cprint(
                 f"Limiting training dataset size to{self.train_indices}", color="yellow"
             )
-            self.train_manager.select_cases_from_inds(self.train_indices)
-            self.train_manager.data = self.train_manager.create_data_dicts(self.train_manager.cases)
+            self.train_manager.data = self.train_manager.data[: self.train_indices]
             if self.val_indices is None:
-                self.val_indices = int(len(self.train_manager.cases)* 0.2)
+                self.val_indices = int(self.train_indices * 0.2)
         if self.val_indices is not None:
-            self.valid_manager.select_cases_from_inds(self.val_indices)
-            self.valid_manager.data = self.valid_manager.create_data_dicts(self.valid_manager.cases)
+            self.valid_manager.data = self.valid_manager.data[: self.val_indices]
 
     def setup(self, stage=None):
         self._call_setup(stage)
@@ -246,13 +234,13 @@ class DataManagerDual(LightningDataModule):
     @batch_size.setter
     def batch_size(self, v: int) -> None:
         v = int(v)
-        if v == self._batch_size:
+        if v == getattr(self, "_batch_size", None):
             return
         self._batch_size = v
         for m in self._iter_managers():
             m.batch_size = v
             m.set_effective_batch_size()
-            m.create_train_dataloader() if m.split == "train" else m.create_valid_dataloader()
+            m.create_dataloader()
 
     # ---- internal helpers ----------------------------------------------
 
@@ -286,7 +274,6 @@ class DataManagerDual(LightningDataModule):
             ds_type=self.ds_type,
             keys=self.keys_val,
             data_folder=self.data_folder,
-            val_sampling=self.val_sampling,
         )
 
     def _call_prepare_data(self):
@@ -320,6 +307,132 @@ class DataManagerDual(LightningDataModule):
         return mode_to_class[train_mode], mode_to_class[valid_mode]
 
 
+class DataManagerMulti(DataManagerDual):
+    """
+    Train + valid + test. This packages two valid dataloaders, and must be used together with callback PeriodicTest
+    """
+
+    def __init__(
+        self,
+        project_title,
+        configs: dict,
+        batch_size: int,
+        cache_rate=0.0,
+        device="cuda",
+        ds_type=None,
+        save_hyperparameters=True,
+        keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
+        keys_val="L,Remap,Ld,E,N,Rva, ResizePC",
+        keys_test="L,E,N,Remap,ResizeP",
+        data_folder: Optional[str | Path] = None,
+        manager_class_train: Optional[type] = None,
+        manager_class_valid: Optional[type] = None,
+        manager_class_test: Optional[type] = None,
+        train_indices=None,
+        val_indices=None,
+    ):
+        super().__init__(
+            project_title=project_title,
+            configs=configs,
+            batch_size=batch_size,
+            cache_rate=cache_rate,
+            device=device,
+            ds_type=ds_type,
+            save_hyperparameters=save_hyperparameters,
+            keys_tr=keys_tr,
+            keys_val=keys_val,
+            data_folder=data_folder,
+            manager_class_train=manager_class_train,
+            manager_class_valid=manager_class_valid,
+            train_indices=train_indices,
+            val_indices=val_indices,
+        )
+        self.keys_test = keys_test
+        self.manager_class_test = manager_class_test
+
+    def _iter_managers(self):
+        return (self.train_manager, self.valid_manager, self.test_manager)
+
+    def _build_managers(self):
+        inf_tr, inf_val, inf_test = self.infer_manager_classes(self.configs)
+        cls_tr = self.manager_class_train or inf_tr
+        cls_val = self.manager_class_valid or inf_val
+        cls_test = self.manager_class_test or inf_test
+
+        # build train/valid via parent, then append test
+
+        self.train_manager = cls_tr(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="train",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_tr,
+            data_folder=self.data_folder,
+        )
+        self.valid_manager = cls_val(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="valid",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_val,
+            data_folder=self.data_folder,
+        )
+
+        self.test_manager = cls_test(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=0,
+            split="test",
+            device=self.device,
+            ds_type=None,
+            keys=self.keys_test,
+            data_folder=self.data_folder,
+        )
+
+    def val_dataloader(self):
+        return [self.valid_manager.dl, self.test_manager.dl]
+
+    def test_dataloader(self):
+        return self.test_manager.dl
+
+    @property
+    def test_ds(self):
+        return self.test_manager.ds
+
+    def infer_manager_classes(self, configs) -> Tuple[type, type, type]:
+        train_mode = configs["plan_train"]["mode"]
+        valid_mode = configs["plan_valid"]["mode"]
+        test_mode = configs["plan_test"]["mode"]
+
+        mode_to_class = {
+            "source": DataManagerSource,
+            "sourcepbd": DataManagerPatch,
+            "whole": DataManagerWhole,
+            "pbd": DataManagerPatch,
+            "lbd": DataManagerLBD,
+            "baseline": DataManagerBaseline,
+        }
+
+        for mode in (train_mode, valid_mode, test_mode):
+            if mode not in mode_to_class:
+                raise ValueError(
+                    f"Unrecognized mode: {mode}. Must be one of {list(mode_to_class.keys())}"
+                )
+
+        return (
+            mode_to_class[train_mode],
+            mode_to_class[valid_mode],
+            mode_to_class[test_mode],
+        )
+
+
 class DataManager(LightningDataModule):
     def __init__(
         self,
@@ -327,14 +440,13 @@ class DataManager(LightningDataModule):
         configs: dict,
         batch_size=8,
         cache_rate=0.0,
-        split="train",  # Add sp,lit parameter
         device="cuda:0",
         ds_type=None,
+        split="train",  # Add sp,lit parameter
         save_hyperparameters=False,
         keys=None,
         collate_fn=None,
         data_folder: Optional[str | Path] = None,
-        val_sampling=1.0,
     ):
 
         super().__init__()
@@ -350,13 +462,16 @@ class DataManager(LightningDataModule):
         self.ds_type = ds_type
         self.split = split
         self.keys = keys
-        self.val_sampling = float(val_sampling)
         self.set_plan()
 
         self.maybe_fix_remapping_dtype()
         self.set_preprocessing_params()
+        # self.batch_size = batch_size
+        # self.cache_rate = cache_rate
+        # self.ds_type = ds_type
         self.set_effective_batch_size()
         self.set_data_folder(data_folder)
+        # self.keys=keys
         self.set_collate_fn(collate_fn)
 
     def set_data_folder(self,data_folder):
@@ -368,24 +483,6 @@ class DataManager(LightningDataModule):
                 self.data_folder.is_dir()
             ), f"Dataset folder {self.data_folder} does not exist or is not a directory"
         # self.data_folder = self.derive_data_folder(mode=self.plan["mode"])
-
-
-    def select_cases_from_inds(self, inds):
-        if isinstance(inds, int):
-            self.cases = self.cases[:inds]
-        elif isinstance(inds, float):
-            inds = int(len(self.cases) * inds)
-            self.cases = self.cases[:inds]
-        elif isinstance (inds, list|pd.Index):
-            if isinstance(inds[0],str):
-                cases_final=[]
-                for case_ in self.cases:
-                    fname = case_.split(".")[0]
-                    case_id = info_from_filename(fname, full_caseid=True)["case_id"]
-                    if case_id in inds:
-                        cases_final.append(case_)
-                self.cases = cases_final
-            else: raise NotImplementedError
 
     def set_preprocessing_params(self):
         global_properties = load_dict(self.project.global_properties_filename)
@@ -756,16 +853,22 @@ class DataManager(LightningDataModule):
             raise Exception(f"Data folder {data_folder} does not exist")
         return data_folder
 
-    def _num_workers(self):
+    def create_dataloader(self):
+        shuffle = True if "train" in self.split else False
         if isinstance(self.ds, GridPatchDataset):
-            return 0, False
+            num_workers = 0
+            persistent_workers = False
         else:
             num_workers = min(8, self.effective_batch_size * 2)
             persistent_workers = True
-            return num_workers, persistent_workers
-
-    def create_train_dataloader(self):
-        num_workers, persistent_workers = self._num_workers()
+        force_num_workers = getattr(self, "force_num_workers", None)
+        if force_num_workers is not None:
+            num_workers = int(force_num_workers)
+            force_persistent = getattr(self, "force_persistent_workers", None)
+            if force_persistent is None:
+                persistent_workers = num_workers > 0
+            else:
+                persistent_workers = bool(force_persistent)
         self.dl = DataLoader(
             self.ds,
             batch_size=self.effective_batch_size,
@@ -773,35 +876,8 @@ class DataManager(LightningDataModule):
             collate_fn=self.collate_fn,
             persistent_workers=persistent_workers,
             pin_memory=True,
-            shuffle=True,
+            shuffle=shuffle,
         )
-
-    def create_valid_dataloader(self):
-        num_workers, persistent_workers = self._num_workers()
-        sampler = None
-        if self.val_sampling < 1.0:
-            n_samples = max(1, int(len(self.ds) * self.val_sampling))
-            sampler = RandomSampler(
-                self.ds,
-                replacement=False,
-                num_samples=n_samples,
-            )
-        self.dl = DataLoader(
-            self.ds,
-            batch_size=self.effective_batch_size,
-            num_workers=num_workers,
-            collate_fn=self.collate_fn,
-            persistent_workers=persistent_workers,
-            pin_memory=True,
-            shuffle=False,
-            sampler=sampler,
-        )
-
-    def create_dataloader(self):
-        if self.split == "train":
-            self.create_train_dataloader()
-        else:
-            self.create_valid_dataloader()
 
     def setup(self, stage: str = None) -> None:
         # Create transforms for this split
@@ -827,10 +903,10 @@ class DataManager(LightningDataModule):
         print(
             f"[DEBUG] Example case: {self.data[0]['image'] if self.cases else 'None'}"
         )
-        if self.split == "train" :
+        if self.split == "train" or self.split == "valid":
             self.ds = self._create_modal_ds()
         else:
-            self.ds = self._create_valid_ds()
+            self.ds = self._create_test_ds()
 
     def _create_modal_ds(self):
         if is_excel_None(self.ds_type):
@@ -855,7 +931,7 @@ class DataManager(LightningDataModule):
             raise NotImplementedError
         return self.ds
 
-    def _create_valid_ds(self):
+    def _create_test_ds(self):
         """
         valid-ds is a GridPatchDataset to make training runs comparable
         """
@@ -935,18 +1011,21 @@ class DataManager(LightningDataModule):
         # Create data dictionaries
         image_files = sorted(list(images_folder.glob("*.pt")))
         cls.cases = [d.name for d in image_files]
+        # Assign to train or validation based on split
+        # if split == 'train':
+        #     instance.train_cases = cases
+        # else:
+        #     instance.valid_cases =cases
 
         return instance
 
 
 class DataManagerSource(DataManager):
     def _set_collate_fn(self):
-        if self.split == "train":
-            self.collate_fn = source_collated
-        elif self.split == "valid":
+        if self.split == "test":
             self.collate_fn = grid_collated
         else:
-            raise NotImplementedError
+            self.collate_fn = source_collated
 
     def __str__(self):
         return "DataManagerSource instance with parameters: " + ", ".join(
@@ -982,8 +1061,13 @@ class DataManagerWhole(DataManagerSource):
             + ")"
         )
 
-    def _create_valid_ds(self):
-        self._create_modal_ds()
+    # def derive_data_folder(self):
+    #     assert self.plan["mode"] == "whole", f"Dataset mode must be 'whole' for DataManagerWhole, got '{self.plan['mode']}'"
+    #     prefix = "sze"
+    #     spatial_size = self.plan["patch_size"]
+    #     parent_folder = self.project.fixed_size_folder
+    #     data_folder = folder_name_from_list(prefix, parent_folder, spatial_size)
+    #     return data_folder
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
@@ -1255,7 +1339,7 @@ if __name__ == "__main__":
     proj_lidc = Project(project_title=project_title)
 
     CL = ConfigMaker(proj_lidc)
-    CL.setup(2)
+    CL.setup(8)
     config_lidc = CL.configs
 # %%
 #SECTION:-------------------- LIDC--------------------------------------------------------------------------------------
@@ -1279,14 +1363,13 @@ if __name__ == "__main__":
     tmt = D.train_manager
     tmv.transforms_dict
 # %%
+    dl = D.val_dataloader()
+    dl = D.train_dataloader()
     dl = tmv.dl
     iteri = iter(dl)
     for x , batch in enumerate(iteri):
         batch = next(iteri)
-        fns = batch["image"].meta['filename_or_obj']
-        fns = [f.split("/")[-1] for f in fns]
-        print(fns)
-        print(batch['is_padded'])
+        print(batch["image"].shape)
 
     # while iteri:
 # %%

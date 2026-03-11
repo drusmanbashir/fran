@@ -615,11 +615,11 @@ class UNetTrainer(LightningModule):
         inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]
         self.pred = self.forward(inputs)
         target_listed = []
-        for s in self.deep_supervision_scales:
-            if all([i == 1 for i in s]):
+        for sc in self.deep_supervision_scales:
+            if all([i == 1 for i in sc]):
                 target_listed.append(target)
             else:
-                size = [int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])]
+                size = [int(np.round(ss * aa)) for ss, aa in zip(sc, target.shape[2:])]
                 target_downsampled = F.interpolate(target, size=size, mode="nearest")
                 target_listed.append(target_downsampled)
         loss = self.loss_fnc(self.pred, target_listed[0])
@@ -856,4 +856,3 @@ if __name__ == "__main__":
     pred = mod(i2)
     loss = pred.sum()
 # %%
-

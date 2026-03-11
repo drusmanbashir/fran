@@ -9,7 +9,7 @@ from utilz.fileio import save_json
 def _shape_array(shapes):
     if len(shapes) == 0:
         return np.empty((0, 0), dtype=np.float64)
-    max_dims = max(len(s) for s in shapes)
+    max_dims = max(len(sh) for sh in shapes)
     arr = np.full((len(shapes), max_dims), np.nan, dtype=np.float64)
     for i, shape in enumerate(shapes):
         arr[i, : len(shape)] = shape

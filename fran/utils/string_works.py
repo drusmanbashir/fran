@@ -18,9 +18,9 @@ def is_excel_None(value):
         return True
     # Strings that represent empties/placeholders
     if isinstance(value, str):
-        s = value.strip().lower()
+        sv = value.strip().lower()
         # Add/remove tokens to taste
-        return s in {"", "nan", "na", "null", "none", "true", "false"}
+        return sv in {"", "nan", "na", "null", "none", "true", "false"}
     # Everything else (including 0 / 0.0 / False) is NOT None
     return False
 def regex_matcher(indx=0):

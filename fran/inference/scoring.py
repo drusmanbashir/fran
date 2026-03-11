@@ -122,7 +122,7 @@ if __name__ == "__main__":
     import time
     st = time.time()
     for i in range(10):
-        l = D(pred_pt_ub,label_pt)
+        loss_val = D(pred_pt_ub,label_pt)
     eno = time.time()
     lapse= eno-st
     print(lapse)

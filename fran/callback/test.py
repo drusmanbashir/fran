@@ -7,7 +7,8 @@ class PeriodicTest(Callback):
         self.limit_batches = limit_batches
 
     def on_validation_epoch_start(self, trainer, pl_module):
-        self.skip = (trainer.current_epoch % self.every_n_epochs != 0)
+        epoch = trainer.current_epoch + 1
+        self.skip = (epoch % self.every_n_epochs != 0)
             
 
     def on_validation_batch_start(
@@ -23,5 +24,4 @@ class PeriodicTest(Callback):
                 raise StopIteration
             elif self.limit_batches is not None and batch_idx > self.limit_batches:
                     raise StopIteration
-
 

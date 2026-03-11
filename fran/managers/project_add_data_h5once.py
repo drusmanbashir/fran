@@ -1041,10 +1041,10 @@ class Project(DictToAttr):
 
     def __repr__(self):
         try:
-            s = "Project {0}\n{1}".format(self.project_title, self.datasources)
+            pr = "Project {0}\n{1}".format(self.project_title, self.datasources)
         except:
-            s = "Project {0}\n{1}".format(self.project_title, "Datasets Unknown")
-        return s
+            pr = "Project {0}\n{1}".format(self.project_title, "Datasets Unknown")
+        return pr
 
     @property
     def df(self):

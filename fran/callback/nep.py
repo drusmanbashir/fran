@@ -99,7 +99,8 @@ class NeptuneImageGridCallback(Callback):
         self.freq = np.maximum(2, int(len_dl / self.grid_rows))
 
     def on_train_epoch_start(self, trainer, pl_module):
-        if trainer.current_epoch % self.epoch_freq == 0:
+        epoch = trainer.current_epoch + 1
+        if epoch % self.epoch_freq == 0:
             super().on_train_epoch_start(trainer, pl_module)
             self.grid_imgs = []
             self.grid_preds = []
@@ -115,7 +116,8 @@ class NeptuneImageGridCallback(Callback):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        if trainer.current_epoch % self.epoch_freq == 0:
+        epoch = trainer.current_epoch + 1
+        if epoch % self.epoch_freq == 0:
             if trainer.global_step % self.freq == 0:
                 trainer.store_preds = True
             else:
@@ -135,7 +137,8 @@ class NeptuneImageGridCallback(Callback):
 
     #
     def on_train_epoch_end(self, trainer, pl_module):
-        if trainer.current_epoch % self.epoch_freq == 0 and len(self.grid_imgs) > 0:
+        epoch = trainer.current_epoch + 1
+        if epoch % self.epoch_freq == 0 and len(self.grid_imgs) > 0:
             grd_final = []
             for grd, category in zip(
                 [self.grid_imgs, self.grid_preds, self.grid_labels],

@@ -16,7 +16,7 @@ def get_kernel_strides(patch_size, spacings):
             for (ratio, size) in zip(spacing_ratio, patch_size)
         ]
         kernel = [3 if ratio <= 2 else 1 for ratio in spacing_ratio]
-        if all(s == 1 for s in stride):
+        if all(st == 1 for st in stride):
             break
         for idx, (i, j) in enumerate(zip(patch_size, stride)):
             if i % j != 0:

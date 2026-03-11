@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from monai.transforms import SpatialCrop
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import AsDiscreted, Invertd
@@ -48,6 +49,22 @@ sys.path += ["/home/ub/Dropbox/code/fran/"]
 
 from fastcore.basics import store_attr
 from utilz.imageviewers import ImageMaskViewer
+
+def inferer_from_params(run_w):
+        ckpt = checkpoint_from_model_id(run_w)
+        dic1 = torch.load(ckpt, map_location="cpu", weights_only=False)
+        mode = dic1["datamodule_hyper_parameters"]["configs"]["plan_train"][
+            "mode"
+        ]  # ["dataset_params"]["mode"]
+        if mode == "source":
+            return BaseInferer
+        elif mode == "whole":
+            return WholeImageInferer
+        elif mode in ["patch", "lbd"]:
+            return PatchInferer
+        else:
+            print("Not implemented for mode: {0}".format(mode))
+            raise ValueError
 
 
 def apply_bboxes(data, bboxes):
@@ -89,7 +106,7 @@ class WholeImageInferer(BaseInferer):
         devices=[1],
         save_channels=True,
         save=True,
-        patch_overlap=0.0,
+        patch_overlap=None,
         **kwargs,
     ):
         """
@@ -103,7 +120,7 @@ class WholeImageInferer(BaseInferer):
             devices=devices,
             save_channels=save_channels,
             save=save,
-            patch_overlap=patch_overlap,
+            patch_overlap=0, # this is a redundant arg, only for compatibility
             **kwargs,
         )
 
@@ -229,13 +246,14 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         )
 
         self.predictions_folder = self.P.project.predictions_folder
-        WSInf = self.inferer_from_params(run_w)
+        WSInf = inferer_from_params(run_w)
         self.W = WSInf(
             run_name=run_w,
             save_channels=save_channels,
             devices=devices,
             safe_mode=True,  # no need to get single channels. Do NOT CHANGE THIS
             save=save_localiser,
+            patch_overlap=patch_overlap,
             debug=debug,
         )
 
@@ -244,16 +262,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
     def setup(self):
         pass
 
-    def inferer_from_params(self, run_w):
-        self.ckpt = checkpoint_from_model_id(run_w)
-        dic1 = torch.load(self.ckpt, map_location="cpu", weights_only=False)
-        mode = dic1["datamodule_hyper_parameters"]["configs"]["plan_train"][
-            "mode"
-        ]  # ["dataset_params"]["mode"]
-        if mode == "source":
-            return BaseInferer
-        elif mode == "whole":
-            return WholeImageInferer
+
 
     def create_and_set_postprocess_transforms(self):
         self.create_postprocess_transforms()
@@ -321,6 +330,11 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             del p.model
         torch.cuda.empty_cache()
 
+
+
+
+
+
     def extract_fg_bboxes(self, data):
         spacing = get_patch_spacing(self.run_w)
         Sel = SelectLabels(keys=["pred"], labels=self.localiser_labels)
@@ -346,7 +360,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
                 )
             bb = validate_bbox(bb)
             bboxes.append(bb)
-        return bboxes
+        return bboxes    
 
     def patch_prediction(self, data):
         if hasattr(self.W, "model"):
@@ -423,6 +437,8 @@ if __name__ == "__main__":
 # %%
 
     from fran.data.dataregistry import DS
+    fldr_bosniak = Path("/s/datasets_bkp/bosniak/bosniak/kits/nifti")
+    imgs_bosniak = list(fldr_bosniak.glob("*"))
     fldr_lidc = DS["lidc"].folder / ("images")
     fldr_curvas = DS["curvaspdac"].folder/  ("images")
     imgs_curvas = list(fldr_curvas.glob("*"))
@@ -469,21 +485,65 @@ if __name__ == "__main__":
     lidc2_fldr = DS.lidc2.folder/("images")
     imgs_lidc2 = list(lidc2_fldr.glob("*"))
 
+    kits_fldr = DS.kits21.folder/("images")
+    kits_imgs = list(kits_fldr.glob("*"))
 
+# %%
+#SECTION:-------------------- KITS--------------------------------------------------------------------------------------
+
+    devices = [1]
+    run_kid = 'KITS-0002'
+
+
+    run_tot= best_runs['totalseg']['run_ids'][0]
+    run_kw= run_tot
+
+    run_kw = run_w
+    run_ = inferer_from_params(run_kw)
+    if "Whole" in str(run_):
+        label_loc = TSL.kidney.label_localiser
+    elif "Base" in str(run_):
+        label_loc = TSL.kidney.label_minimal
+    else: raise ValueError
+
+    safe_mode = False
+    overwrite = True
+    debug_ = True
+    debug_ = False
+    save_channels = False
+    save_localiser = True
+
+# %%
+    En = CascadeInferer(
+        run_kw,
+        run_kid,
+        save_channels=save_channels,
+        save_localiser=save_localiser,
+        devices=devices,
+        localiser_labels=label_loc,
+        safe_mode=safe_mode,
+        k_largest=None,
+        debug=debug_,
+    )
+
+# %%
+    imgs = kits_imgs[20:30]
+    imgs = imgs_bosniak[:10]
+    preds = En.run(imgs,chunksize=2,overwrite=overwrite)
 # %%
 # SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     loc_lidc = [7]  # lung in localiser_label
+    devices = [0]
 
     safe_mode = False
-    devices = [0]
     overwrite = True
     debug_ = True
     debug_ = False
     save_channels = False
     save_localiser = True
     run_lidc2 = best_runs['lidc']['run_ids'][0]
-    run_lidc2 = 'LIDC-0013'
+    run_lidc2 = 'LIDC-0022'
     localiser_labels=best_runs['lidc']['localiser_labels']
 
 # %%
@@ -502,7 +562,7 @@ if __name__ == "__main__":
 # %%
     imgs_tmp = ["/s/insync/datasets/today/mets/201 Axial  iDose (6).nii.gz"]
     imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
-    imgs = imgs_lidc2
+    imgs = imgs_lidc2[:20]
     preds = En.run(imgs, chunksize=1, overwrite=overwrite)
 
 # %%
@@ -683,15 +743,19 @@ if __name__ == "__main__":
 
 # SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 # SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
-    imgs_sublist = imgs_tmp
+    imgs_sublist = imgs_bosniak[:5]
 
     En.create_postprocess_transforms()
     data = load_images(imgs_sublist)
 
     En.bboxes = En.extract_fg_bboxes(data)
 
-    data = En.apply_bboxes(data, En.bboxes)
+    print(En.bboxes[0])
+    data = apply_bboxes(data, En.bboxes)
+    print(data[0].keys())
+# %%
     En.debug = True
+# %%
     pred_patches = En.patch_prediction(data)
     pred_patches = En.decollate_patches(pred_patches, En.bboxes)
     output = En.postprocess(pred_patches)
@@ -699,9 +763,11 @@ if __name__ == "__main__":
     # if En.save == True:
     #     En.save_pred(output)
 # %%
+    pred_patches[0].keys()
     img = data[0]["image"].cpu().detach()
-    prd = pred_patches[0]["LITS-911"].cpu().detach()
+    prd = pred_patches[0]["KITS-0009"].cpu().detach()
     ImageMaskViewer([img, prd[2]])
+    ImageMaskViewer([img, img])
 # %%
     spacing = get_patch_spacing(En.run_w)
     Sel = SelectLabels(keys=["pred"], labels=list(En.localiser_labels))
@@ -843,4 +909,31 @@ if __name__ == "__main__":
     lm = sitk.ReadImage(fn)
 
     lm.GetSize()
+# %%
+    project_title="kits"
+    run_p = 'KITS-0009'
+    patch_overlap=0.25
+        En.P = PatchInferer(
+            run_name=run_p,
+            project_title=project_title,
+            devices=devices,
+            patch_overlap=patch_overlap,
+            save_channels=save_channels,
+            safe_mode=safe_mode,
+            params=En.params,
+            # debug=debug,
+        )
+
+# %%
+        if hasattr(En.W, "model"):
+            del En.W.model
+        torch.cuda.empty_cache()
+        print("Starting patch data prep and prediction")
+        preds_all_runs = {}
+        preds_all_runs[En.P.run_name] = []
+        En.P.setup()
+        En.P.prepare_data(data=data, collate_fn=img_bbox_collated)
+        En.P.create_and_set_postprocess_transforms()
+        batches = list(En.P.predict())
+
 # %%

@@ -1,9 +1,9 @@
 # %%
-from pathlib import Path
 import sqlite3
+from pathlib import Path
 
 import ipdb
-
+import pandas as pd
 
 tr = ipdb.set_trace
 
@@ -13,14 +13,51 @@ import SimpleITK as sitk
 import torch
 from fastcore.all import store_attr
 from fastcore.foundation import GetAttr
+from tqdm.auto import tqdm
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
-from tqdm.auto import tqdm
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import sanitize_meta_for_monai
 from fran.utils.dataset_properties import analyze_tensor_data_folder
+
+
+def bboxes_to_df(bboxes):
+    rows = []
+    for case in bboxes:
+        case_id = case["case_id"]
+
+        for stat in case["bbox_stats"]:
+            label = stat["label"]
+            bbs = stat["bounding_boxes"]
+            cents = stat["centroids"]
+            for i, (bb, c) in enumerate(zip(bbs, cents)):
+                    z0, z1 = bb[0].start, bb[0].stop
+                    y0, y1 = bb[1].start, bb[1].stop
+                    x0, x1 = bb[2].start, bb[2].stop
+
+                    rows.append({
+                        "case_id": case_id,
+                        "label": label,
+                        "bbox_id": i,
+
+                        "z0": z0, "z1": z1,
+                        "y0": y0, "y1": y1,
+                        "x0": x0, "x1": x1,
+
+                        "size_z": z1 - z0,
+                        "size_y": y1 - y0,
+                        "size_x": x1 - x0,
+
+                        "cz": c[0],
+                        "cy": c[1],
+                        "cx": c[2],
+                    })
+
+
+    df = pd.DataFrame(rows)
+    return df
 
 
 def generate_bboxes_from_lms_folder(
@@ -36,12 +73,15 @@ def generate_bboxes_from_lms_folder(
         num_processes=num_processes,
         debug=debug,
     )
-    bbox_fn = masks_folder.parent / ("bboxes_info")
+    df = bboxes_to_df(bboxes)
+    bbox_fn = masks_folder.parent / ("bboxes_info.csv")
     print("Storing bbox info in {}".format(bbox_fn))
-    save_dict(bboxes, bbox_fn)
+    df.to_csv(bbox_fn)
 
 
-def _itk_binary_stats_like_fran(mask_arr: np.ndarray, separate_islands: bool = True) -> dict:
+def _itk_binary_stats_like_fran(
+    mask_arr: np.ndarray, separate_islands: bool = True
+) -> dict:
     """
     Build Fran-compatible bbox stats using ITK/SimpleITK:
       {
@@ -107,7 +147,9 @@ def _itk_binary_stats_like_fran(mask_arr: np.ndarray, separate_islands: bool = T
 
     voxel_counts = np.array([bg_count] + [e[0] for e in entries], dtype=np.int64)
     bounding_boxes = [bg_bbox] + [e[1] for e in entries]
-    centroids = np.vstack([bg_centroid] + [np.array(e[2], dtype=np.float64) for e in entries])
+    centroids = np.vstack(
+        [bg_centroid] + [np.array(e[2], dtype=np.float64) for e in entries]
+    )
 
     return {
         "voxel_counts": voxel_counts,
@@ -151,7 +193,9 @@ def generate_bboxes_from_lms_folder_itk(
     using ITK bbox/shape stats, and store to <masks_folder.parent>/bboxes_info.
     """
     masks_folder = Path(masks_folder)
-    label_files = sorted(list(masks_folder.glob("*.nii.gz")) + list(masks_folder.glob("*.nii")))
+    label_files = sorted(
+        list(masks_folder.glob("*.nii.gz")) + list(masks_folder.glob("*.nii"))
+    )
     arguments = [[x, bg_label] for x in label_files]
     bboxes = multiprocess_multiarg(
         func=bboxes_function_version_nifti_itk,
@@ -168,10 +212,12 @@ def get_tensorfile_stats(filename):
     tnsr = torch.load(filename, weights_only=False)
     return get_tensor_stats(tnsr)
 
+
 def _labels_from_lm_file(filename):
     lm = torch.load(filename, weights_only=False)
     labels = torch.unique(lm).detach().cpu().tolist()
     return [int(v) for v in labels]
+
 
 def store_labels_info(output_folder, num_processes=16):
     output_folder = Path(output_folder)
@@ -193,7 +239,7 @@ def store_labels_info(output_folder, num_processes=16):
     save_json(labels_all, out_fn)
 
 
-def get_tensor_stats(tnsr)->dict:
+def get_tensor_stats(tnsr) -> dict:
     dic = {
         "max": tnsr.max().item(),
         "min": tnsr.min().item(),
@@ -212,7 +258,6 @@ class Preprocessor(GetAttr):
         plan,
         data_folder=None,
         output_folder=None,
-
     ) -> None:
         store_attr("project,plan,data_folder")
         self.data_folder = data_folder
@@ -235,7 +280,9 @@ class Preprocessor(GetAttr):
                 self.df = create_df_from_folder(self.data_folder)
                 extract_ds = lambda x: x.split("_")[0]
                 self.df["ds"] = self.df["case_id"].apply(extract_ds)
-            assert len(self.df) >0 , "No valid case files found in {}".format(self.data_folder)
+            assert len(self.df) > 0, "No valid case files found in {}".format(
+                self.data_folder
+            )
             self.case_ids = self.df["case_id"].tolist()
 
         else:
@@ -245,19 +292,21 @@ class Preprocessor(GetAttr):
         self.df = self.df.applymap(lambda x: x.lower() if isinstance(x, str) else x)
         print("Total number of cases: ", len(self.df))
 
-    def set_remapping_per_ds(self ):
+    def set_remapping_per_ds(self):
         datasources = self.plan.get("datasources")
-        datasources = datasources.replace(" ","").split(",")
+        datasources = datasources.replace(" ", "").split(",")
         remappings = self.plan.get(self.remapping_key)
         remappings = ast_literal_eval(remappings)
-        if remappings is None: remappings = [None] * len(datasources)
-        assert len(remappings) == len(datasources), f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
+        if remappings is None:
+            remappings = [None] * len(datasources)
+        assert len(remappings) == len(
+            datasources
+        ), f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
         for ds, remapping in zip(datasources, remappings):
             mask = self.df["ds"] == ds
-            if mask.sum() == 0: raise ValueError(f"Datasource {ds} not found in df")
+            if mask.sum() == 0:
+                raise ValueError(f"Datasource {ds} not found in df")
             self.df.loc[mask, self.remapping_key] = [remapping] * mask.sum()
-
-
 
     def set_input_output_folders(self, data_folder, output_folder):
         raise NotImplementedError
@@ -290,7 +339,6 @@ class Preprocessor(GetAttr):
 
             raise RuntimeError(f"Quota exceeded at path: {fn}") from e
 
-
     def register_existing_files(self):
         existimg_lm_ids = self._get_existing_ids(self.output_folder / ("lms"))
         existing_img_ids = self._get_existing_ids(self.output_folder / ("images"))
@@ -298,7 +346,7 @@ class Preprocessor(GetAttr):
         print("Output folder: ", self.output_folder)
         print("Case ids processed in a previous session: ", len(self.existing_case_ids))
 
-    def _get_existing_ids(self,subfolder):
+    def _get_existing_ids(self, subfolder):
         existing_files = list(subfolder.glob("*pt"))
         existing_case_ids = [
             info_from_filename(f.name, full_caseid=True)["case_id"]
@@ -321,7 +369,7 @@ class Preprocessor(GetAttr):
         fn = self.output_folder / subfolder / fn_name
         torch.save(indices_dict, fn)
 
-    #CODE: rename below to process_files  (see #9)
+    # CODE: rename below to process_files  (see #9)
     def process(
         self,
     ):
@@ -331,8 +379,8 @@ class Preprocessor(GetAttr):
         self.create_output_folders()
         self.results = []
         self.shapes = []
-#CODE:  move away from dataloader and use multiprocessing  (see #7)
-        for batch in pbar(self.dl): 
+        # CODE:  move away from dataloader and use multiprocessing  (see #7)
+        for batch in pbar(self.dl):
             self.process_batch(batch)
         self.results_df = pd.DataFrame(self.results)
         # self.results= pd.DataFrame(self.results).values
@@ -444,7 +492,7 @@ class Preprocessor(GetAttr):
             resampled_dataset_properties["median_shape"] = np.nan
             resampled_dataset_properties["max_shape"] = np.nan
 
-        resampled_dataset_properties["dataset_spacing"] = self.plan.get('spacing')
+        resampled_dataset_properties["dataset_spacing"] = self.plan.get("spacing")
         resampled_dataset_properties["dataset_max"] = (
             self.results_df["max"].max().item()
         )
@@ -468,8 +516,9 @@ class Preprocessor(GetAttr):
     def ray_init(self):
         if not ray.is_initialized():
             from fran.utils.common import COMMON_PATHS
-            ray_fldr = COMMON_PATHS['ray_folder']
-            ray_tmp = Path(ray_fldr)/("tmp")
+
+            ray_fldr = COMMON_PATHS["ray_folder"]
+            ray_tmp = Path(ray_fldr) / ("tmp")
             try:
                 ray.init(ignore_reinit_error=True, _temp_dir=str(ray_tmp))
             except Exception as e:
@@ -487,11 +536,15 @@ class Preprocessor(GetAttr):
             print("No actors created. Did you run ray_prepare()?")
             self.results_df = pd.DataFrame([])
             return self.results_df
-        futs = [getattr(a, actor_method).remote(mdf) for a, mdf in zip(self.actors, self.mini_dfs)]
+        futs = [
+            getattr(a, actor_method).remote(mdf)
+            for a, mdf in zip(self.actors, self.mini_dfs)
+        ]
         results_lists = ray.get(futs)
         flat = list(il.chain.from_iterable(results_lists))
         self.results_df = pd.DataFrame(flat) if flat else pd.DataFrame([])
         return self.results_df
+
     # @property
     # def indices_subfolder(self):
     #     indices_subfolder = self.output_folder / ("indices")
@@ -504,8 +557,32 @@ if __name__ == "__main__":
     bboxes_fldr = Path(
         "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex000"
     )
-    bboxes_fldr = Path("/r/datasets/preprocessed/bones/fixed_spacing/spc_100_100_100")
+    bboxes_fldr = Path(
+        "/r/datasets/preprocessed/lidc/lbd/spc_075_075_075_rlb109adb5e_rlb109adb5e_ex000"
+    )
     lms = bboxes_fldr / "lms"
     generate_bboxes_from_lms_folder(lms, debug=False)
+# %%
+    masks_folder = bboxes_fldr
+    label_files = list(masks_folder.glob("*pt"))
+    label_files
+    # %%
+    bg_label = 0
+    arguments = [
+        [x, bg_label] for x in label_files
+    ]  # 0.2 factor for thresholding as kidneys are small on low-res imaging and will be wiped out by default threshold 3000
+    # %%
+    debug = False
+    num_processes = 12
+    bboxes = multiprocess_multiarg(
+        func=bboxes_function_version,
+        arguments=arguments,
+        num_processes=num_processes,
+        debug=debug,
+    )
 
+    df = pd.DataFrame(bboxes)
+    p
+
+# %%
 # %

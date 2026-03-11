@@ -11,23 +11,23 @@ from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
                                          ModelCheckpoint, TQDMProgressBar)
 from lightning.pytorch.profilers import AdvancedProfiler
 from utilz.cprint import cprint
-from utilz.helpers import info_from_filename
 from utilz.stringz import headline
 
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import CaseIDRecorder, infer_labels_and_update_out_channels
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
+from fran.callback.test import PeriodicTest
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import (ConfigMaker, confirm_plan_analyzed,
                                  parse_neptune_dict)
 from fran.managers import Project
 from fran.managers.data.incremental import DataManagerDualI
 from fran.managers.data.training import (DataManagerBaseline, DataManagerDual,
-                                         DataManagerLBD, 
+                                         DataManagerLBD, DataManagerMulti,
                                          DataManagerPatch, DataManagerSource,
                                          DataManagerWhole)
-from fran.managers.unet import UNetManager
+from fran.managers.unet import UNetManager, UNetManagerMulti
 from fran.managers.wandb import WandbManager
 from fran.trainers.base import (backup_ckpt, checkpoint_from_model_id,
                                 switch_ckpt_keys)
@@ -46,6 +46,20 @@ def _flatten_dict(d: dict, base: str = "") -> dict:
     return out
 
 
+def _dm_class_for_test_every_n_epochs(test_every_n_epochs: int):
+    return DataManagerMulti if int(test_every_n_epochs) > 0 else DataManagerDual
+
+
+def _dm_class_from_ckpt(ckpt_path: str | Path):
+    sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    hp = sd["datamodule_hyper_parameters"]
+    configs = hp["configs"]
+    plan_train  = configs['plan_train']
+    test_every_n_epochs = plan_train['test_every_n_epochs']
+    if int(test_every_n_epochs) > 0:
+        return DataManagerMulti
+    else:
+        return DataManagerDual
 
 class Trainer:
     """Trainer variant with W&B logging/callback plumbing."""
@@ -108,7 +122,6 @@ class Trainer:
         batch_size=None,
         train_indices=None,
         val_indices=None,
-        val_sampling: float = 1.0,
         logging_freq=25,
         lr=None,
         devices=1,
@@ -116,7 +129,7 @@ class Trainer:
         wandb=True,
         profiler=False,
         debug: bool = False,
-        val_every_n_epochs: int = 2,
+        test_every_n_epochs: int = 0,
         cbs=[],
         tags=[],
         description="",
@@ -132,11 +145,13 @@ class Trainer:
         wandb_grid_epoch_freq: int = 5,
         permanent_checkpoint_every_n_epochs: int = 100,
     ):
-        
-        self.val_every_n_epochs = int(val_every_n_epochs)
+        if train_indices is not None and int(test_every_n_epochs) > 0:
+            raise NotImplementedError(
+                "train1_indices with periodic testing is not implemented"
+            )
+        self.test_every_n_epochs = int(test_every_n_epochs)
         self.train_indices = train_indices
         self.val_indices = val_indices
-        self.val_sampling = float(val_sampling)
         self.debug = bool(debug)
         self.maybe_alter_configs(batch_size, compiled)
         self.set_lr(lr)
@@ -178,6 +193,7 @@ class Trainer:
             cbs=cbs,
             wandb=wandb,
             batchsize_finder=batchsize_finder,
+            test_every_n_epochs=self.test_every_n_epochs,
             profiler=profiler,
             tags=tags,
             description=description,
@@ -202,7 +218,6 @@ class Trainer:
             profiler=profiler,
             logger=logger,
             max_epochs=epochs,
-            check_val_every_n_epoch=self.val_every_n_epochs,
             log_every_n_steps=logging_freq,
             num_sanity_val_steps=0,
             enable_checkpointing=True,
@@ -213,8 +228,9 @@ class Trainer:
     def init_dm(self):
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
-        self.configs['plan_train']['val_every_n_epochs'] = self.val_every_n_epochs
-        dm = DataManagerDual(
+        self.configs['plan_train']['test_every_n_epochs'] = self.test_every_n_epochs
+        DM = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
+        dm = DM(
             project_title=self.project.project_title,
             configs=self.configs,
             batch_size=self.configs["dataset_params"]["batch_size"],
@@ -223,7 +239,6 @@ class Trainer:
             ds_type=ds_type,
             train_indices=self.train_indices,
             val_indices=self.val_indices,
-            val_sampling=self.val_sampling,
         )
 
         labels_all = self.configs["plan_train"].get("labels_all")
@@ -236,22 +251,41 @@ class Trainer:
             sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
             backup_ckpt(self.ckpt)
             sd["datamodule_hyper_parameters"]["configs"] = self.configs
-            headline("Overriding datamodule checkpoint. only Configs are overridden, not train / val_indices or other params")
+            headline("Overriding datamodule checkpoint.")
             out_fname = self.run_name + ".ckpt"
             bckup_ckpt = Path(self.project.log_folder) / out_fname
             shutil.copy(self.ckpt, bckup_ckpt)
             torch.save(sd, self.ckpt)
 
-        D = DataManagerDual.load_from_checkpoint(
+        sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
+        hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
+        ckpt_train1_indices = hp.get("train1_indices", None)
+        if self.train_indices is not None and ckpt_train1_indices is not None:
+            if list(self.train_indices) != list(ckpt_train1_indices):
+                headline(
+                    "train1_indices mismatch between trainer and checkpoint; using checkpoint values."
+                )
+
+        DM_from_ckpt = _dm_class_from_ckpt(self.ckpt)
+        DM_wanted = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
+        DM = DM_from_ckpt
+
+        D = DM.load_from_checkpoint(
             self.ckpt,
             project_title=self.project.project_title,
             batch_size=batch_size,
-            val_sampling=self.val_sampling,
             map_location="cpu",
         )
 
         if batch_size:
             D.configs["dataset_params"]["batch_size"] = int(batch_size)
+
+        if (DM_from_ckpt is DataManagerDual) and (DM_wanted is DataManagerMulti):
+            headline(
+                "Note: checkpoint datamodule is Dual (no test). test_every_n_epochs>0 was requested, "
+                "but DM is loaded from checkpoint to avoid incompatibility."
+            )
+
         return D
 
     def init_dm_unet(self, epochs, batch_size, override_dm_checkpoint=False):
@@ -260,10 +294,9 @@ class Trainer:
                 batch_size=batch_size, override_dm_checkpoint=override_dm_checkpoint
             )
             headline(
-                "Loading configs from checkpoints. If you want to override them with Trainer configs, set override_dm_checkpoint=True.\nRegardless, train and val indices are fixed for this run in the ckpt."
+                "Loading configs from checkpoints. If you want to override them with Trainer configs, set override_dm_checkpoint=True"
             )
             self.configs["dataset_params"] = self.D.configs["dataset_params"]
-            self.train_indices, self.val_indices = self.D.train_indices, self.D.val_indices
             missing_keys = []
             for key in self.configs.keys():
                 try:
@@ -309,6 +342,7 @@ class Trainer:
         cbs,
         wandb,
         batchsize_finder,
+        test_every_n_epochs,
         profiler,
         tags,
         description="",
@@ -321,13 +355,14 @@ class Trainer:
         wandb_grid_epoch_freq: int = 5,
         permanent_checkpoint_every_n_epochs: int = 100,
     ):
-
         if batchsize_finder == True:
             cbs += [
                 BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
                 BatchSizeSafetyMargin(),
             ]
 
+        if test_every_n_epochs > 0:
+            cbs += [PeriodicTest(every_n_epochs=test_every_n_epochs, limit_batches=50)]
 
         if self.debug == True:
             cbs += [DebugEpochBatchLimit(n=10)]
@@ -467,8 +502,8 @@ class Trainer:
         raise NotImplementedError
 
     def init_trainer(self, epochs):
-        
-        N = UNetManager(
+        unet_man = UNetManagerMulti if self.test_every_n_epochs > 0 else UNetManager
+        N = unet_man(
             project_title=self.project.project_title,
             configs=self.configs,
             lr=self.lr,
@@ -532,17 +567,17 @@ class Trainer:
         return Path(last) if last else None
 
 
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR>
 # %%
+
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR>
 if __name__ == "__main__":
     from fran.utils.common import *
-    from fran.data.datasource import DS
 
     P = Project("lidc")
     P = Project("kits")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P)
-    C.setup(4)
+    C.setup(2)
 
     conf = C.configs
     print(conf["model_params"])
@@ -559,25 +594,15 @@ if __name__ == "__main__":
     #     torch.save(lm, bad_case_fn)
     #
     # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
-
-    fldr= DS.kits21.folder
-    fn = fldr/("label_analysis/lesion_stats.csv")
-    df = pd.read_csv(fn)
-    counts = df.groupby("case_id").size()
-    counts2 = counts.sort_values(ascending=False)
-    bb= counts2.index[:200]
-
 # %%
 
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR>
-    train_indices = None
-    train_indices = bb
     bs = 8
-    device_id = 0
 
-    batchsize_finder = False
-    batchsize_finder = True
     # run_name ='LITS-1285'
+    compiled = False
+    profiler = False
+    # NOTE: if Neptune = False, should store checkpoint locally
     wandb = True
     override_dm = False
     tags = []
@@ -585,6 +610,7 @@ if __name__ == "__main__":
 
     conf["plan_train"]
 
+    test_every_n_epochs = 0
     cbs = [CaseIDRecorder(freq=10)]
 
     conf["dataset_params"]["cache_rate"] = 0.0
@@ -593,14 +619,14 @@ if __name__ == "__main__":
     conf["dataset_params"]["cache_rate"]
 
     conf["dataset_params"]["fold"] = 0
+    run_name = None
+    run_name = 'KITS-0009'
     lr = None
+    batchsize_finder = True
+    batchsize_finder = False
     debug_ = False
-    val_every_n_epochs = 5
-    profiler=False
-    compiled = False
-    run_name = None
-    run_name = None
-    run_name = 'KITS-0018'
+    train_indices = None
+    device_id = 1
 # %%
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
@@ -609,8 +635,7 @@ if __name__ == "__main__":
     Tm.setup(
         compiled=compiled,
         train_indices=train_indices,
-        val_every_n_epochs=val_every_n_epochs,
-        val_sampling=1.0,
+        test_every_n_epochs=test_every_n_epochs,
         cbs=cbs,
         debug=debug_,
         batch_size=bs,
@@ -637,19 +662,32 @@ if __name__ == "__main__":
 
 # %%
 
+    D = DataManagerMulti(
+        project_title=P.project_title,
+        configs=conf,
+        batch_size=2,
+        ds_type=None,
+    )
+
+    D.prepare_data()
+    D.setup("fit")
+    tms = D.test_manager
+    dl =tms.dl
+# %%
+
     iteri = iter(dl)
 
     batch = next(iteri)
 # %%
+    test_folder = Path("/media/UB/datasets/lidc2_test/lms")
     D = DataManagerDual(
         project_title=P.project_title,
         configs=conf,
         batch_size=2,
         ds_type=None,
-        train_indices = train_indices
+        data_folder =test_folder 
     )
 
-# %%
     D.prepare_data()
 # %%
     Tm.N
@@ -675,24 +713,4 @@ if __name__ == "__main__":
     bb = [aa]
     cc = tmt.collate_fn(bb)
 # %%
-    tm =D.train_manager
-    aa = train_indices[0]
-    isinstance(aa,str)
-
-    cases = tm.cases
-
-# %%
-    cases_final=[]
-    for case_ in tm.cases:
-        fname = case_.split(".")[0]
-        case_id = info_from_filename(fname, full_caseid=True)["case_id"]
-        if case_id in train_indices:
-            cases_final.append(case_)
-# %%
-        case_ids_tm.append(case_id)
-    
-# %%
-    train_indices = list(train_indices)
-
-    cases
 # %%

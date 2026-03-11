@@ -7,6 +7,7 @@ from fran.utils.common import *
 from utilz.helpers import load_dict
 from utilz.imageviewers import ImageMaskViewer
 from fran.managers.data.training import (
+    DataManagerDual,
     DataManagerWhole,
     DataManagerBaseline,
     DataManagerSource,
@@ -157,7 +158,31 @@ class TestDataManagerPatch:
         dl = dm.train_dataloader()
         assert dl is not None
 
+
+def test_patch_routine_tiny_subset():
+    project = Project(project_title="litsmc")
+    maker = ConfigMaker(project)
+    maker.setup(8)
+    configs = maker.configs
+    configs["plan_train"]["mode"] = "pbd"
+    configs["plan_valid"]["mode"] = "pbd"
+    dm = DataManagerDual(
+        project_title=project.project_title,
+        configs=configs,
+        batch_size=2,
+        ds_type=None,
+        manager_class_train=DataManagerPatch,
+        manager_class_valid=DataManagerPatch,
+        train_indices=4,
+        val_indices=2,
+    )
+    dm.prepare_data()
+    dm.setup("fit")
+    train_batch = next(iter(dm.train_dataloader()))
+    valid_batch = next(iter(dm.val_dataloader()))
+    assert "image" in train_batch and "lm" in train_batch
+    assert "image" in valid_batch and "lm" in valid_batch
+
 if __name__ == "__main__":
     pytest.main([__file__])
-
 

@@ -508,7 +508,7 @@ class BaseInferer(GetAttr, DictToAttr):
         )
         model.eval()
         fabric = Fabric(
-            precision="16-mixed", devices=fabric_devices, accelerator=accelerator
+            precision="bf16-mixed", devices=fabric_devices, accelerator=accelerator
         )
         self.model = fabric.setup(model)
 
@@ -585,7 +585,7 @@ class BaseInfererTorchScript(BaseInferer):
                 print(f"Tracing failed: {trace_e}")
         scripted = model.to_torchscript()
         torch.jit.save(scripted, "tmp.pt")
-        fabric = Fabric(precision="16-mixed", devices=self.devices, accelerator="gpu")
+        fabric = Fabric(precision="bf16-mixed", devices=self.devices, accelerator="gpu")
         self.model = fabric.setup(model)
 
 
@@ -894,7 +894,7 @@ if __name__ == "__main__":
     )
     model.eval()
     fabric = Fabric(
-        precision="16-mixed", devices=fabric_devices, accelerator=accelerator
+        precision="bf16-mixed", devices=fabric_devices, accelerator=accelerator
     )
     En.model = fabric.setup(model)
 

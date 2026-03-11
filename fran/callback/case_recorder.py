@@ -27,10 +27,13 @@ except Exception:
 
 # %%
 
-def chunked_case_ids(df, chunk_size=25):
-    cases = sorted(df["case_id"].astype(str).unique())
-    for i in range(0, len(cases), chunk_size):
-        yield cases[i:i+chunk_size]
+def chunked_case_ids(case_ids, chunk_size=25):
+    for i in range(0, len(case_ids), chunk_size):
+        yield case_ids[i:i+chunk_size]
+
+def check_continuous_ints(labels_all):
+      u = np.unique(labels_all)
+      return np.array_equal(u, np.arange(u.min(), u.max() + 1))
 
 
 def infer_labels_and_update_out_channels(dm, configs: dict):
@@ -136,7 +139,8 @@ class CaseIDRecorder(Callback):
     
 
     def on_validation_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        if trainer.current_epoch >0 and trainer.current_epoch % self.freq == 0 or self.incrementing==True:
+        epoch = trainer.current_epoch + 1
+        if (epoch > 0 and epoch % self.freq == 0) or self.incrementing == True:
             self.store_results(trainer)
             self.reset()
 
@@ -197,7 +201,7 @@ class CaseIDRecorder(Callback):
             cprint(f"W&B dataframe logging failed: {e}", color="yellow")
 
     def store_results(self, trainer):
-        epoch = trainer.current_epoch
+        epoch = trainer.current_epoch + 1
         self.dfs["epoch"]=epoch
         # cprint("CaseIDRecorder: Storing results", color = "green", italic=True)
         if self.incrementing==False:
@@ -245,19 +249,29 @@ class CaseIDRecorder(Callback):
         labels = df_long["label"].unique()
         for label in labels:
             figs_this_label =[]
-            for cases_chunk in chunked_case_ids(df_long, chunk_size=chunk_size):
-                df_chunk = df_long[df_long["case_id"].astype(str).isin(cases_chunk)].copy()
-                df_label = df_chunk[df_chunk["label"] == label]
-                fig = px.box(
-                    df_label,
+            df_label = df_long[df_long["label"] == label].copy()
+            case_order = (
+                df_label.groupby("case_id")["loss_dice"]
+                .var()
+                .fillna(0)
+                .sort_values(ascending=False)
+                .index.astype(str)
+                .tolist()
+            )
+            for cases_chunk in chunked_case_ids(case_order, chunk_size=chunk_size):
+                df_chunk = df_label[df_label["case_id"].astype(str).isin(cases_chunk)].copy()
+                fig = px.violin(
+                    df_chunk,
                     x="case_id",
                     y="loss_dice",
-                    points="outliers",
+                    points="all",
+                    box=True,
                     category_orders={"case_id": cases_chunk},
                     title=f"{label}"
                 )
+                fig.update_traces(jitter=0.2, pointpos=0)
                 fig.update_layout(width=self.width)
-                fig.update_xaxes(tickangle=90)
+                fig.update_xaxes(tickangle=90, tickfont={"size": 24})
                 figs_this_label.append(fig)
             figs[label]= figs_this_label
         return figs
@@ -290,14 +304,14 @@ if __name__ == "__main__":
     box = df2.boxplot(column=["variable"])
     # %%
     ax = sns.boxplot(x="case_id", y="value", hue="variable", data=df2)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right", fontsize=24)
     figure = ax.figure
     figure.tight_layout()
     figure.savefig("/tmp/tt.png")
     plt.show()
     # %%
     ax = sns.boxplot(x="case_id", y="value", hue="variable", data=df2)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right", fontsize=24)
     figure = ax.figure
     figure.tight_layout()
     plt.show()

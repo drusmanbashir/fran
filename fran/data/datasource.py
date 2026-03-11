@@ -371,8 +371,8 @@ class Datasource(GetAttr):
         return len(self.verified_pairs)
 
     def __repr__(self):
-        s = "Dataset: {0}".format(self.name)
-        return s
+        ds = "Dataset: {0}".format(self.name)
+        return ds
 
     def create_symlinks(self):
         pass

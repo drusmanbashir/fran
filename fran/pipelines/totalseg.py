@@ -89,7 +89,7 @@ if __name__ == "__main__":
 # %%
     Tm.setup(
         compiled=compiled,
-        test_every_n_epochs=0,
+        val_every_n_epochs=0,
         batch_size=bs,
         devices=devices,
         cbs=cbs,

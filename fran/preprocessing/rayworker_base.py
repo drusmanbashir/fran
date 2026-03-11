@@ -112,7 +112,19 @@ class RayWorkerBase(Preprocessor):
             return self.apply_transforms_debug(data)
 
     def apply_transforms_compose(self, data: dict):
-        data = self.transforms(data)
+        tfm = self.transforms
+        if isinstance(tfm, dict):
+            ds = data.get("ds")
+            if ds is None:
+                raise KeyError(
+                    "Datasource key 'ds' is missing in data dict; cannot choose per-ds Compose."
+                )
+            if ds not in tfm:
+                raise KeyError(
+                    f"No composed transform found for ds='{ds}'. Available: {sorted(tfm.keys())}"
+                )
+            tfm = tfm[ds]
+        data = tfm(data)
         return data
 
     def apply_transforms_debug(self, data: dict):
@@ -135,12 +147,29 @@ class RayWorkerBase(Preprocessor):
 
     def tfms_from_dict(self, keys: str):
         keys = keys.replace(" ", "").split(",")
-        tfms = []
-        for key in keys:
-            tfm = self.transforms_dict[key]
-            tfms.append(tfm)
-        tfms = Compose(tfms)
-        return tfms
+        tfms = [self.transforms_dict[key] for key in keys]
+        ds_specific_tfms = [t for t in tfms if isinstance(t, dict)]
+        if not ds_specific_tfms:
+            return Compose(tfms)
+
+        ds_keys = set()
+        for t in ds_specific_tfms:
+            ds_keys.update(t.keys())
+
+        composed_per_ds = {}
+        for ds in ds_keys:
+            ds_chain = []
+            for t in tfms:
+                if isinstance(t, dict):
+                    if ds not in t:
+                        raise KeyError(
+                            f"Missing transform for ds='{ds}' in datasource-specific transform."
+                        )
+                    ds_chain.append(t[ds])
+                else:
+                    ds_chain.append(t)
+            composed_per_ds[ds] = Compose(ds_chain)
+        return composed_per_ds
 
     def set_input_output_folders(self, data_folder, output_folder):
         self.data_folder = data_folder

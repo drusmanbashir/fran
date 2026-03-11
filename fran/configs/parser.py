@@ -601,13 +601,13 @@ if __name__ == "__main__":
     from fran.managers import Project
 
     P = Project(project_title="test")
-    P = Project(project_title="lidc")
     P = Project(project_title="pancreas")
     P = Project(project_title="kidneys")
+    P = Project(project_title="lidc")
 # %%
     P.global_properties
     C = ConfigMaker(P)
-    C.setup(2)
+    C.setup(8)
     pp(C.configs["plan_train"])
     pp(C.configs["plan_valid"])
     C.configs["plan_train"].keys()

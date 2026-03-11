@@ -100,7 +100,7 @@ class IncrementalTrainer (Trainer):
             compiled=compiled,
             wandb=wandb,
             profiler=profiler,
-            test_every_n_epochs=test_every_n_epochs,
+            val_every_n_epochs=test_every_n_epochs,
             cbs=cbs,
             tags=tags,
             description=description,

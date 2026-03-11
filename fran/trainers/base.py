@@ -4,6 +4,7 @@ import torch
 from pathlib import Path
 from typing import Union
 import ipdb
+from utilz.cprint import cprint
 from utilz.stringz import headline
 tr = ipdb.set_trace
 import shutil
@@ -20,9 +21,27 @@ def checkpoint_from_model_id(model_id, sort_method="last", normalize_keys=True):
         raise Exception("No project found {}".format(model_id))
     project_fldr = project_fldrs[0]/("checkpoints")
 
-    list_of_files = [f for f in project_fldr.glob("*") if f.is_file()]
+    list_of_files = [f for f in project_fldr.glob("*.ckpt") if f.is_file()]
+    if len(list_of_files) == 0:
+        raise Exception("No checkpoint files found {}".format(project_fldr))
     if sort_method == "last":
-        ckpt = max(list_of_files, key=lambda p: p.stat().st_mtime)
+        candidates = sorted(list_of_files, key=lambda p: p.stat().st_mtime, reverse=True)
+        ckpt = candidates[0]
+        try:
+            torch.load(ckpt, map_location="cpu", weights_only=False)
+        except Exception as e1:
+            cprint("Bad checkpoint file: {} ({})".format(ckpt, e1), color="yellow")
+            if len(candidates) < 2:
+                raise Exception("Latest checkpoint is bad and no fallback exists: {}".format(ckpt)) from e1
+            ckpt = candidates[1]
+            try:
+                torch.load(ckpt, map_location="cpu", weights_only=False)
+            except Exception as e2:
+                raise Exception(
+                    "Latest two checkpoints are unreadable: {} ({}) ; {} ({})".format(
+                        candidates[0], e1, candidates[1], e2
+                    )
+                ) from e2
     elif sort_method == "best":
         tr()
     if normalize_keys==True:

@@ -89,7 +89,6 @@ from fran.managers.data.training import (
     DataManagerBaseline,
     DataManagerDual,
     DataManagerLBD,
-    DataManagerMulti,
     DataManagerPatch,
     DataManagerShort,
     DataManagerSource,

@@ -1,11 +1,13 @@
 # AGENTS.md
 
 ## Default Interaction Mode
-- Unless I explicitly say `apply changes`, operate in read-only mode.
-- Do not edit files.
-- Do not run file-modifying commands (`apply_patch`, `sed -i`, etc.).
 - Provide analysis, recommendations, and optional patch text only.
 - You may create new files without explicit permission.
 
+
 ## Edit Opt-In
-- Only make code changes when I explicitly request implementation.
+- Anytime i asked you to revert / reverse changes, that does not mean restore from github, but just to undo your last change
+
+
+### Coding rules
+- Follow minimalistic methods, assume correct types will be passed to functions as args and dont do strict typechecking and try: except unless code is cleawrly breaking.

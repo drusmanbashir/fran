@@ -188,8 +188,8 @@ class PadNpArray(KeepBBoxTransform):
             :return:
             '''
             if hasattr(self,'padding'):
-                s = [slice(p[0],s-p[1]) for p,s in zip(self.padding,img.shape)]
-                img = img[tuple(s)]
+                sl = [slice(p[0], shp-p[1]) for p, shp in zip(self.padding, img.shape)]
+                img = img[tuple(sl)]
             return img
 
 # %%
@@ -519,8 +519,8 @@ class SlicesFromBBox(MapTransform):
         b = x[0]  # get rid of channel
         slices = [slice(0, 100)]  # 100 channels
         for ind in [0, 2, 4]:
-            s = slice(b[ind], b[ind + 1])
-            slices.append(s)
+            sl = slice(b[ind], b[ind + 1])
+            slices.append(sl)
         return tuple(slices)
 
     def __call__(self, d: dict):

@@ -59,7 +59,7 @@ def _limit_dm_samples(dm, n_samples: int) -> None:
         m.data = m.data[:n_samples]
 
         m.create_dataset()
-        m.create_dataloader()
+        m.create_train_dataloader() if m.split == "train" else m.create_valid_dataloader()
 
         new_cases = len(getattr(m, "cases", []) or [])
         new_data = len(getattr(m, "data", []) or [])
@@ -82,13 +82,10 @@ def _configure_cpu_profiling_dataloaders(dm, enabled: bool) -> None:
         return
 
     for name, m in _iter_dm_managers(dm):
-        # Keep transforms in-process so profiler can attribute MONAI/python stacks.
-        m.force_num_workers = 0
-        m.force_persistent_workers = False
-        m.create_dataloader()
+        m.create_train_dataloader() if m.split == "train" else m.create_valid_dataloader()
         dl = getattr(m, "dl", None)
         print(
-            f"[{name}] CPU profiling dataloader override: "
+            f"[{name}] CPU profiling dataloader: "
             f"num_workers={getattr(dl, 'num_workers', None)}, "
             f"persistent_workers={getattr(dl, 'persistent_workers', None)}"
         )

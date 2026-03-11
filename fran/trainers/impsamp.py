@@ -214,12 +214,12 @@ class UNetTrainer2(LightningModule):
     def maybe_apply_ds_scales(self, pred, target):
         if isinstance(pred, list) and isinstance(target, torch.Tensor):
             target_listed = []
-            for s in self.deep_supervision_scales:
-                if all([i == 1 for i in s]):
+            for sc in self.deep_supervision_scales:
+                if all([i == 1 for i in sc]):
                     target_listed.append(target)
                 else:
                     size = [
-                        int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])
+                        int(np.round(ss * aa)) for ss, aa in zip(sc, target.shape[2:])
                     ]
                     target_downsampled = F.interpolate(
                         target, size=size, mode="nearest"

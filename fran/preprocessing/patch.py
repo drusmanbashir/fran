@@ -90,7 +90,7 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
 
             fn_name = self.create_patch_fname(image.meta, n)
             labels = patch['lm_labels']
-            has_fg = any([l>0 for l in labels])
+            has_fg = any([lb > 0 for lb in labels])
 
             self.save_indices_patch(inds,fn_name, "indices")
             self.save_pt_patch(lm, fn_name, "lms")

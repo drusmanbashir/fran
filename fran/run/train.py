@@ -115,7 +115,7 @@ def main(args):
             wandb=args.wandb,
             description=args.description,
             batchsize_finder=args.batchsize_finder,
-            test_every_n_epochs=args.test_every_n_epochs,
+            val_every_n_epochs=args.test_every_n_epochs,
         )
         Tm.N.compiled = args.compiled
         Tm.fit()

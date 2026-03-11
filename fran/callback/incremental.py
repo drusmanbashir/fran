@@ -104,14 +104,25 @@ class UpdateDatasetOnPlateau(Callback):
         loss_dict = getattr(getattr(pl_module, "loss_fnc", None), "loss_dict", None)
         if not isinstance(loss_dict, dict):
             return {}
-        out: dict[int, float] = {}
-        pat = re.compile(r"loss_dice_batch(\d+)_label0$")
+        out_by_batch: dict[int, dict[int, float]] = {}
+        pat = re.compile(r"loss_dice_batch(\d+)_label(\d+)$")
         for key, val in loss_dict.items():
             matched = pat.match(str(key))
             if not matched:
                 continue
             batch_index = int(matched.group(1))
-            out[batch_index] = float(val.detach().cpu().item() if isinstance(val, torch.Tensor) else val)
+            class_label = int(matched.group(2))
+            score = float(val.detach().cpu().item() if isinstance(val, torch.Tensor) else val)
+            out_by_batch.setdefault(batch_index, {})[class_label] = score
+
+        # Track the lowest available class label per batch, which maps to background
+        # when present and to first foreground label when background is excluded.
+        out: dict[int, float] = {}
+        for batch_index, label_scores in out_by_batch.items():
+            if not label_scores:
+                continue
+            min_label = min(label_scores.keys())
+            out[batch_index] = label_scores[min_label]
         return out
 
     def _start_scan_cycle(self, trainer, pl_module) -> None:
@@ -128,7 +139,8 @@ class UpdateDatasetOnPlateau(Callback):
         pass
 
     def on_train_epoch_end(self, trainer, pl_module):
-        if self.debug == True and trainer.current_epoch > 0 and trainer.current_epoch%2 == 0:
+        epoch = trainer.current_epoch + 1
+        if self.debug == True and epoch > 0 and epoch % 2 == 0:
             self._debug_switch(trainer,pl_module)
         else:
             if trainer.current_epoch < self.grace:

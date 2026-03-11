@@ -210,7 +210,7 @@ if __name__ == "__main__":
     ckpt_src = "/s/fran_storage/checkpoints/nodes/nodes/NODES-0087/checkpoints/last.ckpt"
 # %%
 # SECTION:-------------------- OLDER settings did not have a config param in UNet. Block below copies that from datamodule-------------------------------------------------------------------------------------- <CR>
-    run_src="NODES-0097"
+    run_src="KITS-0009"
     ckpt_src = "/s/fran_storage/checkpoints/nodes/nodes/NODES-0093/checkpoints/last.ckpt"
     ckpt_src = checkpoint_from_model_id(run_src)
     dict_src = torch.load(ckpt_src, map_location="cpu", weights_only=False)

@@ -67,7 +67,7 @@ class UNetManager(LightningModule):
         self.create_loss_fnc()
         super().setup(stage="fit")
 
-    def _common_step(self, batch, batch_idx):
+    def _common_step(self, batch, batch_idx, use_mask=False):
         if not hasattr(self, "batch_size"):
             self.batch_size = batch["image"].shape[0]
         inputs, target = batch["image"], batch["lm"]
@@ -76,7 +76,7 @@ class UNetManager(LightningModule):
         )  # self.pred so that NeptuneImageGridCallback can use it
 
         pred, target = self.maybe_apply_ds_scales(pred, target)
-        loss = self.loss_fnc(pred, target)
+        loss = self.loss_fnc(pred, target, use_mask=use_mask)
         loss_dict = self.loss_fnc.loss_dict
         self.maybe_store_preds(pred)
         return loss, loss_dict
@@ -91,12 +91,12 @@ class UNetManager(LightningModule):
     def maybe_apply_ds_scales(self, pred, target):
         if isinstance(pred, list) and isinstance(target, torch.Tensor):
             target_listed = []
-            for s in self.deep_supervision_scales:
-                if all([i == 1 for i in s]):
+            for sc in self.deep_supervision_scales:
+                if all([i == 1 for i in sc]):
                     target_listed.append(target)
                 else:
                     size = [
-                        int(np.round(ss * aa)) for ss, aa in zip(s, target.shape[2:])
+                        int(np.round(ss * aa)) for ss, aa in zip(sc, target.shape[2:])
                     ]
                     target_downsampled = F.interpolate(
                         target, size=size, mode="nearest"
@@ -106,17 +106,17 @@ class UNetManager(LightningModule):
         return pred, target
 
     def training_step(self, batch, batch_idx, dataloader_idx=0):
-        loss, loss_dict = self._common_step(batch, batch_idx)
+        loss, loss_dict = self._common_step(batch, batch_idx, use_mask=False)
         self.log_losses(loss_dict, prefix=f"train{dataloader_idx}")
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        loss, loss_dict = self._common_step(batch, batch_idx)
+        loss, loss_dict = self._common_step(batch, batch_idx, use_mask=True)
         self.log_losses(loss_dict, prefix=f"val{dataloader_idx}")
         return loss
 
     def test_step(self, batch, batch_idx):
-        loss, loss_dict = self._common_step(batch, batch_idx)
+        loss, loss_dict = self._common_step(batch, batch_idx, use_mask=True)
         self.log_losses(loss_dict, prefix="test")
         return loss
 
@@ -239,6 +239,7 @@ class UNetManager(LightningModule):
 
     def create_loss_fnc(self):
         fg_classes = max(self.model_params["out_channels"] - 1, 1)
+        include_background = bool(self.loss_params.get("include_background", False))
         if self.model_params["arch"] == "nnUNet":
             num_pool = 5
             self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
@@ -253,6 +254,7 @@ class UNetManager(LightningModule):
                 levels=num_pool,
                 deep_supervision_scales=self.deep_supervision_scales,
                 fg_classes=fg_classes,
+                include_background=include_background,
             )
             self.loss_fnc = loss_func
 
@@ -286,11 +288,14 @@ class UNetManager(LightningModule):
                 levels=num_pool,
                 deep_supervision_scales=self.deep_supervision_scales,
                 fg_classes=fg_classes,
+                include_background=include_background,
             )
             self.loss_fnc = loss_func
 
         else:
-            loss_func = CombinedLoss(**self.loss_params, fg_classes=fg_classes)
+            loss_params = dict(self.loss_params)
+            loss_params["include_background"] = include_background
+            loss_func = CombinedLoss(**loss_params, fg_classes=fg_classes)
             self.loss_fnc = loss_func
 
 

@@ -273,7 +273,7 @@ class CropForegroundOrCenterd(MapTransform):
                 end = start + roi
             starts.append(start)
             ends.append(end)
-        return t[(slice(None),) + tuple(slice(s, e) for s, e in zip(starts, ends))]
+        return t[(slice(None),) + tuple(slice(st, en) for st, en in zip(starts, ends))]
 
     def __call__(self, data):
         d0 = dict(data)

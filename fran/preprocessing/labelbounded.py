@@ -53,7 +53,7 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
         data = {
             "image": row["image"],
             "lm": row["lm"],
-            "ds":row["ds"],
+            "ds": row["ds"],
             "remapping": row["remapping"],
         }
         return data
@@ -173,7 +173,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             lbd_subfolder = folder_names_from_plan(self.project, self.plan)[
                 "data_folder_lbd"
             ]
-            self.output_folder =  Path(lbd_subfolder)
+            self.output_folder = Path(lbd_subfolder)
         else:
             self.output_folder = Path(output_folder)
 
@@ -188,7 +188,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             ]
         )
 
-    def process(self, derive_bboxes=False):
+    def process(self, derive_bboxes=True):
         if not hasattr(self, "df") or len(self.df) == 0:
             print("No data loader created. No data to be processed")
             return 0
@@ -229,14 +229,22 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             )
 
         self.store_labels_info()
-        self.results_df.to_csv(self.output_folder / "resampled_dataset_properties.csv", index=False)
+        self.results_df.to_csv(
+            self.output_folder / "resampled_dataset_properties.csv", index=False
+        )
 
     def store_labels_info(self):
-            labels_all  = self.results_df['labels'].sum()
+        try:
+            labels_all = self.results_df["labels"].sum()
             labels_all = set(labels_all)
             labels_all = list(labels_all)
-            out_fn =self.output_folder / "labels_all.json"
+            out_fn = self.output_folder / "labels_all.json"
             save_json(labels_all, out_fn)
+        except:
+
+            print(
+                "labels_all is not set. You may need to run store_labels_info separately"
+            )
 
     def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
         self.num_processes = max(1, int(num_processes))
@@ -274,7 +282,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             else:
                 self.mini_dfs = [self.df]
                 self.local_worker = self.local_worker_cls(**worker_kwargs)
-
 
     def create_properties_dict(self):
         resampled_dataset_properties = Preprocessor.create_properties_dict(self)
@@ -361,7 +368,7 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
 
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR>
 
     from fran.managers import Project
     from fran.utils.common import *
@@ -372,7 +379,7 @@ if __name__ == "__main__":
     # spacing = [1.5, 1.5, 1.5]
 
     C = ConfigMaker(P)
-    C.setup(5)
+    C.setup(8)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -385,17 +392,15 @@ if __name__ == "__main__":
 # %%
 
     num_processes = 4
-    L = LabelBoundedDataGenerator(
-        project=P,
-        plan=plan,
-        data_folder=existing_fldr
-    )
+    L = LabelBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr)
 
 # %%
-    overwrite=True
-    num_processes=5
-    debug_=False
-    L.setup(overwrite=overwrite, device="cpu", num_processes=num_processes,debug=debug_)
+    overwrite = False
+    num_processes = 5
+    debug_ = False
+    L.setup(
+        overwrite=overwrite, device="cpu", num_processes=num_processes, debug=debug_
+    )
     L.process()
 # %%
 # %%
@@ -453,7 +458,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     # for img_file, lm_file in zip(I.L.image_files, I.L.lm_files):
     row = L.df.iloc[0]
@@ -543,4 +548,9 @@ if __name__ == "__main__":
         data_folder_source=L.data_folder,
         data_folder_lbd=L.output_folder,
     )
+# %%
+
+    output_fldr = L.output_folder
+
+    store_labels_info(output_fldr)
 # %%

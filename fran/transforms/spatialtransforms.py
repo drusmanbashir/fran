@@ -115,7 +115,7 @@ class CropForegroundMinShaped(MapTransform):
 
     @staticmethod
     def _has_foreground(box_start, box_end):
-        return any(int(e) > int(s) for s, e in zip(box_start, box_end))
+        return any(int(e) > int(st) for st, e in zip(box_start, box_end))
 
     @staticmethod
     def _fit_box_to_image(box_start, box_end, img_shape, min_shape):
@@ -172,7 +172,7 @@ class CropForegroundMinShaped(MapTransform):
         if not self._has_foreground(box_start, box_end):
             return self.rand_crop(d, lazy=lazy_)
 
-        fg_shape = tuple(int(e - s) for s, e in zip(box_start, box_end))
+        fg_shape = tuple(int(e - st) for st, e in zip(box_start, box_end))
 
         # mode a: fg already large enough
         if all(f >= m for f, m in zip(fg_shape, self.min_shape)):
@@ -1231,8 +1231,8 @@ class ExpandAndPadNpArray(ItemTransform):
         return img, mask, case_info
 
     def decodes(self, x, padding):
-        s = [slice(p[0], s - p[1]) for p, s in zip(padding, x[0].shape)]
-        x = [x[0][tuple(s)], x[1][tuple(s)]]
+        sl = [slice(p[0], shp - p[1]) for p, shp in zip(padding, x[0].shape)]
+        x = [x[0][tuple(sl)], x[1][tuple(sl)]]
         return x
 
 
@@ -1278,8 +1278,8 @@ class ExpandAndPadTorch(ItemTransform):
         return img, mask, case_info
 
     def decodes(self, x, padding):
-        s = [slice(p[0], s - p[1]) for p, s in zip(padding, x[0].shape)]
-        x = [x[0][tuple(s)], x[1][tuple(s)]]
+        sl = [slice(p[0], shp - p[1]) for p, shp in zip(padding, x[0].shape)]
+        x = [x[0][tuple(sl)], x[1][tuple(sl)]]
         return x
 
 
