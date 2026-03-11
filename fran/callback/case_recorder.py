@@ -145,8 +145,6 @@ class CaseIDRecorder(Callback):
             self.reset()
 
 
-    def _store(self,trainer, stage, loss_dict,epoch):
-            mini_df = self.create_limited_df(loss_dict)
             df_final = self.pivot_batch_cols(mini_df)
             val_vars  = [var for var in df_final.columns if "dice" in var]
             df_long = df_final.melt(
@@ -188,10 +186,7 @@ class CaseIDRecorder(Callback):
     def _log_df_to_wandb(self, trainer, df_long: pd.DataFrame, stage: str, epoch: int) -> None:
         if not self._is_wandb_logger(trainer):
             return
-        try:
-            import wandb
-        except Exception:
-            return
+        import wandb
         try:
             run = trainer.logger.experiment
             table = wandb.Table(dataframe=df_long.reset_index(drop=True))
@@ -281,6 +276,44 @@ class CaseIDRecorder(Callback):
 # %%
 if __name__ == "__main__":
     # dfd = pd.read_html('~/Downloads/valid.html')
+# %%
+#SECTION:-------------------- download tables--------------------------------------------------------------------------------------
+    import json
+    from pathlib import Path
+    import pandas as pd
+    import wandb
+
+    ENTITY = "drubashir"
+    PROJECT = "kits"
+    RUN_ID = "KITS-0018"  # wandb run id
+    OUT = Path("wandb_tables")
+    OUT.mkdir(exist_ok=True)
+
+    api = wandb.Api()
+    run = api.run(f"{ENTITY}/{PROJECT}/{RUN_ID}")
+
+    epoch = 130
+
+    key = f"case_recorder/fit/df_epoch_{epoch}"
+# %%
+    my_table = run.use_artifact(F"run-{RUN_ID}-{key}").get("{key}")
+
+# %%
+    import ipdb
+    tr = ipdb.set_trace
+    
+    aa = run.logged_artifacts()[0]
+    for f in run.files():
+        if f.name.startswith("media/table/") and "case_recorder" in f.name:
+            f.download(root=str(OUT), replace=True)
+            p = OUT / f.name
+            with open(p) as fh:
+                payload = json.load(fh)
+            df = pd.DataFrame(payload["data"], columns=payload["columns"])
+            df.to_csv(p.with_suffix(".csv"), index=False)
+            print("saved:", p.with_suffix(".csv"))
+
+# %%
     # rn = 45000
     # df1 = dfd[0]
     #
