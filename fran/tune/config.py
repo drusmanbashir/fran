@@ -50,7 +50,7 @@ def resolve_tune_fnc(tune_type: str):
 
 
 def out_channels_from_dict_or_cell(src_dest_labels):
-    if isinstance(src_dest_labels, pd.core.series.Series):
+    if isinstance(src_dest_labels, pd.Series):
         src_dest_labels = ast.literal_eval(src_dest_labels.item())
     out_channels = max([src_dest[1] for src_dest in src_dest_labels]) + 1
     return out_channels

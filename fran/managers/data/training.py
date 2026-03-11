@@ -887,7 +887,25 @@ class DataManager(LightningDataModule):
         parent_folder = Path(COMMON_PATHS["cache_folder"]) / (
             self.project.project_title
         )
-        return parent_folder / (self.data_folder.name) / (self.split)
+        cache_folder = parent_folder / (self.data_folder.name) / (self.split)
+        # On shared filesystems (e.g., GPFS), distributed ranks can race while
+        # writing PersistentDataset cache files. Isolate cache per-rank by default.
+        per_rank = os.environ.get("FRAN_CACHE_PER_RANK", "1").lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
+        if per_rank:
+            rank = os.environ.get("RANK")
+            world_size = os.environ.get("WORLD_SIZE")
+            if rank is not None and world_size not in {None, "", "1"}:
+                cache_folder = cache_folder / f"rank{rank}"
+            else:
+                local_rank = os.environ.get("LOCAL_RANK")
+                if local_rank is not None and local_rank != "0":
+                    cache_folder = cache_folder / f"local_rank{local_rank}"
+        return cache_folder
 
     @classmethod
     def from_folder(
@@ -1237,7 +1255,23 @@ class DataManagerBaseline(DataManagerLBD):
         parent_folder = Path(COMMON_PATHS["cache_folder"]) / (
             self.project.project_title
         )
-        return parent_folder / (self.data_folder.name + "_baseline")
+        cache_folder = parent_folder / (self.data_folder.name + "_baseline")
+        per_rank = os.environ.get("FRAN_CACHE_PER_RANK", "1").lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
+        if per_rank:
+            rank = os.environ.get("RANK")
+            world_size = os.environ.get("WORLD_SIZE")
+            if rank is not None and world_size not in {None, "", "1"}:
+                cache_folder = cache_folder / f"rank{rank}"
+            else:
+                local_rank = os.environ.get("LOCAL_RANK")
+                if local_rank is not None and local_rank != "0":
+                    cache_folder = cache_folder / f"local_rank{local_rank}"
+        return cache_folder
 
 
 # %%

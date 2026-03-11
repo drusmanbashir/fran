@@ -2,7 +2,6 @@
 requires = ["setuptools>=69", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
-
 [project]
 name = "fran"
 description = "FRAN: utilities and pipelines for medical image segmentation and analysis."
@@ -22,7 +21,7 @@ dependencies = [
   "numpy>=1.23,<3",
   "openpyxl>=3.1",
   "opencv-python>=4.8",
-  "pandas>=1.5",
+  "pandas>=2.2,<3",
   "paramiko>=3.0",
   "Pillow>=10.0",
   "psutil>=5.9",
@@ -32,34 +31,14 @@ dependencies = [
   "scipy>=1.10",
   "send2trash>=1.8",
   "SimpleITK>=2.3",
+  "torch>=2.2",
+  "pyradiomics @ git+https://github.com/drusmanbashir/pyradiomics.git",
 
   "label_analysis @ git+https://github.com/drusmanbashir/label_analysis.git@main",
   "utilz @ git+https://github.com/drusmanbashir/utilz.git@main",
 ]
 
 [project.optional-dependencies]
-api = [
-  "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main" 
-]
-core = [
-  "lightning>=2.2",
-  "monai>=1.3",
-  "nnunet>=1.7",
-  "prefetch-generator>=1.0.3",
-  "torch>=2.2",
-  "torchaudio>=2.2",
-  "torchinfo>=1.8",
-  "torchio>=0.20",
-  "torchmetrics>=1.3",
-  "torchvision>=0.17",
-  "neptune>=1.10",
-  "plotly>=5.0",
-  "seaborn>=0.12",
-  "ray[tune]>=2.9",
-  "grad-cam>=1.5.3",
-  "regex>=2024.0.0",
-  "wandb>=0.17",
-]
 train = [
   "lightning>=2.2",
   "monai>=1.3",
@@ -73,7 +52,7 @@ train = [
   "torchvision>=0.17",
 ]
 tracking = [
-  "neptune>=1.10",
+  "wandb",
   "plotly>=5.0",
   "kaleido",
   "seaborn>=0.12",
@@ -94,6 +73,9 @@ tuning = [
 remote = [
   "xnat @ git+https://github.com/drusmanbashir/xnat.git@main",
 ]
+dicom = [
+  "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main",
+]
 deepcore = [
   "numpy>=1.23,<3",
   "prefetch-generator>=1.0.3",
@@ -103,28 +85,7 @@ deepcore = [
   "torchvision>=0.17",
 ]
 full = [
-  "lightning>=2.2",
-  "monai>=1.3",
-  "nnunet>=1.7",
-  "prefetch-generator>=1.0.3",
-  "torch>=2.2",
-  "torchaudio>=2.2",
-  "torchinfo>=1.8",
-  "torchio>=0.20",
-  "torchmetrics>=1.3",
-  "torchvision>=0.17",
-  "neptune>=1.10",
-  "plotly>=5.0",
-  "seaborn>=0.12",
-  "ray[tune]>=2.9",
-  "grad-cam>=1.5.3",
-  "regex>=2024.0.0",
-  "wandb>=0.17",
-  "roboflow>=1.1.30",
-  "supervision>=0.25.1",
-  "ultralytics>=8.0",
-  "gudhi>=3.10.1",
-  "nurbspy>=1.1.2",
+  "fran[train,tracking,detection,tuning]",
 ]
 
 [tool.setuptools.packages.find]
