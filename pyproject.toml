@@ -39,7 +39,7 @@ dependencies = [
 
 [project.optional-dependencies]
 api = [
-  "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main ; sys_platform != 'win32' or python_full_version < '3.14'",
+  "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main" 
 ]
 core = [
   "lightning>=2.2",
