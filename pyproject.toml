@@ -32,7 +32,7 @@ dependencies = [
   "send2trash>=1.8",
   "SimpleITK>=2.3",
 
-  "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main",
+  "dicom_utils @ git+https://github.com/drusmanbashir/dicom_utils.git@main ; not (sys_platform == 'win32' and python_full_version >= '3.14')",
   "label_analysis @ git+https://github.com/drusmanbashir/label_analysis.git@main",
   "utilz @ git+https://github.com/drusmanbashir/utilz.git@main",
 ]
