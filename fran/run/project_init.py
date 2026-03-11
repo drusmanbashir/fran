@@ -36,7 +36,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage FRAN projects")
-    parser.add_argument("-t", "--title", help="Project title")
+    parser.add_argument("-t", "--title", "--project-title", "--project", help="Project title", dest="title")
     parser.add_argument(
         "-m", "--mnemonic", help="Mnemonic, must be in MNEMONICS"
     )

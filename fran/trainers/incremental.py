@@ -59,7 +59,7 @@ class IncrementalTrainer (Trainer):
             self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
 
-        self.test_every_n_epochs = 0  # default
+        self.val_every_n_epochs = 2
 
     def setup(
         self,
@@ -72,7 +72,8 @@ class IncrementalTrainer (Trainer):
         devices=1,
         compiled=None,
         profiler=False,
-        test_every_n_epochs: int = 0,
+        val_every_n_epochs: int = 2,
+        test_every_n_epochs: Optional[int] = None,
         cbs=[],
         tags=[],
         description="",
@@ -88,19 +89,23 @@ class IncrementalTrainer (Trainer):
         wandb_grid_epoch_freq: int = 5,
         log_incremental_to_wandb: bool = True,
     ):
+        if test_every_n_epochs is not None:
+            val_every_n_epochs = test_every_n_epochs
+        self.train1_indices = 40 if train1_indices is None else train1_indices
+        self.val_every_n_epochs = int(val_every_n_epochs)
         self._log_incremental_to_wandb = bool(log_incremental_to_wandb)
         self.data_increment_size = data_increment_size
         self.dice_loss_threshold = dice_loss_threshold
         super().setup(
             batch_size=batch_size,
-            train_indices=train1_indices,
+            train_indices=self.train1_indices,
             logging_freq=logging_freq,
             lr=lr,
             devices=devices,
             compiled=compiled,
             wandb=wandb,
             profiler=profiler,
-            val_every_n_epochs=test_every_n_epochs,
+            val_every_n_epochs=self.val_every_n_epochs,
             cbs=cbs,
             tags=tags,
             description=description,
@@ -229,7 +234,6 @@ class IncrementalTrainer (Trainer):
         cbs,
         wandb,
         batchsize_finder,
-        test_every_n_epochs,
         profiler,
         tags,
         description="",
@@ -246,7 +250,6 @@ class IncrementalTrainer (Trainer):
             cbs=cbs,
             wandb=wandb,
             batchsize_finder=batchsize_finder,
-            test_every_n_epochs=test_every_n_epochs,
             profiler=profiler,
             tags=tags,
             description=description,

@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-
+import pandas as pd
 # training.py — minimal runner to Tm.fit()
 import ipdb
 import torch
 from utilz.stringz import headline
 
-from fran.callback.test import PeriodicTest
+from pathlib import Path
 from fran.utils.misc import parse_devices
 
 tr = ipdb.set_trace
 
 import argparse
-from typing import List, Union
 
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
-from fran.trainers.incremental import IncrementalTrainer
 from fran.trainers.trainer import Trainer
 
 
@@ -44,6 +42,19 @@ class UniqueArgValue(argparse.Action):
         setattr(namespace, self.dest, values)
 
 
+def derive_train_indices(ds:str, train_indices:int):
+    assert isinstance(train_indices, int),"train indices must be an int"
+    fldr= ds['folder']
+    fldr = Path(fldr)
+    fn = fldr/("label_analysis/lesion_stats.csv")
+    df = pd.read_csv(fn)
+    counts = df.groupby("case_id").size()
+    counts2 = counts.sort_values(ascending=False)
+    train_indices = min(train_indices, len(counts2))
+    bb= counts2.index[:train_indices]
+    return bb
+
+
 def main(args):
 
     import torch, os
@@ -61,6 +72,15 @@ def main(args):
         # --- Project & configs ----------------------------------------------------
         P = Project(args.project_title)
         devices = parse_devices(args.devices)
+        if args.train_indices is not None:
+            datasources = P.global_properties["datasources"]
+            if len(datasources) != 1:
+                print("train_indices can only be used with a single datasource")
+                raise NotImplementedError
+            train_indices = derive_train_indices(datasources[0], args.train_indices)
+        else: 
+            print("No train indices passed", args.train_indices)
+            train_indices=  None
         C = ConfigMaker(P)
         plan = int(args.plan)
         C.setup(plan)
@@ -77,31 +97,6 @@ def main(args):
 
         # --- Trainer --------------------------------------------------------------
         print_device_info()
-        if args.incremental:
-            inc = IncrementalTrainer(
-                project_title=P.project_title,
-                configs=conf,
-                run_name=args.run_name,
-            )
-            inc.setup(
-                compiled=args.compiled,
-                batch_size=args.batch_size,
-                cbs=cbs,
-                devices=devices,
-                epochs=args.epochs if not args.profiler else 1,
-                lr=args.lr,
-                profiler=args.profiler,
-                wandb=args.wandb,
-                description=args.description,
-                batchsize_finder=args.batchsize_finder,
-                test_every_n_epochs=args.test_every_n_epochs,
-                start_n=args.initial_samples,
-                n_samples_to_add=args.add_samples,
-            )
-            inc.N.compiled = args.compiled
-            inc.fit()
-            headline("Incremental training completed")
-            return
 
         Tm = Trainer(project_title=P.project_title, configs=conf, run_name=args.run_name)
         Tm.setup(
@@ -115,7 +110,8 @@ def main(args):
             wandb=args.wandb,
             description=args.description,
             batchsize_finder=args.batchsize_finder,
-            val_every_n_epochs=args.test_every_n_epochs,
+            train_indices=train_indices,
+            val_every_n_epochs=args.val_every_n_epochs,
         )
         Tm.N.compiled = args.compiled
         Tm.fit()
@@ -127,11 +123,12 @@ if __name__ == "__main__":
         description="Train FRAN model up to Tm.fit(), no preprocessing."
     )
     parser.add_argument(
-        "-t", "--project-title", help="project title", dest="project_title"
+        "-t", "--project-title", "--project", help="project title", dest="project_title"
     )
     parser.add_argument(
         "-p",
         "--plan",
+        "--plan-num",
         type=int,
         default=7,
         help="Active plan index for ConfigMaker.setup()",
@@ -174,12 +171,6 @@ if __name__ == "__main__":
         "--wandb", dest="wandb", type=str2bool, default=True, help="Enable W&B logging"
     )
     parser.add_argument(
-        "--neptune",
-        dest="wandb",
-        type=str2bool,
-        help="Deprecated alias for --wandb",
-    )
-    parser.add_argument(
         "-r",
         "--run-name",
         dest="run_name",
@@ -203,26 +194,27 @@ if __name__ == "__main__":
         choices=[None, "lmdb", "memmap", "zarr"],
         help="Dataset backend if supported",
     )
-    parser.add_argument( "--periodic-test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
+    parser.add_argument(
+        "--val-every-n-epochs",
+        dest="val_every_n_epochs",
+        type=int,
+        default=5,
+        help="Run validation every n epochs",
+    )
+    parser.add_argument(
+        "--train-indices",
+        type=int,
+        default=None,
+        help="Limit training set to the first n cases",
+    )
     parser.add_argument( "--bsf",
         "--batchsize-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batchsize_finder"
     )
-    parser.add_argument(
-        "-i",
-        "--incremental",
-        nargs="?",
-        const=True,
-        default=False,
-        type=str2bool,
-        help="Enable incremental curriculum training loop",
-    )
-    parser.add_argument("--initial-samples", type=int, default=32, help="Initial number of train cases")
-    parser.add_argument("--add-samples", type=int, default=16, help="Number of cases to add per stage")
     args = parser.parse_known_args()[0]
 # %%
     # args.fold = 1
-    # args.project = "nodes"
-    # #
+    # args.project = "kits"
+    #
     # args.devices = '1'
     #
     # headline("DEVS")
