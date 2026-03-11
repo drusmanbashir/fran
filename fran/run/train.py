@@ -6,6 +6,7 @@ import torch
 from utilz.stringz import headline
 
 from pathlib import Path
+from fran.callback.case_recorder import CaseIDRecorder
 from fran.utils.misc import parse_devices
 
 tr = ipdb.set_trace
@@ -87,7 +88,8 @@ def main(args):
         conf = C.configs
 
         # Update dataset params from CLI
-        cbs=[]
+
+        cbs = [CaseIDRecorder(freq=10)]
         conf["dataset_params"]["cache_rate"] = args.cache_rate
         if args.ds_type is not None:
             conf["dataset_params"]["ds_type"] = args.ds_type
