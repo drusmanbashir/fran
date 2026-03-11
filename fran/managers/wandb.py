@@ -66,8 +66,8 @@ def _to_plain(x):
 
 def get_wandb_config():
     commons = load_yaml(common_vars_filename)
-    api_token = commons.get("wandb_api_token") or os.environ.get("WANDB_API_KEY")
-    entity = commons.get("wandb_entity") or os.environ.get("WANDB_ENTITY")
+    api_token = commons.get("wandb_api_token")
+    entity = commons.get("wandb_entity")
     return entity, api_token
 
 
