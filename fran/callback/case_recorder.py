@@ -300,7 +300,6 @@ if __name__ == "__main__":
 
     key = f"case_recorder/fit/df_epoch_{epoch}"
 # %%
-    my_table = run.use_artifact(F"run-{RUN_ID}-{key}").get("{key}")
 
 # %%
     import ipdb

@@ -518,6 +518,14 @@ class Trainer:
             except Exception:
                 pass
             raise
+        finally:
+            logger = getattr(self.trainer, "logger", None)
+            stop = getattr(logger, "stop", None)
+            if callable(stop):
+                try:
+                    stop()
+                except Exception as e:
+                    headline(f"Logger stop failed: {e}")
 
     def best_available_checkpoint(self) -> Optional[Path]:
         model_ckpts = [
