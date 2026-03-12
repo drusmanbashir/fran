@@ -34,6 +34,19 @@ REMAPPING_DICT_OR_LIST = {
     "remapping_imported": "dict",
 }
 
+def parse_excel_remapping(remapping)->list:
+    remapping = ast_literal_eval(remapping)
+    if isinstance(remapping, str):
+        remapping = remapping.split(",")
+        remapping = [ast_literal_eval(rems) for rems in remapping]
+    if not isinstance(remapping, list|tuple):
+        remapping = [remapping]
+    return remapping
+
+
+def parse_excel_datasources(datasources:str)->list:
+    datasources = datasources.replace(" ", "").split(",")
+    return datasources
 
 def cases_in_folder(fldr) -> int:
     fldr = Path(fldr)
@@ -57,7 +70,7 @@ def confirm_plan_analyzed(project, plan):
     if mode == "lbd":
         existing_final_fldr = folders["data_folder_lbd"]
     elif mode in ["patch", "pbd"]:
-        existing_final_fldr = folders["data_folder_patch"]
+        existing_final_fldr = folders["data_folder_pbd"]
     elif mode == "whole":
         existing_final_fldr = folders["data_folder_whole"]
     elif mode == "source" or mode == "sourcepbd":
@@ -91,8 +104,7 @@ def _to_py(obj) -> Any:
     return obj
 
 
-# %%
-def labels_from_remapping(remapping ):
+def labels_from_remapping(remapping_in ):
     def _inner(remapping):
         if is_excel_None(remapping) or remapping == "" :
             return 0
@@ -109,10 +121,14 @@ def labels_from_remapping(remapping ):
         return dest_total
         # fall through to remapping/global if parsing fails
 
-    if remapping is None or remapping == "" or remapping == "nan":
+    if remapping_in is None or remapping_in == "" or remapping_in == "nan":
         return 0
         # return int(max(dest)) + 1
-    remapping = listify(remapping)
+    if not isinstance(remapping_in, list|tuple):
+        remapping= [remapping_in]
+    else:
+        remapping = remapping_in
+
     remappings_out = []
     for rem in remapping:
         labels_all = _inner(rem)
@@ -121,7 +137,7 @@ def labels_from_remapping(remapping ):
     return labels_all
 
 
-def add_out_labels(plan: dict, global_props: Union[dict, None] = None) -> dict:
+def add_out_labels(plan: dict, global_props: Union[dict, None] = None) -> dict|None:
     """
     Priority:
       1) plan['remapping_train']  -> infer mapping, return max(dest)+1
@@ -130,10 +146,10 @@ def add_out_labels(plan: dict, global_props: Union[dict, None] = None) -> dict:
       4) default to 2
     """
     # --- 1) remapping_train ---
-    rmt = plan.get("remapping_train")
-    rms = plan.get("remapping_source")
-    rml = plan.get("remapping_lbd")
-    rmw = plan.get("remapping_whole")
+    rmt = ast_literal_eval(plan.get("remapping_train"))
+    rms = ast_literal_eval(plan.get("remapping_source"))
+    rml = ast_literal_eval(plan.get("remapping_lbd"))
+    rmw = ast_literal_eval(plan.get("remapping_whole"))
     mode = plan.get("mode")
     labels_all_train = labels_from_remapping(rmt )
     # elif (mode == "source" or mode == "whole") and rms:
@@ -195,13 +211,10 @@ def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
         remapping = plan[key]
     if not remapping:
         return
-    remapping = ast_literal_eval(remapping)
-    if isinstance(remapping, str):
-        remapping = remapping.split(",")
-        remapping = [ast_literal_eval(rems) for rems in remapping]
+    remapping = parse_excel_remapping(remapping)
 
     datasources = plan["datasources"]
-    datasources = datasources.replace(" ", "").split(",")
+    datasources = parse_excel_datasources(datasources)
     assert len(datasources) == len(
         remapping
     ), "For each datasource, a unique remapping is required, it can be None."
@@ -368,6 +381,7 @@ class ConfigMaker:
             plan_valid = self.plans.loc[plan_train]["plan_valid"]
         if plan_test is None:
             plan_test = self.plans.loc[plan_train]["plan_test"]
+
         if is_excel_None(plan_valid):
             plan_valid = plan_train
         if is_excel_None(plan_test):
@@ -588,10 +602,12 @@ if __name__ == "__main__":
 
     P = Project(project_title="test")
     P = Project(project_title="pancreas")
+    P = Project(project_title="kidneys")
+    P = Project(project_title="lidc")
 # %%
     P.global_properties
     C = ConfigMaker(P)
-    C.setup(1)
+    C.setup(8)
     pp(C.configs["plan_train"])
     pp(C.configs["plan_valid"])
     C.configs["plan_train"].keys()
@@ -601,7 +617,7 @@ if __name__ == "__main__":
 # %%
     df = C.plans
 # %%
-    conf = C.configs
+    conf = C.configj
     pp(conf["dataset_params"])
     pp(conf["plan_train"])
     conf["plan_train"]["imported_folder"]
@@ -619,9 +635,9 @@ if __name__ == "__main__":
     len(list(lbd_img_fldr.glob("*")))
 # %%
     df = C.plans
-    row = df.iloc[0]
+    row = df.iloc[2]
+    plan = row.to_dict()
 
-    result = C.plans.to_dict("list")
 # %%
 
     conf["dataset_params"]["src_dims"] = make_patch_size(
@@ -636,11 +652,20 @@ if __name__ == "__main__":
     global_props= C.project.global_properties
     global_props["labels_all"]
     rmt = plan.get("remapping_train")
+    rmt= ast_literal_eval(rmt)
+
     rms = plan.get("remapping_source")
+
+    rms= ast_literal_eval(rms)
     rml = plan.get("remapping_lbd")
+
+    rml= ast_literal_eval(rml)
     rmi = plan.get("remapping_imported")
 
+    rmi= ast_literal_eval(rmi)
     rmw = plan.get("remapping_whole")
+    rmw= ast_literal_eval(rmw)
+# %%
     mode = plan.get("mode")
     labels_all_train = labels_from_remapping(rmt )
     # elif (mode == "source" or mode == "whole") and rms:

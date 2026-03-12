@@ -15,13 +15,6 @@ import argparse
 
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
-from typing import List, Union
-from pathlib import Path
-
-from fran.configs.parser import ConfigMaker
-from fran.managers import Project
-from fran.callback.case_recorder import CaseIDRecorder
-from fran.trainers.incremental import IncrementalTrainer
 from fran.trainers.trainer import Trainer
 
 
@@ -102,25 +95,6 @@ def main(args):
             conf["dataset_params"]["ds_type"] = args.ds_type
         if args.fold is not None:
             conf["dataset_params"]["fold"] = args.fold
-
-        # Case recorder is disabled by default in baseline Trainer.init_cbs.
-        # Add it explicitly here so regular train.py runs emit case_recorder logs/tables.
-        if args.case_recorder:
-            if args.case_recorder_dir:
-                case_dir = Path(args.case_recorder_dir).expanduser()
-            else:
-                case_dir = Path(P.log_folder) / "case_recorder"
-            case_dir.mkdir(parents=True, exist_ok=True)
-
-            if args.case_recorder_freq and int(args.case_recorder_freq) > 0:
-                case_freq = int(args.case_recorder_freq)
-            else:
-                case_freq = int(getattr(args, "test_every_n_epochs", 5))
-
-            cbs.append(CaseIDRecorder(freq=case_freq, local_folder=str(case_dir)))
-            print(f"CaseIDRecorder enabled: freq={case_freq}, dir={case_dir}")
-        else:
-            print("CaseIDRecorder disabled")
 
 
         # --- Trainer --------------------------------------------------------------
@@ -233,26 +207,7 @@ if __name__ == "__main__":
         "--train-indices",
         type=int,
         default=None,
-        help="Limit training set to the first n cases",)
-
-    parser.add_argument( "--periodic-test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
-    parser.add_argument(
-        "--case-recorder",
-        type=str2bool,
-        default=True,
-        help="Enable CaseIDRecorder callback",
-    )
-    parser.add_argument(
-        "--case-recorder-freq",
-        type=int,
-        default=0,
-        help="CaseIDRecorder epoch frequency. If 0, falls back to --val/--test frequency",
-    )
-    parser.add_argument(
-        "--case-recorder-dir",
-        default=None,
-        help="Directory for case recorder plot outputs. Defaults to project log_folder/case_recorder",
-
+        help="Limit training set to the first n cases",
     )
     parser.add_argument( "--bsf",
         "--batchsize-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batchsize_finder"

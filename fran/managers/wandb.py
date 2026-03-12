@@ -6,15 +6,11 @@ tr = ipdb.set_trace
 import os
 import re
 import secrets
-import signal
-import threading
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 import torch._dynamo
 import wandb
-from lightning.fabric.loggers.logger import rank_zero_experiment
 from lightning.pytorch.loggers import WandbLogger
 from paramiko import SSHClient
 
@@ -134,7 +130,7 @@ def get_wandb_project(project, mode: str = "online"):
 
 
 def _normalize_run_prefix(project_title: str) -> str:
-    prefix = re.sub(r"[^A-Za-z0-9]+", "-", str(project_title).strip()).strip("-")
+    prefix = "".join(ch for ch in str(project_title).strip() if ch.isalnum())
     return prefix.upper() if prefix else "RUN"
 
 
@@ -145,55 +141,29 @@ def _extract_seq(value: str, prefix: str) -> Optional[int]:
     return int(m.group(1))
 
 
-def _next_ordered_run_id(entity: Optional[str], project_title: str, width: int = 4) -> str:
+def _new_run_id(entity: Optional[str], project_title: str, width: int = 4) -> str:
     prefix = _normalize_run_prefix(project_title)
     path = f"{entity}/{project_title}" if entity else project_title
-    max_seq = 0
+    alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    width = int(width or 2)
     mode = str(os.environ.get("WANDB_MODE", "")).lower()
     if mode in {"offline", "disabled", "dryrun"}:
-        return f"{prefix}-{max_seq + 1:0{int(width)}d}"
+        suffix = "".join(secrets.choice(alphabet) for _ in range(width))
+        return f"{prefix}-{suffix}"
+    used = set()
     try:
         api = wandb.Api()
         for run in api.runs(path):
             for candidate in (run.id, run.name):
-                seq = _extract_seq(candidate, prefix)
-                if seq is not None:
-                    max_seq = max(max_seq, seq)
+                if candidate:
+                    used.add(str(candidate))
     except Exception:
-        # If API lookup fails, start from 1.
-        max_seq = 0
-    return f"{prefix}-{max_seq + 1:0{int(width)}d}"
-
-
-def _next_random_run_id(entity: Optional[str], project_title: str, width: int = 2) -> str:
-    prefix = _normalize_run_prefix(project_title)
-    alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-    path = f"{entity}/{project_title}" if entity else project_title
-    mode = str(os.environ.get("WANDB_MODE", "")).lower()
-
-    used: set[str] = set()
-    if mode not in {"offline", "disabled", "dryrun"}:
-        try:
-            api = wandb.Api()
-            for run in api.runs(path):
-                run_id = getattr(run, "id", None)
-                run_name = getattr(run, "name", None)
-                if run_id:
-                    used.add(str(run_id))
-                if run_name:
-                    used.add(str(run_name))
-        except Exception:
-            pass
-
-    total = len(alphabet) ** int(width)
-    max_attempts = min(total, 512)
-    for _ in range(max_attempts):
-        suffix = "".join(secrets.choice(alphabet) for _ in range(int(width)))
-        candidate = f"{prefix}-{suffix}"
-        if candidate not in used:
-            return candidate
-
-    raise RuntimeError(f"Could not allocate unique W&B run id for prefix '{prefix}' with width={width}")
+        pass
+    while True:
+        suffix = "".join(secrets.choice(alphabet) for _ in range(width))
+        run_id = f"{prefix}-{suffix}"
+        if run_id not in used:
+            return run_id
 
 
 def get_wandb_checkpoint(project, run_id):
@@ -233,10 +203,6 @@ class WandbManager(WandbLogger):
     ):
         self.project = project
         self.prefix = prefix.rstrip("/")
-        self._offline_fallback_used = False
-        self._watchdog_timeout_s = 45
-        self._sync_hint_written = False
-        self._sync_hint_file = None
         self.entity, api_token = get_wandb_config()
         save_dir = _resolve_wandb_save_dir(project)
 
@@ -251,10 +217,11 @@ class WandbManager(WandbLogger):
             wandb_init_kwargs.setdefault("resume", "must")
             name = resolved_run_id
         else:
-            resolved_run_id = _next_random_run_id(
+            width = int(os.environ.get("FRAN_WANDB_SEQ_WIDTH", "2"))
+            resolved_run_id = _new_run_id(
                 entity=self.entity,
                 project_title=project.project_title,
-                width=2,
+                width=width,
             )
             wandb_init_kwargs.setdefault("id", resolved_run_id)
             name = resolved_run_id
@@ -263,7 +230,6 @@ class WandbManager(WandbLogger):
         env_mode = os.environ.get("WANDB_MODE")
         wandb_init_kwargs.setdefault("mode", env_mode if env_mode else wb_mode)
         self._mode = str(wandb_init_kwargs.get("mode", wb_mode)).lower()
-        wandb_init_kwargs.setdefault("settings", wandb.Settings(init_timeout=120))
 
         super().__init__(
             project=project.project_title,
@@ -273,22 +239,11 @@ class WandbManager(WandbLogger):
             log_model=("all" if log_model_checkpoints else False),
             **wandb_init_kwargs,
         )
-
         self.df = self.fetch_project_df() if self._mode not in {"disabled", "offline"} else self._empty_df()
+
 
     def _path(self, leaf: str) -> str:
         return f"{self.prefix}/{leaf}" if self.prefix else leaf
-
-    def _log_event(self, message: str) -> None:
-        print(message)
-        try:
-            out_dir = Path(self.project.log_folder) / "wandb_sync"
-            out_dir.mkdir(parents=True, exist_ok=True)
-            line = f"{datetime.now(timezone.utc).isoformat()} | {message}\n"
-            with (out_dir / "events.log").open("a") as f:
-                f.write(line)
-        except Exception:
-            pass
 
     def log_hyperparams(self, params):
         self.experiment.config.update(_to_plain(params), allow_val_change=True)
@@ -327,94 +282,6 @@ class WandbManager(WandbLogger):
         summary["best"] = remote_summary.get(best_key)
         summary["last"] = remote_summary.get(last_key)
         return summary
-    def _is_init_timeout_error(self, error: Exception) -> bool:
-        msg = str(error).lower()
-        return "run initialization has timed out" in msg or "wandb init hard timeout" in msg
-
-    def _experiment_with_watchdog(self, timeout_s: Optional[int] = None):
-        timeout_s = int(timeout_s or self._watchdog_timeout_s)
-        if threading.current_thread() is not threading.main_thread():
-            return super().experiment
-        previous_handler = signal.getsignal(signal.SIGALRM)
-        previous_timer = signal.getitimer(signal.ITIMER_REAL)
-
-        def _on_timeout(signum, frame):
-            raise TimeoutError(f"wandb init hard timeout after {timeout_s}s")
-
-        signal.signal(signal.SIGALRM, _on_timeout)
-        signal.setitimer(signal.ITIMER_REAL, float(timeout_s))
-        try:
-            return super().experiment
-        finally:
-            signal.setitimer(signal.ITIMER_REAL, 0.0)
-            signal.signal(signal.SIGALRM, previous_handler)
-            if previous_timer[0] > 0:
-                signal.setitimer(signal.ITIMER_REAL, previous_timer[0], previous_timer[1])
-
-    def _resolve_sync_dir(self, run) -> Optional[str]:
-        for settings_attr in ("settings", "_settings"):
-            settings = getattr(run, settings_attr, None)
-            sync_dir = getattr(settings, "sync_dir", None)
-            if sync_dir:
-                return str(Path(sync_dir))
-        run_dir = getattr(run, "dir", None)
-        if run_dir:
-            run_dir = Path(run_dir)
-            if run_dir.name == "files":
-                return str(run_dir.parent)
-            return str(run_dir)
-        return None
-
-    def _write_sync_hint(self, run, reason: str) -> None:
-        sync_dir = self._resolve_sync_dir(run)
-        if not sync_dir:
-            return
-        run_id = getattr(run, "id", None) or self._wandb_init.get("id") or "unknown-run"
-        out_dir = Path(self.project.log_folder) / "wandb_sync"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        sync_cmd = f"wandb sync {sync_dir}"
-        ts = datetime.now(timezone.utc).isoformat()
-        payload = "\n".join(
-            [
-                f"timestamp_utc: {ts}",
-                f"reason: {reason}",
-                f"run_id: {run_id}",
-                f"mode: {self._mode}",
-                f"sync_dir: {sync_dir}",
-                f"command: {sync_cmd}",
-            ]
-        )
-        latest = out_dir / "latest_sync.txt"
-        run_file = out_dir / f"{run_id}_sync.txt"
-        latest.write_text(payload + "\n")
-        run_file.write_text(payload + "\n")
-        self._sync_hint_written = True
-        self._sync_hint_file = str(latest)
-        self._log_event(f"W&B sync info saved: {latest}")
-        self._log_event(f"W&B sync command: {sync_cmd}")
-
-    def _activate_offline_fallback(self, error: Exception) -> None:
-        self._offline_fallback_used = True
-        self._mode = "offline"
-        self._wandb_init["mode"] = "offline"
-        self._wandb_init.pop("resume", None)
-        self._log_event(f"W&B init issue ({error}). Falling back to offline mode.")
-
-    @property
-    @rank_zero_experiment
-    def experiment(self):
-        try:
-            run = self._experiment_with_watchdog()
-        except Exception as error:
-            if not self._offline_fallback_used and self._is_init_timeout_error(error):
-                self._activate_offline_fallback(error)
-                run = self._experiment_with_watchdog()
-                self._write_sync_hint(run, reason="wandb_init_timeout_fallback")
-                return run
-            raise
-        if self._mode == "offline" and not self._sync_hint_written:
-            self._write_sync_hint(run, reason="wandb_offline_mode")
-        return run
 
     @property
     def model_checkpoint(self):
@@ -570,10 +437,7 @@ class WandbManager(WandbLogger):
         return latest_ckpt
 
     def stop(self):
-        run = self.experiment
-        if self._mode == "offline":
-            self._write_sync_hint(run, reason="wandb_stop")
-        if wandb.run is run:
+        if wandb.run is self.experiment:
             wandb.finish()
 
     @property
@@ -584,46 +448,26 @@ class WandbManager(WandbLogger):
     def save_dir(self) -> Optional[str]:
         return str(self.project.checkpoints_parent_folder)
 
+
+if __name__ == "__main__":
 # %%
-#SECTION:-------------------- setup--------------------------------------------------------------------------------------
-if __name__ == '__main__':
-  import json
+#SECTION:-------------------- --------------------------------------------------------------------------------------    
+
   from fran.managers.project import Project
-  from pathlib import Path
-  import pandas as pd
-  import wandb
-
-  entity = "drubashir"
-  project_ti = "kits"                # W&B project name
-  project = Project(project_ti)
-
-# %%
-
-# %%
-  run_id = "KITS-0018"            # run id/name from URL
-  out_dir = Path("wandb_case_recorder_tables")
-  out_dir.mkdir(exist_ok=True, parents=True)
-
-  api = wandb.Api()
-  run = api.run(f"{entity}/{project_ti}/{run_id}")
+  P = Project(project_title="kits")
+  W = WandbManager(project=P)
+  os.environ["WANDB_MODE"] = "online"
+  api= wandb.Api()
+  runs = api.runs()
+  aa = list(runs)
+  print(_new_run_id("drubashir", "KITS"))
+  df = W.fetch_project_df()
+  width =4
+  prefix= "KITS"
+  aa = df['sys/name'].sort_values().iloc[-1]
+  number = int(aa.split("-")[-1])
+  max_seq = aa.split("-")[-1]
+  max_seq = int(max_seq)
+  id = f"{prefix}-{max_seq + 1:0{int(width)}d}"
 
 # %%
-  seen = 0
-  for row in run.scan_history():
-      for k, v in row.items():
-          if not k.startswith("case_recorder/"):
-              continue
-          if not isinstance(v, dict) or v.get("_type") != "table-file":
-              continue
-
-          tr()
-          # W&B file path like media/table/....table.json
-          fpath = v["path"]
-          local = run.file(fpath).download(root=out_dir, replace=True).name
-
-          table_json = json.loads(Path(local).read_text())
-          df = pd.DataFrame(table_json["data"], columns=table_json["columns"])
-
-          safe_key = k.replace("/", "__")
-          df.to_csv(out_dir / f"{safe_key}__step_{row.get('_step','na')}.csv", index=False)
-          seen += 1
