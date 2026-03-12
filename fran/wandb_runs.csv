@@ -1,0 +1,15 @@
+,sys/id,sys/name,sys/creation_time,sys/url,training/best_model_path,training/last_model_path
+0,KITS-0002,KITS-0002,2026-03-05T23:12:58Z,https://wandb.ai/drubashir/kits/runs/KITS-0002,/s/fran_storage/checkpoints/kits/kits/KITS-0002/checkpoints/epoch=209-val0_loss=0.37.ckpt,/s/fran_storage/checkpoints/kits/kits/KITS-0002/checkpoints/last.ckpt
+1,KITS-0007,KITS-0007,2026-03-08T15:33:30Z,https://wandb.ai/drubashir/kits/runs/KITS-0007,/s/fran_storage/checkpoints/kits/kits/KITS-0007/checkpoints/epoch=59-val0_loss=0.45.ckpt,/s/fran_storage/checkpoints/kits/kits/KITS-0007/checkpoints/last.ckpt
+2,KITS-0009,KITS-0009,2026-03-08T20:02:03Z,https://wandb.ai/drubashir/kits/runs/KITS-0009,/s/fran_storage/checkpoints/kits/kits/KITS-0009/checkpoints/epoch=309-val0_loss=0.25.ckpt,/s/fran_storage/checkpoints/kits/kits/KITS-0009/checkpoints/last.ckpt
+3,KITS-0010,KITS-0010,2026-03-10T09:42:09Z,https://wandb.ai/drubashir/kits/runs/KITS-0010,,
+4,KITS-0011,KITS-0011,2026-03-10T09:44:12Z,https://wandb.ai/drubashir/kits/runs/KITS-0011,,
+5,KITS-0012,KITS-0012,2026-03-10T09:45:55Z,https://wandb.ai/drubashir/kits/runs/KITS-0012,,
+6,KITS-0013,KITS-0013,2026-03-10T19:15:19Z,https://wandb.ai/drubashir/kits/runs/KITS-0013,,
+7,KITS-0014,KITS-0014,2026-03-10T19:21:12Z,https://wandb.ai/drubashir/kits/runs/KITS-0014,,
+8,KITS-0015,KITS-0015,2026-03-10T19:25:11Z,https://wandb.ai/drubashir/kits/runs/KITS-0015,,
+9,KITS-0016,KITS-0016,2026-03-10T19:43:29Z,https://wandb.ai/drubashir/kits/runs/KITS-0016,,
+10,KITS-0017,KITS-0017,2026-03-10T19:45:55Z,https://wandb.ai/drubashir/kits/runs/KITS-0017,,
+11,KITS-0018,KITS-0018,2026-03-10T21:04:43Z,https://wandb.ai/drubashir/kits/runs/KITS-0018,/s/fran_storage/checkpoints/kits/kits/KITS-0018/checkpoints/epoch=529-val0_loss=0.70.ckpt,/s/fran_storage/checkpoints/kits/kits/KITS-0018/checkpoints/last.ckpt
+12,KITS-0021,KITS-0021,2026-03-11T00:05:45Z,https://wandb.ai/drubashir/kits/runs/KITS-0021,/s/fran_storage/checkpoints/kits/kits/KITS-0021/checkpoints/epoch=49-val0_loss=1.26.ckpt,/s/fran_storage/checkpoints/kits/kits/KITS-0021/checkpoints/last.ckpt
+13,KITS-0026,KITS-0026,2026-03-11T15:43:47Z,https://wandb.ai/drubashir/kits/runs/KITS-0026,/data/EECS-LITQ/fran_storage/checkpoints/kits/kits/KITS-0026/checkpoints/epoch=459-val0_loss=0.92.ckpt,/data/EECS-LITQ/fran_storage/checkpoints/kits/kits/KITS-0026/checkpoints/last.ckpt

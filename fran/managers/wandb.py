@@ -440,3 +440,10 @@ class WandbManager(WandbLogger):
     @property
     def save_dir(self) -> Optional[str]:
         return str(self.project.checkpoints_parent_folder)
+
+if __name__ == '__main__':
+    from fran.managers.project import Project
+    P = Project(project_title="kits")
+    W = WandbManager(project=P)
+    W.df.to_csv("wandb_runs.csv")
+

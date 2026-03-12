@@ -1,0 +1,52 @@
+_wandb:
+    value:
+        cli_version: 0.24.2
+        e:
+            5dl9s57bbj5ds0pz3xp8cggpavgaf5x1:
+                cpu_count: 24
+                cpu_count_logical: 48
+                cudaVersion: "12.2"
+                disk:
+                    /:
+                        total: "966611075072"
+                        used: "732420702208"
+                email: drusmanbashir@gmail.com
+                executable: /home/ub/mambaforge/envs/dl/bin/python
+                git:
+                    commit: 25e2abfd6b2365cd241c3db093ac63a58bc43304
+                    remote: git@github.com:drusmanbashir/fran.git
+                gpu: NVIDIA GeForce RTX 3090
+                gpu_count: 2
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-a9edf255-7c38-b3d7-a76d-c6dca4f3e8b2
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-121f63ee-4400-2c13-6d14-5949d4cb4590
+                host: Sinclair
+                memory:
+                    total: "134920597504"
+                os: Linux-6.17.0-14-generic-x86_64-with-glibc2.39
+                program: <stdin>
+                python: CPython 3.12.6
+                root: /home/ub/code/fran/fran/run
+                startedAt: "2026-03-12T19:56:55.351989Z"
+                writerId: 5dl9s57bbj5ds0pz3xp8cggpavgaf5x1
+        m: []
+        python_version: 3.12.6
+        t:
+            "1":
+                - 105
+            "2":
+                - 105
+            "3":
+                - 2
+            "4": 3.12.6
+            "5": 0.24.2
+            "12": 0.24.2
+            "13": linux-x86_64

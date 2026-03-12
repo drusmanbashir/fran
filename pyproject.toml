@@ -75,6 +75,7 @@ train = [
 tracking = [
   "neptune>=1.10",
   "plotly>=5.0",
+  "kaleido",
   "seaborn>=0.12",
 ]
 detection = [
