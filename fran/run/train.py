@@ -12,11 +12,9 @@ from fran.utils.misc import parse_devices
 tr = ipdb.set_trace
 
 import argparse
-<<<<<<< HEAD
 
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
-=======
 from typing import List, Union
 from pathlib import Path
 
@@ -24,7 +22,6 @@ from fran.configs.parser import ConfigMaker
 from fran.managers import Project
 from fran.callback.case_recorder import CaseIDRecorder
 from fran.trainers.incremental import IncrementalTrainer
->>>>>>> 2833b6b (WIP local changes before pull)
 from fran.trainers.trainer import Trainer
 
 
@@ -225,7 +222,6 @@ if __name__ == "__main__":
         choices=[None, "lmdb", "memmap", "zarr"],
         help="Dataset backend if supported",
     )
-<<<<<<< HEAD
     parser.add_argument(
         "--val-every-n-epochs",
         dest="val_every_n_epochs",
@@ -237,8 +233,8 @@ if __name__ == "__main__":
         "--train-indices",
         type=int,
         default=None,
-        help="Limit training set to the first n cases",
-=======
+        help="Limit training set to the first n cases",)
+
     parser.add_argument( "--periodic-test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
     parser.add_argument(
         "--case-recorder",
@@ -256,7 +252,7 @@ if __name__ == "__main__":
         "--case-recorder-dir",
         default=None,
         help="Directory for case recorder plot outputs. Defaults to project log_folder/case_recorder",
->>>>>>> 2833b6b (WIP local changes before pull)
+
     )
     parser.add_argument( "--bsf",
         "--batchsize-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batchsize_finder"
