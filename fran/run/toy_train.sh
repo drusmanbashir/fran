@@ -9,10 +9,10 @@ python train.py \
   --fold 1 \
   --epochs 500 \
   --bsf false \
-  --bs 2 \
+  --bs 18 \
   --devices [1] \
   --wandb true \
-  --train-indices 20 \
-  --val-every-n-epochs 1
+  --train-indices 40 \
+  --val-every-n-epochs 5
 # python  train.py -t lungs  -e 500 --lr 11e-3 …-b 2
 
