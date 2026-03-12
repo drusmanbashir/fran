@@ -297,7 +297,6 @@ class WandbManager(WandbLogger):
     def wb_run(self):
         return self.experiment
 
-<<<<<<< HEAD
     def _project_path(self) -> str:
         return f"{self.entity}/{self.project.project_title}" if self.entity else self.project.project_title
 
@@ -328,7 +327,6 @@ class WandbManager(WandbLogger):
         summary["best"] = remote_summary.get(best_key)
         summary["last"] = remote_summary.get(last_key)
         return summary
-=======
     def _is_init_timeout_error(self, error: Exception) -> bool:
         msg = str(error).lower()
         return "run initialization has timed out" in msg or "wandb init hard timeout" in msg
@@ -417,7 +415,6 @@ class WandbManager(WandbLogger):
         if self._mode == "offline" and not self._sync_hint_written:
             self._write_sync_hint(run, reason="wandb_offline_mode")
         return run
->>>>>>> fc7a7aa (wandb fix)
 
     @property
     def model_checkpoint(self):
