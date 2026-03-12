@@ -145,6 +145,10 @@ class CaseIDRecorder(Callback):
             self.reset()
 
 
+
+
+    def _store(self,trainer, stage, loss_dict,epoch):
+            mini_df = self.create_limited_df(loss_dict)
             df_final = self.pivot_batch_cols(mini_df)
             val_vars  = [var for var in df_final.columns if "dice" in var]
             df_long = df_final.melt(

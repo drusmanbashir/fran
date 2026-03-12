@@ -503,12 +503,13 @@ if __name__ == "__main__":
     run_kw = run_w
     run_ = inferer_from_params(run_kw)
     if "Whole" in str(run_):
-        label_loc = TSL.kidney.label_localiser
+        label_loc = TSL.abdomen.label_localiser
     elif "Base" in str(run_):
-        label_loc = TSL.kidney.label_minimal
+        label_loc = TSL.abdomen.label_minimal
     else: raise ValueError
 
     safe_mode = True
+    overwrite = False
     overwrite = True
     debug_ = True
     debug_ = False
@@ -529,8 +530,27 @@ if __name__ == "__main__":
     )
 
 # %%
-    imgs = imgs_bosniak[:10]
+    bads =[ "00183"]
     imgs = kits_imgs
+    imgs_out=[]
+    bads_out=[]
+    for img in imgs:
+        print(img)
+        add=True
+        for bad in bads:
+            if bad in img.name:
+                print(f"Not added{img.name}" )
+                add=False
+                bads_out.append(img)
+        if add==True:
+            imgs_out.append(img)
+
+
+# %%
+
+    imgs = imgs_bosniak[:10]
+    imgs=imgs_out
+    imgs = bads_out
     preds = En.run(imgs,chunksize=1,overwrite=overwrite)
 # %%
 # SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
@@ -600,27 +620,6 @@ if __name__ == "__main__":
             print("\n------------------------------------------------------------------")
             print(f"Error:Could not find {remote_dir}.\nIs this a remote folder and exists?\n")
             # return
-
-# %%
-        remote_fnames = [os.path.join(remote_dir, f) for f in fnames]
-        local_fnames = [os.path.join(local_dir, f) for f in fnames]
-        maybe_makedirs(local_dir)
-        downloaded_files = []
-        for rem, loc in zip(remote_fnames, local_fnames):
-            if Path(loc).exists():
-                print(f"Local file {loc} exists already.")
-                downloaded_files.append(loc)
-            else:
-                print(f"Copying file {rem} to local folder {local_dir}")
-                ftp_client.get(rem, loc)
-                downloaded_files.append(loc)
-
-        if not downloaded_files:
-            return None
-        latest_ckpt = max(downloaded_files, key=lambda f: Path(f).stat().st_mtime)
-        return latest_ckpt
-
-
 
 # %%
     En = CascadeInferer(
@@ -707,7 +706,7 @@ if __name__ == "__main__":
 
 # SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
-    devices = [1]
+    devices = [0]
     debug_ = False
     safe_mode = True
 
@@ -722,10 +721,10 @@ if __name__ == "__main__":
     )
 # %%
 
-    imgs = nodes_imgs_training
     imgs = nodes_imgs[:2]
     imgs = imgs_lidc
     imgs = imgs_colonmsd
+    imgs = kits_imgs
     # preds = W.run(imgs_crc, chunksize=6)
     preds = W.run(imgs, chunksize=2, overwrite=False)
 # %%
