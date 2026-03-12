@@ -10,6 +10,58 @@ tr = ipdb.set_trace
 import shutil
 from fran.utils.common import COMMON_PATHS
 
+
+def checkpoint_from_model_id_remote(model_id, project, remote_dir):
+
+        remote_dir =str(Path(self.model_checkpoint).parent)
+        remote_dir = str(Path(ckpt_path).parent)
+        latest_ckpt = self.shadow_remote_ckpts(remote_dir)
+        hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
+        local_dir = self.project.checkpoints_parent_folder / self.run_id / "checkpoints"
+        print(f"\nSSH to remote folder {remote_dir}")
+
+        client = SSHClient()
+        client.load_system_host_keys()
+        client.connect(
+            hpc_settings["host"],
+            username=hpc_settings["username"],
+            password=hpc_settings["password"],
+        )
+
+        ftp_client = client.open_sftp()
+        try:
+            fnames = []
+            for f in sorted(
+                ftp_client.listdir_attr(remote_dir),
+                key=lambda k: k.st_mtime,
+                reverse=True,
+            ):
+                fnames.append(f.filename)
+        except FileNotFoundError:
+            print("\n------------------------------------------------------------------")
+            print(f"Error:Could not find {remote_dir}.\nIs this a remote folder and exists?\n")
+            return
+
+        remote_fnames = [os.path.join(remote_dir, f) for f in fnames]
+        local_fnames = [os.path.join(local_dir, f) for f in fnames]
+        maybe_makedirs(local_dir)
+        downloaded_files = []
+        for rem, loc in zip(remote_fnames, local_fnames):
+            if Path(loc).exists():
+                print(f"Local file {loc} exists already.")
+                downloaded_files.append(loc)
+            else:
+                print(f"Copying file {rem} to local folder {local_dir}")
+                ftp_client.get(rem, loc)
+                downloaded_files.append(loc)
+
+        if not downloaded_files:
+            return None
+        latest_ckpt = max(downloaded_files, key=lambda f: Path(f).stat().st_mtime)
+        return latest_ckpt
+
+
+
 def checkpoint_from_model_id(model_id, sort_method="last", normalize_keys=True): #CODE: Move this function to utils 
     fldr = Path(COMMON_PATHS["checkpoints_parent_folder"])
     project_fldrs = [f for f in fldr.rglob(model_id) if f.is_dir()]

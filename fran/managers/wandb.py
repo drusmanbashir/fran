@@ -1,4 +1,6 @@
 from __future__ import annotations
+import ipdb
+tr = ipdb.set_trace
 
 import os
 import re
@@ -18,8 +20,51 @@ try:
 except Exception:
     np = None
 
-
+import stat
 torch._dynamo.config.suppress_errors = True
+
+def download_path_no_wandb(remote_dir_parent, local_dir_parent)->list:
+        hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
+        client = SSHClient()
+        client.load_system_host_keys()
+        client.connect(
+            hpc_settings["host"],
+            username=hpc_settings["username"],
+            password=hpc_settings["password"],
+        )
+
+        with client.open_sftp() as ftp_client:
+            def _recursive_filenames(remote_dir_parent):
+                fnames = []
+                aa = ftp_client.listdir_attr(remote_dir_parent)
+                for aa1 in aa:
+                    if stat.S_ISDIR(aa1.st_mode):
+                        fnames.extend(
+                            _recursive_filenames(
+                                os.path.join(remote_dir_parent, aa1.filename)
+                            )
+                        )
+                    elif ".ckpt" in aa1.filename:
+                        fnames.append(os.path.join(remote_dir_parent, aa1.filename))
+                    else:
+                        print(f"Skipping {aa1.filename} as not a ckpt")
+                return fnames
+
+            ckpt_files = _recursive_filenames(remote_dir_parent)
+            if local_dir_parent is None:
+                return ckpt_files
+
+            local_dir_parent = Path(local_dir_parent)
+            local_files = []
+            for remote_file in ckpt_files:
+                rel = remote_file.split("/")[-1]
+                local_file = local_dir_parent / rel
+                local_file.parent.mkdir(parents=True, exist_ok=True)
+                ftp_client.get(remote_file, str(local_file))
+                local_files.append(local_file)
+        return local_files
+
+
 
 
 def _is_writable_dir(path: Path) -> bool:
@@ -125,7 +170,6 @@ def get_wandb_checkpoint(project, run_id):
     wl.stop()
     return ckpt
 
-
 def download_wandb_checkpoint(project, run_id):
     wl = WandbManager(
         project=project,
@@ -174,6 +218,7 @@ class WandbManager(WandbLogger):
             )
             wandb_init_kwargs.setdefault("id", resolved_run_id)
             name = resolved_run_id
+        self._resolved_run_id = resolved_run_id
 
         env_mode = os.environ.get("WANDB_MODE")
         wandb_init_kwargs.setdefault("mode", env_mode if env_mode else wb_mode)
@@ -200,10 +245,41 @@ class WandbManager(WandbLogger):
     def wb_run(self):
         return self.experiment
 
+    def _project_path(self) -> str:
+        return f"{self.entity}/{self.project.project_title}" if self.entity else self.project.project_title
+
+    def _run_path(self, run_id: Optional[str] = None) -> str:
+        run_id = run_id or self.run_id
+        return f"{self._project_path()}/{run_id}"
+
+    def _remote_run(self):
+        try:
+            api = wandb.Api()
+            return api.run(self._run_path())
+        except Exception:
+            return None
+
+    def _checkpoint_summary(self) -> dict[str, Any]:
+        best_key = self._path("best_model_path")
+        last_key = self._path("last_model_path")
+        summary = {
+            "best": self.experiment.summary.get(best_key),
+            "last": self.experiment.summary.get(last_key),
+        }
+        if summary["best"] or summary["last"]:
+            return summary
+        remote_run = self._remote_run()
+        if remote_run is None:
+            return summary
+        remote_summary = remote_run.summary
+        summary["best"] = remote_summary.get(best_key)
+        summary["last"] = remote_summary.get(last_key)
+        return summary
+
     @property
     def model_checkpoint(self):
-        key = self._path("best_model_path")
-        return self.experiment.summary.get(key)
+        summary = self._checkpoint_summary()
+        return summary["best"] or summary["last"]
 
     @model_checkpoint.setter
     def model_checkpoint(self, value):
@@ -295,16 +371,18 @@ class WandbManager(WandbLogger):
         raise RuntimeError("No runs found in project")
 
     def download_checkpoints(self):
-        ckpt_path = self.model_checkpoint
+        summary = self._checkpoint_summary()
+        ckpt_path = summary["best"] or summary["last"]
         if not ckpt_path:
             print("No checkpoints in this run")
             return
         remote_dir = str(Path(ckpt_path).parent)
         latest_ckpt = self.shadow_remote_ckpts(remote_dir)
         if latest_ckpt:
-            self.experiment.summary.update(
-                {self._path("best_model_path"): str(latest_ckpt)}
-            )
+            updates = {self._path("last_model_path"): str(latest_ckpt)}
+            if summary["best"]:
+                updates[self._path("best_model_path")] = str(latest_ckpt)
+            self.experiment.summary.update(updates)
 
     def shadow_remote_ckpts(self, remote_dir):
         hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
@@ -357,7 +435,7 @@ class WandbManager(WandbLogger):
 
     @property
     def run_id(self):
-        return self.experiment.id
+        return self.experiment.id or self._resolved_run_id
 
     @property
     def save_dir(self) -> Optional[str]:
