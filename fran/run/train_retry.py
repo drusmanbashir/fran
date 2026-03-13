@@ -12,6 +12,23 @@ def str2bool(v: str) -> bool:
     return str(v).lower() in {"1", "true", "t", "yes", "y"}
 
 
+def run_stream(cmd):
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    lines = []
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        print(line, end="")
+        lines.append(line)
+    rc = proc.wait()
+    return rc, "".join(lines)
+
+
 def main():
     p = argparse.ArgumentParser(
         description="Run train.py and retry on CUDA OOM with lower batch size."
@@ -45,7 +62,7 @@ def main():
     last_rc = 1
 
     for attempt in range(1, args.max_retries + 1):
-        cmd = [args.python, str(train_script)]
+        cmd = [args.python, "-u", str(train_script)]
         if args.project_title is not None:
             cmd += ["--project", str(args.project_title)]
         cmd += ["--plan-num", str(args.plan)]
@@ -81,17 +98,10 @@ def main():
             cmd += ["--train-indices", str(args.train_indices)]
 
         print(f"[train_retry] attempt={attempt}/{args.max_retries} bs={bs} bsf=false")
-        proc = subprocess.run(cmd, capture_output=True, text=True)
-        if proc.stdout:
-            print(proc.stdout, end="")
-        if proc.stderr:
-            print(proc.stderr, end="", file=sys.stderr)
-
-        last_rc = proc.returncode
+        last_rc, output = run_stream(cmd)
         if last_rc == 0:
             break
 
-        output = f"{proc.stdout or ''}{proc.stderr or ''}"
         if not any(marker in output for marker in OOM_MARKERS):
             break
 
