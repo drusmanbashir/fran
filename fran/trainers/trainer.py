@@ -3,7 +3,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
-from monai.losses.dice import DiceLoss
 import torch
 from fastcore.all import in_ipython
 from lightning.pytorch import Trainer as TrainerL
@@ -13,7 +12,6 @@ from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
 from lightning.pytorch.profilers import AdvancedProfiler
 from utilz.cprint import cprint
 from utilz.helpers import info_from_filename
-from utilz.imageviewers import ImageMaskViewer
 from utilz.stringz import headline
 
 from fran.callback.base import BatchSizeSafetyMargin
@@ -134,7 +132,11 @@ class Trainer:
         wandb_grid_epoch_freq: int = 5,
         permanent_checkpoint_every_n_epochs: int = 100,
     ):
-        
+        if isinstance(train_indices, str):
+            train_indices = train_indices.strip()
+            if train_indices == "" or train_indices.lower() in {"none", "null"}:
+                train_indices = None
+
         self.val_every_n_epochs = int(val_every_n_epochs)
         self.train_indices = train_indices
         self.val_indices = val_indices
@@ -602,7 +604,7 @@ if __name__ == "__main__":
     compiled = False
     run_name = None
     run_name = None
-    run_name = 'KITS-0026'
+    run_name = 'KITS-0018'
 # %%
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
@@ -638,29 +640,10 @@ if __name__ == "__main__":
     tmt.collate_fn
 
 # %%
-    dl =D.val_dataloader()
 
     iteri = iter(dl)
 
     batch = next(iteri)
-    img = batch["image"]
-    batch.keys()
-    img.meta
-    img = img.cpu()
-# %%
-
-    Tm.N.setup()
-
-    preds = Tm.N.model(img)
-    preda  = preds[0]
-    targ = batch["lm"]
-    loss = Tm.N.loss_fnc(preds, targ,use_mask=True)
-
-    n = 1
-    ImageMaskViewer([img[n,0],targ[n,0]])
-    batch.keys()
-    batch['preds'] = preds
-    torch.save(batch, "batch.pt")
 # %%
     D = DataManagerDual(
         project_title=P.project_title,
@@ -673,24 +656,9 @@ if __name__ == "__main__":
 # %%
     D.prepare_data()
 # %%
-    from fran.transforms.spatialtransforms import one_hot
     Tm.N
     preds = Tm.N.model(batch["image"])
-    pred = preds[0]
-    pred[pred==PAD_VALUE]=0
-    targ[targ==PAD_VALUE]=0
-    pred.shape
-    pred2 = torch.argmax(pred, dim=1,keepdim=False)
-    pred3 = one_hot(pred2,classes=3,axis=1)
-
-
-    D = DiceLoss(include_background=False,to_onehot_y=True,)
-    pred3= pred3.float()
-    losses = Tm.N.loss_fnc(pred3, targ)
-
-    loss_dict = Tm.N.loss_fnc.loss_dict
-    D(pred, targ)
-
+    preds
 # %%
     # n=0
     # while n<250:
