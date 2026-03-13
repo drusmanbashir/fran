@@ -8,64 +8,95 @@ from pathlib import Path
 OOM_MARKERS = ("CUDA out of memory", "torch.OutOfMemoryError")
 
 
+def str2bool(v: str) -> bool:
+    return str(v).lower() in {"1", "true", "t", "yes", "y"}
+
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Retry fran/run/train.py in a fresh process when CUDA OOM occurs."
+    p = argparse.ArgumentParser(
+        description="Run train.py and retry on CUDA OOM with lower batch size."
     )
-    parser.add_argument("--max-retries", type=int, default=3)
-    parser.add_argument("--step", type=int, default=1, help="Batch-size decrement per OOM")
-    parser.add_argument("--min-bs", type=int, default=1)
-    parser.add_argument("--start-bs", type=int, default=None)
-    parser.add_argument("--python", default=sys.executable)
-    args, train_args = parser.parse_known_args()
+    p.add_argument("--max-retries", type=int, default=3)
+    p.add_argument("--step", type=int, default=1)
+    p.add_argument("--min-bs", type=int, default=1)
+    p.add_argument("--python", default=sys.executable)
+
+    p.add_argument("-t", "--project-title", "--project", dest="project_title")
+    p.add_argument("-p", "--plan", "--plan-num", type=int, default=7)
+    p.add_argument("--devices", default="1")
+    p.add_argument("-lr", "--learning-rate", dest="lr", type=float, default=None)
+    p.add_argument("--bs", "--batch-size", dest="batch_size", type=int, default=4)
+    p.add_argument("-f", "--fold", type=int, default=None)
+    p.add_argument("-e", "--epochs", type=int, default=600)
+    p.add_argument("--compiled", type=str2bool, default=True)
+    p.add_argument("--profiler", type=str2bool, default=False)
+    p.add_argument("--wandb", type=str2bool, default=True)
+    p.add_argument("-r", "--run-name", dest="run_name", default=None)
+    p.add_argument("--description", default=None)
+    p.add_argument("--cache-rate", type=float, default=0.0)
+    p.add_argument("--ds-type", default=None)
+    p.add_argument("--val-every-n-epochs", dest="val_every_n_epochs", type=int, default=5)
+    p.add_argument("--train-indices", type=int, default=None)
+    p.add_argument("--bsf", "--batchsize-finder", dest="batchsize_finder", type=str2bool, default=False)
+    args = p.parse_args()
 
     train_script = Path(__file__).with_name("train.py")
-    bs = args.start_bs
-
-    clean_args = []
-    i = 0
-    while i < len(train_args):
-        arg = train_args[i]
-        if arg.startswith("--bs=") or arg.startswith("--batch-size="):
-            if bs is None:
-                bs = int(arg.split("=", 1)[1])
-            i += 1
-            continue
-        if arg in {"--bs", "--batch-size"}:
-            if bs is None and i + 1 < len(train_args):
-                bs = int(train_args[i + 1])
-            i += 2
-            continue
-        if arg.startswith("--bsf=") or arg.startswith("--batchsize-finder="):
-            i += 1
-            continue
-        if arg in {"--bsf", "--batchsize-finder"}:
-            i += 2
-            continue
-        clean_args.append(arg)
-        i += 1
-    if bs is None:
-        bs = 4
-
+    bs = int(args.batch_size)
     last_rc = 1
+
     for attempt in range(1, args.max_retries + 1):
-        cmd = [args.python, str(train_script), *clean_args, "--bs", str(bs), "--bsf", "false"]
+        cmd = [args.python, str(train_script)]
+        if args.project_title is not None:
+            cmd += ["--project", str(args.project_title)]
+        cmd += ["--plan-num", str(args.plan)]
+        cmd += ["--devices", str(args.devices)]
+        if args.lr is not None:
+            cmd += ["--learning-rate", str(args.lr)]
+        cmd += ["--bs", str(bs)]
+        if args.fold is not None:
+            cmd += ["--fold", str(args.fold)]
+        cmd += [
+            "--epochs",
+            str(args.epochs),
+            "--compiled",
+            str(args.compiled).lower(),
+            "--profiler",
+            str(args.profiler).lower(),
+            "--wandb",
+            str(args.wandb).lower(),
+            "--cache-rate",
+            str(args.cache_rate),
+            "--val-every-n-epochs",
+            str(args.val_every_n_epochs),
+            "--bsf",
+            "false",
+        ]
+        if args.run_name is not None:
+            cmd += ["--run-name", str(args.run_name)]
+        if args.description is not None:
+            cmd += ["--description", str(args.description)]
+        if args.ds_type is not None:
+            cmd += ["--ds-type", str(args.ds_type)]
+        if args.train_indices is not None:
+            cmd += ["--train-indices", str(args.train_indices)]
+
         print(f"[train_retry] attempt={attempt}/{args.max_retries} bs={bs} bsf=false")
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.stdout:
             print(proc.stdout, end="")
         if proc.stderr:
             print(proc.stderr, end="", file=sys.stderr)
+
         last_rc = proc.returncode
-        if proc.returncode == 0:
+        if last_rc == 0:
             break
+
         output = f"{proc.stdout or ''}{proc.stderr or ''}"
         if not any(marker in output for marker in OOM_MARKERS):
-            print("[train_retry] non-OOM failure; stopping retries.")
             break
+
         next_bs = max(args.min_bs, bs - args.step)
         if next_bs == bs:
-            print("[train_retry] reached minimum batch size; stopping retries.")
             break
         bs = next_bs
 
