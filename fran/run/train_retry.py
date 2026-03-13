@@ -15,6 +15,15 @@ def str2bool(v: str) -> bool:
     return str(v).lower() in {"1", "true", "t", "yes", "y"}
 
 
+def optional_int(v: str):
+    if v is None:
+        return None
+    value = str(v).strip().lower()
+    if value in {"", "none", "null"}:
+        return None
+    return int(v)
+
+
 def run_stream(cmd):
     proc = subprocess.Popen(
         cmd,
@@ -56,7 +65,7 @@ def main():
     p.add_argument("--cache-rate", type=float, default=0.0)
     p.add_argument("--ds-type", default=None)
     p.add_argument("--val-every-n-epochs", dest="val_every_n_epochs", type=int, default=5)
-    p.add_argument("--train-indices", type=int, default=None)
+    p.add_argument("--train-indices", type=optional_int, default=None)
     p.add_argument("--bsf", "--batchsize-finder", dest="batchsize_finder", type=str2bool, default=False)
     args = p.parse_args()
 

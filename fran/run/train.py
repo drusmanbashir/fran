@@ -56,6 +56,15 @@ def derive_train_indices(ds:str, train_indices:int):
     return bb
 
 
+def optional_int(v: str):
+    if v is None:
+        return None
+    value = str(v).strip().lower()
+    if value in {"", "none", "null"}:
+        return None
+    return int(v)
+
+
 def main(args):
 
     import torch, os
@@ -205,7 +214,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--train-indices",
-        type=int,
+        type=optional_int,
         default=None,
         help="Limit training set to the first n cases",
     )
