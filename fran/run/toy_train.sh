@@ -4,8 +4,8 @@ python train_retry.py \
   --plan-num 3 \
   --fold 1 \
   --epochs 500 \
-  --bs 4 \
-  --bsf false \
+  --bs 3 \
+  --bsf true \
   --devices "[1]" \
   --wandb true \
   --train-indices 20 \

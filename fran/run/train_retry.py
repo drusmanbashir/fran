@@ -4,6 +4,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import ipdb
+tr = ipdb.set_trace
+
 
 OOM_MARKERS = ("CUDA out of memory", "torch.OutOfMemoryError")
 
@@ -84,10 +87,16 @@ def main():
             "--cache-rate",
             str(args.cache_rate),
             "--val-every-n-epochs",
-            str(args.val_every_n_epochs),
+            str(args.val_every_n_epochs)]
+        tr()
+        if args.batchsize_finder == True and attempt == 1:
+            cmd += [
             "--bsf",
-            "false",
-        ]
+            "true"]
+        else:
+            cmd += [
+            "--bsf",
+            "false"]
         if args.run_name is not None:
             cmd += ["--run-name", str(args.run_name)]
         if args.description is not None:
@@ -97,7 +106,9 @@ def main():
         if args.train_indices is not None:
             cmd += ["--train-indices", str(args.train_indices)]
 
-        print(f"[train_retry] attempt={attempt}/{args.max_retries} bs={bs} bsf=false")
+        if attempt>1:
+            print("BSF os turned off")
+        print(f"[train_retry] attempt={attempt}/{args.max_retries} bs={bs} bsf={args.batchsize_finder}")
         last_rc, output = run_stream(cmd)
         if last_rc == 0:
             break
