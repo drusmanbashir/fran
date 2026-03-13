@@ -96,8 +96,10 @@ class CaseIDRecorder(Callback):
         self.set_figure_params(dpi)
         self.freq = freq
         self.local_folder = Path(local_folder)
+        self.local_folder.mkdir(parents=True, exist_ok=True)
         self.plot_x = plot_x
         self.width = 80*self.plot_x+200
+        self._warned_plotly_export = False
 
 
     def on_fit_start(self, trainer, pl_module):
@@ -163,9 +165,10 @@ class CaseIDRecorder(Callback):
             figs_labels_caseidchunks = self.create_plotly(df_long, chunk_size=self.plot_x)
             for label in figs_labels_caseidchunks.keys():
                 figs = figs_labels_caseidchunks[label]
-                for ind, fig_casegroup in enumerate(figs):
+                for ind, (fig_casegroup, df_chunk, cases_chunk) in enumerate(figs):
                     fig_fname = f"{self.local_folder}/{stage}_{epoch}_{label}_casesgp{ind}.png"
-                    fig_casegroup.write_image(fig_fname, scale=2)
+                    if not self._write_plot(fig_casegroup, df_chunk, cases_chunk, label, fig_fname):
+                        continue
                     try:
                         # trainer.logger.log_image(key = f"{stage}_boxplots", images=[fig_fname])
                         trainer.logger.log_image(key = f"{stage}_{label}_casesgp{ind}_boxplots", images=[fig_fname])
@@ -271,9 +274,59 @@ class CaseIDRecorder(Callback):
                 fig.update_traces(jitter=0.2, pointpos=0)
                 fig.update_layout(width=self.width)
                 fig.update_xaxes(tickangle=90, tickfont={"size": 24})
-                figs_this_label.append(fig)
+                figs_this_label.append((fig, df_chunk, list(cases_chunk)))
             figs[label]= figs_this_label
         return figs
+
+    def _write_plot(self, fig, df_chunk, cases_chunk, label, fig_fname) -> bool:
+        try:
+            fig.write_image(fig_fname, scale=2)
+            return True
+        except Exception as e:
+            if not self._warned_plotly_export:
+                cprint(
+                    f"Plotly static export unavailable ({e}). Falling back to seaborn/matplotlib.",
+                    color="yellow",
+                )
+                self._warned_plotly_export = True
+            return self._write_plot_matplotlib(df_chunk, cases_chunk, label, fig_fname)
+
+    def _write_plot_matplotlib(self, df_chunk, cases_chunk, label, fig_fname) -> bool:
+        try:
+            plt.ioff()
+            df_mpl = df_chunk.copy()
+            df_mpl["case_id"] = df_mpl["case_id"].astype(str)
+            order = [str(c) for c in cases_chunk]
+            fig_w = max(12, min(80, int(len(order) * 0.75)))
+            fig, ax = plt.subplots(figsize=(fig_w, 8), dpi=150)
+            sns.violinplot(
+                data=df_mpl,
+                x="case_id",
+                y="loss_dice",
+                order=order,
+                inner="box",
+                cut=0,
+                ax=ax,
+            )
+            sns.stripplot(
+                data=df_mpl,
+                x="case_id",
+                y="loss_dice",
+                order=order,
+                color="black",
+                size=2,
+                alpha=0.35,
+                ax=ax,
+            )
+            ax.set_title(str(label))
+            ax.tick_params(axis="x", rotation=90, labelsize=8)
+            fig.tight_layout()
+            fig.savefig(fig_fname)
+            plt.close(fig)
+            return True
+        except Exception as e:
+            cprint(f"Fallback plot write failed: {e}", color="red")
+            return False
 #
 
 
