@@ -88,7 +88,6 @@ def main():
             str(args.cache_rate),
             "--val-every-n-epochs",
             str(args.val_every_n_epochs)]
-        tr()
         if args.batchsize_finder == True and attempt == 1:
             cmd += [
             "--bsf",
