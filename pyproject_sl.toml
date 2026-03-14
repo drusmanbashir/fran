@@ -38,6 +38,7 @@ full = [
   "fastcore",
   "torchinfo",
   "torchio==0.20.22",
+  "dynamic-network-architectures>=0.4",
   "batchgenerators>=0.25",
   "nnunet",
   "connected_components_3d>=3.17.0",

@@ -152,12 +152,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wandb", dest="wandb", type=str2bool, default=True, help="Enable W&B logging"
     )
-    parser.add_argument(
-        "--neptune",
-        dest="wandb",
-        type=str2bool,
-        help="Deprecated alias for --wandb",
-    )
     parser.add_argument("--run-name", default=None, help='Run name (e.g., "LITS-1290")')
     parser.add_argument(
         "--description", default=None, help="Optional experiment description"

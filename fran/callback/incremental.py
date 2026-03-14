@@ -17,9 +17,21 @@ from utilz.cprint import cprint
 from fran.callback.case_recorder import CaseIDRecorder
 tr = ipdb.set_trace
 
+def _flatten_wandb_metrics(metrics: dict, prefix: str = "") -> dict:
+    flat = {}
+    for key, value in metrics.items():
+        leaf = f"{prefix}/{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            flat.update(_flatten_wandb_metrics(value, leaf))
+        else:
+            flat[leaf] = value
+    return flat
+
+
 def _log_wandb_metrics(trainer, metrics: dict, step: int | None = None):
     if not getattr(trainer, "is_global_zero", True):
         return
+    metrics = _flatten_wandb_metrics(metrics)
 
     loggers = getattr(trainer, "loggers", None)
     if not loggers:

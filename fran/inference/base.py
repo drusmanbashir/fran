@@ -1,19 +1,22 @@
 # %%
 import os
+
 from utilz.cprint import cprint
 
-from fran.inference.helpers import infer_project
+from fran.inference.helpers import (filter_existing_files, get_device,
+                                    get_patch_spacing, infer_project,
+                                    list_to_chunks, load_images,
+                                    load_images_nifti, load_images_pt,
+                                    load_params, parse_input)
 from fran.managers.nep import download_neptune_checkpoint
 
 os.environ["TORCHDYNAMO_DISABLE"] = "1"  # set as early as possible in the process
-
-import itertools as il
 
 import ipdb
 import torch
 import torch._dynamo as dynamo
 from tqdm.auto import tqdm as pbar
-from utilz.stringz import ast_literal_eval, headline
+from utilz.stringz import headline
 
 from fran.managers import Project
 
@@ -24,14 +27,12 @@ from typing import List, Optional
 
 import itk
 import numpy as np
-import SimpleITK as sitk
 import torch
 from fastcore.all import listify, store_attr
 from fastcore.foundation import GetAttr
 from lightning.fabric import Fabric
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
-from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.inferers.inferer import SlidingWindowInferer
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import SaveImaged
@@ -42,7 +43,6 @@ from monai.transforms.utility.dictionary import (CastToTyped,
                                                  EnsureChannelFirstd,
                                                  SqueezeDimd)
 from utilz.dictopts import DictToAttr, fix_ast
-from utilz.helpers import slice_list
 
 from fran.data.dataset import NormaliseClipd
 from fran.managers.unet import UNetManager
@@ -52,147 +52,6 @@ from fran.transforms.inferencetransforms import (
     KeepLargestConnectedComponentWithMetad, SaveMultiChanneld,
     SqueezeListofListsd, ToCPUd)
 from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
-
-
-# CODE: consider move util functions outside the class file  (see #2)
-def get_device(devices: Optional[List[int]] = None) -> tuple:
-    """
-    Determine the appropriate device(s) based on CUDA availability.
-
-    Args:
-        devices: List of GPU device indices to use. If None, uses [0] if CUDA is available
-
-    Returns:
-        tuple: (device_ids, device, accelerator)
-            - device_ids: List of device indices to use
-            - device: torch.device object
-            - accelerator: String indicating 'gpu' or 'cpu'
-    """
-    if not torch.cuda.is_available():
-        print("CUDA not available, using CPU")
-        return [], torch.device("cpu"), "cpu"
-
-    if devices is None:
-        devices = [0]
-
-    try:
-        device_id = devices[0]
-        device = torch.device(f"cuda:{device_id}")
-        # Test if device is actually available
-        torch.cuda.get_device_properties(device_id)
-        return devices, device, "gpu"
-    except (RuntimeError, AssertionError) as e:
-        print(f"Error accessing CUDA device {devices}: {e}")
-        print("Falling back to CPU")
-        return [], torch.device("cpu"), "cpu"
-
-
-def get_patch_spacing(run_name):
-    ckpt = checkpoint_from_model_id(run_name)
-    dic1 = torch.load(ckpt, map_location="cpu", weights_only=False)
-    config = dic1["datamodule_hyper_parameters"]["configs"]
-    spacing = config["plan_train"].get("spacing")
-    if spacing is None:
-        mode = config["plan_train"]["mode"] 
-        if  mode == "whole":
-            spacing = [.8,1.5,1.5]
-            cprint("Mode is {0}. Using dummy spacing: {1}".format(mode, spacing),color= "red",bold=True,bg="yellow")
-            print(spacing)
-        else:
-            raise NotImplementedError
-
-        # src_plan = config["plan_train"]["source_plan"]
-        # src_plan = config[src_plan]
-        # spacing = src_plan["spacing"]
-    spacing = ast_literal_eval(spacing)
-    return spacing
-
-
-def list_to_chunks(input_list: list, chunksize: int):
-    if len(input_list) < chunksize:
-        print("List too small, setting chunksize to len(list)")
-        chunksize = np.minimum(len(input_list), chunksize)
-    # assert len(input_list) >= chunksize, "Print list size too small: {}".format(
-    #     len(input_list)
-    # )
-    n_lists = int(np.ceil(len(input_list) / chunksize))
-
-    fpl = int(len(input_list) / n_lists)
-    inds = [[fpl * x, fpl * (x + 1)] for x in range(n_lists - 1)]
-    inds.append([fpl * (n_lists - 1), None])
-
-    chunks = list(il.starmap(slice_list, zip([input_list] * n_lists, inds)))
-    return chunks
-
-
-def load_params(model_id):
-    ckpt = checkpoint_from_model_id(model_id)
-    dic_tmp = torch.load(ckpt, map_location="cpu", weights_only=False)
-    dic_relevant = dic_tmp["datamodule_hyper_parameters"]
-    return dic_relevant
-
-
-def parse_input(imgs_inp):
-    """
-    input types:
-        folder of img_fns
-        nifti img_fns
-        itk imgs (slicer)
-    returns list of img_fns if folder. Otherwise just the imgs
-    """
-
-    if not isinstance(imgs_inp, list):
-        imgs_inp = [imgs_inp]
-    imgs_out = []
-    for dat in imgs_inp:
-        if any([isinstance(dat, str), isinstance(dat, Path)]):
-            dat = Path(dat)
-            if dat.is_dir():
-                dat = list(dat.glob("*"))
-            else:
-                dat = [dat]
-        else:
-            if isinstance(dat, sitk.Image):
-                pass
-                # do nothing
-                # dat = ConvertSimpleItkImageToItkImage(dat, itk.F)
-            elif isinstance(dat, itk.Image):
-                dat = itm(dat)
-            else:
-                tr()
-            dat = [dat]
-        imgs_out.extend(dat)
-    imgs_out = [{"image": img} for img in imgs_out]
-    return imgs_out
-
-
-def load_images(data):
-    """
-    data can be filenames or images. InferenceDatasetNii will resolve data type and add LoadImaged if it is a filename
-    """
-
-    Loader = LoadSITKd(["image"])
-    data = parse_input(data)
-    data = [Loader(d) for d in data]
-    return data
-
-
-def filter_existing_files(files, target_folder):
-    files = [Path(img) for img in files]
-    print(
-        "Filtering existing predictions\nNumber of images provided: {}".format(
-            len(files)
-        )
-    )
-    out_fns = [target_folder / img.name for img in files]
-    to_do = [not fn.exists() for fn in out_fns]
-    files = list(il.compress(files, to_do))
-    print(
-        "Number of images not found in folder {0}:  {1}".format(
-            target_folder, len(files)
-        )
-    )
-    return files
 
 
 class BaseInferer(GetAttr, DictToAttr):
@@ -239,19 +98,20 @@ class BaseInferer(GetAttr, DictToAttr):
         self.plan = fix_ast(self.params["configs"]["plan_train"], ["spacing"])
         self.check_plan_compatibility()
         self.dataset_params = self.params["configs"]["dataset_params"]
-        
+
         if project_title is not None:
             from fran.managers import Project
+
             self.project = Project(project_title=project_title)
         else:
             self.project = infer_project(self.params)
         sw_device = "cuda"
         if safe_mode == True:
             cprint(
-                "================================================================\nSafe mode is on. Stitching will be on CPU. Slower speed expected\n================================================="
-            ,bg="red"
+                "================================================================\nSafe mode is on. Stitching will be on CPU. Slower speed expected\n=================================================",
+                bg="red",
             )
-            cprint("Patch Overlap: {}".format(patch_overlap),bg="red")
+            cprint("Patch Overlap: {}".format(patch_overlap), bg="red")
             bs = 1
             mode = "constant"
             device = "cpu"
@@ -275,12 +135,10 @@ class BaseInferer(GetAttr, DictToAttr):
         self.set_postprocess_tfms_keys()
         self.set_postprocess_transforms()
 
-
     def create_and_set_preprocess_transforms(self):
-            self.create_preprocess_transforms()
-            self.set_preprocess_tfms_keys()
-            self.set_preprocess_transforms()
-
+        self.create_preprocess_transforms()
+        self.set_preprocess_tfms_keys()
+        self.set_preprocess_transforms()
 
     def set_preprocess_tfms_keys(self):
         self.preprocess_tfms_keys = "E,S,N"
@@ -308,7 +166,7 @@ class BaseInferer(GetAttr, DictToAttr):
         transform = self.tfms_from_dict(
             self.preprocess_tfms_keys, self.preprocess_transforms_dict
         )
-        self.preprocess_compose= Compose(transform)
+        self.preprocess_compose = Compose(transform)
 
     #             output = self.postprocess_iterate(preds)
     # return output
@@ -368,9 +226,12 @@ class BaseInferer(GetAttr, DictToAttr):
             output = self.postprocess_iterate(preds)
         return output
 
+    def load_images(self, images):
+        return load_images_nifti(images)
+
     def process_imgs_sublist(self, imgs_sublist):
-        data = load_images(imgs_sublist)
-        self.prepare_data(data,  collate_fn=None)
+        data = self.load_images(imgs_sublist)
+        self.prepare_data(data, collate_fn=None)
         self.create_and_set_postprocess_transforms()
 
         outputs = []
@@ -591,20 +452,18 @@ class BaseInfererTorchScript(BaseInferer):
 
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     from fran.data.dataregistry import DS
-    from fran.managers.project import Project
-    from fran.utils.common import *
-
-
     # ... run your application ...
     from fran.managers import Project
+    from fran.managers.project import Project
     from fran.utils.common import *
 
     conf_fldr = os.environ["FRAN_CONF"]
     from utilz.fileio import load_yaml
-    best_runs = load_yaml(conf_fldr+"/best_runs.yaml")
+
+    best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
     run_w = best_runs["run_w"]
     runs_tot_all = best_runs["projects"]["totalseg"]
     run_tot_big = runs_tot_all["run_ids"][0]
@@ -615,16 +474,16 @@ if __name__ == "__main__":
 
 # %%
 # %%
-#SECTION:-------------------- FILES and FOLDERS--------------------------------------------------------------------------------------
+# SECTION:-------------------- FILES and FOLDERS-------------------------------------------------------------------------------------- <CR>
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
-    fldr_curvas = DS["curvaspdac"].folder/  ("images")
+    fldr_curvas = DS["curvaspdac"].folder / ("images")
     imgs_curvas = list(fldr_curvas.glob("*"))
     fldr_lidc = DS["lidc"].folder / ("images")
     imgs_lidc = list(fldr_lidc.glob("*"))
     fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
-    fldr_nodes2= Path("/s/xnat_shadow/nodes/images")
+    fldr_nodes2 = Path("/s/xnat_shadow/nodes/images")
     img_nodes = list(fldr_nodes.glob("*"))
     img_nodes2 = list(fldr_nodes2.glob("*"))
     fldr_litsmc = (
@@ -639,7 +498,7 @@ if __name__ == "__main__":
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
-# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     run_litsmc = ["LITS-1007"]
     run_litsmc = ["LITS-999"]
@@ -665,7 +524,7 @@ if __name__ == "__main__":
 # %%
     data = P.ds.data[0]
 # %%
-# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     save_channels = False
     overwrite = False
@@ -673,7 +532,7 @@ if __name__ == "__main__":
     devices = [0]
 
 # %%
-    run  = best_runs['totalseg']['run_ids'][0]
+    run = best_runs["totalseg"]["run_ids"][0]
     debug_ = False
     safe_mode = True
 
@@ -707,7 +566,7 @@ if __name__ == "__main__":
     # datamodule_ %%
 # %%
 # %%
-# SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR> <CR>
+# SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     run = run_nodes2[0]
     run = run_nodes3[0]
     run = run_nodes[0]
@@ -731,9 +590,9 @@ if __name__ == "__main__":
 
 # %%
     preds = T.run(img_nodes[1], chunksize=2, overwrite=overwrite)
-    preds[0]['pred'].meta
+    preds[0]["pred"].meta
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
     overwrite = True
     T.setup()
     imgs = img_nodes
@@ -766,7 +625,7 @@ if __name__ == "__main__":
     # return output
 
     data = T.load_images(imgs_sublist)
-    T.prepare_data(data,  collate_fn=None)
+    T.prepare_data(data, collate_fn=None)
     # preds = T.predict()
 # %%
     data = T.ds[0]
@@ -902,5 +761,5 @@ if __name__ == "__main__":
     tfms_keys = T.preprocess_tfms_keys
     transform = T.tfms_from_dict(tfms_keys, T.preprocess_transforms_dict)
 # %%
-    batch['pred'].shape
+    batch["pred"].shape
 # %%

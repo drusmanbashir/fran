@@ -4,9 +4,10 @@ from pathlib import Path
 
 import torch
 from utilz.helpers import multiprocess_multiarg
+from utilz.imageviewers import ImageMaskViewer
 
 
-def fixer(img_fn: Path):
+def fix_spatial_shape(img_fn: Path):
       img = torch.load(img_fn, weights_only=False)
       meta = img.meta
       meta["spatial_shape"] = [int(x) for x in meta["spatial_shape"]]
@@ -16,14 +17,23 @@ def fixer(img_fn: Path):
 
 # %%
 if __name__ == "__main__":
+# %%
+#SECTION:-------------------- setup--------------------------------------------------------------------------------------
       data_folder = Path(
-          "/r/datasets/preprocessed/lidc/patches/spc_080_080_150_rspbb76320a_128128096"
+          "/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/"
       )
+      pred_fldr = Path("/s/fran_storage/predictions/kits/KITS-n7")
       img_fldr = data_folder / "images"
+      lms_fldr = data_folder / "lms"
       imgs = sorted(img_fldr.glob("*.pt"))
+      lms=sorted(lms_fldr.glob("*.pt"))
+      preds = sorted(pred_fldr.glob("*.pt"))
 
-      img = imgs[0]
-      im = torch.load(img, weights_only=False)
+
+# %%
+
+      img_fn = imgs[0]
+      im = torch.load(img_fn, weights_only=False)
       aa = im.meta['spatial_shape']
 
       [print(type(a)) for a in aa]
@@ -33,11 +43,28 @@ if __name__ == "__main__":
 
       nproc = min(24, len(args), os.cpu_count() or 1)
       multiprocess_multiarg(
-          func=fixer,
+          func=fix_spatial_shape,
           arguments=args,
           num_processes=nproc,
           io=True,  # better for file I/O-heavy workloads
-      )# %%
+# %%
+
+# %%
+#SECTION:-------------------- PT model dice comparson--------------------------------------------------------------------------------------
+
+      img_fn = imgs[0]
+      img_fn = [fn for fn in imgs if "0001" in fn.name][0]
+      im = torch.load(img_fn, weights_only=False)
+      lm_fn = img_fn.parent.parent/("lms")/img_fn.name
+      lm = torch.load(lm_fn,weights_only=False)
+      pred_fn = pred_fldr/lm_fn.name
+
+      pred_fn = "/s/fran_storage/predictions/kits/KITS-n7/kits21_00001.pt"
+      pred = torch.load(pred_fn, weights_only=False)
+      print(pred.shape)
+      pred=  pred.squeeze(0)
+      pred = pred.cpu().detach()
+      ImageMaskViewer([im,pred], 'im')
 #SECTION:-------------------- crop--------------------------------------------------------------------------------------
 
 # %%

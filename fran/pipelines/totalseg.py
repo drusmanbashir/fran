@@ -55,7 +55,7 @@ if __name__ == "__main__":
     compiled = False
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
-    neptune = True
+    wandb = True
     override_dm = False
     tags = []
     description = f"Partially trained up to 100 epochs"
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         epochs=500 if profiler == False else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
-        wandb=neptune,
+        wandb=wandb,
         tags=tags,
         description=description,
         lr=lr,

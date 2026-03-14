@@ -584,12 +584,18 @@ def parse_excel_cell(cell_val):
     return _to_py(cell_val)
 
 
+def normalize_logging_payload(value):
+    if isinstance(value, dict):
+        return {kk: normalize_logging_payload(vv) for kk, vv in value.items()}
+    if isinstance(value, list):
+        return [normalize_logging_payload(vv) for vv in value]
+    if isinstance(value, tuple):
+        return [normalize_logging_payload(vv) for vv in value]
+    return parse_excel_cell(value)
+
+
 def parse_neptune_dict(dic: dict):
-    # fixes lists of int appearing in strings
-    for kk, vv in dic.items():
-        vv = parse_excel_cell(vv)
-        dic.update({kk: vv})
-    return dic
+    return normalize_logging_payload(dic)
 
 
 # %%

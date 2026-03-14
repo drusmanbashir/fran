@@ -231,5 +231,9 @@ if __name__ == "__main__":
     # print("After parse:")
     # print(parse_devices(args.devices))
 # %%
+
+    import sys
+    # raise SystemExit(main(args))
     main(args)
+    sys.exit()
 # %%

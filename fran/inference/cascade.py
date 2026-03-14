@@ -29,7 +29,7 @@ from monai.transforms.spatial.dictionary import Resized
 
 from fran.data.dataset import FillBBoxPatchesd
 from fran.inference.base import (BaseInferer, get_patch_spacing,
-                                 list_to_chunks, load_images, load_params)
+                                 list_to_chunks, load_images_nifti, load_params)
 from fran.transforms.inferencetransforms import (
     BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled,
     RenameDictKeys)
@@ -273,7 +273,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
     def process_imgs_sublist(self, imgs_sublist):
         self.create_and_set_postprocess_transforms()
-        data = load_images(imgs_sublist)
+        data = load_images_nifti(imgs_sublist)
 
         self.bboxes = self.extract_fg_bboxes(data)
 
@@ -597,51 +597,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-    bb=ckpt_hpc_path(remote_dir_parent, checkpoint_fldr)
 
-
-# %%
-
- fns = sorted(
-                ftp_client.listdir_attr(remote_dir),
-                key=lambda k: k.st_mtime,
-                reverse=True,
-            )
-# %%
-        try:
-            fnames = []
-            for f in sorted(
-                ftp_client.listdir_attr(remote_dir),
-                key=lambda k: k.st_mtime,
-                reverse=True,
-            ):
-                fnames.append(f.filename)
-        except FileNotFoundError:
-            print("\n------------------------------------------------------------------")
-            print(f"Error:Could not find {remote_dir}.\nIs this a remote folder and exists?\n")
-            # return
-
-# %%
-    En = CascadeInferer(
-        run_w,
-        run_lidc2,
-        save_channels=save_channels,
-        save_localiser=save_localiser,
-        devices=devices,
-        localiser_labels=loc_lidc,
-        safe_mode=safe_mode,
-        k_largest=None,
-        debug=debug_,
-    )
-
-# %%
-    imgs_tmp = ["/s/insync/datasets/today/mets/201 Axial  iDose (6).nii.gz"]
-    imgs_tmp = ["/s/xnat_shadow/litq/test/images/litq_10.nii.gz"]
-    imgs = imgs_lidc2[:20]
-    preds = En.run(imgs, chunksize=1, overwrite=overwrite)
-
-# %%
-    model = En.Ps[0].model
 
 # %%
 # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
@@ -821,7 +777,7 @@ if __name__ == "__main__":
     imgs_sublist = imgs_bosniak[:5]
 
     En.create_postprocess_transforms()
-    data = load_images(imgs_sublist)
+    data = load_images_nifti(imgs_sublist)
 
     En.bboxes = En.extract_fg_bboxes(data)
 
@@ -852,7 +808,7 @@ if __name__ == "__main__":
     print("Starting localiser data prep and prediction")
 # %%
     imgs_sublist = capestart
-    data = load_images(imgs_sublist[:3])
+    data = load_images_nifti(imgs_sublist[:3])
     En.bboxes = En.extract_fg_bboxes(data)
     data = En.apply_bboxes(data, En.bboxes)
 

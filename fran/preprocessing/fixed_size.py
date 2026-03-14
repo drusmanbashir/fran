@@ -131,6 +131,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
     def process(self, num_processes=16):
         self.create_output_folders()
         self.create_tensors(num_processes=num_processes)
+        self.create_dataset_stats_artifacts()
 
     def create_tensors(self, num_processes):
         dicis = list(chunks(self.dicis, num_processes))

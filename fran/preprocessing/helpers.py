@@ -3,6 +3,7 @@ from fastcore.basics import   listify
 import numpy as np
 import sqlite3
 from pathlib import Path
+from fran.configs.mnemonics import Mnemonics
 from fran.transforms.totensor import ToTensorT
 from utilz.helpers import *
 
@@ -213,6 +214,28 @@ def get_means_voxelcounts(img_fname, clip_range=None):
     if clip_range is not None:
         img = torch.clip(img,min=clip_range[0],max=clip_range[1])
     return img.mean().item(), img.numel()
+
+
+def infer_dataset_stats_window(project):
+    candidates = []
+    global_props = getattr(project, "global_properties", {}) or {}
+    mnemonic = global_props.get("mnemonic")
+    if isinstance(mnemonic, (list, tuple)):
+        candidates.extend(mnemonic)
+    elif mnemonic is not None:
+        candidates.append(mnemonic)
+    candidates.append(getattr(project, "project_title", None))
+
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        try:
+            canonical = Mnemonics.match(str(candidate))
+            if canonical == Mnemonics.lungs.name:
+                return "lung"
+        except ValueError:
+            continue
+    return "abdomen"
 
 
 

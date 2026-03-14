@@ -45,7 +45,7 @@ if __name__ == "__main__":
     compiled = False
     profiler = False
     batch_finder = False
-    neptune = True
+    wandb = True
     tags = []
     override_dm_params = False
     description = f"main litsmc run"
@@ -64,7 +64,7 @@ if __name__ == "__main__":
         epochs=600 if profiler == False else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
-        wandb=neptune,
+        wandb=wandb,
         tags=tags,
         description=description,
         override_dm_checkpoint=override_dm_params

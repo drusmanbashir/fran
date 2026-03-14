@@ -19,7 +19,7 @@ from utilz.helpers import create_df_from_folder, multiprocess_multiarg
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
 from fran.preprocessing import bboxes_function_version
-from fran.preprocessing.helpers import sanitize_meta_for_monai
+from fran.preprocessing.helpers import infer_dataset_stats_window, sanitize_meta_for_monai
 from fran.utils.dataset_properties import analyze_tensor_data_folder
 
 
@@ -511,6 +511,36 @@ class Preprocessor(GetAttr):
                 self.output_folder / ("images"),
                 self.indices_subfolder,
             ]
+        )
+
+    def create_dataset_stats_artifacts(self):
+        dataset_root = Path(self.output_folder)
+        lms_folder = dataset_root / "lms"
+        if not lms_folder.exists():
+            print(f"Skipping dataset stats: missing labels folder {lms_folder}")
+            return
+
+        stats_folder = dataset_root / "dataset_stats"
+        maybe_makedirs([stats_folder])
+
+        from label_analysis.plots import end2end_lms_stats_and_plots
+        from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
+
+        df, _ = end2end_lms_stats_and_plots(
+            input_folder=lms_folder,
+            output_folder=stats_folder,
+        )
+        df.to_csv(stats_folder / "dataset_stats.csv", index=False)
+
+        output_gif = stats_folder / "snapshot.gif"
+        create_nifti_overlay_grid_gif(
+            dataset_root=dataset_root,
+            output_gif=output_gif,
+            grid_shape=(3, 3),
+            num_frames=30,
+            stride=4,
+            window=infer_dataset_stats_window(self.project),
+            fps=5,
         )
 
     def ray_init(self):

@@ -9,7 +9,7 @@ python  -m ipdb train.py \
   --epochs 20 \
   --compiled false\
   --profiler false \
-  --neptune true \
+  --wandb true \
   --cache-rate 0.0\
   --fold 0\
   # --run-name LITS-1290 \

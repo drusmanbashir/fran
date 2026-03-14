@@ -376,6 +376,7 @@ class ResampleDatasetniftiToTorch(Preprocessor):
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
         store_labels_info(self.output_folder, num_processes=getattr(self, "num_processes", 1))
+        self.create_dataset_stats_artifacts()
         # add_plan_to_db(self.project,
         #     self.plan, db_path=self.project.db, data_folder_source=self.output_folder
         # )

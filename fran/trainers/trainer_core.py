@@ -58,6 +58,7 @@ def safe_log_dict(exp, base_path: str, d: dict):
     key by key with try/except so one bad key doesn't stop the rest.
     """
     for k, v in d.items():
+        tr()
         path = f"{base_path}/{k}" if base_path else k
         try:
             if isinstance(v, dict):

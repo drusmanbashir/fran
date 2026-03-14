@@ -39,7 +39,7 @@ from fastcore.basics import store_attr
 
 # import your existing inferers
 from fran.inference.base import (BaseInferer, filter_existing_files,
-                                 load_images, load_params)
+                                 load_images_nifti, load_params)
 from fran.inference.cascade import (CascadeInferer, PatchInferer,
                                     WholeImageInferer, apply_bboxes,
                                     img_bbox_collated)
@@ -451,13 +451,13 @@ class EnsembleInferer:
         for start in range(0, len(images), chunksize):
 
             chunk = images[start : start + chunksize]
-            data = load_images(chunk)
+            data = load_images_nifti(chunk)
             # 1) Prepare data once for base-like members (they each handle their own transforms)
             # 2) Handle cascade groups: run localiser ONCE per run_w, then fan out to each run_p
             preds_all_patches = (
                 self._cascade_runs(data) if len(self.cascade_runs) > 0 else []
             )
-            data = load_images(chunk)
+            data = load_images_nifti(chunk)
             preds_all_base = self._base_runs(data) if len(self.base_runs) > 0 else []
             # 3) Run base/whole members directly on full images
             preds_all = self.combined_patch_base_preds(
@@ -815,7 +815,7 @@ if __name__ == "__main__":
 
     start = 0
     chunk = images[start : start + chunksize]
-    data = load_images(chunk)
+    data = load_images_nifti(chunk)
     # 1) Prepare data once for base-like members (they each handle their own transforms)
     # 2) Handle cascade groups: run localiser ONCE per run_w, then fan out to each run_p
     preds_all_patches = En._cascade_runs(data) if len(En.cascade_runs) > 0 else []
@@ -862,7 +862,7 @@ if __name__ == "__main__":
     preds_all_patches = []
 # %%
 
-    data = load_images(images[1])
+    data = load_images_nifti(images[1])
     E.create_and_set_postprocess_transforms_casc(run_ps)
     E.bboxes = E._extract_bboxes(run_w, data)
     cropped = apply_bboxes(data, E.bboxes)
@@ -880,7 +880,7 @@ if __name__ == "__main__":
 #SECTION:--------------------  BASE RUN--------------------------------------------------------------------------------------
 
     chunk = nodes[1]
-    data = load_images(chunk)
+    data = load_images_nifti(chunk)
     prds_all_base = {}
     for r in E.base_runs:
         r = E.base_runs[0]
@@ -1015,7 +1015,7 @@ if __name__ == "__main__":
 
 
     chunk = nodes[1]
-    data = load_images(chunk)
+    data = load_images_nifti(chunk)
     # 1) Prepare data once for base-like members (they each handle their own transforms)
     # 2) Handle cascade groups: run localiser ONCE per run_w, then fan out to each run_p
     preds_all_patches = (
@@ -1038,7 +1038,7 @@ if __name__ == "__main__":
 
 # %%
 
-    data = load_images(chunk)
+    data = load_images_nifti(chunk)
 # %%
 # %%
     # pred_patches['LITS-1290'][0]['pred'].shape

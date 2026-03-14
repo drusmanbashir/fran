@@ -40,6 +40,7 @@ dependencies = [
 
 [project.optional-dependencies]
 train = [
+  "dynamic-network-architectures>=0.4",
   "lightning>=2.2",
   "monai>=1.3",
   "nnunet>=1.7",

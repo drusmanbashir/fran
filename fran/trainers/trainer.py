@@ -3,6 +3,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
+from monai.inferers.inferer import SlidingWindowInferer
 import torch
 from fastcore.all import in_ipython
 from lightning.pytorch import Trainer as TrainerL
@@ -12,6 +13,7 @@ from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
 from lightning.pytorch.profilers import AdvancedProfiler
 from utilz.cprint import cprint
 from utilz.helpers import info_from_filename
+from utilz.imageviewers import ImageMaskViewer
 from utilz.stringz import headline
 
 from fran.callback.base import BatchSizeSafetyMargin
@@ -20,7 +22,7 @@ from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import (ConfigMaker, confirm_plan_analyzed,
-                                 parse_neptune_dict)
+                                 normalize_logging_payload)
 from fran.managers import Project
 from fran.managers.data.incremental import DataManagerDualI
 from fran.managers.data.training import (DataManagerBaseline, DataManagerDual,
@@ -380,13 +382,13 @@ class Trainer:
                 notes=description,
             )
             dm_cfg = {
-                "dataset_params": parse_neptune_dict(
+                "dataset_params": normalize_logging_payload(
                     deepcopy(self.D.configs["dataset_params"])
                 ),
-                "plan_train": parse_neptune_dict(
+                "plan_train": normalize_logging_payload(
                     deepcopy(self.D.configs["plan_train"])
                 ),
-                "plan_valid": parse_neptune_dict(
+                "plan_valid": normalize_logging_payload(
                     deepcopy(self.D.configs["plan_valid"])
                 ),
             }
@@ -537,6 +539,7 @@ class Trainer:
 
 
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR>
+
 # %%
 if __name__ == "__main__":
     from fran.utils.common import *
@@ -570,9 +573,6 @@ if __name__ == "__main__":
     counts = df.groupby("case_id").size()
     counts2 = counts.sort_values(ascending=False)
     bb= counts2.index[:200]
-
-# %%
-
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR>
     train_indices = None
     train_indices = bb
@@ -602,9 +602,8 @@ if __name__ == "__main__":
     val_every_n_epochs = 5
     profiler=False
     compiled = False
+    run_name = 'KITS-0026'
     run_name = None
-    run_name = None
-    run_name = 'KITS-0018'
 # %%
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
@@ -631,35 +630,53 @@ if __name__ == "__main__":
     Tm.fit()
     # model(inputs)
 # %%
-    # %
     D = Tm.D
     D.setup()
+    D.prepare_data()
     tmt = D.train_manager
     tmv = D.valid_manager
 
     tmt.collate_fn
 
-# %%
-
+    dl  =tmv.dl
     iteri = iter(dl)
-
     batch = next(iteri)
 # %%
-    D = DataManagerDual(
-        project_title=P.project_title,
-        configs=conf,
-        batch_size=2,
-        ds_type=None,
-        train_indices = train_indices
+
+    patch_overlap = 0
+    mode = "constant"
+    device = "cpu"
+    sw_device = "cuda:1"
+    bs = 1  # start lower if you are hitting OOM
+
+    inferer = SlidingWindowInferer(
+      roi_size=Tm.configs["plan_train"]["patch_size"],
+      sw_batch_size=bs,
+      overlap=patch_overlap,
+      mode=mode,
+      progress=True,
+      sw_device=sw_device,
+      device=device,   # stitch/output on CPU
     )
 
 # %%
-    D.prepare_data()
+    image = batch["image"]            # keep on CPU
+    Tm.N.model = Tm.N.model.to(sw_device).eval()
 # %%
-    Tm.N
-    preds = Tm.N.model(batch["image"])
-    preds
+     with torch.inference_mode():
+          with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+              pred = inferer(image, Tm.N.model)
+
+
 # %%
+    pred = pred[0]
+# %%
+
+    image = batch["image"]
+    image = image.to("cuda:1")
+    Tm.N.model.to("cuda:1")
+    preds = inferer(inputs=image, network=Tm.N.model)
+
     # n=0
     # while n<250:
     #     batch = next(iteri)

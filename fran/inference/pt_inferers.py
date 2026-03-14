@@ -1,0 +1,109 @@
+# %%
+from pathlib import Path
+
+from monai.transforms.io.dictionary import LoadImaged, SaveImaged
+from utilz.cprint import cprint
+from utilz.fileio import maybe_makedirs
+from utilz.imageviewers import ImageMaskViewer
+
+from fran.inference.base import BaseInferer, load_images_pt
+from fran.managers.wandb import WandbManager, download_path_no_wandb, download_wandb_checkpoint
+from fran.transforms.imageio import TorchReader, TorchWriter
+
+
+class BaseInfererPT(BaseInferer):
+    def check_plan_compatibility(self):
+        pass
+    def load_images(self,images):
+        return load_images_pt(images)
+
+    def set_preprocess_tfms_keys(self):
+        self.preprocess_tfms_keys = "E,N"  # No spacing done , put a channel dim then normalise
+
+    def create_postprocess_transforms(self, preprocess_transform):
+        super().create_postprocess_transforms(preprocess_transform)
+        Sav = SaveImaged(
+            keys=["pred"],
+            output_ext="pt",
+            writer=TorchWriter,
+            output_dir=self.output_folder,
+            output_postfix="",
+            output_dtype="float32",
+            separate_folder=False,
+        )
+        self.postprocess_transforms_dict["Sav"]     =Sav
+
+    def set_postprocess_tfms_keys(self):
+        if self.safe_mode == False:
+            self.postprocess_tfms_keys = "Sq,A,Int"
+
+        else:
+            self.postprocess_tfms_keys = "Sq"
+        self.postprocess_tfms_keys += ",Sq,CPU"  # additional key for this version
+        if self.save_channels == True:
+            self.postprocess_tfms_keys += ",SaM"
+        if self.k_largest is not None:
+            self.postprocess_tfms_keys += ",K"
+        if self.save == True:
+            self.postprocess_tfms_keys += ",Sav"
+
+# %%
+if __name__ == '__main__':
+
+    save_channels = False
+    safe_mode = False
+    bs = 1
+    overwrite = True
+    devices = [1]
+    save_channels = False
+    run  = "KITS-n7"
+    run = "KITS-bl"
+
+    from fran.managers.project import Project
+    p = Project("kits")
+    # download_wandb_checkpoint(p, run)
+    # download_path_no_wandb(remote_dir_parent="/data/EECS-LITQ/fran_storage/checkpoints/kits/kits/KITS-n7/checkpoints",local_dir_parent="/s/fran_storage/checkpoints/kits/kits/KITS-n7")
+
+
+    debug_ = False
+#
+
+
+# %%
+    T = BaseInfererPT(
+        patch_overlap=0,
+        run_name=run,
+        save_channels=save_channels,
+        safe_mode=safe_mode,
+        devices=devices,
+        debug=debug_,
+    )
+
+    # print(T.postprocess_tfms_keys)
+# %%
+    lbdkits_fldr = Path("")
+    imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits21_00018.pt')
+    imf_fldr = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images')
+    imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits21_00053.pt')
+    imf_fn = list(imf_fldr.glob("*.pt"))
+    preds = T.run(imf_fn, chunksize=2, overwrite=overwrite)
+
+# %%
+    fldr = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/')
+    output = fldr/("dataset_stats")/("output_gif.gif")
+    maybe_makedirs(output.parent)
+    from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
+
+    create_nifti_overlay_grid_gif(dataset_root=fldr,output_gif=output, grid_shape =(3,3),num_frames=30,stride=4, window="abdomen",fps=5)
+# %%
+    img, pred = preds[0]['image'], preds[0]['pred']
+   
+    img.shape
+    pred.shape
+
+    ImageMaskViewer([img[0],pred[0]])
+# %%
+    pred = batch['pred']
+    print(pred.shape)
+    print(pred.max())
+# %%

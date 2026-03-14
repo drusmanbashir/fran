@@ -2,6 +2,7 @@
 from __future__ import annotations
 import ipdb
 tr = ipdb.set_trace
+from tqdm.auto import tqdm
 
 import os
 import re
@@ -22,8 +23,6 @@ try:
 except Exception:
     np = None
 
-import stat
-torch._dynamo.config.suppress_errors = True
 
 def download_path_no_wandb(remote_dir_parent, local_dir_parent)->list:
         hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
@@ -53,13 +52,23 @@ def download_path_no_wandb(remote_dir_parent, local_dir_parent)->list:
                 return fnames
 
             ckpt_files = _recursive_filenames(remote_dir_parent)
+            print(f"Found {len(ckpt_files)} ckpts:\n {ckpt_files}")
             if local_dir_parent is None:
                 return ckpt_files
 
             local_dir_parent = Path(local_dir_parent)
+            existing_local_ckpts = {
+                path.name: path for path in local_dir_parent.rglob("*.ckpt")
+            }
             local_files = []
-            for remote_file in ckpt_files:
+            for remote_file in tqdm(ckpt_files):
                 rel = remote_file.split("/")[-1]
+                existing_local = existing_local_ckpts.get(rel)
+                if existing_local is not None:
+                    print(
+                        f"Warning: skipping {remote_file} because local checkpoint exists at {existing_local}"
+                    )
+                    continue
                 local_file = local_dir_parent / rel
                 local_file.parent.mkdir(parents=True, exist_ok=True)
                 ftp_client.get(remote_file, str(local_file))
@@ -79,6 +88,8 @@ def _is_writable_dir(path: Path) -> bool:
     except Exception:
         return False
 
+import stat
+torch._dynamo.config.suppress_errors = True
 
 def _resolve_wandb_save_dir(project) -> str:
     env_dir = os.environ.get("WANDB_DIR")
@@ -109,6 +120,17 @@ def _to_plain(x):
     if isinstance(x, dict):
         return {str(k): _to_plain(v) for k, v in x.items()}
     return str(x)
+
+
+def _flatten_for_wandb(payload: dict, prefix: str = "") -> dict:
+    flat = {}
+    for key, value in payload.items():
+        leaf = f"{prefix}/{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            flat.update(_flatten_for_wandb(value, leaf))
+        else:
+            flat[leaf] = _to_plain(value)
+    return flat
 
 
 def get_wandb_config():
@@ -246,7 +268,10 @@ class WandbManager(WandbLogger):
         return f"{self.prefix}/{leaf}" if self.prefix else leaf
 
     def log_hyperparams(self, params):
-        self.experiment.config.update(_to_plain(params), allow_val_change=True)
+        params = _to_plain(params)
+        if isinstance(params, dict):
+            params = _flatten_for_wandb(params)
+        self.experiment.config.update(params, allow_val_change=True)
 
     @property
     def wb_run(self):
