@@ -1,4 +1,5 @@
 # %%
+from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
 import torch
 from fran.architectures.nnunet import Generic_UNet_PL
 
@@ -263,6 +264,7 @@ def create_model_from_conf_unet(model_params, plan):
 
 
 def create_model_from_conf_nnunetv2_resenc_l(model_params, plan, deep_supervision):
+    tr()
     spacing = tuple(plan["spacing"])
     patch_size = tuple(plan["patch_size"])
     dim = len(spacing)
@@ -323,6 +325,37 @@ if __name__ == "__main__":
     C.setup(6)
     conf = C.configs
 # %%
+
+    model = get_network_from_plans(
+        arch_class_name="dynamic_network_architectures.architectures.unet.ResidualEncoderUNet",
+        arch_kwargs={
+            "n_stages": 7,
+            "features_per_stage": [32, 64, 128, 256, 512, 512, 512],
+            "conv_op": "torch.nn.modules.conv.Conv2d",
+            "kernel_sizes": [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]],
+            "strides": [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]],
+            "n_blocks_per_stage": [1, 3, 4, 6, 6, 6, 6],
+            "n_conv_per_stage_decoder": [1, 1, 1, 1, 1, 1],
+            "conv_bias": True,
+            "norm_op": "torch.nn.modules.instancenorm.InstanceNorm2d",
+            "norm_op_kwargs": {"eps": 1e-05, "affine": True},
+            "dropout_op": None,
+            "dropout_op_kwargs": None,
+            "nonlin": "torch.nn.LeakyReLU",
+            "nonlin_kwargs": {"inplace": True},
+        },
+        arch_kwargs_req_import=["conv_op", "norm_op", "dropout_op", "nonlin"],
+        input_channels=1,
+        output_channels=4,
+        allow_init=True,
+        deep_supervision=True,
+    )
+# %%
+    data = torch.rand((8, 1, 256, 256))
+    target = torch.rand(size=(8, 1, 256, 256))
+    outputs = model(data) # this should be a list of torch.Tensor
+# %%
+
 
     mod = create_model_from_conf(conf["model_params"], conf["plan_train"])
 # %%

@@ -549,7 +549,7 @@ if __name__ == "__main__":
     P = Project("kits")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P)
-    C.setup(4)
+    C.setup(6)
 
     conf = C.configs
     print(conf["model_params"])
@@ -567,15 +567,14 @@ if __name__ == "__main__":
     #
     # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
 
-    fldr= DS.kits21.folder
-    fn = fldr/("label_analysis/lesion_stats.csv")
-    df = pd.read_csv(fn)
-    counts = df.groupby("case_id").size()
-    counts2 = counts.sort_values(ascending=False)
-    bb= counts2.index[:200]
+    # fldr= DS.kits21.folder
+    # fn = fldr/("label_analysis/lesion_stats.csv")
+    # df = pd.read_csv(fn)
+    # counts = df.groupby("case_id").size()
+    # counts2 = counts.sort_values(ascending=False)
+    # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR>
     train_indices = None
-    train_indices = bb
     bs = 8
     device_id = 0
 
@@ -630,6 +629,10 @@ if __name__ == "__main__":
     Tm.fit()
     # model(inputs)
 # %%
+    conf = Tm.configs
+    conf['model_params']
+# %%
+    N = Tm.N
     D = Tm.D
     D.setup()
     D.prepare_data()
