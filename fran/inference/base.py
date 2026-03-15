@@ -86,8 +86,10 @@ class BaseInferer(GetAttr, DictToAttr):
         store_attr("debug,run_name,devices,save_channels, save,safe_mode, k_largest")
         if ckpt is None:
             self.ckpt = checkpoint_from_model_id(run_name)
+            cprint("Checkpoint: {}".format(self.ckpt), color="green")
         else:
             self.ckpt = ckpt
+            cprint("No Checkpoint loaded. Using random weights", color="red")
         if params is None:
             self.params = load_params(run_name)
         else:

@@ -651,8 +651,8 @@ if __name__ == "__main__":
 
     inferer = SlidingWindowInferer(
       roi_size=Tm.configs["plan_train"]["patch_size"],
-      sw_batch_size=bs,
       overlap=patch_overlap,
+      sw_batch_size=bs,
       mode=mode,
       progress=True,
       sw_device=sw_device,

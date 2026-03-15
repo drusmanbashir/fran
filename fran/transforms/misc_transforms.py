@@ -375,6 +375,7 @@ class ApplyBBox(MapTransform):
     def __call__(self, d: dict):
 
         bbox = d[self.bbox_key]
+        bbox = tuple(bbox)
         for key in self.key_iterator(d):
             d[key] = d[key][bbox]
         return d
@@ -447,7 +448,7 @@ class MetaToDict(MonaiDictTransform):
         return d
 
 
-class Recastd(MonaiDictTransform):
+class RecastToFloatd(MonaiDictTransform):
     def func(self, img):
         img = img.float()
         return img

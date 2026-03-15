@@ -54,7 +54,7 @@ def derive_train_indices(ds:str, train_indices:int):
     assert isinstance(train_indices, int),"train indices must be an int"
     fldr= ds['folder']
     fldr = Path(fldr)
-    fn = fldr/("label_analysis/lesion_stats.csv")
+    fn = fldr/("dataset_stats/lesion_stats.csv")
     df = pd.read_csv(fn)
     counts = df.groupby("case_id").size()
     counts2 = counts.sort_values(ascending=False)

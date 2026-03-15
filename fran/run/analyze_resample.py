@@ -32,7 +32,7 @@ def main(args):
         plan_ids = C.plans["plan_id"].tolist()
         headline("Processing ALL Plans: {}".format(plan_ids))
         for plan_id in plan_ids:
-            C.setup(plan_id)
+            C.setup(plan_id,plan_id)
             headline (plan_id)
             plan = C.configs["plan_train"]
             completed = confirm_plan_analyzed(P, plan)
@@ -44,7 +44,7 @@ def main(args):
     else:
         # Process specific plan
         headline ("Processing plan {}".format(args.plan))
-        C.setup(args.plan)
+        C.setup(args.plan, args.plan)
         plan = C.configs["plan_train"]
         completed = confirm_plan_analyzed(P, plan)
         if overwrite or not all(completed.values()):
@@ -398,9 +398,9 @@ if __name__ == "__main__":
     args = parser.parse_known_args()[0]
 # %%
     # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
-    # args.project_title="lidc"
-    # args.plan = 6
-    # args.num_processes = 8
+    # args.project_title="kits"
+    # args.plan = 1
+    # args.num_processes = 1
     # args.overwrite=False
     # args.debug=True
     #
@@ -411,12 +411,11 @@ if __name__ == "__main__":
         parser.print_help()
         raise SystemExit(0)
     main(args)
-    sys.exit()
 
 # %%
 #
-    I = PreprocessingManager(args)
-    I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+    # I = PreprocessingManager(args)
+    # I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
 # # %%
 #     I.R = ResampleDatasetniftiToTorch(
 #         project=I.project,
@@ -446,7 +445,59 @@ if __name__ == "__main__":
 #             debug=debug,
 #         )
 #         PG.process(derive_bboxes=False)
-
-
-
-# %%
+#     I.R.create_dataset_stats_artifacts()
+#
+# # %%
+#     overwrite=False
+#     num_processes=8
+#
+#     resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
+#         "data_folder_source"
+#     ]
+#
+#     I.L = LabelBoundedDataGeneratorImported(
+#         project=I.project,
+#         plan=I.plan,
+#         data_folder=resampled_data_folder,
+#     )
+# # %%
+#     device='cpu'
+#     I.L.setup(overwrite=overwrite, device=device,num_processes=num_processes,debug=True)
+#     I.L.process()
+#
+#
+# # %%
+#     # sys.exit()
+    sys.exit()
+# # %%
+# dataset_root = Path(I.R.output_folder)
+# lms_folder = dataset_root / "lms"
+# if not lms_folder.exists():
+#     print(f"Skipping dataset stats: missing labels folder {lms_folder}")
+#     return
+#
+# stats_folder = dataset_root / "dataset_stats"
+# maybe_makedirs([stats_folder])
+#
+# from label_analysis.dataset_stats import end2end_lms_stats_and_plots
+# from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
+#
+# df, _ = end2end_lms_stats_and_plots(
+#     input_folder=lms_folder,
+#     output_folder=stats_folder,
+# )
+# df.to_csv(stats_folder / "dataset_stats.csv", index=False)
+#
+# output_gif = stats_folder / "snapshot.gif"
+# create_nifti_overlay_grid_gif(
+#     dataset_root=dataset_root,
+#     output_gif=output_gif,
+#     grid_shape=(3, 3),
+#     num_frames=30,
+#     stride=4,
+#     window=infer_dataset_stats_window(I.R.project),
+#     fps=5,
+# )
+#
+#
+# # %%

@@ -4,6 +4,7 @@ from pathlib import Path
 from monai.transforms.io.dictionary import LoadImaged, SaveImaged
 from utilz.cprint import cprint
 from utilz.fileio import maybe_makedirs
+from utilz.helpers import info_from_filename
 from utilz.imageviewers import ImageMaskViewer
 
 from fran.inference.base import BaseInferer, load_images_pt
@@ -57,16 +58,23 @@ if __name__ == '__main__':
     devices = [1]
     save_channels = False
     run  = "KITS-n7"
-    run = "KITS-bl"
+    run = "KITS-TW"
+    run  = "KITS-bl"
 
     from fran.managers.project import Project
     p = Project("kits")
     # download_wandb_checkpoint(p, run)
-    # download_path_no_wandb(remote_dir_parent="/data/EECS-LITQ/fran_storage/checkpoints/kits/kits/KITS-n7/checkpoints",local_dir_parent="/s/fran_storage/checkpoints/kits/kits/KITS-n7")
+    # download_path_no_wandb(remote_dir_parent="/data/EECS-LITQ/fran_storage/checkpoints/kits/kits/KITS-TW/checkpoints",local_dir_parent="/s/fran_storage/checkpoints/kits/kits/KITS-TW/checkpoints")
 
 
     debug_ = False
 #
+    _, val = p.get_train_val_case_ids(0) 
+    img_fldr = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images')
+    img_fns = list(img_fldr.glob("*.pt"))
+    val_fns =[fn for fn in img_fns if info_from_filename(fn.name, full_caseid=True)["case_id"] in val]
+    len(val_fns)
+
 
 
 # %%
@@ -81,12 +89,14 @@ if __name__ == '__main__':
 
     # print(T.postprocess_tfms_keys)
 # %%
+    overwrite=True
+    preds = T.run(val_fns, chunksize=2, overwrite=overwrite)
+
+# %%
     lbdkits_fldr = Path("")
     imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits21_00018.pt')
-    imf_fldr = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images')
     imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits21_00053.pt')
     imf_fn = list(imf_fldr.glob("*.pt"))
-    preds = T.run(imf_fn, chunksize=2, overwrite=overwrite)
 
 # %%
     fldr = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/')

@@ -523,7 +523,7 @@ class Preprocessor(GetAttr):
         stats_folder = dataset_root / "dataset_stats"
         maybe_makedirs([stats_folder])
 
-        from label_analysis.plots import end2end_lms_stats_and_plots
+        from label_analysis.dataset_stats import end2end_lms_stats_and_plots
         from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
 
         df, _ = end2end_lms_stats_and_plots(

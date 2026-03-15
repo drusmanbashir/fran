@@ -14,7 +14,7 @@ from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import BBoxFromPTd
 from fran.transforms.misc_transforms import (ApplyBBox, DummyTransform, LabelRemapSITKd,
-                                             MergeLabelmapsd, Recastd)
+                                             MergeLabelmapsd, RecastToFloatd)
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.folder_names import folder_names_from_plan
 
@@ -74,9 +74,9 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         self.imported_folder = Path(imported_folder)
         merge_imported_labels = plan["merge_imported_labels"]
         if merge_imported_labels == True:
-            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Rsz,Merg,BBox,AppBx,Remap,Labels,Indx"
+            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Cast,Rsz,Merg,BBox,AppBx,Remap,Labels,Indx"
         else:
-            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Rsz,BBox,AppBx,Remap,Labels,Indx"
+            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Cast,Rsz,BBox,AppBx,Remap,Labels,Indx"
         self.lm_imported_key = "lm_imported"
         super().__init__(
             project=project,
@@ -138,7 +138,7 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
 
         self.RemapI = self.create_sitk_remapping_per_ds("remapping_imported", self.lm_imported_key)
 
-        self.Re = Recastd(keys=[self.lm_imported_key])
+        self.Re = RecastToFloatd(keys=[self.lm_imported_key])
         self.Rz = ResizeToTensord(
             keys=[self.lm_imported_key], key_template_tensor=self.lm_key, mode="nearest"
         )

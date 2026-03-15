@@ -11,6 +11,14 @@ from torch import nn
 import torch.nn.functional as F
 import ipdb
 from fran.architectures.unet3d.model import UNet3D
+from dynamic_network_architectures.architectures.unet import ResidualEncoderUNet
+from dynamic_network_architectures.building_blocks.helper import (
+    convert_dim_to_conv_op,
+    get_matching_instancenorm,
+)
+from nnunetv2.experiment_planning.experiment_planners.network_topology import (
+    get_pool_and_conv_props,
+)
 
 tr = ipdb.set_trace
 
@@ -59,6 +67,37 @@ def get_batch_size(
     return batch_size
 
 
+def create_model_from_conf(model_params, plan, deep_supervision=True):
+    # if 'out_channels' not in model_params:
+    #         model_params["out_channels"] =  out_channels_from_dict_or_cell(model_params['remapping_train'])
+
+    if "patch_size" not in plan.keys():
+        plan["patch_size"] = make_patch_size(plan["patch_dim0"], plan["patch_dim1"])
+    arch = model_params["arch"]
+    arch_lower = arch.lower() if isinstance(arch, str) else arch
+    if arch == "UNet3D":
+        model = create_model_from_conf_unet(model_params, plan)
+    elif arch == "nnUNet":
+        model = create_model_from_conf_nnUNet(model_params, plan, deep_supervision)
+    elif arch_lower == "resunet":
+        model = create_model_from_conf_nnunetv2_resenc_l(
+            model_params, plan, deep_supervision
+        )
+    elif arch == "SwinUNETR":
+        model = create_model_from_conf_swinunetr(model_params, plan, deep_supervision)
+    elif arch == "DynUNet":
+        model = create_model_from_conf_dynunet(model_params, plan)
+
+    elif arch == "DynUNet_UB":
+        model = create_model_from_conf_dynunet_ub(model_params, plan)
+    else:
+        raise NotImplementedError
+
+    if model_params["compiled"] == True:
+        model = torch.compile(model, dynamic=True)
+    return model
+
+
 def create_model_from_conf_nnUNetCraig(model_params, deep_supervision):
     pool_op_kernel_sizes = None
     in_channels, out_channels = (
@@ -105,32 +144,6 @@ def create_model_from_conf_nnUNetCraig(model_params, deep_supervision):
         seg_output_use_bias=False,
         record_embedding=True,
     )
-    return model
-
-
-def create_model_from_conf(model_params, plan, deep_supervision=True):
-    # if 'out_channels' not in model_params:
-    #         model_params["out_channels"] =  out_channels_from_dict_or_cell(model_params['remapping_train'])
-
-    if "patch_size" not in plan.keys():
-        plan["patch_size"] = make_patch_size(plan["patch_dim0"], plan["patch_dim1"])
-    arch = model_params["arch"]
-    if arch == "UNet3D":
-        model = create_model_from_conf_unet(model_params, plan)
-    elif arch == "nnUNet":
-        model = create_model_from_conf_nnUNet(model_params, plan, deep_supervision)
-    elif arch == "SwinUNETR":
-        model = create_model_from_conf_swinunetr(model_params, plan, deep_supervision)
-    elif arch == "DynUNet":
-        model = create_model_from_conf_dynunet(model_params, plan)
-
-    elif arch == "DynUNet_UB":
-        model = create_model_from_conf_dynunet_ub(model_params, plan)
-    else:
-        raise NotImplementedError
-
-    if model_params["compiled"] == True:
-        model = torch.compile(model, dynamic=True)
     return model
 
 
@@ -223,7 +236,6 @@ def create_model_from_conf_nnUNet(model_params, plan, deep_supervision):
     )
     return model
 
-
 def create_model_from_conf_swinunetr(model_params, plan, deep_supervision=None):
     model = SwinUNETR(
         in_channels=model_params["in_channels"],
@@ -250,22 +262,110 @@ def create_model_from_conf_unet(model_params, plan):
     return model
 
 
+def create_model_from_conf_nnunetv2_resenc_l(model_params, plan, deep_supervision):
+    spacing = tuple(plan["spacing"])
+    patch_size = tuple(plan["patch_size"])
+    dim = len(spacing)
+    if dim not in (2, 3):
+        raise ValueError(f"Unsupported spacing dimensionality for ResEncUNet: {dim}")
+
+    conv_op = convert_dim_to_conv_op(dim)
+    norm_op = get_matching_instancenorm(conv_op)
+    max_num_features = 512 if dim == 2 else 320
+    blocks_per_stage_encoder = (1, 3, 4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6)
+    blocks_per_stage_decoder = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+
+    _, pool_op_kernel_sizes, conv_kernel_sizes, patch_size, _ = get_pool_and_conv_props(
+        spacing,
+        patch_size,
+        4,
+        999999,
+    )
+    num_stages = len(pool_op_kernel_sizes)
+    features_per_stage = tuple(
+        min(max_num_features, 32 * 2**i) for i in range(num_stages)
+    )
+
+    model = ResidualEncoderUNet(
+        input_channels=model_params["in_channels"],
+        n_stages=num_stages,
+        features_per_stage=features_per_stage,
+        conv_op=conv_op,
+        kernel_sizes=conv_kernel_sizes,
+        strides=pool_op_kernel_sizes,
+        n_blocks_per_stage=blocks_per_stage_encoder[:num_stages],
+        num_classes=model_params["out_channels"],
+        n_conv_per_stage_decoder=blocks_per_stage_decoder[: num_stages - 1],
+        conv_bias=True,
+        norm_op=norm_op,
+        norm_op_kwargs={"eps": 1e-5, "affine": True},
+        dropout_op=None,
+        dropout_op_kwargs=None,
+        nonlin=nn.LeakyReLU,
+        nonlin_kwargs={"inplace": True},
+        deep_supervision=deep_supervision,
+    )
+    return model
+
+
+
 # %%
+# %%
+#SECTION:-------------------- setup--------------------------------------------------------------------------------------
 if __name__ == "__main__":
     import torch
     from torchinfo import summary
     from fran.utils.common import *
     from fran.managers.project import Project
 
-    P = Project(project_title="nodes")
-    C = ConfigMaker(P,  configuration_filename=None)
-    config = C.config
+    P = Project(project_title="kits")
+    C = ConfigMaker(P)
+    C.setup(6)
+    conf = C.configs
+# %%
+
+    mod = create_model_from_conf(conf["model_params"], conf["plan_train"])
 # %%
     x = torch.rand(1, 1, 192, 192, 96)
+# %%
+    conf["model_params"]["out_channels"]=3
+    plan = conf["plan_train"]
+    model_params=conf["model_params"]
+
+    deep_supervision=True
+    net = create_model_from_conf_nnunetv2_resenc_l(model_params, plan, deep_supervision)
+
+# %%
+    spacing = tuple(plan["spacing"])
+    patch_size = tuple(plan["patch_size"])
+    dim = len(spacing)
+    if dim not in (2, 3):
+        raise ValueError(f"Unsupported spacing dimensionality for ResEncUNet: {dim}")
+
+    conv_op = convert_dim_to_conv_op(dim)
+    norm_op = get_matching_instancenorm(conv_op)
+    max_num_features = 512 if dim == 2 else 320
+    blocks_per_stage_encoder = (1, 3, 4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6)
+    blocks_per_stage_decoder = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+
+    _, pool_op_kernel_sizes, conv_kernel_sizes, patch_size, _ = get_pool_and_conv_props(
+        spacing,
+        patch_size,
+        4,
+        999999,
+    )
+    num_stages = len(pool_op_kernel_sizes)
+    features_per_stage = tuple(
+        min(max_num_features, 32 * 2**i) for i in range(num_stages)
+    )
+
+
+
+# %%
     model_params = {"in_channels": 1, "out_channels": 3}
     dataset_params = {"patch_size": patch_size}
     deep_supervision = True
-    plan = config["plan_train"]
+    plan = conf["plan_train"]
     net = create_model_from_conf_swinunetr(model_params, plan, deep_supervision)
     img = torch.rand(1, 1, 128, 128, 96)
     patch_size = [192, 192, 96]
@@ -276,8 +376,8 @@ if __name__ == "__main__":
     pool_op_kernel_sizes = [[2, 2, 1], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     pool_op_kernel_sizes = [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 1]]
     # net = create_model_from_conf_nnUNet(model_params,dataset_params,deep_supervision)
-    model_params = config["model_params"]
-    dataset_params=config["dataset_params"]
+    model_params = conf["model_params"]
+    dataset_params=conf["dataset_params"]
     deep_supervision = True
     net2 = create_model_from_conf_nnUNet(model_params, dataset_params, deep_supervision)
     x = x.to("cuda")

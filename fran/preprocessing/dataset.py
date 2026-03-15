@@ -19,7 +19,7 @@ from fran.transforms.misc_transforms import (
     FgBgToIndicesd2,
     HalfPrecisiond,
     LabelRemapd,
-    Recastd,
+    RecastToFloatd,
     LabelRemapSITKd,
 )
 from fran.transforms.spatialtransforms import ResizeToTensord
@@ -35,7 +35,7 @@ from fran.transforms.inferencetransforms import BBoxFromPTd
 from fran.transforms.misc_transforms import (
     ApplyBBox,
     MergeLabelmapsd,
-    Recastd,
+    RecastToFloatd,
     LabelRemapSITKd,
 )
 from fran.transforms.spatialtransforms import ResizeToTensord
@@ -200,7 +200,7 @@ class ResamplerDataset(GetAttr, Dataset):
         Rem = LabelRemapd(keys=["lm"], remapping_key="remapping_source")
         RemI = LabelRemapd(keys=["lm"], remapping_key="remapping_imported")
         T = ToDeviced(keys=["image", "lm"], device=self.device)
-        Re = Recastd(keys=["image", "lm"])
+        Re = RecastToFloatd(keys=["image", "lm"])
 
         Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
         Ai = DictToMeta(
@@ -352,7 +352,7 @@ class ImporterDataset(ResamplerDataset):
         )  # This loads and remaps sitk image. Meta filename is lost!
         self.LS = LoadSITKd(keys=[lm_imported_key], image_only=True)
         self.LT = LoadTorchd(keys=[image_key, lm_key])
-        self.Re = Recastd(keys=[lm_imported_key])
+        self.Re = RecastToFloatd(keys=[lm_imported_key])
 
         self.D = ToDeviced(
             device=self.device, keys=[image_key, lm_key, lm_imported_key]
