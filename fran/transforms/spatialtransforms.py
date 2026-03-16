@@ -1040,7 +1040,7 @@ class CenteredPatch2(ItemTransform):
     Pads array with zeros if array is smaller than patch_size
     params:
     patch_size: can be of three types, 3d array [slices,width,height] or  [1,width,height], which returns a singleslice patch, or [width,height] returns all_slices_in_image (variable number) x wigth x height
-    crop_center: for kits is any combo in 'kidney','tumour','cyst'
+    crop_center: for kits2 is any combo in 'kidney','tumour','cyst'
     random_sample : gives pct of times a completely random location is selected instead
     """
 
@@ -1142,7 +1142,7 @@ class CenteredPatch(ItemTransform):
     Pads array with zeros if array is smaller than patch_size
     params:
     patch_size: can be of three types, 3d array [slices,width,height] or  [1,width,height], which returns a singleslice patch, or [width,height] returns all_slices_in_image (variable number) x wigth x height
-    crop_center: for kits is any combo in 'kidney','tumour','cyst'
+    crop_center: for kits2 is any combo in 'kidney','tumour','cyst'
     random_sample : gives pct of times a completely random location is selected instead
     """
 
@@ -1310,7 +1310,7 @@ class CenteredPatch(ItemTransform):
     Pads array with zeros if array is smaller than patch_size
     params:
     patch_size: can be of three types, 3d array [slices,width,height] or  [1,width,height], which returns a singleslice patch, or [width,height] returns all_slices_in_image (variable number) x wigth x height
-    crop_center: for kits is any combo in 'kidney','tumour','cyst'
+    crop_center: for kits2 is any combo in 'kidney','tumour','cyst'
     random_sample : gives pct of times a completely random location is selected instead
     """
 

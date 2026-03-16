@@ -71,7 +71,7 @@ def main(args):
 # %%
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description="Organises downloaded data and renames it to fran-compatible folder and filenames. Currently supports LITS and KITS only.")
+    parser = argparse.ArgumentParser(description="Organises downloaded data and renames it to fran-compatible folder and filenames. Currently supports LITS and kits2 only.")
     parser.add_argument("-t", help="project title", dest="project_title")
     parser.add_argument("-i","input-folder", help="input folder")
     parser.add_argument("-o","--output-folder", help="output folder") 

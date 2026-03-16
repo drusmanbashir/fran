@@ -3,7 +3,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
-from monai.inferers.inferer import SlidingWindowInferer
 import torch
 from fastcore.all import in_ipython
 from lightning.pytorch import Trainer as TrainerL
@@ -11,13 +10,15 @@ from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
                                          EarlyStopping, LearningRateMonitor,
                                          ModelCheckpoint, TQDMProgressBar)
 from lightning.pytorch.profilers import AdvancedProfiler
+from monai.inferers.inferer import SlidingWindowInferer
 from utilz.cprint import cprint
 from utilz.helpers import info_from_filename
 from utilz.imageviewers import ImageMaskViewer
 from utilz.stringz import headline
 
 from fran.callback.base import BatchSizeSafetyMargin
-from fran.callback.case_recorder import CaseIDRecorder, infer_labels_and_update_out_channels
+from fran.callback.case_recorder import (CaseIDRecorder,
+                                         infer_labels_and_update_out_channels)
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
@@ -26,9 +27,8 @@ from fran.configs.parser import (ConfigMaker, confirm_plan_analyzed,
 from fran.managers import Project
 from fran.managers.data.incremental import DataManagerDualI
 from fran.managers.data.training import (DataManagerBaseline, DataManagerDual,
-                                         DataManagerLBD, 
-                                         DataManagerPatch, DataManagerSource,
-                                         DataManagerWhole)
+                                         DataManagerLBD, DataManagerPatch,
+                                         DataManagerSource, DataManagerWhole)
 from fran.managers.unet import UNetManager
 from fran.managers.wandb import WandbManager
 from fran.trainers.base import (backup_ckpt, checkpoint_from_model_id,
@@ -46,7 +46,6 @@ def _flatten_dict(d: dict, base: str = "") -> dict:
         else:
             out[key] = v
     return out
-
 
 
 class Trainer:
@@ -219,7 +218,7 @@ class Trainer:
     def init_dm(self):
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
-        self.configs['plan_train']['val_every_n_epochs'] = self.val_every_n_epochs
+        self.configs["plan_train"]["val_every_n_epochs"] = self.val_every_n_epochs
         dm = DataManagerDual(
             project_title=self.project.project_title,
             configs=self.configs,
@@ -242,7 +241,9 @@ class Trainer:
             sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
             backup_ckpt(self.ckpt)
             sd["datamodule_hyper_parameters"]["configs"] = self.configs
-            headline("Overriding datamodule checkpoint. only Configs are overridden, not train / val_indices or other params")
+            headline(
+                "Overriding datamodule checkpoint. only Configs are overridden, not train / val_indices or other params"
+            )
             out_fname = self.run_name + ".ckpt"
             bckup_ckpt = Path(self.project.log_folder) / out_fname
             shutil.copy(self.ckpt, bckup_ckpt)
@@ -255,7 +256,6 @@ class Trainer:
             val_sampling=self.val_sampling,
             map_location="cpu",
         )
-
         if batch_size:
             D.configs["dataset_params"]["batch_size"] = int(batch_size)
         return D
@@ -269,7 +269,10 @@ class Trainer:
                 "Loading configs from checkpoints. If you want to override them with Trainer configs, set override_dm_checkpoint=True.\nRegardless, train and val indices are fixed for this run in the ckpt."
             )
             self.configs["dataset_params"] = self.D.configs["dataset_params"]
-            self.train_indices, self.val_indices = self.D.train_indices, self.D.val_indices
+            self.train_indices, self.val_indices = (
+                self.D.train_indices,
+                self.D.val_indices,
+            )
             missing_keys = []
             for key in self.configs.keys():
                 try:
@@ -334,7 +337,6 @@ class Trainer:
                 BatchSizeSafetyMargin(),
             ]
 
-
         if self.debug == True:
             cbs += [DebugEpochBatchLimit(n=10)]
 
@@ -348,7 +350,7 @@ class Trainer:
                 enable_version_counter=True,
                 auto_insert_metric_name=True,
             ),
-            ModelCheckpoint(   # 2nd checkpointer
+            ModelCheckpoint(  # 2nd checkpointer
                 save_top_k=-1,
                 save_last=True,
                 every_n_epochs=int(permanent_checkpoint_every_n_epochs),
@@ -473,7 +475,7 @@ class Trainer:
         raise NotImplementedError
 
     def init_trainer(self, epochs):
-        
+
         N = UNetManager(
             project_title=self.project.project_title,
             configs=self.configs,
@@ -538,15 +540,15 @@ class Trainer:
         return Path(last) if last else None
 
 
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR>
 
 # %%
 if __name__ == "__main__":
-    from fran.utils.common import *
     from fran.data.datasource import DS
+    from fran.utils.common import *
 
     P = Project("lidc")
-    P = Project("kits")
+    P = Project("kits2")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P)
     C.setup(6)
@@ -573,7 +575,7 @@ if __name__ == "__main__":
     # counts = df.groupby("case_id").size()
     # counts2 = counts.sort_values(ascending=False)
     # bb= counts2.index[:200]
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR>
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR>
     train_indices = None
     bs = 4
     device_id = 0
@@ -599,12 +601,12 @@ if __name__ == "__main__":
     lr = None
     debug_ = False
     val_every_n_epochs = 5
-    profiler=False
+    profiler = False
     compiled = False
-    run_name = 'KITS-0026'
     run_name = None
+    run_name = "KITS2-bk"
 # %%
-# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
@@ -630,7 +632,7 @@ if __name__ == "__main__":
     # model(inputs)
 # %%
     conf = Tm.configs
-    conf['model_params']
+    conf["model_params"]
 # %%
     N = Tm.N
     D = Tm.D
@@ -641,7 +643,7 @@ if __name__ == "__main__":
 
     tmt.collate_fn
 
-    dl  =tmv.dl
+    dl = tmv.dl
     iteri = iter(dl)
     batch = next(iteri)
 # %%
@@ -653,13 +655,13 @@ if __name__ == "__main__":
     bs = 1  # start lower if you are hitting OOM
 
     inferer = SlidingWindowInferer(
-      roi_size=Tm.configs["plan_train"]["patch_size"],
-      overlap=patch_overlap,
-      sw_batch_size=bs,
-      mode=mode,
-      progress=True,
-      sw_device=sw_device,
-      device=device,   # stitch/output on CPU
+        roi_size=Tm.configs["plan_train"]["patch_size"],
+        overlap=patch_overlap,
+        sw_batch_size=bs,
+        mode=mode,
+        progress=True,
+        sw_device=sw_device,
+        device=device,  # stitch/output on CPU
     )
 
 # %%

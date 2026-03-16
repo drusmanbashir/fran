@@ -439,7 +439,7 @@ if __name__ == "__main__":
 # %%
 
     from fran.data.dataregistry import DS
-    fldr_bosniak = Path("/s/datasets_bkp/bosniak/bosniak/kits/nifti")
+    fldr_bosniak = Path("/s/datasets_bkp/bosniak/bosniak/kits2/nifti")
     imgs_bosniak = list(fldr_bosniak.glob("*"))
     fldr_lidc = DS["lidc"].folder / ("images")
     fldr_curvas = DS["curvaspdac"].folder/  ("images")
@@ -569,7 +569,7 @@ if __name__ == "__main__":
     localiser_labels=best_runs['lidc']['localiser_labels']
 
 # %%
-    P = Project("kits")
+    P = Project("kits2")
     run_name = "KITS-0026"
     remote_ckpt_parent = Path(f"/data/EECS-LITQ/fran_storage/checkpoints/{P.project_title}")
     local_dir_parent = P.checkpoints_parent_folder/run_name
@@ -941,7 +941,7 @@ if __name__ == "__main__":
 
     lm.GetSize()
 # %%
-    project_title="kits"
+    project_title="kits2"
     run_p = 'KITS-0009'
     patch_overlap=0.25
         En.P = PatchInferer(

@@ -359,7 +359,7 @@ if __name__ == "__main__":
     from fran.managers.project import Project
     from fran.utils.common import *
 
-    P = Project(project_title="kits")
+    P = Project(project_title="kits2")
     C = ConfigMaker(P)
     C.setup(6)
     conf = C.configs
@@ -367,15 +367,15 @@ if __name__ == "__main__":
 # %%
 
     x = torch.rand(1, 1, 192, 192, 96)
-    N = UNetManager(project_title="kits", configs=conf, lr=0.01)
+    N = UNetManager(project_title="kits2", configs=conf, lr=0.01)
     N.setup()
     N.model.ds_strides
     
 # %%
 
 
-    image = torch.load("/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images/kits21_00002.pt", weights_only=False)
-    lm = torch.load("/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/lms/kits21_00002.pt", weights_only=False)
+    image = torch.load("/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images/kits21_00002.pt", weights_only=False)
+    lm = torch.load("/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/lms/kits21_00002.pt", weights_only=False)
     image = image.unsqueeze(0).unsqueeze(0)
     lm= lm.unsqueeze(0).unsqueeze(0)
     batch = {"image": image[:,:,:128,:128,:64], "lm": lm[:,:,:128,:128,:64]}

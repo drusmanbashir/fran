@@ -20,9 +20,9 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- setup--------------------------------------------------------------------------------------
       data_folder = Path(
-          "/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/"
+          "/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/"
       )
-      pred_fldr = Path("/s/fran_storage/predictions/kits/KITS-n7")
+      pred_fldr = Path("/s/fran_storage/predictions/kits2/KITS-n7")
       img_fldr = data_folder / "images"
       lms_fldr = data_folder / "lms"
       imgs = sorted(img_fldr.glob("*.pt"))
@@ -66,7 +66,7 @@ if __name__ == "__main__":
       lm = torch.load(lm_fn,weights_only=False)
       pred_fn = pred_fldr/lm_fn.name
 
-      pred_fn = "/s/fran_storage/predictions/kits/KITS-n7/kits23_00001.pt"
+      pred_fn = "/s/fran_storage/predictions/kits2/KITS-n7/kits23_00001.pt"
       pred = torch.load(pred_fn, weights_only=False)
       print(pred.shape)
       pred=  pred.squeeze(0)

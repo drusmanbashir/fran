@@ -17,6 +17,11 @@ from paramiko import SSHClient
 
 from fran.utils.common import common_vars_filename
 from utilz.fileio import load_yaml, maybe_makedirs
+from utilz.random_word_maker import (
+    logical_word_capacity,
+    ordered_word_suffixes,
+    random_pronounceable_suffix,
+)
 
 try:
     import numpy as np
@@ -163,28 +168,46 @@ def _extract_seq(value: str, prefix: str) -> Optional[int]:
     return int(m.group(1))
 
 
+def _extract_word_suffix(value: str, prefix: str) -> Optional[str]:
+    value = str(value or "")
+    token = f"{prefix}-"
+    if value.startswith(token):
+        return value[len(token):]
+    return None
+
+
 def _new_run_id(entity: Optional[str], project_title: str, width: int = 4) -> str:
     prefix = _normalize_run_prefix(project_title)
     path = f"{entity}/{project_title}" if entity else project_title
-    alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    width = int(width or 2)
+    width = int(width or 5)
     mode = str(os.environ.get("WANDB_MODE", "")).lower()
     if mode in {"offline", "disabled", "dryrun"}:
-        suffix = "".join(secrets.choice(alphabet) for _ in range(width))
+        suffix = random_pronounceable_suffix(width)
         return f"{prefix}-{suffix}"
     used = set()
+    used_suffixes = set()
     try:
         api = wandb.Api()
         for run in api.runs(path):
             for candidate in (run.id, run.name):
                 if candidate:
-                    used.add(str(candidate))
+                    candidate = str(candidate)
+                    used.add(candidate)
+                    suffix = _extract_word_suffix(candidate, prefix)
+                    if suffix:
+                        used_suffixes.add(suffix)
     except Exception:
         pass
-    while True:
-        suffix = "".join(secrets.choice(alphabet) for _ in range(width))
+
+    for suffix in ordered_word_suffixes():
         run_id = f"{prefix}-{suffix}"
-        if run_id not in used:
+        if run_id not in used and suffix not in used_suffixes:
+            return run_id
+
+    while True:
+        suffix = random_pronounceable_suffix(width)
+        run_id = f"{prefix}-{suffix}"
+        if run_id not in used and suffix not in used_suffixes:
             return run_id
 
 
@@ -479,7 +502,7 @@ if __name__ == "__main__":
 #SECTION:-------------------- --------------------------------------------------------------------------------------    
 
         from fran.managers.project import Project
-        P = Project(project_title="kits")
+        P = Project(project_title="kits2")
         _resolve_wandb_save_dir(P)
 # %%
         W = WandbManager(project=P)
@@ -487,10 +510,10 @@ if __name__ == "__main__":
         api= wandb.Api()
         runs = api.runs()
         aa = list(runs)
-        print(_new_run_id("drubashir", "KITS"))
+        print(_new_run_id("drubashir", "kits2"))
         df = W.fetch_project_df()
         width =4
-        prefix= "KITS"
+        prefix= "kits2"
         aa = df['sys/name'].sort_values().iloc[-1]
         number = int(aa.split("-")[-1])
         max_seq = aa.split("-")[-1]

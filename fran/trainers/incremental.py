@@ -473,7 +473,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- - <CR> <CR>
     set_autoreload()
     from fran.utils.common import *
-    P = Project("kits")
+    P = Project("kits2")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P )
     C.setup(1)

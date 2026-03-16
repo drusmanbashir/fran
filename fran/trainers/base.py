@@ -97,7 +97,14 @@ def checkpoint_from_model_id(model_id, sort_method="last", normalize_keys=True):
     elif sort_method == "best":
         tr()
     if normalize_keys==True:
-        ckpt = write_normalized_ckpt(ckpt)
+        sd = torch.load(ckpt, map_location="cpu", weights_only=False)
+        compiled = bool(sd["hyper_parameters"]["configs"]["model_params"]["compiled"])
+        if compiled and str(ckpt).endswith(".norm.ckpt"):
+            ckpt_unnorm = Path(str(ckpt).replace(".norm.ckpt", ".ckpt"))
+            if ckpt_unnorm.exists():
+                ckpt = ckpt_unnorm
+        elif not compiled:
+            ckpt = write_normalized_ckpt(ckpt)
     return ckpt
 
 def backup_ckpt(ckpt):
@@ -163,7 +170,7 @@ def switch_state_keys(state_dict)->dict:
         return state_dict_neo
 
 def switch_ckpt_keys(ckpt_path: Union[str, Path])->None:
-        state_dict = torch.load(ckpt_path)
+        state_dict = torch.load(ckpt_path, weights_only=False)
         state_dict_neo = switch_state_keys(state_dict)
 
         ckpt_old = str(ckpt_path).replace(".ckpt", ".ckpt_bkp")
@@ -184,4 +191,3 @@ if __name__ == '__main__':
     k1_splits = k1.split(".")
 
     print(k1)
-

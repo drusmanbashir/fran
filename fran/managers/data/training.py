@@ -728,7 +728,7 @@ class DataManager(LightningDataModule):
             indices_fn = inds_fldr / img_fn.name
             assert img_fn.exists(), "Missing image {}".format(img_fn)
             assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
-            dici = {"image": img_fn, "lm": lm_fn, "indices": indices_fn}
+            dici = {"image": str(img_fn), "lm": str(lm_fn), "indices": str(indices_fn)}
             data.append(dici)
         return data
 
@@ -836,11 +836,11 @@ class DataManager(LightningDataModule):
         if is_excel_None(self.ds_type):
             self.ds = Dataset(data=self.data, transform=self.transforms)
             print("Vanilla Pytorch Dataset set up.")
-        elif self.ds_type == "cache" and self.cache_rate > 0.0:
-            self.ds = CacheDataset(
+        elif self.cache_rate > 0.0:
+            self.ds = PersistentDataset(
                 data=self.data,
                 transform=self.transforms,
-                cache_rate=self.cache_rate,
+                cache_dir=self.cache_folder,
             )
         elif self.ds_type == "lmdb":
             # BUG: LMDBDataset will slow training down. fix it  (see #8)
@@ -1000,7 +1000,7 @@ class DataManagerWhole(DataManagerSource):
             lm_fn = find_matching_fn(fn.name, lms_fldr, ["all"])[0]
             assert img_fn.exists(), "Missing image {}".format(img_fn)
             assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
-            dici = {"image": img_fn, "lm": lm_fn}
+            dici = {"image": str(img_fn), "lm": str(lm_fn)}
             data.append(dici)
         return data
 
@@ -1137,7 +1137,7 @@ class DataManagerPatch(DataManagerSource):
             ), "Missing labelmap fn {}. In Patch Data Manager, it is IMPERATIVE that image and lm names are exact matches".format(
                 lm_match
             )
-            dici = {"case_id": case_id, "image": img_fn, "lm": lm_match}
+            dici = {"case_id": case_id, "image": str(img_fn), "lm": str(lm_match)}
             dicis_all.append(dici)
 
         df = pd.DataFrame(dicis_all)
@@ -1251,19 +1251,21 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "kits"
-    proj_lidc = Project(project_title=project_title)
+    project_title = "kits2"
+    proj = Project(project_title=project_title)
 
-    CL = ConfigMaker(proj_lidc)
+    CL = ConfigMaker(proj)
     CL.setup(2)
-    config_lidc = CL.configs
+    conf = CL.configs
 # %%
 #SECTION:-------------------- LIDC--------------------------------------------------------------------------------------
     batch_size = 2
     ds_type = "lmdb"
     ds_type = None
-    proj_tit =  proj_lidc.project_title
-    conf = config_lidc
+    proj_tit =  proj.project_title
+    conf["dataset_params"]["cache_rate"]=0.
+
+
     
     D = DataManagerDual(
         project_title=proj_tit,
@@ -1380,8 +1382,8 @@ if __name__ == "__main__":
     batch_size = 2
 # %%
     P = DataManagerPatch(
-        project=proj_lidc,
-        configs=config_lidc,
+        project=proj,
+        configs=conf,
         batch_size=batch_size,
         data_folder=data_folder,
         ds_type=None,

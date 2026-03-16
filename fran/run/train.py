@@ -170,7 +170,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--compiled",
         type=str2bool,
-        default=True,
+        default=False,
         help="Compile model (Lightning/torch.compile)",
     )
     parser.add_argument(
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     args = parser.parse_known_args()[0]
 # %%
     # args.fold = 1
-    # args.project = "kits"
+    # args.project = "kits2"
     #
     # args.devices = '1'
     #

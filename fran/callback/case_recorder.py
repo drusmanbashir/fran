@@ -341,7 +341,7 @@ if __name__ == "__main__":
     import wandb
 
     ENTITY = "drubashir"
-    PROJECT = "kits"
+    PROJECT = "kits2"
     RUN_ID = "KITS-0018"  # wandb run id
     OUT = Path("wandb_tables")
     OUT.mkdir(exist_ok=True)

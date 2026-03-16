@@ -1,6 +1,6 @@
 #!/bin/bash
 python train_retry.py \
-  --project kits \
+  --project kits2 \
   --plan-num 3 \
   --fold 1 \
   --epochs 500 \
@@ -16,7 +16,7 @@ python train_retry.py \
 # python  train.py -t litsmc -r LITS-811 -e 500 --lr 11e-4 -b 8
 # python  train.py -t litsmc -r LITS-940 -e 500  -d [1]  
 # python train.py \
-#   --project kits \
+#   --project kits2 \
 #   --plan-num 3 \
 #   --fold 1 \
 #   --epochs 500 \

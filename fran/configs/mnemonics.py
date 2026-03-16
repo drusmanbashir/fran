@@ -11,7 +11,7 @@ class Mnemonic:
 class Mnemonics:
     lungs: ClassVar[Mnemonic] = Mnemonic("lungs", ("lung", "lidc"))
     liver: ClassVar[Mnemonic] = Mnemonic("liver", ("liver", "lits", "litsmc"))
-    kidneys: ClassVar[Mnemonic] = Mnemonic("kidneys", ("kidney", "kits", "kits23"))
+    kidneys: ClassVar[Mnemonic] = Mnemonic("kidneys", ("kidney", "kits2", "kits23"))
     nodes: ClassVar[Mnemonic] = Mnemonic("nodes", ("nodes",))
     pancreas: ClassVar[Mnemonic] = Mnemonic("pancreas", ("pancreas",))
     colon: ClassVar[Mnemonic] = Mnemonic("colon", ("colon",))

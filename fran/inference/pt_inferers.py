@@ -62,15 +62,15 @@ if __name__ == '__main__':
     run  = "KITS-bl"
 
     from fran.managers.project import Project
-    p = Project("kits")
+    p = Project("kits2")
     # download_wandb_checkpoint(p, run)
-    # download_path_no_wandb(remote_dir_parent="/data/EECS-LITQ/fran_storage/checkpoints/kits/kits/KITS-TW/checkpoints",local_dir_parent="/s/fran_storage/checkpoints/kits/kits/KITS-TW/checkpoints")
+    # download_path_no_wandb(remote_dir_parent="/data/EECS-LITQ/fran_storage/checkpoints/kits2/kits2/KITS-TW/checkpoints",local_dir_parent="/s/fran_storage/checkpoints/kits2/kits2/KITS-TW/checkpoints")
 
 
     debug_ = False
 #
     _, val = p.get_train_val_case_ids(0) 
-    img_fldr = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images')
+    img_fldr = Path('/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images')
     img_fns = list(img_fldr.glob("*.pt"))
     val_fns =[fn for fn in img_fns if info_from_filename(fn.name, full_caseid=True)["case_id"] in val]
     len(val_fns)
@@ -94,12 +94,12 @@ if __name__ == '__main__':
 
 # %%
     lbdkits_fldr = Path("")
-    imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits23_00018.pt')
-    imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits23_00053.pt')
+    imf_fn = Path('/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits23_00018.pt')
+    imf_fn = Path('/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits23_00053.pt')
     imf_fn = list(imf_fldr.glob("*.pt"))
 
 # %%
-    fldr = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/')
+    fldr = Path('/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/')
     output = fldr/("dataset_stats")/("output_gif.gif")
     maybe_makedirs(output.parent)
     from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif

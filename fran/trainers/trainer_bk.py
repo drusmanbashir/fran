@@ -574,7 +574,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
 
     P = Project("lidc")
-    P = Project("kits")
+    P = Project("kits2")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P)
     C.setup(2)

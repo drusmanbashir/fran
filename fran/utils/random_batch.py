@@ -35,8 +35,8 @@ from monai.data import MetaTensor
 if __name__ == '__main__':
     
 
-  image = torch.load("/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images/kits21_00002.pt", weights_only=False)
-  lm = torch.load("/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/lms/kits21_00002.pt", weights_only=False)
+  image = torch.load("/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images/kits21_00002.pt", weights_only=False)
+  lm = torch.load("/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/lms/kits21_00002.pt", weights_only=False)
 
   batch = {
       "image": MetaTensor(

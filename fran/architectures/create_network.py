@@ -233,7 +233,7 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from fran.managers.project import Project
 
-    P = Project(project_title="kits")
+    P = Project(project_title="kits2")
     C = ConfigMaker(P)
     C.setup(6)
     conf = C.configs
