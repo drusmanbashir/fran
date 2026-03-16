@@ -1,6 +1,7 @@
 # %%
 import sqlite3
 import h5py
+from utilz.cprint import cprint
 from fran.data.dataregistry import DS
 import ipdb
 
@@ -45,7 +46,7 @@ from fran.utils.misc import is_hpc
 tr = ipdb.set_trace
 from pathlib import Path
 
-if is_hpc==False:
+if is_hpc()==False:
     trash_fnc = send2trash
 else:
     trash_fnc =  shutil.rmtree
@@ -411,17 +412,21 @@ class Project(DictToAttr):
             Datasource object with verified file pairs.
         """
         strs=[]
-        with h5py.File(ds.h5_fname, "r") as h5f:
-            for pair in ds.verified_pairs:
-                fn = pair[0].name
-                case_id = info_from_filename(fn, full_caseid=True)["case_id"]
-                case_this = h5f[case_id]
-                labels = case_this.attrs["labels"]
-                nnz = 0 if len(labels) > 0 else 1
-                labels = list(labels)
-                labels = str(labels)
-                stra =                 self.vars_to_sql(ds.name, ds.alias,case_id,  pair[0],pair[1], labels, nnz,ds.test)
-                strs.append(stra)
+        try:
+            with h5py.File(ds.h5_fname, "r") as h5f:
+                for pair in ds.verified_pairs:
+                    fn = pair[0].name
+                    case_id = info_from_filename(fn, full_caseid=True)["case_id"]
+                    case_this = h5f[case_id]
+                    labels = case_this.attrs["labels"]
+                    nnz = 0 if len(labels) > 0 else 1
+                    labels = list(labels)
+                    labels = str(labels)
+                    stra =                 self.vars_to_sql(ds.name, ds.alias,case_id,  pair[0],pair[1], labels, nnz,ds.test)
+                    strs.append(stra)
+        except FileNotFoundError as e:
+            print(e)
+            cprint("You may need to initialise datasrouce by running Datasource({data_folder}).process()", "red")
                 
         with db_ops(self.db) as cur:
             cur.executemany("INSERT INTO datasources VALUES (?,?,?,?, ?,?,?,?,?,?,?)", strs)
@@ -540,6 +545,13 @@ class Project(DictToAttr):
         print("Cases not assigned to any training fold: {}".format(len(qr)))
         return qr
 
+    def get_all_nontest_cases(self):
+        ss = "SELECT case_id, image FROM datasources WHERE test=0" # only training cases
+        qr = self.sql_query(ss)
+        qr = list(il.chain(qr))
+        print("Cases not assigned to any training fold: {}".format(len(qr)))
+        return qr
+
     def create_df_folds(self, cases):
         self.df_folds = pd.DataFrame(cases, columns=["case_id", "image"])
         self.df_folds["index"] = 0
@@ -561,12 +573,15 @@ class Project(DictToAttr):
             cur.executemany(ss, dds)
 
     # @ask_proceed("Create train/valid folds (80:20) ")
-    def _create_folds(self, pct_valid=0.15, shuffle=False):
+    def _create_folds(self, pct_valid=0.15, shuffle=False, overwrite=False):
         self.delete_duplicates()
-        cases_unassigned = self.get_unassigned_cases()
+        if overwrite==False:
+            cases_unassigned = self.get_unassigned_cases()
+        else:
+            cases_unassigned = self.get_all_nontest_cases()
         if len(cases_unassigned) > 0:
+
             self.create_df_folds(cases_unassigned)
-            pct_valid = 0.2
             folds = int(1 / pct_valid)
             sl = val_indices(len(self.df_folds), folds)
             print(
@@ -630,7 +645,14 @@ class Project(DictToAttr):
                 "labels": dss.labels,
             }
             dicis.append(dici)
-        self.global_properties["datasources"] = dicis
+
+
+        existing = self.global_properties.get("datasources", [])
+        merged = {d["ds"]: d for d in existing}
+        for d in dicis:
+          merged[d["ds"]] = d
+        self.global_properties["datasources"] = list(merged.values())
+        # self.global_properties["datasources"] = dicis
         self.save_global_properties()
         return dicis
 
@@ -941,23 +963,26 @@ class Project(DictToAttr):
             json.dump(state, f, indent=2)
         return run_folder, csv_path, json_path
 
+
     @ask_proceed("Remove all project files and folders?")
     def delete(self):
         exempted_tokens = ["checkpoints", "predictions"]
-        exempted_folders = []
-        all_folders = list(self.folders)
-        for folder in all_folders:
+        folders_exempt = []
+        folders_non_exempt = []
+        for folder in self.folders:
+            exempt=False
             for e in exempted_tokens:
                 if e in str(folder):
-                    all_folders.remove(folder)
-                    exempted_folders.append(folder)
-        for folder in self.folders:
+                    exempt=True
+            if exempt==True:
+                    folders_exempt.append(folder)
+            else:
+                    folders_non_exempt.append(folder)
+        for folder in folders_non_exempt:
             if folder.exists() and self.project_title in str(folder):
-                if not folder in exempted_tokens:
                     trash_fnc(folder)
 
-                # shutil.rmtree(folder)
-        print("Deleted all except: {}".format(exempted_folders))
+        print("Deleted all except: {}".format(folders_exempt))
         print("Delete those manually if you need to")
 
     def set_lm_groups(self, lm_groups: list = None):
@@ -1034,7 +1059,7 @@ class Project(DictToAttr):
         self.save_global_properties()
 
     def maybe_store_projectwide_properties(
-        self, clip_range=None, max_cases=100, overwrite=False,multiprocess=False
+        self, clip_range=None, max_cases=100, overwrite=False,multiprocess=False, valid_pct=0.15
     ):
         """
         Store global properties like dataset mean and standard deviation.
@@ -1049,6 +1074,7 @@ class Project(DictToAttr):
             Whether to overwrite existing properties.
         """
         from fran.preprocessing.globalproperties import GlobalProperties
+
 
         self._create_folds()
         labels_all = self.global_properties.get("labels_all", None)
@@ -1156,88 +1182,6 @@ class Project(DictToAttr):
         cc = [a == "NULL" for a in result]
         all_bool = not all(cc)
         return all_bool
-#
-#HACK: deprecated
-# def add_plan_to_db(
-#     project:Project,
-#     plan: dict,
-#     db_path: str = DB_PATH,
-#     data_folder_source: str = None,
-#     data_folder_lbd: str = None,
-#     data_folder_whole: str = None,
-#     data_folder_pbd: str = None,
-# ) -> int:
-#
-#     # Assert that only one data_folder argument has a value
-#     data_folders = [
-#         data_folder_source,
-#         data_folder_lbd,
-#         data_folder_whole,
-#         data_folder_pbd,
-#     ]
-#     non_none_count = sum(1 for folder in data_folders if folder is not None)
-#     assert (
-#         non_none_count == 1
-#     ), f"Exactly one data_folder argument must be provided, got {non_none_count}"
-#
-#     # Determine which data folder field is being set
-#     data_folder_field = None
-#     data_folder_value = None
-#     if data_folder_source is not None:
-#         data_folder_field = "data_folder_source"
-#         data_folder_value = data_folder_source
-#     elif data_folder_lbd is not None:
-#         data_folder_field = "data_folder_lbd"
-#         data_folder_value = data_folder_lbd
-#     elif data_folder_whole is not None:
-#         data_folder_field = "data_folder_whole"
-#         data_folder_value = data_folder_whole
-#     elif data_folder_pbd is not None:
-#         data_folder_field = "data_folder_pbd"
-#         data_folder_value = data_folder_pbd
-#
-#     folder_names = folder_names_from_plan(project,plan)
-#     folder_names[data_folder_field] = data_folder_value
-#     
-#
-#     headline("Adding plan to db: {0}".format(db_path))
-#     existing_row = find_matching_plan(db_path, plan)
-#
-#     if len(existing_row) >0:
-#         # Check if the specific data folder field is NULL in existing row
-#         if existing_row[data_folder_field] is None:
-#             # Update the existing row with the new data folder value
-#             with sqlite3.connect(db_path) as conn:
-#                 sql = f'UPDATE "{TABLE}" SET "{data_folder_field}" = ? WHERE id = ?'
-#                 conn.execute(
-#                     sql, [_normalize_for_db(data_folder_value), existing_row["id"]]
-#                 )
-#                 conn.commit()
-#                 print(
-#                     f"Updated existing row {existing_row['id']} with {data_folder_field}: {data_folder_value}"
-#                 )
-#                 return existing_row["id"]
-#         else:
-#             print(
-#                 f"Row exists with {data_folder_field} already set: {existing_row[data_folder_field]}"
-#             )
-#             return existing_row["id"]
-#
-#     # No matching row found, insert new row
-#     combined_data = plan.copy()
-#     combined_data.update(
-#         {
-#             "data_folder_source": data_folder_source,
-#             "data_folder_lbd": data_folder_lbd,
-#             "data_folder_whole": data_folder_whole,
-#             "data_folder_pbd": data_folder_pbd,
-#         }
-#     )
-#
-#     with sqlite3.connect(db_path) as conn:
-#         return _insert_row(conn, combined_data, None)
-#
-
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
@@ -1246,10 +1190,13 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from fran.configs.parser import ConfigMaker
     set_autoreload()
-    P = Project(project_title="test")
     P = Project(project_title="pancreas")
-    P = Project(project_title="kits")
-    # P.delete()
+    P = Project(project_title="test")
+    P = Project(project_title="kits2")
+    P.add_data([DS.kits23])
+    P._create_folds(overwrite=True)
+    P.add_data([DS.lidc])
+    P.create("kidney")
     # P.create(["litsmc", "lidc"])
     P.create_tables()
     # P.create(mnemonic="nodes")
@@ -1268,5 +1215,7 @@ if __name__ == "__main__":
 #     valid_projects = "nodes","lidc","totalseg", "litsmc" ,"pancreas", "colon"
 #     for proj in valid_projects: 
 #         pp.remove(proj)
-# # %%
-#     for ap in pp:
+# # # %%
+# #
+#  
+# %%

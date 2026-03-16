@@ -1,6 +1,6 @@
 # %%
 import itertools as il
-from typing import Callable, Optional
+from typing import Callable, Optional, TypeAlias
 
 import ipdb
 import lightning.pytorch as pl
@@ -8,7 +8,6 @@ from monai.losses.dice import DiceLoss
 import numpy as np
 import torch
 import torch.nn as nn
-from fastcore.basics import store_attr
 from monai.utils.enums import DiceCEReduction, LossReduction
 from monai.utils.module import look_up_option
 from nnunet.utilities.nd_softmax import softmax_helper
@@ -19,6 +18,8 @@ import torch.nn.functional as F
 from monai.losses import MaskedDiceLoss
 
 from fran.utils.common import PAD_VALUE
+
+TensorSeq: TypeAlias = list[torch.Tensor] | tuple[torch.Tensor, ...]
 
 # Cell
 
@@ -216,12 +217,16 @@ class DeepSupervisionLoss(pl.LightningModule):
         include_background=False,
     ):
         super().__init__()
-        store_attr()
         assert fg_classes > 0, "fg_classes should be at least 1"
         sigmoid = False
         softmax = True
 
-        self.fg_classes = fg_classes
+        self.levels: int = levels
+        self.include_background: bool = bool(include_background)
+        self.fg_classes: int = fg_classes
+        self.deep_supervision_scales: list[list[float]] = [
+            list(scale) for scale in deep_supervision_scales
+        ]
         self.LossFunc = _DiceCELossMultiOutput(
             include_background=include_background, softmax=softmax, sigmoid=sigmoid
         )
@@ -256,26 +261,34 @@ class DeepSupervisionLoss(pl.LightningModule):
         weights[~mask] = 0
         self.weights = weights / weights.sum()
 
-    def maybe_create_labels(self, target):
+    def maybe_create_labels(self, target: torch.Tensor | TensorSeq) -> None:
         if not hasattr(self, "labels"):
-            if isinstance(target, list):
+            if isinstance(target, (list, tuple)):
                 bs = target[0].shape[0]
             else:
                 bs = target.shape[0]
             self.create_labels(bs, self.fg_classes)
 
-    def maybe_create_weights(self, preds):
+    def maybe_create_weights(self, preds: torch.Tensor | TensorSeq) -> None:
         if not hasattr(self, "weights"):
-            self.create_weights(preds[0].device)
+            if isinstance(preds, (list, tuple)):
+                self.create_weights(preds[0].device)
+            else:
+                self.create_weights(preds.device)
 
-    def apply_ds_scales(self, tnsr_inp:  torch.Tensor, mode):
-        tnsr_listed = []
+    def apply_ds_scales(
+        self,
+        tnsr_inp: torch.Tensor | TensorSeq,
+        mode: str,
+    ) -> list[torch.Tensor]:
+        tnsr_listed: list[torch.Tensor] = []
         for ind, sc in enumerate(self.deep_supervision_scales):
-            if isinstance(tnsr_inp, (tuple, list)):
+            tnsr: torch.Tensor
+            if isinstance(tnsr_inp, (list, tuple)):
                 tnsr = tnsr_inp[ind]
             else:
                 tnsr = tnsr_inp
-            if all([i == 1 for i in sc]):
+            if all(i == 1 for i in sc):
                 tnsr_listed.append(tnsr)
             else:
                 t_shape = list(tnsr.shape[2:])
@@ -288,29 +301,32 @@ class DeepSupervisionLoss(pl.LightningModule):
                 tnsr_listed.append(tnsr_downsampled)
         return tnsr_listed
 
-    def forward(self, preds :torch.Tensor|list|tuple, target: torch.Tensor, use_mask=False):
+    def forward(
+        self,
+        preds: torch.Tensor | TensorSeq,
+        target: torch.Tensor,
+        use_mask=False,
+    ):
 
         self.maybe_create_weights(preds)
         self.maybe_create_labels(target)
 
-        target = self.apply_ds_scales(target, "nearest")
+        scaled_target = self.apply_ds_scales(target, "nearest")
         if isinstance(preds, (list, tuple)):  # multires lists in training
-            if isinstance(target, torch.Tensor):
             losses = [
                     self.LossFunc(xx, yy, use_mask=use_mask)
-                    for xx, yy in zip(preds, target)
+                    for xx, yy in zip(preds, scaled_target)
                 ]
 
         elif isinstance(preds, torch.Tensor):  # tensor
             if (
-                preds.dim() == target.dim() + 1
+                preds.dim() == scaled_target[0].dim() + 1
             ):  # i.e., training phase has deep supervision:
-                preds = torch.unbind(preds, dim=1)
-                preds = self.apply_ds_scales(preds, "trilinear")
-                target = self.apply_ds_scales(target, "nearest")
+                pred_levels: tuple[torch.Tensor, ...] = torch.unbind(preds, dim=1)
+                scaled_preds = self.apply_ds_scales(pred_levels, "trilinear")
                 losses = [
                     self.LossFunc(xx, yy, use_mask=use_mask)
-                    for xx, yy in zip(preds, target)
+                    for xx, yy in zip(scaled_preds, scaled_target)
                 ]
             else:  # validation loss
                 losses = [self.LossFunc(preds, target, use_mask=use_mask)]

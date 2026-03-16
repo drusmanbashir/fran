@@ -478,21 +478,23 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- --------------------------------------------------------------------------------------    
 
-  from fran.managers.project import Project
-  P = Project(project_title="kits")
-  W = WandbManager(project=P)
-  os.environ["WANDB_MODE"] = "online"
-  api= wandb.Api()
-  runs = api.runs()
-  aa = list(runs)
-  print(_new_run_id("drubashir", "KITS"))
-  df = W.fetch_project_df()
-  width =4
-  prefix= "KITS"
-  aa = df['sys/name'].sort_values().iloc[-1]
-  number = int(aa.split("-")[-1])
-  max_seq = aa.split("-")[-1]
-  max_seq = int(max_seq)
-  id = f"{prefix}-{max_seq + 1:0{int(width)}d}"
+        from fran.managers.project import Project
+        P = Project(project_title="kits")
+        _resolve_wandb_save_dir(P)
+# %%
+        W = WandbManager(project=P)
+        os.environ["WANDB_MODE"] = "online"
+        api= wandb.Api()
+        runs = api.runs()
+        aa = list(runs)
+        print(_new_run_id("drubashir", "KITS"))
+        df = W.fetch_project_df()
+        width =4
+        prefix= "KITS"
+        aa = df['sys/name'].sort_values().iloc[-1]
+        number = int(aa.split("-")[-1])
+        max_seq = aa.split("-")[-1]
+        max_seq = int(max_seq)
+        id = f"{prefix}-{max_seq + 1:0{int(width)}d}"
 
 # %%

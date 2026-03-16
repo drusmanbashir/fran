@@ -348,7 +348,7 @@ class Trainer:
                 enable_version_counter=True,
                 auto_insert_metric_name=True,
             ),
-            ModelCheckpoint(
+            ModelCheckpoint(   # 2nd checkpointer
                 save_top_k=-1,
                 save_last=True,
                 every_n_epochs=int(permanent_checkpoint_every_n_epochs),
@@ -575,11 +575,11 @@ if __name__ == "__main__":
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR>
     train_indices = None
-    bs = 8
+    bs = 4
     device_id = 0
 
-    batchsize_finder = False
     batchsize_finder = True
+    batchsize_finder = False
     # run_name ='LITS-1285'
     wandb = True
     override_dm = False

@@ -263,6 +263,7 @@ class Datasource(GetAttr):
         args_list = [
             [case_tuple, self.bg_label, return_voxels] for case_tuple in self.new_cases
         ]
+        from label_analysis.dataset_stats import end2end_lms_stats_and_plots
         self.outputs = multiprocess_multiarg(
             func=case_analyzer_wrapper,
             arguments=args_list,
@@ -275,6 +276,8 @@ class Datasource(GetAttr):
         for output in self.outputs:
             self.raw_dataset_properties.append(output["case"])
         self.dump_to_h5()
+        end2end_lms_stats_and_plots(self.folder/("lms"))
+        
 
     def dump_to_h5(self):
         h5py = import_h5py()
@@ -438,6 +441,8 @@ def db_ops(db_name):
 
 if __name__ == "__main__":
 # %%
+#SECTION:-------------------- setup--------------------------------------------------------------------------------------
+# %%
     nodes_fldr = "/s/xnat_shadow/nodes"
     nodesthick_fldr = "/s/xnat_shadow/nodesthick"
     nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
@@ -452,6 +457,8 @@ if __name__ == "__main__":
     ds = Datasource(DS.kits23.folder)
     # ds = Datasource(nodesthick_fldr, "nodesthick")
     ds.process()
+
+    end2end_lms_stats_and_plots(ds.folder/("lms"))
 # %%
     ds = Datasource(ln_fldr, "lidc")
     ds = Datasource(litsmall_fldr.folder, "litsmall")

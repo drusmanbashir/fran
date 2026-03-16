@@ -1,4 +1,8 @@
 # %%
+import os
+import uuid
+from copy import deepcopy
+
 import ipdb
 import matplotlib.pyplot as plt
 import torch
@@ -6,7 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 from fastcore.basics import listify, store_attr
-from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.callbacks import BatchSizeFinder, Callback
+from lightning.pytorch.tuner import batch_size_scaling as _bs_scale
 from fran.utils.common import PAD_VALUE
 
 tr = ipdb.set_trace

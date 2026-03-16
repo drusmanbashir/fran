@@ -1,5 +1,7 @@
 # %%
+import shutil
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import ipdb
@@ -21,6 +23,35 @@ from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import infer_dataset_stats_window, sanitize_meta_for_monai
 from fran.utils.dataset_properties import analyze_tensor_data_folder
+
+
+def _show_gif_in_chrome_if_available(gif_path: Path) -> None:
+    gif_path = Path(gif_path).resolve()
+    print(f"Dataset stats GIF: {gif_path}")
+    chrome_path = next(
+        (
+            candidate
+            for candidate in (
+                "google-chrome",
+                "google-chrome-stable",
+                "chromium",
+                "chromium-browser",
+            )
+            if shutil.which(candidate)
+        ),
+        None,
+    )
+    if chrome_path is None:
+        print("Google Chrome not available, skipping GIF preview.")
+        return
+    try:
+        subprocess.Popen(
+            [chrome_path, "--new-window", gif_path.as_uri()],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as e:
+        print(f"Failed to open dataset stats GIF in Chrome: {e}")
 
 
 def bboxes_to_df(bboxes):
@@ -513,35 +544,35 @@ class Preprocessor(GetAttr):
             ]
         )
 
-    def create_dataset_stats_artifacts(self):
+    def create_dataset_stats_artifacts(self, gif:bool=True,label_stats=False):
         dataset_root = Path(self.output_folder)
         lms_folder = dataset_root / "lms"
         if not lms_folder.exists():
             print(f"Skipping dataset stats: missing labels folder {lms_folder}")
             return
-
         stats_folder = dataset_root / "dataset_stats"
-        maybe_makedirs([stats_folder])
-
         from label_analysis.dataset_stats import end2end_lms_stats_and_plots
         from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
-
-        df, _ = end2end_lms_stats_and_plots(
-            input_folder=lms_folder,
-            output_folder=stats_folder,
-        )
-        df.to_csv(stats_folder / "dataset_stats.csv", index=False)
-
-        output_gif = stats_folder / "snapshot.gif"
-        create_nifti_overlay_grid_gif(
-            dataset_root=dataset_root,
-            output_gif=output_gif,
-            grid_shape=(3, 3),
-            num_frames=30,
-            stride=4,
-            window=infer_dataset_stats_window(self.project),
-            fps=5,
-        )
+        if label_stats or gif:
+            maybe_makedirs([stats_folder])
+        if label_stats==True:
+            df, _ = end2end_lms_stats_and_plots(
+                input_folder=lms_folder,
+                output_folder=stats_folder,
+            )
+            df.to_csv(stats_folder / "dataset_stats.csv", index=False)
+        if gif ==True:
+            output_gif = stats_folder / "snapshot.gif"
+            create_nifti_overlay_grid_gif(
+                dataset_root=dataset_root,
+                output_gif=output_gif,
+                grid_shape=(3, 3),
+                num_frames=30,
+                stride=4,
+                window=infer_dataset_stats_window(self.project),
+                fps=5,
+            )
+            _show_gif_in_chrome_if_available(output_gif)
 
     def ray_init(self):
         if not ray.is_initialized():

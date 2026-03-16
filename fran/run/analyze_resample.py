@@ -398,7 +398,7 @@ if __name__ == "__main__":
     args = parser.parse_known_args()[0]
 # %%
     # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
-    # args.project_title="kits"
+    # args.project_title="kits2"
     # args.plan = 1
     # args.num_processes = 1
     # args.overwrite=False
@@ -455,15 +455,18 @@ if __name__ == "__main__":
 #         "data_folder_source"
 #     ]
 #
+# # %%
 #     I.L = LabelBoundedDataGeneratorImported(
 #         project=I.project,
 #         plan=I.plan,
 #         data_folder=resampled_data_folder,
 #     )
 # # %%
+# # # %%
 #     device='cpu'
 #     I.L.setup(overwrite=overwrite, device=device,num_processes=num_processes,debug=True)
 #     I.L.process()
+# # %%
 #
 #
 # # %%
