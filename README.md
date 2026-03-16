@@ -46,21 +46,21 @@ In each input path, data (nifti or nrrd format) must be organised in sub-folders
 
 
 ```
-   └── kits21
+   └── kits23
         ├── images
-        │   ├── kits21_00000.nii.gz
+        │   ├── kits23_00000.nii.gz
         │   ├── ...
         │   ├── ...
-        │   └── kits21_00299.nii.gz
+        │   └── kits23_00299.nii.gz
         └── lms
 
-           ├── kits21_00000.nii.gz
+           ├── kits23_00000.nii.gz
            ├── ...
            ├── ...
-           └── kits21_00299.nii.gz
+           └── kits23_00299.nii.gz
 ```
 In the figure above, I have used `kits_21` as the `{project title}`. You can have any name as long as it follows the [naming rules](#naming-rules) given below
-As shown above, mask and image files of a given case will have identical names, e.g., `kits21_00299.nii.gz`, but will be under separate folders (`images` and `lms`). 
+As shown above, mask and image files of a given case will have identical names, e.g., `kits23_00299.nii.gz`, but will be under separate folders (`images` and `lms`). 
 
 ### Key Features
 

@@ -382,8 +382,8 @@ if __name__ == "__main__":
 
 # %%
 
-    stats_outfilename_kits21 = proj_defaults.stage0_folder / "bboxes_info"
-    save_dict(res, stats_outfilename_kits21)
+    stats_outfilename_kits23 = proj_defaults.stage0_folder / "bboxes_info"
+    save_dict(res, stats_outfilename_kits23)
 
 # %%
     # # Getting bbox properties from preprocessed images
@@ -411,10 +411,10 @@ if __name__ == "__main__":
     get_extension(fn)
 
 # %%
-    stats_outfilename_kits21 = (
+    stats_outfilename_kits23 = (
         proj_defaults.stage1_folder / ("cropped/images_nii/masks")
     ).parent / ("bboxes_info")
-    save_dict(res, stats_outfilename_kits21)
+    save_dict(res, stats_outfilename_kits23)
 
 # %%
     overwrite = True

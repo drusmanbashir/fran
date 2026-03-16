@@ -42,7 +42,7 @@ class BoundingBoxes_to_lists(Transform):
 if __name__ == "__main__":
     # %%
     results = []
-    #note: horseshoe kidney  Path('/s/datasets/raw_database/raw_data/kits21/images/kits21_00005.nii.gz')
+    #note: horseshoe kidney  Path('/s/datasets/raw_database/raw_data/kits23/images/kits23_00005.nii.gz')
 # %%
 #     N= len(img_files)-29
     BB = BoundingBoxes_to_lists()

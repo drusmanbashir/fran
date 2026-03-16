@@ -30,10 +30,10 @@ if __name__ == "__main__":
       preds = sorted(pred_fldr.glob("*.pt"))
 
 
-      lmfn = '/media/UB/datasets/kits21/lms/kits21_00042.nii.gz'
+      lmfn = '/media/UB/datasets/kits23/lms/kits23_00042.nii.gz'
       lm=sitk.ReadImage(lmfn)
       lm.GetSize()
-      im =  '/media/UB/datasets/kits21/images/kits21_00042.nii.gz'
+      im =  '/media/UB/datasets/kits23/images/kits23_00042.nii.gz'
       im = sitk.ReadImage(im)
       im.GetSize()
       ImageMaskViewer([im,lm])
@@ -66,7 +66,7 @@ if __name__ == "__main__":
       lm = torch.load(lm_fn,weights_only=False)
       pred_fn = pred_fldr/lm_fn.name
 
-      pred_fn = "/s/fran_storage/predictions/kits/KITS-n7/kits21_00001.pt"
+      pred_fn = "/s/fran_storage/predictions/kits/KITS-n7/kits23_00001.pt"
       pred = torch.load(pred_fn, weights_only=False)
       print(pred.shape)
       pred=  pred.squeeze(0)

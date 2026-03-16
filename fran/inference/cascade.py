@@ -487,7 +487,7 @@ if __name__ == "__main__":
     lidc2_fldr = DS.lidc2.folder/("images")
     imgs_lidc2 = list(lidc2_fldr.glob("*"))
 
-    kits_fldr = DS.kits21.folder/("images")
+    kits_fldr = DS.kits23.folder/("images")
     kits_imgs = list(kits_fldr.glob("*"))
 
 # %%

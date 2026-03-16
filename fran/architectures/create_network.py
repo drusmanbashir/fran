@@ -1,7 +1,9 @@
-# %%
 from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
 import torch
-from fran.architectures.nnunet import Generic_UNet_PL
+from fran.architectures.nnunet import (
+    create_plainconvunet_pl,
+    create_resencunet_l_pl,
+)
 
 # from fran.architectures.unet3d.model import UNet3D
 from nnunet.network_architecture.generic_UNet import ConvDropoutNormNonlin
@@ -12,7 +14,6 @@ from torch import nn
 import torch.nn.functional as F
 import ipdb
 from fran.architectures.unet3d.model import UNet3D
-from dynamic_network_architectures.architectures.unet import ResidualEncoderUNet
 from dynamic_network_architectures.building_blocks.helper import (
     convert_dim_to_conv_op,
     get_matching_instancenorm,
@@ -23,8 +24,6 @@ from nnunetv2.experiment_planning.experiment_planners.network_topology import (
 
 tr = ipdb.set_trace
 
-
-from fran.architectures.unetcraig import nnUNetCraig
 from fran.configs.parser import ConfigMaker, make_patch_size
 
 
@@ -100,6 +99,8 @@ def create_model_from_conf(model_params, plan, deep_supervision=True):
 
 
 def create_model_from_conf_nnUNetCraig(model_params, deep_supervision):
+    from fran.architectures.unetcraig import nnUNetCraig
+
     pool_op_kernel_sizes = None
     in_channels, out_channels = (
         model_params["in_channels"],
@@ -190,52 +191,7 @@ def pool_op_kernels_nnunet(patch_size):
 
 
 def create_model_from_conf_nnUNet(model_params, plan, deep_supervision):
-    # pool_op_kernel_sizes = pool_op_kernels_nnunet(plan['patch_size'])
-    pool_op_kernel_sizes = None
-    in_channels, out_channels = (
-        model_params["in_channels"],
-        model_params["out_channels"],
-    )
-
-    model = Generic_UNet_PL(
-        in_channels,
-        base_num_features=32,
-        num_classes=out_channels,
-        num_pool=5,
-        num_conv_per_stage=2,
-        feat_map_mul_on_downscale=2,
-        conv_op=nn.Conv3d,
-        norm_op=nn.InstanceNorm3d,
-        norm_op_kwargs={"eps": 1e-5, "affine": True},
-        dropout_op=nn.Dropout3d,
-        dropout_op_kwargs={"p": 0, "inplace": True},
-        nonlin=nn.LeakyReLU,
-        nonlin_kwargs={"negative_slope": 0.01, "inplace": True},
-        deep_supervision=deep_supervision,
-        dropout_in_localization=False,
-        final_nonlin=lambda x: x,
-        weightInitializer=InitWeights_He(1e-2),
-        pool_op_kernel_sizes=(
-            [[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]]
-            if pool_op_kernel_sizes is None
-            else pool_op_kernel_sizes
-        ),
-        conv_kernel_sizes=[
-            [3, 3, 3],
-            [3, 3, 3],
-            [3, 3, 3],
-            [3, 3, 3],
-            [3, 3, 3],
-            [3, 3, 3],
-        ],
-        upscale_logits=False,
-        convolutional_pooling=True,
-        convolutional_upsampling=True,
-        max_num_features=None,
-        basic_block=ConvDropoutNormNonlin,
-        seg_output_use_bias=False,
-    )
-    return model
+    return create_plainconvunet_pl(model_params, plan, deep_supervision)
 
 def create_model_from_conf_swinunetr(model_params, plan, deep_supervision=None):
     model = SwinUNETR(
@@ -264,50 +220,7 @@ def create_model_from_conf_unet(model_params, plan):
 
 
 def create_model_from_conf_nnunetv2_resenc_l(model_params, plan, deep_supervision):
-    tr()
-    spacing = tuple(plan["spacing"])
-    patch_size = tuple(plan["patch_size"])
-    dim = len(spacing)
-    if dim not in (2, 3):
-        raise ValueError(f"Unsupported spacing dimensionality for ResEncUNet: {dim}")
-
-    conv_op = convert_dim_to_conv_op(dim)
-    norm_op = get_matching_instancenorm(conv_op)
-    max_num_features = 512 if dim == 2 else 320
-    blocks_per_stage_encoder = (1, 3, 4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6)
-    blocks_per_stage_decoder = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-
-    _, pool_op_kernel_sizes, conv_kernel_sizes, patch_size, _ = get_pool_and_conv_props(
-        spacing,
-        patch_size,
-        4,
-        999999,
-    )
-    num_stages = len(pool_op_kernel_sizes)
-    features_per_stage = tuple(
-        min(max_num_features, 32 * 2**i) for i in range(num_stages)
-    )
-
-    model = ResidualEncoderUNet(
-        input_channels=model_params["in_channels"],
-        n_stages=num_stages,
-        features_per_stage=features_per_stage,
-        conv_op=conv_op,
-        kernel_sizes=conv_kernel_sizes,
-        strides=pool_op_kernel_sizes,
-        n_blocks_per_stage=blocks_per_stage_encoder[:num_stages],
-        num_classes=model_params["out_channels"],
-        n_conv_per_stage_decoder=blocks_per_stage_decoder[: num_stages - 1],
-        conv_bias=True,
-        norm_op=norm_op,
-        norm_op_kwargs={"eps": 1e-5, "affine": True},
-        dropout_op=None,
-        dropout_op_kwargs=None,
-        nonlin=nn.LeakyReLU,
-        nonlin_kwargs={"inplace": True},
-        deep_supervision=deep_supervision,
-    )
-    return model
+    return create_resencunet_l_pl(model_params, plan, deep_supervision)
 
 
 
@@ -324,42 +237,16 @@ if __name__ == "__main__":
     C = ConfigMaker(P)
     C.setup(6)
     conf = C.configs
+
 # %%
 
-    model = get_network_from_plans(
-        arch_class_name="dynamic_network_architectures.architectures.unet.ResidualEncoderUNet",
-        arch_kwargs={
-            "n_stages": 7,
-            "features_per_stage": [32, 64, 128, 256, 512, 512, 512],
-            "conv_op": "torch.nn.modules.conv.Conv2d",
-            "kernel_sizes": [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]],
-            "strides": [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]],
-            "n_blocks_per_stage": [1, 3, 4, 6, 6, 6, 6],
-            "n_conv_per_stage_decoder": [1, 1, 1, 1, 1, 1],
-            "conv_bias": True,
-            "norm_op": "torch.nn.modules.instancenorm.InstanceNorm2d",
-            "norm_op_kwargs": {"eps": 1e-05, "affine": True},
-            "dropout_op": None,
-            "dropout_op_kwargs": None,
-            "nonlin": "torch.nn.LeakyReLU",
-            "nonlin_kwargs": {"inplace": True},
-        },
-        arch_kwargs_req_import=["conv_op", "norm_op", "dropout_op", "nonlin"],
-        input_channels=1,
-        output_channels=4,
-        allow_init=True,
-        deep_supervision=True,
-    )
-# %%
-    data = torch.rand((8, 1, 256, 256))
-    target = torch.rand(size=(8, 1, 256, 256))
-    outputs = model(data) # this should be a list of torch.Tensor
-# %%
-
-
+    conf["model_params"]["out_channels"] = 3
     mod = create_model_from_conf(conf["model_params"], conf["plan_train"])
+
+
 # %%
     x = torch.rand(1, 1, 192, 192, 96)
+    y = mod(x)
 # %%
     conf["model_params"]["out_channels"]=3
     plan = conf["plan_train"]

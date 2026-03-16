@@ -94,8 +94,8 @@ if __name__ == '__main__':
 
 # %%
     lbdkits_fldr = Path("")
-    imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits21_00018.pt')
-    imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits21_00053.pt')
+    imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits23_00018.pt')
+    imf_fn = Path('/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex100/images/kits23_00053.pt')
     imf_fn = list(imf_fldr.glob("*.pt"))
 
 # %%

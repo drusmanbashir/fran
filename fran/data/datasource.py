@@ -449,7 +449,7 @@ if __name__ == "__main__":
 # %%
     ds = Datasource(bones_fldr, "bones")
     ds = Datasource(curvas_fldr.folder)
-    ds = Datasource(DS.kits21.folder)
+    ds = Datasource(DS.kits23.folder)
     # ds = Datasource(nodesthick_fldr, "nodesthick")
     ds.process()
 # %%

@@ -327,8 +327,8 @@ if __name__ == "__main__":
     result_img = draw_boxes_and_labels(cv2_image, bbox, labels)
     cv2.imshow("image", result_img)
 # %%
-    mask_fn = Path("/home/ub/datasets/preprocessed/kits21/masks/kits21_00088.npy")
-    img_fn = Path("/home/ub/datasets/preprocessed/kits21/images/kits21_00088.npy")
+    mask_fn = Path("/home/ub/datasets/preprocessed/kits23/masks/kits23_00088.npy")
+    img_fn = Path("/home/ub/datasets/preprocessed/kits23/images/kits23_00088.npy")
     bb = load_dict(bboxes_21)
     bboxes = [b for b in bb if b["filename"] == mask_fn][0]
     patch_size = [64, 256, 256]

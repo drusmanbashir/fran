@@ -567,7 +567,7 @@ if __name__ == "__main__":
     #
     # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
 
-    # fldr= DS.kits21.folder
+    # fldr= DS.kits23.folder
     # fn = fldr/("label_analysis/lesion_stats.csv")
     # df = pd.read_csv(fn)
     # counts = df.groupby("case_id").size()

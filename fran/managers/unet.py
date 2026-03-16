@@ -7,7 +7,9 @@ import lightning as L
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from monai.transforms.post.array import AsDiscrete
 from monai.transforms.post.dictionary import AsDiscreteD
+from utilz.cprint import cprint
 
+from fran.configs.parser import ConfigMaker
 from fran.managers.project import Project
 
 tr = ipdb.set_trace
@@ -37,7 +39,6 @@ try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
 except:
     pass
-
 
 
 class UNetManager(LightningModule):
@@ -75,7 +76,7 @@ class UNetManager(LightningModule):
             inputs
         )  # self.pred so that NeptuneImageGridCallback can use it
 
-        pred, target = self.maybe_apply_ds_scales(pred, target)
+        
         loss = self.loss_fnc(pred, target, use_mask=use_mask)
         loss_dict = self.loss_fnc.loss_dict
         self.maybe_store_preds(pred)
@@ -87,23 +88,12 @@ class UNetManager(LightningModule):
                 self.pred = [p.detach().cpu() for p in pred]
             else:
                 self.pred = pred.detach().cpu()
-
-    def maybe_apply_ds_scales(self, pred, target):
-        if isinstance(pred, list) and isinstance(target, torch.Tensor):
-            target_listed = []
-            for sc in self.deep_supervision_scales:
-                if all([i == 1 for i in sc]):
-                    target_listed.append(target)
-                else:
-                    size = [
-                        int(np.round(ss * aa)) for ss, aa in zip(sc, target.shape[2:])
-                    ]
-                    target_downsampled = F.interpolate(
-                        target, size=size, mode="nearest"
-                    )
-                    target_listed.append(target_downsampled)
-            target = target_listed
-        return pred, target
+    def _get_deep_supervision_scales(self):
+          strides = getattr(self.model, "ds_strides", None)
+          if strides is None:
+              cprint("Model has no ds_strides", color="red")
+              return None
+          return list(list(i) for i in 1 / np.cumprod(np.vstack(strides), axis=0))[:-1]
 
     def training_step(self, batch, batch_idx, dataloader_idx=0):
         loss, loss_dict = self._common_step(batch, batch_idx, use_mask=False)
@@ -208,14 +198,14 @@ class UNetManager(LightningModule):
         emb = torch.cat([mean_c, std_c], dim=1)
 
         return entropy_case, emb
+
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         inputs, target = batch["image"], batch["lm"]
         pred = self.forward(inputs)
         logits = pred[0] if isinstance(pred, (list, tuple)) else pred
         if isinstance(logits, torch.Tensor) and logits.dim() == target.dim() + 2:
             logits = logits[:, 0]
-        pred_loss, target_loss = self.maybe_apply_ds_scales(pred, target)
-        _ = self.loss_fnc(pred_loss, target_loss)
+        _ = self.loss_fnc(pred, target)
         dice_by_idx = self._per_case_dice_from_loss_dict(self.loss_fnc.loss_dict)
         entropy_case, emb = self._predict_metrics_from_logits(logits)
         case_ids = self._case_ids_from_batch(batch)
@@ -227,7 +217,9 @@ class UNetManager(LightningModule):
                         "case_id": cid,
                         "dice": float(dice_by_idx[i]),
                         "difficulty_dice": float(1.0 - dice_by_idx[i]),
-                        "uncertainty": float(max(0.0, min(1.0, entropy_case[i].item()))),
+                        "uncertainty": float(
+                            max(0.0, min(1.0, entropy_case[i].item()))
+                        ),
                         "embedding": emb[i].detach().cpu().numpy(),
                     }
                 )
@@ -240,7 +232,7 @@ class UNetManager(LightningModule):
     def create_loss_fnc(self):
         fg_classes = max(self.model_params["out_channels"] - 1, 1)
         include_background = bool(self.loss_params.get("include_background", False))
-        if self.model_params["arch"] == "nnUNet":
+        if self.model_params["arch"] in ["nnUNet", "ResUNet"]:
             num_pool = 5
             self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
                 self.plan["patch_size"]
@@ -302,7 +294,7 @@ class UNetManager(LightningModule):
 class UNetManagerMulti(UNetManager):
     def __init__(self, project_title, configs, lr=None, sync_dist=False):
         super().__init__(project_title, configs, lr, sync_dist)
-        self.Discretize = AsDiscrete(argmax=True,  dim=1)
+        self.Discretize = AsDiscrete(argmax=True, dim=1)
 
     def _common_step(self, batch, batch_idx, dataloader_idx=0):
         if not hasattr(self, "batch_size"):
@@ -322,7 +314,6 @@ class UNetManagerMulti(UNetManager):
             return loss, loss_dict
 
         else:
-            pred, target = self.maybe_apply_ds_scales(pred, target)
             loss = self.loss_fnc(pred, target)
             loss_dict = self.loss_fnc.loss_dict
             self.maybe_store_preds(pred)
@@ -332,6 +323,7 @@ class UNetManagerMulti(UNetManager):
         loss, loss_dict = self._common_step(batch, batch_idx, dataloader_idx)
         self.log_losses(loss_dict, prefix="val{}".format(dataloader_idx))
         return loss
+
 
 class UNetManagerFabric(UNetManager):
     def on_train_batch_start(self, trainer, batch, batch_idx):
@@ -356,8 +348,55 @@ class UNetManagerFabric(UNetManager):
         batch_idx: int,
     ) -> None:
         pass
-# %%
+
 
 # %%
+if __name__ == "__main__":
+
+    import torch
+    from torchinfo import summary
+
+    from fran.managers.project import Project
+    from fran.utils.common import *
+
+    P = Project(project_title="kits")
+    C = ConfigMaker(P)
+    C.setup(6)
+    conf = C.configs
+    conf["model_params"]["out_channels"] = 3
 # %%
+
+    x = torch.rand(1, 1, 192, 192, 96)
+    N = UNetManager(project_title="kits", configs=conf, lr=0.01)
+    N.setup()
+    N.model.ds_strides
+    
+# %%
+
+
+    image = torch.load("/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images/kits21_00002.pt", weights_only=False)
+    lm = torch.load("/r/datasets/preprocessed/kits/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/lms/kits21_00002.pt", weights_only=False)
+    image = image.unsqueeze(0).unsqueeze(0)
+    lm= lm.unsqueeze(0).unsqueeze(0)
+    batch = {"image": image[:,:,:128,:128,:64], "lm": lm[:,:,:128,:128,:64]}
+# %%
+
+    l,d = N._common_step(batch, 0, 1)
+
+    y = N.model(x)
+    N.loss_fnc
+    loss = N.loss_fnc(y, x)
+
+
+    use_mask=False
+# %%
+    if not hasattr(N, "batch_size"):
+        N.batch_size = batch["image"].shape[0]
+    inputs, target = batch["image"], batch["lm"]
+    pred = N.forward(
+        inputs
+    )  # N.pred so that NeptuneImageGridCallback can use it
+
+# %%
+    loss = N.loss_fnc(pred, target, use_mask=use_mask)
 # %%

@@ -1,6 +1,6 @@
 # %%
 import itertools as il
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import ipdb
 import lightning.pytorch as pl
@@ -32,7 +32,7 @@ class _DiceCELossMultiOutput(nn.Module):
         other_act: Optional[Callable] = None,
         squared_pred: bool = False,
         jaccard: bool = False,
-        reduction: Union[LossReduction, str] = LossReduction.MEAN,
+        reduction: LossReduction| str = LossReduction.MEAN,
         smooth_nr: float = 1e-5,
         smooth_dr: float = 1e-5,
         batch: bool = False,
@@ -268,10 +268,10 @@ class DeepSupervisionLoss(pl.LightningModule):
         if not hasattr(self, "weights"):
             self.create_weights(preds[0].device)
 
-    def apply_ds_scales(self, tnsr_inp: Union[list, torch.Tensor], mode):
+    def apply_ds_scales(self, tnsr_inp:  torch.Tensor, mode):
         tnsr_listed = []
         for ind, sc in enumerate(self.deep_supervision_scales):
-            if isinstance(tnsr_inp, Union[tuple, list]):
+            if isinstance(tnsr_inp, (tuple, list)):
                 tnsr = tnsr_inp[ind]
             else:
                 tnsr = tnsr_inp
@@ -288,15 +288,15 @@ class DeepSupervisionLoss(pl.LightningModule):
                 tnsr_listed.append(tnsr_downsampled)
         return tnsr_listed
 
-    def forward(self, preds, target, use_mask=False):
+    def forward(self, preds :torch.Tensor|list|tuple, target: torch.Tensor, use_mask=False):
 
         self.maybe_create_weights(preds)
         self.maybe_create_labels(target)
 
+        target = self.apply_ds_scales(target, "nearest")
         if isinstance(preds, (list, tuple)):  # multires lists in training
             if isinstance(target, torch.Tensor):
-                target = self.apply_ds_scales(target, "nearest")
-                losses = [
+            losses = [
                     self.LossFunc(xx, yy, use_mask=use_mask)
                     for xx, yy in zip(preds, target)
                 ]
