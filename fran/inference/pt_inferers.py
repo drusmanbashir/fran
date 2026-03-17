@@ -135,7 +135,6 @@ if __name__ == '__main__':
     batch.keys()
     batch2 = T.postprocess(batch)
         outputs.append(batch)
-
     n_classes = batch["pred"].shape[1]
 # %%
 

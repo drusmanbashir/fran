@@ -10,6 +10,7 @@ import lightning as L
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from monai.transforms.post.array import AsDiscrete
 from monai.transforms.post.dictionary import AsDiscreteD
+from torch.nn import CrossEntropyLoss
 from utilz.cprint import cprint
 
 from fran.configs.parser import ConfigMaker
@@ -85,9 +86,9 @@ class UNetManager(LightningModule):
     def create_val_inferer(self):
         sw_device="cuda"
         device="cuda" # or "cpu" if cuda fails oom
-        batch_size = self.batch_size
         cprint(f"batch size")
 
+        batch_size = 1
         self.val_inferer = SlidingWindowInferer(
                 roi_size=self.plan["patch_size"],
                 sw_batch_size=batch_size,
@@ -108,7 +109,7 @@ class UNetManager(LightningModule):
 
     def swi_on_val_batch(self, batch, batch_idx):
 
-        img,= batch["image"]
+        img= batch["image"]
         logits = self._run_swi(img)
         if isinstance(logits, tuple):
             logits = logits[0]  # model has deep supervision only 0 channel is needed
@@ -125,6 +126,7 @@ class UNetManager(LightningModule):
         pred = self.forward(
             inputs
         )  # self.pred so that NeptuneImageGridCallback can use it
+        batch["pred"] = pred
 
         
         loss = self.loss_fnc(pred, target, use_mask=use_mask)
@@ -152,12 +154,39 @@ class UNetManager(LightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         batch = self.swi_on_val_batch(batch, batch_idx)
-        targ= batch["lm"]
         pred = batch["pred"]
-        loss = self.loss_fnc_val(pred, targ)
-        tr()
+        target= batch["lm"]
+        loss = self.loss_fnc(pred, target, use_mask=False)
+        loss_dict = self.loss_fnc.loss_dict
+        
         self.log_losses(loss_dict, prefix=f"val{dataloader_idx}")
-        return loss
+        self.maybe_store_preds(pred)
+        return loss, loss_dict
+
+
+
+
+        n_classes = pred.shape[1]
+        targ = targ.long()
+        targ=targ.squeeze(1)
+        target = F.one_hot(targ, num_classes=n_classes)
+        target =target.permute(0,4,1,2,3)
+        print(target.shape)
+        loss_dce = self.loss_fnc_val_dce(pred, target)
+        loss_dce= loss_dce.flatten()
+        loss_dce_reduced = loss_dce.mean()
+        loss_ce = self.loss_fnc_val_ce(pred, target)
+        loss_dict = {}
+        for x in range(len(loss_dce)):  #assuming include_background =False
+            loss_dict["batch0_loss_dice_label" + str(x+1)] = loss_dce[x].item()
+        filename =  pred.meta["filename_or_obj"]
+        case_id = info_from_filename(filename.split("/")[-1], full_caseid=True)["case_id"]
+        loss_dict["batch0_filename"] =filename
+        loss_dict["batch0_case_id"]= case_id
+        loss_dict["batch0_shape"] = list(target.shape[2:])
+
+        self.log_losses(loss_dict, prefix=f"val{dataloader_idx}")
+        return loss_dce
 
 
 
@@ -291,13 +320,16 @@ class UNetManager(LightningModule):
         dice_reduction = (
             LossReduction.NONE
         )  # unreduced loss is outputted for logging and will be reduced manually
-        self.loss_fnc_val = DiceLoss(
+        self.loss_fnc_val_dce = DiceLoss(
                 include_background=False,
                 to_onehot_y=False,   # already one-hot
                 softmax=True  ,       # applies softmax to logits,
                 reduction=dice_reduction,
                 
             )
+        self.loss_fnc_val_ce = CrossEntropyLoss(weight = None, reduction="mean")
+        self.lambda_dice = 0.5
+        self.lambda_ce =0.5
 
 
     def create_loss_fnc(self):

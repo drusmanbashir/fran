@@ -154,7 +154,7 @@ class CaseIDRecorder(Callback):
     def _store(self,trainer, stage, loss_dict,epoch):
             mini_df = self.create_limited_df(loss_dict)
             df_final = self.pivot_batch_cols(mini_df)
-            val_vars  = [var for var in df_final.columns if "dice" in var]
+            val_vars  = [var for var in df_final.columns if "dice" in var]# or "shape" in var] shape creates issues
             df_long = df_final.melt(
                   id_vars="case_id",
                   value_vars=val_vars,
@@ -229,7 +229,9 @@ class CaseIDRecorder(Callback):
         others = [col for col in df_train.columns if "filename" in col]
         others2 = [col for col in df_train.columns if not "batch" in col]
         bad_cols_all = bad_cols+others+ others2
-        dft = df_train.drop(columns=bad_cols_all)
+        cols = df_train.columns
+        cols_to_remove = set(cols).intersection(set(bad_cols_all))
+        dft = df_train.drop(columns=cols_to_remove)
         return dft
 
 
@@ -259,7 +261,7 @@ class CaseIDRecorder(Callback):
 
     def _set_worst_case_ids(self,df_long,stage):
         vip_label_str = "loss_dice_label" + str(self.vip_label)
-        df_label = df_long[df_long["label"] == vip_label_str]
+        df_label = df_long[df_long["label"] == vip_label_str].copy()
         df_label["case_id"] = df_label["case_id"].astype(str)
         case_order = (
                 df_label.groupby("case_id")["loss_dice"]
@@ -275,6 +277,7 @@ class CaseIDRecorder(Callback):
     def create_plotly(self, df_long,stage, chunk_size=25)->dict:
         figs = {}
         labels = df_long["label"].unique()
+        labels = [lab for lab in labels if "loss_dice_label" in lab]  # remove shape from the group
         case_ids = self.get_worst_case_ids(df_long,stage)
         if len(case_ids)==0:
             raise ValueError("No worst case ids found, thers a bug in the code")
@@ -292,9 +295,10 @@ class CaseIDRecorder(Callback):
                     category_orders={"case_id": cases_chunk},
                     title=f"{label}"
                 )
-                fig.update_traces(jitter=0.2, pointpos=0)
+                fig.update_traces(jitter=0.2, pointpos=0, spanmode="hard")
                 fig.update_layout(width=self.width)
                 fig.update_xaxes(tickangle=90, tickfont={"size": 24})
+                fig.update_yaxes(range=[0,1])
                 figs_this_label.append((fig, df_chunk, list(cases_chunk)))
             figs[label]= figs_this_label
         return figs

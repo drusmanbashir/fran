@@ -6,35 +6,23 @@ from typing import Optional
 import torch
 from fastcore.all import in_ipython
 from lightning.pytorch import Trainer as TrainerL
-from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
-                                         EarlyStopping, LearningRateMonitor,
-                                         ModelCheckpoint, TQDMProgressBar)
+from lightning.pytorch.callbacks import BatchSizeFinder, DeviceStatsMonitor, EarlyStopping, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.profilers import AdvancedProfiler
-from monai.inferers.inferer import SlidingWindowInferer
 from utilz.cprint import cprint
-from utilz.helpers import info_from_filename
-from utilz.imageviewers import ImageMaskViewer
 from utilz.stringz import headline
 
 from fran.callback.base import BatchSizeSafetyMargin
-from fran.callback.case_recorder import (CaseIDRecorder,
-                                         infer_labels_and_update_out_channels)
+from fran.callback.case_recorder import CaseIDRecorder, infer_labels_and_update_out_channels
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
-from fran.configs.parser import (ConfigMaker, confirm_plan_analyzed,
-                                 normalize_logging_payload)
+from fran.configs.parser import normalize_logging_payload
 from fran.managers import Project
-from fran.managers.data.incremental import DataManagerDualI
-from fran.managers.data.training import (DataManagerBaseline, DataManagerDual,
-                                         DataManagerLBD, DataManagerPatch,
-                                         DataManagerSource, DataManagerWhole)
+from fran.managers.data.training2 import DataManagerBaseline, DataManagerDual, DataManagerLBD, DataManagerPatch, DataManagerSource, DataManagerWhole
 from fran.managers.unet import UNetManager
 from fran.managers.wandb import WandbManager
-from fran.trainers.base import (backup_ckpt, checkpoint_from_model_id,
-                                switch_ckpt_keys)
+from fran.trainers.base import backup_ckpt, checkpoint_from_model_id, switch_ckpt_keys
 from fran.utils.common import *
-from fran.utils.folder_names import folder_names_from_plan
 
 
 def _flatten_dict(d: dict, base: str = "") -> dict:
@@ -331,7 +319,11 @@ class Trainer:
         permanent_checkpoint_every_n_epochs: int = 100,
     ):
 
-        cbs = [CaseIDRecorder(vip_label= self.configs['plan_train'].get("vip_label",1),freq=15)]
+        cbs = [
+            CaseIDRecorder(
+                vip_label=self.configs["plan_train"].get("vip_label", 1), freq=2
+            )
+        ]
         if batchsize_finder == True:
             cbs += [
                 BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
@@ -541,11 +533,11 @@ class Trainer:
         return Path(last) if last else None
 
 
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR>
 
 # %%
 if __name__ == "__main__":
-    from fran.data.datasource import DS
+    from fran.configs.parser import ConfigMaker
     from fran.utils.common import *
 
     P = Project("lidc")
@@ -576,7 +568,7 @@ if __name__ == "__main__":
     # counts = df.groupby("case_id").size()
     # counts2 = counts.sort_values(ascending=False)
     # bb= counts2.index[:200]
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR>
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR>
     train_indices = None
     bs = 4
     device_id = 0
@@ -591,7 +583,6 @@ if __name__ == "__main__":
 
     conf["plan_train"]
 
-
     conf["dataset_params"]["cache_rate"] = 0.0
     # print(conf['model_params']['out_channels'])
 
@@ -600,14 +591,15 @@ if __name__ == "__main__":
     conf["dataset_params"]["fold"] = 0
     lr = None
     debug_ = False
-    val_every_n_epochs = 5
     profiler = False
     compiled = False
-    run_name = None
     run_name = "KITS2-bk"
-    cbs=[]
+    run_name = None
+    cbs = []
+    wandb_grid_epoch_freq=15
+    val_every_n_epochs = 5
 # %%
-# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
@@ -624,6 +616,7 @@ if __name__ == "__main__":
         batchsize_finder=batchsize_finder,
         profiler=profiler,
         wandb=wandb,
+        wandb_grid_epoch_freq=wandb_grid_epoch_freq,
         tags=tags,
         description=description,
     )
@@ -642,11 +635,19 @@ if __name__ == "__main__":
     tmt = D.train_manager
     tmv = D.valid_manager
 
+# %%
     tmt.collate_fn
 
+    tmv.collate_fn
+    tmv.prepare_data()
+    tmv.effective_batch_size = 1
+    tmv.setup()
     dl = tmv.dl
     iteri = iter(dl)
     batch = next(iteri)
+# %%
+    batch["image"].shape
+    batch["lm"].shape
 # %%
 
     patch_overlap = 0
@@ -654,15 +655,7 @@ if __name__ == "__main__":
     device = "cpu"
     sw_device = "cuda:1"
     bs = 1  # start lower if you are hitting OOM
-
-    inferer = SlidingWindowInferer(
-        roi_size=Tm.configs["plan_train"]["patch_size"],
-        overlap=patch_overlap,
-        sw_batch_size=bs,
-        mode=mode,
-        progress=True,
-        sw_device=sw_device,
-        device=device,  # stitch/output on CPU
-    )
-
 # %%
+
+
+

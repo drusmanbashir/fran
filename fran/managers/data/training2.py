@@ -357,6 +357,10 @@ class DataManager(LightningDataModule):
         self.set_data_folder(data_folder)
         self.set_collate_fn(collate_fn)
 
+        if split == "valid":
+            self.batch_size = self.effective_batch_size = 1
+            self.collate_fn = None
+
     def set_data_folder(self,data_folder):
         if data_folder is None:
             self.data_folder = self.derive_data_folder(plan=self.plan)
@@ -775,6 +779,7 @@ class DataManager(LightningDataModule):
         )
 
     def create_valid_dataloader(self):
+        
         num_workers, persistent_workers = self._num_workers()
         sampler = None
         if self.val_sampling < 1.0:
@@ -934,7 +939,7 @@ class DataManagerSource(DataManager):
         if self.split == "train":
             self.collate_fn = source_collated
         elif self.split == "valid":
-            self.collate_fn = grid_collated
+            self.collate_fn = patch_collated
         else:
             raise NotImplementedError
 

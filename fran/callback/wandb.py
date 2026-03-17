@@ -76,7 +76,7 @@ class WandbImageGridCallback(Callback):
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if trainer.store_preds and not self.validation_grid_created:
-            self.populate_grid(pl_module, batch)
+            self.populate_grid_val(pl_module, batch)
             self.validation_grid_created = True
 
     def on_train_epoch_end(self, trainer, pl_module):
@@ -105,7 +105,7 @@ class WandbImageGridCallback(Callback):
         run = trainer.logger.experiment
         run.log({"images/grid": wandb.Image(img)})
 
-    def populate_grid(self, pl_module, batch):
+    def populate_grid_val(self, pl_module, batch):
         def _randomize():
             n_slices = img.shape[-1]
             batch_size = img.shape[0]
@@ -115,13 +115,9 @@ class WandbImageGridCallback(Callback):
         img = batch["image"].cpu()
         label = batch["lm"].cpu().squeeze(1)
         label = one_hot(label, self.classes, axis=1)
+        pred= batch["pred"]
 
-        pred = pl_module.pred
-        if isinstance(pred, (list, tuple)):
-            pred = pred[0]
-        elif pred.dim() == img.dim() + 1:
-            pred = pred[:, 0, :]
-
+        assert pred.dim() == img.dim(),"pred dim does not match img dim" 
         pred = F.softmax(pred.to(torch.float32), dim=1)
 
         _randomize()
@@ -136,10 +132,40 @@ class WandbImageGridCallback(Callback):
             [case_ids[idx] if idx < len(case_ids) else "" for idx in self.batches]
         )
 
-    def img_to_grd(self, batch):
-        if isinstance (batch, MetaTensor):
-            bb = torch.Tensor(batch)
-        else: bb = batch
+    def populate_grid(self, pl_module, batch):
+        def _randomize():
+            n_slices = img.shape[-1]
+            batch_size = img.shape[0]
+            self.slices = [random.randrange(0, n_slices) for _ in range(self.imgs_per_batch)]
+            self.batches = [random.randrange(0, batch_size) for _ in range(self.imgs_per_batch)]
+
+        img = batch["image"].cpu()
+        label = batch["lm"].cpu().squeeze(1)
+        pred = batch["pred"]
+        label = one_hot(label, self.classes, axis=1)
+        if isinstance(pred, (list, tuple)):
+            pred = pred[0]
+        elif pred.dim() == img.dim() + 1:
+            pred = pred[:, 0, :]
+        pred = pred.cpu()
+        pred = F.softmax(pred.to(torch.float32), dim=1)
+
+        _randomize()
+        case_ids = self.case_ids_from_batch(batch)
+        img, label, pred = self.img_to_grd(img), self.img_to_grd(label), self.img_to_grd(pred)
+        img, label, pred = self.scale_tensor(img), self.assign_colour(label), self.assign_colour(pred)
+
+        self.grid_imgs.append(img)
+        self.grid_preds.append(pred)
+        self.grid_labels.append(label)
+        self.grid_case_ids.append(
+            [case_ids[idx] if idx < len(case_ids) else "" for idx in self.batches]
+        )
+
+    def img_to_grd(self, tnsr):
+        if isinstance (tnsr, MetaTensor):
+            bb = torch.Tensor(tnsr)
+        else: bb = tnsr
         bb2  = bb[self.batches, :, :, :, self.slices].clone()
         return bb2
 

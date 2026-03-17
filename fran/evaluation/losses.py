@@ -38,8 +38,8 @@ class _DiceCELossMultiOutput(nn.Module):
         smooth_dr: float = 1e-5,
         batch: bool = False,
         ce_weight: Optional[torch.Tensor] = None,
-        lambda_dice: float = 1.0,
-        lambda_ce: float = 1.0,
+        lambda_dice: float = 0.5,
+        lambda_ce: float = 0.5,
     ) -> None:
         super().__init__()
         self.include_background = bool(include_background)
