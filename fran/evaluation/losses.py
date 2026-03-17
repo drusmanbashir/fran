@@ -367,7 +367,7 @@ class DeepSupervisionLoss(pl.LightningModule):
                 case_ids.append(None)
                 continue
             fn_name = fn.split("/")[-1]
-            parsed = info_from_filename(fn_name)
+            parsed = info_from_filename(fn_name, full_caseid=True)
             case_ids.append(parsed["case_id"])
 
         self.loss_dict = {
