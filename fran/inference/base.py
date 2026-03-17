@@ -46,7 +46,7 @@ from utilz.dictopts import DictToAttr, fix_ast
 
 from fran.data.dataset import NormaliseClipd
 from fran.managers.unet import UNetManager
-from fran.trainers import checkpoint_from_model_id
+from fran.trainers import checkpoint_from_model_id, write_normalized_ckpt
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import (
     KeepLargestConnectedComponentWithMetad, SaveMultiChanneld,
@@ -342,6 +342,37 @@ class BaseInferer(GetAttr, DictToAttr):
             tfms.append(tfm)
         return tfms
 
+    def _load_model_from_checkpoint(self, device):
+        try:
+            return UNetManager.load_from_checkpoint(
+                self.ckpt,
+                plan=self.plan,
+                project_title=self.project.project_title,
+                dataset_params=self.dataset_params,
+                strict=True,
+                map_location=device,
+            )
+        except RuntimeError as exc:
+            ckpt_dict = torch.load(self.ckpt, map_location="cpu", weights_only=False)
+            if "state_dict" not in ckpt_dict:
+                raise RuntimeError(
+                    "Checkpoint load failed and checkpoint is missing 'state_dict': "
+                    f"{self.ckpt}"
+                ) from exc
+            state_dict = ckpt_dict["state_dict"]
+            if any(key.startswith("model._orig_mod") for key in state_dict.keys()):
+                normalized_ckpt = write_normalized_ckpt(self.ckpt)
+                self.ckpt = normalized_ckpt
+                return UNetManager.load_from_checkpoint(
+                    self.ckpt,
+                    plan=self.plan,
+                    project_title=self.project.project_title,
+                    dataset_params=self.dataset_params,
+                    strict=True,
+                    map_location=device,
+                )
+            raise
+
     # def set_transforms(self, tfms: str = ""):
     #     tfms_final = []
     #     for tfm in tfms:
@@ -361,14 +392,7 @@ class BaseInferer(GetAttr, DictToAttr):
             device_id = self.devices[0]
             device = torch.device(f"cuda:{device_id}")
             accelerator = "gpu"
-        model = UNetManager.load_from_checkpoint(
-            self.ckpt,
-            plan=self.plan,
-            project_title=self.project.project_title,
-            dataset_params=self.dataset_params,
-            strict=True,
-            map_location=device,
-        )
+        model = self._load_model_from_checkpoint(device)
         model.eval()
         fabric = Fabric(
             precision="bf16-mixed", devices=fabric_devices, accelerator=accelerator

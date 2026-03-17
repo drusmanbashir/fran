@@ -117,7 +117,7 @@ class Trainer:
         wandb=True,
         profiler=False,
         debug: bool = False,
-        val_every_n_epochs: int = 2,
+        val_every_n_epochs: int = 5,
         cbs=[],
         tags=[],
         description="",
@@ -590,7 +590,7 @@ if __name__ == "__main__":
 
     conf["plan_train"]
 
-    cbs = [CaseIDRecorder(freq=10)]
+    cbs = [CaseIDRecorder(freq=15)]
 
     conf["dataset_params"]["cache_rate"] = 0.0
     # print(conf['model_params']['out_channels'])

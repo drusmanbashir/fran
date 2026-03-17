@@ -18,7 +18,7 @@ from fastcore.basics import listify, operator, warnings
 from lightning import LightningDataModule
 from lightning.pytorch import LightningDataModule
 from monai.data import DataLoader, Dataset, GridPatchDataset, PatchIterd
-from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
+from monai.data.dataset import CacheDataset, LMDBDataset
 from monai.transforms.compose import Compose
 from monai.transforms.croppad.dictionary import (RandCropByPosNegLabeld,
                                                  RandSpatialCropSamplesD,
@@ -106,8 +106,6 @@ class PatchIterdWithPaddingFlag:
         self.base_patch_iter = base_patch_iter
 
     def __call__(self, data):
-        # Some transform chains (e.g. RandCropByPosNegLabeld with num_samples=1)
-        # emit a singleton list of dicts. PatchIterd expects a mapping.
         if isinstance(data, (list, tuple)):
             inputs = data
         else:
@@ -837,10 +835,10 @@ class DataManager(LightningDataModule):
             self.ds = Dataset(data=self.data, transform=self.transforms)
             print("Vanilla Pytorch Dataset set up.")
         elif self.cache_rate > 0.0:
-            self.ds = PersistentDataset(
+            self.ds = Dataset(
                 data=self.data,
                 transform=self.transforms,
-                cache_dir=self.cache_folder,
+                # cache_dir=self.cache_folder,
             )
         elif self.ds_type == "lmdb":
             # BUG: LMDBDataset will slow training down. fix it  (see #8)
@@ -859,10 +857,10 @@ class DataManager(LightningDataModule):
         """
         valid-ds is a GridPatchDataset to make training runs comparable
         """
-        ds1 = PersistentDataset(
+        ds1 = Dataset(
             data=self.data,
             transform=self.transforms,
-            cache_dir=self.cache_folder,
+            # cache_dir=self.cache_folder,
         )
         patch_iter = PatchIterd(
             keys=["image", "lm"],
@@ -1160,14 +1158,6 @@ class DataManagerPatch(DataManagerSource):
         data = []
         for cid in self.cases:
             dici0 = df.loc[df["case_id"] == cid]
-            out = (
-                dici0.groupby("case_id", as_index=True)
-                .agg(
-                    image=("image", list),
-                    lm=("lm", list),
-                )
-                .to_dict(orient="index")
-            )
             d = {
                 "case_id": dici0["case_id"].iloc[0],
                 "image": dici0["image"].tolist(),

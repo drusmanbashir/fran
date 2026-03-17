@@ -59,7 +59,7 @@ if __name__ == '__main__':
     save_channels = False
     run  = "KITS-n7"
     run = "KITS-TW"
-    run  = "KITS-bl"
+    run  = "KITS2-bk"
 
     from fran.managers.project import Project
     p = Project("kits2")
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     img_fldr = Path('/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images')
     img_fns = list(img_fldr.glob("*.pt"))
     val_fns =[fn for fn in img_fns if info_from_filename(fn.name, full_caseid=True)["case_id"] in val]
-    len(val_fns)
+    print(len(val_fns))
 
 
 
@@ -89,7 +89,7 @@ if __name__ == '__main__':
 
     # print(T.postprocess_tfms_keys)
 # %%
-    overwrite=True
+    overwrite=False
     preds = T.run(val_fns, chunksize=2, overwrite=overwrite)
 
 # %%

@@ -12,6 +12,7 @@ python train.py \
   --bsf true \
   --devices [1] \
   --wandb true \
+  --run-name KITS2-bk \
   --val-every-n-epochs 5
   # --train-indices \
 # python  train.py -t lungs  -e 500 --lr 11e-3 …-b 2
