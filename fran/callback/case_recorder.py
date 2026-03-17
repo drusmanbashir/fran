@@ -109,6 +109,7 @@ class CaseIDRecorder(Callback):
         self.loss_dicts_valid = []
         self.loss_dicts_train2=[]
         self.dfs = {}
+        self.worst_case_ids={}
 
 
     def _before_batch(self, batch):
@@ -163,7 +164,7 @@ class CaseIDRecorder(Callback):
             df_long.dropna(inplace=True)
             self.dfs[stage] = df_long
             self._log_df_to_wandb(trainer=trainer, df_long=df_long, stage=stage, epoch=epoch)
-            figs_labels_caseidchunks = self.create_plotly(df_long, chunk_size=self.plot_x)
+            figs_labels_caseidchunks = self.create_plotly(df_long, stage,chunk_size=self.plot_x)
             for label in figs_labels_caseidchunks.keys():
                 figs = figs_labels_caseidchunks[label]
                 for ind, (fig_casegroup, df_chunk, cases_chunk) in enumerate(figs):
@@ -247,13 +248,20 @@ class CaseIDRecorder(Callback):
             return df_final
 
 
-    def create_plotly(self, df_long, chunk_size=25)->dict:
-        figs = {}
-        labels = df_long["label"].unique()
-        for label in labels:
-            figs_this_label =[]
-            df_label = df_long[df_long["label"] == label].copy()
-            case_order = (
+    def get_worst_case_ids(self,df_long,stage):
+        case_ids = self.worst_case_ids.get(stage)
+        if case_ids is None:
+            self._set_worst_case_ids(df_long,stage)
+        case_ids = self.worst_case_ids.get(stage)
+        return case_ids
+
+
+
+    def _set_worst_case_ids(self,df_long,stage):
+        vip_label_str = "loss_dice_label" + str(self.vip_label)
+        df_label = df_long[df_long["label"] == vip_label_str]
+        df_label["case_id"] = df_label["case_id"].astype(str)
+        case_order = (
                 df_label.groupby("case_id")["loss_dice"]
                 .var()
                 .fillna(0)
@@ -261,7 +269,19 @@ class CaseIDRecorder(Callback):
                 .index.astype(str)
                 .tolist()
             )
-            for cases_chunk in chunked_case_ids(case_order, chunk_size=chunk_size):
+        self.worst_case_ids[stage] = case_order
+
+
+    def create_plotly(self, df_long,stage, chunk_size=25)->dict:
+        figs = {}
+        labels = df_long["label"].unique()
+        case_ids = self.get_worst_case_ids(df_long,stage)
+        if len(case_ids)==0:
+            raise ValueError("No worst case ids found, thers a bug in the code")
+        for label in labels:
+            figs_this_label =[]
+            df_label = df_long[df_long["label"] == label].copy()
+            for cases_chunk in chunked_case_ids(case_ids, chunk_size=chunk_size):
                 df_chunk = df_label[df_label["case_id"].astype(str).isin(cases_chunk)].copy()
                 fig = px.violin(
                     df_chunk,
@@ -353,122 +373,4 @@ if __name__ == "__main__":
     epoch = 130
 
     key = f"case_recorder/fit/df_epoch_{epoch}"
-# %%
-    my_table = run.use_artifact(F"run-{RUN_ID}-{key}").get("{key}")
-
-# %%
-    import ipdb
-    tr = ipdb.set_trace
-    
-    aa = run.logged_artifacts()[0]
-    for f in run.files():
-        if f.name.startswith("media/table/") and "case_recorder" in f.name:
-            f.download(root=str(OUT), replace=True)
-            p = OUT / f.name
-            with open(p) as fh:
-                payload = json.load(fh)
-            df = pd.DataFrame(payload["data"], columns=payload["columns"])
-            df.to_csv(p.with_suffix(".csv"), index=False)
-            print("saved:", p.with_suffix(".csv"))
-
-# %%
-    # rn = 45000
-    # df1 = dfd[0]
-    #
-    # df2 = df1[-45000::]
-    # %%
-    df2 = pd.read_csv("/tmp/small2.csv")
-    # %%
-    plt.ioff()
-    df2 = df2.melt(id_vars=["case_id", "filename"])
-    df2 = df2[df2.variable.str.contains("Unnamed") == False]
-    df2.variable = df2.variable.astype("category")
-
-    figure = px.box(df2, x="case_id", y="value", color="variable")
-    figure.write_image(file="/tmp/valid.png", width=1000, height=700, scale=2)
-    # figure.show()
-    # %%
-    # %%
-    np.random.seed(1234)
-    df = pd.DataFrame(np.random.randn(10, 4), columns=["Col1", "Col2", "Col3", "Col4"])
-    # %%
-    box = df2.boxplot(column=["variable"])
-    # %%
-    ax = sns.boxplot(x="case_id", y="value", hue="variable", data=df2)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right", fontsize=24)
-    figure = ax.figure
-    figure.tight_layout()
-    figure.savefig("/tmp/tt.png")
-    plt.show()
-    # %%
-    ax = sns.boxplot(x="case_id", y="value", hue="variable", data=df2)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right", fontsize=24)
-    figure = ax.figure
-    figure.tight_layout()
-    plt.show()
-# %%
-    df_train = pd.DataFrame(cir.loss_dicts_train)
-    batch_size = 2
-    batch_idx = range(2)
-    batch_strings = []
-    for id in batch_idx:
-        batch_strings.append(
-           "batch"+str(id) 
-        )
-
-    batch_str = batch_strings[0]
-
-    small_df = df_train
-    dfd = small_df
-
-# %%
-
-    cid_vars =  [var for var in small_df.columns if "case" in var]
-
-# %%
-
-    dfs = dfd.loc[:,dfd.columns.str.contains(batch_str)]
-    val_cols = [col for col in dfs.columns if "loss_dice" in col]
-    cid_vars =  [var for var in dfs.columns if "case" in var]
-    df2 = dfs.melt(id_vars=cid_vars, value_vars=val_cols)
-
-    import plotly.express as px
-    figure = px.box(df2, x=cid_vars[0], y="value", color="variable")
-    figure.savefig(fname_plot)
-    df= df2
-# %%
-#
-#       out = (
-#           df2.assign(label=df2["variable"].str.extract(r"(label\d+)$", expand=False))
-#              .pivot_table(
-#                  index="batch0_caseid",
-#                  columns="label",
-#                  values="value",
-#                  aggfunc="mean"   # or "first"
-#              )
-#              .reset_index()
-#              .rename_axis(None, axis=1)
-#              .rename(columns={"batch0_caseid": "case_id"})
-#       )
-# # %%
-#     df2.to_csv("tmp2.csv")
-#
-#     df2 = df2[df2.variable.str.contains("Unnamed") == False]
-#     df2.variable = df2.variable.astype("category")
-# # %%
-# %%
-    # cprint("storing results", color = "yellow")
-    # for stage ,loss_dict in zip (["train", "valid"], [cir.loss_dicts_train, cir.loss_dicts_valid]):
-    #     mini_df = cir.create_limited_df(loss_dict)
-    #     df_final = cir.pivot_batch_cols(mini_df)
-    #     val_vars  = [var for var in df_final.columns if "dice" in var]
-    #     df_long = df_final.melt(
-    #           id_vars="caseid",
-    #           value_vars=val_vars,
-    #           var_name="label",
-    #           value_name="loss_dice"
-    #       )
-    #     fig = cir.create_plotly(df_long)
-    #
-# %%
-# %%
+#_store(self,trainer, stage, loss_dict,epoch):

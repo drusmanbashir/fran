@@ -605,6 +605,7 @@ if __name__ == "__main__":
     compiled = False
     run_name = None
     run_name = "KITS2-bk"
+    cbs=[]
 # %%
 # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
