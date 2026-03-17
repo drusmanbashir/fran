@@ -331,6 +331,7 @@ class Trainer:
         permanent_checkpoint_every_n_epochs: int = 100,
     ):
 
+        cbs = [CaseIDRecorder(vip_label= self.configs['plan_train'].get("vip_label",1),freq=15)]
         if batchsize_finder == True:
             cbs += [
                 BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
@@ -590,7 +591,6 @@ if __name__ == "__main__":
 
     conf["plan_train"]
 
-    cbs = [CaseIDRecorder(freq=15)]
 
     conf["dataset_params"]["cache_rate"] = 0.0
     # print(conf['model_params']['out_channels'])

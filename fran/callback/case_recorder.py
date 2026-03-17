@@ -85,7 +85,7 @@ def infer_labels_and_update_out_channels(dm, configs: dict):
     return labels_all, out_channels
 
 class CaseIDRecorder(Callback):
-    def __init__(self, freq=5, local_folder="/tmp", dpi=300, plot_x=50):
+    def __init__(self, vip_label = 1,freq=5, local_folder="/tmp", dpi=300, plot_x=50):
         """
 
         :param freq:
@@ -100,6 +100,7 @@ class CaseIDRecorder(Callback):
         self.plot_x = plot_x
         self.width = 80*self.plot_x+200
         self._warned_plotly_export = False
+        self.vip_label = vip_label
 
 
     def on_fit_start(self, trainer, pl_module):
