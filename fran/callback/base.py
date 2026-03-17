@@ -12,6 +12,7 @@ import torchvision
 from fastcore.basics import listify, store_attr
 from lightning.pytorch.callbacks import BatchSizeFinder, Callback
 from lightning.pytorch.tuner import batch_size_scaling as _bs_scale
+from utilz.cprint import cprint
 from fran.utils.common import PAD_VALUE
 
 tr = ipdb.set_trace
@@ -55,6 +56,8 @@ class BatchSizeSafetyMargin(Callback):
         # Keep config batch size synced to the runtime value chosen after finder/safety margin.
         final_bs = int(dm.batch_size)
         dm.configs["dataset_params"]["batch_size"] = final_bs
+        cprint("Putting batch size into UNet Manager", "yellow")
+        pl_module.batch_size = final_bs
         self._log_final_batch_size(trainer, final_bs)
         self.has_run = True
 

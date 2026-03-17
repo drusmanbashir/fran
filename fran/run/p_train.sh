@@ -5,15 +5,15 @@
 # python  train.py -t litsmc -r LITS-940 -e 500  -d [1]  
 python train.py \
   --project kits2 \
-  --plan-num 6 \
+  --plan-num 1 \
   --fold 1 \
   --epochs 500 \
   --bs 4 \
   --bsf true \
   --devices [1] \
   --wandb true \
-  --run-name KITS2-bk \
-  --val-every-n-epochs 5
+  --val-every-n-epochs 5 \
+  # --run-name KITS2-bk \
   # --train-indices \
 # python  train.py -t lungs  -e 500 --lr 11e-3 …-b 2
 

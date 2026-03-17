@@ -2,6 +2,9 @@ import os
 import re
 from pathlib import Path
 
+from monai.inferers.inferer import SlidingWindowInferer
+from monai.utils.enums import LossReduction
+import torch._dynamo as dynamo
 import ipdb
 import lightning as L
 from lightning.pytorch.utilities.types import STEP_OUTPUT
@@ -35,6 +38,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from fran.architectures.create_network import (create_model_from_conf,
                                                pool_op_kernels_nnunet)
 
+from monai.losses import DiceLoss
+
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
 except:
@@ -66,7 +71,52 @@ class UNetManager(LightningModule):
     #
     def setup(self, stage="fit"):
         self.create_loss_fnc()
+        self.create_val_loss_fnc()
         super().setup(stage="fit")
+
+
+
+
+    def on_fit_start(self) -> None:
+        self.create_val_inferer()
+        return super().on_fit_start()
+
+    
+    def create_val_inferer(self):
+        sw_device="cuda"
+        device="cuda" # or "cpu" if cuda fails oom
+        batch_size = self.batch_size
+        cprint(f"batch size")
+
+        self.val_inferer = SlidingWindowInferer(
+                roi_size=self.plan["patch_size"],
+                sw_batch_size=batch_size,
+                overlap=0,
+                mode="constant",
+                progress=True,
+                sw_device=sw_device,
+                device=device,
+            )
+
+    @dynamo.disable()
+    def _run_swi(self, img):
+        # the only thing inside is the SlidingWindowInferer call
+        return self.val_inferer(inputs=img, network=self.model)
+
+
+
+
+    def swi_on_val_batch(self, batch, batch_idx):
+
+        img,= batch["image"]
+        logits = self._run_swi(img)
+        if isinstance(logits, tuple):
+            logits = logits[0]  # model has deep supervision only 0 channel is needed
+
+        batch["pred"] = logits
+        batch["pred"].meta = batch["image"].meta.copy()
+        return batch
+
 
     def _common_step(self, batch, batch_idx, use_mask=False):
         if not hasattr(self, "batch_size"):
@@ -101,9 +151,15 @@ class UNetManager(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        loss, loss_dict = self._common_step(batch, batch_idx, use_mask=True)
+        batch = self.swi_on_val_batch(batch, batch_idx)
+        targ= batch["lm"]
+        pred = batch["pred"]
+        loss = self.loss_fnc_val(pred, targ)
+        tr()
         self.log_losses(loss_dict, prefix=f"val{dataloader_idx}")
         return loss
+
+
 
     def test_step(self, batch, batch_idx):
         loss, loss_dict = self._common_step(batch, batch_idx, use_mask=True)
@@ -228,6 +284,21 @@ class UNetManager(LightningModule):
     def create_model(self):
         model = create_model_from_conf(self.model_params, self.plan)
         return model
+
+
+    def create_val_loss_fnc(self):
+
+        dice_reduction = (
+            LossReduction.NONE
+        )  # unreduced loss is outputted for logging and will be reduced manually
+        self.loss_fnc_val = DiceLoss(
+                include_background=False,
+                to_onehot_y=False,   # already one-hot
+                softmax=True  ,       # applies softmax to logits,
+                reduction=dice_reduction,
+                
+            )
+
 
     def create_loss_fnc(self):
         fg_classes = max(self.model_params["out_channels"] - 1, 1)
