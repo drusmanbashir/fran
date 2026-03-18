@@ -4,7 +4,6 @@ import sys
 import ipdb
 import numpy as np
 import yaml
-
 from fran.configs.parser import ConfigMaker
 
 MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "totalseg"]

@@ -1,13 +1,9 @@
 # %%
 import itertools as il
-import time
 
 import ipdb
-import SimpleITK as sitk
 from paramiko import SSHClient
 from utilz.cprint import cprint
-from fran.managers.wandb import download_path_no_wandb, download_wandb_checkpoint, get_wandb_checkpoint
-from label_analysis.totalseg import TotalSegmenterLabels
 from monai.transforms.utility.dictionary import CastToTyped
 
 from fran.trainers.base import checkpoint_from_model_id
@@ -17,7 +13,6 @@ from fran.utils.misc import parse_devices
 tr = ipdb.set_trace
 
 import sys
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -28,11 +23,8 @@ from monai.transforms.post.dictionary import AsDiscreted, Invertd
 from monai.transforms.spatial.dictionary import Resized
 
 from fran.data.dataset import FillBBoxPatchesd
-from fran.inference.base import (BaseInferer, get_patch_spacing,
-                                 list_to_chunks, load_images_nifti, load_params)
-from fran.transforms.inferencetransforms import (
-    BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled,
-    RenameDictKeys)
+from fran.inference.base import BaseInferer, get_patch_spacing, load_images_nifti, load_params
+from fran.transforms.inferencetransforms import BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled, RenameDictKeys
 
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
 
@@ -50,7 +42,6 @@ from fastcore.foundation import listify
 sys.path += ["/home/ub/Dropbox/code/fran/"]
 
 from fastcore.basics import store_attr
-from utilz.imageviewers import ImageMaskViewer
 
 def inferer_from_params(run_w):
         ckpt = checkpoint_from_model_id(run_w)
@@ -423,6 +414,13 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
 # %%
 if __name__ == "__main__":
+    import time
+    import SimpleITK as sitk
+    from fran.managers.wandb import download_path_no_wandb, download_wandb_checkpoint, get_wandb_checkpoint
+    from label_analysis.totalseg import TotalSegmenterLabels
+    from pathlib import Path
+    from fran.inference.base import list_to_chunks
+    from utilz.imageviewers import ImageMaskViewer
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     # ... run your application ...
@@ -494,7 +492,7 @@ if __name__ == "__main__":
 #SECTION:-------------------- KITS--------------------------------------------------------------------------------------
 
     devices = [1]
-    run_kid = 'KITS-0026'
+    run_kid = 'KITS2-bah'
 
 
     run_tot= best_runs['totalseg']['run_ids'][0]

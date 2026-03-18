@@ -17,4 +17,3 @@ class CoresetMethod(object):
 
     def select(self, **kwargs):
         return
-

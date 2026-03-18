@@ -6,25 +6,22 @@ from typing import Union
 
 import ipdb
 import SimpleITK as sitk
-from monai.apps.detection.transforms.array import ConvertBoxMode
-from monai.data.meta_tensor import MetaTensor
 import torch
+from fran.transforms.base import MonaiDictTransform
 from label_analysis.helpers import listify, relabel
 from label_analysis.merge import merge_pt
+from monai.apps.detection.transforms.array import ConvertBoxMode
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
+from monai.data.meta_tensor import MetaTensor
 from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
 
-from fran.transforms.base import MonaiDictTransform
-
 tr = ipdb.set_trace
-
-from fastcore.basics import store_attr
-from fasttransform.transform import ItemTransform, store_attr
 
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
-
+from fastcore.basics import store_attr
+from fasttransform.transform import ItemTransform, store_attr
 
 #
 # class BBoxFromLabelMap(MonaiDictTransform):
@@ -243,9 +240,9 @@ class MetaToDict(MonaiDictTransform):
         keys cannot be more than len 1!
         """
 
-        assert (
-            len(keys) == 1
-        ), "keys cannot be more than len 1! Otherwise duplicate keys will be created from metadatas"
+        assert len(keys) == 1, (
+            "keys cannot be more than len 1! Otherwise duplicate keys will be created from metadatas"
+        )
         if renamed_keys is None:
             renamed_keys = meta_keys
         store_attr("meta_keys,renamed_keys")
@@ -423,7 +420,6 @@ class FilenameFromBBox(ItemTransform):
 
 
 class Squeeze(ItemTransform):
-
     def __init__(self, dim):
         store_attr()
 

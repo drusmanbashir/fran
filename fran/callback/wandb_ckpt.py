@@ -1,8 +1,7 @@
 # fran/callbacks/wandb_ckpt_path.py
 from __future__ import annotations
-from lightning.pytorch.callbacks import Callback
-# fran/storage/hpc_fetch.py
 
+# fran/storage/hpc_fetch.py
 from pathlib import Path
 from typing import Optional
 
@@ -24,7 +23,9 @@ def ssh_download_file(
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(hostname=host, port=port, username=username, key_filename=key_filename)
+    client.connect(
+        hostname=host, port=port, username=username, key_filename=key_filename
+    )
 
     try:
         sftp = client.open_sftp()
@@ -36,4 +37,3 @@ def ssh_download_file(
         client.close()
 
     return local_path
-

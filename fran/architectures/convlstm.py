@@ -1,12 +1,9 @@
 # %%
-import torch.nn as nn
 import torch
-from torchinfo import summary
-from utilz.stringz import headline
+import torch.nn as nn
 
 
 class ConvLSTMCell(nn.Module):
-
     def __init__(self, input_dim, hidden_dim, kernel_size, bias):
         """
         Initialize ConvLSTM cell.
@@ -31,32 +28,40 @@ class ConvLSTMCell(nn.Module):
         self.padding = kernel_size[0] // 2, kernel_size[1] // 2
         self.bias = bias
 
-        self.conv = nn.Conv2d(in_channels=self.input_dim + self.hidden_dim,
-                              out_channels=4 * self.hidden_dim,
-                              kernel_size=self.kernel_size,
-                              padding=self.padding,
-                              bias=self.bias)
-        self.conv_c = nn.Conv2d(in_channels = self.hidden_dim, 
-                               out_channels = 2 * self.hidden_dim, 
-                               kernel_size = self.kernel_size, 
-                               padding = self.padding, 
-                               bias = self.bias)
-        self.conv_cnext = nn.Conv2d(in_channels = self.hidden_dim,
-                                    out_channels = self.hidden_dim, 
-                                    kernel_size = self.kernel_size, 
-                                    padding = self.padding, 
-                                    bias = self.bias)
+        self.conv = nn.Conv2d(
+            in_channels=self.input_dim + self.hidden_dim,
+            out_channels=4 * self.hidden_dim,
+            kernel_size=self.kernel_size,
+            padding=self.padding,
+            bias=self.bias,
+        )
+        self.conv_c = nn.Conv2d(
+            in_channels=self.hidden_dim,
+            out_channels=2 * self.hidden_dim,
+            kernel_size=self.kernel_size,
+            padding=self.padding,
+            bias=self.bias,
+        )
+        self.conv_cnext = nn.Conv2d(
+            in_channels=self.hidden_dim,
+            out_channels=self.hidden_dim,
+            kernel_size=self.kernel_size,
+            padding=self.padding,
+            bias=self.bias,
+        )
 
     def forward(self, input_tensor, cur_state):
-        # cur_state is passed in as a parameter, not a member variable. 
-        # this now fully simulates the dynamics mentioned in the paper. 
+        # cur_state is passed in as a parameter, not a member variable.
+        # this now fully simulates the dynamics mentioned in the paper.
         h_cur, c_cur = cur_state
 
-        combined = torch.cat([input_tensor, h_cur], dim=1)  # concatenate along channel axis
+        combined = torch.cat(
+            [input_tensor, h_cur], dim=1
+        )  # concatenate along channel axis
 
         combined_conv = self.conv(combined)
         cprev_conv = self.conv_c(c_cur)
-        cprev_i, cprev_f = torch.split(cprev_conv, self.hidden_dim, dim = 1)
+        cprev_i, cprev_f = torch.split(cprev_conv, self.hidden_dim, dim=1)
         cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_dim, dim=1)
         i = torch.sigmoid(cc_i + cprev_i)
         f = torch.sigmoid(cc_f + cprev_f)
@@ -71,12 +76,25 @@ class ConvLSTMCell(nn.Module):
 
     def init_hidden(self, batch_size, image_size):
         height, width = image_size
-        return (torch.zeros(batch_size, self.hidden_dim, height, width, device=self.conv.weight.device),
-                torch.zeros(batch_size, self.hidden_dim, height, width, device=self.conv.weight.device))
+        return (
+            torch.zeros(
+                batch_size,
+                self.hidden_dim,
+                height,
+                width,
+                device=self.conv.weight.device,
+            ),
+            torch.zeros(
+                batch_size,
+                self.hidden_dim,
+                height,
+                width,
+                device=self.conv.weight.device,
+            ),
+        )
 
 
 class ConvLSTM(nn.Module):
-
     """
     Parameters:
         input_dim: Number of channels in input
@@ -101,8 +119,16 @@ class ConvLSTM(nn.Module):
         >> h = last_states[0][0]  # 0 for layer index, 0 for h index
     """
 
-    def __init__(self, input_dim, hidden_dim, kernel_size, num_layers,
-                 batch_first=False, bias=True, return_all_layers=False):
+    def __init__(
+        self,
+        input_dim,
+        hidden_dim,
+        kernel_size,
+        num_layers,
+        batch_first=False,
+        bias=True,
+        return_all_layers=False,
+    ):
         super(ConvLSTM, self).__init__()
 
         self._check_kernel_size_consistency(kernel_size)
@@ -111,7 +137,7 @@ class ConvLSTM(nn.Module):
         kernel_size = self._extend_for_multilayer(kernel_size, num_layers)
         hidden_dim = self._extend_for_multilayer(hidden_dim, num_layers)
         if not len(kernel_size) == len(hidden_dim) == num_layers:
-            raise ValueError('Inconsistent list length.')
+            raise ValueError("Inconsistent list length.")
 
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -125,10 +151,14 @@ class ConvLSTM(nn.Module):
         for i in range(0, self.num_layers):
             cur_input_dim = self.input_dim if i == 0 else self.hidden_dim[i - 1]
 
-            cell_list.append(ConvLSTMCell(input_dim=cur_input_dim,
-                                          hidden_dim=self.hidden_dim[i],
-                                          kernel_size=self.kernel_size[i],
-                                          bias=self.bias))
+            cell_list.append(
+                ConvLSTMCell(
+                    input_dim=cur_input_dim,
+                    hidden_dim=self.hidden_dim[i],
+                    kernel_size=self.kernel_size[i],
+                    bias=self.bias,
+                )
+            )
 
         self.cell_list = nn.ModuleList(cell_list)
 
@@ -155,8 +185,7 @@ class ConvLSTM(nn.Module):
             raise NotImplementedError()
         else:
             # Since the init is done in forward. Can send image size here
-            hidden_state = self._init_hidden(batch_size=b,
-                                             image_size=(h, w))
+            hidden_state = self._init_hidden(batch_size=b, image_size=(h, w))
 
         layer_output_list = []
         last_state_list = []
@@ -165,12 +194,12 @@ class ConvLSTM(nn.Module):
         cur_layer_input = input_tensor
 
         for layer_idx in range(self.num_layers):
-
             h, c = hidden_state[layer_idx]
             output_inner = []
             for t in range(seq_len):
-                h, c = self.cell_list[layer_idx](input_tensor=cur_layer_input[:, t, :, :, :],
-                                                 cur_state=[h, c])
+                h, c = self.cell_list[layer_idx](
+                    input_tensor=cur_layer_input[:, t, :, :, :], cur_state=[h, c]
+                )
                 output_inner.append(h)
 
             layer_output = torch.stack(output_inner, dim=1)
@@ -193,9 +222,14 @@ class ConvLSTM(nn.Module):
 
     @staticmethod
     def _check_kernel_size_consistency(kernel_size):
-        if not (isinstance(kernel_size, tuple) or
-                (isinstance(kernel_size, list) and all([isinstance(elem, tuple) for elem in kernel_size]))):
-            raise ValueError('`kernel_size` must be tuple or list of tuples')
+        if not (
+            isinstance(kernel_size, tuple)
+            or (
+                isinstance(kernel_size, list)
+                and all([isinstance(elem, tuple) for elem in kernel_size])
+            )
+        ):
+            raise ValueError("`kernel_size` must be tuple or list of tuples")
 
     @staticmethod
     def _extend_for_multilayer(param, num_layers):
@@ -203,19 +237,23 @@ class ConvLSTM(nn.Module):
             param = [param] * num_layers
         return param
 
+
 # %%
-if __name__ == '__main__':
+if __name__ == "__main__":
+    from torchinfo import summary
+    from utilz.stringz import headline
+
     x = torch.rand((32, 10, 64, 128, 128))
-    convlstm = ConvLSTM(64, 16, (3,3), 1, True, True, False)
+    convlstm = ConvLSTM(64, 16, (3, 3), 1, True, True, False)
     _, last_states = convlstm(x)
     h = last_states[0][0]  # 0 for layer index, 0 for h index
     print(h.shape)
-# %%
+    # %%
 
-# %%
+    # %%
     len(last_states[0])
     for ll in last_states:
         [print(a.shape) for a in ll]
         headline("-")
-# %%
+    # %%
     summary(convlstm, input_size=(32, 10, 64, 128, 128))

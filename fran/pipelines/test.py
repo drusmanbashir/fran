@@ -13,21 +13,39 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Quick FRAN test pipeline using drli_short + liver plan 1."
     )
-    parser.add_argument("--project-title", default="liver_test", help="New/existing project title.")
-    parser.add_argument("--mnemonic", default="liver", help="Mnemonic for experiment config selection.")
-    parser.add_argument("--dataset", default="drli_short", help="Datasource key from DatasetRegistry.")
+    parser.add_argument(
+        "--project-title", default="liver_test", help="New/existing project title."
+    )
+    parser.add_argument(
+        "--mnemonic", default="liver", help="Mnemonic for experiment config selection."
+    )
+    parser.add_argument(
+        "--dataset", default="drli_short", help="Datasource key from DatasetRegistry."
+    )
     parser.add_argument("--plan", type=int, default=1, help="Active plan id.")
     parser.add_argument("--fold", type=int, default=0, help="Training fold.")
     parser.add_argument("--gpu-id", type=int, default=1, help="GPU index to use.")
     parser.add_argument("--epochs", type=int, default=5, help="Quick test epoch count.")
-    parser.add_argument("--batch-size", type=int, default=2, help="Training batch size.")
-    parser.add_argument("--cache-rate", type=float, default=0.0, help="Dataset cache rate.")
-    parser.add_argument("--num-processes", type=int, default=1, help="Preprocessing workers.")
-    parser.add_argument("--overwrite-preprocess", action="store_true", help="Force preprocessing overwrite.")
+    parser.add_argument(
+        "--batch-size", type=int, default=2, help="Training batch size."
+    )
+    parser.add_argument(
+        "--cache-rate", type=float, default=0.0, help="Dataset cache rate."
+    )
+    parser.add_argument(
+        "--num-processes", type=int, default=1, help="Preprocessing workers."
+    )
+    parser.add_argument(
+        "--overwrite-preprocess",
+        action="store_true",
+        help="Force preprocessing overwrite.",
+    )
     return parser
 
 
-def apply_dataset_overrides(conf: dict[str, Any], dataset: str, fold: int, cache_rate: float) -> dict[str, Any]:
+def apply_dataset_overrides(
+    conf: dict[str, Any], dataset: str, fold: int, cache_rate: float
+) -> dict[str, Any]:
     for plan_key in ("plan_train", "plan_valid", "plan_test"):
         if plan_key in conf:
             conf[plan_key]["datasources"] = dataset
@@ -45,7 +63,10 @@ def ensure_project(project_title: str, mnemonic: str, dataset: str) -> Project:
 
     if not project.has_folds:
         project._create_folds()
-    if "labels_all" not in project.global_properties or len(project.global_properties["labels_all"]) == 0:
+    if (
+        "labels_all" not in project.global_properties
+        or len(project.global_properties["labels_all"]) == 0
+    ):
         project.set_labels_all()
         project.save_global_properties()
     if "mean_dataset_clipped" not in project.global_properties:
@@ -54,7 +75,11 @@ def ensure_project(project_title: str, mnemonic: str, dataset: str) -> Project:
 
 
 def ensure_preprocessed(
-    project: Project, conf: dict[str, Any], plan_id: int, overwrite: bool, num_processes: int
+    project: Project,
+    conf: dict[str, Any],
+    plan_id: int,
+    overwrite: bool,
+    num_processes: int,
 ) -> None:
     plan = conf["plan_train"]
     completed = confirm_plan_analyzed(project, plan)
@@ -76,12 +101,18 @@ def ensure_preprocessed(
     elif plan["mode"] == "lbd":
         imported_folder = plan.get("imported_folder", None)
         if imported_folder is None:
-            manager.generate_lbd_dataset(overwrite=overwrite, num_processes=num_processes)
+            manager.generate_lbd_dataset(
+                overwrite=overwrite, num_processes=num_processes
+            )
         else:
-            manager.generate_TSlabelboundeddataset(overwrite=overwrite, num_processes=num_processes)
+            manager.generate_TSlabelboundeddataset(
+                overwrite=overwrite, num_processes=num_processes
+            )
 
 
-def run_training(project: Project, conf: dict[str, Any], gpu_id: int, epochs: int, batch_size: int) -> None:
+def run_training(
+    project: Project, conf: dict[str, Any], gpu_id: int, epochs: int, batch_size: int
+) -> None:
     trainer = Trainer(project.project_title, conf, run_name=None)
     trainer.setup(
         compiled=False,
@@ -103,7 +134,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
     project = ensure_project(args.project_title, args.mnemonic, args.dataset)
     config_maker = ConfigMaker(project)
     config_maker.setup(args.plan)
-    conf = apply_dataset_overrides(config_maker.configs, args.dataset, args.fold, args.cache_rate)
+    conf = apply_dataset_overrides(
+        config_maker.configs, args.dataset, args.fold, args.cache_rate
+    )
     ensure_preprocessed(
         project=project,
         conf=conf,

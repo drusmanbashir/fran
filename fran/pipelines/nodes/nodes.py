@@ -1,32 +1,35 @@
-from pathlib import Path
-# %matplotlib inline
-from lightning.pytorch.callbacks import BatchSizeFinder
-from fran.callback.test import PeriodicTest
-from fran.data.datasource import Datasource
-from fran.data.dataregistry import DS
-from fran.managers import  Project
-from fran.run.analyze_resample import PreprocessingManager
-from fran.trainers.trainer import Trainer
 from fran.utils.common import *
-from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
-import argparse
 
-#SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
-if __name__ == '__main__':
+# %matplotlib inline
+
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    from fran.callback.test import PeriodicTest
+    from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
+    from fran.data.dataregistry import DS
+    from fran.data.datasource import Datasource
+    from fran.managers import Project
+    from fran.run.analyze_resample import PreprocessingManager
+    from fran.trainers.trainer import Trainer
     from fran.utils.common import *
+    from lightning.pytorch.callbacks import BatchSizeFinder
+
     P = Project("nodes")
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P )
+    C = ConfigMaker(P)
     C.setup(6)
     C.plans
     conf = C.configs
     print(conf["model_params"])
 
-    planT = conf['plan_train']
+    planT = conf["plan_train"]
     planV = conf["plan_valid"]
     pp(planT)
 
-    planT['mode']
+    planT["mode"]
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     # if (lm==3).any():
     #     print("Bad values 3 ->0")
@@ -34,14 +37,14 @@ if __name__ == '__main__':
     #     torch.save(lm, bad_case_fn)
     #
     # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
-# %%
-#SECTION:-------------------- COnfirm plans exist--------------------------------------------------------------------------------------
+    # %%
+    # SECTION:-------------------- COnfirm plans exist--------------------------------------------------------------------------------------
 
-    statusesT    = confirm_plan_analyzed(P, planT)
-    statusesV    = confirm_plan_analyzed(P, planV)
-# %%
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
-    devices= [1]
+    statusesT = confirm_plan_analyzed(P, planT)
+    statusesV = confirm_plan_analyzed(P, planV)
+    # %%
+    # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
+    devices = [1]
     bs = 2
 
     # run_name ='LITS-1285'
@@ -54,29 +57,35 @@ if __name__ == '__main__':
     tags = []
     description = f"Partially trained up to 100 epochs"
 
-    conf['plan_train']
+    conf["plan_train"]
 
-    cbs = [PeriodicTest(every_n_epochs=1,limit_batches=50), BatchSizeFinder(batch_arg_name="batch_size")]
+    cbs = [
+        PeriodicTest(every_n_epochs=1, limit_batches=50),
+        BatchSizeFinder(batch_arg_name="batch_size"),
+    ]
 
-    conf["dataset_params"]["cache_rate"]=0.0
-    print(conf['model_params']['out_channels'])
-    
+    conf["dataset_params"]["cache_rate"] = 0.0
+    print(conf["model_params"]["out_channels"])
 
-    conf['dataset_params']['cache_rate']
+    conf["dataset_params"]["cache_rate"]
 
-# %%
-    conf["dataset_params"]["fold"]=0
-    run_name=None
-    lr= 1e-2
-# %%
-    run_name="LITS-1417"
-    lr= 1e-3
-    lr=None
-# %%
-    Tm = Trainer(P.project_title, conf, run_name,)
+    # %%
+    conf["dataset_params"]["fold"] = 0
+    run_name = None
+    lr = 1e-2
+    # %%
+    run_name = "LITS-1417"
+    lr = 1e-3
+    lr = None
+    # %%
+    Tm = Trainer(
+        P.project_title,
+        conf,
+        run_name,
+    )
     # Tm.configs
-    Tm.configs['dataset_params']['fold']
-# %%
+    Tm.configs["dataset_params"]["fold"]
+    # %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -89,42 +98,44 @@ if __name__ == '__main__':
         tags=tags,
         description=description,
         lr=lr,
-        override_dm_checkpoint=override_dm
+        override_dm_checkpoint=override_dm,
     )
 
-
-# %%
-    Tm.configs['plan_train']['mode']
-    Tm.configs['plan_train']['patch_size']
-    Tm.configs['dataset_params']['fold']
+    # %%
+    Tm.configs["plan_train"]["mode"]
+    Tm.configs["plan_train"]["patch_size"]
+    Tm.configs["dataset_params"]["fold"]
     # Tm.D.configs = Tm.configs.copy()
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-# %%
+    # %%
 
     # tuner = Tuner(Tm.trainer)
     # tuner.scale_batch_size(Tm.N.model,mode="binsearch")
     # Tm.fit()
 
-# %%
+    # %%
     tra = Tm.trainer
     N = Tm.N
     D = Tm.D
-# %%
+    # %%
     from fran.managers.data.training import DataManagerMulti
     from utilz.imageviewers import ImageMaskViewer
+
     D = Tm.D
-    D= DataManagerMulti(project_title=P.project_title, configs=conf, batch_size=2,ds_type=None)
-# %%
+    D = DataManagerMulti(
+        project_title=P.project_title, configs=conf, batch_size=2, ds_type=None
+    )
+    # %%
     D.prepare_data()
     D.setup()
-    
-    tmt = D.train_manager
-    dl=D.val_dataloader()[1]
-    iteri= iter(dl)
 
-# %%
-# %%
+    tmt = D.train_manager
+    dl = D.val_dataloader()[1]
+    iteri = iter(dl)
+
+    # %%
+    # %%
     # n=0
     # while n<250:
     #     batch = next(iteri)
@@ -132,45 +143,42 @@ if __name__ == '__main__':
     #     n+=1
     #
 
-# %%
+    # %%
     Tm.N.setup()
     Tm.N.trainer = Tm.trainer
-    Tm.N.trainer.store_preds= True
-    Tm.N.store_preds= True
-# %%
+    Tm.N.trainer.store_preds = True
+    Tm.N.store_preds = True
+    # %%
 
     batch = next(iteri)
     print(batch["image"].meta["filename_or_obj"])
     print(batch["patch_coords"])
     print(batch["is_padded"])
-    aa = Tm.N._common_step(batch,0)
-# %%
-    pred= Tm.N.pred
+    aa = Tm.N._common_step(batch, 0)
+    # %%
+    pred = Tm.N.pred
     pred = pred[0]
 
-
-# %%
-    n= 1
-    import torch
+    # %%
+    n = 1
     print(aa)
 
-    image = batch['image']
-    im = image[n,0].detach().cpu()
-    ImageMaskViewer([image[n,0].detach().cpu(),pred[n,0].detach().cpu()])
-# %%
-# %%
+    image = batch["image"]
+    im = image[n, 0].detach().cpu()
+    ImageMaskViewer([image[n, 0].detach().cpu(), pred[n, 0].detach().cpu()])
+    # %%
+    # %%
     image.shape
     pred = N(image)
-    pred2 =pred[0]
+    pred2 = pred[0]
 
-# %%
+    # %%
 
-
-# %%
+    # %%
     image = image.permute(0, 1, 4, 2, 3)
     pred2 = pred2.permute(0, 1, 4, 2, 3)
     ImageMaskViewer([image[0][0].detach().cpu(), pred2[0][1].detach().cpu()])
-# %%
+    # %%
     D2.prepare_data()
     D2.setup()
     dl2 = D2.val_dataloader()
@@ -179,24 +187,24 @@ if __name__ == '__main__':
     N.loss_fn(image2, pred2)
     N.loss_fn(image2, pred2).shape
 
-# SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR>
+    # SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR>
 
     # P.delete()
     DS = DS
     P.add_data([DS.nodes, DS.nodesthick])
     len(P)
     # P.add_data([DS.totalseg])
-# %%
-# SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR>
 
     test = False
     ds = Datasource(
         folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test
     )
     ds.process()
-# %%
+    # %%
 
-# SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR> <CR>
+    # SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR> <CR>
 
     parser = argparse.ArgumentParser(description="Resampler")
 
@@ -240,18 +248,18 @@ if __name__ == '__main__':
     args.project_title = "nodes"
 
     planT = conf[args.plan_name]
-# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
-# %%
+    # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
+    # %%
     I = PreprocessingManager(args)
     # I.spacing =
-# %%
-# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
     overwrite = True
     I.resample_dataset(overwrite=overwrite)
     I.R.get_tensor_folder_stats()
 
-# %%
-# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
+    # %%
+    # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
     overwrite = True
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
@@ -265,9 +273,9 @@ if __name__ == '__main__':
                 imported_folder=planT["imported_folder"],
                 overwrite=overwrite,
             )
-# %%
+    # %%
     L = LabelBoundedDataGenerator(project=I.project, plan=I.plan, plan_name=I.plan_name)
-# %%
+    # %%
 
     L = LabelBoundedDataGeneratorImported(
         project=P,
@@ -278,13 +286,13 @@ if __name__ == '__main__':
         remapping=remapping,
     )
 
-# %%
+    # %%
     overwrite = True
     L.setup(overwrite=overwrite)
     L.process()
 
-# %%
-# SECTION:-------------------- DATA MANAGER-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- DATA MANAGER-------------------------------------------------------------------------------------- <CR>
 
     batch_size = 10
     ds_type = None
@@ -300,43 +308,43 @@ if __name__ == '__main__':
         ds_type=ds_type,
     )
 
-# %%
+    # %%
     D.prepare_data()
     D.setup()
     tm = D.train_manager
     tm = D.valid_manager
     tm.transforms_dict
 
-# %%
+    # %%
     ds = tm.ds
     dat = ds[0]
     dici = ds.data[0]
     tm.tfms_list
 
-# %%
+    # %%
 
-# %%
+    # %%
     D.train_ds[0]
     dlt = D.train_dataloader()
     dlv = D.val_dataloader()
-# %%
+    # %%
 
     # iteri = iter(dlv)
     for num, batch in enumerate(dlv):
         print(batch["image"].shape)
-# %%
+    # %%
 
     for num, batch in enumerate(dlt):
         print(batch["image"].shape)
-# %%
+    # %%
     #
     Tm.D.prepare_data()
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
-# %%
+    # %%
     tm = Tm.D.valid_manager
     dici = tm.ds[0]
-# %%
+    # %%
     img = dici["image"]
     print(img.shape)
     lm = dici["lm"]
@@ -344,7 +352,7 @@ if __name__ == '__main__':
     im = dici[0]["image"]
     lm = dici[0]["lm"]
     ImageMaskViewer([im[0], lm[0]])
-# %%
+    # %%
 
     tv = Tm.D.valid_manager
     # dici = tv.ds[0]
@@ -355,15 +363,15 @@ if __name__ == '__main__':
 
     batch["lm"].max()
 
-# %%
+    # %%
     n = 0
     lm = batch["lm"]
     im = batch["image"]
     im = im.permute(0, 1, 4, 2, 3)
     lm = lm.permute(0, 1, 4, 2, 3)
     ImageMaskViewer([im[n][0], lm[n][0]])
-# %%
-# SECTION:-------------------- TROUBLE-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- TROUBLE-------------------------------------------------------------------------------------- <CR>
 
     batch_size = 2
     ds_type = "lmdb"
@@ -376,45 +384,45 @@ if __name__ == '__main__':
         ds_type=ds_type,
     )
 
-# %%
+    # %%
     D.prepare_data()
     D.setup()
     tm = D.train_manager
     tm = D.valid_manager
     tm.transforms_dict
 
-# %%
+    # %%
     ds = tm.ds
     dat = ds[0]
     dici = ds.data[0]
     tm.tfms_list
 
-# %%
+    # %%
 
-# %%
+    # %%
     # D.train_ds[0]
     # dl =D.train_dataloader()
     dl = D.val_dataloader()
-# %%
+    # %%
 
     iteri = iter(dl)
     batch = next(iteri)
 
-# %%
+    # %%
     n = 0
     im = batch["image"][n][0]
     ImageMaskViewer([im, batch["lm"][n][0]])
     # while iteri:
     #     print(batch['image'].shape)
-# %%
+    # %%
 
     folder_names_from_plan(P, planT)
     add_plan_to_db(
         planT, "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2", P.db
     )
-# %%
-# %%
-# SECTION:-------------------- INFERENCE-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # %%
+    # SECTION:-------------------- INFERENCE-------------------------------------------------------------------------------------- <CR>
     dl = Tm.D.val_dataloader()
     iteri = iter(dl)
     batch = next(iteri)

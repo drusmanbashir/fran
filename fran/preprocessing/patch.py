@@ -5,34 +5,29 @@ import shutil
 from pathlib import Path
 
 import ipdb
-from monai.transforms.utility.dictionary import SplitDimD
-from monai.transforms import SqueezeDimD
 import pandas as pd
 import ray
-import SimpleITK as sitk
 import torch
-from utilz.cprint import cprint
-from label_analysis.totalseg import TotalSegmenterLabels
+from fran.preprocessing import bboxes_function_version
+from fran.preprocessing.helpers import sanitize_meta_for_monai
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from fran.preprocessing.rayworker_base import RayWorkerBase
+from fran.utils.folder_names import folder_names_from_plan
+from monai.transforms import SqueezeDimD
 from monai.transforms.spatial.dictionary import GridPatchd
+from monai.transforms.utility.dictionary import SplitDimD
+from utilz.cprint import cprint
 from utilz.fileio import *
-from utilz.fileio import load_dict, maybe_makedirs, save_dict
+from utilz.fileio import save_dict
 from utilz.helpers import *
 from utilz.helpers import multiprocess_multiarg
 from utilz.imageviewers import *
 from utilz.stringz import headline
 
-from fran.configs.parser import ConfigMaker
-from fran.preprocessing import bboxes_function_version
-from fran.preprocessing.helpers import sanitize_meta_for_monai
-from fran.preprocessing.helpers import to_even
-from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-from fran.preprocessing.rayworker_base import RayWorkerBase
-from fran.utils.folder_names import folder_names_from_plan
-
 tr = ipdb.set_trace
 MIN_SIZE = 32
 
-from fran.preprocessing.preprocessor import Preprocessor, store_labels_info
+from fran.preprocessing.preprocessor import Preprocessor
 
 
 class _PBDSamplerWorkerBase(RayWorkerBase):
@@ -46,7 +41,7 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
             output_folder=output_folder,
             device=device,
             debug=debug,
-            tfms_keys="LoadT,Chan,Dev,Grid,Split,Labels, Indx, Sq"
+            tfms_keys="LoadT,Chan,Dev,Grid,Split,Labels, Indx, Sq",
         )
         self.output_folder = Path(self.output_folder)
 
@@ -59,7 +54,9 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
             keys=self.tnsr_keys, patch_size=patch_size, overlap=patch_overlap
         )
         self.Sq = SqueezeDimD(keys=self.tnsr_keys, dim=0)
-        self.Split = SplitDimD(keys=self.tnsr_keys, dim=0, list_output=True,keepdim=False)
+        self.Split = SplitDimD(
+            keys=self.tnsr_keys, dim=0, list_output=True, keepdim=False
+        )
         self.transforms_dict["Grid"] = self.G
         self.transforms_dict["Split"] = self.Split
         self.transforms_dict["Sq"] = self.Sq
@@ -71,7 +68,6 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
         }
         return data
 
-
     def _process_row(self, row: pd.Series):
         case_id = row["case_id"]
         data_ = self._create_data_dict(row)
@@ -81,18 +77,21 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
             patch = data[n]
             assert patch["image"].shape == patch["lm"].shape, "mismatch in shape"
             assert patch["image"].dim() == 3, "images should be n_patchesxhxwxd"
-            assert (
-                patch["image"].numel() > MIN_SIZE**3
-            ), f"image size is too small {patch['image'].shape}"
+            assert patch["image"].numel() > MIN_SIZE**3, (
+                f"image size is too small {patch['image'].shape}"
+            )
             image = patch["image"]
             lm = patch["lm"]
-            inds = {"lm_fg_indices": patch['lm_fg_indices'],"lm_bg_indices":patch['lm_bg_indices'] }
+            inds = {
+                "lm_fg_indices": patch["lm_fg_indices"],
+                "lm_bg_indices": patch["lm_bg_indices"],
+            }
 
             fn_name = self.create_patch_fname(image.meta, n)
-            labels = patch['lm_labels']
+            labels = patch["lm_labels"]
             has_fg = any([lb > 0 for lb in labels])
 
-            self.save_indices_patch(inds,fn_name, "indices")
+            self.save_indices_patch(inds, fn_name, "indices")
             self.save_pt_patch(lm, fn_name, "lms")
             self.save_pt_patch(image, fn_name, "images")
             results = {
@@ -101,9 +100,9 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
                 "ok": True,
                 "shape": list(image.shape),
                 "has_fg": has_fg,
-                "n_fg": len(patch['lm_fg_indices']),
-                "n_bg": len(patch['lm_bg_indices']),
-                "labels": patch['lm_labels'],
+                "n_fg": len(patch["lm_fg_indices"]),
+                "n_bg": len(patch["lm_bg_indices"]),
+                "labels": patch["lm_labels"],
             }
 
             row_results.append(results)
@@ -123,7 +122,7 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
             # get filesystem info
             try:
                 usage = shutil.disk_usage(os.path.dirname(fn))
-                fsinfo = f"Total={usage.total//(1024**3)}G, Used={usage.used//(1024**3)}G, Free={usage.free//(1024**3)}G"
+                fsinfo = f"Total={usage.total // (1024**3)}G, Used={usage.used // (1024**3)}G, Free={usage.free // (1024**3)}G"
             except Exception:
                 fsinfo = "disk usage unavailable"
 
@@ -156,8 +155,9 @@ class PBDSamplerWorkerLocal(_PBDSamplerWorkerBase):
 
 
 class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
-
-    def __init__(self, project, plan, data_folder, output_folder=None, patch_overlap = 0.2):
+    def __init__(
+        self, project, plan, data_folder, output_folder=None, patch_overlap=0.2
+    ):
 
         existing_fldr = folder_names_from_plan(project, plan).get("data_folder_pbd")
         existing_fldr = Path(existing_fldr)
@@ -256,18 +256,23 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
         else:
             print("No bboxes generated")
 
-        self.results_df.to_csv(self.output_folder / "resampled_dataset_properties.csv", index=False)
+        self.results_df.to_csv(
+            self.output_folder / "resampled_dataset_properties.csv", index=False
+        )
         self.store_labels_info()
         self.create_dataset_stats_artifacts()
-
 
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
-
+    import SimpleITK as sitk
+    from fran.configs.parser import ConfigMaker
     from fran.managers import Project
+    from fran.preprocessing.helpers import to_even
     from fran.utils.common import *
+    from label_analysis.totalseg import TotalSegmenterLabels
+    from utilz.fileio import load_dict, maybe_makedirs
 
     project_title = "lidc"
     P = Project(project_title=project_title)
@@ -282,7 +287,7 @@ if __name__ == "__main__":
 
     plan = conf["plan_train"]
     pp(plan)
-# %%
+    # %%
     spacing = plan["spacing"]
     # plan["remapping_imported"][0]
     existing_fldrs = folder_names_from_plan(P, plan)
@@ -302,8 +307,8 @@ if __name__ == "__main__":
     patch_size = plan["patch_size"]
     patch_overlap = plan["patch_overlap"]
     deb = False
-# %%
-# SECTION:-------------------- PATCHGENERATOR-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- PATCHGENERATOR-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     img_fldr = data_foldre / "images"
 
     lm_fldr = data_foldre / "lms"
@@ -312,10 +317,10 @@ if __name__ == "__main__":
     P = PatchDataGenerator(
         project=P, plan=plan, output_folder=output_folder, data_folder=data_folder
     )
-# %%
+    # %%
     P.setup()
     P.process()
-# %%
+    # %%
     P2 = _PBDSamplerWorkerBase(
         project=P,
         plan=plan,
@@ -324,18 +329,18 @@ if __name__ == "__main__":
         device="cpu",
     )
 
-# %%
+    # %%
     row = P.df.iloc[0]
     data = P2._create_data_dict(row)
 
     data2 = P2.apply_transforms(data)
 
     data = data2
-# %%
-# %%
-    data2= P2.apply_transforms_compose(data)
-    data2[0]['image'].shape
-# %%
+    # %%
+    # %%
+    data2 = P2.apply_transforms_compose(data)
+    data2[0]["image"].shape
+    # %%
 
     C = P2.transforms_dict["Chan"]
     CR = P2.transforms_dict["Crop"]
@@ -346,7 +351,7 @@ if __name__ == "__main__":
     Grid = P2.transforms_dict["Grid"]
     Split = P2.transforms_dict["Split"]
     Split = SplitDimD(keys=["image", "lm"], dim=0, keepdim=False, list_output=True)
-# %%
+    # %%
     dici = LoadT(data)
     dici2 = C(data)
     dic2 = Grid(dici2)
@@ -357,9 +362,9 @@ if __name__ == "__main__":
     dic4 = Split(dic3)
     dic5 = P2.transforms_dict["Labels"](dic4)
 
-# %%
+    # %%
 
-# %%
+    # %%
 
     data = P2.apply_transforms(data)
     image = data["image"]
@@ -377,7 +382,7 @@ if __name__ == "__main__":
         "meta": image.meta,
     }
 
-# %%
+    # %%
     img_fn = list(img_fldr.glob("*"))[0]
 
     lm_fn = img_fn.parent.parent / "lms" / img_fn.name
@@ -389,25 +394,25 @@ if __name__ == "__main__":
     lm2 = lm.unsqueeze(0)
 
     dici = {"image": img2, "lm": lm2}
-# %%
+    # %%
     G = GridPatchd(keys=["image", "lm"], patch_size=patch_size, overlap=patch_overlap)
     patch_overlap = 0.25
-# %%
+    # %%
     dic2 = G(dici)
     dic2["image"].shape
-# %%
+    # %%
     data_folder = "/s/xnat_shadow/lidc2"
     PG = PatchDataGenerator(
         project=P,
         plan=plan,
         data_folder=data_folder,
     )
-# %%
+    # %%
 
-# %%
+    # %%
     PG.setup(overwrite=True)
     PG.process(debug=deb)
-# %%
+    # %%
     # PG.create_patches(overwrite=overwrite,debug=debug)
     lmg = "lm_group1"
 
@@ -419,9 +424,9 @@ if __name__ == "__main__":
     imported_labelsets = TSL.labels("all")
     P.imported_labels(lmg, imported_folder, imported_labelsets)
     # remapping = TSL.create_remapping(imported_labelsets, [8, 9])
-# %%
-# SECTION:-------------------- PATCHGENERATOR Single module-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-# %%
+    # %%
+    # SECTION:-------------------- PATCHGENERATOR Single module-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
 
     patch_overlap = 0.25
     args = [
@@ -436,7 +441,7 @@ if __name__ == "__main__":
         ]
         for bb in PG.fixed_sp_bboxes
     ]
-# %%
+    # %%
     argi = args[0]
     info = argi[3]
 
@@ -444,7 +449,7 @@ if __name__ == "__main__":
     patch_overlap = [to_even(ol) for ol in patch_overlap]
     expand_by = PG.expand_by
     mode = PG.mode
-# %%
+    # %%
     output_folder = Path("/r/datasets/tmp")
     dataset_properties = PG.dataset_properties
     maybe_makedirs(output_folder)
@@ -457,13 +462,13 @@ if __name__ == "__main__":
         expand_by,
         mode,
     )
-# %%
+    # %%
     Pr.process()
 
-# %%
+    # %%
 
-# %%
-# SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     img_fn = "/r/datasets/tmp/images/lits_108_0.pt"
     lm_fn = "/r/datasets/tmp/lms/lits_108_0.pt"
 
@@ -474,12 +479,12 @@ if __name__ == "__main__":
 
     inds_fldr = Path("/r/datasets/tmp/indices/")
     indices_fn = list(inds_fldr.glob("*pt"))
-# %%
+    # %%
     for fn in indices_fn:
         inds = torch.load(fn)
         print(fn)
         print("FG", len(inds["lm_fg_indices"]))
-# %%
+    # %%
     #
     # case_ids=PG.case_ids,
     # expand_by=20,
@@ -487,19 +492,19 @@ if __name__ == "__main__":
     # data_folder=PG.fixed_spacing_subfolder,
     # imported_folder=imported_folder,
     # remapping=self.remapping,
-# %%
+    # %%
     # def set_transforms(self, keys_tr: str = "R,L1,L2,Re,E,Rz,M,B,A"):
     I.setup()
     dici = I[2]
     print(dici.keys())
 
-# %%
+    # %%
     im = dici["image"]
     lm = dici["lm_imported"]
     ImageMaskViewer([im[0], lm[0]])
-# %%
+    # %%
 
-# %%
+    # %%
     dsrcs = P.global_properties[lmg]["ds"]
     ind = 0
     dsrc = dsrcs[ind]
@@ -511,12 +516,12 @@ if __name__ == "__main__":
     fixed_files = list(fixed_folder.glob("*.pt"))
 
     fixed_files_out = []
-# %%
+    # %%
     for cid in cids:
         fn = [fn for fn in fixed_files if cid in fn.name][0]
         fixed_files_out.append(fn)
 
-# %%
+    # %%
     fn = fixed_files_out[-1]
     lm_pt = torch.load(fn)
     print(lm_pt.shape)
@@ -525,8 +530,8 @@ if __name__ == "__main__":
     print(lm_imp.GetSpacing())
     dici = {"lm": lm_pt, "lm_imported": lm_imp, "remapping": remapping}
 
-# %%
-# %%
+    # %%
+    # %%
     fixed_spacing_folder = Path(
         "/home/ub/datasets/preprocessed/lidc2/fixed_spacing/spc_080_080_150"
     )
@@ -536,7 +541,7 @@ if __name__ == "__main__":
     PG = PatchDataGenerator(
         P, fixed_spacing_folder, patch_size, patch_overlap, expand_by=10
     )
-# %%
+    # %%
 
     patch_overlap = [int(PG.patch_overlap * ps) for ps in PG.patch_size]
     patch_overlap = [to_even(ol) for ol in patch_overlap]
@@ -556,7 +561,7 @@ if __name__ == "__main__":
         for bb in PG.fixed_sp_bboxes
     ]
 
-# %%
+    # %%
     dici = C(dici)
     lm_out = dici["lm"][dici["lm_imported"].meta["bounding_box"]]
     ImageMaskViewer([lm_out[0], dici["lm_imported"][0]], data_types=["lm", "lm"])
@@ -568,7 +573,7 @@ if __name__ == "__main__":
         "imported_labelsets": PI.imported_labelsets,
     }
 
-# %%
+    # %%
 
     lm2 = merge_pt(dici["lm_imported"][0], dici["lm"])[0]
     ImageMaskViewer([lm_out[0], dici["lm_imported"][0]], data_types=["lm", "lm"])
@@ -576,7 +581,7 @@ if __name__ == "__main__":
     lm_out = merge(lm_imp, lm)
 
     view_sitk(lm, lm_out, data_types=["lm", "lm"])
-# %%
+    # %%
 
     P = PatchDataGenerator(
         dataset_properties,
@@ -604,27 +609,27 @@ if __name__ == "__main__":
     inf = load_dict(dici_fn)
 
     info = inf[0]
-# %%
-# %%
+    # %%
+    # %%
     I.transform = C
 
     dici = I.data[0]
     dici = C(dici)
     print(dici["bounding_box"])
-# %%
+    # %%
     dici = R(dici)
     dici = L1(dici)
     dici = L2(dici)
     dici = e(dici)
     dici = E(dici)
-# %%
+    # %%
     bb = dici["bounding_box"]
     print(bb)
-# %%
-    P.shift_bboxes_by,
-    P.output_patch_size,
-    P.img.shape,
-    P.add_to_bbox,
+    # %%
+    (P.shift_bboxes_by,)
+    (P.output_patch_size,)
+    (P.img.shape,)
+    (P.add_to_bbox,)
 
 # %%SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR>
 

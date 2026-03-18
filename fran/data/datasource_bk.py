@@ -6,8 +6,6 @@ import sqlite3
 import ipdb
 from utilz.stringz import headline, info_from_filename
 
-from fran.data.dataregistry import DS
-
 tr = ipdb.set_trace
 
 import os
@@ -17,15 +15,13 @@ from pathlib import Path
 import ipdb
 import SimpleITK as sitk
 from fastcore.basics import GetAttr, Union
+from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, import_h5py
 from label_analysis.helpers import to_binary, to_int
 from utilz.fileio import *
 from utilz.fileio import load_dict, save_dict
 from utilz.helpers import *
 from utilz.helpers import find_matching_fn, multiprocess_multiarg
 from utilz.stringz import info_from_filename
-
-from fran.preprocessing.datasetanalyzers import (case_analyzer_wrapper,
-                                                 import_h5py)
 
 if "XNAT_CONFIG_PATH" in os.environ:
     from xnat.object_oriented import *
@@ -141,9 +137,9 @@ class Datasource(GetAttr):
         return proj_title
 
     def relabel(self, remapping: dict = None, target_label: int = None):
-        assert (
-            remapping or target_label
-        ), "Must specify either a remapping_dict or specify a target_label so all labels are converted to it"
+        assert remapping or target_label, (
+            "Must specify either a remapping_dict or specify a target_label so all labels are converted to it"
+        )
         """
         scheme: if scheme is an int, all labels are converted to it. If dict, then explicit remapping is used based on dict.
         """
@@ -169,14 +165,16 @@ class Datasource(GetAttr):
 
         images = list((self.folder / ("images")).glob("*"))
         lms = list((self.folder / ("lms")).glob("*"))
-        assert (a := len(images)) == (
-            b := len(lms)
-        ), "Different lengths of images {0}, and lms {1}.\nCheck your data folder".format(
-            a, b
+        assert (a := len(images)) == (b := len(lms)), (
+            "Different lengths of images {0}, and lms {1}.\nCheck your data folder".format(
+                a, b
+            )
         )
         self.verified_pairs = []
         for img_fn in images:
-            self.verified_pairs.append([img_fn, find_matching_fn(img_fn, lms, ["all"])[0]])
+            self.verified_pairs.append(
+                [img_fn, find_matching_fn(img_fn, lms, ["all"])[0]]
+            )
         print("Verified filepairs are matched")
 
     def _filter_unprocessed_cases(self):
@@ -203,9 +201,9 @@ class Datasource(GetAttr):
             inf = info_from_filename(fns[0].name, full_caseid=True)
             case_id = inf["case_id"]
             all_case_ids.append(case_id)
-        assert (l1 := len(all_case_ids)) == (
-            l2 := len(set(all_case_ids))
-        ), "Duplicate case_ids found. Run fix_repeat_caseids() on parent folder"
+        assert (l1 := len(all_case_ids)) == (l2 := len(set(all_case_ids))), (
+            "Duplicate case_ids found. Run fix_repeat_caseids() on parent folder"
+        )
         new_case_ids = set(all_case_ids).difference(prev_processed_cases)
         # print("Found {0} new cases\nCases already processed in a previous session: {1}".format(len(new_case_ids), len(prev_processed_cases)))
         assert (l := len(new_case_ids)) == (
@@ -283,9 +281,9 @@ class Datasource(GetAttr):
         if self.h5_fname.exists():
             existing_props = load_dict(self.h5_fname)
             existing_total = len(existing_props)
-            assert existing_total + len(processed_props) == len(
-                self.project
-            ), "There is an existing raw_dataset_properties file. New cases are processed also, but their sum does not match the size of this project"
+            assert existing_total + len(processed_props) == len(self.project), (
+                "There is an existing raw_dataset_properties file. New cases are processed also, but their sum does not match the size of this project"
+            )
             raw_dataset_props = existing_props + processed_props
         else:
             raw_dataset_props = processed_props
@@ -301,9 +299,9 @@ class Datasource(GetAttr):
             verified_pairs.append(
                 [img_fn, find_matching_fn(img_fn, lm_fnames, tags=["all"])[0]]
             )
-        assert self.paths_exist(
-            verified_pairs
-        ), "(Some) paths do not exist. Fix paths and try again."
+        assert self.paths_exist(verified_pairs), (
+            "(Some) paths do not exist. Fix paths and try again."
+        )
         print("self.populating raw data folder (with symlinks)")
         for pair in verified_pairs:
             img_symlink, lm_symlink = self.filepair_symlink(pair)
@@ -408,9 +406,11 @@ def db_ops(db_name):
 
 
 if __name__ == "__main__":
-# %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
-# %%
+    from fran.data.dataregistry import DS
+
+    # %%
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
+    # %%
     nodes_fldr = "/s/xnat_shadow/nodes"
     nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
     lits_fldr = "/s/datasets_bkp/lits_segs_improved"
@@ -420,7 +420,7 @@ if __name__ == "__main__":
     ds = Datasource(ln_fldr, "lidc")
     ds = Datasource(litsmall_fldr.folder, "litsmall")
     ds = Datasource(lits_fldr, "lits")
-# %%
+    # %%
 
     import h5py
 
@@ -434,7 +434,7 @@ if __name__ == "__main__":
 
     # ds = Datasource(/s/datasets_bkp/litstmp,"litstmp")
     ds.process()
-# %%
+    # %%
     debug_ = True
     case_tuple = ds.new_cases[0]
     ds.outputs = multiprocess_multiarg(
@@ -446,8 +446,8 @@ if __name__ == "__main__":
         logname="dd.log",
         io=True,
     )
-# %%
-# %%
+    # %%
+    # %%
     import h5py
 
     ff = h5py.File(nodes_fn, "r")

@@ -1,89 +1,42 @@
 # %%
 from __future__ import annotations
+
 import os
-import re
-import pandas as pd
-from pathlib import Path
-from typing import Optional, Tuple
-
-from lightning.pytorch import LightningDataModule
-
-
-from functools import reduce
-from operator import add
 from pathlib import Path
 from typing import Optional
 
 import ipdb
-import numpy as np
-import torch
-from fastcore.basics import listify, operator, warnings
-from lightning import LightningDataModule
-from monai.data import DataLoader, Dataset, GridPatchDataset, PatchIterd
-from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
-from monai.transforms.compose import Compose
-from monai.transforms.croppad.dictionary import (RandCropByPosNegLabeld,
-                                                 RandSpatialCropSamplesD,
-                                                 ResizeWithPadOrCropd, SpatialPadd)
-from monai.transforms.intensity.dictionary import (RandAdjustContrastd,
-                                                   RandScaleIntensityd,
-                                                   RandShiftIntensityd)
-from monai.transforms.io.dictionary import LoadImaged
-from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
-from monai.transforms.transform import MapTransform, RandomizableTransform
-from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
-                                                 MapLabelValued, ToDeviceD)
-from tqdm.auto import tqdm as pbar
-from utilz.fileio import load_dict, load_yaml
-from utilz.helpers import (find_matching_fn, project_title_from_folder, resolve_device, set_autoreload)
-from utilz.imageviewers import ImageMaskViewer
-from utilz.stringz import ast_literal_eval, headline, info_from_filename, strip_extension
-
-from fran.configs.parser import ConfigMaker, is_excel_None
-from fran.data.collate import as_is_collated, grid_collated, patch_collated, source_collated, whole_collated
-from fran.data.dataset import NormaliseClipd, fg_in_bboxes
-from fran.managers.project import Project
-from fran.preprocessing.helpers import bbox_bg_only
-from fran.transforms.imageio import LoadTorchd, TorchReader
-from fran.transforms.intensitytransforms import RandRandGaussianNoised
-from fran.transforms.misc_transforms import (DummyTransform, LoadTorchDict,
-                                             MetaToDict)
+import pandas as pd
+from fastcore.basics import listify
+from fran.configs.parser import is_excel_None
+from fran.data.collate import (
+    grid_collated,
+    patch_collated,
+    source_collated,
+    whole_collated,
+)
 from fran.utils.folder_names import folder_names_from_plan
-from fran.utils.misc import convert_remapping
+from tqdm.auto import tqdm as pbar
+from utilz.fileio import load_yaml
+from utilz.helpers import find_matching_fn, set_autoreload
+from utilz.stringz import (
+    ast_literal_eval,
+    headline,
+    info_from_filename,
+    strip_extension,
+)
 
-from fran.utils.common import PAD_VALUE
 common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 
-from torch.utils.data import DataLoader
-from fran.data.collate import grid_collated
-from fran.managers.data.training import PatchIterdWithPaddingFlag
-
-from fran.utils.common import PAD_VALUE
-from monai.data import Dataset
-from monai.data.dataset import PersistentDataset
-from monai.data.grid_dataset import GridPatchDataset, PatchIterd
-import pandas as pd
 import os
-import numpy as np
 from dataclasses import dataclass, replace
-
-from pathlib import Path
-from typing import Optional, Tuple
-
-
-
 from pathlib import Path
 from typing import Optional
 
 import ipdb
-import torch
-from fastcore.basics import warnings
-from utilz.cprint import cprint
-from utilz.fileio import load_yaml
-from utilz.stringz import headline
-
-from fran.configs.parser import ConfigMaker
+import pandas as pd
+from fran.data.collate import grid_collated
 from fran.managers.data.training import (
     DataManager,
     DataManagerBaseline,
@@ -94,7 +47,10 @@ from fran.managers.data.training import (
     DataManagerSource,
     DataManagerWhole,
 )
-from fran.managers.project import Project
+from utilz.cprint import cprint
+from utilz.fileio import load_yaml
+from utilz.stringz import headline
+
 set_autoreload()
 
 common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
@@ -102,13 +58,15 @@ COMMON_PATHS = load_yaml(common_vars_filename)
 
 tr = ipdb.set_trace
 
-def create_pd_indices( indices:int|list):
-        if isinstance(indices,pd.Index):
-            return indices
-        if isinstance(indices,int):
-            indices = range(indices)
-        train1_indices = pd.Index(indices)
-        return train1_indices
+
+def create_pd_indices(indices: int | list):
+    if isinstance(indices, pd.Index):
+        return indices
+    if isinstance(indices, int):
+        indices = range(indices)
+    train1_indices = pd.Index(indices)
+    return train1_indices
+
 
 class DataManagerDualI(DataManagerDual):
     def __init__(
@@ -124,7 +82,7 @@ class DataManagerDualI(DataManagerDual):
         keys_val="L,Remap,Ld,E,N,Rva, ResizePC",
         data_folder_train: Optional[str | Path] = None,
         data_folder_valid: Optional[str | Path] = None,
-        train1_indices: int|list = 40,
+        train1_indices: int | list = 40,
         loss_threshold: float = 0.6,
     ):
 
@@ -135,10 +93,9 @@ class DataManagerDualI(DataManagerDual):
             cache_rate=cache_rate,
             device=device,
             ds_type=ds_type,
-            save_hyperparameters=False, # coz this will save its own hyperparams
+            save_hyperparameters=False,  # coz this will save its own hyperparams
             keys_tr=keys_tr,
             keys_val=keys_val,
-
         )
 
         self.train1_indices = train1_indices
@@ -146,18 +103,18 @@ class DataManagerDualI(DataManagerDual):
         self.plan_train = self.configs["plan_train"]
         self.plan_valid = self.configs["plan_valid"]
         if data_folder_train is None:
-            self.data_folder_train =  self.derive_data_folder(self.plan_train)
-        else: 
+            self.data_folder_train = self.derive_data_folder(self.plan_train)
+        else:
             self.data_folder_train = Path(data_folder_train)
         if data_folder_valid is None:
-            self.data_folder_valid =  self.derive_data_folder(self.plan_valid)
-        else: 
+            self.data_folder_valid = self.derive_data_folder(self.plan_valid)
+        else:
             self.data_folder_valid = Path(data_folder_valid)
 
-
-        if save_hyperparameters==True:
-            self.save_hyperparameters("train1_indices", "project_title", "configs", logger=False)
-
+        if save_hyperparameters == True:
+            self.save_hyperparameters(
+                "train1_indices", "project_title", "configs", logger=False
+            )
 
     def derive_data_folder(self, plan):
         mode = plan["mode"]
@@ -169,24 +126,38 @@ class DataManagerDualI(DataManagerDual):
             raise Exception(f"Data folder {data_folder} does not exist")
         return data_folder
 
-
     def prepare_data(self):
-        if not hasattr(self,"train_df"):
+        if not hasattr(self, "train_df"):
             train1_dicts, train2_dicts, valid_dicts = self.create_dataframes()
         else:
             train1_dicts, train2_dicts, valid_dicts = self.access_dataframes()
-        self.data_train1, self.data_train2, self.data_valid = train1_dicts, train2_dicts, valid_dicts
-        cprint("Number of files in train1: {}".format(len(self.data_train1)), color="yellow")
-        cprint("Number of files in train2: {}".format(len(self.data_train2)), color="yellow")
-        cprint("Number of files in valid: {}".format(len(self.data_valid)), color="yellow")
+        self.data_train1, self.data_train2, self.data_valid = (
+            train1_dicts,
+            train2_dicts,
+            valid_dicts,
+        )
+        cprint(
+            "Number of files in train1: {}".format(len(self.data_train1)),
+            color="yellow",
+        )
+        cprint(
+            "Number of files in train2: {}".format(len(self.data_train2)),
+            color="yellow",
+        )
+        cprint(
+            "Number of files in valid: {}".format(len(self.data_valid)), color="yellow"
+        )
         self._build_managers()
-        self.data_folder= self.train_manager1.data_folder
+        self.data_folder = self.train_manager1.data_folder
 
     def create_dataframes(self):
         train_cases, valid_cases = self.project.get_train_val_files(
-            self.configs["dataset_params"]["fold"], self.configs["plan_train"]["datasources"]
+            self.configs["dataset_params"]["fold"],
+            self.configs["plan_train"]["datasources"],
         )
-        train_dicts = self.create_data_dicts(train_cases,self.plan_train,self.data_folder_train)
+        train_dicts = self.create_data_dicts(
+            train_cases, self.plan_train, self.data_folder_train
+        )
         self.train_df = pd.DataFrame(train_dicts)
         self.train_df["case_id"] = self.train_df["image"].apply(case_id_from_col)
         self.train_df["used_in_training"] = False
@@ -194,10 +165,13 @@ class DataManagerDualI(DataManagerDual):
         self.update_dataframe_indices(self.train1_indices)
 
         train1_dicts = self.train_df.iloc[self.train1_indices].to_dict("records")
-        train2_dicts = self.train_df[self.train_df["used_in_training"] == False].to_dict("records")
-        
+        train2_dicts = self.train_df[
+            self.train_df["used_in_training"] == False
+        ].to_dict("records")
 
-        valid_dicts = self.create_data_dicts(valid_cases,self.plan_valid, self.data_folder_valid )
+        valid_dicts = self.create_data_dicts(
+            valid_cases, self.plan_valid, self.data_folder_valid
+        )
         self.valid_df = pd.DataFrame(valid_dicts)
         return train1_dicts, train2_dicts, valid_dicts
 
@@ -211,14 +185,16 @@ class DataManagerDualI(DataManagerDual):
 
     def add_train1_indices(self, indices) -> None:
         idx = create_pd_indices(indices)
-        self.train_df.iloc[idx, self.train_df.columns.get_loc("used_in_training")] = True
+        self.train_df.iloc[idx, self.train_df.columns.get_loc("used_in_training")] = (
+            True
+        )
         self._sync_train1_indices_from_df()
 
     # def on_save_checkpoint(self, checkpoint: dict) -> None:
     #     cprint("Saving train1 indices", color="red", italic=True)
     #     if hasattr(self, "train_df"):
     #         self._sync_train1_indices_from_df()
-        # checkpoint["train1_indices"] = [int(i) for i in self.train1_indices]
+    # checkpoint["train1_indices"] = [int(i) for i in self.train1_indices]
 
     def on_load_checkpoint(self, checkpoint: dict) -> None:
         idx = checkpoint.get("train1_indices")
@@ -235,29 +211,30 @@ class DataManagerDualI(DataManagerDual):
             cprint("Using different indices", color="yellow", italic=True)
             self.update_dataframe_indices(self.train1_indices)
 
-        train1_dicts = self.train_df[self.train_df["used_in_training"] == True].to_dict("records")
-        train2_dicts = self.train_df[self.train_df["used_in_training"] == False].to_dict("records")
+        train1_dicts = self.train_df[self.train_df["used_in_training"] == True].to_dict(
+            "records"
+        )
+        train2_dicts = self.train_df[
+            self.train_df["used_in_training"] == False
+        ].to_dict("records")
         valid_dicts = self.valid_df.to_dict("records")
         return train1_dicts, train2_dicts, valid_dicts
-
-
 
     def _build_managers(self):
 
         train_mode = self.configs["plan_train"]["mode"]
         valid_mode = self.configs["plan_valid"]["mode"]
-        tm1_spec  = DataManagerModes.by_mode(train_mode, split="train1")
-        tm2_spec  = DataManagerModes.by_mode(train_mode, split="train2")
-        val_spec  = DataManagerModes.by_mode(valid_mode,split="valid")
-
+        tm1_spec = DataManagerModes.by_mode(train_mode, split="train1")
+        tm2_spec = DataManagerModes.by_mode(train_mode, split="train2")
+        val_spec = DataManagerModes.by_mode(valid_mode, split="valid")
 
         self.train_manager1 = tm1_spec.manager_cls(
             project=self.project,
             configs=self.configs,
-            collate_fn = tm1_spec.collate_fn,
+            collate_fn=tm1_spec.collate_fn,
             batch_size=self.batch_size,
             cache_rate=self.cache_rate,
-            data = self.data_train1,
+            data=self.data_train1,
             split="train1",
             device=self.device,
             ds_type=self.ds_type,
@@ -266,10 +243,10 @@ class DataManagerDualI(DataManagerDual):
         )
         self.train_manager2 = tm2_spec.manager_cls(
             project=self.project,
-            collate_fn = tm2_spec.collate_fn,
+            collate_fn=tm2_spec.collate_fn,
             batch_size=self.batch_size,
             cache_rate=self.cache_rate,
-            data = self.data_train2,
+            data=self.data_train2,
             split="train2",
             device=self.device,
             ds_type=self.ds_type,
@@ -280,8 +257,8 @@ class DataManagerDualI(DataManagerDual):
         self.valid_manager = val_spec.manager_cls(
             project=self.project,
             configs=self.configs,
-            collate_fn = val_spec.collate_fn,
-            data = self.data_valid,
+            collate_fn=val_spec.collate_fn,
+            data=self.data_valid,
             batch_size=self.batch_size,
             cache_rate=self.cache_rate,
             split="valid",
@@ -291,8 +268,7 @@ class DataManagerDualI(DataManagerDual):
             data_folder=self.data_folder_valid,
         )
 
-
-    def create_data_dicts(self, fnames,plan, data_folder):
+    def create_data_dicts(self, fnames, plan, data_folder):
         fnames = [strip_extension(fn) for fn in fnames]
         fnames = [fn + ".pt" for fn in fnames]
         images_fldr = data_folder / ("images")
@@ -331,7 +307,7 @@ class DataManagerDualI(DataManagerDual):
         # Dual managers only
         return (self.train_manager1, self.train_manager2, self.valid_manager)
 
-    def train_dataloader(self): # not using train1, as lightning expects it this way
+    def train_dataloader(self):  # not using train1, as lightning expects it this way
         return self.train_manager1.dl
 
     def train2_dataloader(self):
@@ -352,7 +328,6 @@ class DataManagerI(DataManager):
         split="train",
         save_hyperparameters=False,
         keys=None,
-        
         data_folder: Optional[str | Path] = None,
     ):
         super().__init__(
@@ -360,7 +335,7 @@ class DataManagerI(DataManager):
             configs=configs,
             batch_size=batch_size,
             cache_rate=cache_rate,
-            collate_fn = collate_fn,
+            collate_fn=collate_fn,
             device=device,
             ds_type=ds_type,
             split=split,
@@ -369,8 +344,7 @@ class DataManagerI(DataManager):
             data_folder=data_folder,
         )
 
-        self.data= data
-
+        self.data = data
 
     def prepare_data(self):
         pass
@@ -379,7 +353,7 @@ class DataManagerI(DataManager):
         # Create transforms for this split
 
         print(stage)
-        if stage=="fit":
+        if stage == "fit":
             headline(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
             print("Src Dims: ", self.configs["dataset_params"]["src_dims"])
             print("Patch Size: ", self.plan["patch_size"])
@@ -389,14 +363,23 @@ class DataManagerI(DataManager):
             self.set_transforms(self.keys)
             print("Transforms are set up: ", self.keys)
 
-            cprint("Creating {0} dataset".format(self.split) , color="magenta", italic=True)
+            cprint(
+                "Creating {0} dataset".format(self.split), color="magenta", italic=True
+            )
             self.create_dataset()
             self.create_dataloader()
             try:
-                cprint("Size of dataset: {0}, size of dataloader: {1}".format(len(self.ds), len(self.dl)), color="yellow")
+                cprint(
+                    "Size of dataset: {0}, size of dataloader: {1}".format(
+                        len(self.ds), len(self.dl)
+                    ),
+                    color="yellow",
+                )
             except:
-                cprint("Size of dataset not available for {}".format(self.split), color="yellow")
-
+                cprint(
+                    "Size of dataset not available for {}".format(self.split),
+                    color="yellow",
+                )
 
     def create_dataset(self):
         """Create a single dataset based on split type"""
@@ -405,7 +388,7 @@ class DataManagerI(DataManager):
         else:
             self.ds = self._create_test_ds()
 
-    # 
+    #
     # def create_incremental_datasets(self, train_samples: int|list):
     #     if not hasattr(self, "data") or len(self.data) == 0:
     #         print("No data. DS is not being created at this point.")
@@ -519,6 +502,7 @@ class DataManagerI(DataManager):
     #     return selected_idx
     #
 
+
 class DataManagerSourceI(DataManagerSource, DataManagerI):
     pass
 
@@ -529,8 +513,6 @@ class DataManagerWholeI(DataManagerWhole, DataManagerI):
 
 class DataManagerLBDI(DataManagerLBD, DataManagerI):
     pass
-
-
 
 
 class DataManagerShortI(DataManagerShort, DataManagerI):
@@ -619,26 +601,29 @@ def _mode_to_spec():
 def _mode_to_class():
     return {mode: spec.manager_cls for mode, spec in _mode_to_spec().items()}
 
+
 def case_id_from_col(filename):
     if isinstance(filename, str):
         filename_name = filename.split("/")[-1]
     else:
-        filename_name= filename.name
+        filename_name = filename.name
     inf = info_from_filename(filename_name)
     return inf["case_id"]
+
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
-
     import torch
+    from fastcore.basics import warnings
+    from fran.configs.parser import ConfigMaker
+    from fran.managers.project import Project
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
 
-
-# %%
+    # %%
     proj_nodes = Project(project_title="lidc")
     CN = ConfigMaker(
         proj_nodes,
@@ -646,8 +631,8 @@ if __name__ == "__main__":
     CN.setup(1)
     config_nodes = CN.configs
 
-# %%
-#SECTION:-------------------- NODESJ--------------------------------------------------------------------------------------
+    # %%
+    # SECTION:-------------------- NODESJ--------------------------------------------------------------------------------------
     batch_size = 2
     ds_type = "lmdb"
     ds_type = None
@@ -660,77 +645,75 @@ if __name__ == "__main__":
         ds_type=ds_type,
     )
 
-# %%
+    # %%
     D.prepare_data()
     D.setup("fit")
-# %%
+    # %%
     D.train1_indices
     D.prepare_data()
 
     tm = D.train_manager
 
-# %%
-    train1_indices= 40
-# %%
+    # %%
+    train1_indices = 40
+    # %%
     train_cases, valid_cases = tm.project.get_train_val_files(
-            tm.dataset_params["fold"], tm.plan["datasources"]
-        )
+        tm.dataset_params["fold"], tm.plan["datasources"]
+    )
 
-
-# %%
-# %%
+    # %%
+    # %%
     D.prepare_data()
     D.setup()
     tmv = D.valid_manager
     tmt = D.train_manager
     tmv.transforms_dict
 
-# %%
+    # %%
     df = pd.DataFrame(tmt.data)
-    df["in_use"]=False
-    indices = [0,20]
+    df["in_use"] = False
+    indices = [0, 20]
 
     df.loc[indices, "in_use"] = True
 
     data = tmt.data_df.iloc[tmt.indices]
     data[:3].to_dict(orient="records")
-# %%
-    df.loc["in_use"]==True
+    # %%
+    df.loc["in_use"] == True
     bads = df.index[df["in_use"] == False]
 
     df.loc[bads]
-# %%
+    # %%
     df = tmt.data_df
     ids = df.index[df["used_in_training"] == False]
 
     df.loc[ids]["in_use"] = False
 
-# %%
+    # %%
 
     df = pd.DataFrame(
-
-      {"case": ["a", "b", "c", "d"], "used_in_training": [False, False, False, False]}
+        {"case": ["a", "b", "c", "d"], "used_in_training": [False, False, False, False]}
     )
     indices = [0, 2]
 
-# %%
+    # %%
     print("Initial:")
     print(df)
 
-# BUGGY pattern (chained assignment) -> often does NOT update original df
+    # BUGGY pattern (chained assignment) -> often does NOT update original df
     df_bug = df.copy()
     df_bug.loc[indices]["used_in_training"] = True
     print("\nAfter chained assignment df_bug.loc[indices]['used_in_training'] = True:")
     print(df_bug)
     print("num_true:", int(df_bug["used_in_training"].sum()))
 
-# CORRECT pattern (single-step assignment) -> updates original df
+    # CORRECT pattern (single-step assignment) -> updates original df
     df_ok = df.copy()
     df_ok.loc[indices, "used_in_training"] = True
     print("\nAfter direct assignment df_ok.loc[indices, 'used_in_training'] = True:")
     print(df_ok)
     print("num_true:", int(df_ok["used_in_training"].sum()))
-# %%
+    # %%
     spec = DataManagerModes.by_mode("patch", split="train1")
     print(spec.collate_fn)  # patch_collated
 # %%

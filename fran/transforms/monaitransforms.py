@@ -1,25 +1,31 @@
-
-from monai.utils import ImageMetaKey as Key
-from monai.data.meta_obj import get_track_meta
 from typing import List, Optional, Sequence, Union
-from monai.transforms.inverse import TraceableTransform
-from monai.transforms.transform import Randomizable
-from monai.transforms.utils import generate_label_classes_crop_centers, map_classes_to_indices
-from monai.utils.misc import fall_back_tuple
+
 import numpy as np
 from fastcore.all import delegates
+from monai.data.meta_obj import get_track_meta
+from monai.transforms.inverse import TraceableTransform
+from monai.transforms.transform import Randomizable
+from monai.transforms.utils import (
+    generate_label_classes_crop_centers,
+    map_classes_to_indices,
+)
+from monai.utils import ImageMetaKey as Key
+from monai.utils.misc import fall_back_tuple
+
 try:
     from fasttransform.transform import ItemTransform
 except Exception:
     from fastcore.all import ItemTransform
-from monai.transforms.croppad.array import *
-import ipdb
 from typing import List
-import torch
 
+import ipdb
+import torch
+from monai.transforms.croppad.array import *
 from torch.functional import Tensor
+
 tr = ipdb.set_trace
 # %%
+
 
 class RandCropImgMaskByLabelClasses(Randomizable, TraceableTransform):
     backend = SpatialCrop.backend
@@ -48,18 +54,29 @@ class RandCropImgMaskByLabelClasses(Randomizable, TraceableTransform):
         self.allow_smaller = allow_smaller
 
     def randomize(
-        self, label: torch.Tensor, indices: Optional[List[Tensor]] = None, image: Optional[torch.Tensor] = None
+        self,
+        label: torch.Tensor,
+        indices: Optional[List[Tensor]] = None,
+        image: Optional[torch.Tensor] = None,
     ) -> None:
         indices_: Sequence[Tensor]
         if indices is None:
             if self.indices is not None:
                 indices_ = self.indices
             else:
-                indices_ = map_classes_to_indices(label, self.num_classes, image, self.image_threshold)
+                indices_ = map_classes_to_indices(
+                    label, self.num_classes, image, self.image_threshold
+                )
         else:
             indices_ = indices
         self.centers = generate_label_classes_crop_centers(
-            self.spatial_size, self.num_samples, label.shape[1:], indices_, self.ratios, self.R, self.allow_smaller
+            self.spatial_size,
+            self.num_samples,
+            label.shape[1:],
+            indices_,
+            self.ratios,
+            self.R,
+            self.allow_smaller,
         )
 
     def __call__(
@@ -96,50 +113,90 @@ class RandCropImgMaskByLabelClasses(Randomizable, TraceableTransform):
         if self.centers is not None:
             for i, center in enumerate(self.centers):
                 roi_size = fall_back_tuple(self.spatial_size, default=label.shape[1:])
-                cropped_img = SpatialCrop(roi_center=tuple(center), roi_size=roi_size)(img)
-                cropped_mask= SpatialCrop(roi_center=tuple(center), roi_size=roi_size)(mask)
+                cropped_img = SpatialCrop(roi_center=tuple(center), roi_size=roi_size)(
+                    img
+                )
+                cropped_mask = SpatialCrop(roi_center=tuple(center), roi_size=roi_size)(
+                    mask
+                )
                 if get_track_meta():
                     ret_: MetaTensor = cropped_img  # type: ignore
                     ret_.meta[Key.PATCH_INDEX] = i
                     ret_.meta["crop_center"] = center
-                    self.push_transform(ret_, orig_size=orig_size, extra_info=self.pop_transform(ret_, check=False))
-                results.append([cropped_img,cropped_mask])
+                    self.push_transform(
+                        ret_,
+                        orig_size=orig_size,
+                        extra_info=self.pop_transform(ret_, check=False),
+                    )
+                results.append([cropped_img, cropped_mask])
         imgs, masks = zip(*results)
-        return imgs,masks
+        return imgs, masks
 
-# %%
+    # %%
     def infer_num_samples(spatial_size, ds_median_shape, oversampling_factor):
-            spatial_dim2 = spatial_size[2] * (1-oversampling_factor)
-            ds_median_dim2 = ds_median_shape[2]
-            num_samples =  int(np.ceil(ds_median_dim2/spatial_dim2))
-            print("Each image will be sampled {} times per epoch based on dataset shape / patch_size / overlap combo.".format(num_samples))
-            return num_samples
+        spatial_dim2 = spatial_size[2] * (1 - oversampling_factor)
+        ds_median_dim2 = ds_median_shape[2]
+        num_samples = int(np.ceil(ds_median_dim2 / spatial_dim2))
+        print(
+            "Each image will be sampled {} times per epoch based on dataset shape / patch_size / overlap combo.".format(
+                num_samples
+            )
+        )
+        return num_samples
 
 
 class RandomCropped(ItemTransform):
-        @delegates(RandCropImgMaskByLabelClasses)
-        def __init__(self,spatial_size,ratios,num_classes,ds_median_shape=None,oversampling_factor=0.5 , num_samples=None,*args,**kwargs):
-            assert num_samples is not None or ds_median_shape is not None, "Provide either num_samples or ds_median_shape to infer samples to randomize per case"
-            if not num_samples:
-                num_samples = self.infer_num_samples(spatial_size,ds_median_shape,oversampling_factor)
-            self.cropper = RandCropImgMaskByLabelClasses(spatial_size=spatial_size,ratios=ratios,num_classes=num_classes,num_samples=num_samples,*args,**kwargs)
-        def encodes(self,x):
-            imgs,masks= self.cropper(img=x[0],label=x[1])
-            shapes = [im.shape[1:] for im in imgs]
-            if any([list(sh) != [128, 128, 128] for sh in shapes]):
-                tr()
-            return torch.stack(imgs),torch.stack(masks)
-        def collate_fn(self,x):
-            imgs=[]
-            masks=[]
-            for img,mask in x:
-                imgs.append(img)
-                masks.append(mask)
-                
-            return torch.cat(imgs,0), torch.cat(masks,0)
-        def infer_num_samples(self,spatial_size, ds_median_shape, oversampling_factor):
-            spatial_dim2 = spatial_size[2] * (1-oversampling_factor)
-            ds_median_dim2 = ds_median_shape[2]
-            num_samples =  int(np.ceil(ds_median_dim2/spatial_dim2))
-            print("Each image will be sampled {} times per epoch based on dataset shape / patch_size / overlap combo.".format(num_samples))
-            return num_samples
+    @delegates(RandCropImgMaskByLabelClasses)
+    def __init__(
+        self,
+        spatial_size,
+        ratios,
+        num_classes,
+        ds_median_shape=None,
+        oversampling_factor=0.5,
+        num_samples=None,
+        *args,
+        **kwargs,
+    ):
+        assert num_samples is not None or ds_median_shape is not None, (
+            "Provide either num_samples or ds_median_shape to infer samples to randomize per case"
+        )
+        if not num_samples:
+            num_samples = self.infer_num_samples(
+                spatial_size, ds_median_shape, oversampling_factor
+            )
+        self.cropper = RandCropImgMaskByLabelClasses(
+            spatial_size=spatial_size,
+            ratios=ratios,
+            num_classes=num_classes,
+            num_samples=num_samples,
+            *args,
+            **kwargs,
+        )
+
+    def encodes(self, x):
+        imgs, masks = self.cropper(img=x[0], label=x[1])
+        shapes = [im.shape[1:] for im in imgs]
+        if any([list(sh) != [128, 128, 128] for sh in shapes]):
+            tr()
+        return torch.stack(imgs), torch.stack(masks)
+
+    def collate_fn(self, x):
+        imgs = []
+        masks = []
+        for img, mask in x:
+            imgs.append(img)
+            masks.append(mask)
+
+        return torch.cat(imgs, 0), torch.cat(masks, 0)
+
+    def infer_num_samples(self, spatial_size, ds_median_shape, oversampling_factor):
+        spatial_dim2 = spatial_size[2] * (1 - oversampling_factor)
+        ds_median_dim2 = ds_median_shape[2]
+        num_samples = int(np.ceil(ds_median_dim2 / spatial_dim2))
+        print(
+            "Each image will be sampled {} times per epoch based on dataset shape / patch_size / overlap combo.".format(
+                num_samples
+            )
+        )
+        return num_samples

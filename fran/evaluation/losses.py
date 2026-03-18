@@ -4,20 +4,18 @@ from typing import Callable, Optional, TypeAlias
 
 import ipdb
 import lightning.pytorch as pl
-from monai.losses.dice import DiceLoss
 import numpy as np
 import torch
 import torch.nn as nn
+from monai.losses.dice import DiceLoss
 from monai.utils.enums import DiceCEReduction, LossReduction
 from monai.utils.module import look_up_option
-from nnunet.utilities.nd_softmax import softmax_helper
 from utilz.helpers import info_from_filename, range_inclusive
 
 tr = ipdb.set_trace
 import torch.nn.functional as F
-from monai.losses import MaskedDiceLoss
-
 from fran.utils.common import PAD_VALUE
+from monai.losses import MaskedDiceLoss
 
 TensorSeq: TypeAlias = list[torch.Tensor] | tuple[torch.Tensor, ...]
 
@@ -33,7 +31,7 @@ class _DiceCELossMultiOutput(nn.Module):
         other_act: Optional[Callable] = None,
         squared_pred: bool = False,
         jaccard: bool = False,
-        reduction: LossReduction| str = LossReduction.MEAN,
+        reduction: LossReduction | str = LossReduction.MEAN,
         smooth_nr: float = 1e-5,
         smooth_dr: float = 1e-5,
         batch: bool = False,
@@ -73,10 +71,9 @@ class _DiceCELossMultiOutput(nn.Module):
             smooth_nr=smooth_nr,
             smooth_dr=smooth_dr,
             batch=batch,
-
         )
         self.cross_entropy = nn.CrossEntropyLoss(weight=ce_weight, reduction="mean")
-            
+
         if lambda_dice < 0.0:
             raise ValueError("lambda_dice should be no less than 0.0.")
         if lambda_ce < 0.0:
@@ -85,8 +82,7 @@ class _DiceCELossMultiOutput(nn.Module):
         self.lambda_ce = lambda_ce
         # self.reduction=reduction
 
-
-    def compute_ce_loss(self,input,target,mask):
+    def compute_ce_loss(self, input, target, mask):
         t_idx = target.select(1, 0).long()
         if mask is None:
             return self.cross_entropy(input, t_idx)
@@ -102,8 +98,7 @@ class _DiceCELossMultiOutput(nn.Module):
         valid_count = valid_mask.sum().clamp_min(1.0)
         return (ce_unreduced * valid_mask).sum() / valid_count
 
-
-    def compute_dice_loss(self,input,target,mask):
+    def compute_dice_loss(self, input, target, mask):
         if mask is not None:
             loss_dice_unreduced = self.dice_m(input, target, mask=mask)
         else:
@@ -111,26 +106,23 @@ class _DiceCELossMultiOutput(nn.Module):
         loss_dice_unreduced = loss_dice_unreduced.flatten(start_dim=2).mean(-1)
         return loss_dice_unreduced
 
-
-
-
     def forward(
         self, input: torch.Tensor, target: torch.Tensor, use_mask=False
     ) -> dict:
         # input: [N, C, ...] logits
         # target: [N,1,...] , a channel dim is MUST
 
-        if not target.ndim == input.ndim : 
+        if not target.ndim == input.ndim:
             raise ValueError(
                 f"input {tuple(input.shape)} vs target {tuple(target.shape)} mismatch"
             )
 
-        if use_mask==True:
+        if use_mask == True:
             mask = target != PAD_VALUE
         else:
-            mask=None
+            mask = None
 
-        loss_dice_unreduced = self.compute_dice_loss(input,target, mask)
+        loss_dice_unreduced = self.compute_dice_loss(input, target, mask)
         loss_dice_reduced = loss_dice_unreduced.mean()
         loss_ce = self.compute_ce_loss(input, target, mask)
 
@@ -314,9 +306,9 @@ class DeepSupervisionLoss(pl.LightningModule):
         scaled_target = self.apply_ds_scales(target, "nearest")
         if isinstance(preds, (list, tuple)):  # multires lists in training
             losses = [
-                    self.LossFunc(xx, yy, use_mask=use_mask)
-                    for xx, yy in zip(preds, scaled_target)
-                ]
+                self.LossFunc(xx, yy, use_mask=use_mask)
+                for xx, yy in zip(preds, scaled_target)
+            ]
 
         elif isinstance(preds, torch.Tensor):  # tensor
             if (
@@ -403,6 +395,8 @@ class DeepSupervisionLoss(pl.LightningModule):
 
 # %%
 if __name__ == "__main__":
+    from nnunet.utilities.nd_softmax import softmax_helper
+
     softmax_helper = lambda x: F.softmax(x, 1)
     P = Project("nodes")
     conf = ConfigMaker(P, configuration_filename=None).config

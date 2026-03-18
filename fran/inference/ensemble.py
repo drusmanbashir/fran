@@ -1,32 +1,27 @@
 # %%
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-
 import monai
-from monai.data.utils import create_file_basename
-from utilz.stringz import headline, strip_extension
+from utilz.stringz import headline
 
 __all__ = ["FolderLayoutBase", "FolderLayout", "default_name_formatter"]
 
-import itertools as il
 import random
 
 import ipdb
 import numpy as np
-from label_analysis.totalseg import TotalSegmenterLabels
-from monai.transforms.compose import Compose
-from monai.transforms.io.dictionary import SaveImaged
-from monai.transforms.post.dictionary import (AsDiscreted, MeanEnsembled,
-                                              VoteEnsembled)
-from monai.transforms.utility.dictionary import CastToTyped, ToDeviceD
-
 from fran.data.dataset import FillBBoxPatchesd
 from fran.managers import Project
-from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import (
-    KeepLargestConnectedComponentWithMetad, MakeWritabled, ToCPUd)
+    KeepLargestConnectedComponentWithMetad,
+    MakeWritabled,
+    ToCPUd,
+)
 from fran.utils.misc import parse_devices
+from monai.transforms.compose import Compose
+from monai.transforms.io.dictionary import SaveImaged
+from monai.transforms.post.dictionary import VoteEnsembled
+from monai.transforms.utility.dictionary import CastToTyped, ToDeviceD
 
 tr = ipdb.set_trace
 
@@ -38,11 +33,18 @@ import torch
 from fastcore.basics import store_attr
 
 # import your existing inferers
-from fran.inference.base import (BaseInferer, filter_existing_files,
-                                 load_images_nifti, load_params)
-from fran.inference.cascade import (CascadeInferer, PatchInferer,
-                                    WholeImageInferer, apply_bboxes,
-                                    img_bbox_collated)
+from fran.inference.base import (
+    BaseInferer,
+    filter_existing_files,
+    load_images_nifti,
+    load_params,
+)
+from fran.inference.cascade import (
+    PatchInferer,
+    WholeImageInferer,
+    apply_bboxes,
+    img_bbox_collated,
+)
 
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
 
@@ -53,7 +55,7 @@ from fran.inference.cascade import (CascadeInferer, PatchInferer,
 class Formatter:
     def __init__(self, keys):
         self.keys = keys
-        self.counter=0
+        self.counter = 0
 
     def default_name_formatter(
         self, metadict: dict, saver: monai.transforms.Transform
@@ -73,10 +75,11 @@ class Formatter:
             if metadict
             else None
         )
-        subject = subject.replace(".nii","_{}.nii".format(self.keys[self.counter]))
-        self.counter+=1
+        subject = subject.replace(".nii", "_{}.nii".format(self.keys[self.counter]))
+        self.counter += 1
         self.counter = self.counter % len(self.keys)
         return {"subject": f"{subject}", "idx": patch_index}
+
 
 class _InferenceSession:
     def __init__(self, inferer):
@@ -153,9 +156,9 @@ class EnsembleInferer:
         debug_patch: bool = False,
     ):
 
-        if debug==True:
+        if debug == True:
             debug_base = True
-            debug_patch= True
+            debug_patch = True
         store_attr(but="localiser_labels")
         self.localiser_labels = list(localiser_labels) if localiser_labels else None
 
@@ -189,11 +192,10 @@ class EnsembleInferer:
 
     def _extract_bboxes(self, run_w: str, data):
         """Run the localiser once to produce per-image bounding boxes."""
-        from monai.transforms.compose import Compose
-
         from fran.inference.base import get_patch_spacing
         from fran.transforms.inferencetransforms import BBoxFromPTd
         from fran.transforms.misc_transforms import SelectLabels
+        from monai.transforms.compose import Compose
 
         spacing = get_patch_spacing(run_w)
         # labels: prefer explicit; else borrow from localiser run's configs
@@ -287,7 +289,7 @@ class EnsembleInferer:
             pinf.create_postprocess_transforms(pinf.ds.transform)
             for b in pinf.predict():
                 preds_all_runs.append(pinf.postprocess_transforms(b))
-        
+
     def patch_prediction(self, data, runs_p):
         preds_all_runs = {}
         print("Starting patch data prep and prediction")
@@ -297,7 +299,7 @@ class EnsembleInferer:
                 current_overlap = random.uniform(0.2, 0.3)
             else:
                 current_overlap = self.patch_overlap
-                
+
             P = PatchInferer(
                 run_name=run,
                 devices=self.devices,
@@ -350,14 +352,14 @@ class EnsembleInferer:
             pred_patches = self.patch_prediction(cropped, run_ps)
             pat = self.decollate_patches(pred_patches, self.bboxes, run_ps)
             pat2 = self.postprocess_casc(pat)
-            preds_all_patches.extend(pat2) # extend vs append can cause problems
+            preds_all_patches.extend(pat2)  # extend vs append can cause problems
         return preds_all_patches
 
     def _base_runs(self, data):
         prds_all_base = {}
         for r in self.base_runs:
             prds_all_base[r] = []
-            mode ,_= get_mode_outchannels(r)
+            mode, _ = get_mode_outchannels(r)
             member = (
                 WholeImageInferer(
                     r,
@@ -377,7 +379,12 @@ class EnsembleInferer:
             )
             with _InferenceSession(member) as inf:
                 inf.setup()
-                inf.prepare_data(data, collate_fn=img_bbox_collated if "bounding_box" in data[0].keys() else None)
+                inf.prepare_data(
+                    data,
+                    collate_fn=img_bbox_collated
+                    if "bounding_box" in data[0].keys()
+                    else None,
+                )
                 inf.create_and_set_postprocess_transforms()
                 for num_batches, batch in enumerate(inf.predict(), 1):
                     batch = inf.postprocess(batch)
@@ -409,7 +416,7 @@ class EnsembleInferer:
         }
 
     def set_postprocess_tfms_keys_casc(self):
-        if self.safe_mode== False:
+        if self.safe_mode == False:
             self.postprocess_tfms_keys_casc = "A,Int,W,F"
         else:
             self.postprocess_tfms_keys_casc = "W,F"
@@ -420,7 +427,7 @@ class EnsembleInferer:
         self.postprocess_transforms_casc = self.tfms_from_dict(
             self.postprocess_tfms_keys_casc, self.postprocess_transforms_dict_casc
         )
-        self.postprocess_compose_casc=Compose(self.postprocess_transforms_casc)
+        self.postprocess_compose_casc = Compose(self.postprocess_transforms_casc)
 
     def postprocess_casc(self, preds):
         if self.debug == False:
@@ -449,7 +456,6 @@ class EnsembleInferer:
         all_outputs: List[dict] = []
         self.create_and_set_postprocess_transforms()
         for start in range(0, len(images), chunksize):
-
             chunk = images[start : start + chunksize]
             data = load_images_nifti(chunk)
             # 1) Prepare data once for base-like members (they each handle their own transforms)
@@ -507,21 +513,31 @@ class EnsembleInferer:
         CPU_members = ToCPUd(keys=self.runs)
 
         # Fuse members -> "pred"
-        MR = VoteEnsembled(keys=self.runs, output_key="pred", num_classes=self.out_channels)
+        MR = VoteEnsembled(
+            keys=self.runs, output_key="pred", num_classes=self.out_channels
+        )
 
         # Everything from here acts on "pred"
-        CPU_pred = ToCPUd(keys=["pred"])                      # ensure CPU before saving
-        Int      = CastToTyped(keys=["pred"], dtype=np.uint8) # force uint8 labels
-        K        = KeepLargestConnectedComponentWithMetad(
-                      keys=["pred"], independent=False, num_components=self.k_largest
-                  ) if self.k_largest else None
-        S        = SaveImaged(
-                      keys=["pred"],
-                      output_dir=self.output_folder,
-                      output_postfix="",
-                      separate_folder=False,
-                      output_dtype=np.uint8,
-                  ) if self.save else None
+        CPU_pred = ToCPUd(keys=["pred"])  # ensure CPU before saving
+        Int = CastToTyped(keys=["pred"], dtype=np.uint8)  # force uint8 labels
+        K = (
+            KeepLargestConnectedComponentWithMetad(
+                keys=["pred"], independent=False, num_components=self.k_largest
+            )
+            if self.k_largest
+            else None
+        )
+        S = (
+            SaveImaged(
+                keys=["pred"],
+                output_dir=self.output_folder,
+                output_postfix="",
+                separate_folder=False,
+                output_dtype=np.uint8,
+            )
+            if self.save
+            else None
+        )
 
         # Stash for key-driven assembly
         self.postprocess_transforms_dict = {
@@ -534,6 +550,7 @@ class EnsembleInferer:
             "K": K,
             "S": S,
         }
+
     def set_postprocess_tfms_keys(self):
         # Safe mode: keep everything on CPU; otherwise hop members to GPU for voting
         if self.safe_mode is False:
@@ -547,7 +564,6 @@ class EnsembleInferer:
             keys += ",S"
 
         self.postprocess_tfms_keys = keys
-
 
     def set_postprocess_transforms(self):
         def _tfms_from_dict(keys: str, tfms_dict: dict):
@@ -582,6 +598,7 @@ class EnsembleInferer:
         else:
             output = self.postprocess_iterate(preds)
         return output
+
     #
     # def postprocess(self, preds):
     #     device = self.devices if isinstance(self.devices, int) else self.devices[0]
@@ -631,7 +648,7 @@ class EnsembleInferer:
     #             batch= tfm(batch)
     #     return output
     #
-    def create_and_set_postprocess_transforms(self ):
+    def create_and_set_postprocess_transforms(self):
         self.create_postprocess_transforms()
         self.set_postprocess_tfms_keys()
         self.set_postprocess_transforms()
@@ -658,13 +675,17 @@ class EnsembleInferer:
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    from label_analysis.totalseg import TotalSegmenterLabels
+    from monai.transforms.post.dictionary import MeanEnsembled
+    from utilz.stringz import strip_extension
+
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     run_w = "LITS-1439"  # this run has localiser_labels not full TSL.
 
     run_lidc2 = ["LITS-902"]
     run_nodes = ["LITS-1290", "LITS-1230", "LITS-1288"]
-    run_nodes1 = ["LITS-1326","LITS-1327", "LITS-1328"]
-    run_nodes2 = ["LITS-1405","LITS-1416", "LITS-1417"]
+    run_nodes1 = ["LITS-1326", "LITS-1327", "LITS-1328"]
+    run_nodes2 = ["LITS-1405", "LITS-1416", "LITS-1417"]
 
     run_lidc2 = ["LITS-842"]
     run_lidc2 = ["LITS-913"]
@@ -693,13 +714,13 @@ if __name__ == "__main__":
     imgs_crc = list(fldr_crc.glob("*"))
     nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
     nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
-    nodes_fldr_test =Path("/s/xnat_shadow/nodes/images_test")
+    nodes_fldr_test = Path("/s/xnat_shadow/nodes/images_test")
     nodes_test = list(nodes_fldr_test.glob("*"))
     nodes = list(nodes_fldr.glob("*"))
     capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
     capestart = list(capestart_fldr.glob("*"))
 
-    fldr_misc =  Path("/s/xnat_shadow/misc/images")
+    fldr_misc = Path("/s/xnat_shadow/misc/images")
     imgs_misc = list(fldr_misc.glob("*"))
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
@@ -707,8 +728,8 @@ if __name__ == "__main__":
     TSL = TotalSegmenterLabels()
     proj_nodes = Project("nodes")
 
-# %%
-# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
     runs = run_nodes2
     safe_mode = True
@@ -723,8 +744,8 @@ if __name__ == "__main__":
     localiser_run = run_w
     debug_ = True
     debug_ = False
-    debug_base=True
-    debug_base=False
+    debug_base = True
+    debug_base = False
     # En = CascadeInferer(
 
     #     run_w,
@@ -738,7 +759,7 @@ if __name__ == "__main__":
     #     k_largest=None,
     # )
 
-# %%
+    # %%
     E = EnsembleInferer(
         project=proj_nodes,
         runs=runs,
@@ -753,26 +774,26 @@ if __name__ == "__main__":
         debug_base=debug_base,
     )
 
-# %%
+    # %%
     # nodes = nodes[:3]
     imgs = nodes_test
     imgs = imgs_misc
     # node_fn = "/s/insync/datasets/capestart/nodes_nov2025/images/nodes_43_20220805_CAP1p5SoftTissue.nii.gz"
     preds = E.run(imgs, chunksize=chunksize, overwrite=overwrite)
-# %%
+    # %%
     # preds = En.run(img_fns, chunksize=2)
 
     pap = preds[0]
     pap[0].keys()
-# %%
+    # %%
     # batch['image'].shape
 
     # S
     params["configs"].keys()
     params["configs"]["dataset_params"]["plan_train"]
     # S
-# %%
-# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     run = run_litsmc2
     debug_ = False
@@ -799,15 +820,15 @@ if __name__ == "__main__":
         debug=debug_,
     )
 
-# %%
+    # %%
     fns_litq = list(Path(litq_fldr).glob("*"))
 
     preds = En.run(fns_litq[:2], chunksize=chunksize, overwrite=overwrite)
     # preds = En.run(imgs_crc[:30], chunksize=4)
-# %%
+    # %%
 
-# %%
-# SECTION:-------------------- TS run()-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- TS run()-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     images = nodes
 
@@ -823,7 +844,7 @@ if __name__ == "__main__":
     preds_all_patches[0].keys()
     preds_all_patches[0]["LITS-1217"].dtype
     preds_all_patches[0]["LITS-1217"].max()
-# %%
+    # %%
     preds_all_base = En._base_runs(data) if len(En.base_runs) > 0 else []
     # 3) Run base/whole members directly on full images
     preds_all = En.combined_patch_base_preds(preds_all_patches, preds_all_base)
@@ -834,9 +855,9 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     gc.collect()
 
-# %%
+    # %%
 
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    # SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     images = nodes[:2]
     if not isinstance(images, list):
         images = [images]
@@ -852,15 +873,15 @@ if __name__ == "__main__":
     # 1) Prepare data once for base-like members (they each handle their own transforms)
     per_member_batches: List[List[dict]] = []
 
-# %%
-# %%
-#SECTION:-------------------- patch--------------------------------------------------------------------------------------
+    # %%
+    # %%
+    # SECTION:-------------------- patch--------------------------------------------------------------------------------------
 
-    E.debug=False
-    run_w = 'LITS-1088'
+    E.debug = False
+    run_w = "LITS-1088"
     run_ps = E.cascade_groups[run_w]
     preds_all_patches = []
-# %%
+    # %%
 
     data = load_images_nifti(images[1])
     E.create_and_set_postprocess_transforms_casc(run_ps)
@@ -871,13 +892,13 @@ if __name__ == "__main__":
     pp = E.postprocess_casc(pp)
     preds_all_patches.extend(pp)
     # 2) Handle cascade groups: run localiser ONCE per run_w, then fan out to each run_p
-# %%
-    meta_org = data[0]['image'].meta.copy()
+    # %%
+    meta_org = data[0]["image"].meta.copy()
     meta2 = data
 
-    meta2 = data[0]['image'].meta.copy()
-# %%
-#SECTION:--------------------  BASE RUN--------------------------------------------------------------------------------------
+    meta2 = data[0]["image"].meta.copy()
+    # %%
+    # SECTION:--------------------  BASE RUN--------------------------------------------------------------------------------------
 
     chunk = nodes[1]
     data = load_images_nifti(chunk)
@@ -885,7 +906,7 @@ if __name__ == "__main__":
     for r in E.base_runs:
         r = E.base_runs[0]
         prds_all_base[r] = []
-        mode ,channels = get_mode_outchannels(r)
+        mode, channels = get_mode_outchannels(r)
         member = (
             WholeImageInferer(
                 r,
@@ -901,21 +922,21 @@ if __name__ == "__main__":
                 save_channels=E.save_channels,
             )
         )
-# %%
+    # %%
     inf = member
-    inf.debug=True
+    inf.debug = True
     inf.setup()
     inf.prepare_data(data, collate_fn=None)
     inf.create_and_set_postprocess_transforms()
     batch = next(inf.predict())
-# %%
+    # %%
     # for num_batches, batch in enumerate(inf.predict(), 1):
     batch = inf.postprocess(batch)
     prds_all_base[r].append(batch)
 
     preds_all_base = E.decollate_base_predictions(prds_all_base)
-# %%
-# SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- patch pred-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     # 3) Run base/whole members directly on full images
     prds_all_base = {}
     for r in E.base_runs:
@@ -948,7 +969,7 @@ if __name__ == "__main__":
                 # batches.append(b)
                 prds_all_base[r].append(batch)
 
-# %%
+    # %%
     preds_all_base = []
     for i in range(num_batches):
         prds_decolled = {}
@@ -957,12 +978,12 @@ if __name__ == "__main__":
             prds_decolled[r] = prds
         preds_all_base.append(prds_decolled)
 
-# %%
+    # %%
     preds_all = []
     for i in range(num_batches):
         preds_ = preds_all_base[i] | preds_all_patches[i]
         preds_all.append(preds_)
-# %%
+    # %%
 
     U = ToCPUd(keys=E.runs)
     MR = MeanEnsembled(output_key="pred", keys=E.runs)
@@ -974,11 +995,11 @@ if __name__ == "__main__":
 
     output = C(preds_all)
     # [[x['pred'].shape for x in b] for b in per_member_batches  ]
-# %%
+    # %%
     outs = En.postprocess(preds_all)
-# %%
+    # %%
 
-# %%
+    # %%
     # 4) Fuse
     if per_member_batches:
         merged = E._merge_member_outputs(per_member_batches)
@@ -987,7 +1008,7 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     gc.collect()
 
-# %%
+    # %%
     run_p = En.patch_runs[0]
     P = PatchInferer(
         run_name=run_p,
@@ -997,7 +1018,7 @@ if __name__ == "__main__":
         params=load_params(run_p),
     )
 
-# %%
+    # %%
     batch.keys()
     batch["image"].shape
     batch["pred"].shape
@@ -1008,70 +1029,63 @@ if __name__ == "__main__":
     batch["LITS-1290"].dtype
     batch["LITS-1290"]
 
-# %%
+    # %%
     fn = strip_extension(subject)
-# %%
-
-
+    # %%
 
     chunk = nodes[1]
     data = load_images_nifti(chunk)
     # 1) Prepare data once for base-like members (they each handle their own transforms)
     # 2) Handle cascade groups: run localiser ONCE per run_w, then fan out to each run_p
-    preds_all_patches = (
-        E._cascade_runs(data) if len(E.cascade_runs) > 0 else []
-    )
+    preds_all_patches = E._cascade_runs(data) if len(E.cascade_runs) > 0 else []
     preds_all_base = E._base_runs(data) if len(E.base_runs) > 0 else []
     # 3) Run base/whole members directly on full images
-    preds_all = E.combined_patch_base_preds(
-        preds_all_patches, preds_all_base
-    )
+    preds_all = E.combined_patch_base_preds(preds_all_patches, preds_all_base)
 
     preds_final = E.postprocess(preds_all)
-# %%
+    # %%
 
+    preds_all_patches[0]["LITS-1290"]
+    preds_all_patches[0]["LITS-1288"].max()
+    # %%
+    preds_all_base[0]["LITS-1230"]
 
-    preds_all_patches[0]['LITS-1290']
-    preds_all_patches[0]['LITS-1288'].max()
-# %%
-    preds_all_base[0]['LITS-1230']
-
-# %%
+    # %%
 
     data = load_images_nifti(chunk)
-# %%
-# %%
+    # %%
+    # %%
     # pred_patches['LITS-1290'][0]['pred'].shape
-# %%
+    # %%
     batch.keys()
-    batch['image'].meta
-    batch['pred'].meta
-    batch['LITS-1290'].shape
-    batch['LITS-1288'].shape
-    batch['LITS-1230'].shape
-    batch['LITS-1230'].dtype
-    batch['LITS-1230'].max()
-    batch['LITS-1290'].max()
-    batch['LITS-1288'].max()
-    batch['pred'].shape
-    batch['pred'].dtype
-    batch['pred'].max()
-    batch['pred'].device
-# .max()%%
-    preds_all_base[0]['LITS-1230'].max()
-    preds_all_base[0]['LITS-1230'].dtype
+    batch["image"].meta
+    batch["pred"].meta
+    batch["LITS-1290"].shape
+    batch["LITS-1288"].shape
+    batch["LITS-1230"].shape
+    batch["LITS-1230"].dtype
+    batch["LITS-1230"].max()
+    batch["LITS-1290"].max()
+    batch["LITS-1288"].max()
+    batch["pred"].shape
+    batch["pred"].dtype
+    batch["pred"].max()
+    batch["pred"].device
+    # .max()%%
+    preds_all_base[0]["LITS-1230"].max()
+    preds_all_base[0]["LITS-1230"].dtype
 
-    preds_all_base[0]['LITS-1230']
-    torch.save(preds_all_base[0]["LITS-1230"],"pred_base.pt")
-# %%
-    batch['image'].meta
-    batch['pred'].meta
-    batch['pred'].shape
+    preds_all_base[0]["LITS-1230"]
+    torch.save(preds_all_base[0]["LITS-1230"], "pred_base.pt")
+    # %%
+    batch["image"].meta
+    batch["pred"].meta
+    batch["pred"].shape
     batch.keys()
 
-# %%
-    data['pred'].shape
-    data['pred'].shape
+    # %%
+    data["pred"].shape
+    data["pred"].shape
     pred_patches.keys()
     pp[0].keys()
 # %%

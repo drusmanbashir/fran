@@ -1,22 +1,19 @@
 # %%
-import argparse
 
-from lightning.pytorch.callbacks import BatchSizeFinder
-from utilz.imageviewers import ImageMaskViewer
-
-from fran.callback.test import PeriodicTest
-from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
-from fran.data.dataregistry import DS
-from fran.data.datasource import Datasource
-from fran.managers import Project
-from fran.run.analyze_resample import PreprocessingManager
-from fran.trainers.trainer import Trainer
 from fran.utils.common import *
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR>
 if __name__ == "__main__":
+    import argparse
+
+    from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
+    from fran.data.dataregistry import DS
+    from fran.managers import Project
+    from fran.run.analyze_resample import PreprocessingManager
+    from fran.trainers.trainer import Trainer
     from fran.utils.common import *
+    from utilz.imageviewers import ImageMaskViewer
 
     set_autoreload()
     P = Project("totalseg")
@@ -40,18 +37,18 @@ if __name__ == "__main__":
     #     torch.save(lm, bad_case_fn)
     #
     # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
-# %%
-# SECTION:-------------------- COnfirm plans exist-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- COnfirm plans exist-------------------------------------------------------------------------------------- <CR>
 
     statusesT = confirm_plan_analyzed(P, planT)
     statusesV = confirm_plan_analyzed(P, planV)
     print("Training:", statusesT, "Validation:", statusesV)
-# %%
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR>
+    # %%
+    # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR>
     test_every_n_epochs = planT["test_every_n_epochs"]
     devices = [1]
     bs = 20
-    batchsize_finder=False
+    batchsize_finder = False
     compiled = False
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -70,15 +67,15 @@ if __name__ == "__main__":
 
     conf["dataset_params"]["cache_rate"]
 
-# %%
+    # %%
     conf["dataset_params"]["fold"] = 0
     run_name = None
     lr = None
     # lr= 1e-2
-# %%
+    # %%
     run_name = "LITS-1425"
     # lr= 1e-2
-# %%
+    # %%
     Tm = Trainer(
         P.project_title,
         conf,
@@ -86,7 +83,7 @@ if __name__ == "__main__":
     )
     # Tm.configs
     Tm.configs["dataset_params"]["fold"]
-# %%
+    # %%
     Tm.setup(
         compiled=compiled,
         val_every_n_epochs=0,
@@ -102,32 +99,32 @@ if __name__ == "__main__":
         lr=lr,
         override_dm_checkpoint=override_dm,
     )
-# %%
+    # %%
     Tm.configs["plan_train"]["mode"]
     Tm.configs["plan_train"]["patch_size"]
     Tm.configs["dataset_params"]["fold"]
     # Tm.D.configs = Tm.configs.copy()
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-# %%
+    # %%
 
     # tuner = Tuner(Tm.trainer)
     # tuner.scale_batch_size(Tm.N.model,mode="binsearch")
     Tm.fit()
 
-# %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
-# %%
+    # %%
+    # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR>
+    # %%
     D = Tm.D
     D.prepare_data()
     D.setup()
     dlt = D.train_dataloader()
 
-# %%
+    # %%
     for batch in dlt:
         print(batch["image"].shape)
         # break
-# %%
+    # %%
     iteri = iter(dlt)
     batch = next(iteri)
     batch["image"].shape
@@ -136,15 +133,15 @@ if __name__ == "__main__":
 
     pred = preds[0]
     preda = pred.argmax(1)
-# %%
-    lm = batch['lm']
+    # %%
+    lm = batch["lm"]
 
     lm = lm[0][0]
     ImageMaskViewer([batch["image"][0][0].detach().cpu(), preda[0].detach().cpu()])
     ImageMaskViewer([batch["image"][0][0].detach().cpu(), lm])
-# %%
+    # %%
     dici = D.train_ds[0]
-# %%
+    # %%
     keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"
     keys = keys_tr.split(",")
     tm = D.train_manager
@@ -158,18 +155,18 @@ if __name__ == "__main__":
     dat7 = tfms[keys[5]](dat6)
     dat8 = tfms[keys[6]](dat7)
     dat9 = tfms[keys[8]](dat8)
-# SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR>
+    # SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR>
 
     # P.delete()
     DS = DS
     P.add_data([DS.totalseg])
-# %%
+    # %%
 
-# SECTION:-------------------- GLOBAL PROPERTIES-------------------------------------------------------------------------------------- <CR>
+    # SECTION:-------------------- GLOBAL PROPERTIES-------------------------------------------------------------------------------------- <CR>
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=False)
-# %%
+    # %%
     # ECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
 
     parser = argparse.ArgumentParser(description="Resampler")
@@ -218,19 +215,19 @@ if __name__ == "__main__":
     plan = conf["plan_train"]
 
     pp(plan)
-# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
+    # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
 
     aa = folder_names_from_plan(P, plan)
 
     I = PreprocessingManager(args)
 
-# %%
+    # %%
     Rs = ResampleDatasetniftiToTorch(
         P,
         plan,
         data_folder=P.raw_data_folder,
     )
-# %%
+    # %%
     overwrite = False
     Rs.setup(overwrite=overwrite)
     Rs.process()
@@ -239,13 +236,13 @@ if __name__ == "__main__":
         P, Rs.plan, db_path=Rs.project.db, data_folder_source=Rs.output_folder
     )
     # I.spacing =
-# %%
-# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
     I.resample_dataset(overwrite=False)
     I.R.get_tensor_folder_stats()
 
-# %%
-# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
+    # %%
+    # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
 
     overwrite = False
     I.plan_name = "jj"
@@ -264,25 +261,24 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR>
 if __name__ == "__main__":
-
-# %%
-# %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # %%
+    # SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR>
     I.R = ResampleDatasetniftiToTorch(
         project=I.project,
         spacing=I.plan["spacing"],
         data_folder=I.project.raw_data_folder,
     )
     # S
-# %%
-# SECTION:-------------------- INFERENCE Whole Image-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- INFERENCE Whole Image-------------------------------------------------------------------------------------- <CR>
 
     safe_mode = False
     run_tot = ["LITS-1088"]
     W = WholeImageInferer(
         run_tot[0], safe_mode=safe_mode, k_largest=None, save_channels=False
     )
-# %%
+    # %%
 
     nodesthick_imgs = list(nodesthick_fldr.glob("*"))
     nodes_imgs = list(nodes_fldr.glob("*"))

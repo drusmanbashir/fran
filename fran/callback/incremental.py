@@ -4,18 +4,19 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-from lightning.pytorch import Callback
 import torch
+from lightning.pytorch import Callback
 
 try:
     from lightning.pytorch.loggers import WandbLogger
 except Exception:
     WandbLogger = None
 import ipdb
+from fran.callback.case_recorder import CaseIDRecorder
 from utilz.cprint import cprint
 
-from fran.callback.case_recorder import CaseIDRecorder
 tr = ipdb.set_trace
+
 
 def _flatten_wandb_metrics(metrics: dict, prefix: str = "") -> dict:
     flat = {}
@@ -55,7 +56,6 @@ def _log_wandb_metrics(trainer, metrics: dict, step: int | None = None):
 
 
 class UpdateDatasetOnPlateau(Callback):
-
     def __init__(
         self,
         monitor: str = "val0_loss",
@@ -67,7 +67,7 @@ class UpdateDatasetOnPlateau(Callback):
         verbose: bool = True,
         log_to_wandb: bool = False,
         wandb_prefix: str = "incremental/plateau",
-        debug = False, #CODE: remove this once this callback is solid
+        debug=False,  # CODE: remove this once this callback is solid
     ):
         self.monitor = monitor
         self.mode = mode
@@ -78,7 +78,7 @@ class UpdateDatasetOnPlateau(Callback):
         self.verbose = verbose
         self.log_to_wandb = bool(log_to_wandb)
         self.wandb_prefix = wandb_prefix
-        self.debug=debug
+        self.debug = debug
 
         self.best_score = None
         self.wait_count = 0
@@ -90,7 +90,6 @@ class UpdateDatasetOnPlateau(Callback):
 
         if mode not in ("min", "max"):
             raise ValueError("mode must be 'min' or 'max'")
-
 
     def _is_improvement(self, current: float) -> bool:
         if self.best_score is None:
@@ -124,7 +123,9 @@ class UpdateDatasetOnPlateau(Callback):
                 continue
             batch_index = int(matched.group(1))
             class_label = int(matched.group(2))
-            score = float(val.detach().cpu().item() if isinstance(val, torch.Tensor) else val)
+            score = float(
+                val.detach().cpu().item() if isinstance(val, torch.Tensor) else val
+            )
             out_by_batch.setdefault(batch_index, {})[class_label] = score
 
         # Track the lowest available class label per batch, which maps to background
@@ -141,7 +142,7 @@ class UpdateDatasetOnPlateau(Callback):
         cir = [cb for cb in trainer.callbacks if isinstance(cb, CaseIDRecorder)][0]
         cir.reset()
         cir.incrementing = True
-        trainer.should_stop=True
+        trainer.should_stop = True
 
     def _reset(self):
         self.wait_count = 0
@@ -153,18 +154,28 @@ class UpdateDatasetOnPlateau(Callback):
     def on_train_epoch_end(self, trainer, pl_module):
         epoch = trainer.current_epoch + 1
         if self.debug == True and epoch > 0 and epoch % 2 == 0:
-            self._debug_switch(trainer,pl_module)
+            self._debug_switch(trainer, pl_module)
         else:
             if trainer.current_epoch < self.grace:
                 return
             current = trainer.callback_metrics[self.monitor]
 
             if self._is_improvement(current):
-                cprint("Best score : {0}, current : {1}, imp: True".format(self.best_score, current), color= "red")
+                cprint(
+                    "Best score : {0}, current : {1}, imp: True".format(
+                        self.best_score, current
+                    ),
+                    color="red",
+                )
                 self.best_score = current
                 self.wait_count = 0
             else:
-                cprint("Best score : {0}, current : {1}, imp: False, wait_count: {2}".format(self.best_score, current, self.wait_count), color= "red")
+                cprint(
+                    "Best score : {0}, current : {1}, imp: False, wait_count: {2}".format(
+                        self.best_score, current, self.wait_count
+                    ),
+                    color="red",
+                )
                 self.wait_count += 1
                 if self.wait_count >= self.patience:
                     self._start_scan_cycle(trainer, pl_module)
@@ -175,16 +186,15 @@ class UpdateDatasetOnPlateau(Callback):
                         )
                     self._reset()
 
-    def _debug_switch(self, trainer,pl_module):
-            cprint("Debug mode is one:", color= "red")
-            self._start_scan_cycle(trainer, pl_module)
-            if self.verbose:
-                    print(
-                        f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
-                        f"switching to train dataloader 1 for scan"
-                    )
-            self._reset()
-
+    def _debug_switch(self, trainer, pl_module):
+        cprint("Debug mode is one:", color="red")
+        self._start_scan_cycle(trainer, pl_module)
+        if self.verbose:
+            print(
+                f"UpdateDatasetOnPlateau: plateau detected at epoch {trainer.current_epoch}; "
+                f"switching to train dataloader 1 for scan"
+            )
+        self._reset()
 
 
 class UpdateDatasetOnEMAMomentum(Callback):
@@ -216,8 +226,7 @@ class UpdateDatasetOnEMAMomentum(Callback):
         self.ema = None
         self.mom = 0.0
         self.bad = 0
-        self.last_update = -10**18
-
+        self.last_update = -(10**18)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         step = trainer.global_step
@@ -249,7 +258,9 @@ class UpdateDatasetOnEMAMomentum(Callback):
 
         prev = self.ema
         self.ema = self.beta * self.ema + (1 - self.beta) * x
-        self.mom = self.beta * self.mom + (1 - self.beta) * (prev - self.ema)  # >0 improving
+        self.mom = self.beta * self.mom + (1 - self.beta) * (
+            prev - self.ema
+        )  # >0 improving
 
         self.bad = self.bad + 1 if self.mom < self.min_mom else 0
         did_add_samples = False
@@ -291,6 +302,7 @@ class UpdateDatasetOnEMAMomentum(Callback):
 #     callbacks=[UpdateDatasetOnPlateau(monitor="train/loss_epoch", mode="min", patience=3, min_delta=1e-3, grace=2)],
 # )
 
+
 class LRFloorStop(Callback):
     """
     Lightning-native stop criterion: stop when optimizer LR reaches a floor.
@@ -315,4 +327,8 @@ class LRFloorStop(Callback):
         if self.observed_lr <= self.min_lr:
             self.triggered = True
             trainer.should_stop = True
-            setattr(trainer, "_incremental_stop_reason", f"lr_floor_reached:{self.observed_lr}")
+            setattr(
+                trainer,
+                "_incremental_stop_reason",
+                f"lr_floor_reached:{self.observed_lr}",
+            )

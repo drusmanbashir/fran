@@ -1,14 +1,15 @@
-
 import ipdb
+
 tr = ipdb.set_trace
 
 import torch.nn.functional as F
 from fran.transforms.base import *
+
 # class AffineTrainingTransform3D(ItemTransform):
 #     '''
 #     to-do: verify if nearestneighbour method preserves multiple mask labels
 #     '''
-#     
+#
 #
 #     def __init__(self, p=0.5, rotate_max=pi / 6, translate=torch.tensor([0, 0, 0]), rescale_max=0.2):
 #         store_attr()
@@ -30,37 +31,41 @@ from fran.transforms.base import *
 
 
 class CropBatch(ItemTransform):
-
     def __init__(self, patch_size):
         self.dim = len(patch_size)
         self.patch_halved = [int(x / 2) for x in patch_size]
 
     def encodes(self, x):
         img, mask = x
-        center = [int(x / 2) for x in img.shape[-self.dim:]]
+        center = [int(x / 2) for x in img.shape[-self.dim :]]
         slices = [
             slice(None),
         ] * 2  # batch and channel dims
         for ind in range(self.dim):
-            slc = slice(center[ind] - self.patch_halved[ind], center[ind] + self.patch_halved[ind])
+            slc = slice(
+                center[ind] - self.patch_halved[ind],
+                center[ind] + self.patch_halved[ind],
+            )
             slices.append(slc)
         img, mask = img[slices], mask[slices]
         return img, mask
 
+
 class ResizeBatch(ItemTransform):
-    def __init__(self,target_size):
-        self.target_size=target_size
-    def encodes(self,x):
-        img,mask=x
-        if list(img.shape[2:]) !=self.target_size:
-            img = F.interpolate(img,size=self.target_size,mode='trilinear')
-            mask = F.interpolate(mask,size=self.target_size,mode='nearest')
-        return img,mask
+    def __init__(self, target_size):
+        self.target_size = target_size
+
+    def encodes(self, x):
+        img, mask = x
+        if list(img.shape[2:]) != self.target_size:
+            img = F.interpolate(img, size=self.target_size, mode="trilinear")
+            mask = F.interpolate(mask, size=self.target_size, mode="nearest")
+        return img, mask
 
 
 # %%
 if __name__ == "__main__":
-    imgn = single_case_properties['properties']['img_file']
+    imgn = single_case_properties["properties"]["img_file"]
 
-    
+
 # %%

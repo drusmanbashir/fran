@@ -5,34 +5,38 @@ from typing import Optional
 
 import torch
 from fastcore.all import in_ipython
-from lightning.pytorch import Trainer as TrainerL
-from lightning.pytorch.callbacks import (BatchSizeFinder, DeviceStatsMonitor,
-                                         EarlyStopping, LearningRateMonitor,
-                                         ModelCheckpoint, TQDMProgressBar)
-from lightning.pytorch.profilers import AdvancedProfiler
-from utilz.cprint import cprint
-from utilz.stringz import headline
-
 from fran.callback.base import BatchSizeSafetyMargin
-from fran.callback.case_recorder import CaseIDRecorder, infer_labels_and_update_out_channels
+from fran.callback.case_recorder import infer_labels_and_update_out_channels
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.test import PeriodicTest
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
-from fran.configs.parser import (ConfigMaker, confirm_plan_analyzed,
-                                 parse_neptune_dict)
+from fran.configs.parser import parse_neptune_dict
 from fran.managers import Project
-from fran.managers.data.incremental import DataManagerDualI
-from fran.managers.data.training import (DataManagerBaseline, DataManagerDual,
-                                         DataManagerLBD, DataManagerMulti,
-                                         DataManagerPatch, DataManagerSource,
-                                         DataManagerWhole)
+from fran.managers.data.training import (
+    DataManagerBaseline,
+    DataManagerDual,
+    DataManagerLBD,
+    DataManagerMulti,
+    DataManagerPatch,
+    DataManagerSource,
+    DataManagerWhole,
+)
 from fran.managers.unet import UNetManager, UNetManagerMulti
 from fran.managers.wandb import WandbManager
-from fran.trainers.base import (backup_ckpt, checkpoint_from_model_id,
-                                switch_ckpt_keys)
+from fran.trainers.base import backup_ckpt, checkpoint_from_model_id, switch_ckpt_keys
 from fran.utils.common import *
-from fran.utils.folder_names import folder_names_from_plan
+from lightning.pytorch import Trainer as TrainerL
+from lightning.pytorch.callbacks import (
+    BatchSizeFinder,
+    DeviceStatsMonitor,
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
+from lightning.pytorch.profilers import AdvancedProfiler
+from utilz.cprint import cprint
+from utilz.stringz import headline
 
 
 def _flatten_dict(d: dict, base: str = "") -> dict:
@@ -54,12 +58,13 @@ def _dm_class_from_ckpt(ckpt_path: str | Path):
     sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     hp = sd["datamodule_hyper_parameters"]
     configs = hp["configs"]
-    plan_train  = configs['plan_train']
-    test_every_n_epochs = plan_train['test_every_n_epochs']
+    plan_train = configs["plan_train"]
+    test_every_n_epochs = plan_train["test_every_n_epochs"]
     if int(test_every_n_epochs) > 0:
         return DataManagerMulti
     else:
         return DataManagerDual
+
 
 class Trainer:
     """Trainer variant with W&B logging/callback plumbing."""
@@ -228,7 +233,7 @@ class Trainer:
     def init_dm(self):
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
-        self.configs['plan_train']['test_every_n_epochs'] = self.test_every_n_epochs
+        self.configs["plan_train"]["test_every_n_epochs"] = self.test_every_n_epochs
         DM = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
         dm = DM(
             project_title=self.project.project_title,
@@ -478,9 +483,9 @@ class Trainer:
     def qc_configs(self, configs, project):
         # ratios = configs["plan_train"]["fgbg_ratio"]
         ratios = configs["dataset_params"]["fgbg_ratio"]
-        assert isinstance(
-            ratios, int | float | list
-        ), "If no list is provided, fgbg_ratio must be an integer"
+        assert isinstance(ratios, int | float | list), (
+            "If no list is provided, fgbg_ratio must be an integer"
+        )
 
         try:
             labels_all = configs["plan_train"]["labels_all"]
@@ -492,10 +497,10 @@ class Trainer:
             return
 
         if isinstance(ratios, list):
-            assert (a := len(ratios)) == (
-                b := len(labels_all)
-            ), "Class ratios {0} do not match number of labels in dataset {1}".format(
-                a, b
+            assert (a := len(ratios)) == (b := len(labels_all)), (
+                "Class ratios {0} do not match number of labels in dataset {1}".format(
+                    a, b
+                )
             )
 
     def heuristic_batch_size(self):
@@ -571,6 +576,8 @@ class Trainer:
 
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR>
 if __name__ == "__main__":
+    from fran.callback.case_recorder import CaseIDRecorder
+    from fran.configs.parser import ConfigMaker
     from fran.utils.common import *
 
     P = Project("lidc")
@@ -594,9 +601,9 @@ if __name__ == "__main__":
     #     torch.save(lm, bad_case_fn)
     #
     # find_matching_fn(Path(bad_names[0])[0],fixed, tags=["all"])
-# %%
+    # %%
 
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR>
+    # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR>
     bs = 8
 
     # run_name ='LITS-1285'
@@ -620,18 +627,18 @@ if __name__ == "__main__":
 
     conf["dataset_params"]["fold"] = 0
     run_name = None
-    run_name = 'KITS-0009'
+    run_name = "KITS-0009"
     lr = None
     batchsize_finder = True
     batchsize_finder = False
     debug_ = False
     train_indices = None
     device_id = 1
-# %%
-# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm = Trainer(P.project_title, conf, run_name)
-# %%
+    # %%
     Tm.setup(
         compiled=compiled,
         train_indices=train_indices,
@@ -647,11 +654,11 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-# %%
+    # %%
 
     Tm.fit()
     # model(inputs)
-# %%
+    # %%
     # %
     D = Tm.D
     D.setup()
@@ -660,7 +667,7 @@ if __name__ == "__main__":
 
     tmt.collate_fn
 
-# %%
+    # %%
 
     D = DataManagerMulti(
         project_title=P.project_title,
@@ -672,28 +679,28 @@ if __name__ == "__main__":
     D.prepare_data()
     D.setup("fit")
     tms = D.test_manager
-    dl =tms.dl
-# %%
+    dl = tms.dl
+    # %%
 
     iteri = iter(dl)
 
     batch = next(iteri)
-# %%
+    # %%
     test_folder = Path("/media/UB/datasets/lidc2_test/lms")
     D = DataManagerDual(
         project_title=P.project_title,
         configs=conf,
         batch_size=2,
         ds_type=None,
-        data_folder =test_folder 
+        data_folder=test_folder,
     )
 
     D.prepare_data()
-# %%
+    # %%
     Tm.N
     preds = Tm.N.model(batch["image"])
     preds
-# %%
+    # %%
     # n=0
     # while n<250:
     #     batch = next(iteri)
@@ -702,7 +709,7 @@ if __name__ == "__main__":
     #
 
     batch = next(iteri)
-# %%
+    # %%
     batch["image"].shape
     len(batch["image"].meta["filename_or_obj"])
     print(batch["image"].meta["filename_or_obj"])

@@ -1,13 +1,12 @@
 # %%
-import warnings
-from fran.data.collate import source_collated
-from fran.trainers.impsamp import DeepSupervisionLoss, Trainer, pool_op_kernels_nnunet
+
 import ipdb
+from fran.trainers.impsamp import DeepSupervisionLoss, pool_op_kernels_nnunet
 
 tr = ipdb.set_trace
 
+import numpy as np
 import torch
-
 from fran.extra.deepcore.deepcore.met.earlytrain import EarlyTrain
 from fran.extra.deepcore.deepcore.met.met_utils import submodular_optimizer
 from fran.extra.deepcore.deepcore.met.met_utils.euclidean import euclidean_dist_pair_np
@@ -15,7 +14,6 @@ from fran.extra.deepcore.deepcore.met.met_utils.submodular_function import (
     FacilityLocation,
 )
 from fran.extra.deepcore.deepcore.nets.nets_utils.parallel import MyDataParallel
-import numpy as np
 
 
 class CraigSeg(EarlyTrain):
@@ -135,9 +133,7 @@ class CraigSeg(EarlyTrain):
                     batch_num, 1, self.embedding_dim
                 ).repeat(1, self.args.num_classes, 1) * bias_parameters_grads.view(
                     batch_num, self.args.num_classes, 1
-                ).repeat(
-                    1, 1, self.embedding_dim
-                )
+                ).repeat(1, 1, self.embedding_dim)
                 gradients.append(
                     torch.cat(
                         [bias_parameters_grads, weight_parameters_grads.flatten(1)],
@@ -227,7 +223,10 @@ class CraigSeg(EarlyTrain):
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
 
 if __name__ == "__main__":
-    import torch
+    import warnings
+
+    from fran.data.collate import source_collated
+    from fran.trainers.impsamp import Trainer
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
     torch.set_float32_matmul_precision("medium")
@@ -242,13 +241,15 @@ if __name__ == "__main__":
     configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
     configuration_filename = None
 
-    conf = ConfigMaker(proj, ).config
+    conf = ConfigMaker(
+        proj,
+    ).config
     conf["dataset_params"]["batch_size"] = 2
 
     # conf['model_params']['lr']=1e-3
 
     # conf['dataset_params']['plan']=5
-# %%
+    # %%
     from fran.extra.deepcore.deepcore.met.args import args
 
     device_id = 1
@@ -266,9 +267,9 @@ if __name__ == "__main__":
     tags = []
     cbs = []
     description = f""
-# %%
-# SECTION:-------------------- IMPORTANCE SAMPLING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-# %%
+    # %%
+    # SECTION:-------------------- IMPORTANCE SAMPLING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
     Tm = Trainer(proj, conf, run_litsmc)
     Tm.setup(
         compiled=compiled,
@@ -285,7 +286,7 @@ if __name__ == "__main__":
     Tm.N.model
     Tm.D.setup()
     print(Tm.N.model.embedding_recorder.record_embedding)
-# %%
+    # %%
     args.batch = 2
     args.selection_batch = 2
     C = CraigSeg(
@@ -298,20 +299,20 @@ if __name__ == "__main__":
     )
     C.run()
 
-# %%
-# SECTION:-------------------- CALC_GRAD-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- CALC_GRAD-------------------------------------------------------------------------------------- <CR>
 
     index = None
     C.model.eval()
 
-# %%
+    # %%
     batch_loader = torch.utils.data.DataLoader(
         C.dst_train,
         batch_size=C.args.selection_batch,
         num_workers=C.args.workers,
         collate_fn=source_collated,
     )
-# %%
+    # %%
     # sample_num = len(C.dst_val.targets) if index is None else len(index)
     with C.model.embedding_recorder:
         C.embedding_dim = C.model.get_last_layer().in_channels
@@ -331,15 +332,15 @@ if __name__ == "__main__":
         batch_num = targets.shape[0]
         with torch.no_grad():
             tr()
-            bias_parameters_grads = torch.autograd.grad(loss, C.model.embedding_recorder.embedding)
+            bias_parameters_grads = torch.autograd.grad(
+                loss, C.model.embedding_recorder.embedding
+            )
             C.model.embedding_recorder.embedding.numel()
             weight_parameters_grads = C.model.embedding_recorder.embedding.view(
                 batch_num, 1, C.embedding_dim
             ).repeat(1, C.args.num_classes, 1) * bias_parameters_grads.view(
                 batch_num, C.args.num_classes, 1
-            ).repeat(
-                1, 1, C.embedding_dim
-            )
+            ).repeat(1, 1, C.embedding_dim)
             gradients.append(
                 torch.cat(
                     [bias_parameters_grads, weight_parameters_grads.flatten(1)], dim=1

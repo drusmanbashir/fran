@@ -1,68 +1,49 @@
 # %%
-import lightning as pl
-from torch.utils.data import DataLoader, Subset
-from fran.extra.deepcore.deepcore.met.met_utils import (
-    submodular_optimizer,
-)
-from fran.extra.deepcore.deepcore.met.met_utils.euclidean import euclidean_dist_pair_np
-from fastcore.net import contextlib
-from lightning.pytorch.callbacks import Callback, ModelCheckpoint
 import shutil
+
+import ipdb
+import lightning as pl
+from lightning.pytorch.callbacks import Callback, ModelCheckpoint
 from lightning.pytorch.profilers import AdvancedProfiler
 from lightning.pytorch.utilities.types import STEP_OUTPUT
-from monai.transforms.io.dictionary import LoadImaged
-from torchinfo import summary
-from fran.transforms.imageio import TorchReader
-from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
-import ipdb
-
-from utilz.helpers import pp
+from torch.utils.data import DataLoader, Subset
 
 tr = ipdb.set_trace
 
-import numpy as np
 from typing import Any, Union
-from pathlib import Path
-from fastcore.basics import store_attr
-from monai.transforms.croppad.dictionary import (
-    RandCropByPosNegLabeld,
-    ResizeWithPadOrCropd,
-)
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
 
+import numpy as np
 import psutil
 import torch._dynamo
+from fastcore.basics import store_attr
 from fran.callback.nep import NeptuneImageGridCallback
-
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 from fran.managers.data import (
     DataManagerLBD,
-    DataManagerWID,
     DataManagerPatch,
     DataManagerSource,
     DataManagerWhole,
+    DataManagerWID,
 )
-from utilz.imageviewers import ImageMaskViewer
 
 torch._dynamo.config.suppress_errors = True
-from fran.managers.nep import NeptuneManager
 import itertools as il
 import operator
-import warnings
-from lightning.pytorch import LightningModule
-from lightning.pytorch import Trainer as TrainerL
-from lightning.pytorch.callbacks import (
-    LearningRateMonitor,
-    TQDMProgressBar,
-    DeviceStatsMonitor,
-)
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+import torch.nn.functional as F
 from fran.architectures.create_network import (
     create_model_from_conf,
     pool_op_kernels_nnunet,
 )
-import torch.nn.functional as F
+from fran.managers.nep import NeptuneManager
+from lightning.pytorch import LightningModule
+from lightning.pytorch import Trainer as TrainerL
+from lightning.pytorch.callbacks import (
+    DeviceStatsMonitor,
+    LearningRateMonitor,
+    TQDMProgressBar,
+)
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
@@ -81,27 +62,25 @@ def fix_dict_keys(input_dict, old_string, new_string):
     return output_dict
 
 
-
-
 def resolve_datamanager(mode: str):
-        if mode == "patch":
-            DMClass = DataManagerPatch
-        elif mode == "source":
-            DMClass = DataManagerSource
-        elif mode == "whole":
-            DMClass = DataManagerWhole
-        elif mode == "lbd":
-            DMClass = DataManagerLBD
-        elif mode == "pbd":
-            DMClass = DataManagerWID
-        else:
-            raise NotImplementedError(
-                "Mode {} is not supported for datamanager".format(mode)
-            )
-        return DMClass
+    if mode == "patch":
+        DMClass = DataManagerPatch
+    elif mode == "source":
+        DMClass = DataManagerSource
+    elif mode == "whole":
+        DMClass = DataManagerWhole
+    elif mode == "lbd":
+        DMClass = DataManagerLBD
+    elif mode == "pbd":
+        DMClass = DataManagerWID
+    else:
+        raise NotImplementedError(
+            "Mode {} is not supported for datamanager".format(mode)
+        )
+    return DMClass
+
 
 class CRAIGCallback(Callback):
-
     def __init__(self, selection_batch, num_workers=6):
         super().__init__()
         self.selection_batch = selection_batch
@@ -231,15 +210,15 @@ class UNetTrainer2(LightningModule):
     def training_step(self, batch, batch_idx):
         loss_dict = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="train0")
-        return  loss_dict
+        return loss_dict
 
     def validation_step(self, batch, batch_idx):
-        loss, loss_dict= self._common_step(batch, batch_idx)
+        loss, loss_dict = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="val0")
         return loss_dict
 
     def log_losses(self, loss_dict, prefix):
-        losses_logging = loss_dict['losses_for_logging']
+        losses_logging = loss_dict["losses_for_logging"]
         metrics = [
             "loss",
             "loss_ce",
@@ -270,7 +249,7 @@ class UNetTrainer2(LightningModule):
                 "scheduler": scheduler,
                 "monitor": "train0_loss_dice",
                 "frequency": 2,
-                "interval":"epoch",
+                "interval": "epoch",
                 # If "monitor" references validation metrics, then "frequency" should be set to a
                 # multiple of "trainer.check_val_every_n_epoch".
             },
@@ -286,7 +265,7 @@ class UNetTrainer2(LightningModule):
         return model
 
     def create_loss_fnc(self):
-        if self.model_params["arch"] == "nnUNet":
+        if self.model_params["arch"] in ["nnUNet", "nnUNet_v1"]:
             num_pool = 5
             self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
                 self.dataset_params["patch_size"]
@@ -360,6 +339,7 @@ def maybe_ddp(devices):
     else:
         print("Using non-interactive shell ddp strategy")
         return "ddp"
+
 
 class Trainer:
     def __init__(self, project, config, run_name=None):
@@ -503,15 +483,15 @@ class Trainer:
         labels_fg = project.global_properties["labels_all"]
         labels = [0] + labels_fg
         if isinstance(ratios, list):
-            assert (
-                a := (len(ratios)) == (b := len(labels))
-            ), "Class ratios {0} do not match number of labels in dataset {1}".format(
-                a, b
+            assert (a := (len(ratios)) == (b := len(labels))), (
+                "Class ratios {0} do not match number of labels in dataset {1}".format(
+                    a, b
+                )
             )
         else:
-            assert isinstance(
-                ratios, int
-            ), "If no list is provided, fgbg_ratio must be an integer"
+            assert isinstance(ratios, int), (
+                "If no list is provided, fgbg_ratio must be an integer"
+            )
 
     def heuristic_batch_size(self):
         ram = psutil.virtual_memory()[3] / 1e9
@@ -625,10 +605,24 @@ class Trainer:
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
-    # from fran.utils.common import *
+    import warnings
+    from pathlib import Path
 
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+    # from fran.utils.common import *
     import torch
+    from fastcore.net import contextlib
+    from fran.transforms.imageio import TorchReader
+    from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
+    from monai.transforms.croppad.dictionary import (
+        RandCropByPosNegLabeld,
+        ResizeWithPadOrCropd,
+    )
+    from monai.transforms.io.dictionary import LoadImaged
+    from monai.transforms.utility.dictionary import EnsureChannelFirstd
+    from torchinfo import summary
+    from utilz.helpers import pp
+    from utilz.imageviewers import ImageMaskViewer
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -645,12 +639,14 @@ if __name__ == "__main__":
     configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
     configuration_filename = None
 
-    conf = ConfigMaker(proj, ).config
+    conf = ConfigMaker(
+        proj,
+    ).config
 
     # conf['model_params']['lr']=1e-3
 
     # conf['dataset_params']['plan']=5
-# %%
+    # %%
     device_id = 1
     # run_name = "LITS-1007"
     # device_id = 0
@@ -668,10 +664,10 @@ if __name__ == "__main__":
     cbs = [StoreInfo()]
     cbs = []
     description = f""
-# %%
-# SECTION:-------------------- IMPORTANCE SAMPLING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- IMPORTANCE SAMPLING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
-# %%
+    # %%
     Tm = Trainer(proj, conf, run_name)
     Tm.setup(
         compiled=compiled,
@@ -685,23 +681,23 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-# %%
+    # %%
     # Tm.D.setup()
 
     Tm.N.compiled = compiled
     Tm.fit()
 
     # model(inputs)
-# %%
+    # %%
 
-# %%
+    # %%
     Tm.trainer.callbacks[0].dicis
 
     import pandas as pd
 
     df = pd.DataFrame(Tm.trainer.callbacks[0].dicis)
     df.to_csv("df.csv")
-# %%
+    # %%
 
     patch_size = [128, 96, 96]
     summ = summary(
@@ -714,16 +710,16 @@ if __name__ == "__main__":
     )
 
     # Redirect the output of summary() to a file
-# %%
+    # %%
     output_file_path = "model_summary.txt"
     with open(output_file_path, "w") as f:
         with contextlib.redirect_stdout(f):
             print(summ)
 
-# %%
+    # %%
     #     pred = torch.load("pred.pt")
     #     target = torch.load("target.pt")
-# %%
+    # %%
     #
     #     Tm.trainer.model.to('cpu')
     #     pred = [a.cpu() for a in pred]
@@ -737,16 +733,16 @@ if __name__ == "__main__":
     #     tt = torch.tensor(targ.clone().detach())
     #     torch.save(tt,"new_target.pt")
     #
-# %%
-# %%
-# SECTION:-------------------- HOOKS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # %%
+    # SECTION:-------------------- HOOKS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
-# %%
+    # %%
     def c_hook(grad):
         print(grad)
         return grad + 2
 
-# %%
+    # %%
     a = torch.tensor(2.0, requires_grad=True)
     b = torch.tensor(3.0, requires_grad=True)
     c = a * b
@@ -763,13 +759,13 @@ if __name__ == "__main__":
     e.register_hook(lambda grad: grad * 1)
     e.retain_grad()
 
-# %%
+    # %%
     e.backward()
     print(c.grad)
 
-# %%
-# %%
-# SECTION:-------------------- Backward hooks-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # %%
+    # SECTION:-------------------- Backward hooks-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     def c_hook(module, inp, outp):
         print("=" * 50)
@@ -796,7 +792,7 @@ if __name__ == "__main__":
         def forward(self, x):
             return x**self.mult
 
-# %%
+    # %%
 
     # def f2(x):
     #     return x * 3  # Multiplication by 3
@@ -805,7 +801,7 @@ if __name__ == "__main__":
     f2 = Func(2)
     f3 = Func(3)
     f4 = Pow(2)
-# %%
+    # %%
     h2 = f2.register_full_backward_hook(c_hook)
     h3 = f3.register_full_backward_hook(c_hook)
     h4 = f4.register_full_backward_hook(c_hook)
@@ -815,10 +811,10 @@ if __name__ == "__main__":
     j2 = j1(y2)
     y3 = f3(y2)
     y4 = f4(y3)
-# %%
+    # %%
     j2.backward(retain_graph=True)
     y4.backward()
-# %%
+    # %%
 
     y2.backward()
     # Define a tensor with requires_grad=True to track operations on it
@@ -842,7 +838,7 @@ if __name__ == "__main__":
 
     # Remove the hook after use
     y1_hook.remove()
-# %%
+    # %%
     d = torch.tensor(4.0, requires_grad=True)
     d.register_hook(lambda grad: print(grad))
     e = d * c
@@ -850,30 +846,29 @@ if __name__ == "__main__":
     e.retain_grad()
     e.backward()
 
-# %%
-# %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # %%
+    # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.valid_ds
-# %%
+    # %%
 
     dl = Tm.D.train_dataloader()
     iteri2 = iter(dl)
     # iteri = iter(dl)
     batch = next(iteri2)
-# %%
-# %%
+    # %%
+    # %%
     while iteri2:
         bb = next(iteri2)
         # pred = Tm.trainer.model(bb['image'].cuda())
         print(bb["lm"].unique())
 
     dicis = []
-# %%
+    # %%
     for i, id in enumerate(ds):
-
         lm = id["lm"]
         vals = lm.unique()
         print(vals)
@@ -885,12 +880,12 @@ if __name__ == "__main__":
             dicis.append(dici)
     #
     # vals = [  0.,   1.,   2.,   3.,   4.,   5.,   6.,   7.,   8., 118.]
-# %%
+    # %%
     dici = ds[7]
     dici = ds.data[7]
     dici = ds.transform(dici)
 
-# %%
+    # %%
     L = LoadImaged(
         keys=["image", "lm"],
         image_only=True,
@@ -937,14 +932,14 @@ if __name__ == "__main__":
     )
 
     Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
-# %%
+    # %%
     D.prepare_data()
     D.setup(None)
-# %%
+    # %%
     dici = D.data_train[0]
     D.valid_ds.data[0]
 
-# %%
+    # %%
     dici = D.valid_ds.data[7]
     dici = L(dici)
     dici = Ind(dici)
@@ -953,31 +948,31 @@ if __name__ == "__main__":
     dici = D.transforms_dict["Rva"](dici)
     dici = Re(dici[1])
 
-# %%
+    # %%
     ImageMaskViewer([dici[0]["image"][0], dici[0]["lm"][0]])
 
-# %%
+    # %%
     Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
     dici = Ld(dici)
-# %%
+    # %%
 
-# %%
+    # %%
 
     fn = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/images/lits_115.pt"
     fn2 = "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150/lms/lits_115.pt"
     tt = torch.load(fn)
     tt2 = torch.load(fn2)
     ImageMaskViewer([tt, tt2])
-# %%
+    # %%
 
     Re = ResizeWithPadOrCropd(
         keys=["image", "lm"],
         spatial_size=D.dataset_params["patch_size"],
         lazy=False,
     )
-# %%
+    # %%
     dici = Re(dici)
-# %%
+    # %%
     dici = ds[1]
     dici = ds.data[0]
     keys_tr = "L,E,Ind,Rtr,F1,F2,A,Re,N,I"
@@ -985,24 +980,24 @@ if __name__ == "__main__":
     keys_tr = keys_tr.split(",")
     keys_val = keys_val.split(",")
 
-# %%
+    # %%
     dici = ds.data[5].copy()
     for k in keys_val[:3]:
         tfm = D.transforms_dict[k]
         dici = tfm(dici)
-# %%
+    # %%
 
     ind = 0
     dici = ds.data[ind]
     ImageMaskViewer([dici["image"][0], dici["lm"][0]])
     ImageMaskViewer([dici[ind]["image"][0], dici[ind]["lm"][0]])
-# %%
+    # %%
     tfm2 = D.transforms_dict[keys_tr[5]]
 
-# %%
+    # %%
     for didi in dici:
         dd = tfm2(didi)
-# %%
+    # %%
     idx = 0
     ds.set_bboxes_labels(idx)
     if ds.enforce_ratios == True:
@@ -1016,7 +1011,7 @@ if __name__ == "__main__":
 
     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
     dici = E(dici)
-# %%
+    # %%
     # img = ds.create_metatensor(img_fn)
     # label = ds.create_metatensor(label_fn)
     dici = ds.data[3]
@@ -1033,57 +1028,57 @@ if __name__ == "__main__":
 
     im.shape
 
-# %%
+    # %%
 
-# %%
+    # %%
     b = next(iteri2)
 
     b["image"].shape
     m = Tm.N.model
     N = Tm.N
 
-# %%
+    # %%
     for x in range(len(ds)):
         casei = ds[x]
         for a in range(len(casei)):
             print(casei[a]["image"].shape)
-# %%
+    # %%
     for i, b in enumerate(dl):
         print("----------------------------")
         print(b["image"].shape)
         print(b["label"].shape)
-# %%
+    # %%
     # b2 = next(iter(dl2))
     batch = b
     inputs, target, bbox = batch["image"], batch["lm"], batch["bbox"]
 
     [pp(a["filename"]) for a in bbox]
-# %%
+    # %%
     preds = N.model(inputs.cuda())
     pred = preds[0]
     pred = pred.detach().cpu()
     pp(pred.shape)
-# %%
+    # %%
     n = 1
     img = inputs[n, 0]
     mask = target[n, 0]
-# %%
+    # %%
     ImageMaskViewer([img.permute(2, 1, 0), mask.permute(2, 1, 0)])
-# %%
+    # %%
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litsmall/spc_080_080_150/images/lits_4.pt"
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacings/litstp/spc_080_080_150/images/lits_4.pt"
     fn2 = "/home/ub/datasets/preprocessed/lits32/patches/spc_080_080_150/dim_192_192_128/masks/lits_4_1.pt"
     img = torch.load(fn)
     mask = torch.load(fn2)
     pp(img.shape)
-# %%
+    # %%
 
     ImageMaskViewer([img, mask])
-# %%
-# %%
+    # %%
+    # %%
 
     Tm.trainer.callback_metrics
-# %%
+    # %%
     ckpt = Path(
         "/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt"
     )
@@ -1092,12 +1087,12 @@ if __name__ == "__main__":
     kk.keys()
     kk["datamodule_hyper_parameters"]
 
-# %%
+    # %%
     model = trainer.model.model
     model.grad_L_x.shape
     model.grad_sigma_z.shape
 
-# %%
+    # %%
 
     # Example logits (input to softmax)
     z = torch.tensor([2.0, 1.0, 0.1], requires_grad=True)

@@ -1,11 +1,10 @@
-import os
-
-from fran.configs.parser import ConfigMaker
-from fran.managers import Project
-from fran.trainers.trainer import Trainer
-
-
 if __name__ == "__main__":
+    import os
+
+    from fran.configs.parser import ConfigMaker
+    from fran.managers import Project
+    from fran.trainers.trainer import Trainer
+
     P = Project("nodes")
     C = ConfigMaker(P)
     C.setup(6)

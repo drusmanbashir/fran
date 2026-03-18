@@ -1,10 +1,15 @@
 import numpy as np
 
+optimizer_choices = [
+    "NaiveGreedy",
+    "LazyGreedy",
+    "StochasticGreedy",
+    "ApproximateLazyGreedy",
+]
 
-optimizer_choices = ["NaiveGreedy", "LazyGreedy", "StochasticGreedy", "ApproximateLazyGreedy"]
 
 class optimizer(object):
-    def __init__(self, args, index, budget:int, already_selected=[]):
+    def __init__(self, args, index, budget: int, already_selected=[]):
         self.args = args
         self.index = index
 
@@ -17,7 +22,7 @@ class optimizer(object):
 
 
 class NaiveGreedy(optimizer):
-    def __init__(self, args, index, budget:int, already_selected=[]):
+    def __init__(self, args, index, budget: int, already_selected=[]):
         super(NaiveGreedy, self).__init__(args, index, budget, already_selected)
 
     def select(self, gain_function, update_state=None, **kwargs):
@@ -41,7 +46,7 @@ class NaiveGreedy(optimizer):
 
 
 class LazyGreedy(optimizer):
-    def __init__(self, args, index, budget:int, already_selected=[]):
+    def __init__(self, args, index, budget: int, already_selected=[]):
         super(LazyGreedy, self).__init__(args, index, budget, already_selected)
 
     def select(self, gain_function, update_state=None, **kwargs):
@@ -70,7 +75,9 @@ class LazyGreedy(optimizer):
                     if update_state is not None:
                         update_state(np.array([cur_max_element]), selected, **kwargs)
                     break
-                new_gain = gain_function(np.array([cur_max_element]), selected, **kwargs)[0]
+                new_gain = gain_function(
+                    np.array([cur_max_element]), selected, **kwargs
+                )[0]
                 greedy_gain[cur_max_element] = new_gain
                 if new_gain >= best_gain:
                     best_gain = new_gain
@@ -79,7 +86,9 @@ class LazyGreedy(optimizer):
 
 
 class StochasticGreedy(optimizer):
-    def __init__(self, args, index, budget:int, already_selected=[], epsilon: float=0.9):
+    def __init__(
+        self, args, index, budget: int, already_selected=[], epsilon: float = 0.9
+    ):
         super(StochasticGreedy, self).__init__(args, index, budget, already_selected)
         self.epsilon = epsilon
 
@@ -99,7 +108,9 @@ class StochasticGreedy(optimizer):
                 print("| Selecting [%3d/%3d]" % (i + 1, self.budget))
 
             # Uniformly select a subset from unselected samples with size sample_size
-            subset = np.random.choice(all_idx[~selected], replace=False, size=min(sample_size, self.n - i))
+            subset = np.random.choice(
+                all_idx[~selected], replace=False, size=min(sample_size, self.n - i)
+            )
 
             if subset.__len__() == 0:
                 break
@@ -114,8 +125,12 @@ class StochasticGreedy(optimizer):
 
 
 class ApproximateLazyGreedy(optimizer):
-    def __init__(self, args, index, budget:int, already_selected=[], beta: float=0.9):
-        super(ApproximateLazyGreedy, self).__init__(args, index, budget, already_selected)
+    def __init__(
+        self, args, index, budget: int, already_selected=[], beta: float = 0.9
+    ):
+        super(ApproximateLazyGreedy, self).__init__(
+            args, index, budget, already_selected
+        )
         self.beta = beta
 
     def select(self, gain_function, update_state=None, **kwargs):
@@ -136,7 +151,9 @@ class ApproximateLazyGreedy(optimizer):
                 cur_max_element = greedy_gain.argmax()
                 max_gain = greedy_gain[cur_max_element]
 
-                new_gain = gain_function(np.array([cur_max_element]), selected, **kwargs)[0]
+                new_gain = gain_function(
+                    np.array([cur_max_element]), selected, **kwargs
+                )[0]
 
                 if new_gain >= self.beta * max_gain:
                     # Select cur_max_element into the current subset
@@ -149,7 +166,3 @@ class ApproximateLazyGreedy(optimizer):
                 else:
                     greedy_gain[cur_max_element] = new_gain
         return self.index[selected]
-
-
-
-

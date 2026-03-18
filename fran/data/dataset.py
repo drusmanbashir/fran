@@ -3,7 +3,7 @@
 # timeout -k 1 2700 nvidia-smi --query-gpu=timestamp,name,pci.bus_id,driver_version,pstate,pcie.link.gen.max,pcie.link.gen.current,temperature.gpu,utilization.gpu,utilization.memory,memory.total,memory.free,memory.used --format=csv -l 1 > results-file.csv
 # short version below
 # timeout -k 1 2700 nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory,memory.total,memory.free,memory.used --format=csv -l 1 > results-file.csv
-#SECTION: 
+# SECTION:
 
 import itertools
 import operator
@@ -12,19 +12,15 @@ from functools import reduce
 from random import choice
 
 import ipdb
-from monai.transforms.croppad.dictionary import RandCropByPosNegLabeld
 import numpy as np
 from fastcore.basics import Dict
-from monai.data.meta_tensor import MetaTensor
-from monai.transforms import Compose, MapTransform
-from monai.transforms.io.array import SaveImage
-from monai.transforms.transform import Transform
-
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.spatialtransforms import *
+from monai.data.meta_tensor import MetaTensor
+from monai.transforms import Compose, MapTransform
+from monai.transforms.io.array import SaveImage
 from utilz.helpers import *
-from utilz.imageviewers import ImageMaskViewer
 from utilz.stringz import strip_extension
 
 tr = ipdb.set_trace
@@ -127,7 +123,7 @@ class InferenceDatasetNii(Dataset):
 
         # self.transform=Compose(tfms)
 
-# CODE: match set_transforms function thoughout project  (see #1)
+    # CODE: match set_transforms function thoughout project  (see #1)
     def set_transforms(self, tfms: str = ""):
         tfms_final = []
         for tfm in tfms:
@@ -560,7 +556,6 @@ class SavePatchd(MapTransform):
 
 
 class CropImgMaskd(MapTransform):
-
     def __init__(self, patch_size, input_dims):
         self.dim = len(patch_size)
         self.patch_halved = [int(x / 2) for x in patch_size]
@@ -674,8 +669,11 @@ def fill_bbox(bbox, cropped_tensor):
 #         d["pred"] = pred_out
 #         return d
 
+
 class FillBBoxPatchesd(MapTransform):
-    def __init__(self, keys=["pred"], bbox_key="bounding_box", allow_missing_keys=False):
+    def __init__(
+        self, keys=["pred"], bbox_key="bounding_box", allow_missing_keys=False
+    ):
         self.bbox_key = bbox_key
         MapTransform.__init__(self, keys, allow_missing_keys)
 
@@ -686,6 +684,7 @@ class FillBBoxPatchesd(MapTransform):
             pred_out = fill_bbox(bbox, pred)
             d[key] = pred_out
         return d
+
 
 def fg_in_bboxes(bboxes_unsorted):
     """
@@ -705,15 +704,16 @@ def fg_in_bboxes(bboxes_unsorted):
 
 # %%
 if __name__ == "__main__":
-# %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
-
+    # %%
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
     from fran.utils.common import *
+    from monai.transforms.croppad.dictionary import RandCropByPosNegLabeld
+    from utilz.imageviewers import ImageMaskViewer
 
     P = Project(project_title="litsmc")
 
     global_properties = load_dict(P.global_properties_filename)
-# %%        LMDBDataset.__init__(self, cache_dir, db_name)t
+    # %%        LMDBDataset.__init__(self, cache_dir, db_name)t
     cids, _ = P.get_train_val_cids(0)
     bbox_fn = "/r/datasets/preprocessed/litsmc/patches/spc_080_080_150/dim_320_320_192_plan5/bboxes_info.pkl"
     I = PatchFGBGDataset(case_ids=cids, bbox_fn=bbox_fn)
@@ -721,10 +721,10 @@ if __name__ == "__main__":
     I.bboxes_per_id
     bbox[0]
     bboxes_unsorted = load_dict(bbox_fn)
-# %%
+    # %%
     total = len(bboxes_unsorted)
     fg_count = 0
-# %%
+    # %%
 
     total = len(bboxes_unsorted)
     fg_count = 0
@@ -736,7 +736,7 @@ if __name__ == "__main__":
 
         if len(labels) == 0:
             tr()
-# %%
+    # %%
     fn = bbox["filename"]
     indices = fn.str_replace("lms", "indices")
     inds = torch.load(indices)
@@ -753,7 +753,7 @@ if __name__ == "__main__":
         "lm_bg_indices": inds["lm_bg_indices"],
     }
 
-# %%
+    # %%
     # bbox = bboxes_unsorted[0]
 
     Rtr = RandCropByPosNegLabeld(
@@ -774,7 +774,7 @@ if __name__ == "__main__":
     dici = Rtr(dici)
     image = dici[0]["image"]
     lm = dici[0]["lm"]
-# %%
+    # %%
     lm_fn = Path(bb["filename"])
     img_fn = lm_fn.str_replace("lms", "images")
 
@@ -782,10 +782,10 @@ if __name__ == "__main__":
     lm = torch.load(lm_fn)
     ImageMaskViewer([img[0], lm[0]])
 
-# %%
+    # %%
 
     bbox = I.bboxes_per_id[10]
-# %%
+    # %%
     bbox = bboxes_unsorted[9]
     bstats = bb["bbox_stats"]
     labels = [b["label"] for b in bstats if not b["label"] == "all_fg"]
@@ -797,5 +797,5 @@ if __name__ == "__main__":
     ImageMaskViewer([img, lm])
 # %%
 
-#SNext error/warning todo commentECTION: 
+# SNext error/warning todo commentECTION:
 # %%

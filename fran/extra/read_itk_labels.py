@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +14,9 @@ def get_labels(image: sitk.Image) -> list[int]:
     return sorted(np.unique(arr).astype(int).tolist())
 
 
-def read_itk_labels(folder_path: str | Path, extensions: list[str] | None = None) -> None:
+def read_itk_labels(
+    folder_path: str | Path, extensions: list[str] | None = None
+) -> None:
     folder = Path(folder_path)
     if extensions is None:
         extensions = [".nii", ".nii.gz", ".mha", ".mhd", ".nrrd", ".dcm"]
@@ -35,12 +36,16 @@ def read_itk_labels(folder_path: str | Path, extensions: list[str] | None = None
     for fn in files:
         try:
             img = sitk.ReadImage(str(fn))
-            print(f"{fn.name}: labels={get_labels(img)} size={img.GetSize()} spacing={img.GetSpacing()}")
+            print(
+                f"{fn.name}: labels={get_labels(img)} size={img.GetSize()} spacing={img.GetSpacing()}"
+            )
         except Exception as e:
             print(f"{fn.name}: ERROR {e}")
 
 
 if __name__ == "__main__":
+    import sys
+
     if len(sys.argv) != 2:
         print("Usage: python fran/extra/read_itk_labels.py <folder_path>")
         raise SystemExit(1)

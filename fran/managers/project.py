@@ -1,28 +1,24 @@
 # %%
-import sqlite3
 import h5py
-from utilz.cprint import cprint
-from fran.data.dataregistry import DS
 import ipdb
-
 from fastcore.basics import listify
-from send2trash import send2trash
-from utilz.stringz import headline, info_from_filename
-
-from fran.data.datasource import Datasource, val_indices
-from fran.data.datasource import db_ops
-from fran.data.patch_datasource import PatchDatasource
 from fran.configs.mnemonics import Mnemonics
+from fran.data.dataregistry import DS
+from fran.data.datasource import Datasource, db_ops, val_indices
+from fran.data.patch_datasource import PatchDatasource
+from send2trash import send2trash
+from utilz.cprint import cprint
+from utilz.stringz import headline, info_from_filename
 
 tr = ipdb.set_trace
 
+import csv
 import itertools as il
+import json
 import os
 import sys
-from pathlib import Path
 from datetime import datetime
-import csv
-import json
+from pathlib import Path
 
 from utilz.helpers import *
 from utilz.helpers import DictToAttr, ask_proceed
@@ -32,24 +28,25 @@ from utilz.fileio import *
 
 # if "XNAT_CONFIG_PATH" in os.environ:
 #     from xnat.object_oriented import *
-common_vars_filename = os.environ["FRAN_CONF"]+"/config.yaml"
+common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 import shutil
 import string
 
 import ipdb
 from fastcore.basics import Union
+from fran.utils.misc import is_hpc
 from utilz.fileio import load_dict, save_dict
 from utilz.helpers import find_matching_fn
 from utilz.stringz import info_from_filename, str_to_path
-from fran.utils.misc import is_hpc
+
 tr = ipdb.set_trace
 from pathlib import Path
 
-if is_hpc()==False:
+if is_hpc() == False:
     trash_fnc = send2trash
 else:
-    trash_fnc =  shutil.rmtree
+    trash_fnc = shutil.rmtree
 
 
 def subscript_generator():
@@ -147,7 +144,7 @@ class Project(DictToAttr):
     """
 
     def __init__(self, project_title):
-        self.project_title=project_title
+        self.project_title = project_title
         self.set_folder_file_names()
         self.db = self.project_folder / ("cases.db")
 
@@ -162,7 +159,7 @@ class Project(DictToAttr):
         param datasets: list of datasets to add to raw_data_folder
         param test: list of bool assigning some (or none) as test set(s)
         """
-        #CODE: allow list of mnemonics (try to abandon mnemonic)
+        # CODE: allow list of mnemonics (try to abandon mnemonic)
         try:
             if isinstance(mnemonic, list):
                 mnemonic = [Mnemonics.match(mnem) for mnem in mnemonic]
@@ -172,9 +169,9 @@ class Project(DictToAttr):
             )
             raise AssertionError(f"mnemonic must match one of: {allowed}")
 
-        assert (
-            not self.db.exists()
-        ), "Project already exists. Use 'add_data' if you want to add data. "
+        assert not self.db.exists(), (
+            "Project already exists. Use 'add_data' if you want to add data. "
+        )
         self._init_global_properties(mnemonic)
         self._create_folder_tree()
         self.create_tables()
@@ -182,21 +179,20 @@ class Project(DictToAttr):
             self.add_data(datasources, test)
         else:
             self.save_global_properties()
-        
+
     def set_labels_all(self):
-        labs =[]
-        datasources =self.global_properties["datasources"]
+        labs = []
+        datasources = self.global_properties["datasources"]
         for ds in datasources:
-            labs.extend(ds['labels'])
+            labs.extend(ds["labels"])
         self.global_properties["labels_all"] = list(set(labs))
 
-
-    def _init_global_properties(self,mnemonic  ):
+    def _init_global_properties(self, mnemonic):
         self.global_properties = {
             "project_title": self.project_title,
-            "mnemonic": 
-        mnemonic,
+            "mnemonic": mnemonic,
         }
+
     def save_global_properties(self):
         save_dict(self.global_properties, self.global_properties_filename)
 
@@ -243,7 +239,7 @@ class Project(DictToAttr):
                 output = list(il.chain.from_iterable(output))
         return output
 
-    def vars_to_sql(self, ds_name, ds_alias, case_id , img_fn, lm_fn,labels, nnz, test):
+    def vars_to_sql(self, ds_name, ds_alias, case_id, img_fn, lm_fn, labels, nnz, test):
         # case_id = info_from_filename(img_fn.name, full_caseid=True)["case_id"]
         fold = "NULL"
         img_sym = self.create_raw_ds_fname(img_fn)
@@ -278,7 +274,6 @@ class Project(DictToAttr):
                 )
             )
 
-
     def table_exists(self, tbl_name):
         ss = "SELECT name FROM sqlite_schema WHERE type='table' AND name ='{}'".format(
             tbl_name
@@ -299,10 +294,12 @@ class Project(DictToAttr):
         """
         # list of DS objects, e.g., DS.nodes
         test = [False] * len(datasources) if not test else listify(test)
-        assert len(datasources) == len(
-            test
-        ), "Unequal lengths of datafolders and (bool) test status"
-        headline("Adding rows to tables. Adding datasources entries to global_properties")
+        assert len(datasources) == len(test), (
+            "Unequal lengths of datafolders and (bool) test status"
+        )
+        headline(
+            "Adding rows to tables. Adding datasources entries to global_properties"
+        )
         for dataspec, test in zip(datasources, test):
             fldr = dataspec.folder
             ds_type = getattr(dataspec, "ds_type", "full")
@@ -411,7 +408,7 @@ class Project(DictToAttr):
         ds : Datasource
             Datasource object with verified file pairs.
         """
-        strs=[]
+        strs = []
         try:
             with h5py.File(ds.h5_fname, "r") as h5f:
                 for pair in ds.verified_pairs:
@@ -422,15 +419,28 @@ class Project(DictToAttr):
                     nnz = 0 if len(labels) > 0 else 1
                     labels = list(labels)
                     labels = str(labels)
-                    stra =                 self.vars_to_sql(ds.name, ds.alias,case_id,  pair[0],pair[1], labels, nnz,ds.test)
+                    stra = self.vars_to_sql(
+                        ds.name,
+                        ds.alias,
+                        case_id,
+                        pair[0],
+                        pair[1],
+                        labels,
+                        nnz,
+                        ds.test,
+                    )
                     strs.append(stra)
         except FileNotFoundError as e:
             print(e)
-            cprint("You may need to initialise datasrouce by running Datasource({data_folder}).process()", "red")
-                
-        with db_ops(self.db) as cur:
-            cur.executemany("INSERT INTO datasources VALUES (?,?,?,?, ?,?,?,?,?,?,?)", strs)
+            cprint(
+                "You may need to initialise datasrouce by running Datasource({data_folder}).process()",
+                "red",
+            )
 
+        with db_ops(self.db) as cur:
+            cur.executemany(
+                "INSERT INTO datasources VALUES (?,?,?,?, ?,?,?,?,?,?,?)", strs
+            )
 
     def add_datasources_xnat(self, xnat_proj: str):
         """
@@ -496,10 +506,7 @@ class Project(DictToAttr):
         self.cold_datasets_folder = (
             Path(COMMON_PATHS["cold_storage_folder"]) / "datasets"
         )
-        self.fixed_spacing_folder = (
-            self.rapid_access_folder/
-             ("fixed_spacing")
-        )
+        self.fixed_spacing_folder = self.rapid_access_folder / ("fixed_spacing")
         self.fixed_size_folder = (
             self.rapid_access_folder / ("preprocessed/fixed_size") / self.project_title
         )
@@ -546,7 +553,9 @@ class Project(DictToAttr):
         return qr
 
     def get_all_nontest_cases(self):
-        ss = "SELECT case_id, image FROM datasources WHERE test=0" # only training cases
+        ss = (
+            "SELECT case_id, image FROM datasources WHERE test=0"  # only training cases
+        )
         qr = self.sql_query(ss)
         qr = list(il.chain(qr))
         print("Cases not assigned to any training fold: {}".format(len(qr)))
@@ -575,12 +584,11 @@ class Project(DictToAttr):
     # @ask_proceed("Create train/valid folds (80:20) ")
     def _create_folds(self, pct_valid=0.15, shuffle=False, overwrite=False):
         self.delete_duplicates()
-        if overwrite==False:
+        if overwrite == False:
             cases_unassigned = self.get_unassigned_cases()
         else:
             cases_unassigned = self.get_all_nontest_cases()
         if len(cases_unassigned) > 0:
-
             self.create_df_folds(cases_unassigned)
             folds = int(1 / pct_valid)
             sl = val_indices(len(self.df_folds), folds)
@@ -600,7 +608,9 @@ class Project(DictToAttr):
 
             self.update_tbl_folds()
 
-    def register_datasources(self, datasources: list, multiprocess: bool = False) -> list:
+    def register_datasources(
+        self, datasources: list, multiprocess: bool = False
+    ) -> list:
         """
         Register new datasources and save to global properties.
 
@@ -646,11 +656,10 @@ class Project(DictToAttr):
             }
             dicis.append(dici)
 
-
         existing = self.global_properties.get("datasources", [])
         merged = {d["ds"]: d for d in existing}
         for d in dicis:
-          merged[d["ds"]] = d
+            merged[d["ds"]] = d
         self.global_properties["datasources"] = list(merged.values())
         # self.global_properties["datasources"] = dicis
         self.save_global_properties()
@@ -658,7 +667,10 @@ class Project(DictToAttr):
 
     # NOTE: Later functions patch repeated case ids (e.g., LBGgenerator) so that there is 49,49a, 49b also lm_fnames have substrings 'label-' etc. Fix databases so that after LBD generates new tables are added. Consider updating case ids for repeat ids perhaps
     def get_train_val_files(
-        self, fold: int = None, ds: Union[str, list[str]] = None, nnz_allowed: bool = False
+        self,
+        fold: int = None,
+        ds: Union[str, list[str]] = None,
+        nnz_allowed: bool = False,
     ):
         """
         Retrieves the file paths (img_symlink) for training and validation sets based on the given fold,
@@ -719,7 +731,11 @@ class Project(DictToAttr):
             return train_files
 
     def build_sql_query(
-        self, fold: int, ds: Union[str, list[str]], is_validation: bool, nnz_allowed: bool = True
+        self,
+        fold: int,
+        ds: Union[str, list[str]],
+        is_validation: bool,
+        nnz_allowed: bool = True,
     ) -> str:
         """
         Builds the SQL query for fetching files based on the fold and datasource.
@@ -787,7 +803,9 @@ class Project(DictToAttr):
         # datasource IDs (e.g. "colonmsd10"). Expand those to project datasources.
         project_ds = list(getattr(self, "datasources", []) or [])
         mnemonic = None
-        if hasattr(self, "global_properties") and isinstance(self.global_properties, dict):
+        if hasattr(self, "global_properties") and isinstance(
+            self.global_properties, dict
+        ):
             mnemonic = self.global_properties.get("mnemonic")
 
         expanded = []
@@ -831,7 +849,10 @@ class Project(DictToAttr):
         return [Path(fn).name for fn in result]
 
     def get_train_val_case_ids(
-        self, fold: int = None, ds: Union[str, list[str]] = None, nnz_allowed: bool = False
+        self,
+        fold: int = None,
+        ds: Union[str, list[str]] = None,
+        nnz_allowed: bool = False,
     ):
         """
         Same split logic as `get_train_val_files`, but returns `case_id` values.
@@ -873,7 +894,11 @@ class Project(DictToAttr):
         return train_case_ids
 
     def _build_case_id_query(
-        self, fold: int, ds: Union[str, list[str]], is_validation: bool, nnz_allowed: bool = False
+        self,
+        fold: int,
+        ds: Union[str, list[str]],
+        is_validation: bool,
+        nnz_allowed: bool = False,
     ) -> str:
         query = "SELECT DISTINCT case_id FROM datasources"
         conditions = ["test = 0"]
@@ -963,24 +988,23 @@ class Project(DictToAttr):
             json.dump(state, f, indent=2)
         return run_folder, csv_path, json_path
 
-
     @ask_proceed("Remove all project files and folders?")
     def delete(self):
         exempted_tokens = ["checkpoints", "predictions"]
         folders_exempt = []
         folders_non_exempt = []
         for folder in self.folders:
-            exempt=False
+            exempt = False
             for e in exempted_tokens:
                 if e in str(folder):
-                    exempt=True
-            if exempt==True:
-                    folders_exempt.append(folder)
+                    exempt = True
+            if exempt == True:
+                folders_exempt.append(folder)
             else:
-                    folders_non_exempt.append(folder)
+                folders_non_exempt.append(folder)
         for folder in folders_non_exempt:
             if folder.exists() and self.project_title in str(folder):
-                    trash_fnc(folder)
+                trash_fnc(folder)
 
         print("Deleted all except: {}".format(folders_exempt))
         print("Delete those manually if you need to")
@@ -1021,17 +1045,17 @@ class Project(DictToAttr):
             self.global_properties["lm_group1"] = {"ds": self.datasources}
         elif isinstance(lm_groups[0], Union[list, tuple]):  # list of list
             gps_all = list(il.chain.from_iterable(lm_groups))
-            assert set(gps_all) == set(
-                self.datasources
-            ), "Expected all datasets {} in lm_groups".format(self.datasources)
+            assert set(gps_all) == set(self.datasources), (
+                "Expected all datasets {} in lm_groups".format(self.datasources)
+            )
             for idx, grp in enumerate(lm_groups):
                 for ds in grp:
                     assert ds in self.datasources, "{} not in dataset names".format(ds)
-                self.global_properties[f"lm_group{idx+1}"] = {"ds": grp}
+                self.global_properties[f"lm_group{idx + 1}"] = {"ds": grp}
         else:
-            assert set(lm_groups) == set(
-                self.datasources
-            ), "Expected all datasets {} in lm_groups".format(self.datasources)
+            assert set(lm_groups) == set(self.datasources), (
+                "Expected all datasets {} in lm_groups".format(self.datasources)
+            )
             self.global_properties[f"lm_group1"] = lm_groups
         print("LM groups created")
         for key in self.global_properties.keys():
@@ -1059,7 +1083,12 @@ class Project(DictToAttr):
         self.save_global_properties()
 
     def maybe_store_projectwide_properties(
-        self, clip_range=None, max_cases=100, overwrite=False,multiprocess=False, valid_pct=0.15
+        self,
+        clip_range=None,
+        max_cases=100,
+        overwrite=False,
+        multiprocess=False,
+        valid_pct=0.15,
     ):
         """
         Store global properties like dataset mean and standard deviation.
@@ -1075,18 +1104,20 @@ class Project(DictToAttr):
         """
         from fran.preprocessing.globalproperties import GlobalProperties
 
-
         self._create_folds()
         labels_all = self.global_properties.get("labels_all", None)
         self.G = GlobalProperties(self, max_cases=max_cases, clip_range=clip_range)
         if labels_all is None or len(labels_all) == 0:
             headline("Labels have not been collated. Doing it now")
             self.G.collate_lm_labels()
-        if not "mean_dataset_clipped" in self.global_properties.keys() or overwrite == True:
+        if (
+            not "mean_dataset_clipped" in self.global_properties.keys()
+            or overwrite == True
+        ):
             self.G.store_projectwide_properties()
             self.G.compute_std_mean_dataset(multiprocess=multiprocess)
 
-    #HACK: deprecated so removing add_plan
+    # HACK: deprecated so removing add_plan
     # def add_plan(self, plan: dict):
     #     """
     #     Adds a plan to the project, which defines datasets, label groups, and preprocessing steps.
@@ -1141,7 +1172,8 @@ class Project(DictToAttr):
                 self._folders.append(value)
         additional_folders = [
             self.raw_data_folder / ("images"),
-            self.raw_data_folder / ("lms")]
+            self.raw_data_folder / ("lms"),
+        ]
         self._folders.extend(additional_folders)
         return self._folders
 
@@ -1183,12 +1215,13 @@ class Project(DictToAttr):
         all_bool = not all(cc)
         return all_bool
 
+
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 
 if __name__ == "__main__":
     from fran.utils.common import *
-    from fran.configs.parser import ConfigMaker
+
     set_autoreload()
     P = Project(project_title="pancreas")
     P = Project(project_title="test")
@@ -1205,17 +1238,16 @@ if __name__ == "__main__":
     # P = Project(project_title="bones")
     # P.add_data([DS["drli_short"], DS["lidc"]])
     P.add_data([DS["curvaspdac"], DS["pancreasmsd07"]])
-# %%
-   
-   
+    # %%
+
     P.maybe_store_projectwide_properties()
     len(P.get_train_val_case_ids(0, ds="lidc")[0])
 # %%
 #     pp = os.listdir("/s/fran_storage/projects")
 #     valid_projects = "nodes","lidc","totalseg", "litsmc" ,"pancreas", "colon"
-#     for proj in valid_projects: 
+#     for proj in valid_projects:
 #         pp.remove(proj)
 # # # %%
 # #
-#  
+#
 # %%

@@ -1,25 +1,18 @@
 from pathlib import Path
-from typing import Optional, List, Union
-import torch
-from monai.data import Dataset, DataLoader
-from monai.transforms import (
-    Compose, EnsureChannelFirstd, Orientationd, Spacingd
-)
-from monai.transforms.utility.dictionary import SqueezeDimd
+from typing import List, Union
 
+import itk
+import SimpleITK as sitk
 from fran.data.dataset import NormaliseClipd
 from fran.transforms.imageio import LoadSITKd
-import SimpleITK as sitk
-import itk
+from monai.data import DataLoader, Dataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
+from monai.transforms import Compose, EnsureChannelFirstd, Orientationd, Spacingd
+
 
 class DataManagerNifti:
     def __init__(
-        self,
-        config,
-        batch_size: int = 1,
-        num_workers: int = 0,
-        safe_mode: bool = False
+        self, config, batch_size: int = 1, num_workers: int = 0, safe_mode: bool = False
     ):
         """
         Args:
@@ -30,47 +23,36 @@ class DataManagerNifti:
         """
         self.batch_size = 1 if safe_mode else batch_size
         self.num_workers = 0 if safe_mode else num_workers
-        
+
         # Extract parameters from config
-        self.dataset_params = config.get('dataset_params')
+        self.dataset_params = config.get("dataset_params")
         self.create_transforms()
 
     def create_transforms(self, keys="all"):
         """Creates transformations used for data preprocessing."""
         self.transforms_dict = {
-            'L': LoadSITKd(
+            "L": LoadSITKd(
                 keys=["image"],
                 image_only=True,
                 ensure_channel_first=False,
                 simple_keys=True,
             ),
-            'E': EnsureChannelFirstd(
-                keys=["image"], 
-                channel_dim="no_channel"
-            ),
-            'S': Spacingd(
-                keys=["image"], 
-                pixdim=self.spacing
-            ),
-            'N': NormaliseClipd(
+            "E": EnsureChannelFirstd(keys=["image"], channel_dim="no_channel"),
+            "S": Spacingd(keys=["image"], pixdim=self.spacing),
+            "N": NormaliseClipd(
                 keys=["image"],
                 clip_range=self.intensity_clip_range,
                 mean=self.mean_fg,
                 std=self.std_fg,
             ),
-            'O': Orientationd(
-                keys=["image"], 
-                axcodes="RPS"
-            )
+            "O": Orientationd(keys=["image"], axcodes="RPS"),
         }
-
-
 
     def tfms_from_dict(self, keys: str):
         """Create transform composition from sequence string"""
         if not keys:
             return None
-            
+
         keys = keys.split(",")
         tfms = []
         for key in keys:
@@ -86,7 +68,7 @@ class DataManagerNifti:
         """Parse various input types into standardized format"""
         if not isinstance(data, list):
             data = [data]
-            
+
         processed_data = []
         for item in data:
             if isinstance(item, (str, Path)):
@@ -101,27 +83,24 @@ class DataManagerNifti:
                 processed_data.append({"image": itm(item)})
             else:
                 raise ValueError(f"Unsupported input type: {type(item)}")
-                
+
         return processed_data
 
     def setup(self, stage: str = None) -> None:
         """Setup datasets and dataloaders"""
-        if not hasattr(self, '_data'):
+        if not hasattr(self, "_data"):
             raise ValueError("Please call prepare_data() with input data first")
-            
+
         transforms = self.tfms_from_dict(self._keys_tfms)
-        
-        self.dataset = Dataset(
-            data=self._data,
-            transform=transforms
-        )
-        
+
+        self.dataset = Dataset(data=self._data, transform=transforms)
+
         self.dataloader = DataLoader(
             self.dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             shuffle=False,
-            pin_memory=True
+            pin_memory=True,
         )
 
     def prepare_data(self, data: List, keys_tfms: str = "L,E,S,N,O") -> None:
@@ -137,4 +116,3 @@ class DataManagerNifti:
     def output_folder(self):
         """Get output folder from project"""
         return self.project.predictions_folder
-

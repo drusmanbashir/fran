@@ -8,12 +8,11 @@ from pathlib import Path
 
 import ipdb
 import torch
-from torch.profiler import ProfilerActivity, profile
-
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
 from fran.trainers.trainer import Trainer
 from fran.utils.misc import parse_devices
+from torch.profiler import ProfilerActivity, profile
 
 tr = ipdb.set_trace
 
@@ -63,7 +62,9 @@ def _limit_dm_samples(dm, n_samples: int) -> None:
 
         new_cases = len(getattr(m, "cases", []) or [])
         new_data = len(getattr(m, "data", []) or [])
-        print(f"[{name}] cases {old_cases} -> {new_cases}, data {old_data} -> {new_data}")
+        print(
+            f"[{name}] cases {old_cases} -> {new_cases}, data {old_data} -> {new_data}"
+        )
 
 
 def _print_mem_summary() -> None:
@@ -137,7 +138,9 @@ def main(args: argparse.Namespace) -> None:
         batchsize_finder=False,
         profiler=(args.profile_mode == "simple"),
         tags=["profile"],
-        description="Profiler run (plotting enabled)" if bool(args.profile_plotting) else "Profiler run",
+        description="Profiler run (plotting enabled)"
+        if bool(args.profile_plotting)
+        else "Profiler run",
     )
     project.get_train_val_files = original_split_fn
     tm.N.compiled = bool(args.compiled)
@@ -164,7 +167,7 @@ def main(args: argparse.Namespace) -> None:
             profile_memory=True,
             with_stack=bool(args.profile_with_stack),
         ) as prof:
-            tm.ckpt=None
+            tm.ckpt = None
             tm.fit()
 
         prof.export_chrome_trace(str(trace_file))

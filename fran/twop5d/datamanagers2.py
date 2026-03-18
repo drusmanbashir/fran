@@ -9,6 +9,7 @@ slices (z-1, z, z+1) for both image and label via ExtractContiguousSlicesd.
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from functools import reduce
 from operator import add
@@ -17,6 +18,12 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import torch
 from fastcore.basics import store_attr
+from fran.configs.parser import is_excel_None
+from fran.managers.project import Project
+from fran.transforms.imageio import TorchReader
+from fran.transforms.intensitytransforms import RandRandGaussianNoised
+from fran.transforms.misc_transforms import DummyTransform
+from fran.transforms.spatialtransforms import ExtractContiguousSlicesd
 from lightning import LightningDataModule
 from monai.data import DataLoader, Dataset
 from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
@@ -37,25 +44,15 @@ from monai.transforms.utility.dictionary import (
     MapLabelValued,
     ToDeviceD,
 )
-from utilz.helpers import resolve_device
-
-from fran.configs.parser import is_excel_None
-from fran.managers.project import Project
-from fran.transforms.imageio import TorchReader
-from fran.transforms.intensitytransforms import RandRandGaussianNoised
-from fran.transforms.spatialtransforms import ExtractContiguousSlicesd
-from fran.transforms.misc_transforms import DummyTransform
-from utilz.fileio import load_dict, load_yaml
 from tqdm.auto import tqdm as pbar
-
+from utilz.fileio import load_dict, load_yaml
+from utilz.helpers import resolve_device
 from utilz.stringz import ast_literal_eval, strip_extension
-
-import os
-
 
 # --------------------------------------------------------------------------------------
 # Collation for slice-based datasets
 # --------------------------------------------------------------------------------------
+
 
 def _process_items(items: Iterable[Dict[str, Any]]):
     data: Dict[str, List[Any]] = defaultdict(list)
@@ -128,6 +125,7 @@ def list_to_fgbg(class_ratios: List[float]) -> Tuple[float, float]:
 # DataManagers
 # --------------------------------------------------------------------------------------
 
+
 class DataManagerMulti(LightningDataModule):
     """A higher-level DataManager that manages separate training and validation DataManagers."""
 
@@ -159,7 +157,9 @@ class DataManagerMulti(LightningDataModule):
             self.save_hyperparameters("project_title", "configs", logger=False)
 
     def prepare_data(self):
-        manager_class_train, manager_class_valid = self.infer_manager_classes(self.configs)
+        manager_class_train, manager_class_valid = self.infer_manager_classes(
+            self.configs
+        )
 
         self.train_manager = manager_class_train(
             project=self.project,
@@ -209,7 +209,9 @@ class DataManagerMulti(LightningDataModule):
     def infer_manager_classes(self, configs: dict):
         train_mode = configs["plan_train"]["mode"]
         valid_mode = configs["plan_valid"]["mode"]
-        assert train_mode == valid_mode, f"Train mode '{train_mode}' and valid mode '{valid_mode}' must match"
+        assert train_mode == valid_mode, (
+            f"Train mode '{train_mode}' and valid mode '{valid_mode}' must match"
+        )
 
         mode_to_class = {
             "source": DataManagerSource,
@@ -218,7 +220,9 @@ class DataManagerMulti(LightningDataModule):
             "pbd": DataManagerWID,
         }
         if train_mode not in mode_to_class:
-            raise ValueError(f"Unrecognized mode: {train_mode}. Must be one of {list(mode_to_class.keys())}")
+            raise ValueError(
+                f"Unrecognized mode: {train_mode}. Must be one of {list(mode_to_class.keys())}"
+            )
         return mode_to_class[train_mode], mode_to_class[valid_mode]
 
 
@@ -258,7 +262,11 @@ class DataManager(LightningDataModule):
         self.affine3d = configs.get("affine3d", None)
 
         self.device = device
-        self.keys = keys or ("Ex,L,E,Remap,Affine,F1,F2,ResizePC,N,IntensityTfms" if split == "train" else "Ex,L,E,Remap,ResizePC,N")
+        self.keys = keys or (
+            "Ex,L,E,Remap,Affine,F1,F2,ResizePC,N,IntensityTfms"
+            if split == "train"
+            else "Ex,L,E,Remap,ResizePC,N"
+        )
 
         self.set_effective_batch_size()
 
@@ -266,7 +274,9 @@ class DataManager(LightningDataModule):
             self.data_folder = self.derive_data_folder(mode=self.plan["mode"])
         else:
             self.data_folder = Path(data_folder)
-            assert self.data_folder.is_dir(), f"Dataset folder {self.data_folder} does not exist or is not a directory"
+            assert self.data_folder.is_dir(), (
+                f"Dataset folder {self.data_folder} does not exist or is not a directory"
+            )
 
         self.assimilate_tfm_factors(self.transform_factors)
         self.set_collate_fn()
@@ -296,40 +306,65 @@ class DataManager(LightningDataModule):
 
         # 1) Extract 3-slice sample from case folders
         if "Ex" in include:
-            tfms.append(ExtractContiguousSlicesd(keys=["image_fns", "lm_fldr", "n_slices"]))
+            tfms.append(
+                ExtractContiguousSlicesd(keys=["image_fns", "lm_fldr", "n_slices"])
+            )
 
         # 2) Load selected slices (TorchReader supports .pt)
         if "L" in include:
-            L = LoadImaged(keys=["image", "lm"], image_only=True, ensure_channel_first=False, simple_keys=True)
+            L = LoadImaged(
+                keys=["image", "lm"],
+                image_only=True,
+                ensure_channel_first=False,
+                simple_keys=True,
+            )
             L.register(TorchReader())
             tfms.append(L)
 
         # 3) Optional remapping on label
         if "Remap" in include:
-            if not is_excel_None(self.plan.get("remapping_train", None)) and self.split == "train":
+            if (
+                not is_excel_None(self.plan.get("remapping_train", None))
+                and self.split == "train"
+            ):
                 remap = self.plan["remapping_train"]
-            elif not is_excel_None(self.plan.get("remapping_valid", None)) and self.split != "train":
+            elif (
+                not is_excel_None(self.plan.get("remapping_valid", None))
+                and self.split != "train"
+            ):
                 remap = self.plan["remapping_valid"]
             else:
                 remap = None
 
             if remap is not None:
-                assert isinstance(remap, (tuple, list)) and len(remap) == 2, "remapping must be a (orig_labels, target_labels) pair"
-                tfms.append(MapLabelValued(keys=["lm"], orig_labels=remap[0], target_labels=remap[1]))
+                assert isinstance(remap, (tuple, list)) and len(remap) == 2, (
+                    "remapping must be a (orig_labels, target_labels) pair"
+                )
+                tfms.append(
+                    MapLabelValued(
+                        keys=["lm"], orig_labels=remap[0], target_labels=remap[1]
+                    )
+                )
             else:
                 tfms.append(DummyTransform(keys=["lm"]))
 
         # 4) Channel first
         if "E" in include:
-            tfms.append(EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel"))
+            tfms.append(
+                EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+            )
 
         # 5) Spatial augmentation
         if "F1" in include:
             prob = getattr(self, "flip", {"prob": 0.0})["prob"]
-            tfms.append(RandFlipd(keys=["image", "lm"], prob=prob, spatial_axis=0, lazy=True))
+            tfms.append(
+                RandFlipd(keys=["image", "lm"], prob=prob, spatial_axis=0, lazy=True)
+            )
         if "F2" in include:
             prob = getattr(self, "flip", {"prob": 0.0})["prob"]
-            tfms.append(RandFlipd(keys=["image", "lm"], prob=prob, spatial_axis=1, lazy=True))
+            tfms.append(
+                RandFlipd(keys=["image", "lm"], prob=prob, spatial_axis=1, lazy=True)
+            )
 
         if "Affine" in include:
             if self.affine3d is None:
@@ -346,13 +381,31 @@ class DataManager(LightningDataModule):
 
         # 6) Crop / pad or resize to patch size
         if "ResizePC" in include:
-            tfms.append(ResizeWithPadOrCropd(keys=["image", "lm"], spatial_size=patch_xy, lazy=True))
+            tfms.append(
+                ResizeWithPadOrCropd(
+                    keys=["image", "lm"], spatial_size=patch_xy, lazy=True
+                )
+            )
         if "ResizeW" in include:
-            tfms.append(Resized(keys=["image", "lm"], spatial_size=patch_xy, mode=["linear", "nearest"], lazy=True))
+            tfms.append(
+                Resized(
+                    keys=["image", "lm"],
+                    spatial_size=patch_xy,
+                    mode=["linear", "nearest"],
+                    lazy=True,
+                )
+            )
         if "Crop" in include:
             # training-time random crop samples; returns list of dicts (num_samples)
             num_samples = int(self.plan.get("samples_per_file", 1))
-            tfms.append(RandSpatialCropSamplesD(keys=["image", "lm"], roi_size=patch_xy, num_samples=num_samples, lazy=True))
+            tfms.append(
+                RandSpatialCropSamplesD(
+                    keys=["image", "lm"],
+                    roi_size=patch_xy,
+                    num_samples=num_samples,
+                    lazy=True,
+                )
+            )
 
         # 7) Normalisation / intensity
         if "N" in include:
@@ -361,8 +414,15 @@ class DataManager(LightningDataModule):
             clip_range = gp["intensity_clip_range"]
             mean_fg = gp["mean_fg"]
             std_fg = gp["std_fg"]
-            from fran.data.dataset import NormaliseClipd  # local import avoids circulars
-            tfms.append(NormaliseClipd(keys=["image"], clip_range=clip_range, mean=mean_fg, std=std_fg))
+            from fran.data.dataset import (
+                NormaliseClipd,  # local import avoids circulars
+            )
+
+            tfms.append(
+                NormaliseClipd(
+                    keys=["image"], clip_range=clip_range, mean=mean_fg, std=std_fg
+                )
+            )
 
         if "IntensityTfms" in include:
             scale = getattr(self, "scale", {"value": 0.0, "prob": 0.0})
@@ -371,10 +431,18 @@ class DataManager(LightningDataModule):
             contrast = getattr(self, "contrast", {"value": 1.0, "prob": 0.0})
             tfms.extend(
                 [
-                    RandScaleIntensityd(keys="image", factors=scale["value"], prob=scale["prob"]),
-                    RandRandGaussianNoised(keys=["image"], std_limits=noise["value"], prob=noise["prob"]),
-                    RandShiftIntensityd(keys="image", offsets=shift["value"], prob=shift["prob"]),
-                    RandAdjustContrastd(["image"], gamma=contrast["value"], prob=contrast["prob"]),
+                    RandScaleIntensityd(
+                        keys="image", factors=scale["value"], prob=scale["prob"]
+                    ),
+                    RandRandGaussianNoised(
+                        keys=["image"], std_limits=noise["value"], prob=noise["prob"]
+                    ),
+                    RandShiftIntensityd(
+                        keys="image", offsets=shift["value"], prob=shift["prob"]
+                    ),
+                    RandAdjustContrastd(
+                        ["image"], gamma=contrast["value"], prob=contrast["prob"]
+                    ),
                 ]
             )
 
@@ -389,7 +457,9 @@ class DataManager(LightningDataModule):
     def set_effective_batch_size(self):
         if self.split != "train" or "samples_per_file" not in self.plan:
             self.plan["samples_per_file"] = 1
-        self.effective_batch_size = int(max(1, self.batch_size / self.plan["samples_per_file"]))
+        self.effective_batch_size = int(
+            max(1, self.batch_size / self.plan["samples_per_file"])
+        )
 
     def prepare_data(self):
         if not hasattr(self, "cases"):
@@ -397,7 +467,9 @@ class DataManager(LightningDataModule):
         self.data = self.create_data_dicts(self.cases)
 
     def cases_from_project_split(self):
-        train_cases, valid_cases = self.project.get_train_val_files(self.dataset_params["fold"], self.plan["datasources"])
+        train_cases, valid_cases = self.project.get_train_val_files(
+            self.dataset_params["fold"], self.plan["datasources"]
+        )
         self.cases = train_cases if self.split == "train" else valid_cases
         assert len(self.cases) > 0, "There are no cases, aborting!"
 
@@ -410,12 +482,16 @@ class DataManager(LightningDataModule):
         for case_id in pbar(cases):
             img_matches = [fn for fn in image_case_folders if case_id == fn.name]
             lm_matches = [fn for fn in lm_case_folders if case_id == fn.name]
-            assert len(img_matches) == 1 and len(lm_matches) == 1, f"Expected exactly one image and lm folder for case {case_id}"
+            assert len(img_matches) == 1 and len(lm_matches) == 1, (
+                f"Expected exactly one image and lm folder for case {case_id}"
+            )
             img_fldr = img_matches[0]
             lm_fldr = lm_matches[0]
             img_fns = sorted(list(img_fldr.glob("*")))
             n_slices = len(img_fns)
-            data.append({"image_fns": img_fns, "lm_fldr": lm_fldr, "n_slices": n_slices})
+            data.append(
+                {"image_fns": img_fns, "lm_fldr": lm_fldr, "n_slices": n_slices}
+            )
         return data
 
     def setup(self, stage: Optional[str] = None):
@@ -436,14 +512,23 @@ class DataManager(LightningDataModule):
         if is_excel_None(self.ds_type):
             return Dataset(data=self.data, transform=self.transforms)
         if self.ds_type == "cache":
-            return CacheDataset(data=self.data, transform=self.transforms, cache_rate=self.cache_rate)
+            return CacheDataset(
+                data=self.data, transform=self.transforms, cache_rate=self.cache_rate
+            )
         if self.ds_type == "lmdb":
-            return LMDBDataset(data=self.data, transform=self.transforms, cache_dir=self.cache_folder, db_name=f"{self.split}_cache")
+            return LMDBDataset(
+                data=self.data,
+                transform=self.transforms,
+                cache_dir=self.cache_folder,
+                db_name=f"{self.split}_cache",
+            )
         raise NotImplementedError(f"Unknown ds_type: {self.ds_type}")
 
     def _create_valid_ds(self):
         # PersistentDataset provides deterministic caching without loading everything into RAM
-        return PersistentDataset(data=self.data, transform=self.transforms, cache_dir=self.cache_folder)
+        return PersistentDataset(
+            data=self.data, transform=self.transforms, cache_dir=self.cache_folder
+        )
 
     def create_dataloader(self):
         self.dl = DataLoader(
@@ -471,11 +556,14 @@ class DataManagerSource(DataManager):
         self.collate_fn = source_collated
 
     def derive_data_folder(self, mode: str) -> Path:
-        assert mode == "source", f"Dataset mode must be 'source' for DataManagerSource, got '{mode}'"
+        assert mode == "source", (
+            f"Dataset mode must be 'source' for DataManagerSource, got '{mode}'"
+        )
         prefix = "spc"
         spacing = self.plan["spacing"]
         parent_folder = self.project.fixed_spacing_folder
         from utilz.helpers import folder_name_from_list
+
         return folder_name_from_list(prefix, parent_folder, spacing)
 
 
@@ -486,27 +574,43 @@ class DataManagerWhole(DataManagerSource):
 
 class DataManagerLBD(DataManagerSource):
     def derive_data_folder(self, mode: str) -> Path:
-        assert mode == "lbd", f"Dataset mode must be 'lbd' for DataManagerLBD, got '{mode}'"
+        assert mode == "lbd", (
+            f"Dataset mode must be 'lbd' for DataManagerLBD, got '{mode}'"
+        )
         spacing = self.plan.get("spacing")
         if isinstance(spacing, str):
             spacing = ast_literal_eval(spacing)
         parent_folder = self.project.lbd_folder
         folder_suffix = "plan" + str(self.dataset_params.get(f"plan_{self.split}", ""))
         from utilz.helpers import folder_name_from_list
-        data_folder = folder_name_from_list(prefix="spc", parent_folder=parent_folder, values_list=spacing, suffix=folder_suffix)
+
+        data_folder = folder_name_from_list(
+            prefix="spc",
+            parent_folder=parent_folder,
+            values_list=spacing,
+            suffix=folder_suffix,
+        )
         assert data_folder.exists(), f"Dataset folder {data_folder} does not exist"
         return data_folder
 
 
 class DataManagerWID(DataManagerSource):
     def derive_data_folder(self, mode: str) -> Path:
-        assert mode in ["pbd", "wid"], f"Dataset mode must be 'pbd' for DataManagerWID, got '{mode}'"
+        assert mode in ["pbd", "wid"], (
+            f"Dataset mode must be 'pbd' for DataManagerWID, got '{mode}'"
+        )
         spacing = self.plan.get("spacing")
         if isinstance(spacing, str):
             spacing = ast_literal_eval(spacing)
         parent_folder = self.project.pbd_folder
         folder_suffix = "plan" + str(self.dataset_params.get(f"plan_{self.split}", ""))
         from utilz.helpers import folder_name_from_list
-        data_folder = folder_name_from_list(prefix="spc", parent_folder=parent_folder, values_list=spacing, suffix=folder_suffix)
+
+        data_folder = folder_name_from_list(
+            prefix="spc",
+            parent_folder=parent_folder,
+            values_list=spacing,
+            suffix=folder_suffix,
+        )
         assert data_folder.exists(), f"Dataset folder {data_folder} does not exist"
         return data_folder

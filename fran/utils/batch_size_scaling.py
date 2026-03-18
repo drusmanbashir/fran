@@ -64,7 +64,9 @@ def _scale_batch_size2(
         return None
 
     # Save initial model, that is loaded after batch size is found
-    ckpt_path = os.path.join(trainer.default_root_dir, f".scale_batch_size_{uuid.uuid4()}.ckpt")
+    ckpt_path = os.path.join(
+        trainer.default_root_dir, f".scale_batch_size_{uuid.uuid4()}.ckpt"
+    )
     trainer.save_checkpoint(ckpt_path)
 
     # Arguments we adjust during the batch size finder, save for restoring
@@ -79,13 +81,19 @@ def _scale_batch_size2(
     new_size, _ = _adjust_batch_size(trainer, batch_arg_name, value=init_val)
 
     if mode == "power":
-        new_size = _run_power_scaling(trainer, new_size, batch_arg_name, max_trials, params)
+        new_size = _run_power_scaling(
+            trainer, new_size, batch_arg_name, max_trials, params
+        )
     elif mode == "binsearch":
-        new_size = _run_binary_scaling(trainer, new_size, batch_arg_name, max_trials, params)
+        new_size = _run_binary_scaling(
+            trainer, new_size, batch_arg_name, max_trials, params
+        )
 
     garbage_collection_cuda()
 
-    log.info(f"Finished batch size finder, will continue with full run using batch size {new_size}")
+    log.info(
+        f"Finished batch size finder, will continue with full run using batch size {new_size}"
+    )
 
     __scale_batch_restore_params(trainer, params)
 
@@ -112,7 +120,9 @@ def __scale_batch_dump_params(trainer: "pl.Trainer") -> Dict[str, Any]:
     elif isinstance(loop, pl.loops._EvaluationLoop):
         stage = trainer.state.stage
         assert stage is not None
-        dumped_params["limit_eval_batches"] = getattr(trainer, f"limit_{stage.dataloader_prefix}_batches")
+        dumped_params["limit_eval_batches"] = getattr(
+            trainer, f"limit_{stage.dataloader_prefix}_batches"
+        )
         dumped_params["loop_verbose"] = loop.verbose
 
     dumped_params["loop_state_dict"] = deepcopy(loop.state_dict())
@@ -153,7 +163,11 @@ def __scale_batch_restore_params(trainer: "pl.Trainer", params: Dict[str, Any]) 
         stage = trainer.state.stage
         assert stage is not None
         # setattr(trainer, f"limit_{stage.dataloader_prefix}_batches", params["limit_eval_batches"])
-        setattr(trainer, f"limit_{stage.dataloader_prefix}_batches", params["limit_val_batches"])
+        setattr(
+            trainer,
+            f"limit_{stage.dataloader_prefix}_batches",
+            params["limit_val_batches"],
+        )
 
     loop.load_state_dict(deepcopy(params["loop_state_dict"]))
     loop.restarting = False
@@ -184,7 +198,9 @@ def _run_power_scaling(
 
         try:
             _try_loop_run(trainer, params)
-            new_size, changed = _adjust_batch_size(trainer, batch_arg_name, factor=2.0, desc="succeeded")
+            new_size, changed = _adjust_batch_size(
+                trainer, batch_arg_name, factor=2.0, desc="succeeded"
+            )
 
             if not changed:
                 break
@@ -196,7 +212,9 @@ def _run_power_scaling(
             if is_oom_error(exception):
                 # If we fail in power mode, half the size and return
                 garbage_collection_cuda()
-                new_size, _ = _adjust_batch_size(trainer, batch_arg_name, factor=0.5, desc="failed")
+                new_size, _ = _adjust_batch_size(
+                    trainer, batch_arg_name, factor=0.5, desc="failed"
+                )
                 # Force the train dataloader to reset as the batch size has changed
                 _reset_dataloaders(trainer)
                 if any_success:
@@ -240,9 +258,13 @@ def _run_binary_scaling(
                 if high - low <= 1:
                     break
                 midval = (high + low) // 2
-                new_size, changed = _adjust_batch_size(trainer, batch_arg_name, value=midval, desc="succeeded")
+                new_size, changed = _adjust_batch_size(
+                    trainer, batch_arg_name, value=midval, desc="succeeded"
+                )
             else:
-                new_size, changed = _adjust_batch_size(trainer, batch_arg_name, factor=2.0, desc="succeeded")
+                new_size, changed = _adjust_batch_size(
+                    trainer, batch_arg_name, factor=2.0, desc="succeeded"
+                )
 
             if not changed:
                 break
@@ -258,7 +280,9 @@ def _run_binary_scaling(
 
                 high = new_size
                 midval = (high + low) // 2
-                new_size, _ = _adjust_batch_size(trainer, batch_arg_name, value=midval, desc="failed")
+                new_size, _ = _adjust_batch_size(
+                    trainer, batch_arg_name, value=midval, desc="failed"
+                )
 
                 # Force the train dataloader to reset as the batch size has changed
                 _reset_dataloaders(trainer)
@@ -305,7 +329,9 @@ def _adjust_batch_size(
     try:
         combined_dataset_length = combined_loader._dataset_length()
         if batch_size >= combined_dataset_length:
-            rank_zero_info(f"The batch size {batch_size} is greater or equal than the length of your dataset.")
+            rank_zero_info(
+                f"The batch size {batch_size} is greater or equal than the length of your dataset."
+            )
             return batch_size, False
     except NotImplementedError:
         # all datasets are iterable style

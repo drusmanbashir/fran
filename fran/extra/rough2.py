@@ -2,12 +2,14 @@
 
 import sqlite3
 from datetime import datetime
+
 import pandas as pd
 
 DB_PATH = "plans.db"
 TABLE = "master_plans"
 
 # ---- helpers --------------------------------------------------------------
+
 
 def read_kv_excel(xlsx_path: str, sheet_name=0) -> dict[str, str | None]:
     """Excel with 2 columns: first=key, second=value."""
@@ -22,8 +24,10 @@ def read_kv_excel(xlsx_path: str, sheet_name=0) -> dict[str, str | None]:
         kv[k] = v
     return kv
 
+
 def get_columns(conn) -> list[str]:
     return [r[1] for r in conn.execute(f'PRAGMA table_info("{TABLE}")').fetchall()]
+
 
 def ensure_table_and_columns(conn: sqlite3.Connection, keys: list[str]):
     # create table (id + created_at only; data columns added below)
@@ -42,6 +46,7 @@ def ensure_table_and_columns(conn: sqlite3.Connection, keys: list[str]):
             conn.execute(f'ALTER TABLE "{TABLE}" ADD COLUMN "{k}" TEXT')
     conn.commit()
 
+
 def find_matching_row(conn: sqlite3.Connection, data: dict) -> int | None:
     if not data:
         return None
@@ -56,9 +61,11 @@ def find_matching_row(conn: sqlite3.Connection, data: dict) -> int | None:
     row = conn.execute(sql, params).fetchone()
     return row[0] if row else None
 
+
 def quote_ident(name: str) -> str:
     # SQLite identifier quoting with double quotes
     return '"' + name.replace('"', '""') + '"'
+
 
 def insert_row(conn: sqlite3.Connection, data: dict) -> int:
     cols = [c for c in get_columns(conn) if c != "id"]
@@ -73,11 +80,13 @@ def insert_row(conn: sqlite3.Connection, data: dict) -> int:
 
     cols_sql = ", ".join(quote_ident(c) for c in cols)
     placeholders = ", ".join("?" for _ in cols)
-    sql = f'INSERT INTO {quote_ident(TABLE)} ({cols_sql}) VALUES ({placeholders})'
+    sql = f"INSERT INTO {quote_ident(TABLE)} ({cols_sql}) VALUES ({placeholders})"
 
     cur = conn.execute(sql, values)
     conn.commit()
     return cur.lastrowid
+
+
 def upsert_plan_from_excel(xlsx_path: str, sheet_name=0) -> int:
     data = read_kv_excel(xlsx_path, sheet_name)
     with sqlite3.connect(DB_PATH) as conn:
@@ -88,11 +97,13 @@ def upsert_plan_from_excel(xlsx_path: str, sheet_name=0) -> int:
             return match_id
         # Otherwise, insert a new row (missing keys become NULL).
         return insert_row(conn, data)
+
+
 # %%
 # ---- example without Excel (your provided pairs) --------------------------
 
 if __name__ == "__main__":
-    DB_PATH= "plans.db"
+    DB_PATH = "plans.db"
     sample = {
         "var_name": "manual_value",
         "datasources": "lits,drli,litq,litqsmall",

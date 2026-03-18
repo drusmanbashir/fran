@@ -1,32 +1,29 @@
 # %%
 from pathlib import Path
 
-from fran.preprocessing.preprocessor import Preprocessor
 import ipdb
-import torch
 from fastcore.all import store_attr
 from fastcore.basics import store_attr
-from label_analysis.totalseg import TotalSegmenterLabels
+from fran.preprocessing.patch import PatchDataGenerator
+from fran.transforms.imageio import LoadTorchd, TorchWriter
+from fran.transforms.misc_transforms import LabelRemapd
+from fran.utils.folder_names import folder_names_from_plan
 from monai.transforms import Compose
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.spatial.dictionary import Resized
-from monai.transforms.utility.dictionary import (DeleteItemsd,
-                                                 EnsureChannelFirstd,
-                                                 SqueezeDimd)
+from monai.transforms.utility.dictionary import (
+    DeleteItemsd,
+    EnsureChannelFirstd,
+    SqueezeDimd,
+)
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
 from utilz.stringz import info_from_filename
 
-from fran.configs.parser import ConfigMaker
-from fran.preprocessing.patch import PatchDataGenerator
-from fran.transforms.imageio import LoadTorchd, TorchWriter
-from fran.transforms.misc_transforms import LabelRemapd
-from fran.utils.folder_names import folder_names_from_plan
-
 tr = ipdb.set_trace
+
 import ray
-import re
 
 
 @ray.remote(num_cpus=1)
@@ -93,8 +90,8 @@ class FixedSizeMaker(object):
 class FixedSizeDataGenerator(PatchDataGenerator):
     _default = "project"
 
-    def __init__(self, project,plan, data_folder=None, output_folder =None ) -> None:
-        #HACK: below is same as preprocessor init. Come back to this while u update PatchDataGenerator
+    def __init__(self, project, plan, data_folder=None, output_folder=None) -> None:
+        # HACK: below is same as preprocessor init. Come back to this while u update PatchDataGenerator
         store_attr("project,plan,data_folder")
         self.data_folder = data_folder
         self.set_input_output_folders(data_folder, output_folder)
@@ -116,7 +113,12 @@ class FixedSizeDataGenerator(PatchDataGenerator):
             case_id = case_id_info["case_id"]
             lm_value = find_matching_fn(img, lms, ["case_id"])[0]
             # Create the dictionary for the current image
-            dic = {"case_id": case_id, "image": img, "lm": lm_value, "remapping": self.plan["remapping_whole"]}
+            dic = {
+                "case_id": case_id,
+                "image": img,
+                "lm": lm_value,
+                "remapping": self.plan["remapping_whole"],
+            }
             # Append the dictionary to the dicis list
             self.dicis.append(dic)
 
@@ -137,9 +139,9 @@ class FixedSizeDataGenerator(PatchDataGenerator):
         dicis = list(chunks(self.dicis, num_processes))
         actors = [FixedSizeMaker.remote() for _ in range(num_processes)]
         if self.plan["remapping_whole"] is not None:
-            remapping =True
+            remapping = True
         else:
-            remapping =False
+            remapping = False
         results = ray.get(
             [
                 c.process.remote(
@@ -147,7 +149,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
                     self.plan["patch_size"],
                     self.output_folder / ("images"),
                     self.output_folder / ("lms"),
-                    remapping=remapping
+                    remapping=remapping,
                 )
                 for c, dicis in zip(actors, dicis)
             ]
@@ -160,14 +162,10 @@ class FixedSizeDataGenerator(PatchDataGenerator):
             data_folder = folders["data_folder_source"]
         self.data_folder = Path(data_folder)
         if output_folder is None:
-            whole_subfolder = folders[
-                "data_folder_whole"
-            ]
-            self.output_folder =Path( whole_subfolder)
+            whole_subfolder = folders["data_folder_whole"]
+            self.output_folder = Path(whole_subfolder)
         else:
             self.output_folder = Path(output_folder)
-
-
 
     def create_output_folders(self):
         maybe_makedirs(
@@ -177,6 +175,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
                 # self.indices_subfolder,
             ]
         )
+
     #
     # def set_output_folder(self, parent_folder):
     #     output_folder = folder_name_from_list(
@@ -195,11 +194,16 @@ class FixedSizeDataGenerator(PatchDataGenerator):
     #         self.output_folder = Path(self.output_folder.parent / output_name)
     #
 
+
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    import torch
+    from fran.configs.parser import ConfigMaker
+
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.managers import Project
     from fran.utils.common import *
+
     set_autoreload()
 
     P = Project(project_title="totalseg")
@@ -208,28 +212,30 @@ if __name__ == "__main__":
     conf = C.configs
     # P.maybe_store_projectwide_properties()
 
-# %%
+    # %%
     plan = conf["plan_train"]
-# %%
+    # %%
 
     F = FixedSizeDataGenerator(
         project=P,
-        plan =plan ,
+        plan=plan,
         data_folder=None,
     )
-# %%
+    # %%
     F.setup(overwrite=True)
 
-# %%
+    # %%
     F.process()
-# %%
+    # %%
 
     img_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/images/totalseg_s0889.pt"
-    lm_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/lms/totalseg_s0889.pt"
+    lm_fn = (
+        "/r/datasets/preprocessed/totalseg/whole_images/096096096/lms/totalseg_s0889.pt"
+    )
     img = torch.load(img_fn, weights_only=False)
     lm = torch.load(lm_fn, weights_only=False)
-    ImageMaskViewer([img,lm])
-# %%
+    ImageMaskViewer([img, lm])
+    # %%
 
     output_folder = folder_name_from_list(
         prefix="sze", parent_folder=P.fixed_size_folder, values_list=[64, 64, 64]
@@ -246,14 +252,14 @@ if __name__ == "__main__":
     pairs = [
         {"image": img, "lm": find_matching_fn(img, lms, "case_id")[0]} for img in imgs
     ]
-# %%
+    # %%
     tots = len(pairs)
     n_proc = 32
 
-# %%
+    # %%
     dicis = list(chunks(pairs, n_proc))
     actors = [FixedSizeMaker.remote() for _ in range(n_proc)]
-# %%
+    # %%
     results = ray.get(
         [
             c.process.remote(
@@ -267,33 +273,33 @@ if __name__ == "__main__":
         ]
     )
     # dici = L(dici)
-# %%
+    # %%
     dici = tfms(dici)
-# %%
+    # %%
     dici = L(dici)
     dici = M(dici)
-# %%
+    # %%
     dici = E(dici)
 
     dici = Rz(dici)
 
     im, lm = dici["image"], dici["lm"]
 
-# %%
+    # %%
     fn = "/s/fran_storage/datasets/preprocessed/fixed_size/litsmc/sze_64_64_64/images/totalseg_s0784.pt"
     fn2 = "/s/fran_storage/datasets/preprocessed/fixed_size/litsmc/sze_64_64_64/lms/totalseg_s0784.pt"
     trn = torch.load(fn, weights_only=False)
     t2 = torch.load(fn2, weights_only=False)
     ImageMaskViewer([trn, t2], dtypes="im")
-# %%
-# %%
-# SECTION:-------------------- TROUBLE <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-# %%
+    # %%
+    # %%
+    # SECTION:-------------------- TROUBLE <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    # %%
     output_folder_lm = F.output_folder / "lms"
     output_folder_im = F.output_folder / "images"
 
-# %%
-    remapping_train= plan["remapping_train"]
+    # %%
+    remapping_train = plan["remapping_train"]
     L = LoadTorchd(keys=["lm", "image"])
     M = LabelRemapd(keys=["lm"], remapping=remapping_train)
     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
@@ -322,7 +328,7 @@ if __name__ == "__main__":
     )
     Del = DeleteItemsd(keys=["image", "lm"])
 
-# %%
+    # %%
     dici = F.dicis[0]
     dici = L(dici)
     dici = M(dici)
@@ -332,12 +338,12 @@ if __name__ == "__main__":
     dici = Si(dici)
     dici = Sl(dici)
     dici = Del(dici)
-# %%
+    # %%
     image = dici["image"]
     lm = dici["lm"]
-# %%
+    # %%
     ImageMaskViewer([image, lm])
-# %%
+    # %%
     # S1 = SaveImage(output_ext='pt',  output_dir=self.output_fldr_imgs, output_postfix=str(1), output_dtype='float32', writer=TorchWriter,separate_folder=False)
     if remapping_train:
         tfms = Compose([L, M, E, Rz, S, Si, Sl, Del])
@@ -351,7 +357,7 @@ if __name__ == "__main__":
             print("Exception")
             print(e)
 
-# %%
+    # %%
     fn = "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0726.pt"
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_080_080_150/lms/totalseg_s0928.pt"
     fn = "/s/xnat_shadow/totalseg/lms/totalseg_s0928.nii.gz"

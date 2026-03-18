@@ -1,23 +1,23 @@
 # %%
-from typing import Any
-from neptune.types import File
-import random
-import lightning as pl
-import torch.nn.functional as F
-import os
-from torchvision.utils import make_grid
-import torch
-from fran.transforms.spatialtransforms import one_hot
-import neptune
 import ast
+import os
+import random
+from typing import Any
+
+import lightning as pl
+import neptune
+import torch
+import torch.nn.functional as F
 from fran.configs.parser import *
-from utilz.fileio import load_json, load_yaml
+from fran.transforms.spatialtransforms import one_hot
+from lightning.pytorch.callbacks import Callback
+from neptune.types import File
+from torchvision.utils import make_grid
+from utilz.fileio import load_yaml
 
 # from fran.managers.learner_plus import *
 from utilz.helpers import *
-from fran.configs.parser import *
 
-from lightning.pytorch.callbacks import Callback
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
 except:
@@ -42,6 +42,8 @@ def normalize(tensr, intensity_percentiles=[0.0, 1.0]):
     tensr[tensr < vmin] = vmin
     tensr[tensr > vmax] = vmax
     return tensr
+
+
 def dictionary_fix_ast(dictionary: dict):
     for keys in map(str_to_key, _ast_keys):
         val = dictionary[keys[0]][keys[1]]
@@ -62,7 +64,7 @@ def get_neptune_config():
     Returns particular project workspace
     """
     commons = load_yaml(common_vars_filename)
-    project_name = commons['neptune_project']
+    project_name = commons["neptune_project"]
     api_token = commons["neptune_api_token"]
     return project_name, api_token
 
@@ -94,7 +96,7 @@ class NeptuneImageGridCallback(Callback):
 
     #
     def on_train_start(self, trainer, pl_module):
-        trainer.store_preds = False  # DO NOT SET THIS TO TRUE. IT WILL BUG  
+        trainer.store_preds = False  # DO NOT SET THIS TO TRUE. IT WILL BUG
         len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
         self.freq = np.maximum(2, int(len_dl / self.grid_rows))
 
@@ -128,9 +130,11 @@ class NeptuneImageGridCallback(Callback):
         if trainer.store_preds == True:
             self.populate_grid(pl_module, batch)
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(
+        self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
+    ):
         if trainer.store_preds == True:
-        # if trainer.current_epoch % self.epoch_freq == 0:
+            # if trainer.current_epoch % self.epoch_freq == 0:
             if self.validation_grid_created == False:
                 self.populate_grid(pl_module, batch)
                 self.validation_grid_created = True
@@ -154,7 +158,7 @@ class NeptuneImageGridCallback(Callback):
                 .contiguous()
                 .view(-1, 3, grd.shape[-2], grd.shape[-1])
             )
-            grd3 = make_grid(grd2, nrow=self.imgs_per_batch * 3,scale_each=True)
+            grd3 = make_grid(grd2, nrow=self.imgs_per_batch * 3, scale_each=True)
             grd4 = grd3.permute(1, 2, 0)
             grd4 = np.array(grd4)
             trainer.logger.experiment["images"].append(File.as_image(grd4))
@@ -209,8 +213,8 @@ class NeptuneImageGridCallback(Callback):
         imgs = batch[self.batches, :, :, :, self.slices].clone()
         return imgs
 
-    def assign_colour(self,tnsr):
-        argmax_tensor= torch.argmax(tnsr,dim=1)
+    def assign_colour(self, tnsr):
+        argmax_tensor = torch.argmax(tnsr, dim=1)
         B, H, W = argmax_tensor.shape
         rgb_tensor = torch.zeros((B, 3, H, W), dtype=torch.uint8)
 
@@ -221,15 +225,16 @@ class NeptuneImageGridCallback(Callback):
         return rgb_tensor
 
     def scale_tensor(self, tnsr):
-        min,max = tnsr.min(), tnsr.max()
-        rng = max-min
-        tnsr= tnsr.repeat(1, 3, 1, 1)
+        min, max = tnsr.min(), tnsr.max()
+        rng = max - min
+        tnsr = tnsr.repeat(1, 3, 1, 1)
         tnsr2 = tnsr.clone()
-        t3 = tnsr2-min
-        t4 = t3/rng
-        t5 = t4*255
-        t6 = torch.clamp(t5,min=0,max=255)
+        t3 = tnsr2 - min
+        t4 = t3 / rng
+        t5 = t4 * 255
+        t6 = torch.clamp(t5, min=0, max=255)
         return t6
+
 
 class NeptuneLogBestCkpt(Callback):
     def on_validation_epoch_end(self, trainer, pl_module):
@@ -245,14 +250,18 @@ class NeptuneLogBestCkpt(Callback):
     #     run = trainer.logger.experiment
     #     run["training/best_model_path"] = ckpt
     #     run.wait()
+
+
 # %%
 
 if __name__ == "__main__":
     P = Project(project_title="lits")
     proj_defaults = P
-    config = ConfigMaker(proj_defaults.configuration_filename, ).config
+    config = ConfigMaker(
+        proj_defaults.configuration_filename,
+    ).config
 
-# %%
+    # %%
     def process_html(fname="case_id_dices_valid.html"):
         df = pd.read_html(fname)[0]
         cols = df.columns
@@ -262,6 +271,7 @@ if __name__ == "__main__":
         return df
 
     from fran.utils.common import *
+
     project_title = "lits"
     project = Project(project_title=project_title)
 

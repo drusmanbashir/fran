@@ -1,6 +1,4 @@
 # %%
-import itertools as il
-import json
 import random
 import sqlite3
 from collections import defaultdict
@@ -11,20 +9,22 @@ import numpy as np
 import torch
 from fastcore.all import store_attr
 from fastcore.basics import GetAttr
-from utilz.stringz import info_from_filename
-from tqdm.auto import tqdm as pbar
-  
 from fran.data.dataregistry import DS
+from tqdm.auto import tqdm as pbar
+from utilz.stringz import info_from_filename
 
 tr = ipdb.set_trace
 
 
+from fran.preprocessing import (
+    get_intensity_range,
+    get_means_voxelcounts,
+    get_std_numerator,
+    import_h5py,
+    percentile_range_to_str,
+)
 from utilz.fileio import save_dict
 from utilz.helpers import multiprocess_multiarg
-
-from fran.preprocessing import (get_intensity_range, get_means_voxelcounts,
-                                get_std_numerator, import_h5py,
-                                percentile_range_to_str)
 
 
 def unique_idx(total_len, start=1):
@@ -40,8 +40,6 @@ def unique_idx(total_len, start=1):
     """
     for x in range(start, total_len + 1):
         yield (x)
-
-
 
 
 class GlobalProperties(GetAttr):
@@ -60,12 +58,14 @@ class GlobalProperties(GetAttr):
         percentile_range: list = [0.5, 99.5],
         clip_range=None,
     ):
-        assert all(
-            [isinstance(x, float) for x in percentile_range]
-        ), "Provide float values for clip percentile_range. Corresponding HUs will be stored in file for future processing."
+        assert all([isinstance(x, float) for x in percentile_range]), (
+            "Provide float values for clip percentile_range. Corresponding HUs will be stored in file for future processing."
+        )
         store_attr("project,bg_label,percentile_range,clip_range,max_cases")
         datasources = self.global_properties.get("datasources", [])
-        assert len(datasources) > 0, "No datasources found in project metadata. Run P.add_data([...]) before maybe_store_projectwide_properties()."
+        assert len(datasources) > 0, (
+            "No datasources found in project metadata. Run P.add_data([...]) before maybe_store_projectwide_properties()."
+        )
         self.case_ids, self.img_fnames = (
             self.collate_project_cases()
         )  #        self.h5ns =[]
@@ -73,18 +73,16 @@ class GlobalProperties(GetAttr):
         self.img_fnames_for_sampling = self.filter_img_fnames_for_sampling()
         for ds in datasources:
             h5fn = Path(ds["h5_fname"])
-            assert (
-                h5fn.exists()
-            ), "fg voxels not processed for datasource folder {}".format(ds["folder"])
-        self.case_properties=self._retrieve_h5_properties()
-
+            assert h5fn.exists(), (
+                "fg voxels not processed for datasource folder {}".format(ds["folder"])
+            )
+        self.case_properties = self._retrieve_h5_properties()
 
     def __str__(self) -> str:
         repr = str(self.global_properties)
         return repr
 
     def __repr__(self) -> str:
-
 
         return self.__str__()
 
@@ -98,7 +96,10 @@ class GlobalProperties(GetAttr):
         con = sqlite3.connect(str(self.project.db))
         try:
             cur = con.cursor()
-            cols = [row[1] for row in cur.execute("PRAGMA table_info(datasources)").fetchall()]
+            cols = [
+                row[1]
+                for row in cur.execute("PRAGMA table_info(datasources)").fetchall()
+            ]
             has_ds_type = "ds_type" in cols
             if has_ds_type:
                 query = "SELECT ds, alias, ds_type, case_id, image, lm FROM datasources"
@@ -108,7 +109,10 @@ class GlobalProperties(GetAttr):
         finally:
             con.close()
 
-        ds_type_map = {d["ds"]: d.get("ds_type", "full") for d in self.global_properties.get("datasources", [])}
+        ds_type_map = {
+            d["ds"]: d.get("ds_type", "full")
+            for d in self.global_properties.get("datasources", [])
+        }
 
         self.case_rows = []
         self.case_ids_by_ds = defaultdict(set)
@@ -152,7 +156,9 @@ class GlobalProperties(GetAttr):
         unique_case_ids = list(self.case_rows_by_case_id.keys())
 
         rng = random.Random(42)
-        rng.shuffle(unique_case_ids)  # sample case_ids in random order for both full and patch sources
+        rng.shuffle(
+            unique_case_ids
+        )  # sample case_ids in random order for both full and patch sources
         if self.max_cases:
             n_cases = int(np.minimum(len(unique_case_ids), self.max_cases))
             cases_for_sampling = unique_case_ids[:n_cases]
@@ -192,11 +198,7 @@ class GlobalProperties(GetAttr):
             h5fn = dsa["h5_fname"]
             ds_name = dsa["ds"]
             case_ids_ds = self.case_ids_by_ds.get(ds_name, set())
-            cases_ds = [
-                cid
-                for cid in self.cases_for_sampling
-                if cid in case_ids_ds
-            ]
+            cases_ds = [cid for cid in self.cases_for_sampling if cid in case_ids_ds]
             with h5py.File(h5fn, "r") as h5f_file:
                 for cid in cases_ds:
                     cs = h5f_file[cid]
@@ -218,11 +220,7 @@ class GlobalProperties(GetAttr):
             h5fn = dsa["h5_fname"]
             ds_name_final = dsa["alias"] if dsa["alias"] else dsa["ds"]
             case_ids_ds = self.case_ids_by_ds.get(dsa["ds"], set())
-            cases_ds = [
-                cid
-                for cid in self.cases_for_sampling
-                if cid in case_ids_ds
-            ]
+            cases_ds = [cid for cid in self.cases_for_sampling if cid in case_ids_ds]
 
             print(len(cases_ds))
             with h5py.File(h5fn, "r") as h5f_file:  # this file has all cases of the ds
@@ -235,16 +233,18 @@ class GlobalProperties(GetAttr):
                         "labels": cs.attrs["labels"],
                     }
                     ds_props.append(props)
-            assert len(cases_ds) == len(
-                ds_props
-            ), "Mismatch in case_ids and case_properties. "
+            assert len(cases_ds) == len(ds_props), (
+                "Mismatch in case_ids and case_properties. "
+            )
             case_properties.extend(ds_props)
-        assert len(self.cases_for_sampling) == len(
-            case_properties
-        ), "Mismatch in case_ids and case_properties - cases_for_sampling = {0} and case_properties = {1}".format(len(self.cases_for_sampling),len(case_properties))
+        assert len(self.cases_for_sampling) == len(case_properties), (
+            "Mismatch in case_ids and case_properties - cases_for_sampling = {0} and case_properties = {1}".format(
+                len(self.cases_for_sampling), len(case_properties)
+            )
+        )
         return case_properties
 
-    def store_projectwide_properties(self,multiprocess=True):
+    def store_projectwide_properties(self, multiprocess=True):
         """
         Stage 1.
         Start here.
@@ -271,9 +271,7 @@ class GlobalProperties(GetAttr):
         self.global_properties["std_fg"] = np.double(cases.std())
         self.global_properties[
             percentile_range_to_str(self.percentile_range) + "_fg"
-        ] = (
-            intensity_range
-        ).tolist()  # np.array is not JSON serializable
+        ] = (intensity_range).tolist()  # np.array is not JSON serializable
         self.global_properties["max_fg"] = np.double(cases.max())
         self.global_properties["min_fg"] = np.double(cases.min())
 
@@ -309,7 +307,9 @@ class GlobalProperties(GetAttr):
         - debug (bool): Flag to enable/disable debug mode.
         """
 
-        assert "mean_fg" in self.global_properties.keys(),"mean_fg not found in global_properties. Run store_projectwide_properties() first."
+        assert "mean_fg" in self.global_properties.keys(), (
+            "mean_fg not found in global_properties. Run store_projectwide_properties() first."
+        )
         percentile_label, intensity_percentile_range = get_intensity_range(
             self.global_properties
         )
@@ -349,7 +349,7 @@ class GlobalProperties(GetAttr):
             num_processes=num_processes,
             multiprocess=multiprocess,
             debug=debug,
-            algebra=True
+            algebra=True,
         )
         means_sizes = torch.tensor(means_sizes)
         weighted_mn = torch.multiply(means_sizes[:, 0], means_sizes[:, 1])
@@ -378,7 +378,7 @@ class GlobalProperties(GetAttr):
             num_processes=num_processes,
             multiprocess=multiprocess,
             debug=debug,
-            algebra=True
+            algebra=True,
         )
         std_num = torch.tensor(std_num)
         self.std = torch.sqrt(std_num.sum() / self.total_voxels)
@@ -484,8 +484,8 @@ class GlobalProperties(GetAttr):
 
 # %%
 if __name__ == "__main__":
-# %%
-#SECTION:--------------------------------------------- SETUPPPPPP--------------------------------------------------------------------------------------
+    # %%
+    # SECTION:--------------------------------------------- SETUPPPPPP--------------------------------------------------------------------------------------
     from fran.managers import Project
     from fran.utils.common import *
 
@@ -494,62 +494,61 @@ if __name__ == "__main__":
     P = Project(project_title="litstmp")
     G = GlobalProperties(P, max_cases=50)
     G._retrieve_h5_properties()
-    conf = ConfigMaker(P,  configuration_filename=None).config
+    conf = ConfigMaker(P, configuration_filename=None).config
     plan = conf["plan"]
-# %%
-    labs_gp =[]
+    # %%
+    labs_gp = []
     for cc in G.case_properties:
-                    # if ds_name == cc["ds"]:
-                        labels = cc["labels"]
-                        labels = G.serializable_obj(labels)
-                        labs_gp.extend(labels)
+        # if ds_name == cc["ds"]:
+        labels = cc["labels"]
+        labels = G.serializable_obj(labels)
+        labs_gp.extend(labels)
 
-# %%
-
+    # %%
 
     labels_all = []
     lmgps = "lm_group"
     keys = [k for k in G.global_properties.keys() if lmgps in k]
     for key in keys:
         shared_labels_gps = G.global_properties[key]["ds"]
-# %%
+        # %%
         labs_gp = []
         for cc in G.case_properties:
-                    labels = cc["labels"]
-                    ds = cc['ds']
-                    labels = G.serializable_obj(labels)
-                    labels = tuple(labels)
-                    # if labels!=[1]:
-                    #     tr()
-                    dici = {"ds": ds, "label": labels}
-                    labs_gp.append(dici)
-# %%
+            labels = cc["labels"]
+            ds = cc["ds"]
+            labels = G.serializable_obj(labels)
+            labels = tuple(labels)
+            # if labels!=[1]:
+            #     tr()
+            dici = {"ds": ds, "label": labels}
+            labs_gp.append(dici)
+    # %%
     df = pd.DataFrame(labs_gp)
     df = df.drop_duplicates(subset=["ds", "label"], keep="first").reset_index(drop=True)
 
-# %%
-#         labs_gp = list(set(labs_gp))
-#         dici = {"ds": ds_name, "label": labs_gp}
-#         labels_all.extend(labs_gp)
-#         print(labs_gp)
-#         G.global_properties[key].update(
-#             {"labels": labs_gp, "num_labels": len(labs_gp)}
-#         )
-#     G.global_properties["labels_all"] = list(set(labels_all))
-#     labels_tot = len(labels_all)
-#     if len(keys) > 1:
-# # %%
-#     if not "labels_all" in P.global_properties.keys():
-#         P.set_lm_groups(plans["lm_groups"])
-#         P.maybe_store_projectwide_properties(overwrite=True)
-#     G.store_projectwide_properties()
-# %%
+    # %%
+    #         labs_gp = list(set(labs_gp))
+    #         dici = {"ds": ds_name, "label": labs_gp}
+    #         labels_all.extend(labs_gp)
+    #         print(labs_gp)
+    #         G.global_properties[key].update(
+    #             {"labels": labs_gp, "num_labels": len(labs_gp)}
+    #         )
+    #     G.global_properties["labels_all"] = list(set(labels_all))
+    #     labels_tot = len(labels_all)
+    #     if len(keys) > 1:
+    # # %%
+    #     if not "labels_all" in P.global_properties.keys():
+    #         P.set_lm_groups(plans["lm_groups"])
+    #         P.maybe_store_projectwide_properties(overwrite=True)
+    #     G.store_projectwide_properties()
+    # %%
     debug = True
     G.collate_lm_labels()
     G.compute_std_mean_dataset(debug=debug)
 
     type(G.global_properties["lm_group1"]["labels"][0])
-# %%
+    # %%
     G.h5ns = []
     for ds in P.global_properties["datasources"]:
         h5fn = Path(ds["folder"]) / ("fg_voxels.h5")
@@ -558,15 +557,15 @@ if __name__ == "__main__":
         )
         G.h5ns.append(h5fn)
 
-# %%
+    # %%
     cid = "litqsmall_00008"
     cid = "litqsmall_00007"
     aa = h5f_file[cid]
-# %%
+    # %%
     f = unique_idx(5)
 
     f.__next__()
-# %%
+    # %%
 
     dss = G.global_properties["datasources"]
 
@@ -584,8 +583,8 @@ if __name__ == "__main__":
             cs = h5f_file[cid]
             voxels.append(cs[:])
 
-# %%
-# %%
+    # %%
+    # %%
     G = P.G
 
     cases_for_sampling = random.sample(
@@ -593,8 +592,8 @@ if __name__ == "__main__":
     )
     img_fname = G.img_filenames[0]
     img_fnames_to_sample = []
-# %%
-# %%
+    # %%
+    # %%
 
     G.case_properties = G._retrieve_h5_properties()
     h5py = import_h5py()
@@ -622,24 +621,24 @@ if __name__ == "__main__":
                     "labels": cs.attrs["labels"],
                 }
                 ds_props.append(props)
-        assert len(cases_ds) == len(
-            ds_props
-        ), "Mismatch in case_ids and case_properties"
+        assert len(cases_ds) == len(ds_props), (
+            "Mismatch in case_ids and case_properties"
+        )
         case_properties.extend(ds_props)
-    assert len(G.case_ids) == len(
-        case_properties
-    ), "Mismatch in case_ids and case_properties"
+    assert len(G.case_ids) == len(case_properties), (
+        "Mismatch in case_ids and case_properties"
+    )
 
-# %%
+    # %%
     gp = "tcianodesshort"
-# %%
+    # %%
     labels_all = []
     lmgps = "lm_group"
     keys = [k for k in G.global_properties.keys() if lmgps in k]
     key = keys[-1]
     gp = shared_labels_gps[-1]
-# %%
-# %%
+    # %%
+    # %%
     labels_all = []
     lmgps = "lm_group"
     keys = [k for k in G.global_properties.keys() if lmgps in k]
@@ -663,8 +662,7 @@ if __name__ == "__main__":
     G.global_properties["labels_all"] = list(set(labels_all))
     labels_tot = len(labels_all)
 
-
-# %%
+    # %%
 
     """
     Collate and organize landmark labels from all datasets in the project.
@@ -691,16 +689,14 @@ if __name__ == "__main__":
         dici = {"ds": ds_name, "label": labs_gp}
         labels_all.extend(labs_gp)
         print(labs_gp)
-        G.global_properties[key].update(
-            {"labels": labs_gp, "num_labels": len(labs_gp)}
-        )
+        G.global_properties[key].update({"labels": labs_gp, "num_labels": len(labs_gp)})
     G.global_properties["labels_all"] = list(set(labels_all))
     labels_tot = len(labels_all)
     if len(keys) > 1:
         G._remap_labels(keys, labels_tot)
     G.maybe_append_imported_labels()
 # %%
-        # dsa = G.global_properties["datasources"][]
+# dsa = G.global_properties["datasources"][]
 #             ds_props = []
 #             h5fn = dsa["h5_fname"]
 #             ds_name_final =dsa["alias"] if dsa["alias"] else dsa["ds"]

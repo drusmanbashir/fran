@@ -15,7 +15,11 @@ def update_case_ids_json(
 ) -> Path:
     project = getattr(pl_module, "project", None)
     log_folder = getattr(project, "log_folder", None)
-    root = Path(log_folder) if log_folder else Path(getattr(trainer, "default_root_dir", "/tmp"))
+    root = (
+        Path(log_folder)
+        if log_folder
+        else Path(getattr(trainer, "default_root_dir", "/tmp"))
+    )
     root.mkdir(parents=True, exist_ok=True)
 
     out_fn = root / json_name
@@ -37,4 +41,3 @@ def update_case_ids_json(
     payload["history"] = history
     out_fn.write_text(json.dumps(payload, indent=2))
     return out_fn
-

@@ -103,8 +103,11 @@ def _build_arch_kwargs(
         "nonlin": torch.nn.LeakyReLU,
         "nonlin_kwargs": {"inplace": True},
     }
-    return arch_kwargs, tuple(patch_size), tuple(pool_op_kernel_sizes), tuple(
-        conv_kernel_sizes
+    return (
+        arch_kwargs,
+        tuple(patch_size),
+        tuple(pool_op_kernel_sizes),
+        tuple(conv_kernel_sizes),
     )
 
 
@@ -186,7 +189,9 @@ def plan_like_resenc_config(
         )
         patch_size_reduced = list(deepcopy(patch_size))
         shape_must_be_divisible_by = [int(np.prod(s)) for s in strides]
-        patch_size_reduced[axis_to_be_reduced] -= max(1, shape_must_be_divisible_by[axis_to_be_reduced])
+        patch_size_reduced[axis_to_be_reduced] -= max(
+            1, shape_must_be_divisible_by[axis_to_be_reduced]
+        )
         patch_size_reduced[axis_to_be_reduced] = max(
             patch_size_reduced[axis_to_be_reduced], 2 * _MIN_FEATURE_EDGE
         )
@@ -224,9 +229,7 @@ def plan_like_resenc_config(
         "kernel_sizes": tuple(
             tuple(int(y) for y in x) for x in arch_kwargs["kernel_sizes"]
         ),
-        "n_blocks_per_stage": tuple(
-            int(x) for x in arch_kwargs["n_blocks_per_stage"]
-        ),
+        "n_blocks_per_stage": tuple(int(x) for x in arch_kwargs["n_blocks_per_stage"]),
         "n_conv_per_stage_decoder": tuple(
             int(x) for x in arch_kwargs["n_conv_per_stage_decoder"]
         ),
@@ -261,9 +264,7 @@ def explore_resenc_configs(
 
 
 def format_exploration_rows(rows: list[dict]) -> str:
-    header = (
-        "preset  gb    batch  patch_size         stages  features_per_stage"
-    )
+    header = "preset  gb    batch  patch_size         stages  features_per_stage"
     lines = [header, "-" * len(header)]
     for row in rows:
         patch = "x".join(str(x) for x in row["patch_size"])

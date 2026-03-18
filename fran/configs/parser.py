@@ -1,23 +1,19 @@
 # %%
 import ast
-import sys
-import warnings
-from dataclasses import dataclass
 from typing import Any, Union
 
 import ipdb
 import numpy as np
 import pandas as pd
-from fastcore.all import listify
 from fastcore.basics import store_attr
+from fran.configs.mnemonics import Mnemonics
+from fran.utils.folder_names import (
+    folder_names_from_plan,
+)
+from fran.utils.string_works import is_excel_None
 from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
-from utilz.stringz import ast_literal_eval, headline
-
-from fran.configs.mnemonics import Mnemonics
-from fran.utils.folder_names import (folder_names_from_plan, load_registry,
-                                     remapping_conv)
-from fran.utils.string_works import is_excel_None
+from utilz.stringz import ast_literal_eval
 
 tr = ipdb.set_trace
 
@@ -34,19 +30,21 @@ REMAPPING_DICT_OR_LIST = {
     "remapping_imported": "dict",
 }
 
-def parse_excel_remapping(remapping)->list:
+
+def parse_excel_remapping(remapping) -> list:
     remapping = ast_literal_eval(remapping)
     if isinstance(remapping, str):
         remapping = remapping.split(",")
         remapping = [ast_literal_eval(rems) for rems in remapping]
-    if not isinstance(remapping, list|tuple):
+    if not isinstance(remapping, list | tuple):
         remapping = [remapping]
     return remapping
 
 
-def parse_excel_datasources(datasources:str)->list:
+def parse_excel_datasources(datasources: str) -> list:
     datasources = datasources.replace(" ", "").split(",")
     return datasources
+
 
 def cases_in_folder(fldr) -> int:
     fldr = Path(fldr)
@@ -104,13 +102,13 @@ def _to_py(obj) -> Any:
     return obj
 
 
-def labels_from_remapping(remapping_in ):
+def labels_from_remapping(remapping_in):
     def _inner(remapping):
-        if is_excel_None(remapping) or remapping == "" :
+        if is_excel_None(remapping) or remapping == "":
             return 0
         if isinstance(remapping, str) and "TSL" in remapping:
             TSL = TotalSegmenterLabels()
-            attr = remapping.replace(" ","").replace("TSL.", "").split(":")[1]
+            attr = remapping.replace(" ", "").replace("TSL.", "").split(":")[1]
             dest = getattr(TSL, attr)
         elif isinstance(remapping, dict):
             dest = list(remapping.values())
@@ -124,8 +122,8 @@ def labels_from_remapping(remapping_in ):
     if remapping_in is None or remapping_in == "" or remapping_in == "nan":
         return 0
         # return int(max(dest)) + 1
-    if not isinstance(remapping_in, list|tuple):
-        remapping= [remapping_in]
+    if not isinstance(remapping_in, list | tuple):
+        remapping = [remapping_in]
     else:
         remapping = remapping_in
 
@@ -137,7 +135,7 @@ def labels_from_remapping(remapping_in ):
     return labels_all
 
 
-def add_out_labels(plan: dict, global_props: Union[dict, None] = None) -> dict|None:
+def add_out_labels(plan: dict, global_props: Union[dict, None] = None) -> dict | None:
     """
     Priority:
       1) plan['remapping_train']  -> infer mapping, return max(dest)+1
@@ -151,7 +149,7 @@ def add_out_labels(plan: dict, global_props: Union[dict, None] = None) -> dict|N
     rml = ast_literal_eval(plan.get("remapping_lbd"))
     rmw = ast_literal_eval(plan.get("remapping_whole"))
     mode = plan.get("mode")
-    labels_all_train = labels_from_remapping(rmt )
+    labels_all_train = labels_from_remapping(rmt)
     # elif (mode == "source" or mode == "whole") and rms:
     labels_all_source = labels_from_remapping(rms)
     # else: labels_all = global_props["labels_all"]
@@ -164,15 +162,15 @@ def add_out_labels(plan: dict, global_props: Union[dict, None] = None) -> dict|N
     dici = {}
     dici["labels_all_train"] = labels_all_train
     dici["labels_all_source"] = labels_all_source
-    if labels_all_source==0:
-         labels_all_source = sum(global_props["labels_all"])
+    if labels_all_source == 0:
+        labels_all_source = sum(global_props["labels_all"])
     dici["labels_all_lbd"] = labels_all_lbd
     dici["labels_all_whole"] = labels_all_whole
     dici["labels_all_datasources"] = labels_all_datasources
-    if mode=="source":
+    if mode == "source":
         dici["labels_all_mode"] = labels_all_source
-    elif mode == "lbd" or mode=="pbd":
-        if labels_all_lbd==0:
+    elif mode == "lbd" or mode == "pbd":
+        if labels_all_lbd == 0:
             dici["labels_all_mode"] = labels_all_source
         else:
             dici["labels_all_mode"] = labels_all_lbd
@@ -215,9 +213,9 @@ def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
 
     datasources = plan["datasources"]
     datasources = parse_excel_datasources(datasources)
-    assert len(datasources) == len(
-        remapping
-    ), "For each datasource, a unique remapping is required, it can be None."
+    assert len(datasources) == len(remapping), (
+        "For each datasource, a unique remapping is required, it can be None."
+    )
     remappings_out = []
     for ds, remapping in zip(datasources, remapping):
         remapping_out = _parse_single_remapping(remapping)
@@ -424,7 +422,7 @@ class ConfigMaker:
             except:
                 self.configs["dataset_params"][prop] = None
 
-    #CODE: depcrecated add_out_channels as per folder labels_out are being computed in preprocessing
+    # CODE: depcrecated add_out_channels as per folder labels_out are being computed in preprocessing
     def add_out_channels(self, verbose=True):
         out_ch = len(self.configs["plan_train"]["labels_all"])
         self.configs["model_params"]["out_channels"] = out_ch
@@ -600,8 +598,7 @@ def parse_neptune_dict(dic: dict):
 
 # %%
 if __name__ == "__main__":
-
-# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+    # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     # set_autoreload()
     from fran.managers import Project
@@ -610,41 +607,41 @@ if __name__ == "__main__":
     P = Project(project_title="pancreas")
     P = Project(project_title="kidneys")
     P = Project(project_title="lidc")
-# %%
+    # %%
     P.global_properties
     C = ConfigMaker(P)
     C.setup(8)
     pp(C.configs["plan_train"])
     pp(C.configs["plan_valid"])
     C.configs["plan_train"].keys()
-    C.configs["plan_train"]['labels_all_lbd']
-# %%
+    C.configs["plan_train"]["labels_all_lbd"]
+    # %%
     C.plans["mode"]
-# %%
+    # %%
     df = C.plans
-# %%
+    # %%
     conf = C.configj
     pp(conf["dataset_params"])
     pp(conf["plan_train"])
     conf["plan_train"]["imported_folder"]
     conf["plan_train"]["remapping_imported"]
-# %%
+    # %%
 
     plan = C.configs["plan_train"]
     existing_fldr = folder_names_from_plan(project, plan)["data_folder_source"]
     img_fldr = existing_fldr / ("images")
     len(list(img_fldr.glob("*"))) == len(project)
-# %%
+    # %%
 
     lbd_subfolder = folder_names_from_plan(project, plan)["data_folder_lbd"]
     lbd_img_fldr = Path(lbd_subfolder) / ("images")
     len(list(lbd_img_fldr.glob("*")))
-# %%
+    # %%
     df = C.plans
     row = df.iloc[2]
     plan = row.to_dict()
 
-# %%
+    # %%
 
     conf["dataset_params"]["src_dims"] = make_patch_size(
         conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"]
@@ -652,28 +649,28 @@ if __name__ == "__main__":
     conf["plan_train"]["patch_size"] = make_patch_size(
         conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"]
     )
-# %%
+    # %%
     plan = C.configs["plan_train"]
-# %%
-    global_props= C.project.global_properties
+    # %%
+    global_props = C.project.global_properties
     global_props["labels_all"]
     rmt = plan.get("remapping_train")
-    rmt= ast_literal_eval(rmt)
+    rmt = ast_literal_eval(rmt)
 
     rms = plan.get("remapping_source")
 
-    rms= ast_literal_eval(rms)
+    rms = ast_literal_eval(rms)
     rml = plan.get("remapping_lbd")
 
-    rml= ast_literal_eval(rml)
+    rml = ast_literal_eval(rml)
     rmi = plan.get("remapping_imported")
 
-    rmi= ast_literal_eval(rmi)
+    rmi = ast_literal_eval(rmi)
     rmw = plan.get("remapping_whole")
-    rmw= ast_literal_eval(rmw)
-# %%
+    rmw = ast_literal_eval(rmw)
+    # %%
     mode = plan.get("mode")
-    labels_all_train = labels_from_remapping(rmt )
+    labels_all_train = labels_from_remapping(rmt)
     # elif (mode == "source" or mode == "whole") and rms:
     labels_all_source = labels_from_remapping(rms)
     # else: labels_all = global_props["labels_all"]
@@ -683,17 +680,17 @@ if __name__ == "__main__":
     # elif mode == "whole" and rmw:
     labels_all_whole = labels_from_remapping(rmw)
     labels_all_datasources = global_props["labels_all"]
-# %%
+    # %%
     dici = {}
     dici["labels_all_train"] = labels_all_train
     dici["labels_all_source"] = labels_all_source
-    if labels_all_source==0:
-         labels_all_source = sum(global_props["labels_all"])
+    if labels_all_source == 0:
+        labels_all_source = sum(global_props["labels_all"])
     dici["labels_all_lbd"] = labels_all_lbd
     dici["labels_all_whole"] = labels_all_whole
     dici["labels_all_datasources"] = labels_all_datasources
 
-# %%
+    # %%
 
     train = True
     plan_num = 3
@@ -708,7 +705,7 @@ if __name__ == "__main__":
     C.configs[plan_key] = plan_selected
     plan = plan_selected.copy()
     pp(plan)
-# %%
+    # %%
     # C.maybe_merge_source_plan(plan_key)
     C.configs[plan_key] = parse_excel_dict(plan_selected)
     pp(C.configs[plan_key])

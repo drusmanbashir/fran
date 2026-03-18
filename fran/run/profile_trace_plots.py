@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-
 from fran.managers import Project
 
 
@@ -63,7 +62,9 @@ def _top(rows: list[dict], time_key: str, k: int) -> list[tuple[str, float]]:
     return items[:k]
 
 
-def _plot_barh(items: list[tuple[str, float]], title: str, xlabel: str, out_file: Path) -> None:
+def _plot_barh(
+    items: list[tuple[str, float]], title: str, xlabel: str, out_file: Path
+) -> None:
     if not items:
         return
     names = [n for n, _ in items][::-1]
@@ -97,7 +98,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("-t", "--project-title", default="lidc", dest="project_title")
     p.add_argument("--trace-dir", type=Path, default=None)
-    p.add_argument("--stamp", default="", help="Specific timestamp suffix, e.g. 20260304_041258")
+    p.add_argument(
+        "--stamp", default="", help="Specific timestamp suffix, e.g. 20260304_041258"
+    )
     p.add_argument("--top-k", type=int, default=20)
     return p
 
@@ -125,7 +128,9 @@ def main() -> None:
         ]
         ops_file = _latest_existing(candidates)
     else:
-        candidates = sorted(trace_dir.glob("ops_*.txt")) + sorted(trace_dir.glob("ops_cpu_*.txt"))
+        candidates = sorted(trace_dir.glob("ops_*.txt")) + sorted(
+            trace_dir.glob("ops_cpu_*.txt")
+        )
         ops_file = _latest_existing(candidates)
 
     if ops_file is None:

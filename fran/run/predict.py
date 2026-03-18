@@ -1,11 +1,9 @@
-import argparse
 import json
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import SimpleITK as sitk
-
 from fran.inference.cascade import CascadeInferer
 from fran.inference.scoring import compute_dice_fran
 from fran.managers.project import Project
@@ -29,7 +27,11 @@ def chunk_list(items, n_chunks):
 def case_processed_already(img_fn: Path, output_folder: Path) -> bool:
     pred_fn = output_folder / img_fn.name
     if pred_fn.exists():
-        print("Prediction already exists for {0} in {1}".format(img_fn.name, output_folder))
+        print(
+            "Prediction already exists for {0} in {1}".format(
+                img_fn.name, output_folder
+            )
+        )
         return True
     return False
 
@@ -105,8 +107,13 @@ def run_multi_gpu_ray(images, gpus, cfg: RayConfig):
                 save=True,
                 save_channels=False,
             )
-            inferer.run(img_paths, chunksize=cfg_obj.chunksize, overwrite=cfg_obj.overwrite)
-            return {"processed": len(img_paths), "output_folder": str(inferer.output_folder)}
+            inferer.run(
+                img_paths, chunksize=cfg_obj.chunksize, overwrite=cfg_obj.overwrite
+            )
+            return {
+                "processed": len(img_paths),
+                "output_folder": str(inferer.output_folder),
+            }
 
     chunks = chunk_list(images, len(gpus))
     actors = [PredictActor.remote() for _ in chunks]
@@ -142,7 +149,9 @@ def compute_scores(images, masks_folder, output_folder, n_classes=None):
         scores.append(
             {
                 "case": img.name,
-                "dice": dice.detach().cpu().tolist() if hasattr(dice, "detach") else dice,
+                "dice": dice.detach().cpu().tolist()
+                if hasattr(dice, "detach")
+                else dice,
                 "n_classes": classes,
             }
         )
@@ -177,7 +186,9 @@ def main(args):
     del tmp_inf
 
     if not args.overwrite:
-        images = [img for img in images if not case_processed_already(img, output_folder)]
+        images = [
+            img for img in images if not case_processed_already(img, output_folder)
+        ]
 
     if len(images) == 0:
         print("No images left after filtering existing predictions.")
@@ -223,6 +234,8 @@ def main(args):
 
 
 if __name__ == "__main__":
+    import argparse
+
     parser = argparse.ArgumentParser(description="Cascade predictor")
     parser.add_argument("-t", "--title", required=True, help="project title")
     parser.add_argument("--run-w", required=True, help="localiser run id")

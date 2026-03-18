@@ -3,36 +3,33 @@ from pathlib import Path
 
 import ipdb
 import ray
-from utilz.helpers import find_matching_fn, multiprocess_multiarg
-
-from fran.configs.parser import parse_nested_remapping
-from fran.inference.base import list_to_chunks
 from fran.utils.folder_names import folder_names_from_plan
+from utilz.helpers import find_matching_fn, multiprocess_multiarg
 
 tr = ipdb.set_trace
 
 import numpy as np
 import pandas as pd
 import torch
-from monai.transforms.compose import Compose
-from monai.transforms.spatial.dictionary import Spacingd
-from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
-                                                 FgBgToIndicesd, ToDeviceD,
-                                                 ToDeviced)
-from tqdm.auto import tqdm as pbar
-from utilz.fileio import load_dict, maybe_makedirs, save_dict, save_json
-from utilz.stringz import strip_extension
-
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.preprocessor import Preprocessor, store_labels_info
 from fran.transforms.imageio import LoadSITKd
-from fran.transforms.inferencetransforms import ToCPUd
 from fran.transforms.intensitytransforms import NormaliseClipd
-from fran.transforms.misc_transforms import (ChangeDtyped, DictToMeta,
-                                             FgBgToIndicesd2, LabelRemapd,
-                                             RecastToFloatd)
+from fran.transforms.misc_transforms import (
+    ChangeDtyped,
+    DictToMeta,
+    FgBgToIndicesd2,
+    LabelRemapd,
+    RecastToFloatd,
+)
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.common import *
+from monai.transforms.compose import Compose
+from monai.transforms.spatial.dictionary import Spacingd
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviceD
+from tqdm.auto import tqdm as pbar
+from utilz.fileio import load_dict, save_dict
+from utilz.stringz import strip_extension
 
 
 def generate_bboxes_from_lms_folder(
@@ -102,6 +99,7 @@ class _NiftiResamplerBase(Preprocessor):
             except:
                 return None
         return None
+
     #
     # def _dici_from_df_row(self, row, remapping):
     #     img_fname = row["image"]
@@ -275,8 +273,6 @@ class ResampleDatasetniftiToTorch(Preprocessor):
             project, plan, output_folder=output_folder, data_folder=data_folder
         )
 
-        
-
     def register_existing_files(self):
         """Track completed files by output filename (not case_id)."""
         existing_img = {p.name for p in (self.output_folder / "images").glob("*.pt")}
@@ -294,8 +290,9 @@ class ResampleDatasetniftiToTorch(Preprocessor):
             return
         n_before = len(self.df)
         keep_mask = self.df["image"].apply(
-            lambda x: strip_extension(Path(x).name) + ".pt"
-            not in self.existing_output_fnames
+            lambda x: (
+                strip_extension(Path(x).name) + ".pt" not in self.existing_output_fnames
+            )
         )
         self.df = self.df[keep_mask]
         print("Image files remaining to process:", len(self.df), "/", n_before)
@@ -375,7 +372,9 @@ class ResampleDatasetniftiToTorch(Preprocessor):
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
-        store_labels_info(self.output_folder, num_processes=getattr(self, "num_processes", 1))
+        store_labels_info(
+            self.output_folder, num_processes=getattr(self, "num_processes", 1)
+        )
         self.create_dataset_stats_artifacts()
         # add_plan_to_db(self.project,
         #     self.plan, db_path=self.project.db, data_folder_source=self.output_folder
@@ -486,13 +485,17 @@ class FGBGIndicesResampleDataset(ResampleDatasetniftiToTorch):
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR>
-    from fran.configs.parser import ConfigMaker
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR>
+    from fran.configs.parser import ConfigMaker, parse_nested_remapping
+    from fran.inference.base import list_to_chunks
     from fran.managers import Project
     from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
+    from fran.transforms.inferencetransforms import ToCPUd
     from fran.utils.common import *
+    from monai.transforms.utility.dictionary import FgBgToIndicesd, ToDeviced
+    from utilz.fileio import maybe_makedirs, save_json
 
-# %%
+    # %%
     # chunkify = lambda l, n: [l[i : i + n] for i in range(0, len(l), n)]
     # aa = chunkify(Rs.df,16)
 
@@ -505,7 +508,7 @@ if __name__ == "__main__":
     plan = C.configs["plan_train"]
     conf = C.configs
 
-# %%
+    # %%
 
     plan = conf["plan_train"]
     pp(plan)
@@ -513,33 +516,33 @@ if __name__ == "__main__":
 
     folder_names_from_plan(P, plan)
     print(P.global_properties)
-# %%
+    # %%
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     Rs = ResampleDatasetniftiToTorch(P, plan, P.raw_data_folder)
-# %%
+    # %%
     Rs.output_folder.exists()
 
     overwrite = True
     n_processes = 12
     Rs.setup(num_processes=n_processes, overwrite=overwrite)
 
-# %%
+    # %%
     Rs.process()
-# %%
+    # %%
 
     num_processes = 12
     Rs.create_data_df()
     Rs.register_existing_files()
     mini_df = Rs.mini_dfs[0]
     Rs.mini_dfs = np.array_split(Rs.df, num_processes)
-# %%
+    # %%
     Rs.process()
     #
     rr = Rs.results
 
     import itertools as il
 
-# %%
+    # %%
     dds = list_to_chunks(Rs.df, n_processes)
     mini_df = Rs.df.iloc[:10]
 
@@ -554,7 +557,7 @@ if __name__ == "__main__":
         mean_std_mode=mean_std_mode,
     )
 
-# %%
+    # %%
 
     ts = Rs.results_df.shape
     if ts[-1] == 4:  # only store if entire dset is processed
@@ -570,19 +573,19 @@ if __name__ == "__main__":
             "since some files skipped, dataset stats are not being stored. run Rs.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
         )
     add_plan_to_db(Rs.plan, db_path=Rs.project.db, data_folder_source=Rs.output_folder)
-# %%
+    # %%
     N = NiftiResampler(**actor_kwargs)
     # for mini_df in dds:
     N.process(mini_df)
 
-# %%
+    # %%
     remapping = parse_nested_remapping(N.plan, "remapping_source", as_dict=True)
     data = []
     for index in range(len(df)):
         row = df.iloc[index]
         dici = N._dici_from_df_row(row, remapping)
         data.append(dici)
-# %%
+    # %%
     maybe_makedirs(N.indices_subfolder)
     dici = data[0]
     for dici in data:
@@ -596,8 +599,8 @@ if __name__ == "__main__":
         N.save_pt(dici["image"][0], "images")
         N.save_pt(dici["lm"][0], "lms")
         N.extract_image_props(image)
-# %%
-# SECTION:-------------------- ResampleDatasetniftiToTorch-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- ResampleDatasetniftiToTorch-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     spacing = [1, 1, 1]
     project = P
     overwrite = False
@@ -609,15 +612,15 @@ if __name__ == "__main__":
     )
     Rs.setup(overwrite=overwrite)
     Rs.process()
-# %%
+    # %%
     F = FGBGIndicesResampleDataset(project, spacing=[0.8, 0.8, 1.5])
     F.setup()
     F.process()
     # R.register_existing_files()
 
-# %%
+    # %%
 
-# %%
+    # %%
     L = LoadSITKd(keys=["image", "lm"], image_only=True)
     R = LabelRemapd(keys=["lm"], remapping_key="remapping")
     T = ToDeviced(keys=["image", "lm"], device=Rs.ds.device)
@@ -650,12 +653,12 @@ if __name__ == "__main__":
 
     # tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
     tfms = [L, R, T, Re, Ind, E, Si, Rz, Ch]
-# %%
+    # %%
     dici = Rs.ds[0]
     dici["lm"].meta
     dici = Rs.ds.data[0]
 
-# %%
+    # %%
     dici = L(dici)
 
     dici = R(dici)
@@ -667,7 +670,7 @@ if __name__ == "__main__":
     dici = Rz(dici)
     dici = Ch(dici)
 
-# %%
+    # %%
     print(dici["image"].meta["filename_or_obj"], dici["lm"].meta["filename_or_obj"])
 
     L = LoadSITKd(keys=["image", "lm"], image_only=True)
@@ -699,7 +702,7 @@ if __name__ == "__main__":
 
     tf = Compose([R, L, T, Re, Ind])
     dici = tf(dici)
-# %%
+    # %%
     I.Resampler.shapes = np.array(I.Resampler.shapes)
     fn_dict = I.Resampler.output_folder / "info.json"
 
@@ -712,7 +715,7 @@ if __name__ == "__main__":
     resampled_dataset_properties["median_shape"] = np.median(
         I.Resampler.shapes, 0
     ).tolist()
-# %%
+    # %%
     tnsr = torch.load(
         "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/lms/drli_001ub.nii.gz"
     )
@@ -720,12 +723,12 @@ if __name__ == "__main__":
     fn_name = strip_extension(fn.name) + ".pt"
     fn_out = fn.parent / (fn_name)
     generate_bboxes_from_lms_folder(R.output_folder / ("lms"))
-# %%
+    # %%
 
     existing_fnames = [fn.name for fn in R.existing_files]
     df = R.df.copy()
     rows_new = []
-# %%
+    # %%
     for i in range(len(df)):
         row = df.loc[i]
         df_fname = Path(row.lm_symlink)
@@ -734,7 +737,7 @@ if __name__ == "__main__":
             df.drop([i], inplace=True)
             # rows_new.append(row)
 
-# %%
+        # %%
         L.shapes = np.array(L.shapes)
         resampled_dataset_properties = dict()
         resampled_dataset_properties["median_shape"] = np.median(L.shapes, 0).tolist()
@@ -745,7 +748,7 @@ if __name__ == "__main__":
             L.results["median"]
         ).item()
 
-# %%
+    # %%
     df = pd.DataFrame(np.arange(12).reshape(3, 4), columns=["A", "B", "C", "D"])
     df.drop(["A", "B"], axis=1)
     df
@@ -754,11 +757,11 @@ if __name__ == "__main__":
         resampled_dataset_properties,
         "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/resampled_dataset_properties.json",
     )
-# %%
+    # %%
     dl = I.R.dl
     iteri = iter(dl)
     batch = next(iteri)
-# %%
+    # %%
     U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
     batch = U(batch)
     images, lms, fg_inds, bg_inds = (
@@ -793,21 +796,23 @@ if __name__ == "__main__":
         I.R.save_pt(lm[0], "lms")
         I.R.extract_image_props(image)
 
-# %%
+    # %%
 
-    df=Rs.df
+    df = Rs.df
     datasources = Rs.plan.get("datasources")
     datasources = datasources.split(",")
     remappings = Rs.plan.get(Rs.remapping_key)
-    assert len(remappings) == len(datasources), f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
-# %%
+    assert len(remappings) == len(datasources), (
+        f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
+    )
+    # %%
     for ds, remapping in zip(datasources, remappings):
         print(remapping)
         # Use .at or .loc with a list to assign the entire dictionary object
         mask = df["ds"] == ds
         Rs.df.loc[mask, "remapping"] = [remapping] * mask.sum()
 
-# %%
+    # %%
 
     datasources["lms"] = Rs.plan["datasources"]["lms"]
     Rs.plan["datasources"] = datasources

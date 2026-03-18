@@ -6,4 +6,3 @@ from .resenc_explorer import (
     infer_resenc_preset_name,
     plan_like_resenc_config,
 )
-

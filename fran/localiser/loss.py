@@ -1,16 +1,17 @@
 # %%
 import matplotlib.pyplot as plt
-
 from fran.localiser.helpers import iou, iou_wh
+
 plt.ion()
 # matplotlib.use('Agg')
-import numpy as np
+import ipdb
 import lightning as L
+import numpy as np
 import torch
 
-import ipdb
-
 tr = ipdb.set_trace
+
+
 # class YOLOLoss(torch.nn.modules.loss._Loss):
 class YOLOLoss(L.LightningModule):
     """A loss function to train YOLO v2

@@ -3,18 +3,10 @@
 
 
 # %%
-import argparse
-import  time
-from datetime import timedelta
-from typing import OrderedDict
-import torch.optim as optim
-from torch.autograd import Variable
 from fran.architectures.unet3d.buildingblocks import *
-from utilz.imageviewers import ImageMaskViewer
 from fastcore.foundation import L
 
 from fran.transforms.batchtransforms import *
-from fran.architectures.unet3d.model import Generator, Discriminator_ub
 from fran.data.dataset import *
 from fran.evaluation.losses import *
 from fran.configs.parser import *
@@ -167,6 +159,14 @@ class cGANMaskOneHot(ItemTransform):
 
 
 if __name__ == "__main__":
+    import argparse
+    import time
+    from datetime import timedelta
+    from typing import OrderedDict
+    import torch.optim as optim
+    from torch.autograd import Variable
+    from utilz.imageviewers import ImageMaskViewer
+    from fran.architectures.unet3d.model import Generator, Discriminator_ub
 
 
     bs,max_workers=8,16

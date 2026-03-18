@@ -1,25 +1,6 @@
+from typing import Type, Union
+
 import lightning.pytorch as pl
-
-from typing import Union, Type, List, Tuple
-
-import torch
-from dynamic_network_architectures.architectures.abstract_arch import (
-    AbstractDynamicNetworkArchitectures,
-    test_submodules_loadable,
-)
-from dynamic_network_architectures.building_blocks.helper import convert_conv_op_to_dim
-from dynamic_network_architectures.building_blocks.plain_conv_encoder import PlainConvEncoder
-from dynamic_network_architectures.building_blocks.residual import BasicBlockD, BottleneckD
-from dynamic_network_architectures.building_blocks.residual_encoders import ResidualEncoder
-from dynamic_network_architectures.building_blocks.unet_decoder import UNetDecoder
-from dynamic_network_architectures.building_blocks.unet_residual_decoder import UNetResDecoder
-from dynamic_network_architectures.initialization.weight_init import InitWeights_He
-from dynamic_network_architectures.initialization.weight_init import init_last_bn_before_add_to_0
-from torch import nn
-from torch.nn.modules.conv import _ConvNd
-from torch.nn.modules.dropout import _DropoutNd
-from torch import nn
-
 from dynamic_network_architectures.architectures.unet import (
     PlainConvUNet,
     ResidualEncoderUNet,
@@ -28,10 +9,14 @@ from dynamic_network_architectures.building_blocks.helper import (
     convert_dim_to_conv_op,
     get_matching_instancenorm,
 )
+from dynamic_network_architectures.building_blocks.residual import (
+    BasicBlockD,
+    BottleneckD,
+)
 from nnunetv2.experiment_planning.experiment_planners.network_topology import (
     get_pool_and_conv_props,
 )
-
+from torch import nn
 
 _PLAIN_BLOCKS_PER_STAGE_ENCODER = (2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2)
 _PLAIN_BLOCKS_PER_STAGE_DECODER = (2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2)
@@ -155,10 +140,20 @@ def _compute_topology(plan: dict):
     features_per_stage = tuple(
         min(max_num_features, 32 * 2**i) for i in range(num_stages)
     )
-    return conv_op, norm_op, patch_size, num_stages, features_per_stage, strides, kernel_sizes
+    return (
+        conv_op,
+        norm_op,
+        patch_size,
+        num_stages,
+        features_per_stage,
+        strides,
+        kernel_sizes,
+    )
 
 
-def create_plainconvunet_pl(model_params: dict, plan: dict, deep_supervision: bool = True):
+def create_plainconvunet_pl(
+    model_params: dict, plan: dict, deep_supervision: bool = True
+):
     (
         conv_op,
         norm_op,
@@ -200,7 +195,9 @@ def create_plainconvunet_pl(model_params: dict, plan: dict, deep_supervision: bo
     return model
 
 
-def create_resencunet_l_pl(model_params: dict, plan: dict, deep_supervision: bool = True):
+def create_resencunet_l_pl(
+    model_params: dict, plan: dict, deep_supervision: bool = True
+):
     (
         conv_op,
         norm_op,
@@ -241,8 +238,12 @@ def create_resencunet_l_pl(model_params: dict, plan: dict, deep_supervision: boo
     return model
 
 
-if __name__ == '__main__':
-    
+if __name__ == "__main__":
+    import torch
+    from dynamic_network_architectures.architectures.abstract_arch import (
+        test_submodules_loadable,
+    )
+
     network = ResidualEncoderUNetPL(
         input_channels=32,
         n_stages=6,

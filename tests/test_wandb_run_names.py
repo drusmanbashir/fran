@@ -1,5 +1,9 @@
 from fran.managers import wandb as wandb_mod
-from utilz.random_word_maker import logical_word_capacity, ordered_word_suffixes, pattern_capacity
+from utilz.random_word_maker import (
+    logical_word_capacity,
+    ordered_word_suffixes,
+    pattern_capacity,
+)
 
 
 def test_logical_word_capacity_matches_requested_scheme():

@@ -1,16 +1,17 @@
 # %%
 import matplotlib.pyplot as plt
-
 from fran.localiser.helpers import iou, iou_wh
+
 plt.ion()
 # matplotlib.use('Agg')
-import numpy as np
+import ipdb
 import lightning as L
+import numpy as np
 import torch
 
-import ipdb
-
 tr = ipdb.set_trace
+
+
 # class YOLOLoss(torch.nn.modules.loss._Loss):
 class YOLOLoss(L.LightningModule):
     """A loss function to train YOLO v2
@@ -248,16 +249,16 @@ def convert_cells_to_bboxes(predictions, anchors, s, is_predictions=True):
     # Returning the reshaped and converted bounding box list
     return converted_bboxes.tolist()
 
-# %%
-#link :https://blog.flaport.net/yolo-part-1.html
-from fran.localiser.data import *
-import torch
-import lightning as L
-from torch.optim.lr_scheduler import OneCycleLR
-import matplotlib.pyplot as plt
-from fran.localiser.loss import YOLOLoss
-from fran.localiser.helpers import *
 
+# %%
+# link :https://blog.flaport.net/yolo-part-1.html
+import lightning as L
+import matplotlib.pyplot as plt
+import torch
+from fran.localiser.data import *
+from fran.localiser.helpers import *
+from fran.localiser.loss import YOLOLoss
+from torch.optim.lr_scheduler import OneCycleLR
 
 
 class TinyYOLOv2(L.LightningModule):
@@ -284,10 +285,10 @@ class TinyYOLOv2(L.LightningModule):
 
         self.save_hyperparameters()
         self.create_model(anchors)
-        self.lossfunc = YOLOLoss(anchors = anchors)
+        self.lossfunc = YOLOLoss(anchors=anchors)
         # Layers
 
-    def create_model(self,anchors):
+    def create_model(self, anchors):
         self.relu = torch.nn.LeakyReLU(0.1, inplace=True)
         self.pool = torch.nn.MaxPool2d(2, 2)
         self.slowpool = torch.nn.MaxPool2d(2, 1)
@@ -308,7 +309,9 @@ class TinyYOLOv2(L.LightningModule):
         self.conv7 = torch.nn.Conv2d(512, 1024, 3, 1, 1, bias=False)
         self.norm8 = torch.nn.BatchNorm2d(1024, momentum=0.1)
         self.conv8 = torch.nn.Conv2d(1024, 1024, 3, 1, 1, bias=False)
-        self.conv9 = torch.nn.Conv2d(1024, len(anchors) * (5 + self.num_classes), 1, 1, 0)
+        self.conv9 = torch.nn.Conv2d(
+            1024, len(anchors) * (5 + self.num_classes), 1, 1, 0
+        )
 
     def forward(self, x, yolo=True):
         x = self.relu(self.pool(self.norm1(self.conv1(x))))
@@ -363,7 +366,7 @@ class TinyYOLOv2(L.LightningModule):
         batchsize = image.shape[0]
         bbox = batch["bbox_yolo"]
 
-        classes_probs = torch.ones(batchsize,2,device = bbox.device)
+        classes_probs = torch.ones(batchsize, 2, device=bbox.device)
         # cals = torch.zeros(self.bs, 1, 1, device=bbox.device)
         bbox_clas = torch.cat([bbox, classes_probs], 1)
         bbox_clas = bbox_clas.unsqueeze(1)
@@ -401,26 +404,37 @@ class TinyYOLOv2(L.LightningModule):
 
 # %
 if __name__ == "__main__":
-# %%
-#SECTION:-------------------- VOC--------------------------------------------------------------------------------------
+    # %%
+    # SECTION:-------------------- VOC--------------------------------------------------------------------------------------
 
     from tqdm import tqdm
-    device = 'cuda'
-    network = TinyYOLOv2(bs=32,lr=1e-2,num_classes=20)
+
+    device = "cuda"
+    network = TinyYOLOv2(bs=32, lr=1e-2, num_classes=20)
     # model = TinyYOLOv2.load_from_checkpoint("/home/ub/code/fran/fran/logs/lightning_logs/version_2/checkpoints/last.ckpt")
     network.to(device)
-# %%
+    # %%
     import glob
+
     batch_size = 192
-    all_idxs = np.array([int(fn.split("2008_")[-1].split(".jpg")[0]) for fn in sorted(glob.glob("/s/datasets_bkp/VOCdevkit/VOC2012/JPEGImages/2008_*"))], dtype=int)
-    lossfunc = YOLOLoss(anchors=network.anchors, coord_prefill=int(5*all_idxs.shape[0]))
+    all_idxs = np.array(
+        [
+            int(fn.split("2008_")[-1].split(".jpg")[0])
+            for fn in sorted(
+                glob.glob("/s/datasets_bkp/VOCdevkit/VOC2012/JPEGImages/2008_*")
+            )
+        ],
+        dtype=int,
+    )
+    lossfunc = YOLOLoss(
+        anchors=network.anchors, coord_prefill=int(5 * all_idxs.shape[0])
+    )
     optimizer = torch.optim.Adam(network.conv9.parameters(), lr=0.003)
     np.random.RandomState(seed=42).shuffle(all_idxs)
-    valid_idxs = all_idxs[-4*batch_size:]
-    train_idxs = all_idxs[:-4*batch_size]
+    valid_idxs = all_idxs[-4 * batch_size :]
+    train_idxs = all_idxs[: -4 * batch_size]
 
-
-# %%
+    # %%
 
     for e in range(20):
         np.random.shuffle(train_idxs)

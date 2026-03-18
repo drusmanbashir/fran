@@ -5,18 +5,19 @@ from pathlib import Path
 import pandas as pd
 import ray
 from fastcore.basics import GetAttr, store_attr
+from fran.configs.parser import is_excel_None
+from fran.preprocessing.preprocessor import (
+    Preprocessor,
+    generate_bboxes_from_lms_folder,
+    store_labels_info,
+)
+from fran.preprocessing.rayworker_base import RayWorkerBase
+from fran.utils.folder_names import folder_names_from_plan
 from utilz.cprint import cprint
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
 from utilz.stringz import headline, info_from_filename
-
-from fran.configs.parser import ConfigMaker, is_excel_None
-from fran.preprocessing.preprocessor import (Preprocessor,
-                                             generate_bboxes_from_lms_folder,
-                                             store_labels_info)
-from fran.preprocessing.rayworker_base import RayWorkerBase
-from fran.utils.folder_names import folder_names_from_plan
 
 MIN_SIZE = 32  # min size in a single dimension of any image
 
@@ -26,7 +27,6 @@ import pandas as pd
 
 
 class _LBDSamplerWorkerBase(RayWorkerBase):
-
     def __init__(
         self,
         project,
@@ -205,7 +205,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 ]
             )
         else:
-
             self.results = [self.local_worker.process(self.mini_dfs[0])]
 
         self.results_df = pd.DataFrame(il.chain.from_iterable(self.results))
@@ -242,7 +241,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             out_fn = self.output_folder / "labels_all.json"
             save_json(labels_all, out_fn)
         except:
-
             print(
                 "labels_all is not set. You may need to run store_labels_info separately"
             )
@@ -368,9 +366,10 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
 
 
 if __name__ == "__main__":
-# %%
-# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR>
+    from fran.configs.parser import ConfigMaker
 
+    # %%
+    # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR>
     from fran.managers import Project
     from fran.utils.common import *
 
@@ -390,12 +389,12 @@ if __name__ == "__main__":
     spacing = plan["spacing"]
     # plan["remapping_imported"][0]
     existing_fldr = folder_names_from_plan(P, plan).get("data_folder_source", None)
-# %%
+    # %%
 
     num_processes = 4
     L = LabelBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr)
 
-# %%
+    # %%
     overwrite = False
     num_processes = 5
     debug_ = False
@@ -403,11 +402,11 @@ if __name__ == "__main__":
         overwrite=overwrite, device="cpu", num_processes=num_processes, debug=debug_
     )
     L.process()
-# %%
-# %%
+    # %%
+    # %%
     L.mini_dfs = np.array_split(L.df, num_processes)
     mini_df = L.mini_dfs[0].iloc[:3]
-# %%
+    # %%
     overwrite = False
     LL = LBDSamplerWorkerImpl(
         project=L.project,
@@ -416,15 +415,15 @@ if __name__ == "__main__":
         output_folder=L.output_folder,
     )
     LL.process(mini_df)
-# %%
-# %%
+    # %%
+    # %%
     row = mini_df.iloc[1]
     data = {
         "image": row["image"],
         "lm": row["lm"],
         "remapping": row["remapping"],
     }
-# %%
+    # %%
     data["image"]
 
     # Apply transforms
@@ -456,10 +455,10 @@ if __name__ == "__main__":
     }
 
     d
-# %%
+    # %%
 
-# %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     # for img_file, lm_file in zip(I.L.image_files, I.L.lm_files):
     row = L.df.iloc[0]
@@ -469,7 +468,7 @@ if __name__ == "__main__":
     src = list(remapping.keys())
     dest = list(remapping.values())
 
-# %%
+    # %%
     row = L.df.iloc[0]
     data = {
         "image": img_file,
@@ -477,7 +476,7 @@ if __name__ == "__main__":
         "remapping": row["remapping"],
     }
 
-# %%
+    # %%
     # Apply transforms
 
     # self.tfms_keys = "LoadT,Chan,Dev,Crop,Remap,Indx"
@@ -503,17 +502,17 @@ if __name__ == "__main__":
         coords["end"],
     )
 
-# %%
+    # %%
     for index, row in L.df.iterrows():
         print(row)
         tr()
-# %%
+        # %%
         remap = I.L.plan["remapping"]
         I.L.df = I.L.df.assign(remapping=[remap] * len(I.L.df))
 
-# %%
+    # %%
     L.results_df = pd.DataFrame(il.chain.from_iterable(L.results))
-# %%
+    # %%
 
     derive_bboxes = False
     ts = L.results_df.shape
@@ -531,17 +530,17 @@ if __name__ == "__main__":
         print(
             "since some files skipped, dataset stats are not being stored. run L.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
         )
-# %%
+    # %%
     add_plan_to_db(
         L.project, L.plan, db_path=L.project.db, data_folder_lbd=L.output_folder
     )
 
-# %%
+    # %%
 
     add_plan_to_db(
         L.project, I.L.plan, db_path=I.L.project.db, data_folder_lbd=I.L.output_folder
     )
-# %%
+    # %%
     add_plan_to_db(
         L.project,
         L.plan,
@@ -549,7 +548,7 @@ if __name__ == "__main__":
         data_folder_source=L.data_folder,
         data_folder_lbd=L.output_folder,
     )
-# %%
+    # %%
 
     output_fldr = L.output_folder
 

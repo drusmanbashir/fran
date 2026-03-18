@@ -1,24 +1,20 @@
 # %%
-from fastcore.basics import store_attr
-from typing import Union
-import numpy as np
-from monai.utils.enums import DiceCEReduction, LossReduction
-import lightning.pytorch as pl
-
-from monai.utils.module import look_up_option
-from typing import Callable, Optional
-import torch.nn as nn
 import itertools as il
+from typing import Callable, Optional, Union
 
-import torch
 import ipdb
-from nnunet.utilities.nd_softmax import softmax_helper
-from typing import Union
+import lightning.pytorch as pl
+import numpy as np
+import torch
+import torch.nn as nn
+from fastcore.basics import store_attr
+from monai.utils.enums import DiceCEReduction, LossReduction
+from monai.utils.module import look_up_option
 from utilz.helpers import info_from_filename, range_inclusive
 
 tr = ipdb.set_trace
-from monai.losses import DiceLoss
 import torch.nn.functional as F
+from monai.losses import DiceLoss
 
 # Cell
 
@@ -32,7 +28,7 @@ class _DiceCELossMultiOutput(nn.Module):
         other_act: Optional[Callable] = None,
         squared_pred: bool = False,
         jaccard: bool = False,
-        reduction: Union[LossReduction , str] = LossReduction.MEAN,
+        reduction: Union[LossReduction, str] = LossReduction.MEAN,
         smooth_nr: float = 1e-5,
         smooth_dr: float = 1e-5,
         batch: bool = False,
@@ -42,8 +38,10 @@ class _DiceCELossMultiOutput(nn.Module):
     ) -> None:
         super().__init__()
         self.include_background = bool(include_background)
-        
-        dice_reduction = LossReduction.NONE # unreduced loss is outputted for logging and will be reduced manually
+
+        dice_reduction = (
+            LossReduction.NONE
+        )  # unreduced loss is outputted for logging and will be reduced manually
         reduction = look_up_option(reduction, DiceCEReduction).value
         self.dice = DiceLoss(
             include_background=include_background,
@@ -67,12 +65,18 @@ class _DiceCELossMultiOutput(nn.Module):
         self.lambda_ce = lambda_ce
         # self.reduction=reduction
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor, use_mask=False) ->dict:
+    def forward(
+        self, input: torch.Tensor, target: torch.Tensor, use_mask=False
+    ) -> dict:
         # input: [N, C, ...] logits
         # target: [N,1,...] or [N,...] with class indices (possibly >1)
 
-        if len(input.shape) != len(target.shape) and not (target.ndim == input.ndim - 1):
-            raise ValueError(f"input {tuple(input.shape)} vs target {tuple(target.shape)} mismatch")
+        if len(input.shape) != len(target.shape) and not (
+            target.ndim == input.ndim - 1
+        ):
+            raise ValueError(
+                f"input {tuple(input.shape)} vs target {tuple(target.shape)} mismatch"
+            )
 
         N, C, *sp = input.shape
 
@@ -87,7 +91,7 @@ class _DiceCELossMultiOutput(nn.Module):
         t_idx = t_idx.long()
 
         # --- FOR  a 2 class setup, we keep only the foreground and compute its dice
-        if C == 2: 
+        if C == 2:
             # convert target to a binary mask, everything >0 becomes foreground 1 , i.e., labels 2 ,3 ,4 -> 1
             t_idx = (t_idx > 0).long()
         else:
@@ -98,36 +102,38 @@ class _DiceCELossMultiOutput(nn.Module):
 
         # --- losses ---
         # DiceLoss has to_onehot_y=True, so pass indices
-        t_dice = t_idx.unsqueeze(1) 
-        loss_dice_unreduced = self.dice(input, t_dice)          # [N, C, ...] unreduced
+        t_dice = t_idx.unsqueeze(1)
+        loss_dice_unreduced = self.dice(input, t_dice)  # [N, C, ...] unreduced
         if loss_dice_unreduced.ndim > 2:
             # reduce spatial dims only, keep [N, C] for per-case/per-class logging
             loss_dice_unreduced = loss_dice_unreduced.flatten(start_dim=2).mean(-1)
-        loss_dice_reduced   = loss_dice_unreduced.mean()
+        loss_dice_reduced = loss_dice_unreduced.mean()
 
-        loss_ce = self.cross_entropy(input, t_idx)              # CE expects indices
+        loss_ce = self.cross_entropy(input, t_idx)  # CE expects indices
 
         total_loss = self.lambda_dice * loss_dice_reduced + self.lambda_ce * loss_ce
         meta = getattr(target, "meta", {})
 
-        output_dici= {
-                "loss": total_loss,
+        output_dici = {
+            "loss": total_loss,
             "loss_ce": loss_ce.detach(),
             "loss_dice": loss_dice_reduced.detach(),
             "loss_dice_unreduced": loss_dice_unreduced.detach(),
-                "meta": meta
+            "meta": meta,
         }
         return output_dici
+
 
 class CombinedLoss(_DiceCELossMultiOutput):
     def __init__(self, fg_classes, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fg_classes=fg_classes
+        self.fg_classes = fg_classes
 
     def forward(self, input, target, use_mask=False):
         losses = super().forward(input, target, use_mask=use_mask)
         self.set_loss_dict(losses)
         return losses["loss"]
+
     #
     # def set_loss_dict(self, losses):
     #     losses[1:] = [
@@ -142,7 +148,6 @@ class CombinedLoss(_DiceCELossMultiOutput):
     #         )
     #     }
 
-
     def set_loss_dict(self, losses):
         per_case_class = losses["loss_dice_unreduced"]  # [N, C]
         bs, num_classes = per_case_class.shape[:2]
@@ -152,7 +157,11 @@ class CombinedLoss(_DiceCELossMultiOutput):
         case_labels = [
             f"loss_dice_batch{b}_label{c}" for b, c in il.product(range(bs), class_ids)
         ]
-        keys = ["loss", "loss_ce", "loss_dice"] + [f"loss_dice_label{i}" for i in class_ids] + case_labels
+        keys = (
+            ["loss", "loss_ce", "loss_dice"]
+            + [f"loss_dice_label{i}" for i in class_ids]
+            + case_labels
+        )
         vals = list(
             il.chain(
                 [losses["loss"], losses["loss_ce"], losses["loss_dice"]],
@@ -160,15 +169,16 @@ class CombinedLoss(_DiceCELossMultiOutput):
                 per_case_class.reshape(-1),
             )
         )
-        self.loss_dict = {k: (v.item() if torch.is_tensor(v) else v) for k, v in zip(keys, vals)}
+        self.loss_dict = {
+            k: (v.item() if torch.is_tensor(v) else v) for k, v in zip(keys, vals)
+        }
+
     def create_labels(self, bs, fg_classes):
         label_maker = lambda x: "loss_dice_batch{0}_label{1}".format(*x)
         batches = list(range(bs))
         class_start = 0 if self.include_background else 1
         classes = range_inclusive(class_start, fg_classes)
-        self.class_labels =  [
-            "loss_dice_label{}".format(x) for x in classes
-        ]
+        self.class_labels = ["loss_dice_label{}".format(x) for x in classes]
 
         self.case_recorder_labels = il.product(batches, classes)
         self.case_recorder_labels = map(label_maker, self.case_recorder_labels)
@@ -176,7 +186,13 @@ class CombinedLoss(_DiceCELossMultiOutput):
 
 
 class DeepSupervisionLoss(pl.LightningModule):
-    def __init__(self, levels: int, deep_supervision_scales, fg_classes: int, include_background=False):
+    def __init__(
+        self,
+        levels: int,
+        deep_supervision_scales,
+        fg_classes: int,
+        include_background=False,
+    ):
         super().__init__()
         store_attr()
         assert fg_classes > 0, "fg_classes should be at least 1"
@@ -203,7 +219,7 @@ class DeepSupervisionLoss(pl.LightningModule):
         self.case_recorder_labels = list(il.product(batches, classes))
         self.case_recorder_labels = map(label_maker, self.case_recorder_labels)
         self.filename_labels = map(filename_maker, batches)
-        self.caseid_labels  =map(caseid_maker, batches)
+        self.caseid_labels = map(caseid_maker, batches)
 
     def create_weights(self, device):
         weights = torch.tensor(
@@ -258,7 +274,10 @@ class DeepSupervisionLoss(pl.LightningModule):
         if isinstance(preds, (list, tuple)):  # multires lists in training
             if isinstance(target, torch.Tensor):
                 target = self.apply_ds_scales(target, "nearest")
-                losses = [self.LossFunc(xx, yy, use_mask=use_mask) for xx, yy in zip(preds, target)]
+                losses = [
+                    self.LossFunc(xx, yy, use_mask=use_mask)
+                    for xx, yy in zip(preds, target)
+                ]
 
         elif isinstance(preds, torch.Tensor):  # tensor
             if (
@@ -267,13 +286,16 @@ class DeepSupervisionLoss(pl.LightningModule):
                 preds = torch.unbind(preds, dim=1)
                 preds = self.apply_ds_scales(preds, "trilinear")
                 target = self.apply_ds_scales(target, "nearest")
-                losses = [self.LossFunc(xx, yy, use_mask=use_mask) for xx, yy in zip(preds, target)]
+                losses = [
+                    self.LossFunc(xx, yy, use_mask=use_mask)
+                    for xx, yy in zip(preds, target)
+                ]
             else:  # validation loss
                 losses = [self.LossFunc(preds, target, use_mask=use_mask)]
         else:
             raise NotImplementedError("preds must be either list or stacked tensor")
 
-        self.set_loss_dict(losses[0])  # 
+        self.set_loss_dict(losses[0])  #
         weights = self.weights[: len(losses)]
         losses_weighted = torch.stack(
             [w * loss["loss"] for w, loss in zip(weights, losses)]
@@ -281,62 +303,77 @@ class DeepSupervisionLoss(pl.LightningModule):
         losses_out = losses_weighted.sum()
         return losses_out
 
-            # ce_loss.detach(),
-            # loss_dice_reduced.detach(),
-            # loss_dice_unreduced.squeeze(2).squeeze(2).squeeze(2).detach(),
-    def set_loss_dict(self, losses:dict):
-        #0. Total loss
-        #1. CE loss
-        #2  loss_dice_reduced
-        #3 loss_dice_unreduced, ie.e., NXC if foreground on ly , then its Nx1, if 2 fg_classes, Nx3 and so on by including background 
+        # ce_loss.detach(),
+        # loss_dice_reduced.detach(),
+        # loss_dice_unreduced.squeeze(2).squeeze(2).squeeze(2).detach(),
+
+    def set_loss_dict(self, losses: dict):
+        # 0. Total loss
+        # 1. CE loss
+        # 2  loss_dice_reduced
+        # 3 loss_dice_unreduced, ie.e., NXC if foreground on ly , then its Nx1, if 2 fg_classes, Nx3 and so on by including background
         per_case_class = losses["loss_dice_unreduced"]  # [N, C]
         bs, num_classes = per_case_class.shape[:2]
         first_label = 0 if self.include_background else 1
         class_ids = list(range(first_label, first_label + num_classes))
-        class_losses = per_case_class.mean(0) # this collapses the batches , now only per class dice losses remain
+        class_losses = per_case_class.mean(
+            0
+        )  # this collapses the batches , now only per class dice losses remain
         meta = losses["meta"]
         filenames = meta.get("filename_or_obj")
         if isinstance(filenames, str):
             filenames = [filenames]
         case_ids = []
         for fn in filenames:
-                if fn is None:
-                    case_ids.append(None)
-                    continue
-                fn_name = fn.split("/")[-1]
-                parsed = info_from_filename(fn_name)
-                case_ids.append(parsed["case_id"])
+            if fn is None:
+                case_ids.append(None)
+                continue
+            fn_name = fn.split("/")[-1]
+            parsed = info_from_filename(fn_name)
+            case_ids.append(parsed["case_id"])
 
         self.loss_dict = {
-            "loss": losses["loss"].item() if torch.is_tensor(losses["loss"]) else losses["loss"],
-            "loss_ce": losses["loss_ce"].item() if torch.is_tensor(losses["loss_ce"]) else losses["loss_ce"],
-            "loss_dice": losses["loss_dice"].item() if torch.is_tensor(losses["loss_dice"]) else losses["loss_dice"],
+            "loss": losses["loss"].item()
+            if torch.is_tensor(losses["loss"])
+            else losses["loss"],
+            "loss_ce": losses["loss_ce"].item()
+            if torch.is_tensor(losses["loss_ce"])
+            else losses["loss_ce"],
+            "loss_dice": losses["loss_dice"].item()
+            if torch.is_tensor(losses["loss_dice"])
+            else losses["loss_dice"],
         }
         for class_id, loss in zip(class_ids, class_losses):
-            self.loss_dict[f"loss_dice_label{class_id}"] = loss.item() if torch.is_tensor(loss) else loss
+            self.loss_dict[f"loss_dice_label{class_id}"] = (
+                loss.item() if torch.is_tensor(loss) else loss
+            )
         for batch_ind in range(bs):
             self.loss_dict[f"batch{batch_ind}_filename"] = filenames[batch_ind]
             self.loss_dict[f"batch{batch_ind}_case_id"] = case_ids[batch_ind]
             for class_ind, class_id in enumerate(class_ids):
                 val = per_case_class[batch_ind][class_ind]
-                self.loss_dict[f"loss_dice_batch{batch_ind}_label{class_id}"] = val.item() if torch.is_tensor(val) else val
+                self.loss_dict[f"loss_dice_batch{batch_ind}_label{class_id}"] = (
+                    val.item() if torch.is_tensor(val) else val
+                )
 
 
 # %%
 if __name__ == "__main__":
+    from nnunet.utilities.nd_softmax import softmax_helper
+
     softmax_helper = lambda x: F.softmax(x, 1)
     P = Project("nodes")
-    conf = ConfigMaker(P,  configuration_filename=None).config
+    conf = ConfigMaker(P, configuration_filename=None).config
     loss_params = conf["loss_params"]
-    
+
     targ = torch.load("tests/files/image.pt", weights_only=False)
-    pred = torch.load("tests/files/pred.pt",weights_only=False)
-    target = torch.load("tests/files/target.pt",weights_only=False)
+    pred = torch.load("tests/files/pred.pt", weights_only=False)
+    target = torch.load("tests/files/target.pt", weights_only=False)
 
     fg_classes = 1
-# %%
-    loss_func = CombinedLoss(**loss_params, fg_classes =fg_classes)
-    
+    # %%
+    loss_func = CombinedLoss(**loss_params, fg_classes=fg_classes)
+
     loss = loss_func.forward(pred, target)
 # %%
 

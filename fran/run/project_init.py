@@ -1,15 +1,14 @@
 # %%
-import argparse
+
 import ipdb
+
 tr = ipdb.set_trace
 
 # very top of project_init.py (above any 3rd-party imports)
-import os
-
-from utilz.stringz import headline
 
 from fran.data.dataregistry import DS
 from fran.managers.project import Project
+from utilz.stringz import headline
 
 
 def main(args):
@@ -35,11 +34,18 @@ def main(args):
 
 
 if __name__ == "__main__":
+    import argparse
+
     parser = argparse.ArgumentParser(description="Manage FRAN projects")
-    parser.add_argument("-t", "--title", "--project-title", "--project", help="Project title", dest="title")
     parser.add_argument(
-        "-m", "--mnemonic", help="Mnemonic, must be in MNEMONICS"
+        "-t",
+        "--title",
+        "--project-title",
+        "--project",
+        help="Project title",
+        dest="title",
     )
+    parser.add_argument("-m", "--mnemonic", help="Mnemonic, must be in MNEMONICS")
     parser.add_argument(
         "-n",
         "--num-processes",
@@ -55,13 +61,13 @@ if __name__ == "__main__":
     )
     parser.add_argument("--test", action="store_true", help="Mark datasources as test")
     parser.add_argument("--delete", action="store_true", help="Delete project")
-# %%
+    # %%
     args = parser.parse_known_args()[0]
     # args.multiprocess=False
     # args.title = 'tmp2'
     # args.mnemonic = 'litsmall'
     # args.datasources = ['litsmall']
 
-# %%
+    # %%
     main(args)
 # %%

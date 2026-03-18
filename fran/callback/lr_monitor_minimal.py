@@ -56,8 +56,14 @@ class MinimalLearningRateMonitor(Callback):
         if not metrics:
             return
         root_device = getattr(getattr(trainer, "strategy", None), "root_device", "cpu")
-        trainer.callback_metrics.update({k: torch.tensor(v, device=root_device) for k, v in metrics.items()})
-        step = getattr(getattr(getattr(trainer, "fit_loop", None), "epoch_loop", None), "_batches_that_stepped", None)
+        trainer.callback_metrics.update(
+            {k: torch.tensor(v, device=root_device) for k, v in metrics.items()}
+        )
+        step = getattr(
+            getattr(getattr(trainer, "fit_loop", None), "epoch_loop", None),
+            "_batches_that_stepped",
+            None,
+        )
         if step is None:
             step = getattr(trainer, "global_step", 0)
         for logger in trainer.loggers:
@@ -73,4 +79,3 @@ class MinimalLearningRateMonitor(Callback):
         if self.logging_interval == "step":
             return
         self._emit(trainer)
-

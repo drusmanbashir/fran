@@ -3,15 +3,10 @@
 # training.py — minimal runner to Tm.fit()
 import ipdb
 import torch
-from utilz.stringz import headline
-
-from fran.callback.test import PeriodicTest
 from fran.utils.misc import parse_devices
 
 tr = ipdb.set_trace
 
-import argparse
-from typing import List, Union
 
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
@@ -26,7 +21,7 @@ def print_device_info():
         print(f"Found {n} CUDA device(s).")
         for i in range(n):
             props = torch.cuda.get_device_properties(i)
-            print(f"cuda:{i} — {props.name}, {props.total_memory/1024**3:.1f} GB")
+            print(f"cuda:{i} — {props.name}, {props.total_memory / 1024**3:.1f} GB")
 
 
 def str2bool(v: str) -> bool:
@@ -35,7 +30,10 @@ def str2bool(v: str) -> bool:
 
 def main(args):
 
-    import torch, os
+    import os
+
+    import torch
+
     print("CUDA_VISIBLE_DEVICES:", os.environ.get("CUDA_VISIBLE_DEVICES"))
     print("torch.version.cuda:", torch.version.cuda)
     print("torch.cuda.is_available():", torch.cuda.is_available())
@@ -56,27 +54,27 @@ def main(args):
         conf = C.configs
 
         # Update dataset params from CLI
-        cbs=[]
+        cbs = []
         conf["dataset_params"]["cache_rate"] = args.cache_rate
         if args.ds_type is not None:
             conf["dataset_params"]["ds_type"] = args.ds_type
         if args.fold is not None:
             conf["dataset_params"]["fold"] = args.fold
 
-
         # --- Trainer --------------------------------------------------------------
         print_device_info()
 
-        Tm = Trainer(project_title=P.project_title, configs= conf,run_name=  args.run_name)
+        Tm = Trainer(
+            project_title=P.project_title, configs=conf, run_name=args.run_name
+        )
 
         Tm.setup(
-
             compiled=args.compiled,
             batch_size=6,
             cbs=cbs,
             devices=devices,
             epochs=args.epochs if not args.profiler else 1,
-            lr = args.lr,
+            lr=args.lr,
             profiler=args.profiler,
             wandb=args.wandb,
             description=args.description,
@@ -93,15 +91,16 @@ def main(args):
         dlt = D.train_dataloader()
         dlv = D.val_dataloader()
         for batch in dlv:
-            print(batch['image'].shape)
+            print(batch["image"].shape)
 
         for batch in dlt:
-            print(batch['image'].shape)
-
+            print(batch["image"].shape)
 
 
 # %%
 if __name__ == "__main__":
+    import argparse
+
     parser = argparse.ArgumentParser(
         description="Train FRAN model up to Tm.fit(), no preprocessing."
     )
@@ -121,9 +120,7 @@ if __name__ == "__main__":
         default=1,
         help='GPU devices: "0", "0,1", or count like "2"',
     )
-    parser.add_argument(
-        "-lr", "--learning-rate", dest="lr", type=float, default=None
-    )
+    parser.add_argument("-lr", "--learning-rate", dest="lr", type=float, default=None)
     parser.add_argument(
         "--bs",
         "--batch-size",
@@ -139,7 +136,7 @@ if __name__ == "__main__":
         default=None,
         help="If specified, will override conf['dataset_params']['fold']",
     )
-    parser.add_argument("-e" , "--epochs", type=int, default=600, help="Max epochs")
+    parser.add_argument("-e", "--epochs", type=int, default=600, help="Max epochs")
     parser.add_argument(
         "--compiled",
         type=str2bool,
@@ -169,13 +166,23 @@ if __name__ == "__main__":
         choices=[None, "lmdb", "memmap", "zarr"],
         help="Dataset backend if supported",
     )
-    parser.add_argument( "--periodic-test", type=int, default=0, help="Test every n epochs. Default (0) means no test is done")
-    parser.add_argument( "--bsf",
-        "--batchsize-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batchsize_finder"
+    parser.add_argument(
+        "--periodic-test",
+        type=int,
+        default=0,
+        help="Test every n epochs. Default (0) means no test is done",
+    )
+    parser.add_argument(
+        "--bsf",
+        "--batchsize-finder",
+        type=str2bool,
+        default=False,
+        help="Enable batch size finder",
+        dest="batchsize_finder",
     )
 
     args = parser.parse_known_args()[0]
-# %%
+    # %%
     # args.fold = 1
     # args.project = "nodes"
     # #
@@ -185,6 +192,6 @@ if __name__ == "__main__":
     # print(args.devices)
     # print("After parse:")
     # print(parse_devices(args.devices))
-# %%
+    # %%
     main(args)
 # %%

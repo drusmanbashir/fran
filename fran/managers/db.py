@@ -1,12 +1,9 @@
 # %%
-import ipdb
 from typing import Union
-import pandas as pd
-from utilz.helpers import folder_name_from_list
-from utilz.stringz import headline
 
-from fran.configs.parser import ConfigMaker
-from fran.utils.folder_names import folder_names_from_plan
+import ipdb
+import pandas as pd
+from utilz.stringz import headline
 
 tr = ipdb.set_trace
 import sqlite3
@@ -35,21 +32,21 @@ COLUMNS_CRITICAL = [
 ]
 
 COLUMNS_TEXT = [
-            "datasources",
-            "lm_groups",
-            "spacing",
-            "expand_by",
-            "fg_indices_exclude",
-            "mode",
-            "imported_folder",
-            "remapping_source_code",
-            "remapping_lbd_code",
-            "remapping_imported_code",
-            "data_folder_whole",
-            "data_folder_pbd",
-            "data_folder_lbd",
-            "data_folder_source",
-        ]
+    "datasources",
+    "lm_groups",
+    "spacing",
+    "expand_by",
+    "fg_indices_exclude",
+    "mode",
+    "imported_folder",
+    "remapping_source_code",
+    "remapping_lbd_code",
+    "remapping_imported_code",
+    "data_folder_whole",
+    "data_folder_pbd",
+    "data_folder_lbd",
+    "data_folder_source",
+]
 
 COLUMNS_NONCRIT = [
     "data_folder_pbd",
@@ -82,11 +79,7 @@ def _normalize_for_db(v):
 
 
 def _init_db(db_path: str = DB_PATH):
-    ddl_cols = ", ".join(
-        f'"{c}" TEXT'
-        for c in COLUMNS_ALL
-
-    )
+    ddl_cols = ", ".join(f'"{c}" TEXT' for c in COLUMNS_ALL)
     sql = f"""
     CREATE TABLE IF NOT EXISTS "{TABLE}" (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,7 +107,7 @@ def _read_kv_excel(xlsx_path: str, sheet_name=0) -> dict:
     return out
 
 
-def find_matching_plan(db_path: str, plan: dict) ->Union[ dict , None]:
+def find_matching_plan(db_path: str, plan: dict) -> Union[dict, None]:
     """Return row data if a row where all provided key->value pairs match (for known columns)."""
     plan = {k: plan.get(k) for k in COLUMNS_CRITICAL}  # align to fixed schema
     keys = [k for k in COLUMNS_CRITICAL if k in plan]
@@ -139,7 +132,7 @@ def find_matching_plan(db_path: str, plan: dict) ->Union[ dict , None]:
     if row is None:
         print("row not found in db. Below is the sql query")
         headline(sql)
-        headline (params)
+        headline(params)
         return {}
 
     row_out = {
@@ -165,6 +158,7 @@ def _insert_row(conn: sqlite3.Connection, data: dict, data_folder: str = None) -
     conn.commit()
     return cur.lastrowid
 
+
 def add_plan_to_db(
     plan: dict,
     db_path: str = DB_PATH,
@@ -182,9 +176,9 @@ def add_plan_to_db(
         data_folder_pbd,
     ]
     non_none_count = sum(1 for folder in data_folders if folder is not None)
-    assert (
-        non_none_count == 1
-    ), f"Exactly one data_folder argument must be provided, got {non_none_count}"
+    assert non_none_count == 1, (
+        f"Exactly one data_folder argument must be provided, got {non_none_count}"
+    )
 
     # Combine plan with data folder information
     combined_data = plan.copy()
@@ -206,13 +200,12 @@ def add_plan_to_db(
         return _insert_row(conn, combined_data, None)
 
 
-
 def as_dataframe(
     db_path: str,
     table: str = "master_plans",
-    where: Union[str , None] = None,
+    where: Union[str, None] = None,
     params: tuple = (),
-    limit: Union[int , None ]= None,
+    limit: Union[int, None] = None,
 ) -> pd.DataFrame:
     """
     Load a SQLite table into a pandas DataFrame and print it.
@@ -236,9 +229,13 @@ def as_dataframe(
 
 
 if __name__ == "__main__":
-# %%
-# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
+    from fran.configs.parser import ConfigMaker
+
+    # %%
+    # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
     from fran.utils.common import *
+    from fran.utils.folder_names import folder_names_from_plan
+    from utilz.helpers import folder_name_from_list
 
     P = Project("litstmp")
     # P._create_plans_table()
@@ -247,14 +244,14 @@ if __name__ == "__main__":
 
     # P.add_data([DS.litq, DS.lits, DS.drli, DS.litqsmall])
     # P.create('litsmc')
-    C = ConfigMaker(P,  configuration_filename=None)
+    C = ConfigMaker(P, configuration_filename=None)
     C.setup(6)
-    plan = C.configs['plan_train']
+    plan = C.configs["plan_train"]
 
-# %%
+    # %%
     conn = sqlite3.connect(P.db)
     cur = conn.cursor()
-    ss= """DROP TABLE IF EXISTS master_plans"""
+    ss = """DROP TABLE IF EXISTS master_plans"""
     cur.execute(ss)
     conn.commit()
     ss = """ALTER TABLE master_plans ADD COLUMN remapping_imported TEXT"""
@@ -264,17 +261,16 @@ if __name__ == "__main__":
     ss = """ALTER TABLE master_plans ADD COLUMN  merge_imported_labels INTEGER DEFAULT 0"""
     cur.execute(ss)
     conn.commit()
-# %%
-    plan = C.conf['plan_train']
+    # %%
+    plan = C.conf["plan_train"]
     folder_names_from_plan(P, plan)
 
-# %%
-#SECTION:-------------------- DELETE ROW BASED ON COL VALUE MATCH--------------------------------------------------------------------------------------
+    # %%
+    # SECTION:-------------------- DELETE ROW BASED ON COL VALUE MATCH--------------------------------------------------------------------------------------
     conn = sqlite3.connect(P.db)
     sql = """DELETE FROM master_plans WHERE data_folder_source  ='/r/datasets/preprocessed/litstmp/fixed_spacing/spc_080_080_150_drllqlqslts'"""
     cur = conn.cursor()
     cur.execute(sql)
-
 
     pathdad = Path("/s/fran_storage/projects")
     db_paths = list(pathdad.rglob("*.db"))
@@ -302,7 +298,7 @@ if __name__ == "__main__":
 
     all_cols = ", ".join(cols_text + cols_BOOL)
     all_cols = cols_BOOL + cols_text
-# %%
+    # %%
     for dbpath in db_paths:
         cur = sqlite3.connect(dbpath)
         print("connecting to {}".format(dbpath))
@@ -316,7 +312,7 @@ if __name__ == "__main__":
 
         cur.execute(sql)
 
-# %%
+    # %%
     for dbpath in db_paths:
         cur = sqlite3.connect(dbpath)
         for col in all_cols:
@@ -337,36 +333,36 @@ if __name__ == "__main__":
             print(e)
         cur.close()
 
-# %%
+    # %%
     sql = "DELETE FROM master_plans WHERE data_folder_source LIKE '/s/fran%'"
     sql = "PRAGMA table_info(master_plans)"
     db_paths
     dbpath = db_paths[4]
 
-# %%
+    # %%
     conn = sqlite3.connect(dbpath, timeout=30)  # timeout gives it time if locked
     cur = conn.cursor()
     sql = "DELETE FROM master_plans WHERE data_folder_source LIKE '/s/fran%'"
     cur.execute(sql)
     conn.commit()
     conn.close()
-# %%
+    # %%
     con = sqlite3.connect(dbpath)
     cur = con.cursor()
     cur.execute(sql)
     for row in cur.fetchall():
         print(row)
     con.close()
-# %%
+    # %%
     con.commit()
-# %%
+    # %%
     from fran.managers import Project
     from fran.utils.common import *
 
     P = Project("totalseg")
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P,  configuration_filename=None)
+    C = ConfigMaker(P, configuration_filename=None)
     C.setup(1, 1)
     C.plans
     C.set_active_plans(6)
@@ -379,19 +375,19 @@ if __name__ == "__main__":
     print(plan)
     plan["mode"]
 
-# %%
+    # %%
     parent_folder = P.fixed_spacing_folder
     output_folder = folder_name_from_list(
         prefix="spc",
         parent_folder=parent_folder,
         values_list=plan["spacing"],
     )
-# %%
+    # %%
     plan_name = plan.get("plan_name")
     output_name = "_".join([output_folder.name, plan_name])
     output_folder = Path(output_folder.parent / output_name)
 
-# SECTION:-------------------- FINE-TUNING RUN-------------------------------------------------------------------------------------- <CR>
+    # SECTION:-------------------- FINE-TUNING RUN-------------------------------------------------------------------------------------- <CR>
     bs = 14  # is good if LBD with 2 samples per case
     compiled = False
     profiler = False
@@ -402,10 +398,9 @@ if __name__ == "__main__":
     description = None
 
     # device_id = 1
-# %%
+    # %%
 
-
-# %%
+    # %%
     #
     #     """Return id of a row where all provided key->value pairs match (for known columns)."""
     #     plan = {k: plan.get(k) for k in COLUMNS_CRITICAL}  # align to fixed schema
@@ -413,7 +408,7 @@ if __name__ == "__main__":
     #     if not keys:
     #         return None
     #     conds, params = [], []
-# %%
+    # %%
     #     for k in keys:
     #         v = _normalize_for_db(plan[k])
     #         if v is None:
@@ -426,11 +421,11 @@ if __name__ == "__main__":
     #         + " AND ".join(conds)
     #         + " LIMIT 1"
     #     )
-# %%
+    # %%
     #     db_path = P.db
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(sql, params).fetchone()
-# %%
+    # %%
 
     """Return row data if a row where all provided key->value pairs match (for known columns)."""
     plan = {k: plan.get(k) for k in COLUMNS_CRITICAL}  # align to fixed schema
@@ -442,29 +437,29 @@ if __name__ == "__main__":
             conds.append(f'"{k}" IS NULL')
         elif _is_zeroish(v_norm):  # must handle "0", 0, 0.0
             conds.append(f'("{k}" = ? OR "{k}" IS NULL)')
-            params.append("0")     # TEXT schema → compare as string
+            params.append("0")  # TEXT schema → compare as string
         else:
             conds.append(f'"{k}" = ?')
             params.append(v_norm)
 
     sql = (
-        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_pbd '
+        f"SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_pbd "
         f'FROM "{TABLE}" WHERE ' + " AND ".join(conds) + " LIMIT 1"
     )
-# %%
+    # %%
     import sqlite3
+
     db_path = P.db
     sql = 'UPDATE master_plans SET expand_by = 0 WHERE data_folder_source="/r/datasets/preprocessed/nodes/fixed_spacing/spc_080_080_150_ndndt"'
     con = sqlite3.connect(db_path)
     cur = con.cursor()
     cur.execute(sql)
     con.commit()
-# %%
+    # %%
 
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(sql, params).fetchone()
-# %%
-
+    # %%
 
     aa = {
         "id": row[0],
@@ -474,7 +469,7 @@ if __name__ == "__main__":
         "data_folder_pbd": row[4],
     }
 
-# %%
+    # %%
     data_folder_source = I.R.output_folder
     data_folder_lbd = None
     data_folder_whole = None
@@ -487,12 +482,12 @@ if __name__ == "__main__":
         data_folder_pbd,
     ]
     non_none_count = sum(1 for folder in data_folders if folder is not None)
-    assert (
-        non_none_count == 1
-    ), f"Exactly one data_folder argument must be provided, got {non_none_count}"
+    assert non_none_count == 1, (
+        f"Exactly one data_folder argument must be provided, got {non_none_count}"
+    )
 
-# %%
-# Determine which data folder field is being set
+    # %%
+    # Determine which data folder field is being set
     data_folder_field = None
     data_folder_value = None
     if data_folder_source is not None:
@@ -508,7 +503,6 @@ if __name__ == "__main__":
         data_folder_field = "data_folder_pbd"
         data_folder_value = data_folder_pbd
 
-    folder_names = folder_names_from_plan(P,plan)
+    folder_names = folder_names_from_plan(P, plan)
     folder_names[data_folder_field] = data_folder_value
 # %%
-

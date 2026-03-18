@@ -1,5 +1,6 @@
 import os
 
+
 def os_available_cpus() -> int:
     # Respect CPU affinity if set (e.g., taskset / cgroups)
     try:
@@ -7,10 +8,12 @@ def os_available_cpus() -> int:
     except Exception:
         return os.cpu_count() or 1
 
+
 def available_cpus() -> int:
     """How many CPUs can we really use right now? Prefer Ray's view if initialized."""
     try:
         import ray
+
         if ray.is_initialized():
             # Ray reports fractional CPUs as floats; floor to int
             return int(ray.available_resources().get("CPU", 0)) or 0
@@ -18,7 +21,10 @@ def available_cpus() -> int:
         pass
     return os_available_cpus()
 
-def recommend_actor_count(requested_actors: int, per_actor_cpus: int = 4, reserve_cpus: int = 1) -> int:
+
+def recommend_actor_count(
+    requested_actors: int, per_actor_cpus: int = 4, reserve_cpus: int = 1
+) -> int:
     """
     Cap the number of Ray actors so total reserved CPUs do not exceed what's available.
     reserve_cpus: keep a small buffer for the driver / OS.

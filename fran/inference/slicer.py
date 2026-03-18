@@ -1,8 +1,7 @@
 from contextlib import contextmanager
 
-from torch.profiler import ProfilerActivity, profile
-
 from fran.inference.cascade import CascadeInferer
+from torch.profiler import ProfilerActivity, profile
 
 
 class SlicerCascadeInferer(CascadeInferer):
@@ -19,7 +18,7 @@ class SlicerCascadeInferer(CascadeInferer):
         save=True,
         save_localiser=True,
         k_largest=None,  # assign a number if there are organs involved
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             run_w=run_w,
@@ -33,7 +32,7 @@ class SlicerCascadeInferer(CascadeInferer):
             save_localiser=save_localiser,
             save=save,
             k_largest=k_largest,
-            **kwargs
+            **kwargs,
         )
         self.profile_enabled = profile
 
@@ -86,6 +85,7 @@ class SlicerCascadeInferer(CascadeInferer):
     #     pred_patches = self.decollate_patches(pred_patches, self.bboxes)
     #     output = self.postprocess(pred_patches)
     #     return output
-if __name__ == '__main__':
-    
+
+
+if __name__ == "__main__":
     pass

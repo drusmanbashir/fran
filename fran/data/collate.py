@@ -1,15 +1,9 @@
 # %%
-from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd, RandCropByPosNegLabeld
-from monai.transforms.spatial.dictionary import Resized, RandAffined, RandFlipd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
 import torch
 from torch.utils.data.dataloader import (
     _MultiProcessingDataLoaderIter,
     _SingleProcessDataLoaderIter,
 )
-
-from fran.transforms.imageio import LoadSITKd
-from fran.data.dataset import NormaliseClipd
 
 _loaders = (_MultiProcessingDataLoaderIter, _SingleProcessDataLoaderIter)
 import ipdb
@@ -59,7 +53,6 @@ def img_lm_metadata_lists_collated(batch):
     return output
 
 
- 
 def as_is_collated(batch):
     keys = batch[0].keys()
     output_dict = {k: [] for k in keys}
@@ -79,11 +72,12 @@ def dict_list_collated(keys):
             for key in keys:
                 output[key].append(item[key])
         return output
+
     return _inner
 
 
 def process_items(items):
-    #items is a list of dictionaries each dictionary has keys: "image", "lm
+    # items is a list of dictionaries each dictionary has keys: "image", "lm
     # Helper function to process items and append to lists
     imgs = []
     labels = []
@@ -91,33 +85,29 @@ def process_items(items):
     fns_labels = []
     for item in items:
         imgs.append(item["image"])
-        fns_imgs.append(item["image"].meta['filename_or_obj'])
+        fns_imgs.append(item["image"].meta["filename_or_obj"])
         labels.append(item["lm"])
-        fns_labels.append(item["lm"].meta['filename_or_obj'])
+        fns_labels.append(item["lm"].meta["filename_or_obj"])
     return imgs, labels, fns_imgs, fns_labels
 
 
-
-
-
-
-
 def process_items_whole(items):
-    #items is a list of list of  dictionaries  (as ooposed to above)
+    # items is a list of list of  dictionaries  (as ooposed to above)
     imgs = []
     labels = []
     fns_imgs = []
     fns_labels = []
     for item in items:
-        item = item[0] #  
+        item = item[0]  #
         imgs.append(item["image"])
-        fns_imgs.append(item["image"].meta['filename_or_obj'])
+        fns_imgs.append(item["image"].meta["filename_or_obj"])
         labels.append(item["lm"])
-        fns_labels.append(item["lm"].meta['filename_or_obj'])
+        fns_labels.append(item["lm"].meta["filename_or_obj"])
     return imgs, labels, fns_imgs, fns_labels
 
+
 def process_grid_items(item):
-    #items is a list of dictionaries each dictionary has keys: "image", "lm
+    # items is a list of dictionaries each dictionary has keys: "image", "lm
     # Helper function to process items and append to lists
     imgs = []
     labels = []
@@ -125,11 +115,12 @@ def process_grid_items(item):
     fns_labels = []
 
     imgs.append(item["image"])
-    fns_imgs.append(item["image"].meta['filename_or_obj'])
+    fns_imgs.append(item["image"].meta["filename_or_obj"])
     labels.append(item["lm"])
-    fns_labels.append(item["lm"].meta['filename_or_obj'])
-        
+    fns_labels.append(item["lm"].meta["filename_or_obj"])
+
     return imgs, labels, fns_imgs, fns_labels
+
 
 def grid_collated(batch):
     # Supports MONAI GridPatchDataset output as either:
@@ -137,10 +128,10 @@ def grid_collated(batch):
     # - dict: patch_dict (if dataset uses with_coordinates=False).
     imgs = []
     lms = []
-    fns_imgs=[]
+    fns_imgs = []
     fns_lms = []
-    patch_coords =[]
-    start_pos =[]
+    patch_coords = []
+    start_pos = []
     is_padded = []
     for i, item in enumerate(batch):
         if isinstance(item, tuple):
@@ -150,7 +141,7 @@ def grid_collated(batch):
             item2 = item
             coords = item2.get("patch_coords")
         patch_coords.append(coords)
-        imgs_,lms_,fns_imgs_,fns_lms_ = process_grid_items(item2)
+        imgs_, lms_, fns_imgs_, fns_lms_ = process_grid_items(item2)
         start_pos.append(item2["start_pos"])
         is_padded.append(bool(item2.get("is_padded", False)))
         imgs.extend(imgs_)
@@ -161,9 +152,9 @@ def grid_collated(batch):
         fns_imgs = fns_imgs[0]
         fns_lms = fns_lms[0]
     imgs_out = torch.stack(imgs, 0)
-    lms_out= torch.stack(lms, 0)
-    imgs_out.meta['filename_or_obj']=fns_imgs
-    lms_out.meta['filename_or_obj']=fns_lms
+    lms_out = torch.stack(lms, 0)
+    imgs_out.meta["filename_or_obj"] = fns_imgs
+    lms_out.meta["filename_or_obj"] = fns_lms
     output = {
         "image": imgs_out,
         "lm": lms_out,
@@ -175,37 +166,36 @@ def grid_collated(batch):
 
 
 def patch_collated(batch):
-    imgs  =[]
-    labels =[]
-    fns_imgs=[]
+    imgs = []
+    labels = []
+    fns_imgs = []
     fns_labels = []
     for i, item in enumerate(batch):
         image = item["image"]
         lm = item["lm"]
         imgs.append(image)
         labels.append(lm)
-        fns_imgs.append(image.meta['filename_or_obj'])
-        fns_labels.append(lm.meta['filename_or_obj'])
+        fns_imgs.append(image.meta["filename_or_obj"])
+        fns_labels.append(lm.meta["filename_or_obj"])
     if len(batch) == 1:
         fns_imgs = fns_imgs[0]
         fns_labels = fns_labels[0]
     imgs_out = torch.stack(imgs, 0)
-    lms_out= torch.stack(labels, 0)
-    imgs_out.meta['filename_or_obj']=fns_imgs
-    lms_out.meta['filename_or_obj']=fns_labels
-    output = {"image": imgs_out , "lm": lms_out}
+    lms_out = torch.stack(labels, 0)
+    imgs_out.meta["filename_or_obj"] = fns_imgs
+    lms_out.meta["filename_or_obj"] = fns_labels
+    output = {"image": imgs_out, "lm": lms_out}
     return output
-
 
 
 def source_collated(batch):
 
     imgs = []
     labels = []
-    fns_imgs=[]
+    fns_imgs = []
     fns_labels = []
     for i, item in enumerate(batch):
-        imgs_,labels_,fns_imgs_,fns_labels_ = process_items(item)
+        imgs_, labels_, fns_imgs_, fns_labels_ = process_items(item)
         imgs.extend(imgs_)
         labels.extend(labels_)
         fns_imgs.extend(fns_imgs_)
@@ -214,54 +204,62 @@ def source_collated(batch):
         fns_imgs = fns_imgs[0]
         # fns_labels = fns_labels[0]
     imgs_out = torch.stack(imgs, 0)
-    lms_out= torch.stack(labels, 0)
+    lms_out = torch.stack(labels, 0)
 
-    imgs_out.meta['filename_or_obj']=fns_imgs
-    lms_out.meta['filename_or_obj']=fns_labels
-    output = {"image": imgs_out , "lm": lms_out}
+    imgs_out.meta["filename_or_obj"] = fns_imgs
+    lms_out.meta["filename_or_obj"] = fns_labels
+    output = {"image": imgs_out, "lm": lms_out}
     return output
 
 
 def whole_collated(batch):
     # print(type(batch))
     # print(len(batch))
-    imgs,labels,fns_imgs,fns_labels = process_items_whole(batch)
+    imgs, labels, fns_imgs, fns_labels = process_items_whole(batch)
     if len(batch) == 1:
         fns_imgs = fns_imgs[0]
         fns_labels = fns_labels[0]
     imgs_out = torch.stack(imgs, 0)
-    lms_out= torch.stack(labels, 0)
-    imgs_out.meta['filename_or_obj']=fns_imgs
-    lms_out.meta['filename_or_obj']=fns_labels
-    output = {"image": imgs_out , "lm": lms_out}
+    lms_out = torch.stack(labels, 0)
+    imgs_out.meta["filename_or_obj"] = fns_imgs
+    lms_out.meta["filename_or_obj"] = fns_labels
+    output = {"image": imgs_out, "lm": lms_out}
     return output
 
 
 # %%
 if __name__ == "__main__":
-#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+    from fran.data.dataset import NormaliseClipd
+    from fran.transforms.imageio import LoadSITKd
+    from monai.transforms.croppad.dictionary import (
+        RandCropByPosNegLabeld,
+        ResizeWithPadOrCropd,
+    )
+    from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
+    from monai.transforms.utility.dictionary import EnsureChannelFirstd
+    # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
-    patch_size = [128,128,96]
+    patch_size = [128, 128, 96]
     d1 = {
         "image": "/s/xnat_shadow/nodes/images/nodes_100_410107_CAP1p5SoftTissue.nii.gz",
-        "lm": "/s/xnat_shadow/nodes/lms/nodes_100_410107_CAP1p5SoftTissue.nii.gz"}
+        "lm": "/s/xnat_shadow/nodes/lms/nodes_100_410107_CAP1p5SoftTissue.nii.gz",
+    }
     d2 = {
-
-        "image": "/s/xnat_shadow/nodes/images/nodes_101_Ta91212_CAP1p5SoftTissue.nii.gz", 
-        "lm": "/s/xnat_shadow/nodes/lms/nodes_101_Ta91212_CAP1p5SoftTissue.nii.gz"
-   }
-# %%
+        "image": "/s/xnat_shadow/nodes/images/nodes_101_Ta91212_CAP1p5SoftTissue.nii.gz",
+        "lm": "/s/xnat_shadow/nodes/lms/nodes_101_Ta91212_CAP1p5SoftTissue.nii.gz",
+    }
+    # %%
     keys = ["image", "lm"]
     L = LoadSITKd(keys=["image", "lm"])
     E = EnsureChannelFirstd(keys=keys)
-    Res = Resized(keys=keys, spatial_size = patch_size)
+    Res = Resized(keys=keys, spatial_size=patch_size)
 
     Re = ResizeWithPadOrCropd(
-            keys=["image", "lm"],
-            spatial_size=patch_size,
-            lazy=False,
-        )
-    
+        keys=["image", "lm"],
+        spatial_size=patch_size,
+        lazy=False,
+    )
+
     # Additional transforms for mode='source' as per training.py
     Rtr = RandCropByPosNegLabeld(
         keys=["image", "lm"],
@@ -274,21 +272,11 @@ if __name__ == "__main__":
         lazy=True,
         allow_smaller=True,
     )
-    
-    F1 = RandFlipd(
-        keys=["image", "lm"], 
-        prob=0.5, 
-        spatial_axis=0, 
-        lazy=True
-    )
-    
-    F2 = RandFlipd(
-        keys=["image", "lm"], 
-        prob=0.5, 
-        spatial_axis=1, 
-        lazy=True
-    )
-    
+
+    F1 = RandFlipd(keys=["image", "lm"], prob=0.5, spatial_axis=0, lazy=True)
+
+    F2 = RandFlipd(keys=["image", "lm"], prob=0.5, spatial_axis=1, lazy=True)
+
     Affine = RandAffined(
         keys=["image", "lm"],
         mode=["bilinear", "nearest"],
@@ -296,7 +284,7 @@ if __name__ == "__main__":
         rotate_range=0.1,
         scale_range=0.1,
     )
-    
+
     N = NormaliseClipd(
         keys=["image"],
         clip_range=(-1000, 1000),  # Adjust based on your data
@@ -304,40 +292,36 @@ if __name__ == "__main__":
         std=1,
     )
 
-# %%
-# %%
-#SECTION:--------------------  Whole_collated--------------------------------------------------------------------------------------
+    # %%
+    # %%
+    # SECTION:--------------------  Whole_collated--------------------------------------------------------------------------------------
 
-
-    d1 =E( L(d1))
+    d1 = E(L(d1))
     d2 = E(L(d2))
     d3 = Res(d2)
     d4 = Res(d1)
 
-# %%
-    batch = [[d3],[d4]]
+    # %%
+    batch = [[d3], [d4]]
 
     b2 = source_collated(batch)
     # b2 = whole_collated(batch)
-# %%
-# %%
-#SECTION:-------------------- SOURCE COLLATED--------------------------------------------------------------------------------------
+    # %%
+    # %%
+    # SECTION:-------------------- SOURCE COLLATED--------------------------------------------------------------------------------------
 
-    d1 =ResizePC(E( L(d1)))
+    d1 = ResizePC(E(L(d1)))
     d2 = E(L(d2))
     d3 = Res(d2)
-# %%
-#SECTION:-------------------- 2--------------------------------------------------------------------------------------
+    # %%
+    # SECTION:-------------------- 2--------------------------------------------------------------------------------------
 
-
-    d1 =E( L(d1))
+    d1 = E(L(d1))
     d2 = E(L(d2))
     d3 = Re(d2)
     d4 = Re(d1)
 
-# %%
-    batch = [d3,d4]
+    # %%
+    batch = [d3, d4]
 
     bx = whole_collated(batch)
-
-

@@ -1,24 +1,22 @@
 # %o%
-from torch.autograd.functional import jacobian
-from fastcore.basics import store_attr
-import numpy as np
-from monai.utils.enums import DiceCEReduction, LossReduction
-import lightning.pytorch as pl
-from monai.utils.module import look_up_option
-from typing import Callable, Optional
-import torch.nn as nn
 import itertools as il
+from typing import Callable, Optional
 
-import torch
 import ipdb
-
+import lightning.pytorch as pl
+import numpy as np
+import torch
+import torch.nn as nn
+from fastcore.basics import store_attr
+from monai.utils.enums import DiceCEReduction, LossReduction
+from monai.utils.module import look_up_option
+from torch.autograd.functional import jacobian
 from torchvision.utils import Union
-
 from utilz.helpers import range_inclusive
 
 tr = ipdb.set_trace
-from monai.losses import DiceLoss, DiceCELoss
 import torch.nn.functional as F
+from monai.losses import DiceCELoss, DiceLoss
 
 # Cell
 
@@ -134,32 +132,36 @@ class _DiceCELossMultiOutput(DiceCELoss):
         )
         # return total_loss, ce_loss, dice_loss_reduced , dice_loss_unreduced.squeeze((2,3,4))
         losses_for_logging = {
-            "loss":total_loss.item(),
+            "loss": total_loss.item(),
             "loss_ce": ce_loss.item(),
             "loss_dice": dice_loss_reduced.detach(),
         }
 
-        dice_loss_unreduced =  dice_loss_unreduced.squeeze(2).squeeze(2).squeeze(2).detach()
-        dice_loss_channels= self.set_labels_channels(dice_loss_unreduced)
+        dice_loss_unreduced = (
+            dice_loss_unreduced.squeeze(2).squeeze(2).squeeze(2).detach()
+        )
+        dice_loss_channels = self.set_labels_channels(dice_loss_unreduced)
         dice_loss_batches = self.set_labels_batches(dice_loss_unreduced)
         losses_for_logging.update(dice_loss_channels)
         losses_for_logging.update(dice_loss_batches)
 
-
-        dici_out = {
-                "loss": total_loss,
-            "losses_for_logging": losses_for_logging
-            }
+        dici_out = {"loss": total_loss, "losses_for_logging": losses_for_logging}
         if compute_grad == True:
             jac = softmax_derivative(input_activated)
             grad_sigma_z = jac
-            grad_L_sigma = torch.autograd.grad(dice_loss_reduced, input_activated, retain_graph=True)[0]
+            grad_L_sigma = torch.autograd.grad(
+                dice_loss_reduced, input_activated, retain_graph=True
+            )[0]
             grad_L_sigma = grad_L_sigma.unsqueeze(2)
-            grad_L_z = torch.einsum('ijk..., ijl...->ilk...', grad_L_sigma,grad_sigma_z)
+            grad_L_z = torch.einsum(
+                "ijk..., ijl...->ilk...", grad_L_sigma, grad_sigma_z
+            )
 
             grad_sigma_z_ch23 = grad_sigma_z[:, 2:, 2:, :]
             grad_L_sigma_ch23 = grad_L_sigma[:, 2:, 0:1, :]
-            grad_L_z_ch23=torch.einsum('ijk..., ijl...->ilk...', grad_L_sigma_ch23,grad_sigma_z_ch23)
+            grad_L_z_ch23 = torch.einsum(
+                "ijk..., ijl...->ilk...", grad_L_sigma_ch23, grad_sigma_z_ch23
+            )
             # grad_L_sigma_ch23.shape
             # grad_sigma_z_ch23.shape
             # grad_L_z_ch23.shape
@@ -173,33 +175,47 @@ class _DiceCELossMultiOutput(DiceCELoss):
             dici_out.update(dici_grad)
         return dici_out
 
-
     def set_labels_channels(self, dice_loss_unreduced):
         num_channels = dice_loss_unreduced.shape[1]
-        channel_losses_labels = ["loss_dice_label{}".format(x) for x in range(num_channels)]
-        channel_losses = {x:y for x,y in zip(channel_losses_labels, dice_loss_unreduced.mean(0))}
+        channel_losses_labels = [
+            "loss_dice_label{}".format(x) for x in range(num_channels)
+        ]
+        channel_losses = {
+            x: y for x, y in zip(channel_losses_labels, dice_loss_unreduced.mean(0))
+        }
         return channel_losses
 
     def set_labels_batches(self, dice_loss_unreduced):
-        bs,  num_channels = dice_loss_unreduced.shape[0],dice_loss_unreduced.shape[1]
+        bs, num_channels = dice_loss_unreduced.shape[0], dice_loss_unreduced.shape[1]
         label_maker = lambda x: "loss_dice_batch{0}_label{1}".format(*x)
 
-        separate_case_losses_labels =[]
+        separate_case_losses_labels = []
         for i in range(bs):
             for j in range(num_channels):
-                label = label_maker([i,j])
+                label = label_maker([i, j])
                 separate_case_losses_labels.append(label)
 
-        batch_losses = {x:y for x,y in zip(separate_case_losses_labels, dice_loss_unreduced.view(-1))}
+        batch_losses = {
+            x: y
+            for x, y in zip(separate_case_losses_labels, dice_loss_unreduced.view(-1))
+        }
         return batch_losses
+
 
 class DeepSupervisionLossCraig(pl.LightningModule):
     def __init__(
-        self, levels: int, deep_supervision_scales, fg_classes: int,softmax=True, compute_grad=False
+        self,
+        levels: int,
+        deep_supervision_scales,
+        fg_classes: int,
+        softmax=True,
+        compute_grad=False,
     ):
         super().__init__()
         store_attr()
-        self.LossFunc = _DiceCELossMultiOutput(include_background=False, softmax=softmax)
+        self.LossFunc = _DiceCELossMultiOutput(
+            include_background=False, softmax=softmax
+        )
         self.compute_grad = [False] * levels
         if compute_grad == True:
             self.compute_grad[0] = True  # at the last level compute jacobian of softmax
@@ -209,13 +225,10 @@ class DeepSupervisionLossCraig(pl.LightningModule):
         batches = list(range(bs))
         classes = range_inclusive(1, fg_classes)
 
-        self.batch_dice_labels= [
-            "loss_dice_label{}".format(x) for x in classes
-        ]
+        self.batch_dice_labels = ["loss_dice_label{}".format(x) for x in classes]
 
         self.case_recorder_labels = il.product(batches, classes)
         self.case_recorder_labels = list(map(label_maker, self.case_recorder_labels))
-
 
     def create_weights(self, device):
         weights = torch.tensor(
@@ -258,7 +271,7 @@ class DeepSupervisionLossCraig(pl.LightningModule):
                 tnsr_listed.append(tnsr_downsampled)
         return tnsr_listed
 
-    def forward(self, preds, target,compute_grad=False):
+    def forward(self, preds, target, compute_grad=False):
 
         self.maybe_create_weights(preds)
         self.maybe_create_labels(target)
@@ -279,30 +292,38 @@ class DeepSupervisionLossCraig(pl.LightningModule):
                 preds = torch.unbind(preds, dim=1)
                 preds = self.apply_ds_scales(preds, "trilinear")
                 target = self.apply_ds_scales(target, "nearest")
-                losses = [self.LossFunc(xx, yy,compute_grad=compute_grad) for xx, yy in zip(preds, target)]
+                losses = [
+                    self.LossFunc(xx, yy, compute_grad=compute_grad)
+                    for xx, yy in zip(preds, target)
+                ]
             else:  # validation loss
-                losses = [self.LossFunc(preds, target,compute_grad=compute_grad)]
+                losses = [self.LossFunc(preds, target, compute_grad=compute_grad)]
         else:
             raise NotImplementedError("preds must be either list or stacked tensor")
 
         # self.set_loss_dict(losses[0])
-        self.loss_dict = losses[0]['losses_for_logging']
-        self.grad_L_z = losses[0]['grad_L_z']
-        self.grad_L_z_ch23 = losses[0]['grad_L_z_ch23']
+        self.loss_dict = losses[0]["losses_for_logging"]
+        self.grad_L_z = losses[0]["grad_L_z"]
+        self.grad_L_z_ch23 = losses[0]["grad_L_z_ch23"]
         losses_weighted = torch.stack(
-            [self.weights * loss['loss'] for loss in losses]
+            [self.weights * loss["loss"] for loss in losses]
         )  # total_loss * weight for each level
-        losses_out= losses_weighted.sum()
+        losses_out = losses_weighted.sum()
         return losses_out
 
-
-    def set_loss_dict(self,losses):
+    def set_loss_dict(self, losses):
         class_losses = losses[-1].mean(0)
         separate_case_losses = list(losses[-1].view(-1))
-        self.loss_dict = {x: y.item() for x, y in zip(self.labels, il.chain(losses[:3],class_losses,separate_case_losses))}
-        if 'grad_L_z' in losses[0].keys():
-            self.loss_dict['grad_L_z'] = losses[0]['grad_L_z']
+        self.loss_dict = {
+            x: y.item()
+            for x, y in zip(
+                self.labels, il.chain(losses[:3], class_losses, separate_case_losses)
+            )
+        }
+        if "grad_L_z" in losses[0].keys():
+            self.loss_dict["grad_L_z"] = losses[0]["grad_L_z"]
             # losses_out['grad_L_z'] = losses[0]['grad_L_z']
+
 
 class CombinedLoss(_DiceCELossMultiOutput):
     def __init__(self, fg_classes, *args, **kwargs):
@@ -331,7 +352,6 @@ class CombinedLoss(_DiceCELossMultiOutput):
 
 # %%
 if __name__ == "__main__":
-
     pred = torch.rand([1, 4, 64, 64, 48])
     targ = torch.rand([1, 1, 64, 64, 48])
     # pred = torch.load("fran/tmp/pred.pt")

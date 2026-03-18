@@ -1,15 +1,8 @@
 # %%
-import SimpleITK as sitk
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from pathlib import Path
-
-from utilz.fileio import maybe_makedirs
-from utilz.imageviewers import ImageMaskViewer
-
-from fran.transforms.totensor import ToTensorT
 
 
 def create_z_average_kernel(kernel_size_z=3):
@@ -73,6 +66,13 @@ class ZStrideAvgPool3d(nn.Module):
 
 # %%
 if __name__ == "__main__":
+    from pathlib import Path
+
+    import SimpleITK as sitk
+    from fran.transforms.totensor import ToTensorT
+    from utilz.fileio import maybe_makedirs
+    from utilz.imageviewers import ImageMaskViewer
+
     # Create a sample 3D tensor
     sample = torch.randn(1, 1, 16, 32, 32)  # [B, C, D, H, W]
     img_fn = Path(
@@ -91,13 +91,13 @@ if __name__ == "__main__":
     img_tn = totensor.encodes(img)
     img_tn = img_tn.float()
     img_tn2 = img_tn.unsqueeze(0).unsqueeze(0)
-# %%
+    # %%
     nslice = img_tn2.shape[2]
     B = 1
 
     inslice = 512
     img_tn2 = img_tn2.permute(0, 3, 4, 1, 2)
-# %%
+    # %%
     img_1d = img_tn2.reshape(-1, 1, nslice)
     C_out = 1
     kernel_size = 5
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     out3 = out3.permute(2, 0, 1).contiguous()  # out3.shape
     print(out3.shape)
     ImageMaskViewer([img_tn, out3], dtypes="ii")
-# %%
+    # %%
     new_spacing = list(original_spacing)
     new_spacing[2] *= stride  # z-spacing
     out_img = sitk.GetImageFromArray(out3)
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     # 7. Save or view
     sitk.WriteImage(out_img, "downsampled_output.nii.gz")
     print("Saved downsampled image with spacing:", out_img.GetSpacing())
-# %%
+    # %%
     # Add batch dimension if needed
     if len(img_tn2.shape) == 3:
         img_tn2 = img_tn2.unsqueeze(0).unsqueeze(0)  # [B, C, D, H, W]
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     print("\nZ-stride averaging:")
     print(f"Input shape: {img_tn2.shape}")
     print(f"Output shape: {z_output.shape}")
-# %%
+    # %%
 
     # Test Z-only average filtering
     z_avg = ZAverage3D(kernel_size_z=3, padding="same")

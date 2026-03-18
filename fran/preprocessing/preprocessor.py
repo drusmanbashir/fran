@@ -15,14 +15,15 @@ import SimpleITK as sitk
 import torch
 from fastcore.all import store_attr
 from fastcore.foundation import GetAttr
-from tqdm.auto import tqdm
+from fran.preprocessing import bboxes_function_version
+from fran.preprocessing.helpers import (
+    infer_dataset_stats_window,
+    sanitize_meta_for_monai,
+)
+from fran.utils.dataset_properties import analyze_tensor_data_folder
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
-
-from fran.preprocessing import bboxes_function_version
-from fran.preprocessing.helpers import infer_dataset_stats_window, sanitize_meta_for_monai
-from fran.utils.dataset_properties import analyze_tensor_data_folder
 
 
 def _show_gif_in_chrome_if_available(gif_path: Path) -> None:
@@ -64,28 +65,29 @@ def bboxes_to_df(bboxes):
             bbs = stat["bounding_boxes"]
             cents = stat["centroids"]
             for i, (bb, c) in enumerate(zip(bbs, cents)):
-                    z0, z1 = bb[0].start, bb[0].stop
-                    y0, y1 = bb[1].start, bb[1].stop
-                    x0, x1 = bb[2].start, bb[2].stop
+                z0, z1 = bb[0].start, bb[0].stop
+                y0, y1 = bb[1].start, bb[1].stop
+                x0, x1 = bb[2].start, bb[2].stop
 
-                    rows.append({
+                rows.append(
+                    {
                         "case_id": case_id,
                         "label": label,
                         "bbox_id": i,
-
-                        "z0": z0, "z1": z1,
-                        "y0": y0, "y1": y1,
-                        "x0": x0, "x1": x1,
-
+                        "z0": z0,
+                        "z1": z1,
+                        "y0": y0,
+                        "y1": y1,
+                        "x0": x0,
+                        "x1": x1,
                         "size_z": z1 - z0,
                         "size_y": y1 - y0,
                         "size_x": x1 - x0,
-
                         "cz": c[0],
                         "cy": c[1],
                         "cx": c[2],
-                    })
-
+                    }
+                )
 
     df = pd.DataFrame(rows)
     return df
@@ -330,9 +332,9 @@ class Preprocessor(GetAttr):
         remappings = ast_literal_eval(remappings)
         if remappings is None:
             remappings = [None] * len(datasources)
-        assert len(remappings) == len(
-            datasources
-        ), f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
+        assert len(remappings) == len(datasources), (
+            f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
+        )
         for ds, remapping in zip(datasources, remappings):
             mask = self.df["ds"] == ds
             if mask.sum() == 0:
@@ -361,7 +363,7 @@ class Preprocessor(GetAttr):
             # get filesystem info
             try:
                 usage = shutil.disk_usage(os.path.dirname(fn))
-                fsinfo = f"Total={usage.total//(1024**3)}G, Used={usage.used//(1024**3)}G, Free={usage.free//(1024**3)}G"
+                fsinfo = f"Total={usage.total // (1024**3)}G, Used={usage.used // (1024**3)}G, Free={usage.free // (1024**3)}G"
             except Exception:
                 fsinfo = "disk usage unavailable"
 
@@ -544,7 +546,7 @@ class Preprocessor(GetAttr):
             ]
         )
 
-    def create_dataset_stats_artifacts(self, gif:bool=True,label_stats=False):
+    def create_dataset_stats_artifacts(self, gif: bool = True, label_stats=False):
         dataset_root = Path(self.output_folder)
         lms_folder = dataset_root / "lms"
         if not lms_folder.exists():
@@ -553,15 +555,16 @@ class Preprocessor(GetAttr):
         stats_folder = dataset_root / "dataset_stats"
         from label_analysis.dataset_stats import end2end_lms_stats_and_plots
         from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
+
         if label_stats or gif:
             maybe_makedirs([stats_folder])
-        if label_stats==True:
+        if label_stats == True:
             df, _ = end2end_lms_stats_and_plots(
                 input_folder=lms_folder,
                 output_folder=stats_folder,
             )
             df.to_csv(stats_folder / "dataset_stats.csv", index=False)
-        if gif ==True:
+        if gif == True:
             output_gif = stats_folder / "snapshot.gif"
             create_nifti_overlay_grid_gif(
                 dataset_root=dataset_root,
@@ -623,7 +626,7 @@ if __name__ == "__main__":
     )
     lms = bboxes_fldr / "lms"
     generate_bboxes_from_lms_folder(lms, debug=False)
-# %%
+    # %%
     masks_folder = bboxes_fldr
     label_files = list(masks_folder.glob("*pt"))
     label_files

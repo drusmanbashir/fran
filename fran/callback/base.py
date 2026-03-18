@@ -1,19 +1,14 @@
 # %%
-import os
-import uuid
-from copy import deepcopy
 
 import ipdb
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-from fastcore.basics import listify, store_attr
-from lightning.pytorch.callbacks import BatchSizeFinder, Callback
-from lightning.pytorch.tuner import batch_size_scaling as _bs_scale
-from utilz.cprint import cprint
+from fastcore.basics import listify
 from fran.utils.common import PAD_VALUE
+from lightning.pytorch.callbacks import Callback
+from utilz.cprint import cprint
 
 tr = ipdb.set_trace
 import ray
@@ -22,12 +17,11 @@ tr2 = ray.util.pdb.set_trace
 # %%
 
 
-
 class BatchSizeSafetyMargin(Callback):
-    def __init__(self,  min_bs: int = 1, min_buffer= 2):
+    def __init__(self, min_bs: int = 1, min_buffer=2):
         self.has_run = False
         self.min_bs = min_bs
-        self.min_buffer= min_buffer
+        self.min_buffer = min_buffer
 
     def _log_final_batch_size(self, trainer, final_bs: int):
         logger = getattr(trainer, "logger", None)
@@ -45,7 +39,7 @@ class BatchSizeSafetyMargin(Callback):
             return
         dm = trainer.datamodule
         bs = int(dm.batch_size)
-        buffer =max(self.min_buffer, int(bs/8))
+        buffer = max(self.min_buffer, int(bs / 8))
         safe_bs = max(self.min_bs, bs - buffer)
 
         if safe_bs != bs:
@@ -113,7 +107,9 @@ class TargetLabelSanitizer(Callback):
                     f"Seen labels: {labels_all}"
                 )
 
-        if hasattr(pl_module, "loss_fnc") and hasattr(pl_module.loss_fnc, "set_target_label_sanitizer"):
+        if hasattr(pl_module, "loss_fnc") and hasattr(
+            pl_module.loss_fnc, "set_target_label_sanitizer"
+        ):
             pl_module.loss_fnc.set_target_label_sanitizer(sanitizer)
 
         self.configs["plan_train"]["labels_all"] = labels_all
@@ -125,6 +121,7 @@ class TargetLabelSanitizer(Callback):
             f"sanitized={labels_sanitized}"
         )
         self.has_run = True
+
 
 class PredAsList(Callback):
     def after_pred(self):
@@ -155,6 +152,7 @@ class DownsampleMaskForDS(Callback):
 
 class FixPredNan(Callback):
     "A `Callback` that terminates training if loss is NaN."
+
     order = -9
 
     def after_pred(self):

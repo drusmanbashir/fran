@@ -1,57 +1,58 @@
 # %%
 import os
 
+from fran.inference.helpers import (
+    filter_existing_files,
+    get_patch_spacing,
+    infer_project,
+    list_to_chunks,
+    load_images_nifti,
+    load_params,
+)
 from utilz.cprint import cprint
-
-from fran.inference.helpers import (filter_existing_files, get_device,
-                                    get_patch_spacing, infer_project,
-                                    list_to_chunks, load_images,
-                                    load_images_nifti, load_images_pt,
-                                    load_params, parse_input)
-from fran.managers.nep import download_neptune_checkpoint
 
 os.environ["TORCHDYNAMO_DISABLE"] = "1"  # set as early as possible in the process
 
 import ipdb
 import torch
 import torch._dynamo as dynamo
+from fran.managers import Project
 from tqdm.auto import tqdm as pbar
 from utilz.stringz import headline
-
-from fran.managers import Project
 
 tr = ipdb.set_trace
 
 from pathlib import Path
-from typing import List, Optional
 
-import itk
 import numpy as np
 import torch
 from fastcore.all import listify, store_attr
 from fastcore.foundation import GetAttr
+from fran.data.dataset import NormaliseClipd
+from fran.managers.unet import UNetManager
+from fran.trainers import checkpoint_from_model_id, write_normalized_ckpt
+from fran.transforms.imageio import LoadSITKd
+from fran.transforms.inferencetransforms import (
+    KeepLargestConnectedComponentWithMetad,
+    SaveMultiChanneld,
+    SqueezeListofListsd,
+    ToCPUd,
+)
+from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 from lightning.fabric import Fabric
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.inferers.inferer import SlidingWindowInferer
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import SaveImaged
-from monai.transforms.post.dictionary import (Activationsd, AsDiscreteD,
-                                              AsDiscreted, Invertd)
+from monai.transforms.post.dictionary import AsDiscreteD
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
-from monai.transforms.utility.dictionary import (CastToTyped,
-                                                 EnsureChannelFirstd,
-                                                 SqueezeDimd)
+from monai.transforms.utility.dictionary import (
+    CastToTyped,
+    EnsureChannelFirstd,
+    SqueezeDimd,
+)
 from utilz.dictopts import DictToAttr, fix_ast
-
-from fran.data.dataset import NormaliseClipd
-from fran.managers.unet import UNetManager
-from fran.trainers import checkpoint_from_model_id, write_normalized_ckpt
-from fran.transforms.imageio import LoadSITKd
-from fran.transforms.inferencetransforms import (
-    KeepLargestConnectedComponentWithMetad, SaveMultiChanneld,
-    SqueezeListofListsd, ToCPUd)
-from fran.transforms.spatialtransforms import ResizeToMetaSpatialShaped
 
 
 class BaseInferer(GetAttr, DictToAttr):
@@ -94,9 +95,9 @@ class BaseInferer(GetAttr, DictToAttr):
             self.params = load_params(run_name)
         else:
             self.params = params
-        assert not (
-            safe_mode == True and save_channels == True
-        ), "Safe mode cannot be used with save_channels"
+        assert not (safe_mode == True and save_channels == True), (
+            "Safe mode cannot be used with save_channels"
+        )
         self.plan = fix_ast(self.params["configs"]["plan_train"], ["spacing"])
         self.check_plan_compatibility()
         self.dataset_params = self.params["configs"]["dataset_params"]
@@ -131,6 +132,10 @@ class BaseInferer(GetAttr, DictToAttr):
             device=device,
         )
         self.safe_mode = safe_mode
+
+    def compute_loss(self, batch):
+
+        pass
 
     def create_and_set_postprocess_transforms(self):
         self.create_postprocess_transforms(self.ds.transform)
@@ -186,9 +191,9 @@ class BaseInferer(GetAttr, DictToAttr):
         return batch
 
     def check_plan_compatibility(self):
-        assert (
-            self.plan["mode"] == "source"
-        ), "This inferer only works with source plans"
+        assert self.plan["mode"] == "source", (
+            "This inferer only works with source plans"
+        )
 
     def setup(self):
         if not hasattr(self, "model"):
@@ -240,6 +245,7 @@ class BaseInferer(GetAttr, DictToAttr):
         for batch in self.predict():
             batch = self.postprocess(batch)
             outputs.append(batch)
+            self.compute_loss(batch)
 
         if self.safe_mode:
             self.reset()
@@ -260,7 +266,8 @@ class BaseInferer(GetAttr, DictToAttr):
         """
 
         nw, bs = 0, 1  # Slicer bugs out
-        self.ds = Dataset(data=data, transform=self.preprocess_compose)
+        data_dicts= [{"image": img} for img in data]
+        self.ds = Dataset(data=data_dicts, transform=self.preprocess_compose)
         self.pred_dl = DataLoader(
             self.ds, num_workers=nw, batch_size=bs, collate_fn=collate_fn
         )
@@ -478,13 +485,14 @@ class BaseInfererTorchScript(BaseInferer):
 
 if __name__ == "__main__":
 # %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
-
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.data.dataregistry import DS
+
     # ... run your application ...
     from fran.managers import Project
     from fran.managers.project import Project
     from fran.utils.common import *
+    from monai.transforms.post.dictionary import Activationsd, AsDiscreted
 
     conf_fldr = os.environ["FRAN_CONF"]
     from utilz.fileio import load_yaml
@@ -500,7 +508,7 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- FILES and FOLDERS-------------------------------------------------------------------------------------- <CR>
+# SECTION:-------------------- FILES and FOLDERS-------------------------------------------------------------------------------------- <CR> <CR>
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
@@ -524,7 +532,7 @@ if __name__ == "__main__":
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
 # %%
-# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     run_litsmc = ["LITS-1007"]
     run_litsmc = ["LITS-999"]
@@ -550,7 +558,7 @@ if __name__ == "__main__":
 # %%
     data = P.ds.data[0]
 # %%
-# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
     save_channels = False
     overwrite = False
@@ -592,7 +600,7 @@ if __name__ == "__main__":
     # datamodule_ %%
 # %%
 # %%
-# SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+# SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     run = run_nodes2[0]
     run = run_nodes3[0]
     run = run_nodes[0]
@@ -618,7 +626,7 @@ if __name__ == "__main__":
     preds = T.run(img_nodes[1], chunksize=2, overwrite=overwrite)
     preds[0]["pred"].meta
 # %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     overwrite = True
     T.setup()
     imgs = img_nodes

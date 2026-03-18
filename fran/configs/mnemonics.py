@@ -1,12 +1,13 @@
-
 # %%
 from dataclasses import dataclass
 from typing import ClassVar
+
 
 @dataclass(frozen=True)
 class Mnemonic:
     name: str
     aliases: tuple[str, ...] = ()
+
 
 class Mnemonics:
     lungs: ClassVar[Mnemonic] = Mnemonic("lungs", ("lung", "lidc"))
@@ -28,9 +29,7 @@ class Mnemonics:
     )
 
     _index: ClassVar[dict[str, Mnemonic]] = {
-        key: m
-        for m in _all
-        for key in (m.name, *m.aliases)
+        key: m for m in _all for key in (m.name, *m.aliases)
     }
 
     @classmethod
@@ -39,5 +38,6 @@ class Mnemonics:
             return cls._index[s.strip().lower()].name
         except KeyError:
             raise ValueError(f"Unknown mnemonic: {s}")
+
 
 # %%

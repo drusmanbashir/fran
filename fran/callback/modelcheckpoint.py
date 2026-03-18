@@ -1,4 +1,5 @@
 import os
+
 # Copyright The Lightning AI team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +24,6 @@ import logging
 import os
 
 import lightning.pytorch as pl
-from lightning.fabric.utilities.cloud_io import get_filesystem
 from lightning.fabric.utilities.types import _PATH
 from lightning.pytorch.utilities.rank_zero import WarningCache
 from typing_extensions import override
@@ -32,18 +32,17 @@ log = logging.getLogger(__name__)
 warning_cache = WarningCache()
 
 
-
-from lightning.pytorch.callbacks.model_checkpoint import *
-from lightning.pytorch.callbacks.model_checkpoint import _PATH
-import lightning.pytorch as pl
 from typing import override
 
 import ipdb
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks.model_checkpoint import *
+from lightning.pytorch.callbacks.model_checkpoint import _PATH
+
 tr = ipdb.set_trace
 
 
 class ModelCheckpointUB(ModelCheckpoint):
-
     @override
     def setup(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", stage: str
@@ -57,6 +56,7 @@ class ModelCheckpointUB(ModelCheckpoint):
             and len(self._fs.ls(dirpath)) > 0
         ):
             rank_zero_warn(f"Checkpoint directory {dirpath} exists and is not empty.")
+
     def __resolve_ckpt_dir(self, trainer: "pl.Trainer") -> _PATH:
         """Determines model checkpoint save directory at runtime. Reference attributes from the trainer's logger to
         determine where to save checkpoints. The path for saving weights is set in this priority:
@@ -87,5 +87,3 @@ class ModelCheckpointUB(ModelCheckpoint):
             ckpt_path = os.path.join(trainer.default_root_dir, "checkpoints")
 
         return ckpt_path
-
-

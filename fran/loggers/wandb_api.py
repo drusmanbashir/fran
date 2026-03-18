@@ -1,4 +1,3 @@
-
 # fran/trackers/wandb_api.py
 
 from __future__ import annotations
@@ -48,7 +47,9 @@ class WandbAPI:
         k: int = 1,
         filters: Optional[Dict[str, Any]] = None,
     ) -> List[str]:
-        runs = self.api.runs(f"{entity}/{project}", filters=filters or {}, order="-created_at")
+        runs = self.api.runs(
+            f"{entity}/{project}", filters=filters or {}, order="-created_at"
+        )
         out: List[str] = []
         for r in runs:
             out.append(r.id)

@@ -17,7 +17,6 @@ import sys
 import urllib.request
 from pathlib import Path
 
-
 SYSTEM_PROMPT = (
     "Extract training CLI args from user text. "
     "Return strict JSON with keys: "
@@ -30,7 +29,9 @@ SYSTEM_PROMPT = (
 def parse_args():
     p = argparse.ArgumentParser(description="Natural-language launcher for train.py")
     p.add_argument("text", help='Natural language command, e.g. "train bones, plan 1"')
-    p.add_argument("--dry-run", action="store_true", help="Print command, do not execute")
+    p.add_argument(
+        "--dry-run", action="store_true", help="Print command, do not execute"
+    )
     return p.parse_args()
 
 
@@ -72,7 +73,9 @@ def llm_extract(user_text: str) -> dict | None:
     if openai_key or openrouter_key:
         if openrouter_key:
             base = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-            model = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
+            model = os.getenv(
+                "OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free"
+            )
             auth_key = openrouter_key
             extra_headers = {}
         else:
@@ -123,7 +126,14 @@ def list_projects() -> list[str]:
 
 
 def build_cmd(spec: dict) -> list[str]:
-    cmd = [sys.executable, "fran/run/train.py", "-t", spec["project_title"], "-p", str(spec["plan"])]
+    cmd = [
+        sys.executable,
+        "fran/run/train.py",
+        "-t",
+        spec["project_title"],
+        "-p",
+        str(spec["plan"]),
+    ]
     if spec.get("fold") is not None:
         cmd += ["-f", str(spec["fold"])]
     if spec.get("devices") is not None:

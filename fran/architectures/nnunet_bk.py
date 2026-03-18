@@ -1,8 +1,10 @@
 import lightning.pytorch as pl
 from lightning.pytorch.core import LightningModule
-from nnunet.network_architecture.generic_UNet import (ConvDropoutNormNonlin,
-                                                      Generic_UNet,
-                                                      InitWeights_He)
+from nnunet.network_architecture.generic_UNet import (
+    ConvDropoutNormNonlin,
+    Generic_UNet,
+    InitWeights_He,
+)
 from torch import nn
 
 

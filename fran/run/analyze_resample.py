@@ -1,39 +1,36 @@
 # %%
-import argparse
 import ast
 
-from utilz.cprint import cprint
-from utilz.fileio import *
-from utilz.helpers import *
-from utilz.stringz import headline
-
+from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.managers import Project
-
 from fran.preprocessing.datasetanalyzers import *
 from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator
-from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.utils.folder_names import folder_names_from_plan
+from utilz.fileio import *
+from utilz.helpers import *
+from utilz.stringz import headline
 
 common_vars_filename = os.environ["FRAN_CONF"]
+
 
 def main(args):
     P = Project(project_title=args.project_title)
     C = ConfigMaker(P)
     overwrite = args.overwrite
-    if args.num_processes<1:
+    if args.num_processes < 1:
         args.num_processes = 1
-    
+
     if args.plan == 0:
         # Process all plans
         plan_ids = C.plans["plan_id"].tolist()
         headline("Processing ALL Plans: {}".format(plan_ids))
         for plan_id in plan_ids:
-            C.setup(plan_id,plan_id)
-            headline (plan_id)
+            C.setup(plan_id, plan_id)
+            headline(plan_id)
             plan = C.configs["plan_train"]
             completed = confirm_plan_analyzed(P, plan)
             if overwrite or not all(completed.values()):
@@ -43,20 +40,19 @@ def main(args):
                 print(f"Plan {plan_id} already processed. Skipping")
     else:
         # Process specific plan
-        headline ("Processing plan {}".format(args.plan))
+        headline("Processing plan {}".format(args.plan))
         C.setup(args.plan, args.plan)
         plan = C.configs["plan_train"]
         completed = confirm_plan_analyzed(P, plan)
         if overwrite or not all(completed.values()):
             process_plan(args)
         else:
-                print(f"Plan {args.plan} already processed. Skipping")
-
+            print(f"Plan {args.plan} already processed. Skipping")
 
 
 def process_plan(args):
     I = PreprocessingManager(args)
-    I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+    I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
     # args.num_processes = 1
 
     if I.plan["mode"] == "pbd":
@@ -64,17 +60,17 @@ def process_plan(args):
     elif I.plan["mode"] == "lbd":
         imported_folder = I.plan.get("imported_folder", None)
         if imported_folder is None:
-            I.generate_lbd_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+            I.generate_lbd_dataset(
+                overwrite=args.overwrite, num_processes=args.num_processes
+            )
         else:
             I.generate_TSlabelboundeddataset(
-                overwrite=args.overwrite,
-                num_processes=args.num_processes
+                overwrite=args.overwrite, num_processes=args.num_processes
             )
     #
     # if not "labels_all" in P.global_properties.keys():
     #     P.set_lm_groups(plan["lm_groups"])
-        # P.maybe_store_projectwide_properties(overwrite=args.overwrite)
-
+    # P.maybe_store_projectwide_properties(overwrite=args.overwrite)
 
 
 @str_to_path(0)
@@ -112,7 +108,8 @@ class PreprocessingManager:
     project_title: str
     num_processes: int
     overwrite: bool
-    debug:bool
+    debug: bool
+
     # dont use getattr
     def __init__(self, args, conf=None):
         self.assimilate_args(args)
@@ -177,12 +174,12 @@ class PreprocessingManager:
         self.R.process()
         self.resample_output_folder = self.R.output_folder
 
-    def generate_lbd_dataset(self, overwrite=False, device="cpu",num_processes=1):
+    def generate_lbd_dataset(self, overwrite=False, device="cpu", num_processes=1):
 
         resampled_data_folder = folder_names_from_plan(self.project, self.plan)[
             "data_folder_source"
         ]
-        
+
         headline(
             "LBD dataset will be based on resampled dataset output_folder {}".format(
                 resampled_data_folder
@@ -214,14 +211,11 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=resampled_data_folder,
         )
-        self.L.setup(overwrite=overwrite, device=device,num_processes=num_processes)
+        self.L.setup(overwrite=overwrite, device=device, num_processes=num_processes)
         self.L.process()
 
     @ask_proceed("Generating low-res whole images to localise organ of interest")
     def generate_whole_images_dataset(self):
-
-
-
 
         if not hasattr(self, "spacing"):
             self.set_spacing()
@@ -268,7 +262,6 @@ class PreprocessingManager:
             debug=debug,
         )
         PG.process(derive_bboxes=False)
-
 
     def get_source_data_folder_for_patch(self):
         src_plan = self.plan["source_plan"]
@@ -358,14 +351,16 @@ def do_low_res(proj_defaults):
     maybe_makedirs(stage1_subfolder)
 
     args = [[fn, stage1_subfolder, low_res_shape, False] for fn in stage0_files]
-    multiprocess_multiarg(resample_img_mask_tensors, args, debug=False,io=True)
-
+    multiprocess_multiarg(resample_img_mask_tensors, args, debug=False, io=True)
 
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
+    import argparse
+
     from fran.utils.common import *
+    from utilz.cprint import cprint
 
     parser = argparse.ArgumentParser(description="Resampler")
 
@@ -396,7 +391,7 @@ if __name__ == "__main__":
         help="Show CLI help and exit.",
     )
     args = parser.parse_known_args()[0]
-# %%
+    # %%
     # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
     # args.project_title="kits2"
     # args.plan = 1
@@ -404,73 +399,73 @@ if __name__ == "__main__":
     # args.overwrite=False
     # args.debug=True
     #
-# %%
-    cprint("Project: {0}".format(args.project_title), color ="green")
+    # %%
+    cprint("Project: {0}".format(args.project_title), color="green")
 
     if args.help_args:
         parser.print_help()
         raise SystemExit(0)
     main(args)
 
-# %%
-#
+    # %%
+    #
     # I = PreprocessingManager(args)
     # I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
-# # %%
-#     I.R = ResampleDatasetniftiToTorch(
-#         project=I.project,
-#         plan=I.plan,
-#         data_folder=I.project.raw_data_folder,
-#     )
-# # %%
-#
-#     I.R.setup(overwrite=overwrite, num_processes=num_processes)
-#     I.R.process()
-#     I.resample_output_folder = I.R.output_folder
-     # resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
-     #
-     #        "data_folder_source"
-     #    ]
-# # %%
-#
-#         data_folder = I.get_source_data_folder_for_patch()
-#         PG = PatchDataGenerator(
-#             project=I.project,
-#             plan=I.plan,
-#             data_folder=data_folder,
-#         )
-#         PG.setup(
-#             overwrite=overwrite,
-#             num_processes=I.num_processes,
-#             debug=debug,
-#         )
-#         PG.process(derive_bboxes=False)
-#     I.R.create_dataset_stats_artifacts()
-#
-# # %%
-#     overwrite=False
-#     num_processes=8
-#
-#     resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
-#         "data_folder_source"
-#     ]
-#
-# # %%
-#     I.L = LabelBoundedDataGeneratorImported(
-#         project=I.project,
-#         plan=I.plan,
-#         data_folder=resampled_data_folder,
-#     )
-# # %%
-# # # %%
-#     device='cpu'
-#     I.L.setup(overwrite=overwrite, device=device,num_processes=num_processes,debug=True)
-#     I.L.process()
-# # %%
-#
-#
-# # %%
-#     # sys.exit()
+    # # %%
+    #     I.R = ResampleDatasetniftiToTorch(
+    #         project=I.project,
+    #         plan=I.plan,
+    #         data_folder=I.project.raw_data_folder,
+    #     )
+    # # %%
+    #
+    #     I.R.setup(overwrite=overwrite, num_processes=num_processes)
+    #     I.R.process()
+    #     I.resample_output_folder = I.R.output_folder
+    # resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
+    #
+    #        "data_folder_source"
+    #    ]
+    # # %%
+    #
+    #         data_folder = I.get_source_data_folder_for_patch()
+    #         PG = PatchDataGenerator(
+    #             project=I.project,
+    #             plan=I.plan,
+    #             data_folder=data_folder,
+    #         )
+    #         PG.setup(
+    #             overwrite=overwrite,
+    #             num_processes=I.num_processes,
+    #             debug=debug,
+    #         )
+    #         PG.process(derive_bboxes=False)
+    #     I.R.create_dataset_stats_artifacts()
+    #
+    # # %%
+    #     overwrite=False
+    #     num_processes=8
+    #
+    #     resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
+    #         "data_folder_source"
+    #     ]
+    #
+    # # %%
+    #     I.L = LabelBoundedDataGeneratorImported(
+    #         project=I.project,
+    #         plan=I.plan,
+    #         data_folder=resampled_data_folder,
+    #     )
+    # # %%
+    # # # %%
+    #     device='cpu'
+    #     I.L.setup(overwrite=overwrite, device=device,num_processes=num_processes,debug=True)
+    #     I.L.process()
+    # # %%
+    #
+    #
+    # # %%
+    #     # sys.exit()
     sys.exit()
 # # %%
 # dataset_root = Path(I.R.output_folder)

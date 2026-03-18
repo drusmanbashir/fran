@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import torch
 import torch._dynamo
-from torch import nn
-
+from fran.managers.unet import UNetManager
 from fran.trainers.base import checkpoint_from_model_id, switch_ckpt_keys
 from fran.trainers.trainer import Trainer
-from fran.managers.unet import UNetManager
+from torch import nn
 from utilz.stringz import headline
 
 torch._dynamo.config.suppress_errors = True
@@ -22,7 +20,9 @@ class TrainingManagerTransfer(Trainer):
         assert freeze in [None, "encoder"], "Freeze either None or encoder"
         assert run_name is not None, "Please specificy a run to transfer learning from"
         source_ckpt = checkpoint_from_model_id(run_name)
-        assert source_ckpt is not None, f"No checkpoint found for source run: {run_name}"
+        assert source_ckpt is not None, (
+            f"No checkpoint found for source run: {run_name}"
+        )
         super().__init__(
             project_title=project.project_title,
             configs=config,
@@ -100,7 +100,9 @@ class TrainingManagerTransfer(Trainer):
                 tgt_sd[key].copy_(src_val)
                 copied += 1
         self.N.model.load_state_dict(tgt_sd, strict=False)
-        headline(f"Copied {copied} tensors from source model; skipped {skipped} tensors.")
+        headline(
+            f"Copied {copied} tensors from source model; skipped {skipped} tensors."
+        )
 
     def fit(self):
         try:
@@ -108,6 +110,7 @@ class TrainingManagerTransfer(Trainer):
         except KeyboardInterrupt:
             try:
                 import wandb
+
                 if wandb.run is not None:
                     wandb.finish()
             except Exception:
@@ -121,6 +124,7 @@ if __name__ == "__main__":
     import warnings
 
     from fran.configs.parser import ConfigMaker
+
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
@@ -141,7 +145,7 @@ if __name__ == "__main__":
     plan = conf["plan_train"]
     pp(plan)
 
-# %%
+    # %%
     device_id = 1
     run_name = None
     freeze = "encoder"
@@ -165,7 +169,7 @@ if __name__ == "__main__":
     Tm = TrainingManagerTransfer(
         project=P, config=conf, run_name=run_name, freeze=freeze
     )
-# %%
+    # %%
     Tm.setup(
         lr=1e-2,
         compiled=compiled,
@@ -178,14 +182,14 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-# %%
+    # %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-# %%
+    # %%
     Tm.fit()
 
-# %%
-# SECTION:-------------------- Tinkering with N-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- Tinkering with N-------------------------------------------------------------------------------------- <CR>
 
     Tm.N.model.seg_outputs[-1]
     N = Tm.N
@@ -194,18 +198,18 @@ if __name__ == "__main__":
     for param in enc.parameters():
         param.requires_grad = False
 
-# %%
+    # %%
     N.freeze()
     cc = list(N.children())
     ccc = list(cc[0].children())
     ccc[-1]
 
-# %%
+    # %%
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.train_ds
     ds = Tm.D.valid_ds
-# %%
+    # %%
     dl = Tm.D.train_dataloader()
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
@@ -216,12 +220,12 @@ if __name__ == "__main__":
     print(pred[0].shape)
     #
 
-# %%
+    # %%
     m1 = Tm.Ntmp.model
     m2 = Tm.N.model
     m2.load_state_dict(m1)
     m2.state_dict()
-# %%
+    # %%
     tot = 0
     failed = 0
     with torch.no_grad():
@@ -237,14 +241,14 @@ if __name__ == "__main__":
     print("Failed: ", failed)
     print("-" * 40)
 
-# %%
-# %%
+    # %%
+    # %%
     m = Tm.N.model
     [print(mm) for mm in m.named_modules()]
     Tm.N.model.seg_outputs
     Tm.model_source.seg_outputs
 
-# %%
+    # %%
     Tm.lr = 1e-3
     Tm.sync_dist = True
     epochs = 500
@@ -255,7 +259,7 @@ if __name__ == "__main__":
     Tm.D = Tm.init_dm(cache_rate)
     Tm.update_model()
     # Tm.update_trainer()
-# %%
+    # %%
 
     Tm.replace_final_layer_src_model()
     Tm.copy_weights()

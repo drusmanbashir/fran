@@ -1,7 +1,6 @@
 import os
 
 import pytest
-
 from fran.tests.e2e.proj_to_analyze import run_proj_to_analyze
 
 
@@ -12,4 +11,3 @@ def test_proj_to_analyze_setup_only():
     report = run_proj_to_analyze(run_analyze=False, num_processes=1, debug=False)
     assert report.n_fail == 0, f"Plan failures: {report.n_fail}"
     assert len(report.errors) == 0, f"Project/config errors: {report.errors}"
-

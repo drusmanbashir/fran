@@ -2,41 +2,43 @@
 import ast
 import re
 from datetime import datetime
+
 # from fran.architectures.unet3d.model import  *
 from pathlib import Path
 
 import pandas as pd
 import torch.nn as nn
+from fran.architectures.create_network import create_model_from_conf
+from fran.architectures.unet3d.model import UNet3D
+from fran.callback.nep import NeptuneImageGridCallback
+from fran.configs.parser import *
+from fran.configs.parser import load_metadata
+from fran.managers.base import load_checkpoint
 from ray import tune
 from ray.air import session
 from utilz.fileio import load_json
 from utilz.helpers import make_channels
 
-from fran.architectures.create_network import create_model_from_conf
-from fran.architectures.unet3d.model import UNet3D
-from fran.callback.nep import NeptuneImageGridCallback
-from fran.managers.base import load_checkpoint
-from fran.configs.parser import *
-from fran.configs.parser import load_metadata
 
-
-def out_channels_from_dict_or_cell(src_dest_labels):  
+def out_channels_from_dict_or_cell(src_dest_labels):
     if isinstance(src_dest_labels, pd.core.series.Series):
         src_dest_labels = ast.literal_eval(src_dest_labels.item())
-    out_channels = max([src_dest[1] for src_dest in src_dest_labels])+1
+    out_channels = max([src_dest[1] for src_dest in src_dest_labels]) + 1
     return out_channels
 
-def load_model_from_raytune_trial(folder_name,out_channels):
-    #requires params.json inside raytune trial
-    params_dict = load_json(Path(folder_name)/"params.json")
-    model =create_model_from_conf(params_dict,out_channels)
-    
-    checkpoints_folder=folder_name/("model_checkpoints")
-    chkpoint_filename = list((folder_name/("model_checkpoints")).glob("model*"))[0]
-    load_checkpoint#(folder_name / ("model_checkpoints"), model)
+
+def load_model_from_raytune_trial(folder_name, out_channels):
+    # requires params.json inside raytune trial
+    params_dict = load_json(Path(folder_name) / "params.json")
+    model = create_model_from_conf(params_dict, out_channels)
+
+    checkpoints_folder = folder_name / ("model_checkpoints")
+    chkpoint_filename = list((folder_name / ("model_checkpoints")).glob("model*"))[0]
+    load_checkpoint  # (folder_name / ("model_checkpoints"), model)
     # state_dict= torch.load(chkpoint_filename)
     # model.load_state_dict(state_dict['model'])
-    return  model
+    return model
+
 
 class ModelFromTuneTrial:
     def __init__(self, proj_defaults, trial_name, out_channels=None):
@@ -79,27 +81,32 @@ def get_raytune_folder_from_trialname(proj_defaults, trial_name: str):
 
 
 class RayTuneManager(object):
-    def __init__(self,raytune_settingsfile=None) -> None:
-         self.raytune_settingsfile = 'experiments/experiment_config.xlsx' if not raytune_settingsfile else raytune_settingsfile
-    def load_config(self,sheet_name):
-        df_ray = pd.read_excel(self.raytune_settingsfile,sheet_name=sheet_name)
-        df_ray = df_ray[~df_ray["tune"].isin([0,False])]
+    def __init__(self, raytune_settingsfile=None) -> None:
+        self.raytune_settingsfile = (
+            "experiments/experiment_config.xlsx"
+            if not raytune_settingsfile
+            else raytune_settingsfile
+        )
+
+    def load_config(self, sheet_name):
+        df_ray = pd.read_excel(self.raytune_settingsfile, sheet_name=sheet_name)
+        df_ray = df_ray[~df_ray["tune"].isin([0, False])]
 
         config = {}
         for ind, rr in df_ray.iterrows():
-            var_type = rr['tune_type']
-            tune_fnc = getattr(tune,var_type)
+            var_type = rr["tune_type"]
+            tune_fnc = getattr(tune, var_type)
 
-            key = rr['var_name']
-            vals =ast_literal_eval(rr['tune_value']) 
+            key = rr["var_name"]
+            vals = ast_literal_eval(rr["tune_value"])
             if var_type in ["randint", "qrandint"]:
-                val_sample = tune_fnc(vals[0],vals[1])
+                val_sample = tune_fnc(vals[0], vals[1])
 
             elif var_type == "qloguniform":
-                val_sample = tune_fnc(vals[0],vals[1], q=vals[0]/2)
+                val_sample = tune_fnc(vals[0], vals[1], q=vals[0] / 2)
             else:
                 val_sample = tune_fnc(vals)
-            config.update({key:val_sample})
+            config.update({key: val_sample})
         return config
 
     def model_from_config(self, config) -> UNet3D:
@@ -111,8 +118,6 @@ class RayTuneManager(object):
             n_bottleneck=config["n_bottleneck"],
         )
         return model
-
-
 
 
 def trial_str_creator(trial):
@@ -183,36 +188,42 @@ def train_with_tune(multi_gpu, neptune, max_num_epochs, proj_defaults, config):
 
 
 if __name__ == "__main__":
-# %%
     # %%
-#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+    # %%
+    # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
     import ray
+
     single_gpu = True
     if single_gpu == True:
         ray.init(local_mode=True, num_cpus=1, num_gpus=2)
     debug_mode = False
     set_autoreload()
-    df_ray = pd.read_excel("/home/ub/code/fran/configurations/experiment_configs_liver.xlsx", sheet_name="model_params")
+    df_ray = pd.read_excel(
+        "/home/ub/code/fran/configurations/experiment_configs_liver.xlsx",
+        sheet_name="model_params",
+    )
     # df_ray = df_ray.dropna(subset=["tune_value"])
-    df_ray = df_ray[~df_ray["tune"].isin([0,False])]
-# %%
+    df_ray = df_ray[~df_ray["tune"].isin([0, False])]
+    # %%
     config = {}
     for ind, rr in df_ray.iterrows():
-        var_type = rr['tune_type']
-        tune_fnc = getattr(tune,var_type)
+        var_type = rr["tune_type"]
+        tune_fnc = getattr(tune, var_type)
 
-        key = rr['var_name']
-        vals =ast_literal_eval(rr['tune_value']) 
+        key = rr["var_name"]
+        vals = ast_literal_eval(rr["tune_value"])
 
         if var_type in ["randint", "qrandint"]:
-            val_sample = tune_fnc(vals[0],vals[1])
+            val_sample = tune_fnc(vals[0], vals[1])
         elif var_type == "qloguniform":
-            val_sample = tune_fnc(vals[0],vals[1], q=vals[0]/2)
+            val_sample = tune_fnc(vals[0], vals[1], q=vals[0] / 2)
         else:
             val_sample = tune_fnc(vals)
-        config.update({key:val_sample})
-# %%
-    r = RayTuneManager("/home/ub/code/fran/configurations/experiment_configs_nodes.xlsx")
+        config.update({key: val_sample})
+    # %%
+    r = RayTuneManager(
+        "/home/ub/code/fran/configurations/experiment_configs_nodes.xlsx"
+    )
     conf = r.load_config(sheet_name="model_params")
 
 # %%

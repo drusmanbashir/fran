@@ -134,7 +134,9 @@ def labels_from_h5(h5_file, case_id):
 
     case = h5_file[case_id]
     if "labels" not in case.attrs:
-        raise KeyError(f"Case '{case_id}' has no 'labels' attr in H5: {h5_file.filename}")
+        raise KeyError(
+            f"Case '{case_id}' has no 'labels' attr in H5: {h5_file.filename}"
+        )
 
     raw_labels = list(case.attrs["labels"])
     labels = [int(x) for x in raw_labels]

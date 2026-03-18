@@ -4,27 +4,20 @@ from typing import Optional
 import torch._dynamo
 from paramiko import SSHClient
 
-
 torch._dynamo.config.suppress_errors = True
+from pathlib import Path
 from typing import Any
 
 import neptune as nt
 import torch
-# from fastcore.basics import GenttAttr
-from lightning.pytorch.loggers.neptune import NeptuneLogger
-
 from fran.evaluation.losses import *
 from fran.utils.common import *
+
+# from fastcore.basics import GenttAttr
+from lightning.pytorch.loggers.neptune import NeptuneLogger
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
-from utilz.helpers import *
-
-
-from lightning.pytorch.loggers.neptune import NeptuneLogger
-
-
-from pathlib import Path
 
 try:
     import numpy as np
@@ -55,6 +48,7 @@ def _to_plain(x):
         return {str(k): _to_plain(v) for k, v in x.items()}
 
     return str(x)
+
 
 def get_neptune_checkpoint(project, run_id):
     nl = NeptuneManager(
@@ -99,7 +93,6 @@ def get_neptune_config():
     return project_name, api_token
 
 
-
 class NeptuneManager(NeptuneLogger):
     def __init__(
         self,
@@ -109,7 +102,7 @@ class NeptuneManager(NeptuneLogger):
         run_id: Optional[str] = None,
         log_model_checkpoints: Optional[bool] = False,
         prefix: str = "training",
-        **neptune_run_kwargs: Any
+        **neptune_run_kwargs: Any,
     ):
         store_attr("project")
         project_nep, api_token = get_neptune_config()
@@ -131,16 +124,18 @@ class NeptuneManager(NeptuneLogger):
             api_key=api_token,
             project=project_nep,
             run=nep_run,
-            name = name,
+            name=name,
             log_model_checkpoints=log_model_checkpoints,
             prefix=prefix,
-            **neptune_run_kwargs
+            **neptune_run_kwargs,
         )
 
     def log_hyperparams(self, params):
         # called by Lightning in _log_hyperparams(self)
         try:
-            key = self._construct_path_with_prefix(self.PARAMETERS_KEY)  # usually "training/parameters"
+            key = self._construct_path_with_prefix(
+                self.PARAMETERS_KEY
+            )  # usually "training/parameters"
             self.run[key] = _to_plain(params)
         except Exception as e:
             print(f"[Neptune] log_hyperparams skipped: {e}")
@@ -167,6 +162,7 @@ class NeptuneManager(NeptuneLogger):
         project_tmp = get_neptune_project(self.project, "read-only")
         df = project_tmp.fetch_runs_table(columns=columns).to_pandas()
         return df
+
     #
     # def on_fit_start(self):
     #     tr()
@@ -240,9 +236,7 @@ class NeptuneManager(NeptuneLogger):
     def shadow_remote_ckpts(self, remote_dir):
         hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
         local_dir = (
-            self.project.checkpoints_parent_folder
-            / self.run_id
-            / ("checkpoints")
+            self.project.checkpoints_parent_folder / self.run_id / ("checkpoints")
         )
         print("\nSSH to remote folder {}".format(remote_dir))
         client = SSHClient()
@@ -282,7 +276,6 @@ class NeptuneManager(NeptuneLogger):
         maybe_makedirs(local_dir)
         downloaded_files = []
         for rem, loc in zip(remote_fnames, local_fnames):
-
             if Path(loc).exists():
                 print("Local file {} exists already.".format(loc))
                 downloaded_files.append(loc)
@@ -309,20 +302,21 @@ class NeptuneManager(NeptuneLogger):
 
 # %%
 # %%
-#SECTION:-------------------- SETTING -------------------------------------------------------------------------------------- 
-if __name__ == '__main__':
+# SECTION:-------------------- SETTING --------------------------------------------------------------------------------------
+if __name__ == "__main__":
     from fran.managers.project import Project
+
     P = Project(project_title="nodes")
     run_name = "LITS-1416"
-    download_neptune_checkpoint(P,run_name)
-# %%
+    download_neptune_checkpoint(P, run_name)
+    # %%
     nl = NeptuneManager(
         project=P,
         run_id=run_name,  # "LIT-46",
         log_model_checkpoints=False,  # Update to True to log model checkpoints
     )
     nl.download_checkpoints()
-# %%
+    # %%
     ckpt = nl.model_checkpoint
     nl.experiment.stop()
 
@@ -332,21 +326,19 @@ if __name__ == '__main__':
     client.load_system_host_keys()
 
     client.connect(
-            "login.hpc.qmul.ac.uk",
-            username=hpc_settings["username"],
-            password=hpc_settings["password"],
+        "login.hpc.qmul.ac.uk",
+        username=hpc_settings["username"],
+        password=hpc_settings["password"],
     )
 
     remote_dir = str(Path(nl.model_checkpoint).parent)
 
-#p %%
-# %%
-
+    # p %%
+    # %%
 
     # def download_checkpoints(self):
     remote_dir = str(Path(self.model_checkpoint).parent)
     latest_ckpt = self.shadow_remote_ckpts(remote_dir)
     if latest_ckpt:
-            self.nep_run["training"]["model"]["best_model_path"] = latest_ckpt
-#SECTION:-------------------- TRBOUE--------------------------------------------------------------------------------------
-
+        self.nep_run["training"]["model"]["best_model_path"] = latest_ckpt
+# SECTION:-------------------- TRBOUE--------------------------------------------------------------------------------------

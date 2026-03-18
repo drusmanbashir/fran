@@ -1,12 +1,14 @@
-from datetime import datetime
-import pandas as pd
 import re
+from datetime import datetime
 from pathlib import Path
-from fastcore.basics import Union, listify
+
 import ipdb
 import numpy as np
+import pandas as pd
+from fastcore.basics import Union, listify
 
 tr = ipdb.set_trace
+
 
 def is_excel_None(value):
     # Real Nones / NaNs
@@ -23,78 +25,88 @@ def is_excel_None(value):
         return sv in {"", "nan", "na", "null", "none", "true", "false"}
     # Everything else (including 0 / 0.0 / False) is NOT None
     return False
+
+
 def regex_matcher(indx=0):
     """
     Decorator that applies regex pattern matching to a function's output.
-    
+
     Args:
         indx: Index of the regex match group to return (default: 0 for full match)
-    
+
     Returns:
         Decorator function that extracts specified match group from regex search
     """
+
     def _outer(func):
 
-        def _inner(*args,**kwargs):
-                pat, string= func(*args,**kwargs)
-                pat = re.compile(pat,re.IGNORECASE)
-                answer = re.search(pat,string)
-                return answer[indx] if answer else None
+        def _inner(*args, **kwargs):
+            pat, string = func(*args, **kwargs)
+            pat = re.compile(pat, re.IGNORECASE)
+            answer = re.search(pat, string)
+            return answer[indx] if answer else None
+
         return _inner
+
     return _outer
 
-def dec_to_str(val:float,trailing_zeros=3):
+
+def dec_to_str(val: float, trailing_zeros=3):
     """
     Convert a float to a string representation with specified trailing zeros.
-    
+
     Args:
         val: Float value to convert
         trailing_zeros: Minimum number of digits in output (default: 3)
-    
+
     Returns:
         str: String representation with decimal point removed and padded with zeros
     """
-    val2 = str(round(val,2))
-    val2 = val2.replace(".","")
-    trailing_zeros = np.maximum(trailing_zeros-len(val2),0) if trailing_zeros>0 else 0
-    val2 = val2+'0'*trailing_zeros # ensure 3 digits
+    val2 = str(round(val, 2))
+    val2 = val2.replace(".", "")
+    trailing_zeros = (
+        np.maximum(trailing_zeros - len(val2), 0) if trailing_zeros > 0 else 0
+    )
+    val2 = val2 + "0" * trailing_zeros  # ensure 3 digits
     return val2
 
-def int_to_str(val:int, total_length=5):
+
+def int_to_str(val: int, total_length=5):
     """
     Convert an integer to a zero-padded string of specified length.
-    
+
     Args:
         val: Integer value to convert
         total_length: Total length of output string (default: 5)
-    
+
     Returns:
         str: Zero-padded string representation
     """
     val = str(val)
-    precending_zeros = total_length-len(val)
-    return '0'*precending_zeros+val
+    precending_zeros = total_length - len(val)
+    return "0" * precending_zeros + val
 
 
-def headline(inp:str):
+def headline(inp: str):
     """
     Print a string surrounded by equal signs as a headline.
-    
+
     Args:
         inp: String to display as headline
     """
-    print("=")*20
+    print("=") * 20
     print(inp)
-    print("=")*20
+    print("=") * 20
+
 
 def append_time(input_str, now=True):
     """
     Append current timestamp to input string in format _DDMMYY_HHMM.
-    
+
     Args:
         input_str: String to append timestamp to
         now: Unused parameter (kept for compatibility)
-    
+
     Returns:
         str: Input string with timestamp appended
     """
@@ -107,10 +119,10 @@ def infer_dataset_name(filename):
     """
     Extract dataset name from filename using regex pattern.
     Used with regex_matcher decorator to get first part before underscore or dash.
-    
+
     Args:
         filename: Path object with filename
-        
+
     Returns:
         tuple: (pattern, filename.name) for regex_matcher decorator
     """
@@ -127,15 +139,15 @@ def strip_extension(fname: str):
             return fname_stripped
     fname_stripped = fname.split(".")[0]
     return fname_stripped
-        
-def replace_extension(fname: str, new_ext: str):
-    '''
-    new_ext has no dot
-    '''
-    fname_base = strip_extension(fname)
-    fname_out  = ".".join([fname_base,new_ext])
-    return fname_out
 
+
+def replace_extension(fname: str, new_ext: str):
+    """
+    new_ext has no dot
+    """
+    fname_base = strip_extension(fname)
+    fname_out = ".".join([fname_base, new_ext])
+    return fname_out
 
 
 def strip_slicer_strings(fname: str):
@@ -144,7 +156,7 @@ def strip_slicer_strings(fname: str):
     """
     # pt = re.compile("(-?label(_\d)?)|_.*(_\d$)",re.IGNORECASE)
     pt = re.compile("(_\d)?$", re.IGNORECASE)
-    pt2 = re.compile("(_\d)?-segment.*$",re.IGNORECASE)
+    pt2 = re.compile("(_\d)?-segment.*$", re.IGNORECASE)
     fname = fname.replace("-label", "")
     fname = fname.replace("-test", "")
     fname_cl1 = fname.replace("-tissue", "")
@@ -155,36 +167,43 @@ def strip_slicer_strings(fname: str):
 
 
 def str_to_path(arg_inds=None):
-    arg_inds=listify(arg_inds)
+    arg_inds = listify(arg_inds)
+
     def wrapper(func):
-        def inner (*args,**kwargs):
-            if len(arg_inds )==0:
+        def inner(*args, **kwargs):
+            if len(arg_inds) == 0:
                 args = [Path(arg) for arg in args]
-                kwargs = {key:Path(val) for key,val in kwargs.items()}
+                kwargs = {key: Path(val) for key, val in kwargs.items()}
             else:
                 args = list(args)
                 all_inds = range(len(args))
-                args = [Path(arg) if ind in arg_inds else arg for ind, arg in zip(all_inds,args) ]
-            return func(*args,**kwargs)
+                args = [
+                    Path(arg) if ind in arg_inds else arg
+                    for ind, arg in zip(all_inds, args)
+                ]
+            return func(*args, **kwargs)
+
         return inner
+
     return wrapper
 
-def path_to_str(fnc):
-        def inner(*args,**kwargs):
-            args = map(str,args)
-            for k,v in kwargs.items():
-                kwargs[k] = str(v) if isinstance(v,Path) else v
-            output = fnc(*args,** kwargs)
-            return output
-        return inner
 
+def path_to_str(fnc):
+    def inner(*args, **kwargs):
+        args = map(str, args)
+        for k, v in kwargs.items():
+            kwargs[k] = str(v) if isinstance(v, Path) else v
+        output = fnc(*args, **kwargs)
+        return output
+
+    return inner
 
 
 def cleanup_fname(fname: str):
-    '''
+    """
     If this is a slicer labelmap/segmentation, make sure you strip_slicer_strings first
-    '''
-    
+    """
+
     fname = strip_extension(fname)
 
     pt_token = "(_[a-z0-9]*)"
@@ -213,34 +232,35 @@ def drop_digit_suffix(fname: str):
     return fname_cl
 
 
-def info_from_filename(fname: str,full_caseid=False):
-
+def info_from_filename(fname: str, full_caseid=False):
     """
     full_caseid: if true, return project_title+case_id
     returns [proj_title,case_id,desc, ?all-else]
     """
-    tags = ["proj_title","case_id", "date", "desc"]
+    tags = ["proj_title", "case_id", "date", "desc"]
     name = cleanup_fname(fname)
 
     parts = name.split("_")
-    output_dic={}
-    for key,val in zip(tags,parts):
-        output_dic[key]=val
-    if full_caseid==True:
-        output_dic['case_id']=output_dic['proj_title']+"_"+output_dic['case_id']
+    output_dic = {}
+    for key, val in zip(tags, parts):
+        output_dic[key] = val
+    if full_caseid == True:
+        output_dic["case_id"] = output_dic["proj_title"] + "_" + output_dic["case_id"]
     return output_dic
 
-def match_filenames(fname1:str,fname2:str):
-    info1=info_from_filename(fname1)
-    info2=info_from_filename(fname2)
-    matched=all([val1==val2 for val1,val2 in zip(info1.values(),info2.values())])
+
+def match_filenames(fname1: str, fname2: str):
+    info1 = info_from_filename(fname1)
+    info2 = info_from_filename(fname2)
+    matched = all([val1 == val2 for val1, val2 in zip(info1.values(), info2.values())])
     return matched
 
-def find_file(substring:str, filenames:Union[list,Path]):
-    if isinstance(filenames,Path) and filenames.is_dir():
+
+def find_file(substring: str, filenames: Union[list, Path]):
+    if isinstance(filenames, Path) and filenames.is_dir():
         filenames = filenames.glob("*")
 
-    matching_fn= [fn for fn in filenames if substring in fn.name]
+    matching_fn = [fn for fn in filenames if substring in fn.name]
     if len(matching_fn) == 1:
         return matching_fn[0]
     elif len(matching_fn) == 0:
@@ -248,6 +268,7 @@ def find_file(substring:str, filenames:Union[list,Path]):
     else:
         print("Multiple matches found")
         return matching_fn
+
 
 # %%
 # %%

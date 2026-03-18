@@ -1,20 +1,23 @@
 # %%
 # training.py — minimal runner to Tm.fit()
 import ipdb
+
 tr = ipdb.set_trace
 
 
-import torch
 from typing import List, Union
 
+import torch
 from utilz.stringz import ast_literal_eval
 
 
-def is_hpc()->bool:
+def is_hpc() -> bool:
     import sys
+
     if "mpx" in sys.executable:
         return True
     return False
+
 
 def parse_device_str(dev_arg: str) -> Union[int, List[int]]:
     """
@@ -40,23 +43,23 @@ def parse_device_str(dev_arg: str) -> Union[int, List[int]]:
         return [val]
     return val  # for 2, 3, ... treat as count of devices
 
-def convert_remapping(rem: dict|tuple|list):
-    #if remapping is list/tuple -> output dict
-    #if remapping is dict -> output list
-    if isinstance (rem , tuple|list) and len(rem)==2:
+
+def convert_remapping(rem: dict | tuple | list):
+    # if remapping is list/tuple -> output dict
+    # if remapping is dict -> output list
+    if isinstance(rem, tuple | list) and len(rem) == 2:
         src = rem[0]
         dst = rem[1]
-        dici = {a:b for a,b in zip(src,dst)}
+        dici = {a: b for a, b in zip(src, dst)}
         return dici
-    if isinstance (rem , dict):
+    if isinstance(rem, dict):
         src = list(rem.keys())
         dst = list(rem.values())
-        list_out = [src,dst]
+        list_out = [src, dst]
         return list_out
 
 
-
-#HACK: align this and simplify this as per lightngin-ai devices arg signature
+# HACK: align this and simplify this as per lightngin-ai devices arg signature
 def parse_devices(arg=None, format_as_cuda=False):
     """
     Flexible device parser:
@@ -97,17 +100,19 @@ def parse_devices(arg=None, format_as_cuda=False):
     if not ids:
         ids = [0]
 
-    if format_as_cuda ==True:
+    if format_as_cuda == True:
         ids = [torch.device(f"cuda:{i}") for i in ids]
     return ids
+
+
 # %%
 # parse_device_arg(None)  → all GPUs (e.g., [cuda:0, cuda:1, ...])
-if __name__ == '__main__':
-    ast_literal_eval('[1]')
-    parse_device_str('[1]')
-    aa = parse_devices('[1]')
+if __name__ == "__main__":
+    ast_literal_eval("[1]")
+    parse_device_str("[1]")
+    aa = parse_devices("[1]")
     print(aa)
-    aa = parse_devices('[1]')
+    aa = parse_devices("[1]")
     aa = parse_devices(0)
     # aa = parse_device_arg([0])
     # aa = parse_device_arg([0,1])
@@ -118,4 +123,3 @@ if __name__ == '__main__':
 # %%
 # %%
 # %%
-

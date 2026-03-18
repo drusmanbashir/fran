@@ -23,20 +23,19 @@ def save_checkpoint(state, is_best, checkpoint_dir):
     if not os.path.exists(checkpoint_dir):
         os.mkdir(checkpoint_dir)
 
-    last_file_path = os.path.join(checkpoint_dir, 'last_checkpoint.pytorch')
+    last_file_path = os.path.join(checkpoint_dir, "last_checkpoint.pytorch")
     torch.save(state, last_file_path)
     if is_best:
-        best_file_path = os.path.join(checkpoint_dir, 'best_checkpoint.pytorch')
+        best_file_path = os.path.join(checkpoint_dir, "best_checkpoint.pytorch")
         shutil.copyfile(last_file_path, best_file_path)
-
 
 
 def save_network_output(output_path, output, logger=None):
     if logger is not None:
-        logger.info(f'Saving network output to: {output_path}...')
+        logger.info(f"Saving network output to: {output_path}...")
     output = output.detach().cpu()[0]
-    with h5py.File(output_path, 'w') as f:
-        f.create_dataset('predictions', data=output, compression='gzip')
+    with h5py.File(output_path, "w") as f:
+        f.create_dataset("predictions", data=output, compression="gzip")
 
 
 loggers = {}
@@ -52,7 +51,8 @@ def get_logger(name, level=logging.INFO):
         # Logging to console
         stream_handler = logging.StreamHandler(sys.stdout)
         formatter = logging.Formatter(
-            '%(asctime)s [%(threadName)s] %(levelname)s %(name)s - %(message)s')
+            "%(asctime)s [%(threadName)s] %(levelname)s %(name)s - %(message)s"
+        )
         stream_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
 
@@ -67,8 +67,7 @@ def get_number_of_learnable_parameters(model):
 
 
 class RunningAverage:
-    """Computes and stores the average
-    """
+    """Computes and stores the average"""
 
     def __init__(self):
         self.count = 0
@@ -84,21 +83,23 @@ class RunningAverage:
 def find_maximum_patch_size(model, device):
     """Tries to find the biggest patch size that can be send to GPU for inference
     without throwing CUDA out of memory"""
-    logger = get_logger('PatchFinder')
+    logger = get_logger("PatchFinder")
     in_channels = model.in_channels
 
-    patch_shapes = [(64, 128, 128), (96, 128, 128),
-                    (64, 160, 160), (96, 160, 160),
-                    (64, 192, 192), (96, 192, 192)]
+    patch_shapes = [
+        (64, 128, 128),
+        (96, 128, 128),
+        (64, 160, 160),
+        (96, 160, 160),
+        (64, 192, 192),
+        (96, 192, 192),
+    ]
 
     for shape in patch_shapes:
         # generate random patch of a given size
-        patch = np.random.randn(*shape).astype('float32')
+        patch = np.random.randn(*shape).astype("float32")
 
-        patch = torch \
-            .from_numpy(patch) \
-            .view((1, in_channels) + patch.shape) \
-            .to(device)
+        patch = torch.from_numpy(patch).view((1, in_channels) + patch.shape).to(device)
 
         logger.info(f"Current patch size: {shape}")
         model(patch)
@@ -142,7 +143,7 @@ def remove_halo(patch, index, shape, patch_halo):
 
 
 def number_of_features_per_level(init_channel_number, num_levels):
-    return [init_channel_number * 2 ** k for k in range(num_levels)]
+    return [init_channel_number * 2**k for k in range(num_levels)]
 
 
 class _TensorboardFormatter:
@@ -168,13 +169,17 @@ class _TensorboardFormatter:
         def _check_img(tag_img):
             tag, img = tag_img
 
-            assert img.ndim == 2 or img.ndim == 3, 'Only 2D (HW) and 3D (CHW) images are accepted for display'
+            assert img.ndim == 2 or img.ndim == 3, (
+                "Only 2D (HW) and 3D (CHW) images are accepted for display"
+            )
 
             if img.ndim == 2:
                 img = np.expand_dims(img, axis=0)
             else:
                 C = img.shape[0]
-                assert C == 1 or C == 3, 'Only (1, H, W) or (3, H, W) images are supported'
+                assert C == 1 or C == 3, (
+                    "Only (1, H, W) or (3, H, W) images are supported"
+                )
 
             return tag, img
 
@@ -192,10 +197,10 @@ class DefaultTensorboardFormatter(_TensorboardFormatter):
         self.skip_last_target = skip_last_target
 
     def process_batch(self, name, batch):
-        if name == 'targets' and self.skip_last_target:
+        if name == "targets" and self.skip_last_target:
             batch = batch[:, :-1, ...]
 
-        tag_template = '{}/batch_{}/channel_{}/slice_{}'
+        tag_template = "{}/batch_{}/channel_{}/slice_{}"
 
         tagged_images = []
 
@@ -236,10 +241,10 @@ def _find_masks(batch, min_size=10):
         coords = np.where(z_sum > min_size)[0]
         if len(coords) > 0:
             ind = coords[len(coords) // 2]
-            result.append(b[:, ind:ind + 1, ...])
+            result.append(b[:, ind : ind + 1, ...])
         else:
             ind = b.shape[1] // 2
-            result.append(b[:, ind:ind + 1, ...])
+            result.append(b[:, ind : ind + 1, ...])
 
     return np.stack(result, axis=0)
 
@@ -248,8 +253,8 @@ def get_tensorboard_formatter(formatter_config):
     if formatter_config is None:
         return DefaultTensorboardFormatter()
 
-    class_name = formatter_config['name']
-    m = importlib.import_module('pytorch3dunet.unet3d.utils')
+    class_name = formatter_config["name"]
+    m = importlib.import_module("pytorch3dunet.unet3d.utils")
     clazz = getattr(m, class_name)
     return clazz(**formatter_config)
 
@@ -308,21 +313,23 @@ def convert_to_numpy(*inputs):
 
 
 def create_optimizer(optimizer_config, model):
-    learning_rate = optimizer_config['learning_rate']
-    weight_decay = optimizer_config.get('weight_decay', 0)
-    betas = tuple(optimizer_config.get('betas', (0.9, 0.999)))
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, betas=betas, weight_decay=weight_decay)
+    learning_rate = optimizer_config["learning_rate"]
+    weight_decay = optimizer_config.get("weight_decay", 0)
+    betas = tuple(optimizer_config.get("betas", (0.9, 0.999)))
+    optimizer = optim.Adam(
+        model.parameters(), lr=learning_rate, betas=betas, weight_decay=weight_decay
+    )
     return optimizer
 
 
 def create_lr_scheduler(lr_config, optimizer):
     if lr_config is None:
         return None
-    class_name = lr_config.pop('name')
-    m = importlib.import_module('torch.optim.lr_scheduler')
+    class_name = lr_config.pop("name")
+    m = importlib.import_module("torch.optim.lr_scheduler")
     clazz = getattr(m, class_name)
     # add optimizer to the config
-    lr_config['optimizer'] = optimizer
+    lr_config["optimizer"] = optimizer
     return clazz(**lr_config)
 
 
@@ -332,4 +339,4 @@ def get_class(class_name, modules):
         clazz = getattr(m, class_name, None)
         if clazz is not None:
             return clazz
-    raise RuntimeError(f'Unsupported dataset class: {class_name}')
+    raise RuntimeError(f"Unsupported dataset class: {class_name}")

@@ -26,7 +26,9 @@ class SimpleModel(nn.Module):
         return x
 
 
-def compute_importance_score(model: SimpleModel, loss: torch.Tensor, rho: float = 1.0) -> float:
+def compute_importance_score(
+    model: SimpleModel, loss: torch.Tensor, rho: float = 1.0
+) -> float:
     _ = loss  # Kept for compatibility with earlier prototype signature.
     if model.pre_activation is None or model.pre_activation.grad is None:
         return 0.0

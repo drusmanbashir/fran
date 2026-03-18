@@ -1,47 +1,34 @@
 # %%
-from fran.managers import Project
-from tqdm.auto import tqdm as pbar
 from pathlib import Path
-from pytorch_grad_cam import (
-    GradCAM,
-)
+
 import ipdb
 
-from fran.trainers.base import checkpoint_from_model_id
-from fran.configs.parser import ConfigMaker
-from utilz.stringz import info_from_filename
 tr = ipdb.set_trace
 
-from fran.managers import UNetManagerCraig
 import os
-from torch.cuda.amp import autocast
-from monai.transforms import Decollated
-from monai.transforms.io.array import SaveImage
-import pandas as pd
+import shutil
 from collections.abc import Mapping
 from functools import partial
 from typing import Any, Iterable, List, Literal, Optional, Tuple, Union, cast
 
 import lightning as L
-from lightning.pytorch.utilities.types import STEP_OUTPUT
+import pandas as pd
 import torch
+from fran.managers import UNetManagerCraig
+from fran.trainers.impsamp import fix_dict_keys
+from fran.transforms.imageio import TorchWriter
+from fran.transforms.inferencetransforms import ToCPUd
 from lightning.fabric.accelerators import Accelerator
 from lightning.fabric.loggers import Logger
 from lightning.fabric.strategies import Strategy
 from lightning.fabric.wrappers import _unwrap_objects
 from lightning.pytorch.utilities.model_helpers import is_overridden
+from lightning.pytorch.utilities.types import STEP_OUTPUT
 from lightning_utilities import apply_to_collection
+from monai.transforms import Decollated
+from monai.transforms.io.array import SaveImage
+from torch.cuda.amp import autocast
 from tqdm import tqdm
-import warnings
-
-import shutil
-from fran.trainers.impsamp import (
-    fix_dict_keys,
-    resolve_datamanager,
-)
-from fran.transforms.imageio import TorchWriter
-from fran.transforms.inferencetransforms import ToCPUd
-from utilz.imageviewers import ImageMaskViewer
 
 
 def init_unet_trainer(project, config, lr):
@@ -51,7 +38,7 @@ def init_unet_trainer(project, config, lr):
         lr=lr,
     )
     return N
- 
+
 
 def load_unet_trainer(ckpt, project, config, lr, **kwargs):
     try:
@@ -549,7 +536,6 @@ class Trainer:
     def validation_step(self, model: L.LightningModule, batch: Any, batch_idx: int):
         """The default validation step. Override if you need to do anything extra"""
         with autocast():
-
             out = model.validation_step(batch, batch_idx)
         return out
 
@@ -725,7 +711,9 @@ class Trainer:
 
         return os.path.join(checkpoint_dir, items[-1])
 
-    def _parse_optimizers_schedulers(self, configure_optim_output) -> Tuple[
+    def _parse_optimizers_schedulers(
+        self, configure_optim_output
+    ) -> Tuple[
         Optional[L.fabric.utilities.types.Optimizable],
         Optional[
             Mapping[str, Union[L.fabric.utilities.types.LRScheduler, bool, str, int]]
@@ -825,8 +813,16 @@ class Trainer:
 
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 if __name__ == "__main__":
+    import warnings
 
-    import torch
+    from fran.configs.parser import ConfigMaker
+    from fran.managers import Project
+    from fran.trainers.base import checkpoint_from_model_id
+    from fran.trainers.impsamp import resolve_datamanager
+    from pytorch_grad_cam import GradCAM
+    from tqdm.auto import tqdm as pbar
+    from utilz.imageviewers import ImageMaskViewer
+    from utilz.stringz import info_from_filename
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -845,7 +841,9 @@ if __name__ == "__main__":
     configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
     configuration_filename = None
 
-    config = ConfigMaker(proj, ).config
+    config = ConfigMaker(
+        proj,
+    ).config
 
     # conf['model_params']['lr']=1e-3
 
@@ -859,7 +857,7 @@ if __name__ == "__main__":
     run_empty = None
     run_name = run_empty
     bs = 1  # 5 is good if LBD with 2 samples per case
-    run_name =run_litsmc
+    run_name = run_litsmc
     if run_name is not None:
         ckpt = checkpoint_from_model_id(run_name, sort_method="last")
     else:
@@ -874,8 +872,8 @@ if __name__ == "__main__":
     tags = []
     description = f""
     config["dataset_params"]["batch_size"] = bs
-# %%
-# SECTION:-------------------- Dataloaders-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- Dataloaders-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     DMClass = resolve_datamanager(config["plan_valid"]["mode"])
     if ckpt:
@@ -884,87 +882,89 @@ if __name__ == "__main__":
     else:
         N = init_unet_trainer(proj, config, lr=config["model_params"]["lr"])
     D = DMClass(
-            proj,
-            
-            config=config,
-            batch_size=config["dataset_params"]["batch_size"],
-            cache_rate=0,
-           
-        )
+        proj,
+        config=config,
+        batch_size=config["dataset_params"]["batch_size"],
+        cache_rate=0,
+    )
     N.create_loss_fnc()
-# %%
-#SECTION:-------------------- From Folder--------------------------------------------------------------------------------------
-# %%
+    # %%
+    # SECTION:-------------------- From Folder--------------------------------------------------------------------------------------
+    # %%
     fldr = Path("/s/xnat_shadow/crc/tensors/lbd_plan3")
-    fn_stats =fldr/("stats.csv")
-    D = DMClass.from_folder(data_folder=fldr, project=proj,config=config,batch_size=2,split="train")
+    fn_stats = fldr / ("stats.csv")
+    D = DMClass.from_folder(
+        data_folder=fldr, project=proj, config=config, batch_size=2, split="train"
+    )
     D.prepare_data()
     D.setup()
     dl = D.dl
 
     N.lr = 1e-2
-    devices=[1]
-    N.model.to('cuda')
-# %%
-    def stat_dict(grad_L_z,suffix=""):
-        return        {
-            'max'+suffix: grad_L_z.max().item(),
-            'min'+suffix: grad_L_z.min().item(), 
-            'mean'+suffix:grad_L_z.mean().item(),
-            'sum'+suffix: grad_L_z.sum().item(),
-            'std'+suffix: grad_L_z.std().item(),
-            'norm'+suffix:torch.linalg.norm(grad_L_z).item(),
+    devices = [1]
+    N.model.to("cuda")
+
+    # %%
+    def stat_dict(grad_L_z, suffix=""):
+        return {
+            "max" + suffix: grad_L_z.max().item(),
+            "min" + suffix: grad_L_z.min().item(),
+            "mean" + suffix: grad_L_z.mean().item(),
+            "sum" + suffix: grad_L_z.sum().item(),
+            "std" + suffix: grad_L_z.std().item(),
+            "norm" + suffix: torch.linalg.norm(grad_L_z).item(),
         }
 
-#SECTION:-------------------- Loops--------------------------------------------------------------------------------------
-    all_stats=[]
-# %%
+    # SECTION:-------------------- Loops--------------------------------------------------------------------------------------
+    all_stats = []
+    # %%
     for i, batch in pbar(enumerate(dl)):
-        batch['image'] =batch['image'].to('cuda')
-        batch['lm'] =batch['lm'].to('cuda')
+        batch["image"] = batch["image"].to("cuda")
+        batch["lm"] = batch["lm"].to("cuda")
 
         inputs, target = batch["image"], batch["lm"]
-        pred = N.forward(
-            inputs
-        )  # N.pred so that NeptuneImageGridCallback can use it
+        pred = N.forward(inputs)  # N.pred so that NeptuneImageGridCallback can use it
 
         pred, target = N.maybe_apply_ds_scales(pred, target)
         loss = N.loss_fnc(pred, target)
         loss_dict = N.loss_fnc.loss_dict
         grad_L_z = N.loss_fnc.grad_L_z
         grad_L_z_ch23 = N.loss_fnc.grad_L_z_ch23
-        fn = inputs.meta['filename_or_obj']
-        cid = info_from_filename(Path(fn).name,False)['case_id']
+        fn = inputs.meta["filename_or_obj"]
+        cid = info_from_filename(Path(fn).name, False)["case_id"]
         inputs.meta
         stats_grad_L_z = stat_dict(grad_L_z)
-        stats_ch23 = stat_dict(grad_L_z_ch23,suffix="_ch23")
+        stats_ch23 = stat_dict(grad_L_z_ch23, suffix="_ch23")
         info = {
-            'fn': inputs.meta['filename_or_obj'],
-            'case_id':cid,
+            "fn": inputs.meta["filename_or_obj"],
+            "case_id": cid,
         }
         final_dict = stats_grad_L_z | stats_ch23 | info
-
 
         all_stats.append(final_dict)
     # print(stats)
     df = pd.DataFrame(all_stats)
-    df =df.merge(df_res[['case_id','dsc','lesions_gt','gt_vol_tot']], on='case_id',how='left')
-    df.to_csv(fn_stats,index=False)
-# %%
-    n=0
-    ImageMaskViewer([inputs[n][0].detach().cpu(),pred[0][n][3].detach().cpu()])
-# %%
+    df = df.merge(
+        df_res[["case_id", "dsc", "lesions_gt", "gt_vol_tot"]], on="case_id", how="left"
+    )
+    df.to_csv(fn_stats, index=False)
+    # %%
+    n = 0
+    ImageMaskViewer([inputs[n][0].detach().cpu(), pred[0][n][3].detach().cpu()])
+    # %%
 
     preds[0].shape
-    n=1
-# %%
-# SECTION:-------------------- Train-------------------------------------------------------------------------------------- <CR>
-    Tm = Trainer(callbacks=cbs, precision="bf16-mixed", should_train=False,devices = devices)
-# %%
+    n = 1
+    # %%
+    # SECTION:-------------------- Train-------------------------------------------------------------------------------------- <CR>
+    Tm = Trainer(
+        callbacks=cbs, precision="bf16-mixed", should_train=False, devices=devices
+    )
+    # %%
     Tm.fit(model=N, train_loader=train_dl, val_loader=val_dl)
-# SECTION:-------------------- GRADCAM-------------------------------------------------------------------------------------- <CR>
+    # SECTION:-------------------- GRADCAM-------------------------------------------------------------------------------------- <CR>
 
-# %%
+    # %%
     class CAMTarget:
         def __call__(self, model_output):
             output = model_output[0]
@@ -972,43 +972,42 @@ if __name__ == "__main__":
             output_tumour = model_output[:, 2, :]
             return output_tumour.sum()
 
-# %%
+    # %%
 
     iteri = iter(val_dl)
     batch = next(iteri)
     input_tensor = batch["image"][3:7, :]
     target_layers = [N.model.tu[-1]]
     # targets = [SemanticSegmentationTarget(car_category, car_mask_float)]
-# %%
+    # %%
 
     input_tensor = input_tensor.to("cuda")
     with autocast():
-
         output = N.model(input_tensor)
     targets = [CAMTarget()]
-# %%
+    # %%
     with GradCAM(
         model=N.model,
         target_layers=target_layers,
     ) as cam:
         grayscale_cam = cam(input_tensor=input_tensor, targets=targets)
         # cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
-# %%
+    # %%
     ind = 3
     ImageMaskViewer([input_tensor[ind, 0], grayscale_cam[ind]])
 
-# %%
+    # %%
     S = cbs[0]
     dfs_train = pd.concat(S.dfs_train)
     dfs_train.to_csv("train_prefitted.csv", index=False)
 
     dfs_val = pd.concat(S.dfs_val)
     dfs_val.to_csv("val_prefitted.csv", index=False)
-# %%
+    # %%
     iteri = iter(train_dl)
     batch = next(iteri)
     print(batch["image"].meta["filename_or_obj"])
-# %%
+    # %%
 
     limit_batches: Union[int, float] = float("inf")
     val_loader = val_dl
@@ -1033,22 +1032,26 @@ if __name__ == "__main__":
         Tm._current_val_return = out
 
         Tm._format_iterable(iterable, Tm._current_val_return, "val")
-# %%
+    # %%
     A = np.array([[1, 2, 3]])  # 1x3 matrix
-    B = np.array([[4, 5, 6],   # 3x3 matrix
-                  [7, 8, 9],
-                  [10, 11, 12]])
+    B = np.array(
+        [
+            [4, 5, 6],  # 3x3 matrix
+            [7, 8, 9],
+            [10, 11, 12],
+        ]
+    )
 
-# Performing the matrix multiplication
-    A*B
+    # Performing the matrix multiplication
+    A * B
     result = np.matmul(A, B)
-# %%
-# %%
-#SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
-# %%
+    # %%
+    # %%
+    # SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
+    # %%
     accelerator = "auto"
-    ckpt_path=None
-    strategy = "auto" 
+    ckpt_path = None
+    strategy = "auto"
     precision = "bf16-mixed"
     plugins = None
     loggers = None
@@ -1061,12 +1064,12 @@ if __name__ == "__main__":
     use_distributed_sampler = True
     checkpoint_dir = "./checkpoints"
     checkpoint_frequency = 1
-    callbacks=cbs
-    precision="bf16-mixed"
+    callbacks = cbs
+    precision = "bf16-mixed"
 
     devices = [0]
-    should_train=False
-# %%
+    should_train = False
+    # %%
     # Initialize Fabric
     Tm.fabric = L.Fabric(
         accelerator=accelerator,
@@ -1077,7 +1080,7 @@ if __name__ == "__main__":
         callbacks=callbacks,
         loggers=loggers,
     )
-    
+
     # Set trainer attributes
     Tm.should_train = should_train
     Tm.global_step = 0
@@ -1095,11 +1098,11 @@ if __name__ == "__main__":
     Tm.checkpoint_dir = checkpoint_dir
     Tm.checkpoint_frequency = checkpoint_frequency
 
-# %%
+    # %%
 
-    model =N
-    val_loader=val_dl
-    train_loader=train_dl
+    model = N
+    val_loader = val_dl
+    train_loader = train_dl
     Tm.fabric.launch()
     # setup dataloaders
     train_loader = Tm.fabric.setup_dataloaders(
@@ -1110,11 +1113,11 @@ if __name__ == "__main__":
             val_loader, use_distributed_sampler=Tm.use_distributed_sampler
         )
 
-# %%
-    iteri =iter(train_loader)
+    # %%
+    iteri = iter(train_loader)
     batch = next(iteri)
-    batch['image'].dtype
-# %%
+    batch["image"].dtype
+    # %%
     # setup model and optimizer
     if isinstance(Tm.fabric.strategy, L.fabric.strategies.fsdp.FSDPStrategy):
         # currently, there is no way to support fsdp with model.configure_optimizers in fabric
@@ -1135,10 +1138,7 @@ if __name__ == "__main__":
             Tm.load(state, latest_checkpoint_path)
 
             # check if we even need to train here
-            if (
-                Tm.max_epochs is not None
-                and Tm.current_epoch >= Tm.max_epochs
-            ):
+            if Tm.max_epochs is not None and Tm.current_epoch >= Tm.max_epochs:
                 Tm.should_stop = True
 
     Tm.fabric.call("on_fit_start")
@@ -1175,11 +1175,10 @@ if __name__ == "__main__":
     Tm.fabric.call("on_fit_end")
     Tm.should_stop = False
 
-
-# %%
+    # %%
     model = Tm.model
     val_loader
-    limit_batches=Tm.limit_val_batches
+    limit_batches = Tm.limit_val_batches
 
     # no validation but warning if val_loader was passed, but validation_step not implemented
     if val_loader is not None and not is_overridden(

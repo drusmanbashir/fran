@@ -1,16 +1,16 @@
 # %%
 from functools import wraps
-from typing import Mapping, Hashable
+from typing import Hashable, Mapping
 
-from monai.data.meta_obj import get_track_meta
 from fastcore.basics import *
+from fasttransform.transform import Transform
+from fran.transforms.base import *
 from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
-from monai.transforms import RandomizableTransform, MapTransform
+from monai.data.meta_obj import get_track_meta
+from monai.transforms import MapTransform, RandomizableTransform
 from monai.transforms.intensity.array import RandGaussianNoise
 from monai.utils.type_conversion import convert_to_tensor
 from scipy.ndimage.filters import gaussian_filter
-from fasttransform.transform import Transform
-from fran.transforms.base import *
 
 
 class NormaliseClip(Transform):
@@ -90,7 +90,6 @@ class MakeBinary(MonaiDictTransform):
 
 
 class _IntensityAugmentation:
-
     def __init__(self, aug_func):
         self.aug_func = aug_func
 
@@ -244,25 +243,23 @@ def standardize(img, mn, std):
 
 # %%
 if __name__ == "__main__":
-
     from fran.data.dataset import *
-
-    from fran.utils.common import *
-    from utilz.helpers import *
-    from utilz.fileio import *
-    from utilz.imageviewers import *
     from fran.transforms.spatialtransforms import *
+    from fran.utils.common import *
     from matplotlib import pyplot as plt
+    from utilz.fileio import *
+    from utilz.helpers import *
+    from utilz.imageviewers import *
 
     P = Project(project_title="litsmc")
     proj_defaults = P
-# %%
+    # %%
 
     import torchvision
 
     model = torchvision.models.detection.ssd300_vgg16(pretrained=True)
     model.eval()
-# %%
+    # %%
     fn = Path(
         "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/images/drli_024.pt"
     )
@@ -273,11 +270,11 @@ if __name__ == "__main__":
     im2 = im.mean(1)
     plt.imshow(im2)
 
-# %%
+    # %%
     x = torch.tensor([1, 2, 3])
     x.repeat(4, 2)
     x.repeat(4, 2, 1).size()
-# %%
+    # %%
     im1 = im1.repeat(3, 1, 1)
 
     confidence_threshold = 0.8
@@ -289,7 +286,7 @@ if __name__ == "__main__":
     filtered_scores = scores[indices]
     filtered_labels = labels[indices]
 
-# %%
+    # %%
     import cv2
 
     def draw_boxes_and_labels(image, bbox, labels):
@@ -316,7 +313,7 @@ if __name__ == "__main__":
 
         return img_copy
 
-# %%
+    # %%
 
     plt.imshow(img)
     im1 = im1.detach().cpu()
@@ -326,20 +323,20 @@ if __name__ == "__main__":
     bbox = bbox.detach().cpu().numpy()
     result_img = draw_boxes_and_labels(cv2_image, bbox, labels)
     cv2.imshow("image", result_img)
-# %%
+    # %%
     mask_fn = Path("/home/ub/datasets/preprocessed/kits23/masks/kits23_00088.npy")
     img_fn = Path("/home/ub/datasets/preprocessed/kits23/images/kits23_00088.npy")
     bb = load_dict(bboxes_21)
     bboxes = [b for b in bb if b["filename"] == mask_fn][0]
     patch_size = [64, 256, 256]
-# %%
+    # %%
     x, y, _ = train_ds[0]
-# %%
+    # %%
     xx, yy = invert([x, y], factor_range=[0.6, 1.2])
     xx, yy = contrast([x, y], factor_range=[0, 1])
     plt.hist(x.flatten())
     plt.hist(xx.flatten())
-# %%
+    # %%
     b = partial(brightness, factor_range=[1.2, 1.3])
     c = partial(brightness, factor_range=[1.2, 1.3])
     xx, yy = b([x, y])

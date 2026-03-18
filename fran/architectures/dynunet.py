@@ -1,10 +1,8 @@
 # %%
 import ipdb
-import torch
 from monai.networks.nets import DynUNet
 
 tr = ipdb.set_trace
-from torch.nn.functional import interpolate
 
 
 def get_kernel_strides(patch_size, spacings):
@@ -56,13 +54,15 @@ class DynUNet_UB(DynUNet):
 
 # %%
 if __name__ == "__main__":
+    import torch
+    from torch.nn.functional import interpolate
     from torchinfo import summary
 
     patch_size = [128, 128, 96]
     spacings = [1, 1, 1]
     k, s = get_kernel_strides(patch_size, spacings)
     kernels, strides = get_kernel_strides(patch_size, [1, 1, 2])
-# %%
+    # %%
     net = DynUNet(
         3,
         1,
@@ -85,17 +85,17 @@ if __name__ == "__main__":
         deep_supervision=True,
         deep_supr_num=3,
     )
-# %%
+    # %%
     net.to("cuda")
     x = torch.randn(3, 1, *patch_size, device="cuda")
-# %%
+    # %%
 
     out = net.skip_layers(x)
     print(out.shape)
 
     out = net.output_block(out)
     print(out.shape)
-# %%
+    # %%
     if net.training and net.deep_supervision:
         out_all = [out]
         for feature_map in net.heads:
@@ -103,14 +103,14 @@ if __name__ == "__main__":
             out_all.append(interpolate(feature_map, out.shape[2:]))
 
     [print(xx.shape) for xx in out_all]
-# %%
+    # %%
     y = net(x)
     y2 = net2(x)
     print(y.shape)
     [print(a.shape) for a in y2]
 
     yy = torch.unbind(y, 1)
-# %%
+    # %%
     summ = summary(
         net,
         input_size=tuple([1, 1] + patch_size),
@@ -136,6 +136,6 @@ if __name__ == "__main__":
         device="cuda",
     )
     print(summ2)
-# %%
+    # %%
     iteri = net.skip_layers.modules()
     aa = next(iteri)

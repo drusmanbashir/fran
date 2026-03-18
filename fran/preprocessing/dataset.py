@@ -1,56 +1,43 @@
 # %%
-from monai.transforms.utils import is_positive
+from pathlib import Path
+
 import torch
 from fastcore.all import store_attr
+from fastcore.basics import GetAttr, store_attr
 from fastcore.foundation import GetAttr
-from monai.transforms.compose import Compose
-from monai.transforms.spatial.dictionary import Spacingd
-from monai.transforms.utility.dictionary import (
-    EnsureChannelFirstd,
-    ToDeviced,
-)
-
-from monai.data import Dataset
-from fran.transforms.imageio import LoadSITKd
+from fran.transforms.imageio import LoadSITKd, LoadTorchd
+from fran.transforms.inferencetransforms import BBoxFromPTd
 from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.misc_transforms import (
+    ApplyBBox,
     ChangeDtyped,
     DictToMeta,
     FgBgToIndicesd2,
     HalfPrecisiond,
     LabelRemapd,
-    RecastToFloatd,
     LabelRemapSITKd,
-)
-from fran.transforms.spatialtransforms import ResizeToTensord
-
-
-from monai.transforms.croppad.dictionary import CropForegroundd
-from monai.data import Dataset
-from monai.transforms import Compose
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
-
-from fran.transforms.imageio import LoadSITKd, LoadTorchd
-from fran.transforms.inferencetransforms import BBoxFromPTd
-from fran.transforms.misc_transforms import (
-    ApplyBBox,
     MergeLabelmapsd,
     RecastToFloatd,
-    LabelRemapSITKd,
 )
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.string_works import is_excel_None
-from utilz.stringz import info_from_filename
-
-from pathlib import Path
-from fastcore.basics import GetAttr, store_attr
-
+from monai.data import Dataset
+from monai.transforms import Compose
+from monai.transforms.compose import Compose
+from monai.transforms.croppad.dictionary import CropForegroundd
+from monai.transforms.spatial.dictionary import Spacingd
+from monai.transforms.utility.dictionary import (
+    EnsureChannelFirstd,
+    ToDeviced,
+)
+from monai.transforms.utils import is_positive
 from utilz.fileio import *
 from utilz.helpers import *
 from utilz.imageviewers import *
+from utilz.stringz import info_from_filename
 
 
-#CODE: TO BE DELETED
+# CODE: TO BE DELETED
 class ResamplerDataset(GetAttr, Dataset):
     """A dataset class that handles resampling of medical images and their labels.
 
@@ -237,7 +224,7 @@ class ResamplerDataset(GetAttr, Dataset):
         Ch = ChangeDtyped(keys=["lm"], target_dtype=torch.uint8)
 
         # tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
-        tfms = [L, Rem,RemI, T, Re, Ind, E, Si, Rz, Ch]
+        tfms = [L, Rem, RemI, T, Re, Ind, E, Si, Rz, Ch]
 
         if self.clip_center == True:
             tfms.extend([N])
@@ -255,8 +242,8 @@ class ResamplerDataset(GetAttr, Dataset):
             self.std = self.global_properties["std_fg"]
 
 
-class ImporterDataset(ResamplerDataset): 
-#CODE: being phased out in favour of setting every thing up in imported.py  (see #3)
+class ImporterDataset(ResamplerDataset):
+    # CODE: being phased out in favour of setting every thing up in imported.py  (see #3)
     """
     Dataset for importing labelmaps.
     This dataset handles loading both torch-format images/labels and imported SITK labelmaps,
@@ -282,9 +269,9 @@ class ImporterDataset(ResamplerDataset):
         plan: Dict containing keys spacing and expand_by
         """
         if remapping_imported is None:
-            assert (
-                merge_imported_labels == False
-            ), "If you are merging imported lms, a remapping for the imported labels must be specified"
+            assert merge_imported_labels == False, (
+                "If you are merging imported lms, a remapping for the imported labels must be specified"
+            )
         store_attr()
         self.spacing = plan.get("spacing")
         self.expand_by = plan.get("expand_by")
@@ -300,7 +287,6 @@ class ImporterDataset(ResamplerDataset):
             self.set_transforms("R,LS,LT,D,E,Rz,B,A,Ind")
         data = self.create_data_dicts(overwrite=overwrite)
         Dataset.__init__(self, data=data, transform=self.transform)
-
 
     def _get_ds_remapping(self, ds):
         return self.remapping_imported
@@ -364,7 +350,6 @@ class ImporterDataset(ResamplerDataset):
             keys=[lm_imported_key], key_template_tensor=lm_key, mode="nearest"
         )
 
-
         self.M = MergeLabelmapsd(
             keys=[lm_imported_key, lm_key], meta_key=lm_key, key_output=lm_key
         )
@@ -403,7 +388,7 @@ class ImporterDataset(ResamplerDataset):
 
 
 class CropToLabelDataset(ImporterDataset, ResamplerDataset):
-#CODE: being phased out
+    # CODE: being phased out
     """A dataset class that crops images based on label masks.
 
     This dataset loads images and their corresponding labels, and crops them
@@ -535,25 +520,26 @@ class FGBGIndicesDataset(CropToLabelDataset):
 
 # %%
 if __name__ == "__main__":
-# %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+    from fran.configs.parser import ConfigMaker
     from fran.managers import Project
     from fran.utils.common import *
-    from fran.configs.parser import ConfigMaker
-# %%
-#SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
+
+    # %%
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
     P = Project("totalseg")
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P,  configuration_filename=None)
+    C = ConfigMaker(P, configuration_filename=None)
     C.setup(6)
     C.plans
     conf = C.configs
     print(conf["model_params"])
 
-    plan = conf['plan_train']
+    plan = conf["plan_train"]
     print(plan)
-    plan['mode']
+    plan["mode"]
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     project = Project("litsmc")
     df = None
@@ -562,7 +548,7 @@ if __name__ == "__main__":
     device = "cpu"
     data_folder = "/s/xnat_shadow/crc/hard_cases"
 
-# %%
+    # %%
     ds = ResamplerDataset(
         df=df,
         project=project,
@@ -573,8 +559,8 @@ if __name__ == "__main__":
     )
 
     ds.setup()
-# %%
-# %%
+    # %%
+    # %%
 
     dat = ds[0]
     im = dat["image"][0].cpu()

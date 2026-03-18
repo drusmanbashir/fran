@@ -4,12 +4,6 @@ from typing import Any, Dict
 
 import ipdb
 import pandas as pd
-from monai.transforms import Compose
-from monai.transforms.utility.dictionary import (EnsureChannelFirstd,
-                                                 MapLabelValueD, ToDeviced)
-from monai.transforms.utils import is_positive
-from utilz.cprint import cprint
-
 from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import (
@@ -18,6 +12,14 @@ from fran.transforms.misc_transforms import (
     GetLabelsd,
 )
 from fran.transforms.spatialtransforms import CropForegroundMinShaped
+from monai.transforms import Compose
+from monai.transforms.utility.dictionary import (
+    EnsureChannelFirstd,
+    MapLabelValueD,
+    ToDeviced,
+)
+from monai.transforms.utils import is_positive
+from utilz.cprint import cprint
 
 MIN_SIZE = 32  # min size in a single dimension of any image
 
@@ -25,7 +27,6 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 from typing import Any, Dict
 
 import pandas as pd
-
 from fran.preprocessing.preprocessor import Preprocessor
 
 tr = ipdb.set_trace
@@ -34,7 +35,6 @@ from typing import Any, Dict
 
 
 class RayWorkerBase(Preprocessor):
-
     def __init__(
         self,
         project,
@@ -102,11 +102,8 @@ class RayWorkerBase(Preprocessor):
         }
         return results
 
-
-
-
     def apply_transforms(self, data: dict):
-        if self.debug==False:
+        if self.debug == False:
             return self.apply_transforms_compose(data)
         else:
             return self.apply_transforms_debug(data)
@@ -133,7 +130,7 @@ class RayWorkerBase(Preprocessor):
 
         for key in keys:
             if self.debug:
-                cprint(f"{key}", color = "yellow")
+                cprint(f"{key}", color="yellow")
                 tr()
             tfm = self.transforms_dict[key]
             if isinstance(tfm, dict):
@@ -202,7 +199,7 @@ class RayWorkerBase(Preprocessor):
             margin=margin,
             min_shape=self.plan["patch_size"],
         )
-        
+
         self.Dev = ToDeviced(device=device, keys=self.tnsr_keys)
         self.Chan = EnsureChannelFirstd(keys=self.tnsr_keys, channel_dim="no_channel")
         self.Indx = FgBgToIndicesd2(
@@ -224,8 +221,6 @@ class RayWorkerBase(Preprocessor):
             "LoadT": self.LoadT,
             "Remap": self.Remap,  # dict: datasource -> transform
         }
-
-
 
     def create_monai_remapping_per_ds(self, remapping_key, lm_key) -> dict:
         dss = self.plan["datasources"]

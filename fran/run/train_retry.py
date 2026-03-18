@@ -4,7 +4,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 OOM_MARKERS = ("CUDA out of memory", "torch.OutOfMemoryError")
 
 
@@ -59,9 +58,17 @@ def main():
     p.add_argument("--description", default=None)
     p.add_argument("--cache-rate", type=float, default=0.0)
     p.add_argument("--ds-type", default=None)
-    p.add_argument("--val-every-n-epochs", dest="val_every_n_epochs", type=int, default=5)
+    p.add_argument(
+        "--val-every-n-epochs", dest="val_every_n_epochs", type=int, default=5
+    )
     p.add_argument("--train-indices", type=nullable_int, default=None)
-    p.add_argument("--bsf", "--batchsize-finder", dest="batchsize_finder", type=str2bool, default=False)
+    p.add_argument(
+        "--bsf",
+        "--batchsize-finder",
+        dest="batchsize_finder",
+        type=str2bool,
+        default=False,
+    )
     args = p.parse_args()
 
     train_script = Path(__file__).with_name("train.py")

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse
 import multiprocessing as mp
 import sys
 from pathlib import Path
@@ -105,7 +104,9 @@ def main(lm_folder: Path, nproc: int, out_csv: Path | None) -> Path:
             rows_all.extend(rows)
 
     df = pd.DataFrame(rows_all)
-    df.sort_values(["case_id", "label_org", "label_cc"], inplace=True, na_position="last")
+    df.sort_values(
+        ["case_id", "label_org", "label_cc"], inplace=True, na_position="last"
+    )
     df.to_csv(out_csv, index=False)
     print(f"Saved: {out_csv}")
     print(f"Rows: {len(df)} | Files: {len(lm_files)}")
@@ -113,6 +114,8 @@ def main(lm_folder: Path, nproc: int, out_csv: Path | None) -> Path:
 
 
 if __name__ == "__main__":
+    import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument(
         "--lm-folder",

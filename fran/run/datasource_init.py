@@ -3,16 +3,14 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
-from utilz.stringz import headline, info_from_filename
-
 from fran.data.dataregistry import DATASET_PATHS, DS
 from fran.data.datasource import Datasource
+from utilz.stringz import headline, info_from_filename
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,7 +36,9 @@ def prompt_yes_no(question: str, default: bool = False) -> bool:
     return response in {"y", "yes"}
 
 
-def prompt_text(question: str, default: str | None = None, allow_blank: bool = True) -> str | None:
+def prompt_text(
+    question: str, default: str | None = None, allow_blank: bool = True
+) -> str | None:
     suffix = f" [{default}]" if default not in (None, "") else ""
     response = input(f"{question}{suffix}: ").strip()
     if response:
@@ -69,7 +69,9 @@ def resolve_backup_root() -> Path:
             return candidate
         except OSError:
             continue
-    raise RuntimeError("Unable to create a backup directory for overwrite/delete operations.")
+    raise RuntimeError(
+        "Unable to create a backup directory for overwrite/delete operations."
+    )
 
 
 def backup_file(path: Path, operation: str, backup_root: Path) -> Path:
@@ -113,7 +115,9 @@ def find_registry_entry(folder: Path) -> tuple[str, Any] | None:
 
 def infer_dataset_name(folder: Path) -> str:
     images_dir = folder / "images"
-    image_files = sorted(p for p in images_dir.iterdir() if p.is_file() and not p.name.startswith("."))
+    image_files = sorted(
+        p for p in images_dir.iterdir() if p.is_file() and not p.name.startswith(".")
+    )
     if not image_files:
         raise FileNotFoundError(f"No image files found in {images_dir}")
     try:
@@ -126,7 +130,9 @@ def infer_dataset_name(folder: Path) -> str:
     return folder.name
 
 
-def build_registry_entry(folder: Path, dataset_name: str) -> tuple[str, dict[str, Any], str | None]:
+def build_registry_entry(
+    folder: Path, dataset_name: str
+) -> tuple[str, dict[str, Any], str | None]:
     key_default = dataset_name
     key = prompt_text("Registry key", default=key_default, allow_blank=False)
     ds_value = prompt_text("Value for ds", default=dataset_name, allow_blank=False)
@@ -160,7 +166,9 @@ def maybe_register_datasource(
     key, entry, alias = build_registry_entry(folder, dataset_name)
     backup_root = resolve_backup_root()
     for path in registry_paths:
-        if not prompt_yes_no(f"Write datasource entry to {path}?", default=path == registry_paths[0]):
+        if not prompt_yes_no(
+            f"Write datasource entry to {path}?", default=path == registry_paths[0]
+        ):
             continue
         registry = load_registry(path)
         datasets = registry.setdefault("datasets", {})
@@ -177,7 +185,9 @@ def maybe_overwrite_h5(h5_path: Path) -> None:
     if not h5_path.exists():
         return
     print(f"Existing datasource state found: {h5_path}")
-    if not prompt_yes_no("Overwrite existing h5 file and reinitialise datasource?", default=False):
+    if not prompt_yes_no(
+        "Overwrite existing h5 file and reinitialise datasource?", default=False
+    ):
         print("Stopping without changes.")
         raise SystemExit(0)
     backup_root = resolve_backup_root()
@@ -191,7 +201,9 @@ def validate_folder(folder: Path) -> None:
         raise FileNotFoundError(f"Datasource folder does not exist: {folder}")
     for child in ("images", "lms"):
         if not (folder / child).exists():
-            raise FileNotFoundError(f"Expected datasource subfolder missing: {folder / child}")
+            raise FileNotFoundError(
+                f"Expected datasource subfolder missing: {folder / child}"
+            )
 
 
 def main(args: argparse.Namespace) -> None:
@@ -225,6 +237,8 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
+    import sys
+
     # sample: python /home/ub/code/fran/fran/run/datasource_init.py /path/to/datasource -n 8
     try:
         main(parse_args())

@@ -1,24 +1,22 @@
 # %%
 from __future__ import annotations
-import ipdb
-tr = ipdb.set_trace
-from tqdm.auto import tqdm
 
+import ipdb
+
+tr = ipdb.set_trace
 import os
 import re
-import secrets
 from pathlib import Path
 from typing import Any, Optional
 
 import torch._dynamo
 import wandb
+from fran.utils.common import common_vars_filename
 from lightning.pytorch.loggers import WandbLogger
 from paramiko import SSHClient
-
-from fran.utils.common import common_vars_filename
+from tqdm.auto import tqdm
 from utilz.fileio import load_yaml, maybe_makedirs
 from utilz.random_word_maker import (
-    logical_word_capacity,
     ordered_word_suffixes,
     random_pronounceable_suffix,
 )
@@ -29,58 +27,57 @@ except Exception:
     np = None
 
 
-def download_path_no_wandb(remote_dir_parent, local_dir_parent)->list:
-        hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
-        client = SSHClient()
-        client.load_system_host_keys()
-        client.connect(
-            hpc_settings["host"],
-            username=hpc_settings["username"],
-            password=hpc_settings["password"],
-        )
+def download_path_no_wandb(remote_dir_parent, local_dir_parent) -> list:
+    hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
+    client = SSHClient()
+    client.load_system_host_keys()
+    client.connect(
+        hpc_settings["host"],
+        username=hpc_settings["username"],
+        password=hpc_settings["password"],
+    )
 
-        with client.open_sftp() as ftp_client:
-            def _recursive_filenames(remote_dir_parent):
-                fnames = []
-                aa = ftp_client.listdir_attr(remote_dir_parent)
-                for aa1 in aa:
-                    if stat.S_ISDIR(aa1.st_mode):
-                        fnames.extend(
-                            _recursive_filenames(
-                                os.path.join(remote_dir_parent, aa1.filename)
-                            )
+    with client.open_sftp() as ftp_client:
+
+        def _recursive_filenames(remote_dir_parent):
+            fnames = []
+            aa = ftp_client.listdir_attr(remote_dir_parent)
+            for aa1 in aa:
+                if stat.S_ISDIR(aa1.st_mode):
+                    fnames.extend(
+                        _recursive_filenames(
+                            os.path.join(remote_dir_parent, aa1.filename)
                         )
-                    elif ".ckpt" in aa1.filename:
-                        fnames.append(os.path.join(remote_dir_parent, aa1.filename))
-                    else:
-                        print(f"Skipping {aa1.filename} as not a ckpt")
-                return fnames
-
-            ckpt_files = _recursive_filenames(remote_dir_parent)
-            print(f"Found {len(ckpt_files)} ckpts:\n {ckpt_files}")
-            if local_dir_parent is None:
-                return ckpt_files
-
-            local_dir_parent = Path(local_dir_parent)
-            existing_local_ckpts = {
-                path.name: path for path in local_dir_parent.rglob("*.ckpt")
-            }
-            local_files = []
-            for remote_file in tqdm(ckpt_files):
-                rel = remote_file.split("/")[-1]
-                existing_local = existing_local_ckpts.get(rel)
-                if existing_local is not None:
-                    print(
-                        f"Warning: skipping {remote_file} because local checkpoint exists at {existing_local}"
                     )
-                    continue
-                local_file = local_dir_parent / rel
-                local_file.parent.mkdir(parents=True, exist_ok=True)
-                ftp_client.get(remote_file, str(local_file))
-                local_files.append(local_file)
-        return local_files
+                elif ".ckpt" in aa1.filename:
+                    fnames.append(os.path.join(remote_dir_parent, aa1.filename))
+                else:
+                    print(f"Skipping {aa1.filename} as not a ckpt")
+            return fnames
 
+        ckpt_files = _recursive_filenames(remote_dir_parent)
+        print(f"Found {len(ckpt_files)} ckpts:\n {ckpt_files}")
+        if local_dir_parent is None:
+            return ckpt_files
 
+        local_dir_parent = Path(local_dir_parent)
+        existing_local_ckpts = {
+            path.name: path for path in local_dir_parent.rglob("*.ckpt")
+        }
+        local_files = []
+        for remote_file in tqdm(ckpt_files):
+            rel = remote_file.split("/")[-1]
+            existing_local = existing_local_ckpts.get(rel)
+            if existing_local is not None:
+                print(
+                    f"Warning: skipping {remote_file} because local checkpoint exists at {existing_local}"
+                )
+                continue
+            local_file = local_dir_parent / rel
+            local_file.parent.mkdir(parents=True, exist_ok=True)
+            ftp_client.get(remote_file, str(local_file))
+            local_files.append(local_file)
+    return local_files
 
 
 def _is_writable_dir(path: Path) -> bool:
@@ -93,15 +90,22 @@ def _is_writable_dir(path: Path) -> bool:
     except Exception:
         return False
 
+
 import stat
+
 torch._dynamo.config.suppress_errors = True
+
 
 def _resolve_wandb_save_dir(project) -> str:
     env_dir = os.environ.get("WANDB_DIR")
     candidates = []
     if env_dir:
         candidates.append(Path(env_dir))
-    candidates += [Path(project.log_folder), Path.cwd() / "wandb", Path("/tmp") / "wandb"]
+    candidates += [
+        Path(project.log_folder),
+        Path.cwd() / "wandb",
+        Path("/tmp") / "wandb",
+    ]
     for path in candidates:
         if _is_writable_dir(path):
             os.environ.setdefault("WANDB_DIR", str(path))
@@ -172,7 +176,7 @@ def _extract_word_suffix(value: str, prefix: str) -> Optional[str]:
     value = str(value or "")
     token = f"{prefix}-"
     if value.startswith(token):
-        return value[len(token):]
+        return value[len(token) :]
     return None
 
 
@@ -221,6 +225,7 @@ def get_wandb_checkpoint(project, run_id):
     ckpt = wl.model_checkpoint
     wl.stop()
     return ckpt
+
 
 def download_wandb_checkpoint(project, run_id):
     wl = WandbManager(
@@ -284,8 +289,11 @@ class WandbManager(WandbLogger):
             log_model=("all" if log_model_checkpoints else False),
             **wandb_init_kwargs,
         )
-        self.df = self.fetch_project_df() if self._mode not in {"disabled", "offline"} else self._empty_df()
-
+        self.df = (
+            self.fetch_project_df()
+            if self._mode not in {"disabled", "offline"}
+            else self._empty_df()
+        )
 
     def _path(self, leaf: str) -> str:
         return f"{self.prefix}/{leaf}" if self.prefix else leaf
@@ -301,7 +309,11 @@ class WandbManager(WandbLogger):
         return self.experiment
 
     def _project_path(self) -> str:
-        return f"{self.entity}/{self.project.project_title}" if self.entity else self.project.project_title
+        return (
+            f"{self.entity}/{self.project.project_title}"
+            if self.entity
+            else self.project.project_title
+        )
 
     def _run_path(self, run_id: Optional[str] = None) -> str:
         run_id = run_id or self.run_id
@@ -344,7 +356,11 @@ class WandbManager(WandbLogger):
     def fetch_project_df(self, columns=None):
         try:
             api = wandb.Api()
-            path = f"{self.entity}/{self.project.project_title}" if self.entity else self.project.project_title
+            path = (
+                f"{self.entity}/{self.project.project_title}"
+                if self.entity
+                else self.project.project_title
+            )
             runs = list(api.runs(path))
         except Exception:
             return self._empty_df(columns=columns)
@@ -356,8 +372,12 @@ class WandbManager(WandbLogger):
                 "sys/creation_time": run.created_at,
                 "sys/url": run.url,
             }
-            row[self._path("best_model_path")] = run.summary.get(self._path("best_model_path"))
-            row[self._path("last_model_path")] = run.summary.get(self._path("last_model_path"))
+            row[self._path("best_model_path")] = run.summary.get(
+                self._path("best_model_path")
+            )
+            row[self._path("last_model_path")] = run.summary.get(
+                self._path("last_model_path")
+            )
             if columns is None:
                 rows.append(row)
             else:
@@ -462,8 +482,12 @@ class WandbManager(WandbLogger):
             ):
                 fnames.append(f.filename)
         except FileNotFoundError:
-            print("\n------------------------------------------------------------------")
-            print(f"Error:Could not find {remote_dir}.\nIs this a remote folder and exists?\n")
+            print(
+                "\n------------------------------------------------------------------"
+            )
+            print(
+                f"Error:Could not find {remote_dir}.\nIs this a remote folder and exists?\n"
+            )
             return
 
         remote_fnames = [os.path.join(remote_dir, f) for f in fnames]
@@ -499,25 +523,26 @@ class WandbManager(WandbLogger):
 
 if __name__ == "__main__":
 # %%
-#SECTION:-------------------- --------------------------------------------------------------------------------------    
+# SECTION:-------------------- -------------------------------------------------------------------------------------- <CR>
 
-        from fran.managers.project import Project
-        P = Project(project_title="kits2")
-        _resolve_wandb_save_dir(P)
+    from fran.managers.project import Project
+
+    P = Project(project_title="kits2")
+    _resolve_wandb_save_dir(P)
 # %%
-        W = WandbManager(project=P)
-        os.environ["WANDB_MODE"] = "online"
-        api= wandb.Api()
-        runs = api.runs()
-        aa = list(runs)
-        print(_new_run_id("drubashir", "kits2"))
-        df = W.fetch_project_df()
-        width =4
-        prefix= "kits2"
-        aa = df['sys/name'].sort_values().iloc[-1]
-        number = int(aa.split("-")[-1])
-        max_seq = aa.split("-")[-1]
-        max_seq = int(max_seq)
-        id = f"{prefix}-{max_seq + 1:0{int(width)}d}"
+    W = WandbManager(project=P)
+    os.environ["WANDB_MODE"] = "online"
+    api = wandb.Api()
+    runs = api.runs()
+    aa = list(runs)
+    print(_new_run_id("drubashir", "kits2"))
+    df = W.fetch_project_df()
+    width = 4
+    prefix = "kits2"
+    aa = df["sys/name"].sort_values().iloc[-1]
+    number = int(aa.split("-")[-1])
+    max_seq = aa.split("-")[-1]
+    max_seq = int(max_seq)
+    id = f"{prefix}-{max_seq + 1:0{int(width)}d}"
 
 # %%

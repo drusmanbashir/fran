@@ -1,21 +1,24 @@
 # %%
 import ipdb
-from torch.utils.data import DataLoader, Subset
-from fran.evaluation.craigloss import DeepSupervisionLossCraig, CombinedLoss
+from fran.evaluation.craigloss import CombinedLoss, DeepSupervisionLossCraig
 from fran.extra.deepcore.deepcore.met.met_utils import submodular_optimizer
 from fran.extra.deepcore.deepcore.met.met_utils.euclidean import euclidean_dist_pair_np
+from torch.utils.data import DataLoader, Subset
+
 tr = ipdb.set_trace
 import numpy as np
 import torch._dynamo
+
 torch._dynamo.config.suppress_errors = True
 import itertools as il
 import operator
+
 from fran.architectures.create_network import (
     create_model_from_conf_nnUNetCraig,
     pool_op_kernels_nnunet,
 )
-from fran.architectures.create_network import pool_op_kernels_nnunet
-from fran.managers.unet import UNetManager, UNetManagerFabric
+from fran.managers.unet import UNetManagerFabric
+
 
 class UNetManagerCraig(UNetManagerFabric):
     def __init__(
@@ -39,7 +42,7 @@ class UNetManagerCraig(UNetManagerFabric):
     # return super().on_validation_model_eval()
 
     def create_loss_fnc(self):
-        if self.model_params["arch"] == "nnUNet":
+        if self.model_params["arch"] in ["nnUNet", "nnUNet_v1"]:
             num_pool = 5
             self.net_num_pool_op_kernel_sizes = pool_op_kernels_nnunet(
                 self.plan["patch_size"]
@@ -56,7 +59,7 @@ class UNetManagerCraig(UNetManagerFabric):
                 softmax=True,
                 compute_grad=True,  # i want to capture grad in the model
             )
-            self.loss_fnc=loss_func
+            self.loss_fnc = loss_func
 
         elif (
             self.model_params["arch"] == "DynUNet"
@@ -90,13 +93,13 @@ class UNetManagerCraig(UNetManagerFabric):
                 fg_classes=self.model_params["out_channels"] - 1,
                 compute_grad=self.capture_grads,
             )
-            self.loss_fnc=loss_func
+            self.loss_fnc = loss_func
 
         else:
             loss_func = CombinedLoss(
                 **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
             )
-            self.loss_fnc=loss_func
+            self.loss_fnc = loss_func
 
     def compute_gradient_norm(self):
         """
@@ -142,9 +145,7 @@ class UNetManagerCraig(UNetManagerFabric):
                     batch_num, 1, self.embedding_dim
                 ).repeat(1, self.args.num_classes, 1) * bias_parameters_grads.view(
                     batch_num, self.args.num_classes, 1
-                ).repeat(
-                    1, 1, self.embedding_dim
-                )
+                ).repeat(1, 1, self.embedding_dim)
                 gradients.append(
                     torch.cat(
                         [bias_parameters_grads, weight_parameters_grads.flatten(1)],
@@ -158,24 +159,21 @@ class UNetManagerCraig(UNetManagerFabric):
         self.model.train()  # Switch back to training mode
         return euclidean_dist_pair_np(gradients)
 
-
     def _common_step(self, batch, batch_idx):
-        loss, loss_dict = super()._common_step(batch,batch_idx)
-        grad_L_z= self.loss_fnc.grad_L_z
-        return loss,loss_dict,grad_L_z
+        loss, loss_dict = super()._common_step(batch, batch_idx)
+        grad_L_z = self.loss_fnc.grad_L_z
+        return loss, loss_dict, grad_L_z
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        loss, loss_dict ,grad_L_z = self._common_step(batch, batch_idx)
+        loss, loss_dict, grad_L_z = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="val")
         return loss, grad_L_z
 
-
     def training_step(self, batch, batch_idx):
 
-        loss, loss_dict ,grad_L_z = self._common_step(batch, batch_idx)
+        loss, loss_dict, grad_L_z = self._common_step(batch, batch_idx)
         self.log_losses(loss_dict, prefix="train")
         return loss, grad_L_z
-
 
     def select_subset_with_craig(self):
         """
@@ -195,7 +193,7 @@ class UNetManagerCraig(UNetManagerFabric):
         print("*" * 100)
         print("Fixing CRAIG model temporarily. Alter code when CRAIG is implemented")
         model = create_model_from_conf_nnUNetCraig(
-            self.model_params, self.model_params['deep_supervision']
+            self.model_params, self.model_params["deep_supervision"]
         )
         return model
 

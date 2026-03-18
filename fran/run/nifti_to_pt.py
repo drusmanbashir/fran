@@ -1,43 +1,46 @@
 # %%
-import pandas as pd
-from label_analysis.totalseg import TotalSegmenterLabels
-from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
-from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
-from fran.configs.parser import ConfigMaker
 
-
-if __name__ == '__main__':
-    from fran.utils.common import *
-
+if __name__ == "__main__":
+    import pandas as pd
+    from fran.configs.parser import ConfigMaker
     from fran.managers import Project
+    from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
+    from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
+    from fran.utils.common import *
+    from label_analysis.totalseg import TotalSegmenterLabels
+
     project = Project("litsmc")
 
-# %%
-#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+    # %%
+    # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
-
-    from fran.utils.common import *
     from fran.managers import Project
+    from fran.utils.common import *
 
     P = Project(project_title="litsmc")
     spacing = [0.8, 0.8, 1.5]
     P.maybe_store_projectwide_properties()
 
-    conf = ConfigMaker(P,  configuration_filename=None).config
+    conf = ConfigMaker(P, configuration_filename=None).config
     plan = conf["plan_valid"]
     nifti_fldr = "/s/xnat_shadow/crc/sampling/nifti"
-    fixed_fldr ="/s/xnat_shadow/crc/sampling/tensors/fixed_spacing/"
-    lbd_fldr ="/s/xnat_shadow/crc/sampling/tensors/lbd"
+    fixed_fldr = "/s/xnat_shadow/crc/sampling/tensors/fixed_spacing/"
+    lbd_fldr = "/s/xnat_shadow/crc/sampling/tensors/lbd"
     fn_results = "/s/fran_storage/predictions/litsmc/LITS-933_fixed_mc/results/summary_LITS-933.xlsx"
     fn = "/home/ub/code/fran/configurations/experiment_configs_liver.xlsx"
     df_res = pd.read_excel(fn)
-    overwrite=False
-# %%
-#SECTION:-------------------- ResampleDatasetniftiToTorch--------------------------------------------------------------------------------------
-    Rs = ResampleDatasetniftiToTorch(project, spacing=[0.8, 0.8, 1.5], data_folder=nifti_fldr,output_folder=fixed_fldr)
+    overwrite = False
+    # %%
+    # SECTION:-------------------- ResampleDatasetniftiToTorch--------------------------------------------------------------------------------------
+    Rs = ResampleDatasetniftiToTorch(
+        project,
+        spacing=[0.8, 0.8, 1.5],
+        data_folder=nifti_fldr,
+        output_folder=fixed_fldr,
+    )
     Rs.setup(overwrite=overwrite)
     Rs.process()
-# %%
+    # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=False)
@@ -45,7 +48,7 @@ if __name__ == '__main__':
     TSL = TotalSegmenterLabels()
     imported_folder = "/s/fran_storage/predictions/totalseg/LITS-1088"
     imported_labelsets = lm_group["imported_labelsets"]
-    imported_labelsets = [TSL.get_labels("liver",localiser=True)]
+    imported_labelsets = [TSL.get_labels("liver", localiser=True)]
     remapping = TSL.create_remapping(
         imported_labelsets,
         [
@@ -55,7 +58,7 @@ if __name__ == '__main__':
         localiser=True,
     )
     merge_imported_labels = True
-# %%
+    # %%
 
     L = LabelBoundedDataGeneratorImported(
         project=P,
@@ -65,7 +68,7 @@ if __name__ == '__main__':
         imported_folder=imported_folder,
         merge_imported_labels=merge_imported_labels,
         remapping=remapping,
-        folder_suffix=plan['plan_name'],
+        folder_suffix=plan["plan_name"],
     )
     L.setup(overwrite=overwrite)
     L.process()

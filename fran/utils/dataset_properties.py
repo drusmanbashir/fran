@@ -2,8 +2,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from utilz.helpers import multiprocess_multiarg
 from utilz.fileio import save_json
+from utilz.helpers import multiprocess_multiarg
 
 
 def _shape_array(shapes):
@@ -25,7 +25,11 @@ def _shape_stat(shape_arr: np.ndarray, reducer) -> list:
 
 def _tensorfile_stats_with_profile(filename):
     tnsr = torch.load(filename, weights_only=False)
-    arr = tnsr.detach().cpu().numpy() if isinstance(tnsr, torch.Tensor) else np.asarray(tnsr)
+    arr = (
+        tnsr.detach().cpu().numpy()
+        if isinstance(tnsr, torch.Tensor)
+        else np.asarray(tnsr)
+    )
     arr = arr.astype(np.float64, copy=False)
     return {
         "shape": [*arr.shape],
@@ -44,7 +48,11 @@ def _tensorfile_stats_with_profile(filename):
 
 def _tensorfile_histogram(filename, hist_range, bins):
     tnsr = torch.load(filename, weights_only=False)
-    arr = tnsr.detach().cpu().numpy() if isinstance(tnsr, torch.Tensor) else np.asarray(tnsr)
+    arr = (
+        tnsr.detach().cpu().numpy()
+        if isinstance(tnsr, torch.Tensor)
+        else np.asarray(tnsr)
+    )
     hist, _ = np.histogram(arr, bins=bins, range=hist_range)
     return hist.astype(np.int64)
 
@@ -70,7 +78,9 @@ def analyze_tensor_data_folder(
     histogram_bins: int = 8192,
 ):
     data_folder = Path(data_folder)
-    file_iter = data_folder.rglob(glob_pattern) if recursive else data_folder.glob(glob_pattern)
+    file_iter = (
+        data_folder.rglob(glob_pattern) if recursive else data_folder.glob(glob_pattern)
+    )
     files = sorted(file_iter)
     if len(files) == 0:
         out = {
@@ -103,7 +113,7 @@ def analyze_tensor_data_folder(
     total_sum = float(np.sum([x["sum"] for x in stats]))
     total_sum_sq = float(np.sum([x["sum_sq"] for x in stats]))
     dataset_mean = total_sum / total_voxels
-    dataset_var = max(0.0, (total_sum_sq / total_voxels) - (dataset_mean ** 2))
+    dataset_var = max(0.0, (total_sum_sq / total_voxels) - (dataset_mean**2))
     dataset_std = float(np.sqrt(dataset_var))
 
     if dataset_max == dataset_min:
@@ -111,7 +121,9 @@ def analyze_tensor_data_folder(
         dataset_median = dataset_min
         dataset_p99 = dataset_min
     else:
-        hist_args = [[fn, (dataset_min, dataset_max), int(histogram_bins)] for fn in files]
+        hist_args = [
+            [fn, (dataset_min, dataset_max), int(histogram_bins)] for fn in files
+        ]
         hists = multiprocess_multiarg(
             func=_tensorfile_histogram,
             arguments=hist_args,
@@ -120,7 +132,9 @@ def analyze_tensor_data_folder(
             io=True,
         )
         hist_total = np.sum(np.stack(hists, axis=0), axis=0)
-        edges = np.linspace(dataset_min, dataset_max, int(histogram_bins) + 1, dtype=np.float64)
+        edges = np.linspace(
+            dataset_min, dataset_max, int(histogram_bins) + 1, dtype=np.float64
+        )
         dataset_p01 = _quantile_from_hist(hist_total, edges, 0.01)
         dataset_median = _quantile_from_hist(hist_total, edges, 0.50)
         dataset_p99 = _quantile_from_hist(hist_total, edges, 0.99)

@@ -1,7 +1,6 @@
 # %%
-from utilz.cprint import cprint
-from utilz.imageviewers import ImageMaskViewer
 import math
+
 import ipdb
 import monai.transforms.spatial.functional as fm
 import skimage.transform as tf
@@ -25,16 +24,12 @@ from torch import cos, pi, sin
 from utilz.helpers import *
 from utilz.stringz import int_to_str
 
-
 tr = ipdb.set_trace
 
 
-from monai.transforms.croppad.dictionary import CropForegroundd, Padd, RandSpatialCropd, ResizeWithPadOrCropd
-
 from fran.transforms.base import *
+from monai.transforms.croppad.dictionary import Padd, RandSpatialCropd
 
-
-    
 
 def _resize3d(data, spatial_shape, mode):
     data_out = fm.resize(
@@ -50,6 +45,7 @@ def _resize3d(data, spatial_shape, mode):
         transform_info=None,
     )
     return data_out
+
 
 class CropForegroundMinShaped(MapTransform):
     """
@@ -94,7 +90,7 @@ class CropForegroundMinShaped(MapTransform):
             select_fn=select_fn,
             channel_indices=channel_indices,
             margin=self.margin,
-            allow_smaller=True,   # required: never pad
+            allow_smaller=True,  # required: never pad
             k_divisible=1,
             lazy=lazy,
         )
@@ -197,27 +193,30 @@ class CropForegroundMinShaped(MapTransform):
             )
 
         return d
+
+
 # %%
-class ExtractContiguousSlicesd(RandomizableTransform,MapTransform):
+class ExtractContiguousSlicesd(RandomizableTransform, MapTransform):
     """
     Extract 3 contiguous slices (z-1, z, z+1) from image and label volumes.
     Outputs:
     """
 
-    def __init__(self, keys: KeysCollection = ("image_fns", "lm_fldr", "n_slices") ,allow_missing_keys=False):
-        RandomizableTransform.__init__(self, 1) # always randomize
+    def __init__(
+        self,
+        keys: KeysCollection = ("image_fns", "lm_fldr", "n_slices"),
+        allow_missing_keys=False,
+    ):
+        RandomizableTransform.__init__(self, 1)  # always randomize
         MapTransform.__init__(self, keys, allow_missing_keys)
         self.keys = keys if isinstance(keys, (list, tuple)) else [keys]
 
-
     def randomize(self, n_slices):
-        self.z= self.R.randint(1, n_slices- 2)
-        
-    def __call__(
-        self, data
-    ):
+        self.z = self.R.randint(1, n_slices - 2)
+
+    def __call__(self, data):
         # Handle both single dictionary and list of dictionaries
-        n_slices = data['n_slices']
+        n_slices = data["n_slices"]
         self.randomize(n_slices)
         # image_prev = img_fns[self.z]
         # image_curr = img_fns[self.z+1]
@@ -227,47 +226,50 @@ class ExtractContiguousSlicesd(RandomizableTransform,MapTransform):
         # lm_next = lm/image_next.name
         # dici = {"image_prev":image_prev, "image_curr":image_curr, "image_next":image_next, "lm_prev":lm_prev, "lm_curr":lm_curr, "lm_next":lm_next}
 
-    
-        lm_fldr = data['lm_fldr']
-        image_fns = data['image_fns']
+        lm_fldr = data["lm_fldr"]
+        image_fns = data["image_fns"]
         outs = []
         for i in range(3):
-            substring = "slice"+int_to_str(self.z+i,3)
+            substring = "slice" + int_to_str(self.z + i, 3)
             img_fn = [fn for fn in image_fns if substring in fn.name][0]
-            lm_fn = lm_fldr/(img_fn.name)
-            listi = [img_fn,lm_fn]
+            lm_fn = lm_fldr / (img_fn.name)
+            listi = [img_fn, lm_fn]
             outs.append(listi)
-        images , lms= [], []
+        images, lms = [], []
         for sublist in outs:
             img_fn = sublist[0]
             lm_fn = sublist[1]
-            img = torch.load(img_fn,weights_only=False)
-            lm = torch.load(lm_fn,weights_only=False)
+            img = torch.load(img_fn, weights_only=False)
+            lm = torch.load(lm_fn, weights_only=False)
             img = torch.Tensor(img)
             lm = torch.Tensor(lm)
             images.append(img)
             lms.append(lm)
-        images= torch.stack(images)
+        images = torch.stack(images)
         lms = torch.stack(lms)
-        dici = {"image":images, "lm":lms}
+        dici = {"image": images, "lm": lms}
         return dici
+
 
 class Project2D(MonaiDictTransform, Randomizable):
     def __init__(
         self, keys: KeysCollection, operations=["sum"], dim=None, output_keys=None
     ):
-         super().__init__(keys)
-         assert len(keys)==len(operations), "Same number of operations as keys must be given"
-         self.operations =[ getattr(torch, operation) for operation in operations]
-         self.output_keys =output_keys if output_keys else keys
-         self.dim = dim
-         self.do_randomize = False if dim else True
-
+        super().__init__(keys)
+        assert len(keys) == len(operations), (
+            "Same number of operations as keys must be given"
+        )
+        self.operations = [getattr(torch, operation) for operation in operations]
+        self.output_keys = output_keys if output_keys else keys
+        self.dim = dim
+        self.do_randomize = False if dim else True
 
     def __call__(self, data: dict):
         self.randomize()
-        for key,output_key, operation in zip(self.key_iterator(data),self.output_keys, self.operations):
-            data[output_key] = self.func(data[key],operation)
+        for key, output_key, operation in zip(
+            self.key_iterator(data), self.output_keys, self.operations
+        ):
+            data[output_key] = self.func(data[key], operation)
         return data
 
     def randomize(self):
@@ -278,7 +280,9 @@ class Project2D(MonaiDictTransform, Randomizable):
         data = operation(data, dim=self.dim)
         return data
 
+
 # %%
+
 
 class ResizeToTensord(MonaiDictTransform):
     def __init__(self, keys: KeysCollection, mode, key_template_tensor):
@@ -316,7 +320,6 @@ class ResizeToMetaSpatialShaped(MonaiDictTransform):
 
 
 class PadDeficitd(Padd):
-
     def __init__(
         self,
         keys: KeysCollection,
@@ -331,7 +334,11 @@ class PadDeficitd(Padd):
             spatial_size=spatial_size, method=method, **pad_kwargs, lazy=lazy
         )
         super().__init__(
-            keys, padder=padder, mode=mode, allow_missing_keys=allow_missing_keys, lazy=lazy  # type: ignore
+            keys,
+            padder=padder,
+            mode=mode,
+            allow_missing_keys=allow_missing_keys,
+            lazy=lazy,  # type: ignore
         )
 
 
@@ -446,9 +453,10 @@ class PermuteImageMask(RandomizableTransform, MapTransform):
             sequence = (0,) + tuple(
                 np.random.choice([1, 2], size=2, replace=False)
             )  # if dim0 is different, this will make pblms
-            img_permuted, mask_permuted = torch.permute(
-                img, dims=sequence
-            ), torch.permute(mask, dims=sequence)
+            img_permuted, mask_permuted = (
+                torch.permute(img, dims=sequence),
+                torch.permute(mask, dims=sequence),
+            )
             return img_permuted, mask_permuted
         else:
             return x
@@ -711,7 +719,6 @@ class GrowTumour(ItemTransform):
 
 
 class CropImgMask(KeepBBoxTransform):
-
     def __init__(self, patch_size, input_dims):
         self.dim = len(patch_size)
         self.patch_halved = [int(x / 2) for x in patch_size]
@@ -964,6 +971,7 @@ def get_bboxes_matching_labels(labels_list, bboxes):
             bboxes_output.append(bbox[0])
     return bboxes_output
 
+
 class WholeImageBinaryMask(ItemTransform):
     """
     takes 3d image/mask, converts them to tensors and then adds channel dimension before sending out
@@ -1005,9 +1013,10 @@ class PermuteImageMaskBBox(ItemTransform):
                     centroids[:, sequence[2]],
                 ]
             ).transpose()
-            img_permuted, mask_permuted = torch.permute(
-                img, dims=sequence
-            ), torch.permute(mask, dims=sequence)
+            img_permuted, mask_permuted = (
+                torch.permute(img, dims=sequence),
+                torch.permute(mask, dims=sequence),
+            )
             bbox_info_permuted = {"centroids": centroids_new, "bboxes": bboxes_new}
             return img_permuted, mask_permuted, bbox_info_permuted
         else:
@@ -1025,9 +1034,10 @@ class PermuteImageMask(KeepBBoxTransform):
             sequence = (0,) + tuple(
                 np.random.choice([1, 2], size=2, replace=False)
             )  # if dim0 is different, this will make pblms
-            img_permuted, mask_permuted = torch.permute(
-                img, dims=sequence
-            ), torch.permute(mask, dims=sequence)
+            img_permuted, mask_permuted = (
+                torch.permute(img, dims=sequence),
+                torch.permute(mask, dims=sequence),
+            )
             return img_permuted, mask_permuted
         else:
             return x
@@ -1201,7 +1211,6 @@ class CenteredPatch(ItemTransform):
 
 
 class ExpandAndPadNpArray(ItemTransform):
-
     def __init__(self, patch_size, expand_by=0.3, stride=[1, 1, 1], mode="constant"):
         self.patch_size = [
             int((ps + ps * expand_by) * strd) for ps, strd in zip(patch_size, stride)
@@ -1237,7 +1246,6 @@ class ExpandAndPadNpArray(ItemTransform):
 
 
 class ExpandAndPadTorch(ItemTransform):
-
     def __init__(
         self,
         patch_size,
@@ -1284,7 +1292,6 @@ class ExpandAndPadTorch(ItemTransform):
 
 
 class GetLabelCentroids(ItemTransform):
-
     def __init__(self, crop_center):
         crop_center = listify(crop_center)
         store_attr()
@@ -1531,7 +1538,6 @@ class StrideRandom(ItemTransform):
     def encodes(self, x):
         img, mask = x
         if np.random.rand() < self.p:
-
             stride = [np.random.randint(low=1, high=x + 1) for x in self.stride_max]
             try:
                 img, mask = [xx[:: stride[0], :: stride[1], :: stride[2]] for xx in x]
@@ -1550,7 +1556,6 @@ class StrideRandom2(ItemTransform):
     def encodes(self, x):
         img, mask = x
         if np.random.rand() < self.p:
-
             stride = [np.random.randint(low=1, high=x + 1) for x in self.stride_max]
             try:
                 img, mask = [xx[:: stride[0], :: stride[1], :: stride[2]] for xx in x]
@@ -1563,7 +1568,6 @@ class StrideRandom2(ItemTransform):
 class Unsqueeze(
     KeepBBoxTransform
 ):  # pass this an augmentation which will be applied in turn to image and mask
-
     def __init__(self):
         store_attr()
 
@@ -1763,66 +1767,68 @@ if __name__ == "__main__":
     # %%
     bboxes_pt_fn = proj_defaults.stage1_folder / ("cropped/images_pt/bboxes_info")
     bboxes_nii_fn = proj_defaults.stage1_folder / ("cropped/images_nii/bboxes_info")
-# %%
+    # %%
 
-    n_slices = data['n_slices']
-    z = random.randint(1, n_slices- 2)
-    img_fns = data['image_fns']
-    lm = data['lm']
+    n_slices = data["n_slices"]
+    z = random.randint(1, n_slices - 2)
+    img_fns = data["image_fns"]
+    lm = data["lm"]
     image_prev = img_fns[z]
-    image_curr = img_fns[z+1]
-    image_next = img_fns[z+2]
-    lm_prev = lm/image_prev.name
-    lm_curr = lm/image_curr.name
-    lm_next = lm/image_next.name
+    image_curr = img_fns[z + 1]
+    image_next = img_fns[z + 2]
+    lm_prev = lm / image_prev.name
+    lm_curr = lm / image_curr.name
+    lm_next = lm / image_next.name
     dici = {}
-    dici = {'image_lm_prev': [image_prev,lm_prev], 'image_lm_curr': [image_curr,lm_curr], 'image_lm_next': [image_next,lm_next]}
-# %%
-# %%
+    dici = {
+        "image_lm_prev": [image_prev, lm_prev],
+        "image_lm_curr": [image_curr, lm_curr],
+        "image_lm_next": [image_next, lm_next],
+    }
+    # %%
+    # %%
 
-
-    lm = dici['lm']
-    img = dici['image']
+    lm = dici["lm"]
+    img = dici["image"]
     # img = img.permute(1,2,0)
     # lm = lm.permute(1,2,0)
 
-# %%
+    # %%
     # zz = int_to_str(14,3)
     Affine = RandAffined(
-                keys=["image", "lm"],
-                mode=["bilinear", "nearest"],
-                prob=1,
-                rotate_range=.6,
-                scale_range=2,
-                shear_range=.5,
-            )
-# %%
-
+        keys=["image", "lm"],
+        mode=["bilinear", "nearest"],
+        prob=1,
+        rotate_range=0.6,
+        scale_range=2,
+        shear_range=0.5,
+    )
+    # %%
 
     dici = Affine(dici)
-# %%
+    # %%
 
     RP = RandomPatch()
 
-# %%
+    # %%
     Rva = RandCropByPosNegLabeld(
-                keys=["image", "lm"],
-                label_key="lm",
-                image_key="image",
-                image_threshold=-2600,
-                spatial_size=tm.plan["patch_size"],
-                pos=1,
-                neg=1,
-                num_samples=1,
-                lazy=True,
-                allow_smaller=True,
-            )
-# %%
-    tm.plan['patch_size']
+        keys=["image", "lm"],
+        label_key="lm",
+        image_key="image",
+        image_threshold=-2600,
+        spatial_size=tm.plan["patch_size"],
+        pos=1,
+        neg=1,
+        num_samples=1,
+        lazy=True,
+        allow_smaller=True,
+    )
+    # %%
+    tm.plan["patch_size"]
     dici = Rva(dici)
 
-# %%
-    img,lm = dici['image'],dici['lm']
+    # %%
+    img, lm = dici["image"], dici["lm"]
     dici = Rva(dici)
 
 # %%

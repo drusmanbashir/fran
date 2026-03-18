@@ -1,16 +1,15 @@
 # %%
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
-import random
-
-from utilz.helpers import find_matching_fn, info_from_filename, multiprocess_multiarg
+from typing import Dict, List, Sequence, Tuple, Union
 
 from fran.data.datasource import Datasource
 from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper
 from fran.preprocessing.helpers import import_h5py
+from utilz.helpers import find_matching_fn, info_from_filename, multiprocess_multiarg
 
 # Assumes these exist in your codebase (as in your Datasource):
 # - GetAttr
@@ -52,7 +51,9 @@ class PatchDatasource(Datasource):
     ) -> None:
         self.seed = int(seed)
         self.sample_strategy = sample_strategy
-        super().__init__(folder=folder, name=name, alias=alias, bg_label=bg_label, test=test)
+        super().__init__(
+            folder=folder, name=name, alias=alias, bg_label=bg_label, test=test
+        )
 
     def integrity_check(self) -> None:
         images = list((self.folder / "images").glob("*"))
@@ -74,9 +75,12 @@ class PatchDatasource(Datasource):
             case_id = inf["case_id"]
             by_case.setdefault(case_id, []).append((img_fn, lm_fn))
 
-        self.verified_pairs = [[a, b] for (a, b) in verified_pairs]  # keep parent’s expected shape
+        self.verified_pairs = [
+            [a, b] for (a, b) in verified_pairs
+        ]  # keep parent’s expected shape
         self.case_patches: List[CasePatches] = [
-            CasePatches(case_id=k, patches=v) for k, v in sorted(by_case.items(), key=lambda x: x[0])
+            CasePatches(case_id=k, patches=v)
+            for k, v in sorted(by_case.items(), key=lambda x: x[0])
         ]
 
         print(
@@ -109,12 +113,16 @@ class PatchDatasource(Datasource):
                     }
                     self.raw_dataset_properties.append(case_data)
         except FileNotFoundError:
-            print(f"First time preprocessing dataset. Will create new file: {self.h5_fname}")
+            print(
+                f"First time preprocessing dataset. Will create new file: {self.h5_fname}"
+            )
             self.raw_dataset_properties = []
             prev_processed_cases = set()
 
         all_case_ids = [cp.case_id for cp in self.case_patches]
-        assert len(all_case_ids) == len(set(all_case_ids)), "Duplicate case_ids in case_patches (unexpected)."
+        assert len(all_case_ids) == len(set(all_case_ids)), (
+            "Duplicate case_ids in case_patches (unexpected)."
+        )
 
         new_case_ids = set(all_case_ids).difference(prev_processed_cases)
 
@@ -125,9 +133,13 @@ class PatchDatasource(Datasource):
         else:
             print(f"Found {len(new_case_ids)} new cases")
             self.new_case_ids = sorted(new_case_ids)
-            self.new_case_patches = [cp for cp in self.case_patches if cp.case_id in new_case_ids]
+            self.new_case_patches = [
+                cp for cp in self.case_patches if cp.case_id in new_case_ids
+            ]
 
-    def _sample_one_patch_per_case(self, case_patches: Sequence[CasePatches]) -> List[ImgLmPair]:
+    def _sample_one_patch_per_case(
+        self, case_patches: Sequence[CasePatches]
+    ) -> List[ImgLmPair]:
         if self.sample_strategy not in {"random", "first"}:
             raise ValueError("sample_strategy must be 'random' or 'first'")
 
@@ -157,7 +169,10 @@ class PatchDatasource(Datasource):
 
         # case_analyzer_wrapper expects [case_tuple, bg_label, return_voxels]
         # where case_tuple is [img_fn, lm_fn] (matching your base class)
-        args_list = [[[img_fn, lm_fn], self.bg_label, return_voxels] for (img_fn, lm_fn) in sampled_pairs]
+        args_list = [
+            [[img_fn, lm_fn], self.bg_label, return_voxels]
+            for (img_fn, lm_fn) in sampled_pairs
+        ]
 
         self.outputs = multiprocess_multiarg(
             func=case_analyzer_wrapper,
@@ -170,7 +185,7 @@ class PatchDatasource(Datasource):
 
         # Force the case_id to be the collated case_id (not any patch-specific id)
         # Assumes outputs are in the same order as args_list.
-        for (cp, output) in zip(self.new_case_patches, self.outputs):
+        for cp, output in zip(self.new_case_patches, self.outputs):
             output["case"]["case_id"] = cp.case_id
             self.raw_dataset_properties.append(output["case"])
 
@@ -194,13 +209,13 @@ class PatchDatasource(Datasource):
         return len(self.case_patches)
 
     @property
-    def ds_type(self) -> str:        return "patch"
+    def ds_type(self) -> str:
+        return "patch"
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     bones_fldr = "/s/agent_rw/datasets/fully_annotated/ULS23_Radboudumc_Bone"
-# %%
+    # %%
     ds = PatchDatasource(bones_fldr, "bones")
     # ds = Datasource(nodesthick_fldr, "nodesthick")
     ds.process()
-    

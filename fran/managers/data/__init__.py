@@ -9,8 +9,8 @@ try:
         DataManagerLBD,
         DataManagerPatch,
         DataManagerSource,
-        DataManagerWID,
         DataManagerWhole,
+        DataManagerWID,
     )
 except Exception:
     pass

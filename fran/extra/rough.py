@@ -1,11 +1,7 @@
 
-import os
 from pathlib import Path
 
 import torch
-from utilz.helpers import multiprocess_multiarg
-from utilz.imageviewers import ImageMaskViewer
-import SimpleITK as sitk
 
 def fix_spatial_shape(img_fn: Path):
       img = torch.load(img_fn, weights_only=False)
@@ -17,6 +13,10 @@ def fix_spatial_shape(img_fn: Path):
 
 # %%
 if __name__ == "__main__":
+    import os
+    from utilz.helpers import multiprocess_multiarg
+    from utilz.imageviewers import ImageMaskViewer
+    import SimpleITK as sitk
 # %%
 #SECTION:-------------------- setup--------------------------------------------------------------------------------------
       data_folder = Path(

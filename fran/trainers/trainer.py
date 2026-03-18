@@ -5,18 +5,6 @@ from typing import Optional
 
 import torch
 from fastcore.all import in_ipython
-from lightning.pytorch import Trainer as TrainerL
-from lightning.pytorch.callbacks import (
-    BatchSizeFinder,
-    DeviceStatsMonitor,
-    EarlyStopping,
-    LearningRateMonitor,
-    ModelCheckpoint,
-)
-from lightning.pytorch.profilers import AdvancedProfiler
-from utilz.cprint import cprint
-from utilz.stringz import headline
-
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import (
     CaseIDRecorder,
@@ -39,6 +27,17 @@ from fran.managers.unet import UNetManager
 from fran.managers.wandb import WandbManager
 from fran.trainers.base import backup_ckpt, checkpoint_from_model_id, switch_ckpt_keys
 from fran.utils.common import *
+from lightning.pytorch import Trainer as TrainerL
+from lightning.pytorch.callbacks import (
+    BatchSizeFinder,
+    DeviceStatsMonitor,
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
+from lightning.pytorch.profilers import AdvancedProfiler
+from utilz.cprint import cprint
+from utilz.stringz import headline
 
 
 def _flatten_dict(d: dict, base: str = "") -> dict:
@@ -556,10 +555,10 @@ if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.utils.common import *
 
+    C = ConfigMaker(P)
     P = Project("lidc")
     P = Project("kits2")
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P)
     C.setup(6)
 
     conf = C.configs

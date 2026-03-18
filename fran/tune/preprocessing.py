@@ -1,17 +1,13 @@
 # %%
-import itertools
-import yaml
-from types import SimpleNamespace
 import argparse
+import itertools
+from types import SimpleNamespace
 
+import yaml
+from fran.preprocessing.datasetanalyzers import *
 from fran.run.analyze_resample import PreprocessingManager
 from utilz.fileio import *
 from utilz.helpers import *
-
-from fran.managers import Project
-
-from fran.preprocessing.datasetanalyzers import *
-from fran.tune.config import RayTuneConfig, load_tune_template
 
 common_vars_filename = os.environ["FRAN_CONF"]
 
@@ -41,12 +37,12 @@ def generate_dataset(project_title):
 
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
-    args.project_title=project_title
+    args.project_title = project_title
     # args.plan = 6
     args.num_processes = 4
-    args.overwrite=False
+    args.overwrite = False
     I = PreprocessingManager(args)
-    I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+    I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
     # args.num_processes = 1
 
     if I.plan["mode"] == "patch":
@@ -55,16 +51,18 @@ def generate_dataset(project_title):
     elif I.plan["mode"] == "lbd":
         imported_folder = I.plan.get("imported_folder", None)
         if imported_folder is None:
-            I.generate_lbd_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+            I.generate_lbd_dataset(
+                overwrite=args.overwrite, num_processes=args.num_processes
+            )
         else:
             I.generate_TSlabelboundeddataset(
-                overwrite=args.overwrite,
-                num_processes=args.num_processes
+                overwrite=args.overwrite, num_processes=args.num_processes
             )
 
 
-
-def build_datasets_from_yaml(yaml_path: str, project_title: str, *, num_processes=4, overwrite=False):
+def build_datasets_from_yaml(
+    yaml_path: str, project_title: str, *, num_processes=4, overwrite=False
+):
     """
     Read tune.yaml and generate all dataset permutations (no training).
 
@@ -89,14 +87,18 @@ def build_datasets_from_yaml(yaml_path: str, project_title: str, *, num_processe
         print("No permutations found; running single dataset build.")
         values = [[]]
 
-    permutations = [dict(zip(keys, combo)) for combo in itertools.product(*values)] or [{}]
+    permutations = [dict(zip(keys, combo)) for combo in itertools.product(*values)] or [
+        {}
+    ]
 
     # --- Build datasets for each permutation ---
     for spec in permutations:
-        args = SimpleNamespace(project_title=project_title,
-                               num_processes=num_processes,
-                               overwrite=overwrite,
-                               plan=None)
+        args = SimpleNamespace(
+            project_title=project_title,
+            num_processes=num_processes,
+            overwrite=overwrite,
+            plan=None,
+        )
         pm = PreprocessingManagerTune(args)
 
         # Apply overrides from permutation
@@ -105,7 +107,11 @@ def build_datasets_from_yaml(yaml_path: str, project_title: str, *, num_processe
 
         # Optional derived parameters
         if "patch_dim0" in pm.plan and "patch_dim1" in pm.plan:
-            pm.plan["patch_size"] = [pm.plan["patch_dim0"], pm.plan["patch_dim1"], pm.plan["patch_dim1"]]
+            pm.plan["patch_size"] = [
+                pm.plan["patch_dim0"],
+                pm.plan["patch_dim1"],
+                pm.plan["patch_dim1"],
+            ]
 
         # Resample + dataset generation
         pm.resample_dataset(overwrite=overwrite, num_processes=num_processes)
@@ -114,26 +120,33 @@ def build_datasets_from_yaml(yaml_path: str, project_title: str, *, num_processe
             pm.generate_hires_patches_dataset(overwrite=overwrite)
         elif mode == "lbd":
             if pm.plan.get("imported_folder"):
-                pm.generate_TSlabelboundeddataset(overwrite=overwrite, num_processes=num_processes)
+                pm.generate_TSlabelboundeddataset(
+                    overwrite=overwrite, num_processes=num_processes
+                )
             else:
-                pm.generate_lbd_dataset(overwrite=overwrite, num_processes=num_processes)
+                pm.generate_lbd_dataset(
+                    overwrite=overwrite, num_processes=num_processes
+                )
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
     print(f"Generated {len(permutations)} dataset permutations from {yaml_path}")
-if __name__ == '__main__':
-# %%
+
+
+if __name__ == "__main__":
+    from fran.tune.config import load_tune_template
+
+    # %%
     # --- Load tuning config ---
     conf = load_tune_template()
     dataset_vars = ["spacing", "expand_by"]
-    vars={}
+    vars = {}
     for var in dataset_vars:
-            vars[var] = conf[var]
+        vars[var] = conf[var]
 
-# %%
+    # %%
 
-
-    project_title="litsmc"
+    project_title = "litsmc"
     parser = argparse.ArgumentParser(description="Resampler")
 
     parser.add_argument(
@@ -151,29 +164,31 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--overwrite", action="store_true")
     args = parser.parse_known_args()[0]
 
-    args.project_title=project_title
+    args.project_title = project_title
     args.plan = 1
     args.num_processes = 4
 
-
-# %%
+    # %%
 
     for i in range(3):
         spacing = vars["spacing"]["value"][i]
-        for n in range (len(vars["expand_by"]["value"])):
+        for n in range(len(vars["expand_by"]["value"])):
             expand_by = vars["expand_by"]["value"][n]
             I = PreprocessingManager(args)
             I.plan["mode"] = "lbd"
             I.plan["expand_by"] = expand_by
             I.plan["spacing"] = spacing
 
-            I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+            I.resample_dataset(
+                overwrite=args.overwrite, num_processes=args.num_processes
+            )
             imported_folder = I.plan.get("imported_folder", None)
             if imported_folder is None:
-                I.generate_lbd_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+                I.generate_lbd_dataset(
+                    overwrite=args.overwrite, num_processes=args.num_processes
+                )
             else:
                 I.generate_TSlabelboundeddataset(
-                    overwrite=args.overwrite,
-                    num_processes=args.num_processes
+                    overwrite=args.overwrite, num_processes=args.num_processes
                 )
 # %%

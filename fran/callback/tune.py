@@ -1,8 +1,4 @@
 from fran.callback.base import *
-from ray import tune
-from pathlib import Path
-
-from utilz.fileio import load_dict, save_dict
 #
 # class TuneCheckpointCallback(TrackerCallback):
 #     order=51 # (Recorder callback order +1)

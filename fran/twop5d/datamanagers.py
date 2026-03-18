@@ -1,8 +1,6 @@
 # %%
 
-import os
 import re
-from tqdm.auto import tqdm
 from collections import defaultdict
 from functools import reduce
 from operator import add
@@ -11,26 +9,8 @@ from pathlib import Path
 import ipdb
 import numpy as np
 import torch
-from fastcore.basics import listify, operator, store_attr, warnings
-from lightning import LightningDataModule
-from monai.data import DataLoader, Dataset
-from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
-from monai.transforms.compose import Compose
-from monai.transforms.croppad.dictionary import (RandCropByPosNegLabeld,
-                                                 ResizeWithPadOrCropd)
-from monai.transforms.intensity.dictionary import (RandAdjustContrastd,
-                                                   RandScaleIntensityd,
-                                                   RandShiftIntensityd)
-from monai.transforms.io.dictionary import LoadImaged
-from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
-from monai.transforms.transform import RandomizableTransform
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
-from utilz.fileio import load_dict, load_yaml
-from utilz.helpers import find_matching_fn, folder_name_from_list
-from utilz.stringz import (ast_literal_eval, cleanup_fname, info_from_filename,
-                          strip_extension)
-
-from fran.configs.parser import ConfigMaker, is_excel_None
+from fastcore.basics import listify, operator, store_attr
+from fran.configs.parser import is_excel_None
 from fran.data.collate import whole_collated
 from fran.data.dataset import NormaliseClipd, fg_in_bboxes
 from fran.managers import Project
@@ -39,6 +19,27 @@ from fran.transforms.imageio import TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
 from fran.transforms.spatialtransforms import ExtractContiguousSlicesd
+from lightning import LightningDataModule
+from monai.data import DataLoader, Dataset
+from monai.data.dataset import CacheDataset, LMDBDataset, PersistentDataset
+from monai.transforms.compose import Compose
+from monai.transforms.croppad.dictionary import (
+    RandCropByPosNegLabeld,
+    ResizeWithPadOrCropd,
+)
+from monai.transforms.intensity.dictionary import (
+    RandAdjustContrastd,
+    RandScaleIntensityd,
+    RandShiftIntensityd,
+)
+from monai.transforms.io.dictionary import LoadImaged
+from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
+from monai.transforms.transform import RandomizableTransform
+from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from tqdm.auto import tqdm
+from utilz.fileio import load_dict
+from utilz.helpers import find_matching_fn, folder_name_from_list
+from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
 
 def process_items(items):
@@ -223,9 +224,9 @@ class DataManagerMulti(LightningDataModule):
         valid_mode = config["plan_valid"]["mode"]
 
         # Ensure train and valid modes match
-        assert (
-            train_mode == valid_mode
-        ), f"Train mode '{train_mode}' and valid mode '{valid_mode}' must match"
+        assert train_mode == valid_mode, (
+            f"Train mode '{train_mode}' and valid mode '{valid_mode}' must match"
+        )
 
         # Map modes to manager classes
         mode_to_class = {
@@ -281,10 +282,10 @@ class DataManager(LightningDataModule):
             self.data_folder = self.derive_data_folder()
         else:
             self.data_folder = Path(data_folder)
-            assert (
-                self.data_folder.is_dir()
-            ), "Dataset folder {} does not exists or is not a folder".format(
-                self.data_folder
+            assert self.data_folder.is_dir(), (
+                "Dataset folder {} does not exists or is not a folder".format(
+                    self.data_folder
+                )
             )
         self.assimilate_tfm_factors(transform_factors)
         self.set_tfm_keys(keys_tr, keys_val)
@@ -564,14 +565,14 @@ class DataManager(LightningDataModule):
         image_subfoldrs = list(self.data_folder.glob("images/*"))
         lm_subfoldrs = list(self.data_folder.glob("lms/*"))
         data = []
-        if len(cases)==0 or cases is None:
+        if len(cases) == 0 or cases is None:
             raise ValueError("No cases found")
         for case_ in tqdm(cases) if cases else []:
             img_matched = [fn for fn in image_subfoldrs if case_ == fn.name]
             lm_matched = [fn for fn in lm_subfoldrs if case_ == fn.name]
-            assert (
-                len(img_matched) == 1 and len(lm_matched) == 1
-            ), "Multiple images for case {}".format(case_)
+            assert len(img_matched) == 1 and len(lm_matched) == 1, (
+                "Multiple images for case {}".format(case_)
+            )
             img_fldr = img_matched[0]
             lm_fldr = lm_matched[0]
             img_fns = list(img_fldr.glob("*"))
@@ -752,9 +753,9 @@ class DataManagerSource(DataManager):
         )
 
     def derive_data_folder(self):
-        assert (
-            self.plan["mode"] == "source"
-        ), f"Dataset mode must be 'source' for DataManagerSource, got '{self.plan['mode']}'"
+        assert self.plan["mode"] == "source", (
+            f"Dataset mode must be 'source' for DataManagerSource, got '{self.plan['mode']}'"
+        )
         prefix = "spc"
         spacing = self.plan["spacing"]
         parent_folder = self.project.fixed_spacing_folder
@@ -771,7 +772,6 @@ class DataManagerSource(DataManager):
 
 
 class DataManagerWhole(DataManagerSource):
-
     def __init__(self, project, config: dict, batch_size=8, **kwargs):
         super().__init__(project, config, batch_size, **kwargs)
         self.keys_tr = "L,E,F1,F2,Affine,Resize,N,IntensityTfms"
@@ -793,9 +793,9 @@ class DataManagerWhole(DataManagerSource):
         )
 
     def derive_data_folder(self):
-        assert (
-            self.plan["mode"] == "whole"
-        ), f"Dataset mode must be 'whole' for DataManagerWhole, got '{self.plan['mode']}'"
+        assert self.plan["mode"] == "whole", (
+            f"Dataset mode must be 'whole' for DataManagerWhole, got '{self.plan['mode']}'"
+        )
         prefix = "sze"
         spatial_size = self.plan["patch_size"]
         parent_folder = self.project.fixed_size_folder
@@ -824,9 +824,9 @@ class DataManagerWhole(DataManagerSource):
 
 class DataManagerLBD(DataManagerSource):
     def derive_data_folder(self, data_folder=None):
-        assert (
-            self.plan["mode"] == "lbd"
-        ), f"Dataset mode must be 'lbd' for DataManagerLBD, got '{self.plan['mode']}'"
+        assert self.plan["mode"] == "lbd", (
+            f"Dataset mode must be 'lbd' for DataManagerLBD, got '{self.plan['mode']}'"
+        )
         spacing = ast_literal_eval(self.plan["spacing"])
         parent_folder = self.project.lbd_folder
         folder_suffix = "plan" + str(self.dataset_params[f"plan_{self.split}"])
@@ -951,10 +951,10 @@ class DataManagerPatch(DataManagerSource):
             img_fn = lm_fn.str_replace("lms", "images")
             indices_fn = lm_fn.str_replace("lms", "indices")
             # assert(bb['case_id'] == case_id),"Strange error: {} not in bb".format(case_id)
-            assert all(
-                [fn.exists() for fn in [lm_fn, img_fn, indices_fn]]
-            ), "Image of LM file does not exists {0}, {1}, {2}".format(
-                lm_fn, img_fn, indices_fn
+            assert all([fn.exists() for fn in [lm_fn, img_fn, indices_fn]]), (
+                "Image of LM file does not exists {0}, {1}, {2}".format(
+                    lm_fn, img_fn, indices_fn
+                )
             )
             bb_out = {
                 "lm_" + indx: lm_fn,
@@ -1021,9 +1021,9 @@ class DataManagerPatch(DataManagerSource):
         super().create_transforms(keys)
 
     def derive_data_folder(self):
-        assert (
-            self.plan_train["mode"] == "patch"
-        ), f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan_train['mode']}'"
+        assert self.plan_train["mode"] == "patch", (
+            f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan_train['mode']}'"
+        )
         parent_folder = self.project.patches_folder
         plan_name = "plan" + str(self.dataset_params["plan"])
         source_plan_name = self.plan_train["source_plan"]
@@ -1075,9 +1075,9 @@ class DataManagerBaseline(DataManagerLBD):
         self.keys_tr = self.keys_val
 
     def derive_data_folder(self, dataset_mode=None):
-        assert (
-            self.plan_train["mode"] == "baseline"
-        ), f"Dataset mode must be 'baseline' for DataManagerBaseline, got '{self.plan_train['mode']}'"
+        assert self.plan_train["mode"] == "baseline", (
+            f"Dataset mode must be 'baseline' for DataManagerBaseline, got '{self.plan_train['mode']}'"
+        )
         # return data_folder
         source_plan_name = self.plan_train["source_plan"]
         source_plan = self.config[source_plan_name]
@@ -1142,9 +1142,11 @@ class DataManagerMulti2(DataManagerMulti):
 
 # %%
 if __name__ == "__main__":
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     import torch
+    from fastcore.basics import warnings
+    from fran.configs.parser import ConfigMaker
+    from utilz.stringz import cleanup_fname
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
@@ -1175,7 +1177,7 @@ if __name__ == "__main__":
     global_props = load_dict(proj_tot.global_properties_filename)
 
     conf_litsmc["plan_train"]["patch_size"] = [256, 256]
-# %%
+    # %%
 
     data_fldr = Path("/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_ex070/slices")
     batch_size = 8
@@ -1190,7 +1192,7 @@ if __name__ == "__main__":
 
     tm = D.train_manager
     tm.data_folder
-# %%
+    # %%
     # D.train_manager.plan['patch_size']=[128,128]
     # D.valid_manager.plan['patch_size']
 
@@ -1204,17 +1206,17 @@ if __name__ == "__main__":
     bt = next(iteri)
     bt["image"].shape
     bt["lm"].shape
-# %%
+    # %%
 
     img = bt["image"][0]
     lm = bt["lm"][0]
     ImageMaskViewer([img, lm])
-# %%
+    # %%
     tm.plan["patch_size"] = tm.plan["patch_size"][:2]
 
     E = ExtractContiguousSlicesd()
     dici = E(data)
-# %%
+    # %%
     Rva = RandCropByPosNegLabeld(
         keys=["image", "lm"],
         label_key="lm",
@@ -1227,7 +1229,7 @@ if __name__ == "__main__":
         lazy=False,
         allow_smaller=True,
     )
-# %%
+    # %%
     data = tm.data[4]
     dici = E(data)
     dici = Rva(dici)
@@ -1236,34 +1238,34 @@ if __name__ == "__main__":
     img = dici[0]["image"]
     lm = dici[0]["lm"]
 
-# %%
+    # %%
     img = bt["image"][0]
     lm = bt["lm"][0]
     ImageMaskViewer([img, lm])
 
-# %%
+    # %%
     dici = E(dici)
     Ld = LoadImaged()
     dici2 = Ld(dici)
     z = 1
 
-# %%
+    # %%
 
-# %%
+    # %%
     d
     D.setup()
 
     ds = D.train_ds
-# %%
+    # %%
     dici = ds[0]
     dici[0]["image"].shape
     dici[0]["lm"].shape
-# %%
+    # %%
     tm = D.train_manager
     tm.data_folder
 
     tm.cases
-# %%
+    # %%
 
     # Now use train_manager or valid_manager to access the data
     dl = D.train_dataloader()
@@ -1272,7 +1274,7 @@ if __name__ == "__main__":
     iteri = iter(dl)
     b = next(iteri)
 
-# %%
+    # %%
     fldr = tm.cache_folder
     fldr = "/s/tmp"
     ds = LMDBDataset(
@@ -1281,14 +1283,14 @@ if __name__ == "__main__":
         cache_dir=fldr,
         db_name=f"{tm.split}_cache",
     )
-# %%
+    # %%
 
     ds = CacheDataset(
         data=tm.data,
         transform=tm.transforms,
         cache_rate=tm.cache_rate,
     )
-# %%
+    # %%
 
     tags = ["proj_title", "case_id", "date", "desc"]
     name = cleanup_fname(fname)
@@ -1299,7 +1301,7 @@ if __name__ == "__main__":
     if full_caseid == True:
         output_dic["case_id"] = output_dic["proj_title"] + "_" + output_dic["case_id"]
 
-# %%
+    # %%
 
     fnames = [strip_extension(fn) for fn in fnames]
     fnames = [fn + ".pt" for fn in fnames]
@@ -1309,18 +1311,18 @@ if __name__ == "__main__":
     inds_fldr = self.infer_inds_fldr(self.plan)
     images = list(images_fldr.glob("*.pt"))
     data = []
-# %%
+    # %%
     fn = Path("litq_48_20200107.pt")
     fn.name
     aa = [im for im in images if fn.name in im.name]
-# %%
+    # %%
 
     images_fldr = tm.data_folder / ("images")
     lms_fldr = tm.data_folder / ("lms")
     inds_fldr = tm.infer_inds_fldr(tm.plan)
     images = list(images_fldr.glob("*.pt"))
 
-# %%
+    # %%
 
     cases = images
     cases = [strip_extension(fn) for fn in cases]
@@ -1345,7 +1347,7 @@ if __name__ == "__main__":
         assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
         dici = {"image": img_fn, "lm": lm_fn, "indices": indices_fn}
         data.append(dici)
-# %%
+    # %%
     case_ = tm.cases[0]
     case_ = cleanup_fname(case_)
     image_subfoldrs = list(tm.data_folder.glob("images/*"))
@@ -1353,7 +1355,7 @@ if __name__ == "__main__":
     image_subfoldrs = [str(f) for f in image_subfoldrs]
     image_subfoldrs = [f.split("images/")[1] for f in image_subfoldrs]
 
-# %%
+    # %%
 
     cases = tm.cases
     cases = [strip_extension(fn) for fn in cases]
@@ -1364,9 +1366,9 @@ if __name__ == "__main__":
     for case_ in pbar(cases):
         img_matched = [fn for fn in image_subfoldrs if case_ == fn.name]
         lm_matched = [fn for fn in lm_subfoldrs if case_ == fn.name]
-        assert (
-            len(img_matched) == 1 and len(lm_matched) == 1
-        ), "Multiple images for case {}".format(case_)
+        assert len(img_matched) == 1 and len(lm_matched) == 1, (
+            "Multiple images for case {}".format(case_)
+        )
         img_fldr = img_matched[0]
         lm_fldr = lm_matched[0]
         dici = {"image": img_fldr, "lm": lm_fldr}

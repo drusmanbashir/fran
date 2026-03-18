@@ -1,42 +1,42 @@
 ## %%
 
-from fran.managers import  Project
-from fran.managers.db import COLUMNS_CRITICAL,  find_matching_plan
-from fran.run.analyze_resample import PreprocessingManager
-from fran.trainers.trainer import Trainer
-from fran.tune.tune import RayTuneConfig
+
 from fran.utils.common import *
-from fran.configs.parser import ConfigMaker
-import argparse
-#SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
-if __name__ == '__main__':
+
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
+if __name__ == "__main__":
+    import argparse
+
+    from fran.managers import Project
+    from fran.managers.db import COLUMNS_CRITICAL
+    from fran.run.analyze_resample import PreprocessingManager
+    from fran.trainers.trainer import Trainer
+    from fran.tune.tune import RayTuneConfig
     from fran.utils.common import *
+
     P = Project("nodes")
 
     # P.add_data([DS.totalseg])
-    C = RayTuneConfig(P , configuration_filename=None)
+    C = RayTuneConfig(P, configuration_filename=None)
     C.setup()
     C.plans
     conf = C.configs
     pp(conf["model_params"])
-    pp(conf['dataset_params'])
-    plan = conf['plan_train']
+    pp(conf["dataset_params"])
+    plan = conf["plan_train"]
     pp(plan)
-
-
 
     # plan['mode']
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
 
-
-# %%
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
-    devices= [1]
+    # %%
+    # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2
+    devices = [1]
     bs = 4
 
     # run_name ='LITS-1285'
-    run_name ='LITS-1230'
-    run_name =None
+    run_name = "LITS-1230"
+    run_name = None
     compiled = True
     profiler = False
     # NOTE: if Neptune = False, should store checkpoint locally
@@ -46,20 +46,18 @@ if __name__ == '__main__':
     tags = []
     description = f"Partially trained up to 100 epochs"
 
-# %%
-    conf['plan_train']
+    # %%
+    conf["plan_train"]
 
+    print(conf["model_params"]["out_channels"])
 
-    print(conf['model_params']['out_channels'])
-    
+    conf["dataset_params"]["cache_rate"]
 
-    conf['dataset_params']['cache_rate']
-
-# %%
+    # %%
     Tm = Trainer(P.project_title, conf, run_name)
     Tm.configs
-    Tm.configs['dataset_params']['fold']=4
-# %%
+    Tm.configs["dataset_params"]["fold"] = 4
+    # %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -71,25 +69,25 @@ if __name__ == '__main__':
         tags=tags,
         description=description,
         lr=1e-3,
-        override_dm_checkpoint=override_dm
+        override_dm_checkpoint=override_dm,
     )
 
-# %%
+    # %%
     Tm.D.configs = Tm.configs.copy()
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()
 
-# %%
-    matching_plan = folder_names_from_plan(P,plan)
+    # %%
+    matching_plan = folder_names_from_plan(P, plan)
 
     matching_plan
 
-# %%
+    # %%
     plan = {k: plan.get(k) for k in COLUMNS_CRITICAL}  # align to fixed schema
     keys = [k for k in COLUMNS_CRITICAL if k in plan]
     conds, params = [], []
-# %%
+    # %%
     for k in keys:
         v = _normalize_for_db(plan[k])
         if v is None:
@@ -97,16 +95,16 @@ if __name__ == '__main__':
         else:
             conds.append(f'"{k}" = ?')
             params.append(v)
-# %%
+    # %%
     sql = (
         f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_pbd FROM "{TABLE}" WHERE '
         + " AND ".join(conds)
         + " LIMIT 1"
     )
-    db_path =P.db
+    db_path = P.db
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(sql, params).fetchone()
-# %%
+    # %%
 
     row_out = {
         "id": row[0],
@@ -116,36 +114,36 @@ if __name__ == '__main__':
         "data_folder_pbd": row[4],
     }
 
-# %%
+    # %%
     N = Tm.N
     Tm.D.setup()
     Tm.D.prepare_data()
-    Tm.D.configs['plan_train']['mode']
+    Tm.D.configs["plan_train"]["mode"]
     dl = Tm.D.val_dataloader()
     batch = next(iter(dl))
 
     image = batch["image"]
     image.shape
     pred = N(image)
-# %%
+    # %%
 
-# SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR>
+    # SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR>
 
     # P.delete()
     DS = DS
     P.add_data([DS.nodes, DS.nodesthick])
     # P.add_data([DS.totalseg])
-# %%
-# SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR>
 
     test = False
     ds = Datasource(
         folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test
     )
     ds.process()
-# %%
+    # %%
 
-# SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR> <CR>
+    # SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR> <CR>
 
     parser = argparse.ArgumentParser(description="Resampler")
 
@@ -189,18 +187,18 @@ if __name__ == '__main__':
     args.project_title = "nodes"
 
     plan = conf[args.plan_name]
-# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
-# %%
+    # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
+    # %%
     I = PreprocessingManager(args)
     # I.spacing =
-# %%
-# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
     overwrite = True
     I.resample_dataset(overwrite=overwrite)
     I.R.get_tensor_folder_stats()
 
-# %%
-# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
+    # %%
+    # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
     overwrite = True
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
@@ -214,9 +212,9 @@ if __name__ == '__main__':
                 imported_folder=plan["imported_folder"],
                 overwrite=overwrite,
             )
-# %%
+    # %%
     L = LabelBoundedDataGenerator(project=I.project, plan=I.plan, plan_name=I.plan_name)
-# %%
+    # %%
 
     L = LabelBoundedDataGeneratorImported(
         project=P,
@@ -227,13 +225,13 @@ if __name__ == '__main__':
         remapping=remapping,
     )
 
-# %%
+    # %%
     overwrite = True
     L.setup(overwrite=overwrite)
     L.process()
 
-# %%
-# SECTION:-------------------- DATA MANAGER-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- DATA MANAGER-------------------------------------------------------------------------------------- <CR>
 
     batch_size = 10
     ds_type = None
@@ -249,50 +247,50 @@ if __name__ == '__main__':
         ds_type=ds_type,
     )
 
-# %%
+    # %%
     D.prepare_data()
     D.setup()
     tm = D.train_manager
     tm = D.valid_manager
     tm.transforms_dict
 
-# %%
+    # %%
     ds = tm.ds
     dat = ds[0]
     dici = ds.data[0]
     tm.tfms_list
 
-# %%
+    # %%
 
-# %%
+    # %%
     D.train_ds[0]
     dlt = D.train_dataloader()
     dlv = D.val_dataloader()
-# %%
+    # %%
 
     # iteri = iter(dlv)
     for num, batch in enumerate(dlv):
         print(batch["image"].shape)
-# %%
+    # %%
 
     for num, batch in enumerate(dlt):
         print(batch["image"].shape)
-# %%
+    # %%
     #
     Tm.D.prepare_data()
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
-# %%
+    # %%
     tm = Tm.D.train_manager
     dici = tm.ds[0]
-# %%
+    # %%
     img = dici["image"]
     lm = dici["lm"]
 
     im = dici[0]["image"]
     lm = dici[0]["lm"]
     ImageMaskViewer([im[0], lm[0]])
-# %%
+    # %%
 
     tv = Tm.D.valid_manager
     # dici = tv.ds[0]
@@ -303,15 +301,15 @@ if __name__ == '__main__':
 
     batch["lm"].max()
 
-# %%
+    # %%
     n = 0
     lm = batch["lm"]
     im = batch["image"]
     im = im.permute(0, 1, 4, 2, 3)
     lm = lm.permute(0, 1, 4, 2, 3)
     ImageMaskViewer([im[n][0], lm[n][0]])
-# %%
-# SECTION:-------------------- TROUBLE-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # SECTION:-------------------- TROUBLE-------------------------------------------------------------------------------------- <CR>
 
     batch_size = 2
     ds_type = "lmdb"
@@ -324,45 +322,45 @@ if __name__ == '__main__':
         ds_type=ds_type,
     )
 
-# %%
+    # %%
     D.prepare_data()
     D.setup()
     tm = D.train_manager
     tm = D.valid_manager
     tm.transforms_dict
 
-# %%
+    # %%
     ds = tm.ds
     dat = ds[0]
     dici = ds.data[0]
     tm.tfms_list
 
-# %%
+    # %%
 
-# %%
+    # %%
     # D.train_ds[0]
     # dl =D.train_dataloader()
     dl = D.val_dataloader()
-# %%
+    # %%
 
     iteri = iter(dl)
     batch = next(iteri)
 
-# %%
+    # %%
     n = 0
     im = batch["image"][n][0]
     ImageMaskViewer([im, batch["lm"][n][0]])
     # while iteri:
     #     print(batch['image'].shape)
-# %%
+    # %%
 
     folder_names_from_plan(P, plan)
     add_plan_to_db(
         plan, "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2", P.db
     )
-# %%
-# %%
-# SECTION:-------------------- INFERENCE-------------------------------------------------------------------------------------- <CR>
+    # %%
+    # %%
+    # SECTION:-------------------- INFERENCE-------------------------------------------------------------------------------------- <CR>
     dl = Tm.D.val_dataloader()
     iteri = iter(dl)
     batch = next(iteri)

@@ -1,4 +1,5 @@
-from .project import Project 
+from .project import Project
+
 try:
     from .unet import UNetManager
 except Exception:

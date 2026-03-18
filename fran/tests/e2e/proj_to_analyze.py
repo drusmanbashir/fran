@@ -8,12 +8,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
-from utilz.fileio import load_yaml
-
 from fran.configs.mnemonics import Mnemonics
 from fran.configs.parser import ConfigMaker
 from fran.managers.project import Project
 from fran.run.analyze_resample import process_plan
+from utilz.fileio import load_yaml
 
 
 @dataclass
@@ -57,7 +56,9 @@ def _experiment_configs_xlsx() -> Path:
 
 def _strict_mnemonic(raw: Any) -> str:
     if not isinstance(raw, str):
-        raise ValueError(f"mnemonic must be a string, got {type(raw).__name__}: {raw!r}")
+        raise ValueError(
+            f"mnemonic must be a string, got {type(raw).__name__}: {raw!r}"
+        )
     return Mnemonics.match(raw)
 
 
@@ -101,9 +102,7 @@ def run_proj_to_analyze(
             continue
 
         if not workbook_plans.get(mnemonic):
-            msg = (
-                f"{project_title}: no matching plan rows for mnemonic={mnemonic}."
-            )
+            msg = f"{project_title}: no matching plan rows for mnemonic={mnemonic}."
             print(msg)
             report.errors.append(msg)
             continue
@@ -163,7 +162,11 @@ def run_proj_to_analyze(
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser("proj_to_analyze")
-    p.add_argument("--run-analyze", action="store_true", help="Run full analyze_resample process for each plan.")
+    p.add_argument(
+        "--run-analyze",
+        action="store_true",
+        help="Run full analyze_resample process for each plan.",
+    )
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--num-processes", type=int, default=1)
     p.add_argument("--debug", action="store_true")

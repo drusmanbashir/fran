@@ -3,30 +3,29 @@ import ast
 import os
 import re
 from datetime import datetime
+
 # from fran.architectures.unet3d.model import  *
 from pathlib import Path
 
 import ipdb
 import torch
-from ray.tune.schedulers import ASHAScheduler
-from utilz.stringz import headline
-
 from fran.managers import Project
 from fran.tune.config import RayTuneConfig, out_channels_from_dict_or_cell
 from fran.tune.trainer import RayTrainer
+from ray.tune.schedulers import ASHAScheduler
+from utilz.stringz import headline
 
 tr = ipdb.set_trace
-from ray import tune
-from ray.tune import FailureConfig
-from utilz.fileio import load_json
-from utilz.helpers import set_autoreload
-
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
 from fran.configs.parser import load_metadata, make_patch_size
 from fran.managers.base import load_checkpoint
+
 # only vars below will be tuned
 from fran.utils.common import COMMON_PATHS
+from ray import tune
+from ray.tune import FailureConfig
+from utilz.fileio import load_json
 
 ray_folder_folder = Path(COMMON_PATHS["ray_folder_folder"])
 OOM_RE = re.compile(r"CUDA out of memory", re.IGNORECASE)
@@ -38,7 +37,7 @@ def main(args):
     C = RayTuneConfig(P)
     C.setup()
     conf = C.configs
-# %%
+    # %%
     reporter = tune.CLIReporter(
         metric_columns=["loss"],
         # parameter_columns=["lr", "batch_size"],
@@ -273,11 +272,11 @@ def train_with_tune(config, project_title, num_epochs=10):
 
 
 if __name__ == "__main__":
-# %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     # set_autoreload()
-# %%
+    # %%
     import argparse
 
     parser = argparse.ArgumentParser(description="Resampler")
@@ -294,7 +293,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_known_args()[0]
-# %%
+    # %%
     main(args)
 # %%
 #     from fran.run.analyze_resample import main

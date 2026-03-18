@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import warnings
 from typing import Optional
 
-from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
-import torch
 from monai.transforms.transform import MapTransform, Randomizable
 
-from fran.configs.parser import ConfigMaker
-from fran.managers import Project
 from fran.managers.data.training import DataManagerMulti, DataManagerLBD
 SEQ_LEN = 16
 
@@ -81,6 +76,11 @@ class DataManagerMulti2(DataManagerMulti):
 # %%
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 if __name__ == "__main__":
+    import warnings
+    from monai.transforms.croppad.dictionary import ResizeWithPadOrCropd
+    import torch
+    from fran.configs.parser import ConfigMaker
+    from fran.managers import Project
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
     project_title = "litsmc"

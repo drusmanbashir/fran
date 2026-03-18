@@ -1,15 +1,12 @@
 # %%
-import torch
 import math
 
-
-import torchvision
-import numpy as np
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torchvision
 from PIL import Image
-
-
 
 CLASSES = ["img"]
 
@@ -36,6 +33,8 @@ CLASSES = (
     "tvmonitor",
 )
 CLASS2NUM = {class_: idx for idx, class_ in enumerate(CLASSES)}
+
+
 def filter_boxes(output_tensor, threshold):
     b, a, h, w, c = output_tensor.shape
     x = output_tensor.contiguous().view(b, a * h * w, c)
@@ -117,7 +116,6 @@ def load_bboxes(idx, size, num_bboxes=None, device="cpu"):
             elif "<xmin>" in line:
                 x0 = float(line.split("<xmin>")[-1].split("</xmin>")[0].strip())
             elif "<xmax>" in line:
-
                 x1 = float(line.split("<xmax>")[-1].split("</xmax>")[0].strip())
             elif "<ymin>" in line:
                 y0 = float(line.split("<ymin>")[-1].split("</ymin>")[0].strip())
@@ -179,27 +177,29 @@ def load_bboxes_batch(idxs, size, num_bboxes, device="cpu"):
     bboxes = torch.stack(bboxes, 0)
     return bboxes
 
+
 def make_subplots(num_imgs):
-        n_row = int(math.sqrt(num_imgs))
-        n_col = int(np.ceil(num_imgs/n_row))
-        fig, axs = plt.subplots(n_row,n_col)
-        return fig,axs
-        
+    n_row = int(math.sqrt(num_imgs))
+    n_col = int(np.ceil(num_imgs / n_row))
+    fig, axs = plt.subplots(n_row, n_col)
+    return fig, axs
+
+
 def show_images(x):
-    if x.dim() == 4 and not x.shape[0]==1:
-        num_imgs=  x.shape[0]
-        fig,axs = make_subplots(num_imgs)
+    if x.dim() == 4 and not x.shape[0] == 1:
+        num_imgs = x.shape[0]
+        fig, axs = make_subplots(num_imgs)
         n_row = axs.shape[0]
         for i, xx in enumerate(x):
-            ax_ind = divmod(i,n_row)
+            ax_ind = divmod(i, n_row)
             xx = xx.permute(1, 2, 0)
             axs[*ax_ind].imshow(xx)
 
-    elif x.dim() == 4 and x.shape[0]==1:
+    elif x.dim() == 4 and x.shape[0] == 1:
         xx = x[0]
         xx = xx.permute(1, 2, 0)
         plt.imshow(xx)
-            
+
     elif x.dim() == 3:
         x = x.permute(1, 2, 0)
         plt.imshow(x)
@@ -209,17 +209,17 @@ def show_images(x):
 
 def show_images_with_boxes(input_tensor, output_tensor):
     n_imgs = input_tensor.shape[0]
-    fig,axs = make_subplots(n_imgs)
+    fig, axs = make_subplots(n_imgs)
     try:
         n_row = axs.shape[0]
     except:
         n_row = 1
     for ind in range(n_imgs):
         try:
-            ax_ind = divmod(ind,n_row)
+            ax_ind = divmod(ind, n_row)
             ax = axs[*ax_ind]
         except:
-            ax= axs
+            ax = axs
         img = input_tensor[ind]
         predictions = output_tensor[ind]
         img = img.permute(1, 2, 0)
@@ -254,12 +254,12 @@ def show_images_with_boxes(input_tensor, output_tensor):
             box = [
                 max(0, int(box[0])),
                 max(0, int(box[1])),
-                min(img.shape[0]- 1, int(box[2])),
-                min(img.shape[1]- 1, int(box[3])),
+                min(img.shape[0] - 1, int(box[2])),
+                min(img.shape[1] - 1, int(box[3])),
             ]
             try:  # either the class is given as the sixth feature
                 idx = int(class_.item())
-            except :  # or the 20 softmax probabilities are given as features 6-25
+            except:  # or the 20 softmax probabilities are given as features 6-25
                 idx = int(torch.max(class_, 0)[1].item())
             try:
                 class_ = CLASSES[idx]  # the first index of torch.max is the argmax.
@@ -273,14 +273,14 @@ def show_images_with_boxes(input_tensor, output_tensor):
                 int((confidence.item()) ** 0.8 * 255),
                 0,
             )
-            draw_image_bbox(img,*box,class_,box[:2],ax)
+            draw_image_bbox(img, *box, class_, box[:2], ax)
 
 
 def show_image_with_boxes(input_tensor, output_tensor):
-    fig,ax = plt.subplots()
+    fig, ax = plt.subplots()
     for img, predictions in zip(input_tensor, output_tensor):
         img = img.permute(1, 2, 0)
-        if 0 in predictions.shape: # empty tensor
+        if 0 in predictions.shape:  # empty tensor
             plt.imshow(img)
             continue
         confidences = predictions[..., 4].flatten()
@@ -290,41 +290,48 @@ def show_image_with_boxes(input_tensor, output_tensor):
         classes = predictions[..., 5:].contiguous().view(boxes.shape[0], -1)
         boxes[:, ::2] *= img.shape[0]
         boxes[:, 1::2] *= img.shape[1]
-        boxes = (torch.stack([
+        boxes = (
+            torch.stack(
+                [
                     boxes[:, 0] - boxes[:, 2] / 2,
                     boxes[:, 1] - boxes[:, 3] / 2,
                     boxes[:, 0] + boxes[:, 2] / 2,
                     boxes[:, 1] + boxes[:, 3] / 2,
-        ], -1, ).cpu().to(torch.int32).numpy())
+                ],
+                -1,
+            )
+            .cpu()
+            .to(torch.int32)
+            .numpy()
+        )
         for box, confidence, class_ in zip(boxes, confidences, classes):
             if confidence < 0.01:
-                continue # don't show boxes with very low confidence
+                continue  # don't show boxes with very low confidence
             # make sure the box fits within the picture:
             box = [
                 max(0, int(box[0])),
                 max(0, int(box[1])),
-                min(img.shape[0]- 1, int(box[2])),
-                min(img.shape[1]- 1, int(box[3])),
+                min(img.shape[0] - 1, int(box[2])),
+                min(img.shape[1] - 1, int(box[3])),
             ]
             try:  # either the class is given as the sixth feature
                 idx = int(class_.item())
-            except :  # or the 20 softmax probabilities are given as features 6-25
+            except:  # or the 20 softmax probabilities are given as features 6-25
                 idx = int(torch.max(class_, 0)[1].item())
             try:
                 class_ = CLASSES[idx]  # the first index of torch.max is the argmax.
-            except IndexError: # if the class index does not exist, don't draw anything:
+            except (
+                IndexError
+            ):  # if the class index does not exist, don't draw anything:
                 continue
 
-            
             color = (  # green color when confident, red color when not confident.
-                int((1 - (confidence.item())**0.8 ) * 255),
-                int((confidence.item())**0.8 * 255),
+                int((1 - (confidence.item()) ** 0.8) * 255),
+                int((confidence.item()) ** 0.8 * 255),
                 0,
             )
 
-
-            draw_image_bbox(img,*box,class_,box[:2],ax)
-
+            draw_image_bbox(img, *box, class_, box[:2], ax)
 
 
 def iou(bboxes1, bboxes2):
@@ -383,36 +390,45 @@ def nms(filtered_tensor, threshold):
     return result
 
 
+def draw_image_bbox(
+    img, start_x, start_y, stop_x, stop_y, text=None, text_xy=[], ax=None
+):
+    # img= torch.load(fn_img)
+    size_x = stop_x - start_x
+    size_y = stop_y - start_y
+    if not ax:
+        fig, ax = plt.subplots()
+    ax.imshow(img)
 
-def draw_image_bbox(img, start_x,start_y,stop_x,stop_y,text=None,text_xy=[],ax=None):
-        # img= torch.load(fn_img)
-        size_x = stop_x-start_x
-        size_y = stop_y-start_y
-        if not ax:
-            fig,ax = plt.subplots()
-        ax.imshow(img)
-
-        rect = patches.Rectangle((start_x,start_y),size_x,size_y, linewidth=1,edgecolor='r',facecolor='none')
-        ax.add_patch(rect)
-        if text:
-            ax.text(text_xy[0],text_xy[1],text)
-
-
-def draw_image_lm_bbox(img,lm ,start_x,start_y,stop_x,stop_y):
-        # img= torch.load(fn_img)
-        size_x = stop_x-start_x
-        size_y = stop_y-start_y
-        fig,(ax1, ax2) = plt.subplots(1,2)
-        ax1.imshow(img)
-        rect = patches.Rectangle((start_x,start_y),size_x,size_y, linewidth=1,edgecolor='r',facecolor='none')
-        ax1.add_patch(rect)
-
-        ax2.imshow(lm)
-        rect = patches.Rectangle((start_x,start_y),size_x,size_y, linewidth=1,edgecolor='r',facecolor='none')
-        ax2.add_patch(rect)
+    rect = patches.Rectangle(
+        (start_x, start_y), size_x, size_y, linewidth=1, edgecolor="r", facecolor="none"
+    )
+    ax.add_patch(rect)
+    if text:
+        ax.text(text_xy[0], text_xy[1], text)
 
 
-def load_weights(network, filename="/s/fran_storage/checkpoints/detection/yolov2-tiny-voc.weights"):
+def draw_image_lm_bbox(img, lm, start_x, start_y, stop_x, stop_y):
+    # img= torch.load(fn_img)
+    size_x = stop_x - start_x
+    size_y = stop_y - start_y
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    ax1.imshow(img)
+    rect = patches.Rectangle(
+        (start_x, start_y), size_x, size_y, linewidth=1, edgecolor="r", facecolor="none"
+    )
+    ax1.add_patch(rect)
+
+    ax2.imshow(lm)
+    rect = patches.Rectangle(
+        (start_x, start_y), size_x, size_y, linewidth=1, edgecolor="r", facecolor="none"
+    )
+    ax2.add_patch(rect)
+
+
+def load_weights(
+    network, filename="/s/fran_storage/checkpoints/detection/yolov2-tiny-voc.weights"
+):
     with open(filename, "rb") as file:
         version = np.fromfile(file, count=3, dtype=np.int32)
         seen_so_far = np.fromfile(file, count=1, dtype=np.int32)
@@ -423,26 +439,41 @@ def load_weights(network, filename="/s/fran_storage/checkpoints/detection/yolov2
             if isinstance(layer, torch.nn.Conv2d):
                 if layer.bias is not None:
                     n = layer.bias.numel()
-                    layer.bias.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(layer.bias.data)
+                    layer.bias.data[:] = torch.from_numpy(
+                        weights[idx : idx + n]
+                    ).view_as(layer.bias.data)
                     idx += n
                 n = layer.weight.numel()
-                layer.weight.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(layer.weight.data)
+                layer.weight.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(
+                    layer.weight.data
+                )
                 idx += n
             if isinstance(layer, torch.nn.BatchNorm2d):
                 n = layer.bias.numel()
-                layer.bias.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(layer.bias.data)
+                layer.bias.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(
+                    layer.bias.data
+                )
                 idx += n
-                layer.weight.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(layer.weight.data)
+                layer.weight.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(
+                    layer.weight.data
+                )
                 idx += n
-                layer.running_mean.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(layer.running_mean)
+                layer.running_mean.data[:] = torch.from_numpy(
+                    weights[idx : idx + n]
+                ).view_as(layer.running_mean)
                 idx += n
-                layer.running_var.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(layer.running_var)
+                layer.running_var.data[:] = torch.from_numpy(
+                    weights[idx : idx + n]
+                ).view_as(layer.running_var)
                 idx += n
             if isinstance(layer, torch.nn.Linear):
                 n = layer.bias.numel()
-                layer.bias.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(layer.bias.data)
+                layer.bias.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(
+                    layer.bias.data
+                )
                 idx += n
                 n = layer.weight.numel()
-                layer.weight.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(layer.weight.data)
+                layer.weight.data[:] = torch.from_numpy(weights[idx : idx + n]).view_as(
+                    layer.weight.data
+                )
                 idx += n
-

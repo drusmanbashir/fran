@@ -1,9 +1,6 @@
 # %%
 from __future__ import annotations
 
-from torch.serialization import safe_globals
-from monai.data import ImageWriter
-import warnings
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Sequence, Union
@@ -11,10 +8,12 @@ from typing import Sequence, Union
 import numpy as np
 import SimpleITK as sitk
 import torch
-from fastcore.basics import store_attr, warnings
+from fastcore.basics import store_attr
+from fran.transforms.totensor import ToTensorT
 from label_analysis.helpers import get_labels as gl
 from monai.config import PathLike
 from monai.config.type_definitions import KeysCollection
+from monai.data import ImageWriter
 from monai.data.image_reader import (
     ImageReader,
     ITKReader,
@@ -29,16 +28,13 @@ from monai.data.image_reader import (
 from monai.data.meta_tensor import MetaTensor
 from monai.data.utils import is_supported_format, orientation_ras_lps
 from monai.transforms.io.array import SUPPORTED_READERS, LoadImage
-from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.transform import MapTransform
-from monai.transforms.utility.array import EnsureChannelFirst 
+from monai.transforms.utility.array import EnsureChannelFirst
 from monai.utils import ImageMetaKey as Key
 from monai.utils import ensure_tuple, optional_import
 from monai.utils.enums import MetaKeys, SpaceKeys
 from monai.utils.module import optional_import, require_pkg
-
-from fran.transforms.totensor import ToTensorT
-from utilz.fileio import load_dict
+from torch.serialization import safe_globals
 
 nib, _ = optional_import("nibabel")
 Image, _ = optional_import("PIL.Image")
@@ -55,8 +51,7 @@ SUPPORTED_READERS = {
     "nibabelreader": NibabelReader,
 }
 import ipdb
-
-from utilz.imageviewers import ImageMaskViewer
+import torch
 
 tr = ipdb.set_trace
 
@@ -77,6 +72,7 @@ class LoadSITKd(MapTransform):
     step required before MONAI tensor transforms (for example
     `EnsureChannelFirstd`, resizing, merges).
     """
+
     def __init__(
         self,
         keys: KeysCollection,
@@ -436,7 +432,6 @@ class SITKReader(ITKReader):
 
 
 class TorchReader(ImageReader):
-
     def get_data(self, img) -> tuple[torch.Tensor, dict]:
         """
         Extract data array and metadata from loaded image and return them.
@@ -474,7 +469,7 @@ class TorchReader(ImageReader):
         filenames: Sequence[PathLike] = ensure_tuple(data)
         for name in filenames:
             try:
-                img = torch.load(name,weights_only=False, **kwargs)
+                img = torch.load(name, weights_only=False, **kwargs)
                 img_.append(img)
             except Exception as e:
                 raise RuntimeError(f"Failed to load {name}: {e}")
@@ -523,8 +518,12 @@ class TorchWriter(ImageWriter):
 
 # %%
 if __name__ == "__main__":
+    import warnings
 
-    import torch
+    from fastcore.basics import warnings
+    from monai.transforms.io.dictionary import LoadImaged
+    from utilz.fileio import load_dict
+    from utilz.imageviewers import ImageMaskViewer
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 

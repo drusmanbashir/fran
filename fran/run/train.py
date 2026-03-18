@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-import pandas as pd
+from pathlib import Path
+
 # training.py — minimal runner to Tm.fit()
 import ipdb
+import pandas as pd
 import torch
-from utilz.stringz import headline
-
-from pathlib import Path
 from fran.callback.case_recorder import CaseIDRecorder
 from fran.utils.misc import parse_devices
 
@@ -26,7 +25,7 @@ def print_device_info():
         print(f"Found {n} CUDA device(s).")
         for i in range(n):
             props = torch.cuda.get_device_properties(i)
-            print(f"cuda:{i} — {props.name}, {props.total_memory/1024**3:.1f} GB")
+            print(f"cuda:{i} — {props.name}, {props.total_memory / 1024**3:.1f} GB")
 
 
 def str2bool(v: str) -> bool:
@@ -50,22 +49,25 @@ class UniqueArgValue(argparse.Action):
         setattr(namespace, self.dest, values)
 
 
-def derive_train_indices(ds:str, train_indices:int):
-    assert isinstance(train_indices, int),"train indices must be an int"
-    fldr= ds['folder']
+def derive_train_indices(ds: str, train_indices: int):
+    assert isinstance(train_indices, int), "train indices must be an int"
+    fldr = ds["folder"]
     fldr = Path(fldr)
-    fn = fldr/("dataset_stats/lesion_stats.csv")
+    fn = fldr / ("dataset_stats/lesion_stats.csv")
     df = pd.read_csv(fn)
     counts = df.groupby("case_id").size()
     counts2 = counts.sort_values(ascending=False)
     train_indices = min(train_indices, len(counts2))
-    bb= counts2.index[:train_indices]
+    bb = counts2.index[:train_indices]
     return bb
 
 
 def main(args):
 
-    import torch, os
+    import os
+
+    import torch
+
     print("CUDA_VISIBLE_DEVICES:", os.environ.get("CUDA_VISIBLE_DEVICES"))
     print("torch.version.cuda:", torch.version.cuda)
     print("torch.cuda.is_available():", torch.cuda.is_available())
@@ -86,9 +88,9 @@ def main(args):
                 print("train_indices can only be used with a single datasource")
                 raise NotImplementedError
             train_indices = derive_train_indices(datasources[0], args.train_indices)
-        else: 
+        else:
             print("No train indices passed", args.train_indices)
-            train_indices=  None
+            train_indices = None
         C = ConfigMaker(P)
         plan = int(args.plan)
         C.setup(plan)
@@ -103,11 +105,12 @@ def main(args):
         if args.fold is not None:
             conf["dataset_params"]["fold"] = args.fold
 
-
         # --- Trainer --------------------------------------------------------------
         print_device_info()
 
-        Tm = Trainer(project_title=P.project_title, configs=conf, run_name=args.run_name)
+        Tm = Trainer(
+            project_title=P.project_title, configs=conf, run_name=args.run_name
+        )
         Tm.setup(
             compiled=args.compiled,
             batch_size=args.batch_size,
@@ -148,9 +151,7 @@ if __name__ == "__main__":
         default=1,
         help='GPU devices: "0", "0,1", or count like "2"',
     )
-    parser.add_argument(
-        "-lr", "--learning-rate", dest="lr", type=float, default=None
-    )
+    parser.add_argument("-lr", "--learning-rate", dest="lr", type=float, default=None)
     parser.add_argument(
         "--bs",
         "--batch-size",
@@ -166,7 +167,7 @@ if __name__ == "__main__":
         default=None,
         help="If specified, will override conf['dataset_params']['fold']",
     )
-    parser.add_argument("-e" , "--epochs", type=int, default=600, help="Max epochs")
+    parser.add_argument("-e", "--epochs", type=int, default=600, help="Max epochs")
     parser.add_argument(
         "--compiled",
         type=str2bool,
@@ -216,11 +217,16 @@ if __name__ == "__main__":
         default=None,
         help="Limit training set to the first n cases",
     )
-    parser.add_argument( "--bsf",
-        "--batchsize-finder", type=str2bool, default=False, help="Enable batch size finder", dest="batchsize_finder"
+    parser.add_argument(
+        "--bsf",
+        "--batchsize-finder",
+        type=str2bool,
+        default=False,
+        help="Enable batch size finder",
+        dest="batchsize_finder",
     )
     args = parser.parse_known_args()[0]
-# %%
+    # %%
     # args.fold = 1
     # args.project = "kits2"
     #
@@ -230,9 +236,10 @@ if __name__ == "__main__":
     # print(args.devices)
     # print("After parse:")
     # print(parse_devices(args.devices))
-# %%
+    # %%
 
     import sys
+
     # raise SystemExit(main(args))
     main(args)
     sys.exit()

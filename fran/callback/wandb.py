@@ -5,18 +5,19 @@ from pathlib import Path
 from typing import Any
 
 import lightning as pl
-from monai.data.meta_tensor import MetaTensor
 import numpy as np
 import torch
 import torch.nn.functional as F
 import wandb
-from lightning.pytorch.callbacks import Callback
-from PIL import Image, ImageDraw, ImageFont
-from torchvision.utils import make_grid
-
 from fran.transforms.spatialtransforms import one_hot
 from fran.utils.colour_palette import colour_palette
 from fran.utils.string_works import info_from_filename
+from lightning.pytorch.callbacks import Callback
+from monai.data.meta_tensor import MetaTensor
+from PIL import Image, ImageDraw, ImageFont
+from torchvision.utils import make_grid
+
+
 class WandbImageGridCallback(Callback):
     def __init__(
         self,
@@ -74,7 +75,9 @@ class WandbImageGridCallback(Callback):
         if trainer.store_preds:
             self.populate_grid(pl_module, batch)
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(
+        self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
+    ):
         if trainer.store_preds and not self.validation_grid_created:
             self.populate_grid_val(pl_module, batch)
             self.validation_grid_created = True
@@ -88,9 +91,15 @@ class WandbImageGridCallback(Callback):
         for grd in [self.grid_imgs, self.grid_preds, self.grid_labels]:
             merged.append(torch.cat(grd))
         grd = torch.stack(merged)
-        grd2 = grd.permute(1, 0, 2, 3, 4).contiguous().view(-1, 3, grd.shape[-2], grd.shape[-1])
+        grd2 = (
+            grd.permute(1, 0, 2, 3, 4)
+            .contiguous()
+            .view(-1, 3, grd.shape[-2], grd.shape[-1])
+        )
         padding = 1
-        grd3 = make_grid(grd2, nrow=self.imgs_per_batch * 3, scale_each=True, padding=padding)
+        grd3 = make_grid(
+            grd2, nrow=self.imgs_per_batch * 3, scale_each=True, padding=padding
+        )
         img = grd3.permute(1, 2, 0).cpu().numpy().astype("uint8")
         case_ids = [case_id for case_row in self.grid_case_ids for case_id in case_row]
         img = self.annotate_grid(
@@ -109,21 +118,33 @@ class WandbImageGridCallback(Callback):
         def _randomize():
             n_slices = img.shape[-1]
             batch_size = img.shape[0]
-            self.slices = [random.randrange(0, n_slices) for _ in range(self.imgs_per_batch)]
-            self.batches = [random.randrange(0, batch_size) for _ in range(self.imgs_per_batch)]
+            self.slices = [
+                random.randrange(0, n_slices) for _ in range(self.imgs_per_batch)
+            ]
+            self.batches = [
+                random.randrange(0, batch_size) for _ in range(self.imgs_per_batch)
+            ]
 
         img = batch["image"].cpu()
         label = batch["lm"].cpu().squeeze(1)
         label = one_hot(label, self.classes, axis=1)
-        pred= batch["pred"]
+        pred = batch["pred"]
 
-        assert pred.dim() == img.dim(),"pred dim does not match img dim" 
+        assert pred.dim() == img.dim(), "pred dim does not match img dim"
         pred = F.softmax(pred.to(torch.float32), dim=1)
 
         _randomize()
         case_ids = self.case_ids_from_batch(batch)
-        img, label, pred = self.img_to_grd(img), self.img_to_grd(label), self.img_to_grd(pred)
-        img, label, pred = self.scale_tensor(img), self.assign_colour(label), self.assign_colour(pred)
+        img, label, pred = (
+            self.img_to_grd(img),
+            self.img_to_grd(label),
+            self.img_to_grd(pred),
+        )
+        img, label, pred = (
+            self.scale_tensor(img),
+            self.assign_colour(label),
+            self.assign_colour(pred),
+        )
 
         self.grid_imgs.append(img)
         self.grid_preds.append(pred)
@@ -136,8 +157,12 @@ class WandbImageGridCallback(Callback):
         def _randomize():
             n_slices = img.shape[-1]
             batch_size = img.shape[0]
-            self.slices = [random.randrange(0, n_slices) for _ in range(self.imgs_per_batch)]
-            self.batches = [random.randrange(0, batch_size) for _ in range(self.imgs_per_batch)]
+            self.slices = [
+                random.randrange(0, n_slices) for _ in range(self.imgs_per_batch)
+            ]
+            self.batches = [
+                random.randrange(0, batch_size) for _ in range(self.imgs_per_batch)
+            ]
 
         img = batch["image"].cpu()
         label = batch["lm"].cpu().squeeze(1)
@@ -152,8 +177,16 @@ class WandbImageGridCallback(Callback):
 
         _randomize()
         case_ids = self.case_ids_from_batch(batch)
-        img, label, pred = self.img_to_grd(img), self.img_to_grd(label), self.img_to_grd(pred)
-        img, label, pred = self.scale_tensor(img), self.assign_colour(label), self.assign_colour(pred)
+        img, label, pred = (
+            self.img_to_grd(img),
+            self.img_to_grd(label),
+            self.img_to_grd(pred),
+        )
+        img, label, pred = (
+            self.scale_tensor(img),
+            self.assign_colour(label),
+            self.assign_colour(pred),
+        )
 
         self.grid_imgs.append(img)
         self.grid_preds.append(pred)
@@ -163,10 +196,11 @@ class WandbImageGridCallback(Callback):
         )
 
     def img_to_grd(self, tnsr):
-        if isinstance (tnsr, MetaTensor):
+        if isinstance(tnsr, MetaTensor):
             bb = torch.Tensor(tnsr)
-        else: bb = tnsr
-        bb2  = bb[self.batches, :, :, :, self.slices].clone()
+        else:
+            bb = tnsr
+        bb2 = bb[self.batches, :, :, :, self.slices].clone()
         return bb2
 
     def assign_colour(self, tnsr):

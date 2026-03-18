@@ -7,12 +7,11 @@ import time
 from pathlib import Path
 
 import torch
-from torch.profiler import ProfilerActivity, profile
-
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
 from fran.trainers.trainer import Trainer
 from fran.utils.misc import parse_devices
+from torch.profiler import ProfilerActivity, profile
 
 
 def str2bool(v: str) -> bool:
@@ -60,7 +59,9 @@ def _limit_dm_samples(dm, n_samples: int) -> None:
 
         new_cases = len(getattr(m, "cases", []) or [])
         new_data = len(getattr(m, "data", []) or [])
-        print(f"[{name}] cases {old_cases} -> {new_cases}, data {old_data} -> {new_data}")
+        print(
+            f"[{name}] cases {old_cases} -> {new_cases}, data {old_data} -> {new_data}"
+        )
 
 
 def _configure_cpu_profiling_dataloaders(dm, enabled: bool) -> None:
@@ -130,7 +131,9 @@ def _write_tables(prof, out_dir: Path, stamp: str, stack_depth: int) -> None:
     table_cpu = prof.key_averages().table(sort_by="self_cpu_time_total", row_limit=120)
     ops_cpu_file.write_text(table_cpu)
 
-    table_cuda = prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=120)
+    table_cuda = prof.key_averages().table(
+        sort_by="self_cuda_time_total", row_limit=120
+    )
     ops_cuda_file.write_text(table_cuda)
 
     table_stack_cpu = prof.key_averages(group_by_stack_n=int(stack_depth)).table(
@@ -214,7 +217,9 @@ def main(args: argparse.Namespace) -> None:
     if bool(args.cpu_profiling):
         activities.insert(0, ProfilerActivity.CPU)
 
-    experimental_config = _maybe_experimental_config(bool(args.profile_experimental_verbose))
+    experimental_config = _maybe_experimental_config(
+        bool(args.profile_experimental_verbose)
+    )
 
     with profile(
         activities=activities,
@@ -228,7 +233,9 @@ def main(args: argparse.Namespace) -> None:
 
     prof.export_chrome_trace(str(trace_file))
     print(f"Verbose trace: {trace_file}")
-    _write_tables(prof=prof, out_dir=out_dir, stamp=stamp, stack_depth=int(args.stack_depth))
+    _write_tables(
+        prof=prof, out_dir=out_dir, stamp=stamp, stack_depth=int(args.stack_depth)
+    )
     _export_stacks_if_available(
         prof=prof, out_dir=out_dir, stamp=stamp, enabled=bool(args.export_stacks)
     )

@@ -6,27 +6,25 @@ from typing import Optional, Union
 
 import ipdb
 import SimpleITK as sitk
-from monai.apps.detection.transforms.array import ConvertBoxMode
-from monai.data.meta_tensor import MetaTensor
 import torch
+from fran.transforms.base import MonaiDictTransform
 from label_analysis.helpers import listify, relabel
+from monai.apps.detection.transforms.array import ConvertBoxMode
+
 # from label_analysis.merge import merge_pt
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
+from monai.data.meta_tensor import MetaTensor
 from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
-
-from fran.transforms.base import MonaiDictTransform
 from utilz.stringz import ast_literal_eval
 
 tr = ipdb.set_trace
 
-from fastcore.basics import Dict, store_attr
-from fasttransform.transform import ItemTransform, store_attr
-
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
-
+from fastcore.basics import Dict, store_attr
+from fasttransform.transform import ItemTransform, store_attr
 
 #
 # class BBoxFromLabelMap(MonaiDictTransform):
@@ -34,35 +32,38 @@ import fran.transforms.spatialtransforms as spatial
 #
 
 
-def merge_pt(base_labelmap: torch.Tensor, 
-             overlay_labelmaps: Union[torch.Tensor, list[torch.Tensor]],
-             label_lists: list[list[int]] = None) -> torch.Tensor:
+def merge_pt(
+    base_labelmap: torch.Tensor,
+    overlay_labelmaps: Union[torch.Tensor, list[torch.Tensor]],
+    label_lists: list[list[int]] = None,
+) -> torch.Tensor:
     """Merge multiple labelmaps by overlaying them onto a base labelmap.
-    
+
     Args:
         base_labelmap: Base labelmap to overlay others onto
         overlay_labelmaps: Single labelmap or list of labelmaps to overlay
         label_lists: Optional list of label lists, one per overlay labelmap.
                     If None, uses all non-zero labels from each overlay.
-                    
+
     Returns:
         Merged labelmap with overlays applied in order (later ones override earlier)
     """
     # Ensure overlay_labelmaps is a list
     if not isinstance(overlay_labelmaps, (tuple, list)):
         overlay_labelmaps = [overlay_labelmaps]
-        
+
     # Get non-zero labels if not provided
     if label_lists is None:
         label_lists = [lm.unique()[1:] for lm in overlay_labelmaps]
-        
+
     # Apply each overlay
     result = base_labelmap.clone()
     for overlay, labels in zip(overlay_labelmaps, label_lists):
         for label in labels:
             result[overlay == label] = label
-            
+
     return result
+
 
 class MaskLabelRemapd(MapTransform):
     # there should be no channel dim
@@ -71,7 +72,7 @@ class MaskLabelRemapd(MapTransform):
         super().__init__(keys, allow_missing_keys)
         if isinstance(remapping, str):
             remapping = ast_literal_eval(remapping)
-        if use_sitk==True:
+        if use_sitk == True:
             # self.remapping_train = {x: y for x, y in remapping_train}
             self.remapper = self.remapper_sitk
         else:
@@ -79,14 +80,13 @@ class MaskLabelRemapd(MapTransform):
             self.remapper = self.remapper_pt
         self.remapping_train = remapping
 
-
     def __call__(
         self, data: Mapping[Hashable, torch.Tensor]
     ) -> Dict[Hashable, torch.Tensor]:
         d = dict(data)
         for key in self.key_iterator(d):
             lm = d[key]
-            if not lm.dim()==3:
+            if not lm.dim() == 3:
                 raise ValueError("Only 3D tensors supported")
             lm = self.remapper(lm)
             d[key] = lm
@@ -97,27 +97,24 @@ class MaskLabelRemapd(MapTransform):
         mask_out = torch.zeros(mask.shape, dtype=mask.dtype)
         mask_tmp = one_hot(mask, n_classes, 0)
         mask_reassigned = torch.zeros(mask_tmp.shape, device=mask.device)
-        for src,dest in self.remapping_train.items():
+        for src, dest in self.remapping_train.items():
             print(src)
             # src, dest = src_des[0], src_des[1]
             mask_reassigned[dest] += mask_tmp[src]
 
         for x in range(n_classes):
             mask_out[torch.isin(mask_reassigned[x], 1.0)] = x
-        return mask_out 
+        return mask_out
 
-
-    def remapper_pt(self,lm):
+    def remapper_pt(self, lm):
         L = LabelRemap()
 
-
-
-    def remapper_sitk(self,lm):
+    def remapper_sitk(self, lm):
         lm_dtype = lm.dtype
         meta = lm.meta
-        lm_sitk= sitk.GetImageFromArray(lm.cpu().numpy())
+        lm_sitk = sitk.GetImageFromArray(lm.cpu().numpy())
         lm_sitk = relabel(lm_sitk, self.remapping_train)
-        lm_out   = sitk.GetArrayFromImage(lm_sitk)
+        lm_out = sitk.GetArrayFromImage(lm_sitk)
         lm_out = MetaTensor(lm_out, meta=meta, dtype=lm_dtype)
         return lm_out
 
@@ -296,7 +293,7 @@ class FgBgToIndicesd2(FgBgToIndicesd):
     def __init__(
         self,
         keys: KeysCollection,
-        ignore_labels: list | int= [],
+        ignore_labels: list | int = [],
         fg_postfix: str = "_fg_indices",
         bg_postfix: str = "_bg_indices",
         image_key=None,
@@ -342,9 +339,7 @@ class FgBgToIndicesd2(FgBgToIndicesd):
                     meta = getattr(lm_src, "meta", None)
                     if isinstance(meta, dict):
                         fname = meta.get("filename_or_obj")
-                    print(
-                        "Warning: No foreground in label {}".format(fname)
-                    )
+                    print("Warning: No foreground in label {}".format(fname))
                     print("Not removing any labels to avoid bugs")
                     lm = _plain_tensor(lm_src).clone()
             else:
@@ -411,7 +406,7 @@ class LoadTorchDict(MonaiDictTransform):
 
         mini_dict = {}
         for key in self.key_iterator(d):
-            dici = torch.load(d[key],weights_only=False)
+            dici = torch.load(d[key], weights_only=False)
             for k in self.select_keys:
                 mini_dict[k] = dici[k]
             if self.drop_keys == True:
@@ -426,9 +421,9 @@ class MetaToDict(MonaiDictTransform):
         keys cannot be more than len 1!
         """
 
-        assert (
-            len(keys) == 1
-        ), "keys cannot be more than len 1! Otherwise duplicate keys will be created from metadatas"
+        assert len(keys) == 1, (
+            "keys cannot be more than len 1! Otherwise duplicate keys will be created from metadatas"
+        )
         if renamed_keys is None:
             renamed_keys = meta_keys
         store_attr("meta_keys,renamed_keys")
@@ -464,7 +459,7 @@ class MergeLabelmapsd(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
-        meta_key:str,
+        meta_key: str,
         key_output: str,
         allow_missing_keys: bool = False,
     ) -> None:
@@ -489,9 +484,11 @@ class MergeLabelmapsd(MapTransform):
         d[self.key_output] = lm_out
         return d
 
+
 class DummyTransform(MapTransform):
     def __call__(self, d: dict):
         return d
+
 
 class LabelRemapd(MapTransform):
     """
@@ -509,7 +506,9 @@ class LabelRemapd(MapTransform):
         self.remapping_key = remapping_key
         self.remapping_dict = remapping
         # XOR: exactly one of remapping or remapping_key should be provided
-        assert bool(remapping) ^ bool(remapping_key), "exactly one of 'remapping' or 'remapping_key' should be provided, not both or neither"
+        assert bool(remapping) ^ bool(remapping_key), (
+            "exactly one of 'remapping' or 'remapping_key' should be provided, not both or neither"
+        )
         super().__init__(keys, allow_missing_keys)
 
     def need_remapping(self, remapping):
@@ -631,7 +630,6 @@ class FilenameFromBBox(ItemTransform):
 
 
 class Squeeze(ItemTransform):
-
     def __init__(self, dim):
         store_attr()
 

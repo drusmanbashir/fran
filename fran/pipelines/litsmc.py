@@ -1,33 +1,35 @@
 # %%
-import argparse
-from pathlib import Path
 
-from monai.data.dataset import GDSDataset
-from utilz.imageviewers import ImageMaskViewer
 
-from fran.managers import  Project
-from fran.managers.data import DataManagerMulti
-from fran.preprocessing.globalproperties import GlobalProperties
-from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-from fran.run.analyze_resample import PreprocessingManager
-from fran.trainers.trainer import Trainer
-from fran.configs.parser import ConfigMaker
-from fran.data.dataregistry import DS
 # %%
 # SECTION:-------------------- SETUP----------------------------------------------------------------------------------------------------- <CR>
 if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    from fran.configs.parser import ConfigMaker
+    from fran.data.dataregistry import DS
+    from fran.managers import Project
+    from fran.managers.data import DataManagerMulti
+    from fran.preprocessing.globalproperties import GlobalProperties
+    from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+    from fran.run.analyze_resample import PreprocessingManager
+    from fran.trainers.trainer import Trainer
     from fran.utils.common import *
+    from monai.data.dataset import GDSDataset
+    from utilz.imageviewers import ImageMaskViewer
+
     P = Project("litsmc")
     # P.delete()
     # P.create(mnemonic="lits", datasources=[DS.lits, DS.drli,DS.litq,DS.litqsmall])
-    
+
     # P.set_labels_all()
     # P.global_properties = load_dict("/s/fran_storage/projects/litsmc/global_properties.pkl")
     # save_dict(P.global_properties, P.global_properties_filename)
-    # P.global_properties["labels_all"] 
+    # P.global_properties["labels_all"]
     # P.maybe_store_projectwide_properties()
 
-# %%
+    # %%
     C = ConfigMaker(P, raytune=False)
     C.setup(7)
     C.plans
@@ -36,7 +38,7 @@ if __name__ == "__main__":
 
     plan = conf["plan_train"]
     pp(plan)
-# %%
+    # %%
 
     devices = 2
     bs = 10
@@ -50,13 +52,13 @@ if __name__ == "__main__":
     override_dm_params = False
     description = f"main litsmc run"
     # plan['mode']
-# %%
-    run_name ="LITS-1217" 
+    # %%
+    run_name = "LITS-1217"
     run_name = None
     # conf["dataset_params"]["cache_rate"] = None
 
     Tm = Trainer(P.project_title, conf, run_name)
-# %%
+    # %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -67,33 +69,33 @@ if __name__ == "__main__":
         wandb=wandb,
         tags=tags,
         description=description,
-        override_dm_checkpoint=override_dm_params
+        override_dm_checkpoint=override_dm_params,
     )
-# %%
+    # %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()
-# %%
-# %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # %%
+    # SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     #
     Tm.D.prepare_data()
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
-# %%
+    # %%
     tm = Tm.D.train_manager
     dici = tm.ds[0]
 
-# SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     # P.delete()
     DS = DS
     P.add_data([DS.litq, DS.lits, DS.drli, DS.litqsmall])
 
     # P.add_data([DS.totalseg])
-# %%
-# SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     test = False
     ds = Datasource(
@@ -101,13 +103,13 @@ if __name__ == "__main__":
     )
     ds.process()
 
-# %%
-# SECTION:-------------------- GLOBAL PROPERTIES-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-# %%
-# SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- GLOBAL PROPERTIES-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR> <CR> <CR> <CR>
     # active_plan = "plan10"
     overwrite = False
-# %%
+    # %%
 
     parser = argparse.ArgumentParser(description="Resampler")
 
@@ -151,31 +153,32 @@ if __name__ == "__main__":
     args.project_title = "litsmc"
 
     plans = conf[args.plan_name]
-# SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     I = PreprocessingManager(args)
     # I.spacing =
-# %%
-# SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR> <CR> <CR>
     overwrite = False
     I.resample_dataset(overwrite=overwrite)
     I.R.get_tensor_folder_stats()
 
-# %%
-# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR> <CR> <CR>
+    # %%
+    # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR> <CR> <CR>
 
-    overwrite=False
-    I.plan_name= "jj"
+    overwrite = False
+    I.plan_name = "jj"
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
         I.generate_hires_patches_dataset()
     elif I.plan["mode"] == "lbd":
-        if plan['imported_folder'] is None:
+        if plan["imported_folder"] is None:
             I.generate_lbd_dataset(overwrite=overwrite)
         else:
             I.generate_TSlabelboundeddataset(
                 remapping_imported=plan["imported_labels"],
-                imported_folder=plan["imported_folder"],)
-# %%
+                imported_folder=plan["imported_folder"],
+            )
+    # %%
 
     L = LabelBoundedDataGeneratorImported(
         project=P,
@@ -186,7 +189,7 @@ if __name__ == "__main__":
         remapping=remapping,
     )
 
-# %%
+    # %%
     device = "cpu"
     overwrite = True
     L = LabelBoundedDataGenerator(
@@ -194,13 +197,13 @@ if __name__ == "__main__":
         plan=I.plan,
         plan_name=I.plan_name,
     )
-# %%
+    # %%
     L.setup(overwrite=overwrite, device=device)
     L.process()
-# %%
+    # %%
 
-# %%
-# SECTION:-------------------- DATA MANAGER-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- DATA MANAGER-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     batch_size = 8
     ds_type = "lmdb"
@@ -217,53 +220,53 @@ if __name__ == "__main__":
         ds_type=ds_type,
     )
 
-# %%
+    # %%
     D.prepare_data()
     D.setup()
     tm = D.train_manager
     tm = D.valid_manager
     tm.transforms_dict
 
-# %%
+    # %%
     ds = tm.ds
     dat = ds[0]
     dici = ds.data[0]
     tm.tfms_list
 
-# %%
+    # %%
 
-# %%
+    # %%
     D.train_ds[0]
     dlt = D.train_dataloader()
     dlv = D.val_dataloader()
-# %%
+    # %%
 
     # iteri = iter(dlv)
     for num, batch in enumerate(dlv):
         print(batch["image"].shape)
-# %%
+    # %%
 
     for num, batch in enumerate(dlt):
         print(batch["image"].shape)
-# %%
-# %%
-# SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
+    # %%
+    # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     Tm.D.prepare_data()
     Tm.D.setup()
     Tm.D.train_manager.keys_tr
-# %%
+    # %%
     tm = Tm.D.train_manager
     dici = tm.ds[0]
     ds = GDSDataset
-# %%
+    # %%
     img = dici[0]["image"]
     lm = dici["lm"]
 
     im = dici[0]["image"]
     lm = dici[0]["lm"]
     ImageMaskViewer([im[0], lm[0]])
-# %%
+    # %%
 
     tv = Tm.D.valid_manager
     # dici = tv.ds[0]
@@ -274,14 +277,14 @@ if __name__ == "__main__":
 
     batch["lm"].max()
 
-# %%
+    # %%
     n = 0
     lm = batch["lm"]
     im = batch["image"]
     im = im.permute(0, 1, 4, 2, 3)
     lm = lm.permute(0, 1, 4, 2, 3)
     ImageMaskViewer([im[n][0], lm[n][0]])
-# %%
+    # %%
 
     batch_size = 2
     ds_type = "lmdb"
@@ -294,43 +297,43 @@ if __name__ == "__main__":
         ds_type=ds_type,
     )
 
-# %%
+    # %%
     D.prepare_data()
     D.setup()
     tm = D.train_manager
     tm = D.valid_manager
     tm.transforms_dict
 
-# %%
+    # %%
     ds = tm.ds
     dat = ds[0]
     dici = ds.data[0]
     tm.tfms_list
 
-# %%
+    # %%
 
-# %%
+    # %%
     # D.train_ds[0]
     # dl =D.train_dataloader()
     dl = D.val_dataloader()
-# %%
+    # %%
 
     iteri = iter(dl)
     batch = next(iteri)
 
-# %%
+    # %%
     n = 0
     im = batch["image"][n][0]
     ImageMaskViewer([im, batch["lm"][n][0]])
     # while iteri:
     #     print(batch['image'].shape)
-# SECTION:-------------------- INFERENCE-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-# %%
+    # SECTION:-------------------- INFERENCE-------------------------------------------------------------------------------------- <CR> <CR> <CR>
+    # %%
 
     P._create_folds()
     labels_all = P.global_properties.get("labels_all")
     max_cases = 100
-    clip_range =None
+    clip_range = None
     P.G = GlobalProperties(P, max_cases=max_cases, clip_range=clip_range)
     if labels_all is None or len(labels_all) == 0:
         headline("Labels have not been collated. Doing it now")

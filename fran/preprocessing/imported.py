@@ -2,32 +2,30 @@
 
 MIN_SIZE = 32  # min size in a single dimension of any image
 import ipdb
-import numpy as np
 import ray
-from label_analysis.merge import get_labels
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, MapLabelValueD
-from utilz.imageviewers import ImageMaskViewer
-
-from fran.data.dataregistry import DatasetRegistry, DatasetSpec
-from fran.preprocessing.preprocessor import store_labels_info
+from fran.data.dataregistry import DatasetRegistry
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import BBoxFromPTd
-from fran.transforms.misc_transforms import (ApplyBBox, DummyTransform, LabelRemapSITKd,
-                                             MergeLabelmapsd, RecastToFloatd)
+from fran.transforms.misc_transforms import (
+    ApplyBBox,
+    DummyTransform,
+    LabelRemapSITKd,
+    MergeLabelmapsd,
+    RecastToFloatd,
+)
 from fran.transforms.spatialtransforms import ResizeToTensord
-from fran.utils.folder_names import folder_names_from_plan
+from monai.transforms.utility.dictionary import EnsureChannelFirstd
 
 tr = ipdb.set_trace
 
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-from tqdm.auto import tqdm as pbar
-from utilz.helpers import find_matching_fn, info_from_filename
-
-from fran.configs.parser import ConfigMaker, parse_excel_datasources, parse_excel_remapping
+from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from tqdm.auto import tqdm as pbar
+from utilz.helpers import find_matching_fn
 
 
 def resolve_relative_path(pth: str) -> str:
@@ -64,19 +62,22 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         device="cpu",
         debug=False,
     ):
-        '''
+        """
         if both remmapping and remapping_imported are present, remapping imported is applied to the imported lm first,
         then it is cropped, then remapping is kept or discarded, and finally remapping is applied to the lm
-        '''
-
+        """
 
         imported_folder = plan["imported_folder"]
         self.imported_folder = Path(imported_folder)
         merge_imported_labels = plan["merge_imported_labels"]
         if merge_imported_labels == True:
-            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Cast,Rsz,Merg,BBox,AppBx,Remap,Labels,Indx"
+            tfms_keys = (
+                "RemapI,LoadS,LoadT,Dev,Chan,Cast,Rsz,Merg,BBox,AppBx,Remap,Labels,Indx"
+            )
         else:
-            tfms_keys = "RemapI,LoadS,LoadT,Dev,Chan,Cast,Rsz,BBox,AppBx,Remap,Labels,Indx"
+            tfms_keys = (
+                "RemapI,LoadS,LoadT,Dev,Chan,Cast,Rsz,BBox,AppBx,Remap,Labels,Indx"
+            )
         self.lm_imported_key = "lm_imported"
         super().__init__(
             project=project,
@@ -108,9 +109,7 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         Remapping_tfms = {}
         for rez, ds in zip(rem, dss):
             if rez is not None:
-                R = LabelRemapSITKd(
-                    keys=[lm_key], remapping=rez
-                )
+                R = LabelRemapSITKd(keys=[lm_key], remapping=rez)
             else:
                 R = DummyTransform(keys=[lm_key])
             Remapping_tfms[ds] = R
@@ -136,7 +135,9 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
             key_output=self.lm_key,
         )
 
-        self.RemapI = self.create_sitk_remapping_per_ds("remapping_imported", self.lm_imported_key)
+        self.RemapI = self.create_sitk_remapping_per_ds(
+            "remapping_imported", self.lm_imported_key
+        )
 
         self.Re = RecastToFloatd(keys=[self.lm_imported_key])
         self.Rz = ResizeToTensord(
@@ -153,7 +154,6 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
                 "Cast": self.Re,
                 "Rsz": self.Rz,
             }
-
         )
 
     @property
@@ -274,7 +274,6 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             if len(str(imported_folder)) < 3:
                 pass
             else:
-
                 if not imported_folder.exists():
                     raise FileNotFoundError(
                         f"Imported folder not found: {imported_folder}"
@@ -307,7 +306,6 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
                 df.loc[idx, "lm_imported"] = matched_files
                 nan_mask = df.loc[idx, "lm_imported"].isna()
                 if nan_mask.any():
-
                     missing_count = nan_mask.sum()
                     print(
                         f"Warning: {missing_count}/{len(df)} cases lack imported files:"
@@ -324,16 +322,24 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
     def create_properties_dict(self) -> Dict[str, Any]:
         props = super().create_properties_dict()
         imported_info = {
-            "merge_imported_labels": bool(self.plan.get("merge_imported_labels", False)),
+            "merge_imported_labels": bool(
+                self.plan.get("merge_imported_labels", False)
+            ),
             "remapping_imported": [
                 d.get("remapping_imported") for d in self.ds_imported_folder_remapping
             ],
         }
         return props | imported_info
 
+
 if __name__ == "__main__":
-# %%
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    import numpy as np
+    from fran.configs.parser import ConfigMaker
+    from fran.preprocessing.preprocessor import store_labels_info
+    from fran.utils.folder_names import folder_names_from_plan
+
+    # %%
+    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     from utilz.helpers import set_autoreload
 
     set_autoreload()
@@ -349,7 +355,7 @@ if __name__ == "__main__":
     C = ConfigMaker(P)
     C.setup(5)
 
-# %%
+    # %%
 
     conf = C.configs
     print(conf["model_params"])
@@ -359,33 +365,33 @@ if __name__ == "__main__":
     spacing = plan["spacing"]
     imported_fldr = plan["imported_folder"]
 
-# %%
-# SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     resampled_data_folder = folder_names_from_plan(P, plan)["data_folder_source"]
 
-# %%
+    # %%
     L = LabelBoundedDataGeneratorImported(
         project=P, plan=plan, data_folder=resampled_data_folder
     )
 
-# %%
+    # %%
     num_processes = 6
-    debug=False
-    debug=True
+    debug = False
+    debug = True
     overwrite = False
-    L.setup(overwrite=overwrite, num_processes=num_processes,debug=debug)
+    L.setup(overwrite=overwrite, num_processes=num_processes, debug=debug)
     L.process()
     store_labels_info(L.output_folder, 16)
-# %% %%
+    # %% %%
     num_processes = 16
     L.create_data_df()
     L.register_existing_files()
     L.mini_dfs = np.array_split(L.df, num_processes)
-# %%
+    # %%
 
     mini_df = L.mini_dfs[0]
     # mini_df = mini_df.iloc[:3]
-# %%
+    # %%
     LL = LBDImportedSamplerWorkerImpl.remote(
         project=L.project,
         plan=L.plan,
@@ -393,12 +399,12 @@ if __name__ == "__main__":
         output_folder=L.output_folder,
     )
     outs = LL.process(mini_df)
-# %%
+    # %%
     row = mini_df.iloc[0]
     dici = {"AppBx": 12}
     dici.update({"AppBx": 13, "BBox": 15})
 
-# %%
+    # %%
     data = {
         "image": row["image"],
         "lm": row["lm"],
@@ -407,7 +413,7 @@ if __name__ == "__main__":
         "remapping_imported": row["remapping_imported"],
     }
 
-# %%
+    # %%
     # Apply transforms
     data = LL.transforms(data)
     data2 = LL.transforms_dict["Remap"][data["ds"]](data)

@@ -1,14 +1,14 @@
-    # #python  analyze_resample.py -t nodes -p 6 -n 4 -o
+# #python  analyze_resample.py -t nodes -p 6 -n 4 -o
 
 
-if __name__ == '__main__':
-# %%
+if __name__ == "__main__":
+    # %%
     #     conf["dataset_params"]["src_dims"] = make_patch_size(conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"])
     #     conf["dataset_params"]["src_dims"]
     #     conf["plan_train"]["patch_size"]= make_patch_size(conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"])
     #     conf["plan_train"]
     #
-# %%
+    # %%
     #     patch_dim0 = conf["dataset_params"]["src_dim0"]
     #     patch_dim1 = conf["dataset_params"]["src_dim1"]
     #
@@ -17,9 +17,9 @@ if __name__ == '__main__':
     #     ] + [
     #         patch_dim1,
     #     ] * 2
-# %%
+    # %%
     # conf["dataset_params"]["src_dims"]
-# %%
+    # %%
 
     project_title = P.project_title
 
@@ -44,7 +44,7 @@ if __name__ == '__main__':
     tags = None
     description = ""
     override_dm = False
-# %%
+    # %%
 
     Tm.setup(
         compiled=compiled,
@@ -59,9 +59,9 @@ if __name__ == '__main__':
         lr=lr,
         override_dm_checkpoint=override_dm,
     )
-# %%
-# %%
-# SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+    # %%
+    # %%
+    # SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     conf["dataset_params"]["src_dim1"]
     conf2 = conf.copy()
     conf2["dataset_params"]["src_dim0"] = conf["dataset_params"]["src_dim0"].sample()
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     conf2["plan_train"]["patch_dim0"] = conf["plan_train"]["patch_dim0"].sample()
     conf2["plan_train"]["patch_dim1"] = conf["plan_train"]["patch_dim1"].sample()
     conf2["plan_train"]["expand_by"] = conf["plan_train"]["expand_by"].sample()
-# %%
+    # %%
     conf2["plan_train"]["patch_size"] = make_patch_size(
         conf2["plan_train"]["patch_dim0"], conf2["plan_train"]["patch_dim1"]
     )
@@ -77,9 +77,9 @@ if __name__ == '__main__':
     conf2["dataset_params"]["src_dims"] = make_patch_size(
         conf2["dataset_params"]["src_dim0"], conf2["dataset_params"]["src_dim1"]
     )
-# %%
+    # %%
     print(conf2["dataset_params"]["src_dims"])
-# %%
+    # %%
 
     plan = conf2["plan_train"]
     plan["expand_by"]

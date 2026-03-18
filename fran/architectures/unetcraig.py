@@ -1,9 +1,8 @@
 import torch
-
-from torch import nn
-
 from fran.architectures.nnunet import Generic_UNet_PL
 from fran.extra.deepcore.deepcore.nets.nets_utils.recorder import EmbeddingRecorder
+from torch import nn
+
 
 class nnUNetCraig(Generic_UNet_PL):
     def __init__(
@@ -85,18 +84,19 @@ class nnUNetCraig(Generic_UNet_PL):
         dummy_l.backward(retain_graph=True)
         self.grad_sigma_z = x_l.grad
 
+    def contract(
+        self, level: int, x: torch.Tensor, skip: torch.Tensor, capture_grad=False
+    ):
+        x = self.tu[level](x)
+        # skip = skips[-(u + 1)]
+        x = torch.cat((x, skip), dim=1)
+        x = self.conv_blocks_localization[level](x)
 
-    def contract(self, level:int,x:torch.Tensor,skip:torch.Tensor,capture_grad=False):
-            x = self.tu[level](x)
-            # skip = skips[-(u + 1)]
-            x = torch.cat((x, skip), dim=1)
-            x = self.conv_blocks_localization[level](x)
+        # x = self.tu[level](x)
+        # x = torch.cat((x, skip), dim=1)
+        # x = self.conv_blocks_localization[level](x)
 
-            # x = self.tu[level](x)
-            # x = torch.cat((x, skip), dim=1)
-            # x = self.conv_blocks_localization[level](x)
-
-            return x
+        return x
 
     def forward(self, x):
         skips = []
@@ -110,13 +110,13 @@ class nnUNetCraig(Generic_UNet_PL):
         x = self.conv_blocks_context[-1](x)
         x = self.embedding_recorder(x)
 
-        for uplevel in range(n_levels:=(len(self.tu))):
-            if self.capture_grads==True and uplevel==(n_levels-1):
-                capture_grad=True
+        for uplevel in range(n_levels := (len(self.tu))):
+            if self.capture_grads == True and uplevel == (n_levels - 1):
+                capture_grad = True
             else:
-                capture_grad=False
-            skip=skips[-(uplevel+1)]
-            x= self.contract(uplevel,x,skip,capture_grad)
+                capture_grad = False
+            skip = skips[-(uplevel + 1)]
+            x = self.contract(uplevel, x, skip, capture_grad)
             z_l = self.seg_outputs[uplevel](x)
             x_l = self.final_nonlin(z_l)
             x_ls.append(x_l)
@@ -125,7 +125,9 @@ class nnUNetCraig(Generic_UNet_PL):
                 [x_ls[-1]]
                 + [
                     i(j)
-                    for i, j in zip(list(self.upscale_logits_ops)[::-1], x_ls[:-1][::-1])
+                    for i, j in zip(
+                        list(self.upscale_logits_ops)[::-1], x_ls[:-1][::-1]
+                    )
                 ]
             )
         else:
