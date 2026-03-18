@@ -6,19 +6,35 @@ from typing import Optional
 import torch
 from fastcore.all import in_ipython
 from lightning.pytorch import Trainer as TrainerL
-from lightning.pytorch.callbacks import BatchSizeFinder, DeviceStatsMonitor, EarlyStopping, LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.callbacks import (
+    BatchSizeFinder,
+    DeviceStatsMonitor,
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
 from lightning.pytorch.profilers import AdvancedProfiler
 from utilz.cprint import cprint
 from utilz.stringz import headline
 
 from fran.callback.base import BatchSizeSafetyMargin
-from fran.callback.case_recorder import CaseIDRecorder, infer_labels_and_update_out_channels
+from fran.callback.case_recorder import (
+    CaseIDRecorder,
+    infer_labels_and_update_out_channels,
+)
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
 from fran.managers import Project
-from fran.managers.data.training2 import DataManagerBaseline, DataManagerDual, DataManagerLBD, DataManagerPatch, DataManagerSource, DataManagerWhole
+from fran.managers.data.training2 import (
+    DataManagerBaseline,
+    DataManagerDual,
+    DataManagerLBD,
+    DataManagerPatch,
+    DataManagerSource,
+    DataManagerWhole,
+)
 from fran.managers.unet import UNetManager
 from fran.managers.wandb import WandbManager
 from fran.trainers.base import backup_ckpt, checkpoint_from_model_id, switch_ckpt_keys
@@ -444,9 +460,9 @@ class Trainer:
     def qc_configs(self, configs, project):
         # ratios = configs["plan_train"]["fgbg_ratio"]
         ratios = configs["dataset_params"]["fgbg_ratio"]
-        assert isinstance(
-            ratios, int | float | list
-        ), "If no list is provided, fgbg_ratio must be an integer"
+        assert isinstance(ratios, int | float | list), (
+            "If no list is provided, fgbg_ratio must be an integer"
+        )
 
         try:
             labels_all = configs["plan_train"]["labels_all"]
@@ -458,10 +474,10 @@ class Trainer:
             return
 
         if isinstance(ratios, list):
-            assert (a := len(ratios)) == (
-                b := len(labels_all)
-            ), "Class ratios {0} do not match number of labels in dataset {1}".format(
-                a, b
+            assert (a := len(ratios)) == (b := len(labels_all)), (
+                "Class ratios {0} do not match number of labels in dataset {1}".format(
+                    a, b
+                )
             )
 
     def heuristic_batch_size(self):
@@ -568,7 +584,7 @@ if __name__ == "__main__":
     # counts = df.groupby("case_id").size()
     # counts2 = counts.sort_values(ascending=False)
     # bb= counts2.index[:200]
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR>
+    # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR>
     train_indices = None
     bs = 4
     device_id = 0
@@ -596,13 +612,13 @@ if __name__ == "__main__":
     run_name = "KITS2-bk"
     run_name = None
     cbs = []
-    wandb_grid_epoch_freq=15
+    wandb_grid_epoch_freq = 15
     val_every_n_epochs = 5
-# %%
-# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    # %%
+    # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm = Trainer(P.project_title, conf, run_name)
-# %%
+    # %%
     Tm.setup(
         compiled=compiled,
         train_indices=train_indices,
@@ -620,14 +636,14 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-# %%
+    # %%
 
     Tm.fit()
     # model(inputs)
-# %%
+    # %%
     conf = Tm.configs
     conf["model_params"]
-# %%
+    # %%
     N = Tm.N
     D = Tm.D
     D.setup()
@@ -635,7 +651,7 @@ if __name__ == "__main__":
     tmt = D.train_manager
     tmv = D.valid_manager
 
-# %%
+    # %%
     tmt.collate_fn
 
     tmv.collate_fn
@@ -645,10 +661,10 @@ if __name__ == "__main__":
     dl = tmv.dl
     iteri = iter(dl)
     batch = next(iteri)
-# %%
+    # %%
     batch["image"].shape
     batch["lm"].shape
-# %%
+    # %%
 
     patch_overlap = 0
     mode = "constant"
@@ -656,6 +672,3 @@ if __name__ == "__main__":
     sw_device = "cuda:1"
     bs = 1  # start lower if you are hitting OOM
 # %%
-
-
-

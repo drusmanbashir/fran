@@ -94,7 +94,7 @@ class UNetManager(LightningModule):
                 sw_batch_size=batch_size,
                 overlap=0,
                 mode="constant",
-                progress=True,
+                progress=False,
                 sw_device=sw_device,
                 device=device,
             )
