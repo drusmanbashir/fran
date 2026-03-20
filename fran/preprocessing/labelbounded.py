@@ -189,25 +189,10 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         )
 
     def process(self, derive_bboxes=True):
-        if not hasattr(self, "df") or len(self.df) == 0:
-            print("No data loader created. No data to be processed")
-            return 0
-        self.create_output_folders()
-        self.results = []
-        self.shapes = []
-        # self.results= pd.DataFrame(self.results).values
+        return super().process(derive_bboxes=derive_bboxes)
 
-        if getattr(self, "use_ray", False):
-            self.results = ray.get(
-                [
-                    actor.process.remote(mini_df)
-                    for actor, mini_df in zip(self.actors, self.mini_dfs)
-                ]
-            )
-        else:
-            self.results = [self.local_worker.process(self.mini_dfs[0])]
-
-        self.results_df = pd.DataFrame(il.chain.from_iterable(self.results))
+    def post_process_results(self, **process_kwargs):
+        derive_bboxes = process_kwargs["derive_bboxes"]
         ts = self.results_df.shape
         if derive_bboxes and ts[-1] == 4:  # only store if entire dset is processed
             self._store_dataset_properties()
@@ -246,41 +231,12 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             )
 
     def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
-        self.num_processes = max(1, int(num_processes))
-        self.debug = debug
-        self.create_data_df()
-        self.set_remapping_per_ds()
-        self.register_existing_files()
-        print("Overwrite:", overwrite)
-        if overwrite == False:
-            self.remove_completed_cases()
-        if len(self.df) > 0:
-            worker_kwargs = dict(
-                project=self.project,
-                plan=self.plan,
-                data_folder=self.data_folder,
-                output_folder=self.output_folder,
-                device=device,
-                debug=self.debug,
-            )
-            self.use_ray = (self.num_processes > 1) and (not self.debug)
-            print(
-                f"use_ray={self.use_ray} (num_processes={self.num_processes}, debug={self.debug})"
-            )
-            if self.use_ray:
-                self.mini_dfs = np.array_split(self.df, self.num_processes)
-                self.n_actors = min(len(self.df), self.num_processes)
-                if not ray.is_initialized():
-                    try:
-                        ray.init(ignore_reinit_error=True)
-                    except Exception as e:
-                        print("Ray init warning:", e)
-                self.actors = [
-                    self.actor_cls.remote(**worker_kwargs) for _ in range(self.n_actors)
-                ]
-            else:
-                self.mini_dfs = [self.df]
-                self.local_worker = self.local_worker_cls(**worker_kwargs)
+        self.setup_workers(
+            overwrite=overwrite,
+            num_processes=num_processes,
+            device=device,
+            debug=debug,
+        )
 
     def create_properties_dict(self):
         resampled_dataset_properties = Preprocessor.create_properties_dict(self)
@@ -333,15 +289,12 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
         self.output_folder = Path(data_folder)
 
     def register_existing_files(self):
-        self.existing_files = list(
-            (self.output_folder / self.indices_subfolder).glob("*pt")
+        self.existing_output_fnames = {p.name for p in self.indices_subfolder.glob("*pt")}
+        print("Output folder: ", self.output_folder)
+        print(
+            "Index files fully processed in a previous session: ",
+            len(self.existing_output_fnames),
         )
-        self.existing_case_ids = [
-            info_from_filename(f.name, full_caseid=True)["case_id"]
-            for f in self.existing_files
-        ]
-        self.existing_case_ids = set(self.existing_case_ids)
-        print("Case ids processed in a previous session: ", len(self.existing_case_ids))
 
     def setup(self, device="cpu", batch_size=4, overwrite=False):
         device = resolve_device(device)

@@ -4,7 +4,7 @@ import ast
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.managers import Project
 from fran.preprocessing.datasetanalyzers import *
-from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
+from fran.preprocessing.fixed_spacing import NiftiToTorchDataGenerator
 from fran.preprocessing.globalproperties import GlobalProperties
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
@@ -164,7 +164,7 @@ class PreprocessingManager:
         Typically this will be a basis for further processing e.g., pbd, lbd dataset which will then be used in training
         """
 
-        self.R = ResampleDatasetniftiToTorch(
+        self.R = NiftiToTorchDataGenerator(
             project=self.project,
             plan=self.plan,
             data_folder=self.project.raw_data_folder,

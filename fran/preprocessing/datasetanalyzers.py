@@ -400,7 +400,7 @@ if __name__ == "__main__":
     # ### KITS19
 
     # %%
-    R = ResampleDatasetniftiToTorch(
+    R = NiftiToTorchDataGenerator(
         proj_defaults, minimum_final_spacing=0.0, enforce_isotropy=False
     )
     # %%

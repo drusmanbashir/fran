@@ -3,6 +3,7 @@ import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
+import ray
 
 import ipdb
 import pandas as pd
@@ -372,23 +373,26 @@ class Preprocessor(GetAttr):
             raise RuntimeError(f"Quota exceeded at path: {fn}") from e
 
     def register_existing_files(self):
-        existimg_lm_ids = self._get_existing_ids(self.output_folder / ("lms"))
-        existing_img_ids = self._get_existing_ids(self.output_folder / ("images"))
-        self.existing_case_ids = existing_img_ids.intersection(existimg_lm_ids)
+        existing_img = {p.name for p in (self.output_folder / "images").glob("*.pt")}
+        existing_lm = {p.name for p in (self.output_folder / "lms").glob("*.pt")}
+        self.existing_output_fnames = existing_img.intersection(existing_lm)
         print("Output folder: ", self.output_folder)
-        print("Case ids processed in a previous session: ", len(self.existing_case_ids))
-
-    def _get_existing_ids(self, subfolder):
-        existing_files = list(subfolder.glob("*pt"))
-        existing_case_ids = [
-            info_from_filename(f.name, full_caseid=True)["case_id"]
-            for f in existing_files
-        ]
-        existing_case_ids = set(existing_case_ids)
-        return existing_case_ids
+        print(
+            "Image files fully processed in a previous session: ",
+            len(self.existing_output_fnames),
+        )
 
     def remove_completed_cases(self):
-        self.df = self.df[~self.df.case_id.isin(self.existing_case_ids)]
+        if not getattr(self, "existing_output_fnames", None):
+            return
+        n_before = len(self.df)
+        keep_mask = self.df["image"].apply(
+            lambda x: (
+                strip_extension(Path(x).name) + ".pt" not in self.existing_output_fnames
+            )
+        )
+        self.df = self.df[keep_mask]
+        print("Image files remaining to process:", len(self.df), "/", n_before)
 
     def save_indices(self, indices_dict, subfolder, suffix: str = None):
         fn = Path(indices_dict["meta"]["filename_or_obj"])
@@ -401,23 +405,22 @@ class Preprocessor(GetAttr):
         fn = self.output_folder / subfolder / fn_name
         torch.save(indices_dict, fn)
 
-    # CODE: rename below to process_files  (see #9)
-    def process(
-        self,
-    ):
-        if not hasattr(self, "dl"):
-            print("No data loader created. No data to be processed")
-            return 0
-        self.create_output_folders()
-        self.results = []
-        self.shapes = []
-        # CODE:  move away from dataloader and use multiprocessing  (see #7)
-        for batch in pbar(self.dl):
-            self.process_batch(batch)
-        self.results_df = pd.DataFrame(self.results)
-        # self.results= pd.DataFrame(self.results).values
+    def run_worker_jobs(self):
+        if getattr(self, "use_ray", False):
+            return ray.get(
+                [
+                    actor.process.remote(mini_df)
+                    for actor, mini_df in zip(self.actors, self.mini_dfs)
+                ]
+            )
+        return [self.local_worker.process(self.mini_dfs[0])]
+
+    def flatten_results(self, results):
+        return pd.DataFrame(il.chain.from_iterable(results))
+
+    def post_process_results(self, **process_kwargs):
         ts = self.results_df.shape
-        if ts[-1] == 4:  # only store if entire dset is processed
+        if ts[-1] == 4:
             self._store_dataset_properties()
             generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
         else:
@@ -430,6 +433,37 @@ class Preprocessor(GetAttr):
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
         add_plan_to_db(self.plan, self.output_folder, db_path=self.project.db)
+
+    def initialize_process_state(self):
+        self.create_output_folders()
+        self.results = []
+        self.shapes = []
+
+    # CODE: rename below to process_files  (see #9)
+    def process(self, **process_kwargs):
+        if not hasattr(self, "dl"):
+            if not hasattr(self, "df") or len(self.df) == 0:
+                print("No data loader created. No data to be processed")
+                return 0
+        elif not hasattr(self, "df") and not hasattr(self, "local_worker"):
+            print("No data loader created. No data to be processed")
+            return 0
+        if hasattr(self, "dl"):
+            self.create_output_folders()
+            self.results = []
+            self.shapes = []
+            for batch in pbar(self.dl):
+                self.process_batch(batch)
+            self.results_df = pd.DataFrame(self.results)
+        else:
+            if not hasattr(self, "df") or len(self.df) == 0:
+                print("No data loader created. No data to be processed")
+                return 0
+            self.initialize_process_state()
+            self.results = self.run_worker_jobs()
+            self.results_df = self.flatten_results(self.results)
+        self.post_process_results(**process_kwargs)
+        return self.results_df
 
     def process_batch(self, batch):
         # U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
@@ -464,11 +498,7 @@ class Preprocessor(GetAttr):
             self.save_indices(inds, self.indices_subfolder)
             self.save_pt(image[0], "images")
             self.save_pt(lm[0], "lms")
-            self.extract_image_props(image)
-
-    def extract_image_props(self, image):
-        self.results.append(get_tensor_stats(image))
-        # self.shapes.append(image.shape[1:])
+            self.results.append(get_tensor_stats(image))
 
     def get_tensor_folder_stats(self, debug=True):
         analysis = analyze_tensor_data_folder(
@@ -484,7 +514,28 @@ class Preprocessor(GetAttr):
         self.results = self.results_df[["max", "min", "median"]]
         self._store_dataset_properties()
 
+    def _collect_output_folder_stats(self, debug=False):
+        num_processes = getattr(self, "num_processes", 1)
+        image_stats = analyze_tensor_data_folder(
+            self.output_folder / "images",
+            glob_pattern="*",
+            num_processes=num_processes,
+            debug=debug,
+            recursive=False,
+            include_per_file_stats=False,
+        )
+        lm_stats = analyze_tensor_data_folder(
+            self.output_folder / "lms",
+            glob_pattern="*",
+            num_processes=num_processes,
+            debug=debug,
+            recursive=False,
+            include_per_file_stats=False,
+        )
+        return image_stats, lm_stats
+
     def _store_dataset_properties(self):
+        self.image_folder_stats, self.lm_folder_stats = self._collect_output_folder_stats()
         resampled_dataset_properties = self.create_properties_dict()
         resampled_dataset_properties_fname = (
             self.output_folder / "resampled_dataset_properties.json"
@@ -498,42 +549,26 @@ class Preprocessor(GetAttr):
 
     def create_properties_dict(self):
         resampled_dataset_properties = dict()
-        shapes_for_median = None
-        if hasattr(self, "shapes") and len(self.shapes) > 0:
-            shapes_for_median = np.array(self.shapes)
-        elif (
-            hasattr(self, "results_df")
-            and "shape" in self.results_df.columns
-            and self.results_df["shape"].notna().any()
-        ):
-            shapes_for_median = np.array(self.results_df["shape"].dropna().tolist())
+        lm_stats = getattr(self, "lm_folder_stats", {})
+        image_stats = getattr(self, "image_folder_stats", {})
+        intensity_profile = image_stats.get("intensity_profile", {})
 
-        if shapes_for_median is not None and len(shapes_for_median) > 0:
-            shapes_for_median = np.array(shapes_for_median)
-            resampled_dataset_properties["min_shape"] = np.min(
-                shapes_for_median, 0
-            ).tolist()
-            resampled_dataset_properties["median_shape"] = np.median(
-                shapes_for_median, 0
-            ).tolist()
-            resampled_dataset_properties["max_shape"] = np.max(
-                shapes_for_median, 0
-            ).tolist()
-        else:
-            resampled_dataset_properties["min_shape"] = np.nan
-            resampled_dataset_properties["median_shape"] = np.nan
-            resampled_dataset_properties["max_shape"] = np.nan
+        resampled_dataset_properties["min_shape"] = lm_stats.get("min_shape", np.nan)
+        resampled_dataset_properties["median_shape"] = lm_stats.get(
+            "median_shape", np.nan
+        )
+        resampled_dataset_properties["max_shape"] = lm_stats.get("max_shape", np.nan)
 
         resampled_dataset_properties["dataset_spacing"] = self.plan.get("spacing")
-        resampled_dataset_properties["dataset_max"] = (
-            self.results_df["max"].max().item()
+        resampled_dataset_properties["dataset_max"] = intensity_profile.get(
+            "dataset_max", np.nan
         )
-        resampled_dataset_properties["dataset_min"] = (
-            self.results_df["min"].min().item()
+        resampled_dataset_properties["dataset_min"] = intensity_profile.get(
+            "dataset_min", np.nan
         )
-        resampled_dataset_properties["dataset_median"] = np.median(
-            self.results_df["median"]
-        ).item()
+        resampled_dataset_properties["dataset_median"] = intensity_profile.get(
+            "dataset_median", np.nan
+        )
         return resampled_dataset_properties
 
     def create_output_folders(self):
@@ -607,6 +642,52 @@ class Preprocessor(GetAttr):
         flat = list(il.chain.from_iterable(results_lists))
         self.results_df = pd.DataFrame(flat) if flat else pd.DataFrame([])
         return self.results_df
+
+    def extra_worker_kwargs(self, **setup_kwargs):
+        return {}
+
+    def build_worker_kwargs(self, device="cpu", **setup_kwargs):
+        worker_kwargs = dict(
+            project=self.project,
+            plan=self.plan,
+            data_folder=self.data_folder,
+            output_folder=self.output_folder,
+            device=device,
+        )
+        if hasattr(self, "debug"):
+            worker_kwargs["debug"] = self.debug
+        worker_kwargs.update(self.extra_worker_kwargs(**setup_kwargs))
+        return worker_kwargs
+
+    def should_use_ray(self):
+        debug = getattr(self, "debug", False)
+        return (self.num_processes > 1) and (not debug)
+
+    def setup_workers(self, overwrite=False, num_processes=8, device="cpu", **setup_kwargs):
+        self.num_processes = max(1, int(num_processes))
+        if "debug" in setup_kwargs:
+            self.debug = setup_kwargs["debug"]
+        self.create_data_df()
+        if hasattr(self, "remapping_key"):
+            self.set_remapping_per_ds()
+        self.register_existing_files()
+        print("Overwrite:", overwrite)
+        if overwrite == False:
+            self.remove_completed_cases()
+        if len(self.df) == 0:
+            return
+
+        worker_kwargs = self.build_worker_kwargs(device=device, **setup_kwargs)
+        self.use_ray = self.should_use_ray()
+        if hasattr(self, "debug"):
+            print(
+                f"use_ray={self.use_ray} (num_processes={self.num_processes}, debug={self.debug})"
+            )
+        if self.use_ray:
+            self.ray_prepare(self.actor_cls, worker_kwargs, self.num_processes)
+        else:
+            self.mini_dfs = [self.df]
+            self.local_worker = self.local_worker_cls(**worker_kwargs)
 
     # @property
     # def indices_subfolder(self):

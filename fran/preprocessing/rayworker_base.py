@@ -52,7 +52,6 @@ class RayWorkerBase(Preprocessor):
             data_folder=data_folder,
             output_folder=output_folder,
         )
-
         self.crop_to_label = crop_to_label  # redundant
         self.debug = debug
         self.image_key = "image"

@@ -4,7 +4,7 @@ if __name__ == "__main__":
     import pandas as pd
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
-    from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
+    from fran.preprocessing.fixed_spacing import NiftiToTorchDataGenerator
     from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
     from fran.utils.common import *
     from label_analysis.totalseg import TotalSegmenterLabels
@@ -31,8 +31,8 @@ if __name__ == "__main__":
     df_res = pd.read_excel(fn)
     overwrite = False
     # %%
-    # SECTION:-------------------- ResampleDatasetniftiToTorch--------------------------------------------------------------------------------------
-    Rs = ResampleDatasetniftiToTorch(
+    # SECTION:-------------------- NiftiToTorchDataGenerator--------------------------------------------------------------------------------------
+    Rs = NiftiToTorchDataGenerator(
         project,
         spacing=[0.8, 0.8, 1.5],
         data_folder=nifti_fldr,

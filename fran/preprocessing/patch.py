@@ -216,21 +216,9 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
         save_dict(res_cropped, stats_outfilename)
 
     def process(self, derive_bboxes=False):
-        if not hasattr(self, "df") or len(self.df) == 0:
-            print("No data loader created. No data to be processed")
-            return 0
-        self.create_output_folders()
-        if getattr(self, "use_ray", False):
-            self.results = ray.get(
-                [
-                    actor.process.remote(mini_df)
-                    for actor, mini_df in zip(self.actors, self.mini_dfs)
-                ]
-            )
-        else:
-            self.results = [self.local_worker.process(self.mini_dfs[0])]
+        return super().process(derive_bboxes=derive_bboxes)
 
-        # PBD worker returns nested lists: actor -> case -> patch dict.
+    def flatten_results(self, results):
         flat_rows = []
 
         def _flatten(obj):
@@ -241,9 +229,11 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
                 for x in obj:
                     _flatten(x)
 
-        _flatten(self.results)
-        self.results_df = pd.DataFrame(flat_rows)
+        _flatten(results)
+        return pd.DataFrame(flat_rows)
 
+    def post_process_results(self, **process_kwargs):
+        derive_bboxes = process_kwargs["derive_bboxes"]
         if derive_bboxes:
             has_patch_rows = len(self.results_df) > 0
             if has_patch_rows:

@@ -222,7 +222,7 @@ if __name__ == "__main__":
     I = PreprocessingManager(args)
 
     # %%
-    Rs = ResampleDatasetniftiToTorch(
+    Rs = NiftiToTorchDataGenerator(
         P,
         plan,
         data_folder=P.raw_data_folder,
@@ -264,7 +264,7 @@ if __name__ == "__main__":
     # %%
     # %%
     # SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR>
-    I.R = ResampleDatasetniftiToTorch(
+    I.R = NiftiToTorchDataGenerator(
         project=I.project,
         spacing=I.plan["spacing"],
         data_folder=I.project.raw_data_folder,
