@@ -290,7 +290,7 @@ class BaseInferer(GetAttr, DictToAttr):
                 mean=self.dataset_params["mean_fg"],
                 std=self.dataset_params["std_fg"],
             ),
-            "O": Orientationd(keys=["image"], axcodes="RPS"),  # nOTE RPS
+            "O": Orientationd(keys=["image"], axcodes="RAS"),  # nOTE RAS
         }
 
         # Set individual attributes for backward compatibility

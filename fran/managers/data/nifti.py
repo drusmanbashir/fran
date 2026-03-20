@@ -45,7 +45,7 @@ class DataManagerNifti:
                 mean=self.mean_fg,
                 std=self.std_fg,
             ),
-            "O": Orientationd(keys=["image"], axcodes="RPS"),
+            "O": Orientationd(keys=["image"], axcodes="RAS"),
         }
 
     def tfms_from_dict(self, keys: str):

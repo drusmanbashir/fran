@@ -25,7 +25,7 @@ from fran.transforms.misc_transforms import (
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.common import *
 from monai.transforms.compose import Compose
-from monai.transforms.spatial.dictionary import Spacingd
+from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviceD
 from tqdm.auto import tqdm as pbar
 from utilz.fileio import load_dict, save_dict
@@ -138,6 +138,7 @@ class _NiftiResamplerBase(Preprocessor):
         self.LS = LoadSITKd(keys=["image", "lm"], image_only=True)
         self.Rem = LabelRemapd(keys=["lm"], remapping_key="remapping_source")
         # self.RemI = LabelRemapd(keys=["lm"], remapping_key="remapping_imported")
+        self.Or = Orientationd(keys=["image", "lm"], axcodes="RAS")
         self.Re = RecastToFloatd(keys=["image", "lm"])
 
         self.Ind = FgBgToIndicesd2(

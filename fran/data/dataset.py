@@ -117,7 +117,7 @@ class InferenceDatasetNii(Dataset):
             std=self.dataset_params["std_fg"],
         )
 
-        self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+        self.O = Orientationd(keys=["image"], axcodes="RAS")  # nOTE RAS
 
         # tfms += [E,S,N]
 

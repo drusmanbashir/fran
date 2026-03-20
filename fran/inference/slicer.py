@@ -72,7 +72,7 @@ class SlicerCascadeInferer(CascadeInferer):
     #         mean=self.dataset_params["mean_fg"],
     #         std=self.dataset_params["std_fg"],
     #     )
-    #     self.O = Orientationd(keys=["image"], axcodes="RPS")  # nOTE RPS
+    #     self.O = Orientationd(keys=["image"], axcodes="RAS")  # nOTE RAS
     #
     #
 

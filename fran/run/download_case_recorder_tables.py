@@ -171,3 +171,50 @@ if __name__ == "__main__":
 
 
 # %%
+import json
+from pathlib import Path
+import pandas as pd
+import wandb
+
+ENTITY = "drubashir"          # change if needed
+PROJECT = "kits2"
+RUN_ID = "KITS2-bah"          # run id/name in URL
+OUT = Path("wandb_case_tables")
+OUT.mkdir(parents=True, exist_ok=True)
+
+api = wandb.Api()
+run = api.run(f"{ENTITY}/{PROJECT}/{RUN_ID}")
+
+n = 0
+for row in run.scan_history():
+    for k, v in row.items():
+        if not str(k).startswith("case_recorder/"):
+            continue
+        if not isinstance(v, dict) or v.get("_type") != "table-file":
+            continue
+
+        local_json = run.file(v["path"]).download(root=OUT, replace=True).name
+        table = json.loads(Path(local_json).read_text())
+        df = pd.DataFrame(table["data"], columns=table["columns"])
+
+        safe_key = k.replace("/", "__")
+        step = row.get("_step", "na")
+        df.to_csv(OUT / f"{safe_key}__step_{step}.csv", index=False)
+        n += 1
+
+# %%
+    ff = list(run.files())
+    epoch = 410
+    substr = f"df_epoch_{epoch}"
+    ff2 = [f for f in ff if substr in f.name]
+# %%
+for f1 in ff2:
+        f1.download(root=".", replace=True)
+# %%
+
+bb = list(run.logged_artifacts())
+a = bb[0]
+a = bb[1]
+# %%
+   
+# %%

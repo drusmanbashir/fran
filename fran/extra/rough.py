@@ -22,6 +22,15 @@ if __name__ == "__main__":
       data_folder = Path(
           "/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/"
       )
+      fix  = Path("/r/datasets/preprocessed/kits2/fixed_spacing/spc_080_080_150/images")
+# %%
+      imgs = list(fix.glob("*.pt"))
+      for img_fn in imgs:
+          im = torch.load(img_fn, weights_only=False)
+          print(im.shape)
+          print(im.meta)
+# %%
+
       pred_fldr = Path("/s/fran_storage/predictions/kits2/KITS-n7")
       img_fldr = data_folder / "images"
       lms_fldr = data_folder / "lms"
@@ -126,5 +135,7 @@ if __name__ == "__main__":
     pred.shape
     target.shape
 
+
     dsc = DiceLoss()
     print(dsc(pred, target))
+

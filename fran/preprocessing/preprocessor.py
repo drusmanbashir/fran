@@ -281,7 +281,6 @@ def get_tensor_stats(tnsr) -> dict:
     }
     return dic
 
-
 class Preprocessor(GetAttr):
     _default = "project"
 

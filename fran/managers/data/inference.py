@@ -84,7 +84,7 @@ class InferenceDataModule:
         )
 
         # Orientation transform
-        self.transforms["O"] = Orientationd(keys=["image"], axcodes="RPS")
+        self.transforms["O"] = Orientationd(keys=["image"], axcodes="RAS")
 
     def set_transform_sequence(self, sequence: str = "") -> Compose:
         """Create transform composition from sequence string"""

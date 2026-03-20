@@ -76,7 +76,7 @@ class DataManagerTestFF(DataManager):
 
     def create_transforms(self):
         if self.file_type == "nifti":
-            self.O = Orientationd(keys=["image", "lm"], axcodes="RPS")
+            self.O = Orientationd(keys=["image", "lm"], axcodes="RAS")
             self.L = LoadSITKd(
                 keys=["image", "lm"],
                 image_only=True,
@@ -106,7 +106,7 @@ class DataManagerTestFF(DataManager):
                 mean=self.dataset_params["mean_fg"],
                 std=self.dataset_params["std_fg"],
             ),
-            "O": Orientationd(keys=["image", "lm"], axcodes="RPS"),  # nOTE RPS
+            "O": Orientationd(keys=["image", "lm"], axcodes="RAS"),  # nOTE RAS
         }
 
     def setup(self):
