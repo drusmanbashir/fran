@@ -47,6 +47,7 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
             device=device,
             debug=debug,
             tfms_keys=tfms_keys,
+            remapping_key = "remapping_lbd",
         )
 
     def _create_data_dict(self, row):
@@ -191,7 +192,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
     def process(self, derive_bboxes=True):
         return super().process(derive_bboxes=derive_bboxes)
 
-    def post_process_results(self, **process_kwargs):
+    def postprocess_results(self, **process_kwargs):
         derive_bboxes = process_kwargs["derive_bboxes"]
         ts = self.results_df.shape
         if derive_bboxes and ts[-1] == 4:  # only store if entire dset is processed

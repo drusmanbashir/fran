@@ -232,7 +232,7 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
         _flatten(results)
         return pd.DataFrame(flat_rows)
 
-    def post_process_results(self, **process_kwargs):
+    def postprocess_results(self, **process_kwargs):
         derive_bboxes = process_kwargs["derive_bboxes"]
         if derive_bboxes:
             has_patch_rows = len(self.results_df) > 0

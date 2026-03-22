@@ -353,7 +353,7 @@ class FgBgToIndicesd2(FgBgToIndicesd):
     # keys=["lm"], image_key="image", image_threshold=-2600)
 
 
-class ApplyBBox(MapTransform):
+class ApplyBBoxd(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,

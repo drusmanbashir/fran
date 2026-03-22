@@ -1,5 +1,6 @@
 # %%
 import shutil
+import itertools as il
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -418,7 +419,7 @@ class Preprocessor(GetAttr):
     def flatten_results(self, results):
         return pd.DataFrame(il.chain.from_iterable(results))
 
-    def post_process_results(self, **process_kwargs):
+    def postprocess_results(self, **process_kwargs):
         ts = self.results_df.shape
         if ts[-1] == 4:
             self._store_dataset_properties()
@@ -439,35 +440,17 @@ class Preprocessor(GetAttr):
         self.results = []
         self.shapes = []
 
-    # CODE: rename below to process_files  (see #9)
     def process(self, **process_kwargs):
-        if not hasattr(self, "dl"):
-            if not hasattr(self, "df") or len(self.df) == 0:
-                print("No data loader created. No data to be processed")
+        if not hasattr(self, "df") or len(self.df) == 0:
+                print("No data frames have been created. Run setup")
                 return 0
-        elif not hasattr(self, "df") and not hasattr(self, "local_worker"):
-            print("No data loader created. No data to be processed")
-            return 0
-        if hasattr(self, "dl"):
-            self.create_output_folders()
-            self.results = []
-            self.shapes = []
-            for batch in pbar(self.dl):
-                self.process_batch(batch)
-            self.results_df = pd.DataFrame(self.results)
-        else:
-            if not hasattr(self, "df") or len(self.df) == 0:
-                print("No data loader created. No data to be processed")
-                return 0
-            self.initialize_process_state()
-            self.results = self.run_worker_jobs()
-            self.results_df = self.flatten_results(self.results)
-        self.post_process_results(**process_kwargs)
+        self.initialize_process_state()
+        self.results = self.run_worker_jobs()
+        self.results_df = self.flatten_results(self.results)
+        self.postprocess_results(**process_kwargs)
         return self.results_df
 
     def process_batch(self, batch):
-        # U = ToCPUd(keys=["image", "lm", "lm_fg_indices", "lm_bg_indices"])
-        # batch = U(batch)
         images, lms, fg_inds, bg_inds = (
             batch["image"],
             batch["lm"],
@@ -594,10 +577,9 @@ class Preprocessor(GetAttr):
             maybe_makedirs([stats_folder])
         if label_stats == True:
             df, _ = end2end_lms_stats_and_plots(
-                input_folder=lms_folder,
+                lis_folder=lms_folder,
                 output_folder=stats_folder,
             )
-            df.to_csv(stats_folder / "dataset_stats.csv", index=False)
         if gif == True:
             output_gif = stats_folder / "snapshot.gif"
             create_nifti_overlay_grid_gif(

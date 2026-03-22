@@ -479,23 +479,4 @@ if __name__ == "__main__":
 #
 # from label_analysis.dataset_stats import end2end_lms_stats_and_plots
 # from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
-#
-# df, _ = end2end_lms_stats_and_plots(
-#     input_folder=lms_folder,
-#     output_folder=stats_folder,
-# )
-# df.to_csv(stats_folder / "dataset_stats.csv", index=False)
-#
-# output_gif = stats_folder / "snapshot.gif"
-# create_nifti_overlay_grid_gif(
-#     dataset_root=dataset_root,
-#     output_gif=output_gif,
-#     grid_shape=(3, 3),
-#     num_frames=30,
-#     stride=4,
-#     window=infer_dataset_stats_window(I.R.project),
-#     fps=5,
-# )
-#
-#
 # # %%

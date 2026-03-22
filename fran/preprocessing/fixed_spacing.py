@@ -5,6 +5,7 @@ import ipdb
 import ray
 from fran.utils.folder_names import folder_names_from_plan
 from utilz.helpers import find_matching_fn, multiprocess_multiarg
+
 tr = ipdb.set_trace
 
 import pandas as pd
@@ -21,15 +22,12 @@ from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.misc_transforms import (
     ChangeDtyped,
     DictToMeta,
-    FgBgToIndicesd2,
     HalfPrecisiond,
-    LabelRemapd,
     RecastToFloatd,
 )
 from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.common import *
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviceD
 from tqdm.auto import tqdm as pbar
 from utilz.fileio import load_dict, save_dict
 
@@ -66,13 +64,13 @@ class _NiftiResamplerBase(RayWorkerBase):
         debug=False,
     ):
 
-        self.project= project
+        self.project = project
         self.global_properties = self.project.global_properties
         self.half_precision = half_precision
         self.clip_center = clip_center
         self.device = device
         self.set_normalization_values(mean_std_mode)
-        tfms_keys = "LoadS,Chan,Orient,Remap,Dev,Cast,SpImg,SpLm,Rsz,LmType,Indx"
+        tfms_keys = "LoadS,Chan,Orient,Remap,Dev,Cast,SpImg,SpLm,Rsz,LmDType,Indx"
         if self.clip_center == True:
             tfms_keys += ",Norm"
         if self.half_precision == True:
@@ -85,6 +83,7 @@ class _NiftiResamplerBase(RayWorkerBase):
             device=device,
             debug=debug,
             tfms_keys=tfms_keys,
+            remapping_key="remapping_source",
         )
 
     def set_input_output_folders(self, data_folder, output_folder):
@@ -98,7 +97,6 @@ class _NiftiResamplerBase(RayWorkerBase):
             "remapping_source": row["remapping_source"],
             "ds": row["ds"],
         }
-
 
     def _create_data_dicts_from_folder(self):
         """Create data dictionaries from data_folder structure."""
@@ -124,20 +122,14 @@ class _NiftiResamplerBase(RayWorkerBase):
         return data
 
     def create_transforms(self, device="cpu"):
+        super().create_transforms(device=device)
         self.LS = LoadSITKd(keys=["image", "lm"], image_only=True)
-        self.Rem = LabelRemapd(keys=["lm"], remapping_key="remapping_source")
-        # self.RemI = LabelRemapd(keys=["lm"], remapping_key="remapping_imported")
         self.Or = Orientationd(keys=["image", "lm"], axcodes="RAS")
         self.Re = RecastToFloatd(keys=["image", "lm"])
-
-        self.Ind = FgBgToIndicesd2(
-            keys=["lm"], image_key="image", image_threshold=-2600
-        )
-        self.Ai = DictToMeta(
+        self.Ai = DictToMeta(  # CODE: REDUNDANT?
             keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
         )
-        self.T = ToDeviceD(keys=["image", "lm"], device=self.device)
-        self.Am = DictToMeta(
+        self.Am = DictToMeta(  # CODE: REDUNDANT?
             keys=["lm"],
             meta_keys=[
                 "lm_fname",
@@ -152,9 +144,6 @@ class _NiftiResamplerBase(RayWorkerBase):
                 "lm_bg_indices",
             ],
         )
-        self.E = EnsureChannelFirstd(
-            keys=["image", "lm"], channel_dim="no_channel"
-        )  # funny shape output mismatch
         self.SpI = Spacingd(
             keys=["image"], pixdim=self.plan.get("spacing"), mode="trilinear"
         )
@@ -162,7 +151,7 @@ class _NiftiResamplerBase(RayWorkerBase):
             keys=["lm"], pixdim=self.plan.get("spacing"), mode="nearest"
         )
 
-        self.Rz = ResizeToTensord(
+        self.Rsz = ResizeToTensord(
             keys=["lm"], key_template_tensor="image", mode="nearest"
         )
 
@@ -173,23 +162,20 @@ class _NiftiResamplerBase(RayWorkerBase):
             mean=self.mean,
             std=self.std,
         )
-        self.Ch = ChangeDtyped(keys=["lm"], target_dtype=torch.uint8)
+        self.LmDType = ChangeDtyped(keys=["lm"], target_dtype=torch.uint8)
         self.H = HalfPrecisiond(keys=["image"])
-        self.transforms_dict = {
+        add_transforms_dict = {
             "LoadS": self.LS,
-            "Remap": self.Rem,
             "Orient": self.Or,
-            "Dev": self.T,
             "Cast": self.Re,
-            "Indx": self.Ind,
-            "Chan": self.E,
             "SpImg": self.SpI,
             "SpLm": self.SpL,
-            "Rsz": self.Rz,
+            "Rsz": self.Rsz,
             "Norm": self.N,
-            "LmType": self.Ch,
+            "LmDType": self.LmDType,
             "Half": self.H,
         }
+        self.transforms_dict.update(add_transforms_dict)
 
     def _process_row(self, row: pd.Series):
         data = self._create_data_dict(row)
@@ -290,10 +276,12 @@ class NiftiToTorchDataGenerator(Preprocessor):
             mean_std_mode=mean_std_mode,
         )
 
-    def process(self):
-        return super().process()
+    def create_data_df(self):
+        Preprocessor.create_data_df(self)
+        remapping = self.plan.get(self.remapping_key)
+        self.df = self.df.assign(remapping=[remapping] * len(self.df))
 
-    def post_process_results(self, **process_kwargs):
+    def postprocess_results(self, **process_kwargs):
         ts = self.results_df.shape
         if ts[-1] == 4:  # only store if entire dset is processed
             self._store_dataset_properties()
@@ -313,7 +301,7 @@ class NiftiToTorchDataGenerator(Preprocessor):
         store_labels_info(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
-        self.create_dataset_stats_artifacts()
+        self.create_dataset_stats_artifacts(gif=True,label_stats=True)
 
     def generate_bboxes_from_lms_folder(self, bg_label=0, debug=False, num_processes=8):
         masks_folder = self.output_folder / ("lms")
@@ -423,26 +411,35 @@ ResampleDatasetniftiToTorch = NiftiToTorchDataGenerator
 if __name__ == "__main__":
     import numpy as np
 
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR>
     from fran.configs.parser import ConfigMaker, parse_nested_remapping
     from fran.inference.base import list_to_chunks
     from fran.managers import Project
     from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
     from fran.transforms.inferencetransforms import ToCPUd
+    from fran.transforms.misc_transforms import FgBgToIndicesd2, LabelRemapd
     from fran.utils.common import *
-    from monai.transforms.utility.dictionary import FgBgToIndicesd, ToDeviced
+    from monai.transforms.utility.dictionary import (
+        EnsureChannelFirstd,
+        FgBgToIndicesd,
+        ToDeviced,
+    )
     from utilz.fileio import maybe_makedirs, save_json
+    from utilz.helpers import set_autoreload
     from utilz.stringz import strip_extension
 
+    set_autoreload()
 # %%
     # chunkify = lambda l, n: [l[i : i + n] for i in range(0, len(l), n)]
     # aa = chunkify(Rs.df,16)
 
-    P = Project("kits2")
+    P = Project("test")
+
+    P.maybe_store_projectwide_properties()
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P)
-    C.setup(8)
+    C.setup(1)
     C.plans
     plan = C.configs["plan_train"]
     conf = C.configs
@@ -461,16 +458,18 @@ if __name__ == "__main__":
 
     Rs.output_folder.exists()
 
-    debug_= False
+    debug_ = False
     overwrite = True
-    n_processes = 12
+    n_processes = 2
     Rs.setup(num_processes=n_processes, overwrite=overwrite, debug=debug_)
 
 # %%
-    Rs.process()
+    Rs.create_dataset_stats_artifacts(gif=True, label_stats=True)
+    # Rs.process()
 # %%
+#SECTION:-------------------- TS--------------------------------------------------------------------------------------# %%
 
-    num_processes = 12
+    num_processes = 1
     Rs.create_data_df()
     Rs.register_existing_files()
     mini_df = Rs.mini_dfs[0]
@@ -538,7 +537,7 @@ if __name__ == "__main__":
         N.save_pt(dici["lm"][0], "lms")
         N.extract_image_props(image)
 # %%
-# SECTION:-------------------- ResampleDatasetniftiToTorch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- ResampleDatasetniftiToTorch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
     spacing = [1, 1, 1]
     project = P
     overwrite = False

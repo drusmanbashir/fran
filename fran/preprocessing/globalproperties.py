@@ -484,19 +484,18 @@ class GlobalProperties(GetAttr):
 
 # %%
 if __name__ == "__main__":
-    # %%
-    # SECTION:--------------------------------------------- SETUPPPPPP--------------------------------------------------------------------------------------
+# %%
+# SECTION:--------------------------------------------- SETUPPPPPP-------------------------------------------------------------------------------------- <CR> <CR>
     from fran.managers import Project
     from fran.utils.common import *
 
     P = Project(project_title="totalseg")
     P = Project(project_title="nodes")
     P = Project(project_title="litstmp")
-    G = GlobalProperties(P, max_cases=50)
+    P = Project(project_title="test")
+    G = GlobalProperties(P, max_cases=150)
     G._retrieve_h5_properties()
-    conf = ConfigMaker(P, configuration_filename=None).config
-    plan = conf["plan"]
-    # %%
+# %%
     labs_gp = []
     for cc in G.case_properties:
         # if ds_name == cc["ds"]:
@@ -504,14 +503,14 @@ if __name__ == "__main__":
         labels = G.serializable_obj(labels)
         labs_gp.extend(labels)
 
-    # %%
+# %%
 
     labels_all = []
     lmgps = "lm_group"
     keys = [k for k in G.global_properties.keys() if lmgps in k]
     for key in keys:
         shared_labels_gps = G.global_properties[key]["ds"]
-        # %%
+# %%
         labs_gp = []
         for cc in G.case_properties:
             labels = cc["labels"]
@@ -522,11 +521,11 @@ if __name__ == "__main__":
             #     tr()
             dici = {"ds": ds, "label": labels}
             labs_gp.append(dici)
-    # %%
+# %%
     df = pd.DataFrame(labs_gp)
     df = df.drop_duplicates(subset=["ds", "label"], keep="first").reset_index(drop=True)
 
-    # %%
+# %%
     #         labs_gp = list(set(labs_gp))
     #         dici = {"ds": ds_name, "label": labs_gp}
     #         labels_all.extend(labs_gp)
@@ -537,18 +536,18 @@ if __name__ == "__main__":
     #     G.global_properties["labels_all"] = list(set(labels_all))
     #     labels_tot = len(labels_all)
     #     if len(keys) > 1:
-    # # %%
+# %%
     #     if not "labels_all" in P.global_properties.keys():
     #         P.set_lm_groups(plans["lm_groups"])
     #         P.maybe_store_projectwide_properties(overwrite=True)
     #     G.store_projectwide_properties()
-    # %%
+# %%
     debug = True
     G.collate_lm_labels()
     G.compute_std_mean_dataset(debug=debug)
 
     type(G.global_properties["lm_group1"]["labels"][0])
-    # %%
+# %%
     G.h5ns = []
     for ds in P.global_properties["datasources"]:
         h5fn = Path(ds["folder"]) / ("fg_voxels.h5")
@@ -557,15 +556,15 @@ if __name__ == "__main__":
         )
         G.h5ns.append(h5fn)
 
-    # %%
+# %%
     cid = "litqsmall_00008"
     cid = "litqsmall_00007"
     aa = h5f_file[cid]
-    # %%
+# %%
     f = unique_idx(5)
 
     f.__next__()
-    # %%
+# %%
 
     dss = G.global_properties["datasources"]
 
@@ -583,8 +582,8 @@ if __name__ == "__main__":
             cs = h5f_file[cid]
             voxels.append(cs[:])
 
-    # %%
-    # %%
+# %%
+# %%
     G = P.G
 
     cases_for_sampling = random.sample(
@@ -592,8 +591,8 @@ if __name__ == "__main__":
     )
     img_fname = G.img_filenames[0]
     img_fnames_to_sample = []
-    # %%
-    # %%
+# %%
+# %%
 
     G.case_properties = G._retrieve_h5_properties()
     h5py = import_h5py()
@@ -629,16 +628,16 @@ if __name__ == "__main__":
         "Mismatch in case_ids and case_properties"
     )
 
-    # %%
+# %%
     gp = "tcianodesshort"
-    # %%
+# %%
     labels_all = []
     lmgps = "lm_group"
     keys = [k for k in G.global_properties.keys() if lmgps in k]
     key = keys[-1]
     gp = shared_labels_gps[-1]
-    # %%
-    # %%
+# %%
+# %%
     labels_all = []
     lmgps = "lm_group"
     keys = [k for k in G.global_properties.keys() if lmgps in k]
@@ -662,7 +661,7 @@ if __name__ == "__main__":
     G.global_properties["labels_all"] = list(set(labels_all))
     labels_tot = len(labels_all)
 
-    # %%
+# %%
 
     """
     Collate and organize landmark labels from all datasets in the project.
@@ -726,4 +725,4 @@ if __name__ == "__main__":
 #             case_properties
 #         ), "Mismatch in case_ids and case_properties - cases_for_sampling = {0} and case_properties = {1}".format(len(G.cases_for_sampling),len(case_properties))
 #
-# # %%
+# %%

@@ -449,9 +449,9 @@ def db_ops(db_name):
 if __name__ == "__main__":
     from fran.data.dataregistry import DS
 
-    # %%
-    # SECTION:-------------------- setup--------------------------------------------------------------------------------------
-    # %%
+# %%
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR>
+# %%
     nodes_fldr = "/s/xnat_shadow/nodes"
     nodesthick_fldr = "/s/xnat_shadow/nodesthick"
     nodes_fn = "/s/xnat_shadow/nodes/fg_voxels.h5"
@@ -460,20 +460,22 @@ if __name__ == "__main__":
     litsmall_fldr = DS["litsmall"]
     curvas_fldr = DS["curvaspdac"]
     bones_fldr = "/s/agent_rw/datasets/fully_annotated/ULS23_Radboudumc_Bone"
-    # %%
+    dlr = DS["kits23_short"]
+# %%
     ds = Datasource(bones_fldr, "bones")
     ds = Datasource(curvas_fldr.folder)
     ds = Datasource(DS.kits23.folder)
+    ds = Datasource(dlr.folder)
     # ds = Datasource(nodesthick_fldr, "nodesthick")
     ds.process()
 
     end2end_lms_stats_and_plots(ds.folder / ("lms"))
-    # %%
+# %%
     ds = Datasource(ln_fldr, "lidc")
     ds = Datasource(litsmall_fldr.folder, "litsmall")
     ds = Datasource(lits_fldr, "lits")
-    # %%
-    # %%
+# %%
+# %%
 
     import h5py
 
@@ -487,7 +489,7 @@ if __name__ == "__main__":
 
     # ds = Datasource(/s/datasets_bkp/litstmp,"litstmp")
     ds.process()
-    # %%
+# %%
     import h5py
 
     ff = h5py.File(nodes_fn, "r")
@@ -500,7 +502,7 @@ if __name__ == "__main__":
             if 3 in labs:
                 tr()
     labels = set(labels)
-    # %%
+# %%
 
     fn = "/s/xnat_shadow/nodes/lms/nodes_73_410705_CAP1p5Br383.nii.gz"
     lm = sitk.ReadImage(fn)

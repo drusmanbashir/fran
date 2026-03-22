@@ -45,6 +45,7 @@ class RayWorkerBase(Preprocessor):
         device="cpu",
         debug=False,
         tfms_keys="LoadT,Chan,Dev,Crop,Remap,Labels,Indx",
+        remapping_key=None,
     ):
         super().__init__(
             project=project,
@@ -52,14 +53,15 @@ class RayWorkerBase(Preprocessor):
             data_folder=data_folder,
             output_folder=output_folder,
         )
+        self.remapping_key = remapping_key
         self.crop_to_label = crop_to_label  # redundant
         self.debug = debug
         self.image_key = "image"
         self.lm_key = "lm"
         self.tnsr_keys = [self.image_key, self.lm_key]
+        self.tfms_keys = tfms_keys
         self.create_transforms(device=device)
         self.set_transforms(tfms_keys)
-        self.tfms_keys = tfms_keys
 
     def _create_data_dict(self, row):
 
@@ -209,7 +211,7 @@ class RayWorkerBase(Preprocessor):
         )
         self.Labels = GetLabelsd(lm_key=self.lm_key)
         self.LoadT = LoadTorchd(keys=[self.image_key, self.lm_key])
-        self.Remap = self.create_monai_remapping_per_ds("remapping_lbd", self.lm_key)
+        self.Remap = self.create_monai_remapping_per_ds(self.remapping_key, self.lm_key)
 
         self.transforms_dict = {
             "Crop": self.C,
@@ -222,6 +224,9 @@ class RayWorkerBase(Preprocessor):
         }
 
     def create_monai_remapping_per_ds(self, remapping_key, lm_key) -> dict:
+        assert self.remapping_key is not None, (
+            "remapping_key must be provided,\n This class is not meant to be used without sublcassing and setting a remapping_key attr"
+        )
         dss = self.plan["datasources"]
         dss = parse_excel_datasources(dss)
         rem = self.plan[remapping_key]

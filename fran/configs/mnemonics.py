@@ -17,6 +17,7 @@ class Mnemonics:
     pancreas: ClassVar[Mnemonic] = Mnemonic("pancreas", ("pancreas",))
     colon: ClassVar[Mnemonic] = Mnemonic("colon", ("colon",))
     totalseg: ClassVar[Mnemonic] = Mnemonic("totalseg", ("totalseg",))
+    test: ClassVar[Mnemonic] = Mnemonic("test", ("test",))
 
     _all: ClassVar[tuple[Mnemonic, ...]] = (
         lungs,
@@ -26,6 +27,7 @@ class Mnemonics:
         totalseg,
         pancreas,
         colon,
+        test,
     )
 
     _index: ClassVar[dict[str, Mnemonic]] = {
