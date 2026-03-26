@@ -3,7 +3,6 @@ from pathlib import Path
 
 import torch
 
-from fran.transforms.misc_transforms import ApplyBBoxd
 
 def fix_spatial_shape(img_fn: Path):
       img = torch.load(img_fn, weights_only=False)
@@ -15,6 +14,7 @@ def fix_spatial_shape(img_fn: Path):
 
 # %%
 if __name__ == "__main__":
+    from fran.transforms.misc_transforms import ApplyBBoxd
     import os
     from utilz.helpers import multiprocess_multiarg
     from utilz.imageviewers import ImageMaskViewer
@@ -26,19 +26,11 @@ if __name__ == "__main__":
           "/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/"
       )
       fix  = Path("/r/datasets/preprocessed/kits2/fixed_spacing/spc_080_080_150/images")
-      lm_fn = Path("/r/datasets/preprocessed/test/fixed_spacing/spc_080_080_150_rsc5609df8a/lms/kits23_00000.pt")
-      im_fn =  Path("/r/datasets/preprocessed/test/fixed_spacing/spc_080_080_150_rsc5609df8a/images/kits23_00000.pt")
+      im_fn =  Path("/r/datasets/preprocessed/kits2/dot/064064064_rscf9f2eb13_ex0p20p10p1/images/kits23_00204_lab2_patch0.pt")
+      lm_fn = im_fn.str_replace("images", "lms")
       lm=torch.load(lm_fn, weights_only=False)
       im = torch.load(im_fn, weights_only=False)
-      bbox =  [370, 201, 89, 32, 34, 19] 
-      bb = (slice(bbox[0],bbox[0]+bbox[3]),slice(bbox[1],bbox[1]+bbox[4]),slice(bbox[2],bbox[2]+bbox[5]))
-      dici = {"image": im, "lm": lm, "bbox": bb}
-
-      A = ApplyBBoxd(keys = ["image", "lm"], bbox_key="bbox")
-      dici2 = A(dici)
-      im2 = dici2["image"]
-      lm2= dici2["lm"]
-      ImageMaskViewer([im2,lm2])
+      ImageMaskViewer([im,lm])
 # %%
       imgs = list(fix.glob("*.pt"))
       for img_fn in imgs:
@@ -154,4 +146,5 @@ if __name__ == "__main__":
 
     dsc = DiceLoss()
     print(dsc(pred, target))
+
 

@@ -92,7 +92,13 @@ class NeptuneImageGridCallback(Callback):
         if not isinstance(patch_size, torch.Size):
             patch_size = torch.Size(patch_size)
         self.stride = int(patch_size[0] / imgs_per_batch)
-        store_attr()
+        self.classes = classes
+        self.patch_size = patch_size
+        self.grid_rows = grid_rows
+        self.imgs_per_batch = imgs_per_batch
+        self.publish_deep_preds = publish_deep_preds
+        self.apply_activation = apply_activation
+        self.epoch_freq = epoch_freq
 
     #
     def on_train_start(self, trainer, pl_module):

@@ -5,7 +5,6 @@ from fran.callback.base import *
 #     def __init__(self, monitor='valid_loss', comp=None, min_delta=0.,  fname='model', freq= 6, at_end=True,
 #                  with_opt=True, reset_on_fit=False):
 #         super().__init__(monitor=monitor, comp=comp, min_delta=min_delta, reset_on_fit=reset_on_fit)
-#         store_attr('fname,freq,at_end,with_opt')
 #         # keep track of file path for loggers
 #         self.last_saved_path = None
 #     def after_create(self):
@@ -45,7 +44,6 @@ from fran.callback.base import *
 # class TuneTrackerCallback(Callback):
 #     order = TuneCheckpointCallback.order+1
 #     def __init__(self,freq=2, **kwargs):
-#         store_attr()
 #         super().__init__(**kwargs)
 #     def before_epoch(self):
 #         self.running_losses_valid = []

@@ -8,14 +8,16 @@ import ipdb
 import SimpleITK as sitk
 import torch
 from fran.transforms.base import MonaiDictTransform
+from label_analysis.geometry_pt import BBoxInfoFromPT
 from label_analysis.helpers import listify, relabel
 from monai.apps.detection.transforms.array import ConvertBoxMode
 
 # from label_analysis.merge import merge_pt
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
 from monai.data.meta_tensor import MetaTensor
+from monai.transforms import MaskIntensity, dilate, erode
 from monai.transforms.croppad.dictionary import CropForegroundd
-from monai.transforms.transform import MapTransform
+from monai.transforms.transform import MapTransform, RandomizableTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
 from utilz.stringz import ast_literal_eval
 
@@ -23,8 +25,8 @@ tr = ipdb.set_trace
 
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
-from fastcore.basics import Dict, store_attr
-from fasttransform.transform import ItemTransform, store_attr
+from fastcore.basics import Dict
+from fasttransform.transform import ItemTransform
 
 #
 # class BBoxFromLabelMap(MonaiDictTransform):
@@ -232,6 +234,48 @@ class GetLabelsd(MapTransform):
         return d
 
 
+class RandBinaryMorphologyd(RandomizableTransform, MapTransform):
+    """
+    Randomly apply binary dilation or erosion to the selected keys.
+    """
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        prob: float = 0.1,
+        max_filter_size: int = 3,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        MapTransform.__init__(self, keys, allow_missing_keys)
+        RandomizableTransform.__init__(self, prob)
+        self.max_filter_size = max_filter_size
+        self._do_transform = False
+        self._operation = dilate
+        self._filter_size = 1
+
+    def randomize(self) -> None:
+        self._do_transform = self.R.rand() < self.prob
+        if self._do_transform:
+            self._operation = dilate if self.R.rand() < 0.5 else erode
+            self._filter_size = int(self.R.randint(1, self.max_filter_size + 1))
+
+    def _morph(self, mask: torch.Tensor):
+        return self._operation(mask, filter_size=self._filter_size)
+
+    def __call__(self, data):
+        d = dict(data)
+        self.randomize()
+        if not self._do_transform:
+            return d
+        for key in self.key_iterator(d):
+            mask = d[key]
+            mask_dtype = mask.dtype
+            mask_bin = (mask > 0).to(mask_dtype)
+            morphed = self._morph(mask_bin)
+            d[key] = morphed.to(mask_dtype)
+        return d
+
+
 class CropForegroundOrCenterd(MapTransform):
     def __init__(
         self,
@@ -426,7 +470,8 @@ class MetaToDict(MonaiDictTransform):
         )
         if renamed_keys is None:
             renamed_keys = meta_keys
-        store_attr("meta_keys,renamed_keys")
+        self.meta_keys = meta_keys
+        self.renamed_keys = renamed_keys
         super().__init__(keys)
 
     def extract_metadata(self, tnsr):
@@ -571,13 +616,14 @@ class HalfPrecisiond(MapTransform):
     ) -> None:
         super().__init__(keys, allow_missing_keys)
 
+
     def __call__(self, d: dict):
         for key in self.key_iterator(d):
             d[key] = d[key].to(torch.float16)
         return d
 
 
-class DictToMeta(MapTransform):
+class DictToMetad(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
@@ -592,7 +638,8 @@ class DictToMeta(MapTransform):
             renamed_keys = meta_keys
 
         super().__init__(keys, allow_missing_keys)
-        store_attr("meta_keys,renamed_keys")
+        self.meta_keys = meta_keys
+        self.renamed_keys = renamed_keys
 
     def extract_metadata(self, d: dict):
         meta_data = {k1: d[k2] for k1, k2 in zip(self.renamed_keys, self.meta_keys)}
@@ -603,7 +650,6 @@ class DictToMeta(MapTransform):
         for key in self.key_iterator(d):
             d[key].meta.update(meta_data)
         return d
-
 
 def create_augmentations(after_item_intensity: dict, after_item_spatial: dict):
     intensity_augs = []
@@ -631,7 +677,7 @@ class FilenameFromBBox(ItemTransform):
 
 class Squeeze(ItemTransform):
     def __init__(self, dim):
-        store_attr()
+        self.dim = dim
 
     def encodes(self, x):
         outputs = []

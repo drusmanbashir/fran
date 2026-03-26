@@ -8,7 +8,6 @@ from typing import Sequence, Union
 import numpy as np
 import SimpleITK as sitk
 import torch
-from fastcore.basics import store_attr
 from fran.transforms.totensor import ToTensorT
 from label_analysis.helpers import get_labels as gl
 from monai.config import PathLike
@@ -92,9 +91,15 @@ class LoadSITKd(MapTransform):
         """
 
         super().__init__(keys, allow_missing_keys)
-        store_attr(
-            "reverse_indexing,ensure_channel_first,affine_lps_to_ras,channel_dim,simple_keys,pattern,sep,image_only,lm_key"
-        )
+        self.reverse_indexing = reverse_indexing
+        self.ensure_channel_first = ensure_channel_first
+        self.affine_lps_to_ras = affine_lps_to_ras
+        self.channel_dim = channel_dim
+        self.simple_keys = simple_keys
+        self.pattern = pattern
+        self.sep = sep
+        self.image_only = image_only
+        self.lm_key = lm_key
 
     def _get_meta_dict(self, img) -> dict:
         """

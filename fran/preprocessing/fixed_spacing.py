@@ -21,7 +21,7 @@ from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.misc_transforms import (
     ChangeDtyped,
-    DictToMeta,
+    DictToMetad,
     HalfPrecisiond,
     RecastToFloatd,
 )
@@ -90,7 +90,9 @@ class _NiftiResamplerBase(RayWorkerBase):
         self.data_folder = data_folder
         self.output_folder = output_folder
 
-    def _create_data_dict(self, row):
+
+    @classmethod
+    def _create_data_dict(cls, row):
         return {
             "image": row["image"],
             "lm": row["lm"],
@@ -126,10 +128,10 @@ class _NiftiResamplerBase(RayWorkerBase):
         self.LS = LoadSITKd(keys=["image", "lm"], image_only=True)
         self.Or = Orientationd(keys=["image", "lm"], axcodes="RAS")
         self.Re = RecastToFloatd(keys=["image", "lm"])
-        self.Ai = DictToMeta(  # CODE: REDUNDANT?
+        self.Ai = DictToMetad(  # CODE: REDUNDANT?
             keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
         )
-        self.Am = DictToMeta(  # CODE: REDUNDANT?
+        self.Am = DictToMetad(  # CODE: REDUNDANT?
             keys=["lm"],
             meta_keys=[
                 "lm_fname",
@@ -564,10 +566,10 @@ if __name__ == "__main__":
     Re = RecastToFloatd(keys=["image", "lm"])
 
     Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
-    Ai = DictToMeta(
+    Ai = DictToMetad(
         keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
     )
-    Am = DictToMeta(
+    Am = DictToMetad(
         keys=["lm"],
         meta_keys=["lm_fname", "remapping", "lm_fg_indices", "lm_bg_indices"],
         renamed_keys=["filename", "remapping", "lm_fg_indices", "lm_bg_indices"],
@@ -615,10 +617,10 @@ if __name__ == "__main__":
     Re = RecastToFloatd(keys=["image", "lm"])
 
     Ind = FgBgToIndicesd(keys=["lm"], image_key="image", image_threshold=-2600)
-    Ai = DictToMeta(
+    Ai = DictToMetad(
         keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
     )
-    Am = DictToMeta(
+    Am = DictToMetad(
         keys=["lm"],
         meta_keys=["lm_fname", "remapping", "lm_fb_indices", "lm_fg_indices"],
         renamed_keys=["filename", "remapping", "lm_fb_indices", "lm_fg_indices"],

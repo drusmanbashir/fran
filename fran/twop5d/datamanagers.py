@@ -9,7 +9,7 @@ from pathlib import Path
 import ipdb
 import numpy as np
 import torch
-from fastcore.basics import listify, operator, store_attr
+from fastcore.basics import listify, operator
 from fran.configs.parser import is_excel_None
 from fran.data.collate import whole_collated
 from fran.data.dataset import NormaliseClipd, fg_in_bboxes
@@ -264,7 +264,16 @@ class DataManager(LightningDataModule):
         super().__init__()
         if save_hyperparameters:
             self.save_hyperparameters("project", "config", "split", logger=False)
-        store_attr()
+        self.project = project
+        self.configs = configs
+        self.batch_size = batch_size
+        self.cache_rate = cache_rate
+        self.ds_type = ds_type
+        self.split = split
+        self.save_hyperparameters = save_hyperparameters
+        self.keys_tr = keys_tr
+        self.keys_val = keys_val
+        self.data_folder = data_folder
         self.plan = configs[f"plan_{split}"]
         global_properties = load_dict(project.global_properties_filename)
         self.dataset_params = configs["dataset_params"]

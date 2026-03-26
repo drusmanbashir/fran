@@ -2,8 +2,7 @@
 from pathlib import Path
 
 import torch
-from fastcore.all import store_attr
-from fastcore.basics import GetAttr, store_attr
+from fastcore.basics import GetAttr
 from fastcore.foundation import GetAttr
 from fran.transforms.imageio import LoadSITKd, LoadTorchd
 from fran.transforms.inferencetransforms import BBoxFromPTd
@@ -11,7 +10,7 @@ from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.misc_transforms import (
     ApplyBBox,
     ChangeDtyped,
-    DictToMeta,
+    DictToMetad,
     FgBgToIndicesd2,
     HalfPrecisiond,
     LabelRemapd,
@@ -190,10 +189,10 @@ class ResamplerDataset(GetAttr, Dataset):
         Re = RecastToFloatd(keys=["image", "lm"])
 
         Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
-        Ai = DictToMeta(
+        Ai = DictToMetad(
             keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
         )
-        Am = DictToMeta(
+        Am = DictToMetad(
             keys=["lm"],
             meta_keys=[
                 "lm_fname",
@@ -272,7 +271,14 @@ class ImporterDataset(ResamplerDataset):
             assert merge_imported_labels == False, (
                 "If you are merging imported lms, a remapping for the imported labels must be specified"
             )
-        store_attr()
+        self.project = project
+        self.plan = plan
+        self.imported_folder = imported_folder
+        self.df = df
+        self.data_folder = data_folder
+        self.merge_imported_labels = merge_imported_labels
+        self.remapping_imported = remapping_imported
+        self.device = device
         self.spacing = plan.get("spacing")
         self.expand_by = plan.get("expand_by")
         self.imported_folder = Path(imported_folder)
@@ -420,9 +426,11 @@ class CropToLabelDataset(ImporterDataset, ResamplerDataset):
         self.expand_by = plan.get("expand_by")
         self.spacing = plan.get("spacing")
         self.fg_indices_exclude = plan.get("fg_indices_exclude")
-        store_attr(
-            "project,df,data_folder,mask_label, device"
-        )  # wont work with Datasetparent otherwise
+        self.project = project
+        self.df = df
+        self.data_folder = data_folder
+        self.mask_label = mask_label
+        self.device = device
 
     def setup(self, overwrite=False):
         self.create_transforms()
@@ -497,7 +505,10 @@ class FGBGIndicesDataset(CropToLabelDataset):
     """
 
     def __init__(self, case_ids, data_folder, fg_indices_exclude=None, device="cuda"):
-        store_attr("case_ids,data_folder,fg_indices_exclude, device")
+        self.case_ids = case_ids
+        self.data_folder = data_folder
+        self.fg_indices_exclude = fg_indices_exclude
+        self.device = device
 
     def create_transforms(self):
         L2 = LoadTorchd(keys=["lm", "image"])

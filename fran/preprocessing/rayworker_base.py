@@ -137,6 +137,8 @@ class RayWorkerBase(Preprocessor):
             if isinstance(tfm, dict):
                 ds = data["ds"]
                 tfm = tfm[ds]
+            if isinstance(data,list|tuple):
+                data = data[0]
             data = tfm(data)
         return data
 

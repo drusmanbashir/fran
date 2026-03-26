@@ -5,7 +5,6 @@ from typing import Any, Union
 import ipdb
 import numpy as np
 import pandas as pd
-from fastcore.basics import store_attr
 from fran.configs.mnemonics import Mnemonics
 from fran.utils.folder_names import (
     folder_names_from_plan,
@@ -21,6 +20,7 @@ tr = ipdb.set_trace
 from openpyxl import load_workbook
 from utilz.helpers import *
 
+KEYS_STR_TO_LIST = ("spacing", "patch_size","expand_by", "ignore_labels")
 # HACK: this may bug out later
 REMAPPING_DICT_OR_LIST = {
     "remapping_source": "dict",
@@ -223,15 +223,12 @@ def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
     return remappings_out
 
 
-def parse_excel_dict(dici) -> dict:
+def parse_excel_dict(dici, keys_str_to_list) -> dict:
     if not isinstance(dici, dict):
         return _to_py(dici)
-
-    keys_str_to_list = ("spacing", "patch_size")
-
     for key, value in list(dici.items()):
         if isinstance(value, dict):
-            dici[key] = parse_excel_dict(value)
+            dici[key] = parse_excel_dict(value, keys_str_to_list)
             continue
         if is_excel_None(value):
             dici[key] = None
@@ -344,11 +341,8 @@ class ConfigMaker:
         self,
         project,
     ):
-        store_attr()
+        self.project=project
         configuration_mnemonic = project.global_properties["mnemonic"]
-        common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
-        common_paths = load_yaml(common_vars_filename)
-
         configuration_filename = self.resolve_configuration_filename()
         plans = pd.read_excel(
             configuration_filename,
@@ -357,14 +351,13 @@ class ConfigMaker:
             keep_default_na=False,
             na_values=["TRUE", "FALSE", ""],
         )
-        # configuration_mnemonic = listify(configuration_mnemonic)
         configuration_mnemonic_standardized = Mnemonics.match(configuration_mnemonic)
         self.plans = plans.loc[plans["mnemonic"] == configuration_mnemonic_standardized]
         self.plans = self.plans.drop(columns=["mnemonic"])
         self.plans.insert(0, "plan_id", self.plans.index)
         self.plans = self.plans.set_index("plan_id", drop=False)
         configs = load_config_from_workbook(configuration_filename)
-        self.configs = parse_excel_dict(configs)
+        self.configs = parse_excel_dict(configs, KEYS_STR_TO_LIST)
 
     def setup(
         self,
@@ -476,7 +469,8 @@ class ConfigMaker:
         # self.maybe_merge_source_plan(plan_key)
         if is_excel_None(plan_selected["expand_by"]):
             plan_selected["expand_by"] = 0
-        self.configs[plan_key] = parse_excel_dict(plan_selected)
+
+        self.configs[plan_key] = parse_excel_dict(plan_selected, KEYS_STR_TO_LIST)
         self.configs[plan_key]["plan_name"] = plan_id
 
         for key, value in REMAPPING_DICT_OR_LIST.items():
@@ -598,7 +592,7 @@ def parse_neptune_dict(dic: dict):
 
 # %%
 if __name__ == "__main__":
-    # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     # set_autoreload()
     from fran.managers import Project
@@ -607,7 +601,7 @@ if __name__ == "__main__":
     P = Project(project_title="pancreas")
     P = Project(project_title="kidneys")
     P = Project(project_title="lidc")
-    # %%
+# %%
     P.global_properties
     C = ConfigMaker(P)
     C.setup(8)
@@ -615,33 +609,33 @@ if __name__ == "__main__":
     pp(C.configs["plan_valid"])
     C.configs["plan_train"].keys()
     C.configs["plan_train"]["labels_all_lbd"]
-    # %%
+# %%
     C.plans["mode"]
-    # %%
+# %%
     df = C.plans
-    # %%
+# %%
     conf = C.configj
     pp(conf["dataset_params"])
     pp(conf["plan_train"])
     conf["plan_train"]["imported_folder"]
     conf["plan_train"]["remapping_imported"]
-    # %%
+# %%
 
     plan = C.configs["plan_train"]
     existing_fldr = folder_names_from_plan(project, plan)["data_folder_source"]
     img_fldr = existing_fldr / ("images")
     len(list(img_fldr.glob("*"))) == len(project)
-    # %%
+# %%
 
     lbd_subfolder = folder_names_from_plan(project, plan)["data_folder_lbd"]
     lbd_img_fldr = Path(lbd_subfolder) / ("images")
     len(list(lbd_img_fldr.glob("*")))
-    # %%
+# %%
     df = C.plans
     row = df.iloc[2]
     plan = row.to_dict()
 
-    # %%
+# %%
 
     conf["dataset_params"]["src_dims"] = make_patch_size(
         conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"]
@@ -649,9 +643,9 @@ if __name__ == "__main__":
     conf["plan_train"]["patch_size"] = make_patch_size(
         conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"]
     )
-    # %%
+# %%
     plan = C.configs["plan_train"]
-    # %%
+# %%
     global_props = C.project.global_properties
     global_props["labels_all"]
     rmt = plan.get("remapping_train")
@@ -668,7 +662,7 @@ if __name__ == "__main__":
     rmi = ast_literal_eval(rmi)
     rmw = plan.get("remapping_whole")
     rmw = ast_literal_eval(rmw)
-    # %%
+# %%
     mode = plan.get("mode")
     labels_all_train = labels_from_remapping(rmt)
     # elif (mode == "source" or mode == "whole") and rms:
@@ -680,7 +674,7 @@ if __name__ == "__main__":
     # elif mode == "whole" and rmw:
     labels_all_whole = labels_from_remapping(rmw)
     labels_all_datasources = global_props["labels_all"]
-    # %%
+# %%
     dici = {}
     dici["labels_all_train"] = labels_all_train
     dici["labels_all_source"] = labels_all_source
@@ -690,7 +684,7 @@ if __name__ == "__main__":
     dici["labels_all_whole"] = labels_all_whole
     dici["labels_all_datasources"] = labels_all_datasources
 
-    # %%
+# %%
 
     train = True
     plan_num = 3
@@ -705,7 +699,7 @@ if __name__ == "__main__":
     C.configs[plan_key] = plan_selected
     plan = plan_selected.copy()
     pp(plan)
-    # %%
+# %%
     # C.maybe_merge_source_plan(plan_key)
     C.configs[plan_key] = parse_excel_dict(plan_selected)
     pp(C.configs[plan_key])

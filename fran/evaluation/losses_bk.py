@@ -7,7 +7,6 @@ import lightning.pytorch as pl
 import numpy as np
 import torch
 import torch.nn as nn
-from fastcore.basics import store_attr
 from monai.utils.enums import DiceCEReduction, LossReduction
 from monai.utils.module import look_up_option
 from utilz.helpers import info_from_filename, range_inclusive
@@ -194,7 +193,10 @@ class DeepSupervisionLoss(pl.LightningModule):
         include_background=False,
     ):
         super().__init__()
-        store_attr()
+        self.levels = levels
+        self.deep_supervision_scales = deep_supervision_scales
+        self.fg_classes = fg_classes
+        self.include_background = include_background
         assert fg_classes > 0, "fg_classes should be at least 1"
         sigmoid = False
         softmax = True

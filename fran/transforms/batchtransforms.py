@@ -12,7 +12,6 @@ from fran.transforms.base import *
 #
 #
 #     def __init__(self, p=0.5, rotate_max=pi / 6, translate=torch.tensor([0, 0, 0]), rescale_max=0.2):
-#         store_attr()
 #
 #     def encodes(self, x):
 #         img, mask = x

@@ -41,8 +41,6 @@ from fastcore.foundation import listify
 
 sys.path += ["/home/ub/Dropbox/code/fran/"]
 
-from fastcore.basics import store_attr
-
 def inferer_from_params(run_w):
         ckpt = checkpoint_from_model_id(run_w)
         dic1 = torch.load(ckpt, map_location="cpu", weights_only=False)
@@ -250,7 +248,19 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             debug=debug,
         )
 
-        store_attr()
+        self.run_w = run_w
+        self.run_p = run_p
+        self.localiser_labels = localiser_labels
+        self.project_title = project_title
+        self.devices = devices
+        self.safe_mode = safe_mode
+        self.patch_overlap = patch_overlap
+        self.profile = profile
+        self.save_channels = save_channels
+        self.save = save
+        self.save_localiser = save_localiser
+        self.k_largest = k_largest
+        self.debug = debug
 
     def setup(self):
         pass

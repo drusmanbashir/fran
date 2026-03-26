@@ -7,7 +7,6 @@ import lightning.pytorch as pl
 import numpy as np
 import torch
 import torch.nn as nn
-from fastcore.basics import store_attr
 from monai.utils.enums import DiceCEReduction, LossReduction
 from monai.utils.module import look_up_option
 from torch.autograd.functional import jacobian
@@ -212,7 +211,11 @@ class DeepSupervisionLossCraig(pl.LightningModule):
         compute_grad=False,
     ):
         super().__init__()
-        store_attr()
+        self.levels = levels
+        self.deep_supervision_scales = deep_supervision_scales
+        self.fg_classes = fg_classes
+        self.softmax = softmax
+        self.compute_grad = compute_grad
         self.LossFunc = _DiceCELossMultiOutput(
             include_background=False, softmax=softmax
         )

@@ -15,7 +15,6 @@ from typing import Any, Union
 import numpy as np
 import psutil
 import torch._dynamo
-from fastcore.basics import store_attr
 from fran.callback.nep import NeptuneImageGridCallback
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 from fran.managers.data import (
@@ -156,7 +155,11 @@ class UNetTrainer2(LightningModule):
     ):
         super().__init__()
         self.lr = lr if lr else model_params["lr"]
-        store_attr()
+        self.project = project
+        self.dataset_params = dataset_params
+        self.model_params = model_params
+        self.loss_params = loss_params
+        self.lr = lr
         self.save_hyperparameters("model_params", "loss_params", "lr")
         self.model = self.create_model()
         self.loss_fnc = self.create_loss_fnc()
@@ -343,7 +346,9 @@ def maybe_ddp(devices):
 
 class Trainer:
     def __init__(self, project, config, run_name=None):
-        store_attr()
+        self.project = project
+        self.config = config
+        self.run_name = run_name
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_config(config, project)
 

@@ -42,7 +42,9 @@ class GANLoss_ub(gan.GANModule):
         gan_model:gan.GANModule # The GAN model
     ):
         super().__init__()
-        store_attr('gen_loss_func,crit_loss_func,gan_model')
+        self.gen_loss_func = gen_loss_func
+        self.crit_loss_func = crit_loss_func
+        self.gan_model = gan_model
 
     def generator(self,
         output, # Generator outputs
@@ -130,7 +132,9 @@ class ImageMaskBBoxDatasetSinglePatchVols(ImageMaskBBoxDataset):
 
 class cGANBatchMaker(ItemTransform):
         def __init__(self,mean=0.,std=.5,n_labels=4):
-            store_attr()
+            self.mean = mean
+            self.std = std
+            self.n_labels = n_labels
         def encodes(self, x):
             img, mask = x
 
@@ -255,7 +259,8 @@ if __name__ == "__main__":
         Assumes mask is the first index in the tensor
         '''
         def __init__(self, n_classes=4,mask_first=True):
-            store_attr()
+            self.n_classes = n_classes
+            self.mask_first = mask_first
         
         def before_batch(self):
             self.learn.xb = self._process(*self.learn.xb)

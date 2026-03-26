@@ -6,7 +6,7 @@ import ipdb
 import numpy as np
 import SimpleITK as sitk
 import torch
-from fasttransform.transform import Transform, store_attr
+from fasttransform.transform import Transform
 from torch.functional import Tensor
 
 tr = ipdb.set_trace
@@ -14,7 +14,7 @@ tr = ipdb.set_trace
 
 class ToTensorT(Transform):
     def __init__(self, encode_dtype=None):
-        store_attr()
+        self.encode_dtype = encode_dtype
 
     "Convert item to appropriate tensor class"
     order = 0

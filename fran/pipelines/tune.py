@@ -13,6 +13,7 @@ if __name__ == "__main__":
     from fran.trainers.trainer import Trainer
     from fran.tune.tune import RayTuneConfig
     from fran.utils.common import *
+    from fran.utils.folder_names import folder_names_from_plan
 
     P = Project("nodes")
 

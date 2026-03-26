@@ -2,15 +2,15 @@
 from pathlib import Path
 
 import ipdb
-from fastcore.all import store_attr
-from fastcore.basics import store_attr
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd, TorchWriter
 from fran.transforms.misc_transforms import LabelRemapd
 from fran.utils.folder_names import folder_names_from_plan
-from monai.transforms import Compose
+from label_analysis.geometry_pt import BBoxInfoFromPT
+from monai.transforms import Compose, MaskIntensity
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.spatial.dictionary import Resized
+from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import (
     DeleteItemsd,
     EnsureChannelFirstd,
@@ -24,6 +24,58 @@ from utilz.stringz import info_from_filename
 tr = ipdb.set_trace
 
 import ray
+
+
+class BBoxInfoStatsd(MapTransform):
+    def __init__(
+        self,
+        keys=("image", "lm"),
+        ignore_labels=[1],
+        apply_mask=True,
+        additional_keys=None,
+        allow_missing_keys=False,
+    ):
+        super().__init__(keys, allow_missing_keys)
+        self.ignore_labels = ignore_labels
+        self.apply_mask = apply_mask
+        self.additional_keys = additional_keys
+
+    def __call__(self, data):
+        d = dict(data)
+        img = d["image"]
+        lm = d["lm"]
+        B = BBoxInfoFromPT(li=lm, ignore_labels=self.ignore_labels)
+        filename = lm.meta["filename_or_obj"]
+        dicis_out = []
+        for _, row in B.nbrhoods.iterrows():
+            bbox = row["bbox"]
+            label = row["label_org"]
+            bbox2 = (
+                slice(bbox[0], bbox[0] + bbox[3]),
+                slice(bbox[1], bbox[1] + bbox[4]),
+                slice(bbox[2], bbox[2] + bbox[5]),
+            )
+            img2 = img[bbox2]
+            lm2 = lm[bbox2]
+            img_out = img2
+            if self.apply_mask:
+                mask = lm2 == label
+                img_out = MaskIntensity(mask_data=mask)(img2)
+
+            dici_out = {
+                "image": img_out,
+                "label": lm2,
+                "filename": filename,
+                "label_org": label,
+                "mean": img_out.mean(),
+                "min": img_out.min(),
+                "max": img_out.max(),
+            }
+            if self.additional_keys is not None:
+                for key in self.additional_keys:
+                    dici_out[key] = row[key]
+            dicis_out.append(dici_out)
+        return dicis_out
 
 
 @ray.remote(num_cpus=1)
@@ -92,7 +144,10 @@ class FixedSizeDataGenerator(PatchDataGenerator):
 
     def __init__(self, project, plan, data_folder=None, output_folder=None) -> None:
         # HACK: below is same as preprocessor init. Come back to this while u update PatchDataGenerator
-        store_attr("project,plan,data_folder")
+        self.project = project
+        self.plan = plan
+        self.data_folder = data_folder
+        self.remapping_key = "remapping_whole"
         self.data_folder = data_folder
         self.set_input_output_folders(data_folder, output_folder)
 
@@ -117,7 +172,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
                 "case_id": case_id,
                 "image": img,
                 "lm": lm_value,
-                "remapping": self.plan["remapping_whole"],
+                "remapping": self.plan[self.remapping_key],
             }
             # Append the dictionary to the dicis list
             self.dicis.append(dic)
@@ -138,7 +193,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
     def create_tensors(self, num_processes):
         dicis = list(chunks(self.dicis, num_processes))
         actors = [FixedSizeMaker.remote() for _ in range(num_processes)]
-        if self.plan["remapping_whole"] is not None:
+        if self.plan[self.remapping_key] is not None:
             remapping = True
         else:
             remapping = False
@@ -196,37 +251,85 @@ class FixedSizeDataGenerator(PatchDataGenerator):
 
 
 # %%
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     import torch
     from fran.configs.parser import ConfigMaker
-
-    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.managers import Project
     from fran.utils.common import *
 
     set_autoreload()
 
-    P = Project(project_title="totalseg")
+    P = Project(project_title="test")
     C = ConfigMaker(P)
-    C.setup(2)
+    C.setup(1)
     conf = C.configs
     # P.maybe_store_projectwide_properties()
 
-    # %%
+# %%
     plan = conf["plan_train"]
-    # %%
+# %%
+    from monai.transforms import MaskIntensity
 
     F = FixedSizeDataGenerator(
         project=P,
         plan=plan,
         data_folder=None,
     )
-    # %%
+# %%
+    img_fn = "/r/datasets/preprocessed/test/fixed_spacing/spc_080_080_150_rsc5609df8a/images/kits23_00002.pt"
+    lm_fn = "/r/datasets/preprocessed/test/fixed_spacing/spc_080_080_150_rsc5609df8a/lms/kits23_00002.pt"
+    img = torch.load(img_fn, weights_only=False)
+    lm = torch.load(lm_fn, weights_only=False)
+
+    from label_analysis.geometry_pt import BBoxInfoFromPT
+    B = BBoxInfoFromPT(li=lm, ignore_labels=[1])
+    n = 2
+# %%
+    row = B.nbrhoods.iloc[n]
+    bbox = row["bbox"]
+    label = row["label_org"]
+    filename = lm.meta["filename_or_obj"]
+    length = row["major_axis"]
+    volume = row["volume"]
+
+    bbox2 = (
+        slice(bbox[0], bbox[0] + bbox[3]),
+        slice(bbox[1], bbox[1] + bbox[4]),
+        slice(bbox[2], bbox[2] + bbox[5]),
+    )
+    img2 = img[bbox2]
+    lm2 = lm[bbox2]
+
+    mask = lm2 == label  # binary mask
+    img_masked = MaskIntensity(mask_data=mask)(img2)
+    mean = img_masked.mean()
+    min = img_masked.min()
+    max = img_masked.max()
+
+    dici_out = {
+        "image": img_masked,
+        "label": lm2,
+        "filename": filename,
+        "label_org": label,
+        "major_axis": length,
+        "volume": volume,
+        "mean": mean,
+        "min": min,
+        "max": max,
+    }
+
+    print(row)
+    print(lm2.shape)
+# %%
+    ImageMaskViewer([img_masked, lm2])
+
+    B.nbrhoods
     F.setup(overwrite=True)
 
-    # %%
+# %%
     F.process()
-    # %%
+# %%
 
     img_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/images/totalseg_s0889.pt"
     lm_fn = (
@@ -235,7 +338,7 @@ if __name__ == "__main__":
     img = torch.load(img_fn, weights_only=False)
     lm = torch.load(lm_fn, weights_only=False)
     ImageMaskViewer([img, lm])
-    # %%
+# %%
 
     output_folder = folder_name_from_list(
         prefix="sze", parent_folder=P.fixed_size_folder, values_list=[64, 64, 64]
@@ -252,14 +355,14 @@ if __name__ == "__main__":
     pairs = [
         {"image": img, "lm": find_matching_fn(img, lms, "case_id")[0]} for img in imgs
     ]
-    # %%
+# %%
     tots = len(pairs)
     n_proc = 32
 
-    # %%
+# %%
     dicis = list(chunks(pairs, n_proc))
     actors = [FixedSizeMaker.remote() for _ in range(n_proc)]
-    # %%
+# %%
     results = ray.get(
         [
             c.process.remote(
@@ -273,32 +376,32 @@ if __name__ == "__main__":
         ]
     )
     # dici = L(dici)
-    # %%
+# %%
     dici = tfms(dici)
-    # %%
+# %%
     dici = L(dici)
     dici = M(dici)
-    # %%
+# %%
     dici = E(dici)
 
     dici = Rz(dici)
 
     im, lm = dici["image"], dici["lm"]
 
-    # %%
+# %%
     fn = "/s/fran_storage/datasets/preprocessed/fixed_size/litsmc/sze_64_64_64/images/totalseg_s0784.pt"
     fn2 = "/s/fran_storage/datasets/preprocessed/fixed_size/litsmc/sze_64_64_64/lms/totalseg_s0784.pt"
     trn = torch.load(fn, weights_only=False)
     t2 = torch.load(fn2, weights_only=False)
     ImageMaskViewer([trn, t2], dtypes="im")
-    # %%
-    # %%
-    # SECTION:-------------------- TROUBLE <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-    # %%
+# %%
+# %%
+# SECTION:-------------------- TROUBLE <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# %%
     output_folder_lm = F.output_folder / "lms"
     output_folder_im = F.output_folder / "images"
 
-    # %%
+# %%
     remapping_train = plan["remapping_train"]
     L = LoadTorchd(keys=["lm", "image"])
     M = LabelRemapd(keys=["lm"], remapping=remapping_train)
@@ -328,7 +431,7 @@ if __name__ == "__main__":
     )
     Del = DeleteItemsd(keys=["image", "lm"])
 
-    # %%
+# %%
     dici = F.dicis[0]
     dici = L(dici)
     dici = M(dici)
@@ -338,12 +441,12 @@ if __name__ == "__main__":
     dici = Si(dici)
     dici = Sl(dici)
     dici = Del(dici)
-    # %%
+# %%
     image = dici["image"]
     lm = dici["lm"]
-    # %%
+# %%
     ImageMaskViewer([image, lm])
-    # %%
+# %%
     # S1 = SaveImage(output_ext='pt',  output_dir=self.output_fldr_imgs, output_postfix=str(1), output_dtype='float32', writer=TorchWriter,separate_folder=False)
     if remapping_train:
         tfms = Compose([L, M, E, Rz, S, Si, Sl, Del])
@@ -357,7 +460,7 @@ if __name__ == "__main__":
             print("Exception")
             print(e)
 
-    # %%
+# %%
     fn = "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0726.pt"
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_080_080_150/lms/totalseg_s0928.pt"
     fn = "/s/xnat_shadow/totalseg/lms/totalseg_s0928.nii.gz"

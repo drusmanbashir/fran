@@ -7,7 +7,6 @@ from pathlib import Path
 import ipdb
 import numpy as np
 import torch
-from fastcore.all import store_attr
 from fastcore.basics import GetAttr
 from fran.data.dataregistry import DS
 from tqdm.auto import tqdm as pbar
@@ -61,7 +60,11 @@ class GlobalProperties(GetAttr):
         assert all([isinstance(x, float) for x in percentile_range]), (
             "Provide float values for clip percentile_range. Corresponding HUs will be stored in file for future processing."
         )
-        store_attr("project,bg_label,percentile_range,clip_range,max_cases")
+        self.project = project
+        self.bg_label = bg_label
+        self.percentile_range = percentile_range
+        self.clip_range = clip_range
+        self.max_cases = max_cases
         datasources = self.global_properties.get("datasources", [])
         assert len(datasources) > 0, (
             "No datasources found in project metadata. Run P.add_data([...]) before maybe_store_projectwide_properties()."

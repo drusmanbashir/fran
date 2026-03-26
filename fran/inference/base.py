@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from fastcore.all import listify, store_attr
+from fastcore.all import listify
 from fastcore.foundation import GetAttr
 from fran.data.dataset import NormaliseClipd
 from fran.managers.unet import UNetManager
@@ -84,7 +84,13 @@ class BaseInferer(GetAttr, DictToAttr):
             print("CUDA not available. All processes will be on CPU.")
             safe_mode = True
 
-        store_attr("debug,run_name,devices,save_channels, save,safe_mode, k_largest")
+        self.debug = debug
+        self.run_name = run_name
+        self.devices = devices
+        self.save_channels = save_channels
+        self.save = save
+        self.safe_mode = safe_mode
+        self.k_largest = k_largest
         if ckpt is None:
             self.ckpt = checkpoint_from_model_id(run_name)
             cprint("Checkpoint: {}".format(self.ckpt), color="green")

@@ -151,29 +151,6 @@ class UNetManager(LightningModule):
         self.maybe_store_preds(pred)
         return loss, loss_dict
 
-        n_classes = pred.shape[1]
-        targ = targ.long()
-        targ = targ.squeeze(1)
-        target = F.one_hot(targ, num_classes=n_classes)
-        target = target.permute(0, 4, 1, 2, 3)
-        print(target.shape)
-        loss_dce = self.loss_fnc_val_dce(pred, target)
-        loss_dce = loss_dce.flatten()
-        loss_dce_reduced = loss_dce.mean()
-        loss_ce = self.loss_fnc_val_ce(pred, target)
-        loss_dict = {}
-        for x in range(len(loss_dce)):  # assuming include_background =False
-            loss_dict["batch0_loss_dice_label" + str(x + 1)] = loss_dce[x].item()
-        filename = pred.meta["filename_or_obj"]
-        case_id = info_from_filename(filename.split("/")[-1], full_caseid=True)[
-            "case_id"
-        ]
-        loss_dict["batch0_filename"] = filename
-        loss_dict["batch0_case_id"] = case_id
-        loss_dict["batch0_shape"] = list(target.shape[2:])
-
-        self.log_losses(loss_dict, prefix=f"val{dataloader_idx}")
-        return loss_dce
 
     def test_step(self, batch, batch_idx):
         loss, loss_dict = self._common_step(batch, batch_idx, use_mask=True)
@@ -199,7 +176,6 @@ class UNetManager(LightningModule):
             sync_dist=self.sync_dist,
             add_dataloader_idx=False,
         )
-        # self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
     def configure_optimizers(self):
         # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
@@ -437,6 +413,8 @@ class UNetManagerFabric(UNetManager):
 
 # %%
 if __name__ == "__main__":
+# %%
+#SECTION:-------------------- setup--------------------------------------------------------------------------------------
     from fran.configs.parser import ConfigMaker
     from fran.utils.common import *
 
@@ -445,14 +423,14 @@ if __name__ == "__main__":
     C.setup(6)
     conf = C.configs
     conf["model_params"]["out_channels"] = 3
-    # %%
+# %%
 
     x = torch.rand(1, 1, 192, 192, 96)
     N = UNetManager(project_title="kits2", configs=conf, lr=0.01)
     N.setup()
     N.model.ds_strides
 
-    # %%
+# %%
 
     image = torch.load(
         "/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/images/kits21_00002.pt",
@@ -465,7 +443,7 @@ if __name__ == "__main__":
     image = image.unsqueeze(0).unsqueeze(0)
     lm = lm.unsqueeze(0).unsqueeze(0)
     batch = {"image": image[:, :, :128, :128, :64], "lm": lm[:, :, :128, :128, :64]}
-    # %%
+# %%
 
     l, d = N._common_step(batch, 0, 1)
 
@@ -474,13 +452,13 @@ if __name__ == "__main__":
     loss = N.loss_fnc(y, x)
 
     use_mask = False
-    # %%
+# %%
     if not hasattr(N, "batch_size"):
         N.batch_size = batch["image"].shape[0]
     inputs, target = batch["image"], batch["lm"]
     pred = N.forward(inputs)  # N.pred so that NeptuneImageGridCallback can use it
 
-    # %%
+# %%
     loss = N.loss_fnc(pred, target, use_mask=use_mask)
     # i)
     # default_experiment_planner

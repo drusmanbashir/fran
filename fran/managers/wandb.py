@@ -5,7 +5,6 @@ import ipdb
 
 tr = ipdb.set_trace
 import os
-import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -17,8 +16,8 @@ from paramiko import SSHClient
 from tqdm.auto import tqdm
 from utilz.fileio import load_yaml, maybe_makedirs
 from utilz.random_word_maker import (
-    ordered_word_suffixes,
-    random_pronounceable_suffix,
+    random_fake_word,
+    random_real_word,
 )
 
 try:
@@ -165,13 +164,6 @@ def _normalize_run_prefix(project_title: str) -> str:
     return prefix.upper() if prefix else "RUN"
 
 
-def _extract_seq(value: str, prefix: str) -> Optional[int]:
-    m = re.fullmatch(rf"{re.escape(prefix)}-(\d+)", str(value or ""))
-    if not m:
-        return None
-    return int(m.group(1))
-
-
 def _extract_word_suffix(value: str, prefix: str) -> Optional[str]:
     value = str(value or "")
     token = f"{prefix}-"
@@ -180,13 +172,17 @@ def _extract_word_suffix(value: str, prefix: str) -> Optional[str]:
     return None
 
 
-def _new_run_id(entity: Optional[str], project_title: str, width: int = 4) -> str:
-    prefix = _normalize_run_prefix(project_title)
+def _new_run_id(
+    entity: Optional[str],
+    project_title: str,
+    width: int = 4,
+    run_prefix: Optional[str] = None,
+) -> str:
+    prefix = _normalize_run_prefix(run_prefix or project_title)
     path = f"{entity}/{project_title}" if entity else project_title
-    width = int(width or 5)
     mode = str(os.environ.get("WANDB_MODE", "")).lower()
     if mode in {"offline", "disabled", "dryrun"}:
-        suffix = random_pronounceable_suffix(width)
+        suffix = random_fake_word(3, 5).upper()
         return f"{prefix}-{suffix}"
     used = set()
     used_suffixes = set()
@@ -203,13 +199,8 @@ def _new_run_id(entity: Optional[str], project_title: str, width: int = 4) -> st
     except Exception:
         pass
 
-    for suffix in ordered_word_suffixes():
-        run_id = f"{prefix}-{suffix}"
-        if run_id not in used and suffix not in used_suffixes:
-            return run_id
-
     while True:
-        suffix = random_pronounceable_suffix(width)
+        suffix = random_real_word(3, 5).upper()
         run_id = f"{prefix}-{suffix}"
         if run_id not in used and suffix not in used_suffixes:
             return run_id
@@ -249,10 +240,14 @@ class WandbManager(WandbLogger):
         run_id: Optional[str] = None,
         log_model_checkpoints: Optional[bool] = False,
         prefix: str = "training",
+        wandb_project_name: Optional[str] = None,
+        run_prefix: Optional[str] = None,
         **wandb_init_kwargs: Any,
     ):
         self.project = project
         self.prefix = prefix.rstrip("/")
+        self.wandb_project_name = wandb_project_name or project.project_title
+        self.run_prefix = run_prefix or project.project_title
         self.entity, api_token = get_wandb_config()
         save_dir = _resolve_wandb_save_dir(project)
 
@@ -270,8 +265,9 @@ class WandbManager(WandbLogger):
             width = int(os.environ.get("FRAN_WANDB_SEQ_WIDTH", "2"))
             resolved_run_id = _new_run_id(
                 entity=self.entity,
-                project_title=project.project_title,
+                project_title=self.wandb_project_name,
                 width=width,
+                run_prefix=self.run_prefix,
             )
             wandb_init_kwargs.setdefault("id", resolved_run_id)
             name = resolved_run_id
@@ -282,7 +278,7 @@ class WandbManager(WandbLogger):
         self._mode = str(wandb_init_kwargs.get("mode", wb_mode)).lower()
 
         super().__init__(
-            project=project.project_title,
+            project=self.wandb_project_name,
             entity=self.entity,
             name=name,
             save_dir=save_dir,
@@ -310,9 +306,9 @@ class WandbManager(WandbLogger):
 
     def _project_path(self) -> str:
         return (
-            f"{self.entity}/{self.project.project_title}"
+            f"{self.entity}/{self.wandb_project_name}"
             if self.entity
-            else self.project.project_title
+            else self.wandb_project_name
         )
 
     def _run_path(self, run_id: Optional[str] = None) -> str:
@@ -357,9 +353,9 @@ class WandbManager(WandbLogger):
         try:
             api = wandb.Api()
             path = (
-                f"{self.entity}/{self.project.project_title}"
+                f"{self.entity}/{self.wandb_project_name}"
                 if self.entity
-                else self.project.project_title
+                else self.wandb_project_name
             )
             runs = list(api.runs(path))
         except Exception:
@@ -523,7 +519,7 @@ class WandbManager(WandbLogger):
 
 if __name__ == "__main__":
 # %%
-# llSECTION:-------------------- ------------------------------------------------------------------------------------- <CR>
+    # llSECTION:-------------------- ------------------------------------------------------------------------------------- <CR>
 
     from fran.managers.project import Project
 
@@ -546,3 +542,5 @@ if __name__ == "__main__":
     id = f"{prefix}-{max_seq + 1:0{int(width)}d}"
 
 # %%
+
+

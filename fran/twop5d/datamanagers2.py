@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import torch
-from fastcore.basics import store_attr
 from fran.configs.parser import is_excel_None
 from fran.managers.project import Project
 from fran.transforms.imageio import TorchReader
@@ -254,7 +253,16 @@ class DataManager(LightningDataModule):
             self.save_hyperparameters("project", "configs", "split", logger=False)
 
         device = resolve_device(device)
-        store_attr()
+        self.project = project
+        self.configs = configs
+        self.batch_size = batch_size
+        self.cache_rate = cache_rate
+        self.device = device
+        self.ds_type = ds_type
+        self.split = split
+        self.save_hyperparameters = save_hyperparameters
+        self.keys = keys
+        self.data_folder = data_folder
 
         self.plan = configs[f"plan_{split}"]
         self.dataset_params = configs["dataset_params"]

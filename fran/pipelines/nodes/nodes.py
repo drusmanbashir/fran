@@ -15,6 +15,7 @@ if __name__ == "__main__":
     from fran.run.analyze_resample import PreprocessingManager
     from fran.trainers.trainer import Trainer
     from fran.utils.common import *
+    from fran.utils.folder_names import folder_names_from_plan
     from lightning.pytorch.callbacks import BatchSizeFinder
 
     P = Project("nodes")

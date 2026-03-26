@@ -30,7 +30,6 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Union
 
 import torch
-from fastcore.basics import store_attr
 
 # import your existing inferers
 from fran.inference.base import (
@@ -159,7 +158,19 @@ class EnsembleInferer:
         if debug == True:
             debug_base = True
             debug_patch = True
-        store_attr(but="localiser_labels")
+        self.project = project
+        self.runs = runs
+        self.devices = devices
+        self.patch_overlap = patch_overlap
+        self.safe_mode = safe_mode
+        self.localiser_run = localiser_run
+        self.k_largest = k_largest
+        self.save_channels = save_channels
+        self.save_casc_preds = save_casc_preds
+        self.save = save
+        self.debug = debug
+        self.debug_base = debug_base
+        self.debug_patch = debug_patch
         self.localiser_labels = list(localiser_labels) if localiser_labels else None
 
         # Partition runs into cascade vs base-like

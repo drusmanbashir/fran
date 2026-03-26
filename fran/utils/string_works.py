@@ -51,7 +51,7 @@ def regex_matcher(indx=0):
     return _outer
 
 
-def dec_to_str(val: float, trailing_zeros=3):
+def float_to_str(val: float, trailing_zeros=3):
     """
     Convert a float to a string representation with specified trailing zeros.
 
@@ -63,7 +63,7 @@ def dec_to_str(val: float, trailing_zeros=3):
         str: String representation with decimal point removed and padded with zeros
     """
     val2 = str(round(val, 2))
-    val2 = val2.replace(".", "")
+    val2 = val2.replace(".", "p")
     trailing_zeros = (
         np.maximum(trailing_zeros - len(val2), 0) if trailing_zeros > 0 else 0
     )

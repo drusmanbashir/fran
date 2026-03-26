@@ -127,14 +127,11 @@ def whole_image_suffix(row):
 
 def folder_names_from_plan(project, plan: dict):
     list_to_str = lambda x: "".join(int_to_str(v, 3) for v in x)
-    # Src_fodler: spacing
-    # LBD_folder: src_folder,  expand_by, remapping
 
     reg = load_registry()
     spc = plan.get("spacing")
     src_prefix = spacing_to_str("spc", spc)
 
-    # expand_by = expand_by_conv(reg,"expand_by",plan.get("expand_by"))
     expand_by = expand_by_conv(reg, "expand_by", plan.get("expand_by"))
 
     remapping_src = short_code(plan.get("remapping_source"))
@@ -159,9 +156,7 @@ def folder_names_from_plan(project, plan: dict):
     if remapping_imported_code:
         remapping_imported_code = "ric" + remapping_imported_code
 
-    source_folder_suff = maybe_join(
-        [src_prefix, remapping_src_code]
-    )  # note source_flder has no plan suffix
+    source_folder_suff = maybe_join([src_prefix, remapping_src_code])
     source_folder = project.fixed_spacing_folder / source_folder_suff
 
     if source_plan_code:
@@ -175,7 +170,6 @@ def folder_names_from_plan(project, plan: dict):
                 source_plan_code,
             ]
         )
-
     else:
         lbd_folder_suff = maybe_join(
             [
@@ -207,11 +201,10 @@ def folder_names_from_plan(project, plan: dict):
     return folders
 
 
-# %%
 
 
 # %%
-# SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
@@ -229,9 +222,7 @@ if __name__ == "__main__":
     aj = plan["imported_folder"]
     pp(folders)
     dd = short_code(aj)
-
-    # %%
-
+# %%
     reg = load_registry()
     spc = plan.get("spacing")
     src_prefix = spacing_to_str("spc", spc)
@@ -285,7 +276,7 @@ if __name__ == "__main__":
     }
 
     pp(folders)
-    # %%
+# %%
 
     if isinstance(plan, dict):
         plan = {k: v for k, v in plan.items() if v is not None}

@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import SimpleITK as sitk
 import torch
-from fastcore.all import store_attr
 from fastcore.foundation import GetAttr
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import (
@@ -61,7 +60,6 @@ def bboxes_to_df(bboxes):
     rows = []
     for case in bboxes:
         case_id = case["case_id"]
-
         for stat in case["bbox_stats"]:
             label = stat["label"]
             bbs = stat["bounding_boxes"]
@@ -293,7 +291,8 @@ class Preprocessor(GetAttr):
         data_folder=None,
         output_folder=None,
     ) -> None:
-        store_attr("project,plan,data_folder")
+        self.project = project
+        self.plan = plan
         self.data_folder = data_folder
         self.set_input_output_folders(data_folder, output_folder)
 

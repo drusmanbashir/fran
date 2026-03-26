@@ -24,7 +24,6 @@ tr = ipdb.set_trace
 
 import torch
 from fastcore.all import GetAttr
-from fastcore.basics import store_attr
 from fastcore.test import is_close
 from fasttransform.transform import ItemTransform
 
@@ -158,7 +157,9 @@ class BBoxesToPatchSize(ItemTransform):
     """
 
     def __init__(self, patch_size, sz_dest, expand_bbox):
-        store_attr()
+        self.patch_size = patch_size
+        self.sz_dest = sz_dest
+        self.expand_bbox = expand_bbox
 
     def encodes(self, x):
         img, bboxes = x
@@ -193,7 +194,10 @@ class BBoxesToPatchSize(ItemTransform):
 
 class CreateDataLoaderAggregator(ItemTransform):
     def __init__(self, patch_size, patch_overlap, grid_mode, batch_size):
-        store_attr()
+        self.patch_size = patch_size
+        self.patch_overlap = patch_overlap
+        self.grid_mode = grid_mode
+        self.batch_size = batch_size
 
     def encodes(self, x):
         img, bboxes = x
@@ -219,7 +223,8 @@ class CreateDataLoaderAggregator(ItemTransform):
 
 class PadNpArray(KeepBBoxTransform):
     def __init__(self, patch_size, mode="constant"):
-        store_attr()
+        self.patch_size = patch_size
+        self.mode = mode
         super().__init__()
 
     def func(self, img: np.ndarray) -> np.ndarray:
@@ -246,7 +251,7 @@ class PadNpArray(KeepBBoxTransform):
 # %%
 class ChangeDType(KeepBBoxTransform):
     def __init__(self, target_dtype):
-        store_attr()
+        self.target_dtype = target_dtype
 
     def func(self, img):
         return img.to(self.target_dtype)
@@ -304,7 +309,9 @@ class BacksampleMask(Transform):
 class ResampleToStage0(PredictorTransform):
     # Applies resample_spacing used to obtain training dataset corresponding to this model
     def __init__(self, img_sitk, resample_spacing, mode="trilinear"):
-        store_attr()
+        self.img_sitk = img_sitk
+        self.resample_spacing = resample_spacing
+        self.mode = mode
 
         self.sz_source, spacing_source = img_sitk.GetSize(), img_sitk.GetSpacing()
 
@@ -333,7 +340,8 @@ class ResizeFran(KeepBBoxTransform):
     """
 
     def __init__(self, dest_size, mode="trilinear"):
-        store_attr()
+        self.dest_size = dest_size
+        self.mode = mode
 
     def func(self, img: Tensor) -> Tensor:
         self.org_size = img.shape
@@ -431,7 +439,6 @@ def encodes(self, img: Union[Tensor, np.ndarray]):
 # class Resample(Transform):
 #     def __init__(self,org_size,org_spacing,dest_spacing,order=None):
 #         self.sz_dest, self.scale_factor = get_scale_factor_from_spacings(org_size,org_spacing,dest_spacing)
-#         store_attr()
 #
 #     def encodes(self,x):
 #             x =  resize(x, self.sz_dest,order=self.order)
@@ -445,7 +452,7 @@ def encodes(self, img: Union[Tensor, np.ndarray]):
 #
 class Stride(Transform):
     def __init__(self, stride=[1, 1, 1]):
-        store_attr()
+        self.stride = stride
 
     def encodes(self, x):
         if self.stride != [1, 1, 1]:
@@ -463,7 +470,8 @@ class Stride(Transform):
 
 class ToTensorBBoxes(ItemTransform):
     def __init__(self, img_dtype=torch.float, label_dtype=torch.uint8):
-        store_attr()
+        self.img_dtype = img_dtype
+        self.label_dtype = label_dtype
 
     def encodes(self, x):
         img, bboxes = x
@@ -603,7 +611,8 @@ class BBoxFromPTd(MapTransform):
         allow_missing_keys: bool = False,
     ) -> None:
         super().__init__(keys, allow_missing_keys)
-        store_attr("spacing,expand_by")
+        self.spacing = spacing
+        self.expand_by = expand_by
 
     def __call__(self, d: dict):
         for key in self.key_iterator(d):

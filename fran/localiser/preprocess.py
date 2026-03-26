@@ -5,9 +5,8 @@ from pathlib import Path
 import ipdb
 from fran.data.collate import as_is_collated
 from fran.transforms.imageio import LoadSITKd, TorchWriter
-from fran.transforms.misc_transforms import DictToMeta, MetaToDict
+from fran.transforms.misc_transforms import DictToMetad, MetaToDict
 from fran.transforms.spatialtransforms import Project2D
-from label_analysis.utils import store_attr
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
@@ -24,7 +23,9 @@ tr = ipdb.set_trace
 class Project2DProcessor:
     def __init__(self, fldr_imgs, fldr_lms, output_fldr):
         # input_fldr has subfolders images and lms
-        store_attr()
+        self.fldr_imgs = fldr_imgs
+        self.fldr_lms = fldr_lms
+        self.output_fldr = output_fldr
 
         self.output_fldr = Path(output_fldr)
         self.output_fldr_imgs = self.output_fldr / ("images")
@@ -68,9 +69,9 @@ class Project2DProcessor:
         BB3 = BoundingRectd(keys=["lm3"])
         M = MetaToDict(keys=["image"], meta_keys=["filename_or_obj"])
 
-        D1 = DictToMeta(keys=["image1"], meta_keys=["lm1_bbox"])
-        D2 = DictToMeta(keys=["image2"], meta_keys=["lm2_bbox"])
-        D3 = DictToMeta(keys=["image3"], meta_keys=["lm3_bbox"])
+        D1 = DictToMetad(keys=["image1"], meta_keys=["lm1_bbox"])
+        D2 = DictToMetad(keys=["image2"], meta_keys=["lm2_bbox"])
+        D3 = DictToMetad(keys=["image3"], meta_keys=["lm3_bbox"])
 
         tfms = Compose([L, N, E, P1, P2, P3])
         self.ds = Dataset(data=data_dicts, transform=tfms)

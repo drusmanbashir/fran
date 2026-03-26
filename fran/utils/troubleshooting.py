@@ -108,7 +108,9 @@ class PermuteImageMask(RandomizableTransform, MapTransform):
     ):
         MapTransform.__init__(self, keys, False)
         RandomizableTransform.__init__(self, prob)
-        store_attr()
+        self.keys = keys
+        self.prob = prob
+        self.do_transform = do_transform
 
     def func(self, x):
         if np.random.rand() < self.p:
@@ -136,7 +138,8 @@ class RandRandGaussianNoised(RandomizableTransform, MapTransform):
     ):
         MapTransform.__init__(self, keys, False)
         RandomizableTransform.__init__(self, prob)
-        store_attr("std_limits,dtype")
+        self.std_limits = std_limits
+        self.dtype = dtype
 
     def randomize(self):
         super().randomize(None)
@@ -247,7 +250,13 @@ class NeptuneImageGridCallback(Callback):
         if not isinstance(patch_size, torch.Size):
             patch_size = torch.Size(patch_size)
         self.stride = int(patch_size[0] / imgs_per_batch)
-        store_attr()
+        self.classes = classes
+        self.patch_size = patch_size
+        self.freq = freq
+        self.grid_rows = grid_rows
+        self.imgs_per_batch = imgs_per_batch
+        self.publish_deep_preds = publish_deep_preds
+        self.apply_activation = apply_activation
 
     def on_train_start(self, trainer, pl_module):
         len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
@@ -348,7 +357,7 @@ class NeptuneManager(NeptuneLogger, Callback):
         prefix: str = "training",
         **neptune_run_kwargs: Any,
     ):
-        store_attr("project")
+        self.project = project
         project_nep, api_token = get_neptune_config(project)
         os.environ["NEPTUNE_API_TOKEN"] = api_token
         os.environ["NEPTUNE_PROJECT"] = project_nep
@@ -533,7 +542,7 @@ class NeptuneManager(NeptuneLogger, Callback):
 #
 class NepImages(Callback):
     def __init__(self, freq):
-        store_attr()
+        self.freq = freq
 
     def on_train_start(self, trainer, pl_module):
         pass
@@ -623,7 +632,12 @@ class UNetTrainer(LightningModule):
     ):
         super().__init__()
         self.lr = lr if lr else model_params["lr"]
-        store_attr()
+        self.project = project
+        self.dataset_params = dataset_params
+        self.model_params = model_params
+        self.loss_params = loss_params
+        self.lr = lr
+        self.compiled = compiled
         self.save_hyperparameters("model_params", "loss_params")
 
         self.model, self.loss_fnc = self.create_model()
@@ -791,7 +805,8 @@ def maybe_ddp(devices):
 class TrainingManager:
     def __init__(self, project, configs):
         super().__init__()
-        store_attr()
+        self.project = project
+        self.configs = configs
 
     def setup(self, epochs=2):
         cbs = [BatchSizeFinder(mode="binsearch", init_val=8)]

@@ -2,7 +2,7 @@
 
 import numpy as np
 from fastcore.all import is_close, test_eq
-from fastcore.basics import GetAttr, store_attr
+from fastcore.basics import GetAttr
 from fran.preprocessing.helpers import import_h5py, percentile_range_to_str
 from fran.transforms.imageio import LoadSITKd
 from utilz.fileio import *
@@ -89,7 +89,8 @@ class MultiCaseAnalyzer(GetAttr):
     _default = "project"
 
     def __init__(self, project, bg_label=0) -> None:
-        store_attr()
+        self.project = project
+        self.bg_label = bg_label
         self.project_title = project.project_title
         self.h5f_fname = project.bboxes_voxels_info_filename
         self.filter_unprocessed_cases()

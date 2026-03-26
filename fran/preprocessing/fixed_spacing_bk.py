@@ -17,7 +17,7 @@ from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.misc_transforms import (
     ChangeDtyped,
-    DictToMeta,
+    DictToMetad,
     FgBgToIndicesd2,
     LabelRemapd,
     RecastToFloatd,
@@ -143,11 +143,11 @@ class _NiftiResamplerBase(Preprocessor):
         self.Ind = FgBgToIndicesd2(
             keys=["lm"], image_key="image", image_threshold=-2600
         )
-        self.Ai = DictToMeta(
+        self.Ai = DictToMetad(
             keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
         )
         self.T = ToDeviceD(keys=["image", "lm"], device=self.device)
-        self.Am = DictToMeta(
+        self.Am = DictToMetad(
             keys=["lm"],
             meta_keys=[
                 "lm_fname",
@@ -627,10 +627,10 @@ if __name__ == "__main__":
     Re = RecastToFloatd(keys=["image", "lm"])
 
     Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
-    Ai = DictToMeta(
+    Ai = DictToMetad(
         keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
     )
-    Am = DictToMeta(
+    Am = DictToMetad(
         keys=["lm"],
         meta_keys=["lm_fname", "remapping", "lm_fg_indices", "lm_bg_indices"],
         renamed_keys=["filename", "remapping", "lm_fg_indices", "lm_bg_indices"],
@@ -678,10 +678,10 @@ if __name__ == "__main__":
     Re = RecastToFloatd(keys=["image", "lm"])
 
     Ind = FgBgToIndicesd(keys=["lm"], image_key="image", image_threshold=-2600)
-    Ai = DictToMeta(
+    Ai = DictToMetad(
         keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
     )
-    Am = DictToMeta(
+    Am = DictToMetad(
         keys=["lm"],
         meta_keys=["lm_fname", "remapping", "lm_fb_indices", "lm_fg_indices"],
         renamed_keys=["filename", "remapping", "lm_fb_indices", "lm_fg_indices"],

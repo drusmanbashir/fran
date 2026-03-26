@@ -20,8 +20,7 @@ tr = ipdb.set_trace
 
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
-from fastcore.basics import store_attr
-from fasttransform.transform import ItemTransform, store_attr
+from fasttransform.transform import ItemTransform
 
 #
 # class BBoxFromLabelMap(MonaiDictTransform):
@@ -245,7 +244,8 @@ class MetaToDict(MonaiDictTransform):
         )
         if renamed_keys is None:
             renamed_keys = meta_keys
-        store_attr("meta_keys,renamed_keys")
+        self.meta_keys = meta_keys
+        self.renamed_keys = renamed_keys
         super().__init__(keys)
 
     def extract_metadata(self, tnsr):
@@ -255,7 +255,6 @@ class MetaToDict(MonaiDictTransform):
         return meta_data
 
     def __call__(self, d: dict):
-
         for key in self.key_iterator(d):
             meta_dict = self.extract_metadata(d[key])
         d.update(meta_dict)
@@ -382,7 +381,8 @@ class DictToMeta(MapTransform):
             renamed_keys = meta_keys
 
         super().__init__(keys, allow_missing_keys)
-        store_attr("meta_keys,renamed_keys")
+        self.meta_keys = meta_keys
+        self.renamed_keys = renamed_keys
 
     def extract_metadata(self, d: dict):
         meta_data = {k1: d[k2] for k1, k2 in zip(self.renamed_keys, self.meta_keys)}
@@ -421,7 +421,7 @@ class FilenameFromBBox(ItemTransform):
 
 class Squeeze(ItemTransform):
     def __init__(self, dim):
-        store_attr()
+        self.dim = dim
 
     def encodes(self, x):
         outputs = []

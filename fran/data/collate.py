@@ -237,7 +237,7 @@ if __name__ == "__main__":
     )
     from monai.transforms.spatial.dictionary import RandAffined, RandFlipd, Resized
     from monai.transforms.utility.dictionary import EnsureChannelFirstd
-    # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 
     patch_size = [128, 128, 96]
     d1 = {
@@ -248,7 +248,7 @@ if __name__ == "__main__":
         "image": "/s/xnat_shadow/nodes/images/nodes_101_Ta91212_CAP1p5SoftTissue.nii.gz",
         "lm": "/s/xnat_shadow/nodes/lms/nodes_101_Ta91212_CAP1p5SoftTissue.nii.gz",
     }
-    # %%
+# %%
     keys = ["image", "lm"]
     L = LoadSITKd(keys=["image", "lm"])
     E = EnsureChannelFirstd(keys=keys)
@@ -292,36 +292,35 @@ if __name__ == "__main__":
         std=1,
     )
 
-    # %%
-    # %%
-    # SECTION:--------------------  Whole_collated--------------------------------------------------------------------------------------
+# %%
+# SECTION:--------------------  Whole_collated-------------------------------------------------------------------------------------- <CR> <CR>
 
     d1 = E(L(d1))
     d2 = E(L(d2))
     d3 = Res(d2)
     d4 = Res(d1)
 
-    # %%
+# %%
     batch = [[d3], [d4]]
 
     b2 = source_collated(batch)
     # b2 = whole_collated(batch)
-    # %%
-    # %%
-    # SECTION:-------------------- SOURCE COLLATED--------------------------------------------------------------------------------------
+# %%
+# %%
+# SECTION:-------------------- SOURCE COLLATED-------------------------------------------------------------------------------------- <CR> <CR>
 
     d1 = ResizePC(E(L(d1)))
     d2 = E(L(d2))
     d3 = Res(d2)
-    # %%
-    # SECTION:-------------------- 2--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- 2-------------------------------------------------------------------------------------- <CR> <CR>
 
     d1 = E(L(d1))
     d2 = E(L(d2))
     d3 = Re(d2)
     d4 = Re(d1)
 
-    # %%
+# %%
     batch = [d3, d4]
 
     bx = whole_collated(batch)

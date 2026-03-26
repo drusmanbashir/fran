@@ -2,7 +2,6 @@
 import sys
 
 from fastcore.meta import delegates
-from fastcore.script import store_attr
 
 sys.path += ["/home/ub/Dropbox/code/fran"]
 
@@ -296,7 +295,7 @@ class Discriminator_ub(nn.Module):
         self, in_channels, num_levels, f_maps, patch_size, scalar_output=False
     ):
         super().__init__()
-        store_attr("in_channels")
+        self.in_channels = in_channels
         self.dummy = torch.rand(1, self.in_channels, *patch_size)
         strides = [2] * (num_levels) + [1]
         orders = ["sl"] + ["sil"] * (num_levels)

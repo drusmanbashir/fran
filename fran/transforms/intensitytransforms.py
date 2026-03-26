@@ -17,7 +17,9 @@ class NormaliseClip(Transform):
     def __init__(self, clip_range, mean, std):
         # super().__init__(keys, allow_missing_keys)
 
-        store_attr("clip_range,mean,std")
+        self.clip_range = clip_range
+        self.mean = mean
+        self.std = std
 
     def __call__(self, data: Mapping[Hashable, torch.Tensor]):
         d = self.clipper(data)
@@ -51,7 +53,8 @@ class RandRandGaussianNoised(RandomizableTransform, MapTransform):
     ):
         MapTransform.__init__(self, keys, False)
         RandomizableTransform.__init__(self, prob)
-        store_attr("std_limits,dtype")
+        self.std_limits = std_limits
+        self.dtype = dtype
 
     def randomize(self):
         super().randomize(None)
@@ -156,7 +159,9 @@ def zero_to_one(func):
 
 class ClipCenter(KeepBBoxTransform):
     def __init__(self, clip_range, mean, std):
-        store_attr()
+        self.clip_range = clip_range
+        self.mean = mean
+        self.std = std
 
     def func(self, x):
         img, mask = x
@@ -170,7 +175,9 @@ class ClipCenter(KeepBBoxTransform):
 
 class ClipCenterI(ItemTransform):
     def __init__(self, clip_range, mean, std):
-        store_attr()
+        self.clip_range = clip_range
+        self.mean = mean
+        self.std = std
 
     def encodes(self, x):
         img, mask = x

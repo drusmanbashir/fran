@@ -4,7 +4,7 @@ from typing import Union
 import ipdb
 import numpy as np
 import torch
-from fastcore.basics import listify, store_attr
+from fastcore.basics import listify
 from fasttransform.transform import ItemTransform
 from monai.config.type_definitions import KeysCollection
 from monai.transforms.transform import MapTransform
@@ -34,7 +34,7 @@ class MonaiDictTransform(MapTransform):
 
 class Squeeze(ItemTransform):
     def __init__(self, dim):
-        store_attr()
+        self.dim = dim
 
     def encodes(self, x):
         outputs = []
@@ -69,7 +69,7 @@ class KeepBBoxTransform(ItemTransform):
 
 class ValidAndTrainingTransform(ItemTransform):
     def __init__(self, aug):  # type: ignore
-        store_attr()
+        self.aug = aug
 
     def encodes(self, x):
         if np.random.rand() < self.p:
@@ -87,7 +87,8 @@ class TrainingAugmentations(KeepBBoxTransform):
         assert len(p) == len(augs), (
             "Either provide a single probability for all augs, or a list of probabilities of equal length as augs"
         )
-        store_attr()
+        self.augs = augs
+        self.p = p
         super().__init__()
 
     def func(self, x):
@@ -112,7 +113,7 @@ class TrainingAugmentationsListOfLists(TrainingAugmentations):
 
 class GenericPairedOrganTransform(ItemTransform):
     def __init__(self, func):
-        store_attr()
+        self.func = func
 
     def encodes(self, x):
         final_img_mask_pairs = []

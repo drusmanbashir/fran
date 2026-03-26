@@ -2,7 +2,6 @@
 import shutil
 from pathlib import Path
 
-from fastcore.all import store_attr
 from utilz.fileio import save_list
 from utilz.helpers import multiprocess_multiarg
 
@@ -23,7 +22,10 @@ class PrepRawData:
         mask_id,
         output_folder: Path,
     ):
-        store_attr(but="imgs_folder,masks_folder")
+        self.dataset_name = dataset_name
+        self.img_id = img_id
+        self.mask_id = mask_id
+        self.output_folder = output_folder
         self.img_src_files = self.img_folder.glob("*")
         self.mask_src_files = self.masks_folder.glob("*")
 

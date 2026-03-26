@@ -15,7 +15,7 @@ from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
 from fran.managers import Project
-from fran.managers.data.training2 import (
+from fran.managers.data.training import (
     DataManagerBaseline,
     DataManagerDual,
     DataManagerLBD,
@@ -548,7 +548,7 @@ class Trainer:
         return Path(last) if last else None
 
 
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR>
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR>
 
 # %%
 if __name__ == "__main__":
@@ -583,7 +583,7 @@ if __name__ == "__main__":
     # counts = df.groupby("case_id").size()
     # counts2 = counts.sort_values(ascending=False)
     # bb= counts2.index[:200]
-    # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR>
     train_indices = None
     bs = 4
     device_id = 0
@@ -613,11 +613,11 @@ if __name__ == "__main__":
     cbs = []
     wandb_grid_epoch_freq = 15
     val_every_n_epochs = 5
-    # %%
-    # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# %%
+# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm = Trainer(P.project_title, conf, run_name)
-    # %%
+# %%
     Tm.setup(
         compiled=compiled,
         train_indices=train_indices,
@@ -635,14 +635,14 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-    # %%
+# %%
 
     Tm.fit()
     # model(inputs)
-    # %%
+# %%
     conf = Tm.configs
     conf["model_params"]
-    # %%
+# %%
     N = Tm.N
     D = Tm.D
     D.setup()
@@ -650,7 +650,7 @@ if __name__ == "__main__":
     tmt = D.train_manager
     tmv = D.valid_manager
 
-    # %%
+# %%
     tmt.collate_fn
 
     tmv.collate_fn
@@ -660,10 +660,10 @@ if __name__ == "__main__":
     dl = tmv.dl
     iteri = iter(dl)
     batch = next(iteri)
-    # %%
+# %%
     batch["image"].shape
     batch["lm"].shape
-    # %%
+# %%
 
     patch_overlap = 0
     mode = "constant"
@@ -671,3 +671,5 @@ if __name__ == "__main__":
     sw_device = "cuda:1"
     bs = 1  # start lower if you are hitting OOM
 # %%
+
+

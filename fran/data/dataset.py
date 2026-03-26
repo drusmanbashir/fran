@@ -30,7 +30,6 @@ from pathlib import Path
 import itk
 import numpy as np
 import SimpleITK as sitk
-from fastcore.all import store_attr
 from monai.data.dataset import Dataset, PersistentDataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.compose import Compose
@@ -530,7 +529,8 @@ class SavePatchd(MapTransform):
 
     def __init__(self, keys, output_folder, postfix_channel=False):
         super().__init__(keys, False)
-        store_attr("output_folder,postfix_channel")
+        self.output_folder = output_folder
+        self.postfix_channel = postfix_channel
 
     def func(self, cropped_tnsr, bbox):
         chs = cropped_tnsr.shape[0]
@@ -601,7 +601,11 @@ class Affine3D(MapTransform):
         scale_ranges: [min,max]
         """
         super().__init__(keys, allow_missing_keys)
-        store_attr("p,rotate_max,translate_factor,scale_ranges,shear")
+        self.p = p
+        self.rotate_max = rotate_max
+        self.translate_factor = translate_factor
+        self.scale_ranges = scale_ranges
+        self.shear = shear
 
     def __call__(
         self, data: Mapping[Hashable, torch.Tensor]

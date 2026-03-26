@@ -104,7 +104,7 @@ class NeptuneManager(NeptuneLogger):
         prefix: str = "training",
         **neptune_run_kwargs: Any,
     ):
-        store_attr("project")
+        self.project = project
         project_nep, api_token = get_neptune_config()
         os.environ["NEPTUNE_API_TOKEN"] = api_token
         os.environ["NEPTUNE_PROJECT"] = project_nep

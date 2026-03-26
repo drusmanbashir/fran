@@ -445,7 +445,9 @@ class PermuteImageMask(RandomizableTransform, MapTransform):
     ):
         MapTransform.__init__(self, keys, False)
         RandomizableTransform.__init__(self, prob)
-        store_attr()
+        self.keys = keys
+        self.prob = prob
+        self.do_transform = do_transform
 
     def func(self, x):
         if np.random.rand() < self.p:
@@ -580,7 +582,11 @@ class AffineTrainingTransform3D(KeepBBoxTransform):
         params:
         scale_ranges: [min,max]
         """
-        store_attr()
+        self.p = p
+        self.rotate_max = rotate_max
+        self.translate_factor = translate_factor
+        self.scale_ranges = scale_ranges
+        self.shear = shear
 
     def func(self, x):
         img, mask = x
@@ -680,7 +686,8 @@ def expand_lesion(lesion_start_ind, lesion_end_ind, all_locs, expand_factor=0.2)
 
 class GrowTumour(ItemTransform):
     def __init__(self, p=0.3, grow_max=0.5):
-        store_attr()
+        self.p = p
+        self.grow_max = grow_max
 
     def encodes(self, x):
         if np.random.uniform() > self.p:
@@ -747,7 +754,7 @@ class CropImgMask(KeepBBoxTransform):
 class CropExtra(ItemTransform):
     def __init__(self, patch_size):
 
-        store_attr()
+        self.patch_size = patch_size
 
     def encodes(self, x):
         img, mask = x
@@ -851,7 +858,8 @@ def warp(x):
 class Subsample(ItemTransform):  # TRAINING TRANSFORM
     # Use for any number of dims as long as sample factor matches
     def __init__(self, sample_factor=[1, 2, 2], dim=2):
-        store_attr()
+        self.sample_factor = sample_factor
+        self.dim = dim
 
     def encodes(self, x):
         img, mask = x
@@ -950,7 +958,8 @@ class ToTensorImageMask(ItemTransform):
     """
 
     def __init__(self, img_dtype=torch.float, mask_dtype=torch.uint8):
-        store_attr()
+        self.img_dtype = img_dtype
+        self.mask_dtype = mask_dtype
 
     def encodes(self, x):
         img, mask = x
@@ -979,7 +988,7 @@ class WholeImageBinaryMask(ItemTransform):
     """
 
     def __init__(self, output_size):
-        store_attr()
+        self.output_size = output_size
 
     def encodes(self, x):
         output_img = []
@@ -1064,7 +1073,11 @@ class CenteredPatch2(ItemTransform):
         stride_max=[4, 2, 2],
     ):
 
-        store_attr(but="patch_size")
+        self.expand_by = expand_by
+        self.minimum_num_slices = minimum_num_slices
+        self.random_shift = random_shift
+        self.random_sample = random_sample
+        self.stride_max = stride_max
         self.mod_patch_size = [int(x + x * expand_by) for x in patch_size]
 
     def encodes(
@@ -1166,7 +1179,11 @@ class CenteredPatch(ItemTransform):
         stride=[1, 1, 1],
     ):
 
-        store_attr(but="patch_size")
+        self.expand_by = expand_by
+        self.minimum_num_slices = minimum_num_slices
+        self.random_shift = random_shift
+        self.random_sample = random_sample
+        self.stride = stride
         self.mod_patch_size = [int(x + x * expand_by) for x in patch_size]
 
     def encodes(
@@ -1294,7 +1311,7 @@ class ExpandAndPadTorch(ItemTransform):
 class GetLabelCentroids(ItemTransform):
     def __init__(self, crop_center):
         crop_center = listify(crop_center)
-        store_attr()
+        self.crop_center = crop_center
 
     def encodes(self, x):
         img, mask, case_info = x
@@ -1331,7 +1348,11 @@ class CenteredPatch(ItemTransform):
         stride=[1, 1, 1],
     ):
 
-        store_attr(but="patch_size")
+        self.expand_by = expand_by
+        self.minimum_num_slices = minimum_num_slices
+        self.random_shift = random_shift
+        self.random_sample = random_sample
+        self.stride = stride
         self.mod_patch_size = [int(x + x * expand_by) for x in patch_size]
 
     def encodes(
@@ -1473,7 +1494,9 @@ class Contextual2DArrays(ItemTransform):
     """
 
     def __init__(self, num_samples_per_case=5, ch=3, step=2):
-        store_attr()
+        self.num_samples_per_case = num_samples_per_case
+        self.ch = ch
+        self.step = step
 
     def encodes(self, x):
         img, mask = x
@@ -1569,7 +1592,7 @@ class Unsqueeze(
     KeepBBoxTransform
 ):  # pass this an augmentation which will be applied in turn to image and mask
     def __init__(self):
-        store_attr()
+        pass
 
     def func(self, x):
         img, mask = x

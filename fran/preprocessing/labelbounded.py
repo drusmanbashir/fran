@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 import ray
-from fastcore.basics import GetAttr, store_attr
+from fastcore.basics import GetAttr
 from fran.configs.parser import is_excel_None
 from fran.preprocessing.preprocessor import (
     Preprocessor,
@@ -137,7 +137,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             mask_label: Specific label value to use for cropping. If None, uses all labels >0
         """
 
-        existing_fldr = folder_names_from_plan(project, plan).get("data_folder_lbd")
+        existing_fldr = folder_names_from_plan(project, plan)["data_folder_lbd"]
         existing_fldr = Path(existing_fldr)
         if existing_fldr.exists():
             headline(
@@ -285,7 +285,9 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
     """
 
     def __init__(self, project, data_folder, fg_indices_exclude: list = None) -> None:
-        store_attr()
+        self.project = project
+        self.data_folder = data_folder
+        self.fg_indices_exclude = fg_indices_exclude
         self.data_folder = Path(data_folder)
         self.output_folder = Path(data_folder)
 
