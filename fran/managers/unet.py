@@ -50,6 +50,7 @@ class UNetManager(LightningModule):
         configs,
         lr=None,
         sync_dist=False,
+        monitor="train0_loss_dice",
     ):
         super().__init__()
 
@@ -61,6 +62,7 @@ class UNetManager(LightningModule):
         self.loss_params = configs["loss_params"]
         self.lr = lr if lr else self.model_params["lr"]
         self.model = self.create_model()
+        self.monitor =monitor
 
     # def on_fit_start(self):
     #     self.create_loss_fnc()
@@ -177,21 +179,55 @@ class UNetManager(LightningModule):
             add_dataloader_idx=False,
         )
 
-    def configure_optimizers(self):
-        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        scheduler = ReduceLROnPlateau(optimizer, "min", patience=30)
-        output = {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "monitor": "train0_loss_dice",
-                "frequency": 2,
-                # If "monitor" references validation metrics, then "frequency" should be set to a
-                # multiple of "trainer.check_val_every_n_epoch".
-            },
+    def _optimizer_from_config(self):
+        optimizer_name = str(self.model_params.get("optimizer", "Adam"))
+        lr = float(self.lr)
+        weight_decay = float(self.model_params.get("weight_decay", 0.0))
+        optimizer_name_norm = optimizer_name.lower()
+        if optimizer_name_norm == "adam":
+            return torch.optim.Adam(
+                self.model.parameters(), lr=lr, weight_decay=weight_decay
+            )
+        if optimizer_name_norm == "adamw":
+            return torch.optim.AdamW(
+                self.model.parameters(), lr=lr, weight_decay=weight_decay
+            )
+        if optimizer_name_norm == "sgd":
+            momentum = float(self.model_params.get("momentum", 0.9))
+            return torch.optim.SGD(
+                self.model.parameters(),
+                lr=lr,
+                momentum=momentum,
+                weight_decay=weight_decay,
+            )
+        raise ValueError(f"Unsupported optimizer: {optimizer_name}")
+
+    def _scheduler_from_config(self, optimizer):
+        scheduler_name = self.model_params.get("lr_scheduler", "ReduceLROnPlateau")
+        if scheduler_name in (None, "", False):
+            return None
+        if str(scheduler_name).lower() != "reducelronplateau":
+            raise ValueError(f"Unsupported lr_scheduler: {scheduler_name}")
+
+        scheduler = ReduceLROnPlateau(
+            optimizer,
+            str(self.model_params.get("scheduler_mode", "min")),
+            patience=int(self.model_params.get("scheduler_patience", 30)),
+        )
+        return {
+            "scheduler": scheduler,
+            "monitor": self.model_params.get("scheduler_monitor", self.monitor),
+            "frequency": int(self.model_params.get("scheduler_frequency", 2)),
         }
+
+    def configure_optimizers(self):
+        optimizer = self._optimizer_from_config()
+        output = {"optimizer": optimizer}
+        scheduler = self._scheduler_from_config(optimizer)
+        if scheduler is not None:
+            output["lr_scheduler"] = scheduler
         return output
+
 
     def forward(self, inputs):
         return self.model(inputs)

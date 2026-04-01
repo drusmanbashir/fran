@@ -175,8 +175,8 @@ class CaseIDRecorder(Callback):
             self.store_results(trainer)
             self.reset()
 
-    def _store(self, trainer, stage, loss_dict, epoch):
-        mini_df = self.create_limited_df(loss_dict)
+    def _store(self, trainer, stage, loss_dicts, epoch):
+        mini_df = self.create_limited_df(loss_dicts)
         df_final = self.pivot_batch_cols(mini_df)
         val_vars = [
             var for var in df_final.columns if "dice" in var
@@ -195,9 +195,26 @@ class CaseIDRecorder(Callback):
         figs_labels_caseidchunks = self.create_plotly(
             df_long, stage, chunk_size=self.plot_x
         )
-        for label in figs_labels_caseidchunks.keys():
-            figs = figs_labels_caseidchunks[label]
-            for ind, (fig_casegroup, df_chunk, cases_chunk) in enumerate(figs):
+
+        self._save_and_log_plotly(
+            figs=figs_labels_caseidchunks,
+            trainer=trainer,
+            stage=stage,
+            epoch=epoch,
+        )
+        if update_case_ids_json is not None:
+            update_case_ids_json(
+                trainer=trainer,
+                pl_module=trainer.lightning_module,
+                stage=stage,
+                epoch=epoch,
+                df_long=df_long,
+            )
+
+    def _save_and_log_plotly(self, figs, trainer, stage, epoch):
+        for label in figs.keys():
+            figsi = figs[label]
+            for ind, (fig_casegroup, df_chunk, cases_chunk) in enumerate(figsi):
                 fig_fname = (
                     f"{self.local_folder}/{stage}_{epoch}_{label}_casesgp{ind}.png"
                 )
@@ -212,14 +229,7 @@ class CaseIDRecorder(Callback):
                     )
                 except AttributeError as e:
                     cprint(e, color="red")
-        if update_case_ids_json is not None:
-            update_case_ids_json(
-                trainer=trainer,
-                pl_module=trainer.lightning_module,
-                stage=stage,
-                epoch=epoch,
-                df_long=df_long,
-            )
+
 
     def _is_wandb_logger(self, trainer) -> bool:
         logger = getattr(trainer, "logger", None)
@@ -234,7 +244,6 @@ class CaseIDRecorder(Callback):
         if not self._is_wandb_logger(trainer):
             return
         import wandb
-
         try:
             run = trainer.logger.experiment
             table = wandb.Table(dataframe=df_long.reset_index(drop=True))
@@ -248,10 +257,10 @@ class CaseIDRecorder(Callback):
         self.dfs["epoch"] = epoch
         # cprint("CaseIDRecorder: Storing results", color = "green", italic=True)
         if self.incrementing == False:
-            for stage, loss_dict in zip(
+            for stage, loss_dicts in zip(
                 ["train", "valid"], [self.loss_dicts_train, self.loss_dicts_valid]
             ):
-                self._store(trainer, stage, loss_dict, epoch)
+                self._store(trainer, stage, loss_dicts, epoch)
         else:
             self._store(trainer, "train2", self.loss_dicts_train2, epoch)
         trainer.dfs = self.dfs
@@ -291,7 +300,7 @@ class CaseIDRecorder(Callback):
         case_ids = self.worst_case_ids.get(stage)
         if case_ids is None:
             self._set_worst_case_ids(df_long, stage)
-        case_ids = self.worst_case_ids.get(stage)
+            case_ids = self.worst_case_ids.get(stage)
         return case_ids
 
     def _set_worst_case_ids(self, df_long, stage):

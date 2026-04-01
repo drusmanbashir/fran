@@ -510,15 +510,15 @@ if __name__ == "__main__":
 
     run_kw = run_w
     run_ = inferer_from_params(run_kw)
-    if "Whole" in str(run_):
-        label_loc = TSL.abdomen.label_localiser
-    elif "Base" in str(run_):
-        label_loc = TSL.abdomen.label_minimal
-    else: raise ValueError
 
+    if "Whole" in str(run_):
+        label_loc = TSL.kidney.label_localiser
+    elif "Base" in str(run_):
+        label_loc = TSL.kidney.label_minimal
+    else: raise ValueError
     safe_mode = True
-    overwrite = False
     overwrite = True
+    overwrite = False
     debug_ = True
     debug_ = False
     save_channels = False
@@ -537,29 +537,28 @@ if __name__ == "__main__":
         debug=debug_,
     )
 
-# %%
-    bads =[ "00183"]
-    imgs = kits_imgs
-    imgs_out=[]
-    bads_out=[]
-    for img in imgs:
-        print(img)
-        add=True
-        for bad in bads:
-            if bad in img.name:
-                print(f"Not added{img.name}" )
-                add=False
-                bads_out.append(img)
-        if add==True:
-            imgs_out.append(img)
-
 
 # %%
-
     imgs = imgs_bosniak[:10]
-    imgs=imgs_out
-    imgs = bads_out
-    preds = En.run(imgs,chunksize=1,overwrite=overwrite)
+    imgs = kits_imgs
+
+    imgs_addd = [im for im in kits_imgs if "00568" in im.name][0]
+    imgs.insert(0,imgs_addd)
+    preds = En.run(imgs_addd,chunksize=1,overwrite=overwrite)
+# %%
+    pred = preds[0]['pred']
+    image = load_images_nifti(imgs_addd)[0]
+    image['image'].shape
+    img = image['image'].unsqueeze(0)
+    pred.shape
+    ImageMaskViewer([img,pred],'im')
+
+
+    img = batch['image']
+    pred = batch['pred']
+    ImageMaskViewer([img,pred],'im')
+
+    
 # %%
 # SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 

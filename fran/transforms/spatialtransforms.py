@@ -195,6 +195,16 @@ class CropForegroundMinShaped(MapTransform):
         return d
 
 
+class UnsqueezeDimd(MapTransform):
+    def __init__(self, keys, dim=0):
+        super().__init__(keys)
+        self.dim = dim
+
+    def __call__(self, data):
+        d = dict(data)
+        for k in self.keys:
+            d[k] = d[k].unsqueeze(self.dim)
+        return d
 # %%
 class ExtractContiguousSlicesd(RandomizableTransform, MapTransform):
     """
@@ -1587,16 +1597,6 @@ class StrideRandom2(ItemTransform):
                 print(x[0].shape, x[1].shape, stride)
         return img, mask
 
-
-class Unsqueeze(
-    KeepBBoxTransform
-):  # pass this an augmentation which will be applied in turn to image and mask
-    def __init__(self):
-        pass
-
-    def func(self, x):
-        img, mask = x
-        return img.unsqueeze(0), mask.unsqueeze(0)
 
 
 @GenericPairedOrganTransform

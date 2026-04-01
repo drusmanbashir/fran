@@ -5,6 +5,7 @@ import ipdb
 
 tr = ipdb.set_trace
 import os
+import secrets
 from pathlib import Path
 from typing import Any, Optional
 
@@ -199,10 +200,21 @@ def _new_run_id(
     except Exception:
         pass
 
+    tried_suffixes = set()
     while True:
         suffix = random_real_word(3, 5).upper()
+        if suffix in tried_suffixes:
+            break
+        tried_suffixes.add(suffix)
         run_id = f"{prefix}-{suffix}"
         if run_id not in used and suffix not in used_suffixes:
+            return run_id
+
+    while True:
+        suffix = random_real_word(3, 5).upper()
+        digit = str(secrets.randbelow(10))
+        run_id = f"{prefix}-{suffix}{digit}"
+        if run_id not in used:
             return run_id
 
 
@@ -542,5 +554,3 @@ if __name__ == "__main__":
     id = f"{prefix}-{max_seq + 1:0{int(width)}d}"
 
 # %%
-
-

@@ -1,10 +1,6 @@
-from __future__ import annotations
-
 import random
 from pathlib import Path
-from typing import Any
 
-import lightning as pl
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -13,36 +9,26 @@ from fran.transforms.spatialtransforms import one_hot
 from fran.utils.colour_palette import colour_palette
 from fran.utils.string_works import info_from_filename
 from lightning.pytorch.callbacks import Callback
-from monai.data.meta_tensor import MetaTensor
 from PIL import Image, ImageDraw, ImageFont
 from torchvision.utils import make_grid
 
 
 class WandbImageGridCallback(Callback):
-    def __init__(
-        self,
-        classes,
-        patch_size,
-        grid_rows=6,
-        imgs_per_batch=4,
-        publish_deep_preds=False,
-        apply_activation=True,
-        epoch_freq=5,
-    ):
-        if not isinstance(patch_size, torch.Size):
-            patch_size = torch.Size(patch_size)
-        self.stride = int(patch_size[0] / imgs_per_batch)
+    def __init__(self, classes, patch_size, grid_rows=6, imgs_per_batch=4, epoch_freq=5):
+        self.patch_size = torch.Size(patch_size)
+        self.stride = int(self.patch_size[0] / imgs_per_batch)
         self.classes = classes
-        self.patch_size = patch_size
         self.grid_rows = grid_rows
         self.imgs_per_batch = imgs_per_batch
-        self.publish_deep_preds = publish_deep_preds
-        self.apply_activation = apply_activation
         self.epoch_freq = epoch_freq
+        self.reset_grid()
+
+    def reset_grid(self):
         self.grid_imgs = []
         self.grid_preds = []
         self.grid_labels = []
         self.grid_case_ids = []
+        self.val_start_idx = None
 
     def on_train_start(self, trainer, pl_module):
         trainer.store_preds = False
@@ -52,21 +38,12 @@ class WandbImageGridCallback(Callback):
     def on_train_epoch_start(self, trainer, pl_module):
         epoch = trainer.current_epoch + 1
         if epoch % self.epoch_freq == 0:
-            self.grid_imgs = []
-            self.grid_preds = []
-            self.grid_labels = []
-            self.grid_case_ids = []
+            self.reset_grid()
 
     def on_validation_epoch_start(self, trainer, pl_module):
         self.validation_grid_created = False
 
-    def on_train_batch_start(
-        self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
-        batch: Any,
-        batch_idx: int,
-    ) -> None:
+    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
         epoch = trainer.current_epoch + 1
         if epoch % self.epoch_freq == 0:
             trainer.store_preds = trainer.global_step % self.freq == 0
@@ -79,52 +56,43 @@ class WandbImageGridCallback(Callback):
         self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
     ):
         if trainer.store_preds and not self.validation_grid_created:
+            self.pad_to_row()
+            self.val_start_idx = self.grid_item_count()
             self.populate_grid_val(pl_module, batch)
             self.validation_grid_created = True
 
     def on_train_epoch_end(self, trainer, pl_module):
         epoch = trainer.current_epoch + 1
-        if epoch % self.epoch_freq != 0 or len(getattr(self, "grid_imgs", [])) == 0:
+        if epoch % self.epoch_freq != 0 or len(self.grid_imgs) == 0:
             return
 
-        merged = []
-        for grd in [self.grid_imgs, self.grid_preds, self.grid_labels]:
-            merged.append(torch.cat(grd))
-        grd = torch.stack(merged)
-        grd2 = (
-            grd.permute(1, 0, 2, 3, 4)
-            .contiguous()
-            .view(-1, 3, grd.shape[-2], grd.shape[-1])
-        )
+        grid_stack = self.stack_grids()
+        max_items = self.imgs_per_batch * 10
+        grid_stack = grid_stack[:, :max_items]
+        grid_tiles = self.to_grid_tiles(grid_stack)
         padding = 1
-        grd3 = make_grid(
-            grd2, nrow=self.imgs_per_batch * 3, scale_each=True, padding=padding
+        rendered_grid = make_grid(
+            grid_tiles, nrow=self.imgs_per_batch * 3, scale_each=True, padding=padding
         )
-        img = grd3.permute(1, 2, 0).cpu().numpy().astype("uint8")
-        case_ids = [case_id for case_row in self.grid_case_ids for case_id in case_row]
-        img = self.annotate_grid(
-            img,
+        rendered_image = rendered_grid.permute(1, 2, 0).cpu().numpy().astype("uint8")
+        case_ids = self.flatten_case_ids(max_items)
+        val_start_idx = self.val_start_idx
+        if val_start_idx is not None and val_start_idx >= max_items:
+            val_start_idx = None
+        rendered_image = self.annotate_grid(
+            rendered_image,
             case_ids,
-            grd.shape[-1],
-            grd.shape[-2],
+            grid_stack.shape[-1],
+            grid_stack.shape[-2],
             self.imgs_per_batch,
             padding,
+            val_start_idx,
         )
 
         run = trainer.logger.experiment
-        run.log({"images/grid": wandb.Image(img)})
+        run.log({"images/grid": wandb.Image(rendered_image)})
 
     def populate_grid_val(self, pl_module, batch):
-        def _randomize():
-            n_slices = img.shape[-1]
-            batch_size = img.shape[0]
-            self.slices = [
-                random.randrange(0, n_slices) for _ in range(self.imgs_per_batch)
-            ]
-            self.batches = [
-                random.randrange(0, batch_size) for _ in range(self.imgs_per_batch)
-            ]
-
         img = batch["image"].cpu()
         label = batch["lm"].cpu().squeeze(1)
         label = one_hot(label, self.classes, axis=1)
@@ -133,80 +101,93 @@ class WandbImageGridCallback(Callback):
         assert pred.dim() == img.dim(), "pred dim does not match img dim"
         pred = F.softmax(pred.to(torch.float32), dim=1)
 
-        _randomize()
-        case_ids = self.case_ids_from_batch(batch)
-        img, label, pred = (
-            self.img_to_grd(img),
-            self.img_to_grd(label),
-            self.img_to_grd(pred),
-        )
-        img, label, pred = (
-            self.scale_tensor(img),
-            self.assign_colour(label),
-            self.assign_colour(pred),
-        )
-
-        self.grid_imgs.append(img)
-        self.grid_preds.append(pred)
-        self.grid_labels.append(label)
-        self.grid_case_ids.append(
-            [case_ids[idx] if idx < len(case_ids) else "" for idx in self.batches]
-        )
+        self.append_grid_batch(img, label, pred, batch)
 
     def populate_grid(self, pl_module, batch):
-        def _randomize():
-            n_slices = img.shape[-1]
-            batch_size = img.shape[0]
-            self.slices = [
-                random.randrange(0, n_slices) for _ in range(self.imgs_per_batch)
-            ]
-            self.batches = [
-                random.randrange(0, batch_size) for _ in range(self.imgs_per_batch)
-            ]
-
         img = batch["image"].cpu()
         label = batch["lm"].cpu().squeeze(1)
-        pred = batch["pred"]
         label = one_hot(label, self.classes, axis=1)
-        if isinstance(pred, (list, tuple)):
-            pred = pred[0]
-        elif pred.dim() == img.dim() + 1:
-            pred = pred[:, 0, :]
-        pred = pred.cpu()
+        pred = batch["pred"].cpu()
         pred = F.softmax(pred.to(torch.float32), dim=1)
 
-        _randomize()
-        case_ids = self.case_ids_from_batch(batch)
-        img, label, pred = (
-            self.img_to_grd(img),
-            self.img_to_grd(label),
-            self.img_to_grd(pred),
-        )
-        img, label, pred = (
-            self.scale_tensor(img),
-            self.assign_colour(label),
-            self.assign_colour(pred),
-        )
+        self.append_grid_batch(img, label, pred, batch)
 
+    def append_grid_batch(self, img, label, pred, batch):
+        self._randomize(img)
+        img = self.img_to_grd(img)
+        label = self.img_to_grd(label)
+        pred = self.img_to_grd(pred)
+        img = self.scale_tensor(img)
+        label = self.assign_colour(label)
+        pred = self.assign_colour(pred)
         self.grid_imgs.append(img)
         self.grid_preds.append(pred)
         self.grid_labels.append(label)
-        self.grid_case_ids.append(
-            [case_ids[idx] if idx < len(case_ids) else "" for idx in self.batches]
-        )
+        self.grid_case_ids.append(self.case_ids_for_selected_batches(batch))
+
+    def case_ids_for_selected_batches(self, batch):
+        case_ids = self.case_ids_from_batch(batch)
+        case_id_row = []
+        for batch_index in self.batches:
+            if batch_index < len(case_ids):
+                case_id_row.append(case_ids[batch_index])
+            else:
+                case_id_row.append("")
+        return case_id_row
+
+    def _randomize(self, img):
+        n_slices = img.shape[-1]
+        batch_size = img.shape[0]
+        self.slices = []
+        self.batches = []
+        for _ in range(self.imgs_per_batch):
+            self.slices.append(random.randrange(0, n_slices))
+            self.batches.append(random.randrange(0, batch_size))
 
     def img_to_grd(self, tnsr):
-        if isinstance(tnsr, MetaTensor):
-            bb = torch.Tensor(tnsr)
-        else:
-            bb = tnsr
-        bb2 = bb[self.batches, :, :, :, self.slices].clone()
-        return bb2
+        return tnsr[self.batches, :, :, :, self.slices].clone()
+
+    def stack_grids(self):
+        merged_grids = []
+        merged_grids.append(torch.cat(self.grid_imgs))
+        merged_grids.append(torch.cat(self.grid_preds))
+        merged_grids.append(torch.cat(self.grid_labels))
+        return torch.stack(merged_grids)
+
+    def to_grid_tiles(self, grid_stack):
+        grid_tiles = grid_stack.permute(1, 0, 2, 3, 4).contiguous()
+        return grid_tiles.view(-1, 3, grid_stack.shape[-2], grid_stack.shape[-1])
+
+    def flatten_case_ids(self, max_items):
+        case_ids = []
+        for case_row in self.grid_case_ids:
+            for case_id in case_row:
+                case_ids.append(case_id)
+        return case_ids[:max_items]
+
+    def grid_item_count(self):
+        item_count = 0
+        for case_row in self.grid_case_ids:
+            item_count += len(case_row)
+        return item_count
+
+    def pad_to_row(self):
+        if len(self.grid_case_ids) == 0:
+            return
+        remainder = self.grid_item_count() % self.imgs_per_batch
+        if remainder == 0:
+            return
+        pad_n = self.imgs_per_batch - remainder
+        pad_shape = (pad_n, 3, *self.grid_imgs[0].shape[-2:])
+        self.grid_imgs.append(torch.zeros(pad_shape, dtype=torch.uint8))
+        self.grid_preds.append(torch.zeros(pad_shape, dtype=torch.uint8))
+        self.grid_labels.append(torch.zeros(pad_shape, dtype=torch.uint8))
+        self.grid_case_ids.append([""] * pad_n)
 
     def assign_colour(self, tnsr):
         argmax_tensor = torch.argmax(tnsr, dim=1)
-        bsz, h, w = argmax_tensor.shape
-        rgb_tensor = torch.zeros((bsz, 3, h, w), dtype=torch.uint8)
+        batch_size, height, width = argmax_tensor.shape
+        rgb_tensor = torch.zeros((batch_size, 3, height, width), dtype=torch.uint8)
 
         for key, color in colour_palette.items():
             mask = argmax_tensor == key
@@ -215,36 +196,34 @@ class WandbImageGridCallback(Callback):
         return rgb_tensor
 
     def scale_tensor(self, tnsr):
-        min_v, max_v = tnsr.min(), tnsr.max()
-        rng = max_v - min_v
-        tnsr = tnsr.repeat(1, 3, 1, 1)
-        if rng == 0:
-            return torch.zeros_like(tnsr, dtype=torch.uint8)
-        out = (tnsr - min_v) / rng
-        out = torch.clamp(out * 255, min=0, max=255)
-        return out.to(torch.uint8)
+        min_value = tnsr.min()
+        max_value = tnsr.max()
+        value_range = max_value - min_value
+        repeated_tensor = tnsr.repeat(1, 3, 1, 1)
+        if value_range == 0:
+            return torch.zeros_like(repeated_tensor, dtype=torch.uint8)
+        scaled_tensor = (repeated_tensor - min_value) / value_range
+        scaled_tensor = torch.clamp(scaled_tensor * 255, min=0, max=255)
+        return scaled_tensor.to(torch.uint8)
 
     def case_ids_from_batch(self, batch) -> list[str]:
-        image = batch.get("image")
-        if image is None or not hasattr(image, "meta"):
-            return []
-        meta = image.meta
-        fns = meta.get("filename_or_obj") or meta.get("src_filename")
-        if fns is None:
-            return []
-        if isinstance(fns, (str, Path)):
+        fns = batch["image"].meta["filename_or_obj"]
+        if isinstance(fns, str):
             fns = [fns]
         out = []
         for fn in fns:
             name = Path(str(fn)).name
-            try:
-                case_id = info_from_filename(name, full_caseid=True)["case_id"]
-            except Exception:
-                case_id = Path(name).stem
-            out.append(case_id)
+            out.append(info_from_filename(name, full_caseid=True)["case_id"])
         return out
 
-    def annotate_grid(self, img, case_ids, tile_w, tile_h, nrow, padding):
+    def draw_validation_separator(self, draw, canvas, tile_h, nrow, padding, val_start_idx):
+        if val_start_idx is None:
+            return
+        row = val_start_idx // nrow
+        y = max(0, padding + row * (tile_h + padding) - 1)
+        draw.line((0, y, canvas.size[0], y), fill=(255, 255, 0), width=6)
+
+    def annotate_grid(self, img, case_ids, tile_w, tile_h, nrow, padding, val_start_idx=None):
         canvas = Image.fromarray(img)
         draw = ImageDraw.Draw(canvas)
         font = ImageFont.load_default()
@@ -269,6 +248,7 @@ class WandbImageGridCallback(Callback):
                 fill=(0, 0, 0),
             )
             draw.text((text_x, text_y), text, fill=(255, 255, 255), font=font)
+        self.draw_validation_separator(draw, canvas, tile_h, nrow, padding, val_start_idx)
         return np.asarray(canvas)
 
 

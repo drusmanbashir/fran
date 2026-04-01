@@ -522,7 +522,7 @@ class KeepLargestConnectedComponentWithMetad(KeepLargestConnectedComponentd):
         d = dict(data)
         for key in self.key_iterator(d):
             meta = d[key].meta
-            d[key] = self.converter(d[key])
+            d[key] = self.converter(d[key].clone())
             d[key].meta = meta
         return d
 

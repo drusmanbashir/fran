@@ -168,19 +168,19 @@ def parse_input(imgs_inp):
                 raise TypeError(f"Unsupported input type: {type(dat)}")
             dat = [dat]
         imgs_out.extend(dat)
-    # imgs_out = [{"image": img} for img in imgs_out]
+    imgs_out = [{"image": img} for img in imgs_out]
     return imgs_out
 
 
 def load_images_nifti(data):
-    loader = LoadImage(reader=SITKReader)
+    loader = LoadSITKd(["image"])
     data = parse_input(data)
     data = [loader(d) for d in data]
     return data
 
 
 def load_images_pt(data):
-    loader = LoadImage( reader=TorchReader)
+    loader = LoadImaged(["image"], reader=TorchReader)
     data = parse_input(data)
     data = [loader(d) for d in data]
     return data

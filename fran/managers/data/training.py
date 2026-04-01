@@ -174,6 +174,7 @@ class DataManagerDual(LightningDataModule):
         train_indices=None,
         val_indices=None,
         val_sampling=1.0,
+        debug=False,
     ):
         super().__init__()
         self.project = Project(project_title)
@@ -190,6 +191,7 @@ class DataManagerDual(LightningDataModule):
         self.train_indices = train_indices
         self.val_indices = val_indices
         self.val_sampling = float(val_sampling)
+        self.debug = debug
 
         if save_hyperparameters:
             self.save_hyperparameters(
@@ -279,6 +281,7 @@ class DataManagerDual(LightningDataModule):
             ds_type=self.ds_type,
             keys=self.keys_tr,
             data_folder=self.data_folder,
+            debug= self.debug
         )
         self.valid_manager = cls_val(
             project=self.project,
@@ -291,6 +294,7 @@ class DataManagerDual(LightningDataModule):
             keys=self.keys_val,
             data_folder=self.data_folder,
             val_sampling=self.val_sampling,
+            debug = self.debug
         )
 
     def _call_prepare_data(self):
@@ -339,6 +343,7 @@ class DataManager(LightningDataModule):
         collate_fn=None,
         data_folder: Optional[str | Path] = None,
         val_sampling=1.0,
+        debug = False
     ):
 
         super().__init__()
@@ -362,7 +367,11 @@ class DataManager(LightningDataModule):
         self.set_effective_batch_size()
         self.set_data_folder(data_folder)
         self.set_collate_fn(collate_fn)
+        self.override_batch_size_valid_split(split=self.split)
+        self.debug = debug
 
+
+    def override_batch_size_valid_split(self, split="valid"):
         if split == "valid":
             self.batch_size = self.effective_batch_size = 1
             self.collate_fn = None
@@ -531,8 +540,9 @@ class DataManager(LightningDataModule):
             rotate_range=self.configs["affine3d"]["rotate_range"],
             scale_range=self.configs["affine3d"]["scale_range"],
         )
+        remapping_train = self.plan.get("remapping_train")
         if not is_excel_None(
-            self.plan["remapping_train"]
+            remapping_train
         ):  # note this is a very expensive transform
             orig_labels = self.plan["remapping_train"][0]
             dest_labels = self.plan["remapping_train"][1]
@@ -780,7 +790,7 @@ class DataManager(LightningDataModule):
             num_workers=num_workers,
             collate_fn=self.collate_fn,
             persistent_workers=persistent_workers,
-            pin_memory=True,
+            pin_memory=True if self.debug==False else False,
             shuffle=True,
         )
 
@@ -801,7 +811,7 @@ class DataManager(LightningDataModule):
             num_workers=num_workers,
             collate_fn=self.collate_fn,
             persistent_workers=persistent_workers,
-            pin_memory=True,
+            pin_memory=True if self.debug==False else False,
             shuffle=False,
             sampler=sampler,
         )

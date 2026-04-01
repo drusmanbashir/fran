@@ -1,5 +1,6 @@
 # %%
 import os
+import itertools as il
 
 from fran.inference.helpers import (
     filter_existing_files,
@@ -268,12 +269,11 @@ class BaseInferer(GetAttr, DictToAttr):
 
     def prepare_data(self, data, collate_fn=None):
         """
-        data: list
+        data: list of dicts
         """
 
         nw, bs = 0, 1  # Slicer bugs out
-        data_dicts= [{"image": img} for img in data]
-        self.ds = Dataset(data=data_dicts, transform=self.preprocess_compose)
+        self.ds = Dataset(data=data, transform=self.preprocess_compose)
         self.pred_dl = DataLoader(
             self.ds, num_workers=nw, batch_size=bs, collate_fn=collate_fn
         )
@@ -493,12 +493,11 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.data.dataregistry import DS
-
-    # ... run your application ...
     from fran.managers import Project
     from fran.managers.project import Project
     from fran.utils.common import *
     from monai.transforms.post.dictionary import Activationsd, AsDiscreted
+    from utilz.helpers import pp
 
     conf_fldr = os.environ["FRAN_CONF"]
     from utilz.fileio import load_yaml
@@ -513,8 +512,8 @@ if __name__ == "__main__":
     proj = Project(project_title="totalseg")
 
 # %%
-# %%
 # SECTION:-------------------- FILES and FOLDERS-------------------------------------------------------------------------------------- <CR> <CR>
+
     fldr_crc = Path("/s/xnat_shadow/crc/images")
     imgs_crc = list(fldr_crc.glob("*"))
 
@@ -568,14 +567,16 @@ if __name__ == "__main__":
 
     save_channels = False
     overwrite = False
+    overwrite = True
 
     devices = [0]
 
 # %%
     run = best_runs["totalseg"]["run_ids"][0]
-    debug_ = False
     safe_mode = True
 
+    debug_ = True
+    debug_ = False
 # %%
 
     T = BaseInferer(
@@ -588,6 +589,7 @@ if __name__ == "__main__":
     )
 
 # %%
+
 
     # preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
     imgs = imgs_curvas
@@ -803,3 +805,5 @@ if __name__ == "__main__":
 # %%
     batch["pred"].shape
 # %%
+
+
