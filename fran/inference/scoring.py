@@ -36,11 +36,6 @@ def compute_dice_fran(pred, mask, n_classes):
     return aa
 
 
-def compute_dice_sitk(pred_fn, gt_fn, labels=[1, 2]):
-    sitk.ReadImage(gt_fn)
-    sitk.ReadImage(pred_fn)
-
-
 # %%
 if __name__ == "__main__":
     from label_analysis.labels import labels_overlap

@@ -47,7 +47,6 @@ from fran.managers.data.training import (
     DataManagerDual,
     DataManagerLBD,
     DataManagerPatch,
-    DataManagerShort,
     DataManagerSource,
     DataManagerWhole,
 )
@@ -517,10 +516,6 @@ class DataManagerLBDI(DataManagerLBD, DataManagerI):
     pass
 
 
-class DataManagerShortI(DataManagerShort, DataManagerI):
-    pass
-
-
 class DataManagerPatchI(DataManagerPatch, DataManagerI):
     pass
 
@@ -598,10 +593,6 @@ class DataManagerModes:
 
 def _mode_to_spec():
     return DataManagerModes._BY_MODE.copy()
-
-
-def _mode_to_class():
-    return {mode: spec.manager_cls for mode, spec in _mode_to_spec().items()}
 
 
 def case_id_from_col(filename):

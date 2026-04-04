@@ -505,39 +505,6 @@ class BaseInferer( DictToAttr):
         return fldr
 
 
-class BaseInfererTorchScript(BaseInferer):
-    def prepare_model(self):
-        device_id = self.devices[0]
-        device = torch.device(f"cuda:{device_id}")
-        model = self.model_manager.load_from_checkpoint(
-            self.ckpt,
-            plan=self.plan,
-            project_title=self.project.project_title,
-            dataset_params=self.dataset_params,
-            strict=False,
-            map_location=device,
-        )
-        model.eval()
-        try:
-            scripted_model = torch.jit.script(model)
-            scripted_model.save("scripted_model.pt")
-            print("Model successfully converted to TorchScript.")
-        except Exception as e:
-            print(f"Script conversion failed: {e}")
-            # Attempt tracing as a fallback
-            try:
-                example_input = torch.rand(1, 1, 128, 128, 96)
-                scripted_model = torch.jit.trace(model, example_input)
-                scripted_model.save("traced_model.pt")
-                print("Model successfully traced and converted to TorchScript.")
-            except Exception as trace_e:
-                print(f"Tracing failed: {trace_e}")
-        scripted = model.to_torchscript()
-        torch.jit.save(scripted, "tmp.pt")
-        fabric = Fabric(precision="bf16-mixed", devices=self.devices, accelerator="gpu")
-        self.model = fabric.setup(model)
-
-
 if __name__ == "__main__":
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>

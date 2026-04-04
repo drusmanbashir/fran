@@ -1,11 +1,9 @@
 # %%
 
 import ipdb
-import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 import torchvision
-from fastcore.basics import listify
 from fran.utils.common import PAD_VALUE
 from lightning.pytorch.callbacks import Callback
 from utilz.cprint import cprint
@@ -123,14 +121,6 @@ class TargetLabelSanitizer(Callback):
         self.has_run = True
 
 
-class PredAsList(Callback):
-    def after_pred(self):
-        self.learn.pred = listify(self.learn.pred)
-
-    def after_loss(self):
-        self.learn.pred = self.learn.pred[0]
-
-
 class DownsampleMaskForDS(Callback):
     order = 3  # after DropBBox
 
@@ -148,16 +138,6 @@ class DownsampleMaskForDS(Callback):
                 mask_downsampled = F.interpolate(mask, size=size, mode="nearest")
                 output.append(mask_downsampled)
         self.learn.yb = [output]
-
-
-class FixPredNan(Callback):
-    "A `Callback` that terminates training if loss is NaN."
-
-    order = -9
-
-    def after_pred(self):
-        self.learn.pred = torch.nan_to_num(self.learn.pred, nan=0.5)
-        "Test if `last_loss` is NaN and interrupts training."
 
 
 def make_grid_5d_input(a: torch.Tensor, batch_size_to_plot=16):
@@ -179,8 +159,3 @@ def make_grid_5d_input(a: torch.Tensor, batch_size_to_plot=16):
     img_grid = torchvision.utils.make_grid(img_to_save2, nrow=int(batch_size_to_plot))
     return img_grid
 
-
-def make_grid_5d_input_numpy_version(a: torch.Tensor, batch_size_to_plot=16):
-    img_grid = make_grid_5d_input(a)
-    img_grid_np = img_grid.cpu().detach().permute(1, 2, 0).numpy()
-    plt.imshow(img_grid_np)

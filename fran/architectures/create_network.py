@@ -2,8 +2,11 @@ import ipdb
 import torch
 import torch.nn.functional as F
 from fran.architectures.dynunet import DynUNet, DynUNet_UB, get_kernel_strides
-from fran.architectures.nnunet import create_plainconvunet_pl, create_resencunet_l_pl
-from fran.architectures.nnunet_bk import Generic_UNet_PL
+from fran.architectures.nnunet import (
+    Generic_UNet_PL,
+    create_plainconvunet_pl,
+    create_resencunet_l_pl,
+)
 from fran.architectures.unet3d.model import UNet3D
 from monai.networks.nets import SwinUNETR
 
