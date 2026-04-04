@@ -8,7 +8,7 @@ from fran.transforms.imageio import LoadSITKd, LoadTorchd
 from fran.transforms.inferencetransforms import BBoxFromPTd
 from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.misc_transforms import (
-    ApplyBBox,
+    ApplyBBoxd,
     ChangeDtyped,
     DictToMetad,
     FgBgToIndicesd2,
@@ -362,7 +362,7 @@ class ImporterDataset(ResamplerDataset):
         self.B = BBoxFromPTd(
             keys=[lm_imported_key], spacing=self.spacing, expand_by=self.expand_by
         )
-        self.A = ApplyBBox(keys=[lm_key, image_key], bbox_key="bounding_box")
+        self.A = ApplyBBoxd(keys=[lm_key, image_key], bbox_key="bounding_box")
         self.Ind = FgBgToIndicesd2(
             keys=[lm_key], image_key="image", image_threshold=-2600
         )

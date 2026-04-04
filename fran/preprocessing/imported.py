@@ -8,7 +8,7 @@ from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import BBoxFromPTd
 from fran.transforms.misc_transforms import (
-    ApplyBBox,
+    ApplyBBoxd,
     DummyTransform,
     LabelRemapSITKd,
     MergeLabelmapsd,
@@ -117,7 +117,7 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
 
     def create_transforms(self, device):
         super().create_transforms(device=device)
-        self.A = ApplyBBox(keys=[self.lm_key, self.image_key], bbox_key="bounding_box")
+        self.A = ApplyBBoxd(keys=[self.lm_key, self.image_key], bbox_key="bounding_box")
         self.B = BBoxFromPTd(
             keys=[self.lm_imported_key],
             spacing=self.plan["spacing"],

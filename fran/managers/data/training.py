@@ -183,8 +183,8 @@ class DataManagerDual(LightningDataModule):
         self.cache_rate = cache_rate
         self.device = device
         self.ds_type = ds_type
-        self.keys_tr="L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms",
-        self.keys_val="L,E,N,Remap,ResizeP",
+        self.keys_tr = "L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms"
+        self.keys_val = "L,E,N,Remap,ResizeP"
         self.data_folder = data_folder if data_folder is not None else None
         self.manager_class_train = manager_class_train
         self.manager_class_valid = manager_class_valid
@@ -679,9 +679,10 @@ class DataManager(LightningDataModule):
         self.transforms = self.tfms_from_dict(keys)
 
     def tfms_from_dict(self, keys: str):
-        keys = keys.replace(" ", "").split(",")
+        keys2 = keys.replace(" ", "")
+        keys_list = keys2.split(",")
         tfms = []
-        for key in keys:
+        for key in keys_list:
             try:
                 tfm = self.transforms_dict[key]
                 if key == "IntensityTfms":

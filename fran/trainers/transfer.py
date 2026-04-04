@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import torch
 import torch._dynamo
 from fran.managers.unet import UNetManager
-from fran.trainers.base import checkpoint_from_model_id, switch_ckpt_keys
+from fran.trainers.base import select_source_ckpt, switch_ckpt_keys
 from fran.trainers.trainer import Trainer
 from torch import nn
 from utilz.stringz import headline
@@ -16,21 +14,29 @@ torch._dynamo.config.suppress_errors = True
 
 
 class TrainingManagerTransfer(Trainer):
-    def __init__(self, project, config, run_name, freeze=None):
+    def __init__(
+        self,
+        project,
+        configs,
+        run_name,
+        freeze=None,
+        source_ckpt="interactive",
+    ):
         assert freeze in [None, "encoder"], "Freeze either None or encoder"
         assert run_name is not None, "Please specificy a run to transfer learning from"
-        source_ckpt = checkpoint_from_model_id(run_name)
+        assert source_ckpt in ["interactive", "last"]
+        source_ckpt = select_source_ckpt(run_name, source_ckpt)
         assert source_ckpt is not None, (
             f"No checkpoint found for source run: {run_name}"
         )
         super().__init__(
             project_title=project.project_title,
-            configs=config,
+            configs=configs,
             run_name=None,
             ckpt_path=source_ckpt,
         )
         self.source_run_name = run_name
-        self.source_ckpt = Path(source_ckpt)
+        self.source_ckpt = source_ckpt
         # Transfer learning should start a fresh optimization run.
         self.ckpt = None
         self.freeze = freeze
@@ -38,8 +44,8 @@ class TrainingManagerTransfer(Trainer):
     def init_dm_unet(self, epochs, batch_size=None, override_dm_checkpoint=False):
         source_manager = self.load_source_trainer(map_location="cpu")
         self.model_source = source_manager.model
-        self.N = self.init_trainer(epochs)
         self.D = self.init_dm()
+        self.N = self.init_trainer(epochs)
         self.update_model()
         del self.model_source
 
@@ -55,9 +61,6 @@ class TrainingManagerTransfer(Trainer):
             )
         headline(f"Source model loaded from checkpoint: {self.source_ckpt}")
         return source
-
-    def update_trainer(self):
-        self.N.model_params = self.configs["model_params"]
 
     def update_model(self):
         self.replace_final_layer_src_model()
@@ -132,7 +135,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    P = Project("nodes")
+    P = Project("kits2")
     # conf['model_params']['lr']=1e-3
 
     # P.add_data([DS.totalseg])
@@ -143,19 +146,20 @@ if __name__ == "__main__":
     print(conf["model_params"])
 
     plan = conf["plan_train"]
-    pp(plan)
+    print(plan)
 
-    # %%
+# %%
     device_id = 1
     run_name = None
     freeze = "encoder"
     freeze = None
     bs = 10  # if none, will get it from the conf file
+    bs = None
     run_name = "LITS-811"
     run_name = "LITS-919"
     run_name = "LITS-949"
     run_name = "LITS-911"
-    run_name = "LITS-1290"
+    run_name = "KITS2-bah"
     # run_name ='LITS-836'
     compiled = False
     profiler = False
@@ -167,9 +171,9 @@ if __name__ == "__main__":
     description = f"Transfer learning from {run_name}. Freeze: {freeze}"
 
     Tm = TrainingManagerTransfer(
-        project=P, config=conf, run_name=run_name, freeze=freeze
+        project=P, configs=conf, run_name=run_name, freeze=freeze
     )
-    # %%
+# %%
     Tm.setup(
         lr=1e-2,
         compiled=compiled,
@@ -182,14 +186,14 @@ if __name__ == "__main__":
         tags=tags,
         description=description,
     )
-    # %%
+# %%
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
-    # %%
+# %%
     Tm.fit()
 
-    # %%
-    # SECTION:-------------------- Tinkering with N-------------------------------------------------------------------------------------- <CR>
+# %%
+# SECTION:-------------------- Tinkering with N-------------------------------------------------------------------------------------- <CR>
 
     Tm.N.model.seg_outputs[-1]
     N = Tm.N
@@ -198,18 +202,18 @@ if __name__ == "__main__":
     for param in enc.parameters():
         param.requires_grad = False
 
-    # %%
+# %%
     N.freeze()
     cc = list(N.children())
     ccc = list(cc[0].children())
     ccc[-1]
 
-    # %%
+# %%
     Tm.D.setup()
     D = Tm.D
     ds = Tm.D.train_ds
     ds = Tm.D.valid_ds
-    # %%
+# %%
     dl = Tm.D.train_dataloader()
     dl2 = Tm.D.val_dataloader()
     iteri = iter(dl)
@@ -220,12 +224,12 @@ if __name__ == "__main__":
     print(pred[0].shape)
     #
 
-    # %%
+# %%
     m1 = Tm.Ntmp.model
     m2 = Tm.N.model
     m2.load_state_dict(m1)
     m2.state_dict()
-    # %%
+# %%
     tot = 0
     failed = 0
     with torch.no_grad():
@@ -241,14 +245,14 @@ if __name__ == "__main__":
     print("Failed: ", failed)
     print("-" * 40)
 
-    # %%
-    # %%
+# %%
+# %%
     m = Tm.N.model
     [print(mm) for mm in m.named_modules()]
     Tm.N.model.seg_outputs
     Tm.model_source.seg_outputs
 
-    # %%
+# %%
     Tm.lr = 1e-3
     Tm.sync_dist = True
     epochs = 500
@@ -259,7 +263,7 @@ if __name__ == "__main__":
     Tm.D = Tm.init_dm(cache_rate)
     Tm.update_model()
     # Tm.update_trainer()
-    # %%
+# %%
 
     Tm.replace_final_layer_src_model()
     Tm.copy_weights()

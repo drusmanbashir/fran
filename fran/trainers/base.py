@@ -14,61 +14,9 @@ import shutil
 from fran.utils.common import COMMON_PATHS
 
 
-def checkpoint_from_model_id_remote(model_id, project, remote_dir):
-
-    remote_dir = str(Path(self.model_checkpoint).parent)
-    remote_dir = str(Path(ckpt_path).parent)
-    latest_ckpt = self.shadow_remote_ckpts(remote_dir)
-    hpc_settings = load_yaml(os.environ["HPC_SETTINGS"])
-    local_dir = self.project.checkpoints_parent_folder / self.run_id / "checkpoints"
-    print(f"\nSSH to remote folder {remote_dir}")
-
-    client = SSHClient()
-    client.load_system_host_keys()
-    client.connect(
-        hpc_settings["host"],
-        username=hpc_settings["username"],
-        password=hpc_settings["password"],
-    )
-
-    ftp_client = client.open_sftp()
-    try:
-        fnames = []
-        for f in sorted(
-            ftp_client.listdir_attr(remote_dir),
-            key=lambda k: k.st_mtime,
-            reverse=True,
-        ):
-            fnames.append(f.filename)
-    except FileNotFoundError:
-        print("\n------------------------------------------------------------------")
-        print(
-            f"Error:Could not find {remote_dir}.\nIs this a remote folder and exists?\n"
-        )
-        return
-
-    remote_fnames = [os.path.join(remote_dir, f) for f in fnames]
-    local_fnames = [os.path.join(local_dir, f) for f in fnames]
-    maybe_makedirs(local_dir)
-    downloaded_files = []
-    for rem, loc in zip(remote_fnames, local_fnames):
-        if Path(loc).exists():
-            print(f"Local file {loc} exists already.")
-            downloaded_files.append(loc)
-        else:
-            print(f"Copying file {rem} to local folder {local_dir}")
-            ftp_client.get(rem, loc)
-            downloaded_files.append(loc)
-
-    if not downloaded_files:
-        return None
-    latest_ckpt = max(downloaded_files, key=lambda f: Path(f).stat().st_mtime)
-    return latest_ckpt
-
-
 def checkpoint_from_model_id(
     model_id, sort_method="last", normalize_keys=True
-):  # CODE: Move this function to utils
+):
     fldr = Path(COMMON_PATHS["checkpoints_parent_folder"])
     project_fldrs = []
     for fl in fldr.rglob(model_id):
@@ -111,7 +59,7 @@ def checkpoint_from_model_id(
                 ) from e2
     elif sort_method == "best":
         tr()
-    if normalize_keys == True:
+    if normalize_keys:
         sd = torch.load(ckpt, map_location="cpu", weights_only=False)
         compiled = bool(sd["hyper_parameters"]["configs"]["model_params"]["compiled"])
         if compiled and str(ckpt).endswith(".norm.ckpt"):
@@ -120,6 +68,62 @@ def checkpoint_from_model_id(
                 ckpt = ckpt_unnorm
         elif not compiled:
             ckpt = write_normalized_ckpt(ckpt)
+    return ckpt
+
+
+def select_source_ckpt(model_id, selection_mode="interactive"):
+    assert selection_mode in ["interactive", "last"]
+    fldr = Path(COMMON_PATHS["checkpoints_parent_folder"])
+    project_fldrs = []
+    for fl in fldr.rglob(model_id):
+        if fl.is_dir():
+            project_fldrs.append(fl)
+    if len(project_fldrs) > 1:
+        raise Exception(
+            "No local files. Model may be on remote path. use download_neptune_checkpoint() \n{}".format(
+                project_fldrs
+            )
+        )
+    elif len(project_fldrs) == 0:
+        raise Exception("No project found {}".format(model_id))
+
+    checkpoints_fldr = project_fldrs[0] / "checkpoints"
+    ckpts = []
+    for ckpt in checkpoints_fldr.glob("*.ckpt"):
+        if ckpt.is_file():
+            ckpts.append(ckpt)
+    ckpts = sorted(ckpts, key=lambda p: p.stat().st_mtime, reverse=True)
+    if len(ckpts) == 0:
+        raise Exception("No checkpoint files found {}".format(checkpoints_fldr))
+
+    if selection_mode == "last":
+        ckpt = ckpts[0]
+    else:
+        headline("Available source checkpoints")
+        for i, ckpt in enumerate(ckpts, start=1):
+            print("{0}. {1}".format(i, ckpt.name))
+
+        while True:
+            selected = input("Select checkpoint number: ").strip()
+            if selected.isdigit() is False:
+                print("Enter a number.")
+                continue
+            index = int(selected)
+            if index < 1 or index > len(ckpts):
+                print("Enter a number between 1 and {}.".format(len(ckpts)))
+                continue
+            ckpt = ckpts[index - 1]
+            break
+
+    sd = torch.load(ckpt, map_location="cpu", weights_only=False)
+    compiled = bool(sd["hyper_parameters"]["configs"]["model_params"]["compiled"])
+    if compiled and str(ckpt).endswith(".norm.ckpt"):
+        ckpt_unnorm = Path(str(ckpt).replace(".norm.ckpt", ".ckpt"))
+        if ckpt_unnorm.exists():
+            ckpt = ckpt_unnorm
+    elif compiled is False:
+        ckpt = write_normalized_ckpt(ckpt)
+    headline("Selected source checkpoint: {}".format(ckpt))
     return ckpt
 
 
@@ -193,7 +197,6 @@ def switch_ckpt_keys(ckpt_path: Union[str, Path]) -> None:
     ckpt_old = str(ckpt_path).replace(".ckpt", ".ckpt_bkp")
     shutil.move(ckpt_path, ckpt_old)
     torch.save(state_dict_neo, ckpt_path)
-    # print(ckpt_state_updated.keys())
     print("Old ckpt saved as: {}".format(ckpt_old))
 
 

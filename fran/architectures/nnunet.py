@@ -69,6 +69,10 @@ class PlainConvUNetPL(PlainConvUNet, pl.LightningModule):
             nonlin_first=nonlin_first,
         )
 
+    @property
+    def seg_outputs(self):
+        return self.decoder.seg_layers
+
 
 class ResidualEncoderUNetPL(ResidualEncoderUNet, pl.LightningModule):
     def __init__(
@@ -117,6 +121,10 @@ class ResidualEncoderUNetPL(ResidualEncoderUNet, pl.LightningModule):
             bottleneck_channels=bottleneck_channels,
             stem_channels=stem_channels,
         )
+
+    @property
+    def seg_outputs(self):
+        return self.decoder.seg_layers
 
 
 def _compute_topology(plan: dict):

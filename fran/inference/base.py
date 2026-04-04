@@ -553,7 +553,7 @@ if __name__ == "__main__":
 
     best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
     run_w = best_runs["run_w"]
-    runs_tot_all = best_runs["projects"]["totalseg"]
+    runs_tot_all = best_runs["totalseg"]
     run_tot_big = runs_tot_all["run_ids"][0]
 # %%
     pp(best_runs)
