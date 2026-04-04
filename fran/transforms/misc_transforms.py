@@ -7,7 +7,7 @@ from typing import Optional, Union
 import ipdb
 import SimpleITK as sitk
 import torch
-from fran.transforms.base import MonaiDictTransform
+from fran.transforms.base import ItemTransform, MonaiDictTransform
 from label_analysis.geometry_pt import BBoxInfoFromPT
 from label_analysis.helpers import listify, relabel
 from monai.apps.detection.transforms.array import ConvertBoxMode
@@ -25,8 +25,6 @@ tr = ipdb.set_trace
 
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
-from fastcore.basics import Dict
-from fasttransform.transform import ItemTransform
 
 #
 # class BBoxFromLabelMap(MonaiDictTransform):
@@ -65,60 +63,6 @@ def merge_pt(
             result[overlay == label] = label
 
     return result
-
-
-class MaskLabelRemapd(MapTransform):
-    # there should be no channel dim
-    # remapping should include background label, e.g., 0 too. n_classes = length of this list.
-    def __init__(self, keys, remapping: dict, allow_missing_keys=False, use_sitk=True):
-        super().__init__(keys, allow_missing_keys)
-        if isinstance(remapping, str):
-            remapping = ast_literal_eval(remapping)
-        if use_sitk == True:
-            # self.remapping_train = {x: y for x, y in remapping_train}
-            self.remapper = self.remapper_sitk
-        else:
-            # self.remapping_train = remapping_train
-            self.remapper = self.remapper_pt
-        self.remapping_train = remapping
-
-    def __call__(
-        self, data: Mapping[Hashable, torch.Tensor]
-    ) -> Dict[Hashable, torch.Tensor]:
-        d = dict(data)
-        for key in self.key_iterator(d):
-            lm = d[key]
-            if not lm.dim() == 3:
-                raise ValueError("Only 3D tensors supported")
-            lm = self.remapper(lm)
-            d[key] = lm
-        return d
-
-    def remapper_pt(self, mask):
-        n_classes = len(self.remapping_train)
-        mask_out = torch.zeros(mask.shape, dtype=mask.dtype)
-        mask_tmp = one_hot(mask, n_classes, 0)
-        mask_reassigned = torch.zeros(mask_tmp.shape, device=mask.device)
-        for src, dest in self.remapping_train.items():
-            print(src)
-            # src, dest = src_des[0], src_des[1]
-            mask_reassigned[dest] += mask_tmp[src]
-
-        for x in range(n_classes):
-            mask_out[torch.isin(mask_reassigned[x], 1.0)] = x
-        return mask_out
-
-    def remapper_pt(self, lm):
-        L = LabelRemap()
-
-    def remapper_sitk(self, lm):
-        lm_dtype = lm.dtype
-        meta = lm.meta
-        lm_sitk = sitk.GetImageFromArray(lm.cpu().numpy())
-        lm_sitk = relabel(lm_sitk, self.remapping_train)
-        lm_out = sitk.GetArrayFromImage(lm_sitk)
-        lm_out = MetaTensor(lm_out, meta=meta, dtype=lm_dtype)
-        return lm_out
 
 
 class BoundingBoxYOLOd(MonaiDictTransform):
@@ -195,22 +139,6 @@ def one_hot(x, classes, axis=1):
     return torch.stack([torch.where(x == c, 1, 0) for c in range(classes)], axis=axis)
 
 
-def reassign_labels(remapping, lm):
-    # input is a torch tensor. It remaps labels and copies meta information to output tensor
-    # works 2% slower than converting to sitk first then using remap
-    n_classes = max(remapping.values()) + 1  # include bgclass
-    lm_out = torch.zeros(lm.shape, dtype=lm.dtype)
-    lm_out = MetaTensor(lm_out)
-    lm_out.copy_meta_from(lm)
-    lm_tmp = one_hot(lm, n_classes, 0)
-    lm_reassigned = torch.zeros(lm_tmp.shape, device=lm.device)
-    for src, dest in remapping.items():
-        lm_reassigned[dest] += lm_tmp[src]
-    for x in range(n_classes):
-        lm_out[torch.isin(lm_reassigned[x], 1.0)] = x
-    return lm_out
-
-
 class GetLabelsd(MapTransform):
     """
     Extract unique labels from a label-map tensor and store as a list in the output dict.
@@ -231,101 +159,6 @@ class GetLabelsd(MapTransform):
         lm = d[self.lm_key]
         labels = torch.unique(lm).detach().cpu().tolist()
         d[self.output_key] = [int(v) for v in labels]
-        return d
-
-
-class RandBinaryMorphologyd(RandomizableTransform, MapTransform):
-    """
-    Randomly apply binary dilation or erosion to the selected keys.
-    """
-
-    def __init__(
-        self,
-        keys: KeysCollection,
-        prob: float = 0.1,
-        max_filter_size: int = 3,
-        allow_missing_keys: bool = False,
-    ) -> None:
-        MapTransform.__init__(self, keys, allow_missing_keys)
-        RandomizableTransform.__init__(self, prob)
-        self.max_filter_size = max_filter_size
-        self._do_transform = False
-        self._operation = dilate
-        self._filter_size = 1
-
-    def randomize(self) -> None:
-        self._do_transform = self.R.rand() < self.prob
-        if self._do_transform:
-            self._operation = dilate if self.R.rand() < 0.5 else erode
-            self._filter_size = int(self.R.randint(1, self.max_filter_size + 1))
-
-    def _morph(self, mask: torch.Tensor):
-        return self._operation(mask, filter_size=self._filter_size)
-
-    def __call__(self, data):
-        d = dict(data)
-        self.randomize()
-        if not self._do_transform:
-            return d
-        for key in self.key_iterator(d):
-            mask = d[key]
-            mask_dtype = mask.dtype
-            mask_bin = (mask > 0).to(mask_dtype)
-            morphed = self._morph(mask_bin)
-            d[key] = morphed.to(mask_dtype)
-        return d
-
-
-class CropForegroundOrCenterd(MapTransform):
-    def __init__(
-        self,
-        keys: KeysCollection,
-        source_key: str,
-        patch_size,
-        min_shape,
-        expand_by,
-        select_fn,
-        allow_smaller: bool = True,
-        margin=0,
-        allow_missing_keys: bool = False,
-    ) -> None:
-        super().__init__(keys, allow_missing_keys)
-        self.source_key = source_key
-        self.patch_size = patch_size
-        self.min_shape = min_shape
-        self.expand_by = expand_by
-        self.crop_fg = CropForegroundd(
-            keys=keys,
-            source_key=source_key,
-            select_fn=select_fn,
-            allow_smaller=allow_smaller,
-            margin=margin,
-        )
-
-    def _center_crop_4d(self, t):
-        spatial = list(t.shape[-3:])
-        starts = []
-        ends = []
-        for dim, roi in zip(spatial, self.patch_size):
-            if roi >= dim:
-                start, end = 0, dim
-            else:
-                start = (dim - roi) // 2
-                end = start + roi
-            starts.append(start)
-            ends.append(end)
-        return t[(slice(None),) + tuple(slice(st, en) for st, en in zip(starts, ends))]
-
-    def __call__(self, data):
-        d0 = dict(data)
-        d = self.crop_fg(dict(data))
-        if (
-            any(dim < lim for dim, lim in zip(d["image"].shape[-3:], self.min_shape))
-            and self.expand_by == 0
-            and d0[self.source_key].count_nonzero().item() == 0
-        ):
-            for key in self.key_iterator(d0):
-                d[key] = self._center_crop_4d(d0[key])
         return d
 
 
@@ -666,13 +499,6 @@ def create_augmentations(after_item_intensity: dict, after_item_spatial: dict):
         spatial_augs.append(getattr(spatial, key))
         probabilities_spatial.append(value)
     return intensity_augs, spatial_augs
-
-
-class FilenameFromBBox(ItemTransform):
-    def encodes(self, x):
-        img, mask, bbox = x
-        fname = str(bbox["filename"])
-        return img, mask, fname
 
 
 class Squeeze(ItemTransform):

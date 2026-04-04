@@ -2,15 +2,21 @@
 from functools import wraps
 from typing import Hashable, Mapping
 
-from fastcore.basics import *
-from fasttransform.transform import Transform
-from fran.transforms.base import *
+import numpy as np
+import torch
+from fran.transforms.base import (
+    ItemTransform,
+    KeepBBoxTransform,
+    MonaiDictTransform,
+    Transform,
+)
 from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
 from monai.data.meta_obj import get_track_meta
 from monai.transforms import MapTransform, RandomizableTransform
 from monai.transforms.intensity.array import RandGaussianNoise
 from monai.utils.type_conversion import convert_to_tensor
 from scipy.ndimage.filters import gaussian_filter
+from torch.functional import Tensor
 
 
 class NormaliseClip(Transform):
@@ -131,18 +137,6 @@ class IntensityNorm(Transform):
         return img
 
 
-def zero_center(func):
-    @wraps(func)
-    def _inner(img, *args, **kwargs):
-        mean = img.mean()
-        std = img.std()
-        img = (img - mean) / std
-        img = func(img, *args, **kwargs)
-        return img
-
-    return _inner
-
-
 def zero_to_one(func):
     @wraps(func)
     def _inner(img, *args, **kwargs):
@@ -155,38 +149,6 @@ def zero_to_one(func):
         return img
 
     return _inner
-
-
-class ClipCenter(KeepBBoxTransform):
-    def __init__(self, clip_range, mean, std):
-        self.clip_range = clip_range
-        self.mean = mean
-        self.std = std
-
-    def func(self, x):
-        img, mask = x
-        clip_func = (
-            torch.clip if isinstance(img, Tensor) else np.clip
-        )  # inference uses numpy
-        img = clip_func(img, self.clip_range[0], self.clip_range[1])
-        img = standardize(img, self.mean, self.std)
-        return img, mask
-
-
-class ClipCenterI(ItemTransform):
-    def __init__(self, clip_range, mean, std):
-        self.clip_range = clip_range
-        self.mean = mean
-        self.std = std
-
-    def encodes(self, x):
-        img, mask = x
-        clip_func = (
-            torch.clip if isinstance(img, Tensor) else np.clip
-        )  # inference uses numpy
-        img = clip_func(img, self.clip_range[0], self.clip_range[1])
-        img = standardize(img, self.mean, self.std)
-        return img, mask
 
 
 @_IntensityAugmentation
@@ -228,23 +190,6 @@ def contrast(img, factor):
     clip_min, clip_max = img.min(), img.max()
     img = img * factor
     img = torch.clip(img, clip_min, clip_max)
-    return img
-
-
-@_IntensityAugmentation
-def gaussian_blur(img, sigma):
-    return gaussian_filter(img, sigma=sigma)
-
-
-def clip_image(img, clip_range):
-    img_clipped = np.copy(img)
-    img_clipped[img >= clip_range[1]] = clip_range[1]
-    img_clipped[img < clip_range[0]] = clip_range[0]
-    return img_clipped
-
-
-def standardize(img, mn, std):
-    img = (img - mn) / std
     return img
 
 

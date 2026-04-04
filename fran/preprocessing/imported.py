@@ -1,6 +1,7 @@
 # %%
 
 MIN_SIZE = 32  # min size in a single dimension of any image
+
 import ipdb
 import ray
 from fran.data.dataregistry import DatasetRegistry
@@ -88,6 +89,7 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
             device=device,
             debug=debug,
             tfms_keys=tfms_keys,
+            remapping_key="remapping_lbd",
         )
 
     def _create_data_dict(self, row):
@@ -333,29 +335,31 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
 
 
 if __name__ == "__main__":
+    from pprint import pp
+
     import numpy as np
     from utilz.helpers import set_autoreload
 
     set_autoreload()
 
     from fran.configs.parser import ConfigMaker
+
+# %%
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+    from fran.managers import Project
     from fran.preprocessing.preprocessor import store_labels_info
+    from fran.utils.common import *
     from fran.utils.folder_names import folder_names_from_plan
 
-    # %%
-    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-    from fran.managers import Project
-    from fran.utils.common import *
-
-    project_title = "lidc"
+    project_title = "kits2"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
     C = ConfigMaker(P)
-    C.setup(5)
+    C.setup(9)
 
-    # %%
+# %%
 
     conf = C.configs
     print(conf["model_params"])
@@ -365,16 +369,16 @@ if __name__ == "__main__":
     spacing = plan["spacing"]
     imported_fldr = plan["imported_folder"]
 
-    # %%
-    # SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# %%
+# SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     resampled_data_folder = folder_names_from_plan(P, plan)["data_folder_source"]
 
-    # %%
+# %%
     L = LabelBoundedDataGeneratorImported(
         project=P, plan=plan, data_folder=resampled_data_folder
     )
 
-    # %%
+# %%
     num_processes = 6
     debug = False
     debug = True
@@ -382,16 +386,16 @@ if __name__ == "__main__":
     L.setup(overwrite=overwrite, num_processes=num_processes, debug=debug)
     L.process()
     store_labels_info(L.output_folder, 16)
-    # %% %%
+# %%
     num_processes = 16
     L.create_data_df()
     L.register_existing_files()
     L.mini_dfs = np.array_split(L.df, num_processes)
-    # %%
+# %%
 
     mini_df = L.mini_dfs[0]
     # mini_df = mini_df.iloc[:3]
-    # %%
+# %%
     LL = LBDImportedSamplerWorkerImpl.remote(
         project=L.project,
         plan=L.plan,
@@ -399,12 +403,12 @@ if __name__ == "__main__":
         output_folder=L.output_folder,
     )
     outs = LL.process(mini_df)
-    # %%
+# %%
     row = mini_df.iloc[0]
     dici = {"AppBx": 12}
     dici.update({"AppBx": 13, "BBox": 15})
 
-    # %%
+# %%
     data = {
         "image": row["image"],
         "lm": row["lm"],
@@ -413,7 +417,7 @@ if __name__ == "__main__":
         "remapping_imported": row["remapping_imported"],
     }
 
-    # %%
+# %%
     # Apply transforms
     data = LL.transforms(data)
     data2 = LL.transforms_dict["Remap"][data["ds"]](data)
@@ -426,3 +430,4 @@ if __name__ == "__main__":
     data2["lm_imported"].shape
 
 # %%
+

@@ -7,8 +7,8 @@ except Exception:
     from fastcore import typedispatch
 import SimpleITK as sitk
 import torch
+from fran.transforms.imageio import ToTensorT
 from fran.transforms.spatialtransforms import one_hot
-from fran.transforms.totensor import ToTensorT
 from monai.metrics import *
 
 # %%

@@ -241,7 +241,7 @@ if __name__ == "__main__":
 
     from fran.managers import Project
     from fran.preprocessing.helpers import get_label_stats
-    from fran.transforms.totensor import ToTensorT
+    from fran.transforms.imageio import ToTensorT
     from fran.utils.common import *
     from utilz.imageviewers import ImageMaskViewer
 

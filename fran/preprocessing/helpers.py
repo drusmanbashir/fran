@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from fastcore.basics import listify
 from fran.configs.mnemonics import Mnemonics
-from fran.transforms.totensor import ToTensorT
+from fran.transforms.imageio import ToTensorT
 from label_analysis.utils import SITKImageMaskFixer
 from utilz.fileio import *
 from utilz.helpers import *

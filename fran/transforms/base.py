@@ -1,16 +1,40 @@
 # %%
 from typing import Union
 
-import ipdb
 import numpy as np
 import torch
-from fastcore.basics import listify
-from fasttransform.transform import ItemTransform
 from monai.config.type_definitions import KeysCollection
 from monai.transforms.transform import MapTransform
 from torch.functional import Tensor
 
-tr = ipdb.set_trace
+
+def listify(x):
+    if x is None:
+        return []
+    if isinstance(x, list):
+        return x
+    if isinstance(x, tuple):
+        return list(x)
+    return [x]
+
+
+class Transform:
+    def __call__(self, *args, **kwargs):
+        return self.encodes(*args, **kwargs)
+
+
+class ItemTransform(Transform):
+    pass
+
+
+class Pipeline:
+    def __init__(self, funcs):
+        self.funcs = list(funcs)
+
+    def __call__(self, x):
+        for func in self.funcs:
+            x = func(x)
+        return x
 
 
 class MonaiDictTransform(MapTransform):
@@ -39,21 +63,19 @@ class Squeeze(ItemTransform):
     def encodes(self, x):
         outputs = []
         for tensr in x:
-            tensr = tensr.squeeze(self.dim)
-            outputs.append(tensr)
+            outputs.append(tensr.squeeze(self.dim))
         return outputs
 
     def decodes(self, x):
         outputs = []
         for tensr in x:
-            tensr = tensr.unsqueeze(self.dim)
-            outputs.append(tensr)
+            outputs.append(tensr.unsqueeze(self.dim))
         return outputs
 
 
 class KeepBBoxTransform(ItemTransform):
     def encodes(self, x: Union[list, tuple]):
-        if not isinstance(x[-1], (Tensor, np.ndarray)):  # may be dict / list or str
+        if not isinstance(x[-1], (Tensor, np.ndarray)):
             if len(x) == 2:
                 y = [self.func(x[0])]
             elif len(x) > 2:
@@ -63,23 +85,10 @@ class KeepBBoxTransform(ItemTransform):
             y = listify(y)
             y.append(x[-1])
             return y
-        else:
-            return self.func(x)
-
-
-class ValidAndTrainingTransform(ItemTransform):
-    def __init__(self, aug):  # type: ignore
-        self.aug = aug
-
-    def encodes(self, x):
-        if np.random.rand() < self.p:
-            x = self.aug(x)
-        return x
+        return self.func(x)
 
 
 class TrainingAugmentations(KeepBBoxTransform):
-    # DO NOT SET SPLIT_IDX IF SEPARATE TRAIN_DL AND VALID_DL ARE FORMED
-
     def __init__(self, augs, p: Union[float, list] = 0.2):
         augs = listify(augs)
         if isinstance(p, float):
@@ -98,19 +107,6 @@ class TrainingAugmentations(KeepBBoxTransform):
         return x
 
 
-class TrainingAugmentationsListOfLists(TrainingAugmentations):
-    """
-    This transform  expects each input list to contain sub-lists, one for each organ. For example encodes(self,x)-> x[0] is one img/mask pair and x[1] is another, and so on..
-    """
-
-    def encodes(self, x):
-        final_img_mask_pairs = []
-        for img_mask_pair in x:
-            final_img_mask_pairs.append(super().encodes(img_mask_pair))
-
-        return final_img_mask_pairs
-
-
 class GenericPairedOrganTransform(ItemTransform):
     def __init__(self, func):
         self.func = func
@@ -118,26 +114,6 @@ class GenericPairedOrganTransform(ItemTransform):
     def encodes(self, x):
         final_img_mask_pairs = []
         for img_mask_pair in x:
-            img_mask_pair_new = self.func(img_mask_pair)
-            final_img_mask_pairs.append(img_mask_pair_new)
+            final_img_mask_pairs.append(self.func(img_mask_pair))
         return final_img_mask_pairs
 
-
-class FixDType(ItemTransform):
-    def encodes(self, x):
-        img, mask = x
-        if not img.dtype == torch.float32:
-            img = img.float()
-        return img, mask
-
-
-# %%
-if __name__ == "__main__":
-    # %%
-    fn = "/home/ub/datasets/preprocessed/litsmc/patches/spc_080_080_150/dim_192_192_128/masks/lits_129ub_17.pt"
-    mask = torch.load(fn)
-    dici = {"mask": mask}
-    C = ChangeDtype(keys=["mask"], target_dtype=torch.uint8)
-    # C = MonaiDictTransform(keys=['mask'], target_dtype=torch.int8)
-    dici2 = C(dici)
-# %%

@@ -5,10 +5,11 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Sequence, Union
 
+import ipdb
 import numpy as np
 import SimpleITK as sitk
 import torch
-from fran.transforms.totensor import ToTensorT
+from fran.transforms.base import Transform
 from label_analysis.helpers import get_labels as gl
 from monai.config import PathLike
 from monai.config.type_definitions import KeysCollection
@@ -49,10 +50,34 @@ SUPPORTED_READERS = {
     "pilreader": PILReader,
     "nibabelreader": NibabelReader,
 }
-import ipdb
-import torch
 
 tr = ipdb.set_trace
+
+
+class ToTensorT(Transform):
+    def __init__(self, encode_dtype=None):
+        self.encode_dtype = encode_dtype
+
+    "Convert item to appropriate tensor class"
+    order = 0
+
+    def decodes(self, x, decode_type: np.ndarray):
+        return np.array(x)
+
+    def encodes(self, x):
+        if isinstance(x, torch.Tensor):
+            return x
+        if isinstance(x, (Path, str)):
+            x = sitk.ReadImage(x)
+        if isinstance(x, sitk.Image):
+            x_np = sitk.GetArrayFromImage(x)
+        elif isinstance(x, np.ndarray):
+            x_np = x
+        else:
+            raise TypeError(f"Unsupported type for ToTensorT: {type(x)}")
+        if x_np.dtype == np.uint16:
+            x_np = x_np.astype(np.uint8)
+        return torch.tensor(x_np, dtype=self.encode_dtype)
 
 
 class LoadSITKd(MapTransform):
@@ -524,8 +549,6 @@ class TorchWriter(ImageWriter):
 # %%
 if __name__ == "__main__":
     import warnings
-
-    from fastcore.basics import warnings
     from monai.transforms.io.dictionary import LoadImaged
     from utilz.fileio import load_dict
     from utilz.imageviewers import ImageMaskViewer

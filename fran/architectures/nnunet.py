@@ -1,6 +1,4 @@
 from typing import Type, Union
-
-import lightning.pytorch as pl
 from dynamic_network_architectures.architectures.unet import (
     PlainConvUNet,
     ResidualEncoderUNet,
@@ -26,7 +24,7 @@ _RESENC_L_BLOCKS_PER_STAGE_ENCODER = (1, 3, 4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6)
 _RESENC_L_BLOCKS_PER_STAGE_DECODER = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
 
 
-class PlainConvUNetPL(PlainConvUNet, pl.LightningModule):
+class PlainConvUNetPL(PlainConvUNet):
     def __init__(
         self,
         input_channels: int,
@@ -48,7 +46,6 @@ class PlainConvUNetPL(PlainConvUNet, pl.LightningModule):
         deep_supervision: bool = False,
         nonlin_first: bool = False,
     ):
-        super(pl.LightningModule, self).__init__()
         super().__init__(
             input_channels=input_channels,
             n_stages=n_stages,
@@ -75,7 +72,7 @@ class PlainConvUNetPL(PlainConvUNet, pl.LightningModule):
         return self.decoder.seg_layers
 
 
-class Generic_UNet_PL(Generic_UNet, pl.LightningModule):
+class Generic_UNet_PL(Generic_UNet):
     def __init__(
         self,
         input_channels,
@@ -104,7 +101,6 @@ class Generic_UNet_PL(Generic_UNet, pl.LightningModule):
         basic_block=...,
         seg_output_use_bias=False,
     ):
-        super(pl.LightningModule, self).__init__()
         super().__init__(
             input_channels,
             base_num_features,
@@ -134,7 +130,7 @@ class Generic_UNet_PL(Generic_UNet, pl.LightningModule):
         )
 
 
-class ResidualEncoderUNetPL(ResidualEncoderUNet, pl.LightningModule):
+class ResidualEncoderUNetPL(ResidualEncoderUNet):
     def __init__(
         self,
         input_channels: int,
@@ -158,7 +154,6 @@ class ResidualEncoderUNetPL(ResidualEncoderUNet, pl.LightningModule):
         bottleneck_channels=None,
         stem_channels=None,
     ):
-        super(pl.LightningModule, self).__init__()
         super().__init__(
             input_channels=input_channels,
             n_stages=n_stages,

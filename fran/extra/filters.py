@@ -69,7 +69,7 @@ if __name__ == "__main__":
     from pathlib import Path
 
     import SimpleITK as sitk
-    from fran.transforms.totensor import ToTensorT
+    from fran.transforms.imageio import ToTensorT
     from utilz.fileio import maybe_makedirs
     from utilz.imageviewers import ImageMaskViewer
 
