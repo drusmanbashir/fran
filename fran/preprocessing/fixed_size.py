@@ -254,11 +254,13 @@ class FixedSizeDataGenerator(PatchDataGenerator):
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     import torch
+    from utilz.helpers import set_autoreload
+
+    set_autoreload()
+
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
     from fran.utils.common import *
-
-    set_autoreload()
 
     P = Project(project_title="test")
     C = ConfigMaker(P)

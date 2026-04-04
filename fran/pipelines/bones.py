@@ -2,12 +2,14 @@ from fran.utils.common import *
 
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("bones")
 if __name__ == "__main__":
+    from utilz.helpers import set_autoreload
+
+    set_autoreload()
+
     from fran.callback.test import PeriodicTest
     from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
     from fran.managers import Project
     from fran.trainers.trainer import Trainer
-
-    set_autoreload()
     from fran.utils.common import *
 
     P = Project("bones")

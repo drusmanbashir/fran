@@ -6,6 +6,9 @@ from fran.utils.common import *
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR>
 if __name__ == "__main__":
     import argparse
+    from utilz.helpers import set_autoreload
+
+    set_autoreload()
 
     from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
     from fran.data.dataregistry import DS
@@ -15,8 +18,6 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from fran.utils.folder_names import folder_names_from_plan
     from utilz.imageviewers import ImageMaskViewer
-
-    set_autoreload()
     P = Project("totalseg")
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P)

@@ -8,6 +8,10 @@ from pathlib import Path
 
 import pandas as pd
 import torch.nn as nn
+from utilz.helpers import set_autoreload
+
+set_autoreload()
+
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
 from fran.callback.nep import NeptuneImageGridCallback
@@ -197,7 +201,6 @@ if __name__ == "__main__":
     if single_gpu == True:
         ray.init(local_mode=True, num_cpus=1, num_gpus=2)
     debug_mode = False
-    set_autoreload()
     df_ray = pd.read_excel(
         "/home/ub/code/fran/configurations/experiment_configs_liver.xlsx",
         sheet_name="model_params",

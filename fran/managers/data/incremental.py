@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import os
+from utilz.helpers import set_autoreload
+
+set_autoreload()
+
 from pathlib import Path
 from typing import Optional
 
@@ -18,7 +22,7 @@ from fran.data.collate import (
 from fran.utils.folder_names import folder_names_from_plan
 from tqdm.auto import tqdm as pbar
 from utilz.fileio import load_yaml
-from utilz.helpers import find_matching_fn, set_autoreload
+from utilz.helpers import find_matching_fn
 from utilz.stringz import (
     ast_literal_eval,
     headline,
@@ -50,8 +54,6 @@ from fran.managers.data.training import (
 from utilz.cprint import cprint
 from utilz.fileio import load_yaml
 from utilz.stringz import headline
-
-set_autoreload()
 
 common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)

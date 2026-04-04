@@ -23,6 +23,8 @@ from pathlib import Path
 from utilz.helpers import *
 from utilz.helpers import DictToAttr, ask_proceed
 
+set_autoreload()
+
 sys.path += ["/home/ub/Dropbox/code"]
 from utilz.fileio import *
 
@@ -1221,8 +1223,6 @@ class Project(DictToAttr):
 
 if __name__ == "__main__":
     from fran.utils.common import *
-
-    set_autoreload()
     P = Project(project_title="pancreas")
     P = Project(project_title="test")
     P.create("test",datasources=[DS.drli_short,DS.lidc_short,DS.kits23_short])

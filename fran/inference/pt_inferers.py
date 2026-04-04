@@ -16,8 +16,12 @@ from fran.transforms.imageio import LoadImage, TorchReader, TorchWriter
 
 
 class BaseInfererPT(BaseInferer):
-    def __init__(self, run_name, patch_overlap: float, project_title=None, ckpt=None, state_dict=None, params=None, bs=8, mode="constant", devices=..., safe_mode=False, save_channels=False, save=True, k_largest=None, debug=False):
-        super().__init__(run_name, patch_overlap, project_title, ckpt, state_dict, params, bs, mode, devices, safe_mode, save_channels, save, k_largest, debug)
+    def __init__(self, run_name, patch_overlap: float, project_title=None, ckpt=None, params=None, bs=8, mode="constant", devices=..., safe_mode=False, save_channels=False, save=True, k_largest=None, debug=False):
+        super().__init__(run_name, patch_overlap, project_title, ckpt, params, bs, mode, devices, safe_mode, save_channels, save, k_largest, debug)
+        self.keys_preproc = "E,N"
+        self.keys_postproc = "Sq,A,Int"
+        self.keys_postproc_safe = "Sq"
+        self.keys_postproc_extra = ",Sq,CPU"
         self.create_loss_func()
 
     def create_loss_func(self):
@@ -51,7 +55,7 @@ class BaseInfererPT(BaseInferer):
         return img_gt_outimages
 
     def set_preprocess_tfms_keys(self):
-        self.preprocess_tfms_keys = "E,N"  # No spacing done , put a channel dim then normalise
+        self.preprocess_tfms_keys = self.keys_preproc  # No spacing done , put a channel dim then normalise
  
 
     def run(self, imgs: list, gt_fldr: str|Path|None, chunksize=12, overwrite=False):
@@ -159,11 +163,11 @@ class BaseInfererPT(BaseInferer):
 
     def set_postprocess_tfms_keys(self):
         if self.safe_mode == False:
-            self.postprocess_tfms_keys = "Sq,A,Int"
+            self.postprocess_tfms_keys = self.keys_postproc
 
         else:
-            self.postprocess_tfms_keys = "Sq"
-        self.postprocess_tfms_keys += ",Sq,CPU"  # additional key for this version
+            self.postprocess_tfms_keys = self.keys_postproc_safe
+        self.postprocess_tfms_keys += self.keys_postproc_extra  # additional key for this version
         if self.save_channels == True:
             self.postprocess_tfms_keys += ",SaM"
         if self.k_largest is not None:
@@ -279,7 +283,7 @@ if __name__ == '__main__':
 # %%
     output = T.process_imgs_sublist(imgs_sublist)
 # %%
-        overwrite=False
+    overwrite=False
     preds = T.run(val_fns, chunksize=2, overwrite=overwrite)
 
 # %%

@@ -1,4 +1,5 @@
 # %%
+from dataclasses import dataclass
 import itertools as il
 
 import ipdb
@@ -9,6 +10,7 @@ from monai.transforms.utility.dictionary import CastToTyped
 from fran.trainers.base import checkpoint_from_model_id
 from fran.transforms.misc_transforms import SelectLabels
 from fran.utils.misc import parse_devices
+from utilz.helpers import info_from_filename
 
 tr = ipdb.set_trace
 
@@ -23,8 +25,26 @@ from monai.transforms.post.dictionary import AsDiscreted, Invertd
 from monai.transforms.spatial.dictionary import Resized
 
 from fran.data.dataset import FillBBoxPatchesd
-from fran.inference.base import BaseInferer, get_patch_spacing, load_images_nifti, load_params
-from fran.transforms.inferencetransforms import BBoxFromPTd, KeepLargestConnectedComponentWithMetad, MakeWritabled, RenameDictKeys
+from fran.inference.base import (
+    BaseInferer,
+    get_patch_spacing,
+    load_images_nifti,
+    load_params,
+)
+from fran.transforms.inferencetransforms import (
+    BBoxFromPTd,
+    KeepLargestConnectedComponentWithMetad,
+    MakeWritabled,
+    RenameDictKeys,
+)
+
+
+
+
+
+   
+
+
 
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
 
@@ -41,21 +61,22 @@ from fastcore.foundation import listify
 
 sys.path += ["/home/ub/Dropbox/code/fran/"]
 
+
 def inferer_from_params(run_w):
-        ckpt = checkpoint_from_model_id(run_w)
-        dic1 = torch.load(ckpt, map_location="cpu", weights_only=False)
-        mode = dic1["datamodule_hyper_parameters"]["configs"]["plan_train"][
-            "mode"
-        ]  # ["dataset_params"]["mode"]
-        if mode == "source":
-            return BaseInferer
-        elif mode == "whole":
-            return WholeImageInferer
-        elif mode in ["patch", "lbd"]:
-            return PatchInferer
-        else:
-            print("Not implemented for mode: {0}".format(mode))
-            raise ValueError
+    ckpt = checkpoint_from_model_id(run_w)
+    dic1 = torch.load(ckpt, map_location="cpu", weights_only=False)
+    mode = dic1["datamodule_hyper_parameters"]["configs"]["plan_train"][
+        "mode"
+    ]  # ["dataset_params"]["mode"]
+    if mode == "source":
+        return BaseInferer
+    elif mode == "whole":
+        return WholeImageInferer
+    elif mode in ["patch", "lbd"]:
+        return PatchInferer
+    else:
+        print("Not implemented for mode: {0}".format(mode))
+        raise ValueError
 
 
 def apply_bboxes(data, bboxes):
@@ -98,6 +119,9 @@ class WholeImageInferer(BaseInferer):
         save_channels=True,
         save=True,
         patch_overlap=None,
+        keys_preproc="E,ResW,N",
+        keys_postproc="Sq,Re",
+
         **kwargs,
     ):
         """
@@ -111,13 +135,15 @@ class WholeImageInferer(BaseInferer):
             devices=devices,
             save_channels=save_channels,
             save=save,
-            patch_overlap=0, # this is a redundant arg, only for compatibility
+            patch_overlap=0,  # this is a redundant arg, only for compatibility
+            keys_preproc=keys_preproc,
+            keys_postproc=keys_postproc,
             **kwargs,
+
         )
 
-
     def set_preprocess_tfms_keys(self):
-        self.preprocess_tfms_keys = "E,ResW,N"
+        self.preprocess_tfms_keys = self.keys_preproc
 
     def check_plan_compatibility(self):
         pass
@@ -138,7 +164,7 @@ class WholeImageInferer(BaseInferer):
         self.postprocess_compose = C
 
     def set_postprocess_tfms_keys(self):
-        self.postprocess_tfms_keys = "Sq,Re"
+        self.postprocess_tfms_keys = self.keys_postproc
         if self.save == True:
             self.postprocess_tfms_keys += ",Sav"
 
@@ -157,6 +183,7 @@ class PatchInferer(BaseInferer):
         save=False,
         params=None,
         debug=False,
+        keys_postproc="Sq,SqL,InvP",
         **kwargs,
     ):
 
@@ -173,6 +200,7 @@ class PatchInferer(BaseInferer):
             debug=debug,
             **kwargs,
         )
+        self.keys_postproc = keys_postproc
 
     def check_plan_compatibility(self):
         pass
@@ -185,7 +213,8 @@ class PatchInferer(BaseInferer):
         self.postprocess_transforms_dict["InvP"] = InvP
 
     def set_postprocess_tfms_keys(self):
-        self.postprocess_tfms_keys = "Sq,SqL,InvP"
+        
+        self.postprocess_tfms_keys = self.keys_postproc
         if self.safe_mode == True:
             self.postprocess_tfms_keys += ",CPU"
         if self.save_channels == True:
@@ -249,6 +278,8 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         )
 
         self.run_w = run_w
+        self.keys_postproc = "MR,A,Int,W"
+        self.keys_postproc_safe = "MR,W"
         self.run_p = run_p
         self.localiser_labels = localiser_labels
         self.project_title = project_title
@@ -265,19 +296,16 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
     def setup(self):
         pass
 
-
-
     def create_and_set_postprocess_transforms(self):
         self.create_postprocess_transforms()
         self.set_postprocess_tfms_keys()
         self.set_postprocess_transforms()
 
-    def process_imgs_sublist(self, imgs_sublist):
+    def process_data_sublist(self, imgs_sublist):
         self.create_and_set_postprocess_transforms()
         data = load_images_nifti(imgs_sublist)
 
         self.bboxes = self.extract_fg_bboxes(data)
-
         data = apply_bboxes(data, self.bboxes)
         pred_patches = self.patch_prediction(data)
         pred_patches = self.decollate_patches(pred_patches, self.bboxes)
@@ -333,11 +361,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             del p.model
         torch.cuda.empty_cache()
 
-
-
-
-
-
     def extract_fg_bboxes(self, data):
         spacing = get_patch_spacing(self.run_w)
         Sel = SelectLabels(keys=["pred"], labels=self.localiser_labels)
@@ -363,7 +386,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
                 )
             bb = validate_bbox(bb)
             bboxes.append(bb)
-        return bboxes    
+        return bboxes
 
     def patch_prediction(self, data):
         if hasattr(self.W, "model"):
@@ -412,9 +435,9 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
     def set_postprocess_tfms_keys(self):
         if self.safe_mode == False:
-            self.postprocess_tfms_keys = "MR,A,Int,W"
+            self.postprocess_tfms_keys = self.keys_postproc
         else:
-            self.postprocess_tfms_keys = "MR,W"
+            self.postprocess_tfms_keys = self.keys_postproc_safe
         if self.k_largest is not None:
             self.postprocess_tfms_keys += ",K"
         self.postprocess_tfms_keys += ",F"
@@ -426,7 +449,11 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 if __name__ == "__main__":
     import time
     import SimpleITK as sitk
-    from fran.managers.wandb import download_path_no_wandb, download_wandb_checkpoint, get_wandb_checkpoint
+    from fran.managers.wandb import (
+        download_path_no_wandb,
+        download_wandb_checkpoint,
+        get_wandb_checkpoint,
+    )
     from label_analysis.totalseg import TotalSegmenterLabels
     from pathlib import Path
     from fran.inference.base import list_to_chunks
@@ -439,7 +466,8 @@ if __name__ == "__main__":
 
     conf_fldr = os.environ["FRAN_CONF"]
     from utilz.fileio import load_yaml
-    best_runs = load_yaml(conf_fldr+"/best_runs.yaml")
+
+    best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
     run_w = best_runs["run_w"]
 
     pp(best_runs)
@@ -447,13 +475,14 @@ if __name__ == "__main__":
 # %%
 
     from fran.data.dataregistry import DS
+
     fldr_bosniak = Path("/s/datasets_bkp/bosniak/bosniak/kits2/nifti")
     imgs_bosniak = list(fldr_bosniak.glob("*"))
     fldr_lidc = DS["lidc"].folder / ("images")
-    fldr_curvas = DS["curvaspdac"].folder/  ("images")
+    fldr_curvas = DS["curvaspdac"].folder / ("images")
     imgs_curvas = list(fldr_curvas.glob("*"))
 
-    fldr_colonmsd = DS["colonmsd10"].folder/  ("images")
+    fldr_colonmsd = DS["colonmsd10"].folder / ("images")
     imgs_colonmsd = list(fldr_colonmsd.glob("*"))
     imgs_lidc = list(fldr_lidc.glob("*"))
 
@@ -486,27 +515,29 @@ if __name__ == "__main__":
     capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
     capestart = list(capestart_fldr.glob("*"))
 
-    fldr_misc =  Path("/s/xnat_shadow/misc/images")
+    fldr_misc = Path("/s/xnat_shadow/misc/images")
     imgs_misc = list(fldr_misc.glob("*"))
     img_fns = [imgs_t6][:20]
     localiser_labels = [45, 46, 47, 48, 49]
     localiser_labels_litsmc = [1]
     TSL = TotalSegmenterLabels()
-    lidc2_fldr = DS.lidc2.folder/("images")
+    lidc2_fldr = DS.lidc2.folder / ("images")
     imgs_lidc2 = list(lidc2_fldr.glob("*"))
 
-    kits_fldr = DS.kits23.folder/("images")
+    kits_fldr = DS.kits23.folder / ("images")
     kits_imgs = list(kits_fldr.glob("*"))
 
 # %%
-#SECTION:-------------------- KITS--------------------------------------------------------------------------------------
+# SECTION:-------------------- KITS--------------------------------------------------------------------------------------
 
+    P = Project("kits2")
+    _, val = P.get_train_val_case_ids(fold=1)
+    kits_imgs = [img for img in kits_imgs if info_from_filename(img.name, full_caseid=True)["case_id"] in val]
     devices = [1]
-    run_kid = 'KITS2-bah'
+    run_kid = "KITS2-bah"
 
-
-    run_tot= best_runs['totalseg']['run_ids'][0]
-    run_kw= run_tot
+    run_tot = best_runs["totalseg"]["run_ids"][0]
+    run_kw = run_tot
 
     run_kw = run_w
     run_ = inferer_from_params(run_kw)
@@ -515,7 +546,8 @@ if __name__ == "__main__":
         label_loc = TSL.kidney.label_localiser
     elif "Base" in str(run_):
         label_loc = TSL.kidney.label_minimal
-    else: raise ValueError
+    else:
+        raise ValueError
     safe_mode = True
     overwrite = True
     overwrite = False
@@ -537,28 +569,22 @@ if __name__ == "__main__":
         debug=debug_,
     )
 
-
 # %%
     imgs = imgs_bosniak[:10]
     imgs = kits_imgs
-
-    imgs_addd = [im for im in kits_imgs if "00568" in im.name][0]
-    imgs.insert(0,imgs_addd)
-    preds = En.run(imgs_addd,chunksize=1,overwrite=overwrite)
+    preds = En.run(imgs, chunksize=4, overwrite=overwrite)
 # %%
-    pred = preds[0]['pred']
+    pred = preds[0]["pred"]
     image = load_images_nifti(imgs_addd)[0]
-    image['image'].shape
-    img = image['image'].unsqueeze(0)
+    image["image"].shape
+    img = image["image"].unsqueeze(0)
     pred.shape
-    ImageMaskViewer([img,pred],'im')
+    ImageMaskViewer([img, pred], "im")
 
+    img = batch["image"]
+    pred = batch["pred"]
+    ImageMaskViewer([img, pred], "im")
 
-    img = batch['image']
-    pred = batch['pred']
-    ImageMaskViewer([img,pred],'im')
-
-    
 # %%
 # SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
@@ -571,27 +597,28 @@ if __name__ == "__main__":
     debug_ = False
     save_channels = False
     save_localiser = True
-    run_lidc2 = best_runs['lidc']['run_ids'][0]
-    run_lidc2 = 'LIDC-0022'
-    localiser_labels=best_runs['lidc']['localiser_labels']
+    run_lidc2 = best_runs["lidc"]["run_ids"][0]
+    run_lidc2 = "LIDC-0022"
+    localiser_labels = best_runs["lidc"]["localiser_labels"]
 
 # %%
     P = Project("kits2")
     run_name = "KITS-0026"
-    remote_ckpt_parent = Path(f"/data/EECS-LITQ/fran_storage/checkpoints/{P.project_title}")
-    local_dir_parent = P.checkpoints_parent_folder/run_name
+    remote_ckpt_parent = Path(
+        f"/data/EECS-LITQ/fran_storage/checkpoints/{P.project_title}"
+    )
+    local_dir_parent = P.checkpoints_parent_folder / run_name
     remote_ckpt_parent = str(remote_ckpt_parent)
-    local_dir_parent=str(local_dir_parent)
+    local_dir_parent = str(local_dir_parent)
     download_path_no_wandb(remote_ckpt_parent, local_dir_parent)
     checkpoint_fldr = P.checkpoints_parent_folder / run_name
-    remote_dir_parent = remote_ckpt_parent/P.project_title
-    remote_dir = remote_dir /P.project_title/run_name
+    remote_dir_parent = remote_ckpt_parent / P.project_title
+    remote_dir = remote_dir / P.project_title / run_name
     remote_dir = str(remote_dir)
 
     latest_ckpt = shadow_remote_ckpts(remote_dir)
     local_dir = project.checkpoints_parent_folder / run_id / "checkpoints"
     print(f"\nSSH to remote folder {remote_dir}")
-
 
     run_id = "KITS-0026"
     ckpt = get_wandb_checkpoint(P, run_id)
@@ -600,17 +627,17 @@ if __name__ == "__main__":
 # %%
 
     import stat
+
     remote_dir_parent = str(remote_dir_parent)
 # %%
 
 # %%
 
-
 # %%
 # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_localiser)
     safe_mode = True
-    patch_overlap=0.0
+    patch_overlap = 0.0
     devices = [1]
     overwrite = True
     save_channels = False
@@ -634,16 +661,16 @@ if __name__ == "__main__":
     preds = En.run(imgs, chunksize=1, overwrite=overwrite)
     # preds = En.run(img_fns, chunksize=2)
 # %%
-#SECTION:-------------------- BONES--------------------------------------------------------------------------------------
+# SECTION:-------------------- BONES--------------------------------------------------------------------------------------
 
     run = best_runs["bones"]
-    localiser_labels= run['localiser_labels']
-    if localiser_labels=="TSL.label_localiser":
+    localiser_labels = run["localiser_labels"]
+    if localiser_labels == "TSL.label_localiser":
         localiser_labels = set(TSL.label_localiser)
-    run_name = run['run_ids'][0]
+    run_name = run["run_ids"][0]
 # %%
     safe_mode = True
-    patch_overlap=0.0
+    patch_overlap = 0.0
     devices = [1]
     overwrite = True
     save_channels = False
@@ -706,7 +733,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
     localiser_labels = set(TSL.label_localiser)
-    
+
     TLS = TotalSegmenterLabels()
     labs_panc = TLS.pancreas
     safe_mode = True
@@ -714,7 +741,7 @@ if __name__ == "__main__":
     overwrite = False
     save_channels = False
     save_localiser = False
-    run_totalseg = best_runs['totalseg']['run_ids'][0]
+    run_totalseg = best_runs["totalseg"]["run_ids"][0]
 # %%
     En = CascadeInferer(
         run_w,
@@ -735,7 +762,7 @@ if __name__ == "__main__":
     # preds = En.run(img_fns, chunksize=2)
 # %%
 # SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
-    localiser_labels_litsmc = [3] 
+    localiser_labels_litsmc = [3]
     devices = [1]
     overwrite = True
     safe_mode = True
@@ -895,7 +922,7 @@ if __name__ == "__main__":
     if len(imgs) > 0:
         imgs = list_to_chunks(imgs, chunksize)
         for imgs_sublist in imgs:
-            output = En.process_imgs_sublist(imgs_sublist)
+            output = En.process_data_sublist(imgs_sublist)
 
 # %%
 # %%
@@ -947,31 +974,3 @@ if __name__ == "__main__":
     lm = sitk.ReadImage(fn)
 
     lm.GetSize()
-# %%
-    project_title="kits2"
-    run_p = 'KITS-0009'
-    patch_overlap=0.25
-        En.P = PatchInferer(
-            run_name=run_p,
-            project_title=project_title,
-            devices=devices,
-            patch_overlap=patch_overlap,
-            save_channels=save_channels,
-            safe_mode=safe_mode,
-            params=En.params,
-            # debug=debug,
-        )
-
-# %%
-        if hasattr(En.W, "model"):
-            del En.W.model
-        torch.cuda.empty_cache()
-        print("Starting patch data prep and prediction")
-        preds_all_runs = {}
-        preds_all_runs[En.P.run_name] = []
-        En.P.setup()
-        En.P.prepare_data(data=data, collate_fn=img_bbox_collated)
-        En.P.create_and_set_postprocess_transforms()
-        batches = list(En.P.predict())
-
-# %%

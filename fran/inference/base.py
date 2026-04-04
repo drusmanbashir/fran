@@ -28,7 +28,6 @@ from pathlib import Path
 import numpy as np
 import torch
 from fastcore.all import listify
-from fastcore.foundation import GetAttr
 from fran.data.dataset import NormaliseClipd
 from fran.managers.unet import UNetManager
 from fran.trainers import checkpoint_from_model_id, write_normalized_ckpt
@@ -56,14 +55,80 @@ from monai.transforms.utility.dictionary import (
 from utilz.dictopts import DictToAttr, fix_ast
 
 
-class BaseInferer(GetAttr, DictToAttr):
+
+def load_model_on_fabric(
+    ModelClass,
+    ckpt,
+    devices=None,
+    map_location=None,
+    strict=True,
+    precision="bf16-mixed",
+    accelerator=None,
+    fabric_kwargs=None,
+    normalize_checkpoint_fn=None,
+    normalize_state_dict_prefix="model._orig_mod",
+    **kwargs,
+):
+    resolved_map_location = "cuda" if map_location is None else map_location
+    try:
+        model = ModelClass.load_from_checkpoint(
+            ckpt,
+            map_location=resolved_map_location,
+            strict=strict,
+            **kwargs,
+        )
+    except RuntimeError as exc:
+        if normalize_checkpoint_fn is None:
+            raise
+
+        ckpt_dict = torch.load(ckpt, map_location="cpu", weights_only=False)
+        if "state_dict" not in ckpt_dict:
+            raise RuntimeError(
+                "Checkpoint load failed and checkpoint is missing 'state_dict': "
+                f"{ckpt}"
+            ) from exc
+
+        state_dict = ckpt_dict["state_dict"]
+        if not any(
+            key.startswith(normalize_state_dict_prefix)
+            for key in state_dict.keys()
+        ):
+            raise
+
+        ckpt = normalize_checkpoint_fn(ckpt)
+        model = ModelClass.load_from_checkpoint(
+            ckpt,
+            map_location=resolved_map_location,
+            strict=strict,
+            **kwargs,
+        )
+
+    model.eval()
+    model._loaded_ckpt_path = ckpt
+
+    if accelerator is None:
+        accelerator = "cpu" if devices == "cpu" else "gpu"
+
+    fabric_devices = "auto" if devices is None else devices
+    fabric_options = {} if fabric_kwargs is None else dict(fabric_kwargs)
+    fabric = Fabric(
+        precision=precision,
+        devices=fabric_devices,
+        accelerator=accelerator,
+        **fabric_options,
+    )
+    model = fabric.setup(model)
+    return model, fabric
+
+
+class BaseInferer( DictToAttr):
+
     def __init__(
         self,
         run_name,
-        patch_overlap: float,
+        patch_overlap: float=0.0,
         project_title=None,
         ckpt=None,
-        state_dict=None,
         params=None,
         bs=8,
         mode="constant",
@@ -74,6 +139,9 @@ class BaseInferer(GetAttr, DictToAttr):
         save=True,
         k_largest=None,  # assign a number if there are organs involved
         debug=False,
+        keys_preproc = "E,S,N",
+        keys_postproc = "Sq,A,Re,Int",
+        model_manager=UNetManager,
     ):
         """
         BaseInferer applies the dataset spacing, normalization and then patch_size to use a sliding window inference over the resulting image
@@ -87,6 +155,10 @@ class BaseInferer(GetAttr, DictToAttr):
 
         self.debug = debug
         self.run_name = run_name
+        self.keys_preproc = keys_preproc
+        self.keys_postproc = keys_postproc
+        self.model_manager = model_manager
+        self.keys_postproc_safe ="Sq,Re"
         self.devices = devices
         self.save_channels = save_channels
         self.save = save
@@ -141,7 +213,6 @@ class BaseInferer(GetAttr, DictToAttr):
         self.safe_mode = safe_mode
 
     def compute_loss(self, batch):
-
         pass
 
     def create_and_set_postprocess_transforms(self):
@@ -155,13 +226,13 @@ class BaseInferer(GetAttr, DictToAttr):
         self.set_preprocess_transforms()
 
     def set_preprocess_tfms_keys(self):
-        self.preprocess_tfms_keys = "E,S,N"
+        self.preprocess_tfms_keys = self.keys_preproc
 
     def set_postprocess_tfms_keys(self):
         if self.safe_mode == False:
-            self.postprocess_tfms_keys = "Sq,A,Re,Int"
+            self.postprocess_tfms_keys = self.keys_postproc
         else:
-            self.postprocess_tfms_keys = "Sq,Re"
+            self.postprocess_tfms_keys = self.keys_postproc_safe
         # self.postprocess_tfms_keys = "Sq,A,Re,Int"
         if self.save_channels == True:
             self.postprocess_tfms_keys += ",SaM"
@@ -203,9 +274,10 @@ class BaseInferer(GetAttr, DictToAttr):
         )
 
     def setup(self):
-        if not hasattr(self, "model"):
+        if getattr(self, "model", None) is None or getattr(self, "fabric", None) is None:
             self.create_and_set_preprocess_transforms()
             self.prepare_model()
+
 
     def maybe_filter_images(self, imgs, overwrite=False):
         imgs = listify(imgs)
@@ -221,16 +293,16 @@ class BaseInferer(GetAttr, DictToAttr):
             raise SystemExit("Stopping execution - no images remain")
         return imgs
 
-    def run(self, imgs: list, chunksize=12, overwrite=False):
+    def run(self, data: list, chunksize=12, overwrite=False):
         """
-        imgs can be a list comprising any of filenames, folder, or images (sitk or itk)
+        data: can be a list of images: comprising any of filenames, folder, or images (sitk or itk)
         chunksize is necessary in large lists to manage system ram
         """
         self.setup()
-        imgs = self.maybe_filter_images(imgs, overwrite)
-        imgs = list_to_chunks(imgs, chunksize)
-        for imgs_sublist in imgs:
-            output = self.process_imgs_sublist(imgs_sublist)
+        data = self.maybe_filter_images(data, overwrite)
+        data = list_to_chunks(data, chunksize)
+        for imgs_sublist in data:
+            output = self.process_data_sublist(imgs_sublist)
         return output
 
     def postprocess(self, preds):
@@ -243,8 +315,8 @@ class BaseInferer(GetAttr, DictToAttr):
     def load_images(self, images):
         return load_images_nifti(images)
 
-    def process_imgs_sublist(self, imgs_sublist):
-        data = self.load_images(imgs_sublist)
+    def process_data_sublist(self, data_sublist):
+        data = self.load_images(data_sublist)
         self.prepare_data(data, collate_fn=None)
         self.create_and_set_postprocess_transforms()
 
@@ -274,9 +346,10 @@ class BaseInferer(GetAttr, DictToAttr):
 
         nw, bs = 0, 1  # Slicer bugs out
         self.ds = Dataset(data=data, transform=self.preprocess_compose)
-        self.pred_dl = DataLoader(
+        dl = DataLoader(
             self.ds, num_workers=nw, batch_size=bs, collate_fn=collate_fn
         )
+        self.pred_dl = self.fabric.setup_dataloaders(dl)
 
     def create_preprocess_transforms(self):
         spacing = get_patch_spacing(self.run_name)
@@ -348,43 +421,13 @@ class BaseInferer(GetAttr, DictToAttr):
             setattr(self, key, value)
 
     def tfms_from_dict(self, keys: str, tfms_dict):
-        keys = keys.split(",")
+        keys= keys.replace(" ", "")
+        keys_list = keys.split(",")
         tfms = []
-        for key in keys:
+        for key in keys_list:
             tfm = tfms_dict[key]
             tfms.append(tfm)
         return tfms
-
-    def _load_model_from_checkpoint(self, device):
-        try:
-            return UNetManager.load_from_checkpoint(
-                self.ckpt,
-                plan=self.plan,
-                project_title=self.project.project_title,
-                dataset_params=self.dataset_params,
-                strict=True,
-                map_location=device,
-            )
-        except RuntimeError as exc:
-            ckpt_dict = torch.load(self.ckpt, map_location="cpu", weights_only=False)
-            if "state_dict" not in ckpt_dict:
-                raise RuntimeError(
-                    "Checkpoint load failed and checkpoint is missing 'state_dict': "
-                    f"{self.ckpt}"
-                ) from exc
-            state_dict = ckpt_dict["state_dict"]
-            if any(key.startswith("model._orig_mod") for key in state_dict.keys()):
-                normalized_ckpt = write_normalized_ckpt(self.ckpt)
-                self.ckpt = normalized_ckpt
-                return UNetManager.load_from_checkpoint(
-                    self.ckpt,
-                    plan=self.plan,
-                    project_title=self.project.project_title,
-                    dataset_params=self.dataset_params,
-                    strict=True,
-                    map_location=device,
-                )
-            raise
 
     # def set_transforms(self, tfms: str = ""):
     #     tfms_final = []
@@ -398,19 +441,27 @@ class BaseInferer(GetAttr, DictToAttr):
 
     def prepare_model(self):
         if self.devices == "cpu":
-            fabric_devices = "auto"
             accelerator = device = "cpu"
         else:
-            fabric_devices = self.devices
             device_id = self.devices[0]
             device = torch.device(f"cuda:{device_id}")
             accelerator = "gpu"
-        model = self._load_model_from_checkpoint(device)
-        model.eval()
-        fabric = Fabric(
-            precision="bf16-mixed", devices=fabric_devices, accelerator=accelerator
+
+        model, fabric = load_model_on_fabric(
+            self.model_manager,
+            self.ckpt,
+            devices="cpu" if self.devices == "cpu" else self.devices,
+            map_location=device,
+            strict=True,
+            accelerator=accelerator,
+            normalize_checkpoint_fn=write_normalized_ckpt,
+            plan=self.plan,
+            project_title=self.project.project_title,
+            dataset_params=self.dataset_params,
         )
-        self.model = fabric.setup(model)
+        self.ckpt = getattr(model, "_loaded_ckpt_path", self.ckpt)
+        self.fabric = fabric
+        self.model = model
 
     def predict(self):
         # outputs = []
@@ -429,24 +480,22 @@ class BaseInferer(GetAttr, DictToAttr):
         return self.inferer(inputs=img, network=self.model)
 
     def predict_inner(self, batch):
-        img = batch["image"]
-        if self.devices != "cpu":
-            img = img.cuda(non_blocking=True)
-        if self.safe_mode:
-            img = img.to("cpu")
+        img = batch["image"]   # already on correct device
+
         logits = self._run_swi(img)
+
         if isinstance(logits, tuple):
-            logits = logits[0]  # model has deep supervision only 0 channel is needed
-        # Collapse channels early; keep on same device
-        if self.safe_mode == True:
-            labels = torch.argmax(logits, dim=1, keepdim=True)
-            labels = labels.to(torch.uint8)
+            logits = logits[0]
+
+        if self.safe_mode:
+            labels = torch.argmax(logits, dim=1, keepdim=True).to(torch.uint8)
             batch["pred"] = labels
-            del logits
         else:
             batch["pred"] = logits
+
         batch["pred"].meta = batch["image"].meta.copy()
         return batch
+
 
     @property
     def output_folder(self):
@@ -460,7 +509,7 @@ class BaseInfererTorchScript(BaseInferer):
     def prepare_model(self):
         device_id = self.devices[0]
         device = torch.device(f"cuda:{device_id}")
-        model = UNetManager.load_from_checkpoint(
+        model = self.model_manager.load_from_checkpoint(
             self.ckpt,
             plan=self.plan,
             project_title=self.project.project_title,
@@ -805,5 +854,3 @@ if __name__ == "__main__":
 # %%
     batch["pred"].shape
 # %%
-
-

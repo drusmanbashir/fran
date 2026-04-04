@@ -70,7 +70,10 @@ def checkpoint_from_model_id(
     model_id, sort_method="last", normalize_keys=True
 ):  # CODE: Move this function to utils
     fldr = Path(COMMON_PATHS["checkpoints_parent_folder"])
-    project_fldrs = [f for f in fldr.rglob(model_id) if f.is_dir()]
+    project_fldrs = []
+    for fl in fldr.rglob(model_id):
+        if fl.is_dir():
+            project_fldrs.append(fl)
     if len(project_fldrs) > 1:
         raise Exception(
             "No local files. Model may be on remote path. use download_neptune_checkpoint() \n{}".format(

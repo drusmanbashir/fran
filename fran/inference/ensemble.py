@@ -172,6 +172,10 @@ class EnsembleInferer:
         self.debug_base = debug_base
         self.debug_patch = debug_patch
         self.localiser_labels = list(localiser_labels) if localiser_labels else None
+        self.keys_postproc_casc = "A,Int,W,F"
+        self.keys_postproc_casc_safe = "W,F"
+        self.keys_postproc = "W,GPU_members,MR,CPU_members,CPU_pred,Int"
+        self.keys_postproc_safe = "W,MR,Int"
 
         # Partition runs into cascade vs base-like
         self.cascade_runs: List[Tuple[str, str]] = []  # (run_w, run_p)
@@ -428,9 +432,9 @@ class EnsembleInferer:
 
     def set_postprocess_tfms_keys_casc(self):
         if self.safe_mode == False:
-            self.postprocess_tfms_keys_casc = "A,Int,W,F"
+            self.postprocess_tfms_keys_casc = self.keys_postproc_casc
         else:
-            self.postprocess_tfms_keys_casc = "W,F"
+            self.postprocess_tfms_keys_casc = self.keys_postproc_casc_safe
         if self.save_casc_preds == True:
             self.postprocess_tfms_keys_casc += ",S"
 
@@ -565,9 +569,9 @@ class EnsembleInferer:
     def set_postprocess_tfms_keys(self):
         # Safe mode: keep everything on CPU; otherwise hop members to GPU for voting
         if self.safe_mode is False:
-            keys = "W,GPU_members,MR,CPU_members,CPU_pred,Int"
+            keys = self.keys_postproc
         else:
-            keys = "W,MR,Int"
+            keys = self.keys_postproc_safe
 
         if self.k_largest:
             keys += ",K"

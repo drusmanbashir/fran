@@ -417,6 +417,10 @@ if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker, parse_nested_remapping
     from fran.inference.base import list_to_chunks
     from fran.managers import Project
+    from utilz.helpers import set_autoreload
+
+    set_autoreload()
+
     from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
     from fran.transforms.inferencetransforms import ToCPUd
     from fran.transforms.misc_transforms import FgBgToIndicesd2, LabelRemapd
@@ -427,10 +431,7 @@ if __name__ == "__main__":
         ToDeviced,
     )
     from utilz.fileio import maybe_makedirs, save_json
-    from utilz.helpers import set_autoreload
     from utilz.stringz import strip_extension
-
-    set_autoreload()
 # %%
     # chunkify = lambda l, n: [l[i : i + n] for i in range(0, len(l), n)]
     # aa = chunkify(Rs.df,16)

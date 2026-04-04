@@ -477,12 +477,12 @@ class IncrementalTrainer(Trainer):
 # %%
 
 if __name__ == "__main__":
-    from fran.configs.parser import ConfigMaker
-    from tqdm.auto import tqdm as pbar
     from utilz.helpers import info_from_filename, set_autoreload
 
     # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- - <CR> <CR>
     set_autoreload()
+    from fran.configs.parser import ConfigMaker
+    from tqdm.auto import tqdm as pbar
     from fran.utils.common import *
 
     P = Project("kits2")

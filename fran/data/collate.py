@@ -1,4 +1,5 @@
 # %%
+from dataclasses import dataclass
 import torch
 from torch.utils.data.dataloader import (
     _MultiProcessingDataLoaderIter,
@@ -10,6 +11,30 @@ import ipdb
 
 tr = ipdb.set_trace
 
+@dataclass
+class VarType:
+    name: str
+    type: type
+    op:str|None = None
+
+Dict = VarType(name="dict", type=dict, op= "append")
+Meta = Dict
+Str = VarType(name="str", type=str)
+Image = VarType(name="image", type=torch.tensor)  #float
+LM = VarType(name="lm", type=torch.tensor) # uint8
+Number = VarType(name="number", type=float|int)
+BBox = VarType(name="tuple", type=tuple)
+
+CATALOG  = {
+        "image" : Image,
+        "pred" :  Image,
+        "lm": LM,
+        "bbox": BBox,
+        "nbrhood": Dict,
+        "label": Number,
+        "images_meta": Meta,
+        "lms_meta": Meta,
+        }
 
 def img_lm_bbox_collate(batch):
     imgs = []
