@@ -439,10 +439,47 @@ class Preprocessor(GetAttr):
         self.results = []
         self.shapes = []
 
+    def postprocess_artifacts_missing(self):
+        stats_folder = self.output_folder / "dataset_stats"
+        required = [
+            self.output_folder / "labels_all.json",
+            self.output_folder / "resampled_dataset_properties.json",
+            stats_folder / "snapshot.gif",
+            stats_folder / "lesion_stats.csv",
+        ]
+        missing = [pth for pth in required if not pth.exists()]
+        if stats_folder.exists() and not any(stats_folder.iterdir()):
+            missing.append(stats_folder)
+        if missing:
+            print("Missing postprocess artifacts:")
+            for pth in missing:
+                print(" ", pth)
+        return len(missing) > 0
+
+    def run_postprocess_only(self, **process_kwargs):
+        print("Running postprocess on existing output tensors")
+        derive_bboxes = process_kwargs.get("derive_bboxes", True)
+        self._store_dataset_properties()
+        if derive_bboxes:
+            generate_bboxes_from_lms_folder(
+                self.output_folder / "lms",
+                num_processes=getattr(self, "num_processes", 1),
+            )
+        store_labels_info(
+            self.output_folder, num_processes=getattr(self, "num_processes", 1)
+        )
+        self.create_dataset_stats_artifacts(gif=True, label_stats=True)
+        return 1
+
     def process(self, **process_kwargs):
-        if not hasattr(self, "df") or len(self.df) == 0:
+        if not hasattr(self, "df"):
                 print("No data frames have been created. Run setup")
                 return 0
+        if len(self.df) == 0:
+            if getattr(self, "run_postprocess_if_empty", False):
+                return self.run_postprocess_only(**process_kwargs)
+            print("No data frames have been created. Run setup")
+            return 0
         self.initialize_process_state()
         self.results = self.run_worker_jobs()
         self.results_df = self.flatten_results(self.results)
@@ -648,6 +685,7 @@ class Preprocessor(GetAttr):
         self.num_processes = max(1, int(num_processes))
         if "debug" in setup_kwargs:
             self.debug = setup_kwargs["debug"]
+        self.run_postprocess_if_empty = False
         self.create_data_df()
         if hasattr(self, "remapping_key"):
             self.set_remapping_per_ds()
@@ -656,6 +694,7 @@ class Preprocessor(GetAttr):
         if overwrite == False:
             self.remove_completed_cases()
         if len(self.df) == 0:
+            self.run_postprocess_if_empty = self.postprocess_artifacts_missing()
             return
 
         worker_kwargs = self.build_worker_kwargs(device=device, **setup_kwargs)

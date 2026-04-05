@@ -1,6 +1,6 @@
 # %%
 import ast
-
+import sys
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.managers import Project
 from fran.preprocessing.datasetanalyzers import *
@@ -15,6 +15,19 @@ from utilz.helpers import *
 from utilz.stringz import headline
 
 common_vars_filename = os.environ["FRAN_CONF"]
+
+
+def postprocess_complete(project, plan):
+    if plan["mode"] != "lbd":
+        return True
+    folder = Path(folder_names_from_plan(project, plan)["data_folder_lbd"])
+    stats_folder = folder / "dataset_stats"
+    required = [
+        folder / "labels_all.json",
+        stats_folder / "snapshot.gif",
+        stats_folder / "lesion_stats.csv",
+    ]
+    return all(pth.exists() for pth in required)
 
 
 def main(args):
@@ -33,7 +46,7 @@ def main(args):
             headline(plan_id)
             plan = C.configs["plan_train"]
             completed = confirm_plan_analyzed(P, plan)
-            if overwrite or not all(completed.values()):
+            if overwrite or not all(completed.values()) or not postprocess_complete(P, plan):
                 args.plan = plan_id
                 process_plan(args)
             else:
@@ -44,7 +57,7 @@ def main(args):
         C.setup(args.plan, args.plan)
         plan = C.configs["plan_train"]
         completed = confirm_plan_analyzed(P, plan)
-        if overwrite or not all(completed.values()):
+        if overwrite or not all(completed.values()) or not postprocess_complete(P, plan):
             process_plan(args)
         else:
             print(f"Plan {args.plan} already processed. Skipping")
@@ -391,15 +404,15 @@ if __name__ == "__main__":
         help="Show CLI help and exit.",
     )
     args = parser.parse_known_args()[0]
-    # %%
+# %%
     # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
-    # args.project_title="kits2"
-    # args.plan = 1
+    # args.project_title="totalseg"
+    # args.plan = 2
     # args.num_processes = 1
     # args.overwrite=False
     # args.debug=True
-    #
-    # %%
+
+# %%
     cprint("Project: {0}".format(args.project_title), color="green")
 
     if args.help_args:
@@ -407,17 +420,17 @@ if __name__ == "__main__":
         raise SystemExit(0)
     main(args)
 
-    # %%
+# %%
     #
     # I = PreprocessingManager(args)
     # I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
-    # # %%
+# %%
     #     I.R = ResampleDatasetniftiToTorch(
     #         project=I.project,
     #         plan=I.plan,
     #         data_folder=I.project.raw_data_folder,
     #     )
-    # # %%
+# %%
     #
     #     I.R.setup(overwrite=overwrite, num_processes=num_processes)
     #     I.R.process()
@@ -426,7 +439,7 @@ if __name__ == "__main__":
     #
     #        "data_folder_source"
     #    ]
-    # # %%
+# %%
     #
     #         data_folder = I.get_source_data_folder_for_patch()
     #         PG = PatchDataGenerator(
@@ -442,7 +455,7 @@ if __name__ == "__main__":
     #         PG.process(derive_bboxes=False)
     #     I.R.create_dataset_stats_artifacts()
     #
-    # # %%
+# %%
     #     overwrite=False
     #     num_processes=8
     #
@@ -450,24 +463,24 @@ if __name__ == "__main__":
     #         "data_folder_source"
     #     ]
     #
-    # # %%
+# %%
     #     I.L = LabelBoundedDataGeneratorImported(
     #         project=I.project,
     #         plan=I.plan,
     #         data_folder=resampled_data_folder,
     #     )
-    # # %%
-    # # # %%
+# %%
+# %%
     #     device='cpu'
     #     I.L.setup(overwrite=overwrite, device=device,num_processes=num_processes,debug=True)
     #     I.L.process()
-    # # %%
+# %%
     #
     #
-    # # %%
+# %%
     #     # sys.exit()
     sys.exit()
-# # %%
+# %%
 # dataset_root = Path(I.R.output_folder)
 # lms_folder = dataset_root / "lms"
 # if not lms_folder.exists():
@@ -479,4 +492,5 @@ if __name__ == "__main__":
 #
 # from label_analysis.dataset_stats import end2end_lms_stats_and_plots
 # from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
-# # %%
+# %%
+

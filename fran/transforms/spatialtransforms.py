@@ -475,40 +475,6 @@ class CropImgMask(KeepBBoxTransform):
         return img, mask
 
 
-class CropExtra(ItemTransform):
-    def __init__(self, patch_size):
-
-        self.patch_size = patch_size
-
-    def encodes(self, x):
-        img, mask = x
-        if list(img.shape) > self.patch_size:
-            img = img[: self.patch_size[0], : self.patch_size[1], : self.patch_size[2]]
-            mask = mask[
-                : self.patch_size[0], : self.patch_size[1], : self.patch_size[2]
-            ]
-        return img, mask
-
-
-class CropBatch(ItemTransform):
-    def __init__(self, patch_size):
-        self.dim = len(patch_size)
-        self.patch_halved = [int(x / 2) for x in patch_size]
-
-    def encodes(self, x):
-        img, mask = x
-        center = [int(x / 2) for x in img.shape[-self.dim :]]
-        slices = [slice(None)] * 2
-        for ind in range(self.dim):
-            slc = slice(
-                center[ind] - self.patch_halved[ind],
-                center[ind] + self.patch_halved[ind],
-            )
-            slices.append(slc)
-        img, mask = img[slices], mask[slices]
-        return img, mask
-
-
 class ResizeBatch(ItemTransform):
     def __init__(self, target_size):
         self.target_size = target_size
@@ -693,31 +659,6 @@ def slices_from_lists(slc_start, slc_stop, stride=None):
     for start, stop, stride_ in zip(slc_start, slc_stop, stride):
         slices.append(slice(int(start), int(stop), stride_))
     return tuple(slices)
-
-
-class StrideRandom(ItemTransform):
-    def __init__(
-        self, patch_size, input_dims, stride_max=[2, 2, 2], pad_value=-3.0, p=0.3
-    ):
-        self.patch_size = patch_size
-        self.stride_max = stride_max
-        self.p = p
-
-        self.Padder = PadDeficitImgMask(
-            patch_size=self.patch_size, input_dims=input_dims, pad_value=pad_value
-        )
-
-    def encodes(self, x):
-        img, mask = x
-        if np.random.rand() < self.p:
-            stride = [np.random.randint(low=1, high=x + 1) for x in self.stride_max]
-            try:
-                img, mask = [xx[:: stride[0], :: stride[1], :: stride[2]] for xx in x]
-            except:
-                print("Stride Random error!")
-                print(x[0].shape, x[1].shape, stride)
-            img, mask = self.Padder.encodes([img, mask])
-        return img, mask
 
 
 # %%

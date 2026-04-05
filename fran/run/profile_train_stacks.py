@@ -25,7 +25,9 @@ def _iter_dm_managers(dm):
             yield name, m
 
 
-def _patch_project_split_for_mini_subset(project: Project, n_samples: int):
+def _patch_project_split_for_mini_subset(
+    project: Project, n_samples: int, skip_val: bool
+):
     n_samples = int(n_samples)
     if n_samples <= 0:
         raise ValueError("--n-samples must be > 0")
@@ -35,7 +37,7 @@ def _patch_project_split_for_mini_subset(project: Project, n_samples: int):
     def _limited_get_train_val_files(fold, datasources):
         train_cases, valid_cases = original(fold, datasources)
         train_cases = list(train_cases)[:n_samples]
-        valid_cases = list(valid_cases)[:n_samples]
+        valid_cases = [] if skip_val else list(valid_cases)[:n_samples]
         return train_cases, valid_cases
 
     project.get_train_val_files = _limited_get_train_val_files
@@ -64,15 +66,18 @@ def _limit_dm_samples(dm, n_samples: int) -> None:
         )
 
 
-def _configure_cpu_profiling_dataloaders(dm, enabled: bool) -> None:
-    if not enabled:
-        return
-
+def _configure_profiling_dataloaders(
+    dm, enabled: bool, num_workers: int, persistent_workers: bool
+) -> None:
     for name, m in _iter_dm_managers(dm):
+        if name == "valid_manager" and enabled is False:
+            continue
+
+        m._num_workers = lambda: (int(num_workers), bool(persistent_workers))
         m.create_train_dataloader() if m.split == "train" else m.create_valid_dataloader()
         dl = getattr(m, "dl", None)
         print(
-            f"[{name}] CPU profiling dataloader: "
+            f"[{name}] profiling dataloader: "
             f"num_workers={getattr(dl, 'num_workers', None)}, "
             f"persistent_workers={getattr(dl, 'persistent_workers', None)}"
         )
@@ -109,14 +114,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=2)
     p.add_argument("--epochs", type=int, default=1)
     p.add_argument("--compiled", type=str2bool, default=False)
-    p.add_argument("--test-every-n-epochs", type=int, default=10)
-    p.add_argument("--n-samples", type=int, default=16)
+    p.add_argument("--val-every-n-epochs", type=int, default=1000)
+    p.add_argument("--n-samples", type=int, default=2)
+    p.add_argument("--skip-val", type=str2bool, default=True)
+    p.add_argument("--num-workers", type=int, default=0)
+    p.add_argument("--persistent-workers", type=str2bool, default=False)
+    p.add_argument("--cache-rate", type=float, default=0.0)
 
     p.add_argument("--cpu-profiling", type=str2bool, default=True)
     p.add_argument("--profile-record-shapes", type=str2bool, default=False)
     p.add_argument("--profile-with-stack", type=str2bool, default=True)
-    p.add_argument("--stack-depth", type=int, default=8)
-    p.add_argument("--profile-experimental-verbose", type=str2bool, default=True)
+    p.add_argument("--stack-depth", type=int, default=2)
+    p.add_argument("--profile-experimental-verbose", type=str2bool, default=False)
     p.add_argument("--export-stacks", type=str2bool, default=True)
 
     return p
@@ -180,15 +189,17 @@ def main(args: argparse.Namespace) -> None:
         raise RuntimeError("CUDA is required for this runner.")
 
     project = Project(args.project_title)
-    original_split_fn = _patch_project_split_for_mini_subset(project, args.n_samples)
+    original_split_fn = _patch_project_split_for_mini_subset(
+        project, args.n_samples, bool(args.skip_val)
+    )
     cm = ConfigMaker(project)
     cm.setup(int(args.plan))
     conf = cm.configs
+    conf["dataset_params"]["cache_rate"] = float(args.cache_rate)
 
     tm = Trainer(project_title=project.project_title, configs=conf, run_name=None)
     tm.setup(
         compiled=bool(args.compiled),
-        test_every_n_epochs=int(args.test_every_n_epochs),
         debug=True,
         batch_size=int(args.batch_size),
         devices=args.devices,
@@ -197,14 +208,22 @@ def main(args: argparse.Namespace) -> None:
         wandb=False,
         batchsize_finder=False,
         profiler=False,
+        val_every_n_epochs=int(args.val_every_n_epochs),
         tags=["profile", "stacks"],
         description="Profiler run with stack exports",
     )
+    if bool(args.skip_val):
+        tm.trainer.limit_val_batches = 0
     project.get_train_val_files = original_split_fn
     tm.N.compiled = bool(args.compiled)
 
     _limit_dm_samples(tm.D, n_samples=int(args.n_samples))
-    _configure_cpu_profiling_dataloaders(tm.D, enabled=bool(args.cpu_profiling))
+    _configure_profiling_dataloaders(
+        tm.D,
+        enabled=not bool(args.skip_val),
+        num_workers=int(args.num_workers),
+        persistent_workers=bool(args.persistent_workers),
+    )
 
     torch.cuda.reset_peak_memory_stats()
 
@@ -224,7 +243,7 @@ def main(args: argparse.Namespace) -> None:
     with profile(
         activities=activities,
         record_shapes=bool(args.profile_record_shapes),
-        profile_memory=True,
+        profile_memory=False,
         with_stack=bool(args.profile_with_stack),
         experimental_config=experimental_config,
     ) as prof:

@@ -13,7 +13,7 @@ from utilz.helpers import *
 from fran.callback.nept import *
 from fran.callback.tune import *
 from fran.transforms.misc_transforms import *
-from fran.transforms.spatialtransforms import CropBatch, ResizeBatch
+from fran.transforms.spatialtransforms import ResizeBatch
 
 
 from fran.data.dataset import ImageMaskBBoxDataset
@@ -154,10 +154,6 @@ class cGANMaskOneHot(ItemTransform):
             tnsr = torch.cat([mask,img],axis=1)
             output.append(tnsr)
         return output
-
-
-
-
 
 # %%
 

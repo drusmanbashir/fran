@@ -501,25 +501,6 @@ def create_augmentations(after_item_intensity: dict, after_item_spatial: dict):
     return intensity_augs, spatial_augs
 
 
-class Squeeze(ItemTransform):
-    def __init__(self, dim):
-        self.dim = dim
-
-    def encodes(self, x):
-        outputs = []
-        for tensr in x:
-            tensr = tensr.squeeze(self.dim)
-            outputs.append(tensr)
-        return outputs
-
-    def decodes(self, x):
-        outputs = []
-        for tensr in x:
-            tensr = tensr.unsqueeze(self.dim)
-            outputs.append(tensr)
-        return outputs
-
-
 # %%
 if __name__ == "__main__":
     img_fn = Path(

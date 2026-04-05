@@ -548,16 +548,16 @@ class Trainer:
         return Path(last) if last else None
 
 
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR>
-
 # %%
+# SECTION: -------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.utils.common import *
+    from utilz.helpers import pp
 
-    C = ConfigMaker(P)
     P = Project("lidc")
     P = Project("kits2")
+    C = ConfigMaker(P)
     # P.add_data([DS.totalseg])
     C.setup(6)
 
@@ -585,7 +585,7 @@ if __name__ == "__main__":
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR>
     train_indices = None
-    bs = 4
+    bs = 10
     device_id = 0
 
     batchsize_finder = True
@@ -608,8 +608,8 @@ if __name__ == "__main__":
     debug_ = False
     profiler = False
     compiled = False
-    run_name = "KITS2-bk"
     run_name = None
+    run_name = "KITS2-NGALE"
     cbs = []
     wandb_grid_epoch_freq = 15
     val_every_n_epochs = 5

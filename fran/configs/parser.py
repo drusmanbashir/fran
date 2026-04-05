@@ -438,14 +438,20 @@ class ConfigMaker:
         # Ensure the source plan exists in the config before proceeding
         if src_plan_key:
             # Access the source plan
-            source_plan = self.plans.loc[src_plan_key]
+            src_plan_key = src_plan_key.replace(" ","")
+            src_plan_k, src_plan_mode = src_plan_key.split(",")
+            src_plan_k = ast_literal_eval(src_plan_k)
+            source_plan = self.plans.loc[src_plan_k]
             source_plan = dict(source_plan)
+            self.configs["plan_source"] = source_plan
             # source_plan = config.get(src_plan_key, {})
 
             # Iterate over the source plan keys and add any missing keys to the main plan
             for key in source_plan:
-                if key not in main_plan:
+                main_plan_val = main_plan.get(key)
+                if is_excel_None(main_plan_val) :
                     main_plan[key] = source_plan[key]
+            # self.configs[plan_key] = main_plan
 
     def _set_plan(self, plan_id, suffix: str):
         assert suffix in [
@@ -466,7 +472,7 @@ class ConfigMaker:
         )
         plan_key = "plan_" + suffix
         self.configs[plan_key] = plan_selected
-        # self.maybe_merge_source_plan(plan_key)
+        self.maybe_merge_source_plan(plan_key)
         if is_excel_None(plan_selected["expand_by"]):
             plan_selected["expand_by"] = 0
 
@@ -600,15 +606,44 @@ if __name__ == "__main__":
     P = Project(project_title="test")
     P = Project(project_title="pancreas")
     P = Project(project_title="kidneys")
-    P = Project(project_title="lidc")
+    P = Project(project_title="totalseg")
+
 # %%
     P.global_properties
     C = ConfigMaker(P)
-    C.setup(8)
+    C.setup(2)
     pp(C.configs["plan_train"])
     pp(C.configs["plan_valid"])
     C.configs["plan_train"].keys()
     C.configs["plan_train"]["labels_all_lbd"]
+    plan = C.configs["plan_train"]
+    pp(plan["spacing"])
+
+# %%
+
+    main_plan = C.configs["plan_train"]
+    src_plan_key = main_plan.get("source_plan")
+
+    # Ensure the source plan exists in the config before proceeding
+    if src_plan_key:
+        # Access the source plan
+        src_plan_key = src_plan_key.replace(" ","")
+        src_plan_k, src_plan_mode = src_plan_key.split(",")
+        src_plan_k = ast_literal_eval(src_plan_k)
+        source_plan = C.plans.loc[src_plan_k]
+        source_plan = dict(source_plan)
+        C.configs["plan_source"] = source_plan
+        # source_plan = config.get(src_plan_key, {})
+
+        # Iterate over the source plan keys and add any missing keys to the main plan
+# %%
+        for key in source_plan:
+            print(key)
+            if key == "spacing":
+                tr()
+            main_plan_val = main_plan.get(key)
+            if main_plan_val is None:
+                main_plan[key] = source_plan[key]
 # %%
     C.plans["mode"]
 # %%
@@ -621,8 +656,7 @@ if __name__ == "__main__":
     conf["plan_train"]["remapping_imported"]
 # %%
 
-    plan = C.configs["plan_train"]
-    existing_fldr = folder_names_from_plan(project, plan)["data_folder_source"]
+    existing_fldr = folder_names_from_plan(P, plan)["data_folder_source"]
     img_fldr = existing_fldr / ("images")
     len(list(img_fldr.glob("*"))) == len(project)
 # %%

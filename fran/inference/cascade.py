@@ -543,7 +543,7 @@ if __name__ == "__main__":
     run_ = inferer_from_params(run_kw)
 
     if "Whole" in str(run_):
-        label_loc = TSL.kidney.label_localiser
+        label_loc = TSL.kidney.label_region
     elif "Base" in str(run_):
         label_loc = TSL.kidney.label_minimal
     else:
@@ -635,7 +635,7 @@ if __name__ == "__main__":
 
 # %%
 # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
-    localiser_labels = set(TSL.label_localiser)
+    localiser_labels = set(TSL.label_region)
     safe_mode = True
     patch_overlap = 0.0
     devices = [1]
@@ -665,8 +665,8 @@ if __name__ == "__main__":
 
     run = best_runs["bones"]
     localiser_labels = run["localiser_labels"]
-    if localiser_labels == "TSL.label_localiser":
-        localiser_labels = set(TSL.label_localiser)
+    if localiser_labels == "TSL.label_region":
+        localiser_labels = set(TSL.label_region)
     run_name = run["run_ids"][0]
 # %%
     safe_mode = True
@@ -732,7 +732,7 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
-    localiser_labels = set(TSL.label_localiser)
+    localiser_labels = set(TSL.label_region)
 
     TLS = TotalSegmenterLabels()
     labs_panc = TLS.pancreas

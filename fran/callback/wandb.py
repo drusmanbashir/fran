@@ -107,7 +107,12 @@ class WandbImageGridCallback(Callback):
         img = batch["image"].cpu()
         label = batch["lm"].cpu().squeeze(1)
         label = one_hot(label, self.classes, axis=1)
-        pred = batch["pred"].cpu()
+        pred = batch["pred"]
+        if isinstance(pred, (list, tuple)):
+            pred = pred[0]
+        elif pred.dim() == img.dim() + 1:
+            pred = pred[:, 0, :]
+        pred = pred.cpu()
         pred = F.softmax(pred.to(torch.float32), dim=1)
 
         self.append_grid_batch(img, label, pred, batch)

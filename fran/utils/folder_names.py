@@ -141,7 +141,7 @@ def folder_names_from_plan(project, plan: dict):
 
     source_plan = plan.get("source_plan", None)
     if source_plan is not None:
-        assert plan["mode"] in ["lbd", "pbd"], (
+        assert plan["mode"] in ["lbd", "pbd","whole"], (
             "Folder names are not implemented with source_plan unless the mode is lbd or pbd"
         )
     source_plan_code = short_code(source_plan)

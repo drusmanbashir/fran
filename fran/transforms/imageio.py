@@ -58,7 +58,6 @@ class ToTensorT(Transform):
     def __init__(self, encode_dtype=None):
         self.encode_dtype = encode_dtype
 
-    "Convert item to appropriate tensor class"
     order = 0
 
     def decodes(self, x, decode_type: np.ndarray):

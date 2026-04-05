@@ -18,7 +18,6 @@ from fran.managers.tune import *
 #         except:
 #             if with_opt: warn("Could not load the optimizer state.")
 #     elif with_opt: warn("Saved filed doesn't contain an optimizer state.")
-#
 class BoundingBoxes_to_lists(Transform):
     def encodes(self, bounding_boxes):
         slices_as_num = []
@@ -36,7 +35,6 @@ class BoundingBoxes_to_lists(Transform):
                 slices.append(slc)
             bboxes_out.append(slices)
         return bboxes_out
-
 
 # %%
 if __name__ == "__main__":

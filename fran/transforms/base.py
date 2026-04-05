@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from monai.config.type_definitions import KeysCollection
 from monai.transforms.transform import MapTransform
-from torch.functional import Tensor
 
 
 def listify(x):
@@ -56,26 +55,9 @@ class MonaiDictTransform(MapTransform):
         raise NotImplementedError
 
 
-class Squeeze(ItemTransform):
-    def __init__(self, dim):
-        self.dim = dim
-
-    def encodes(self, x):
-        outputs = []
-        for tensr in x:
-            outputs.append(tensr.squeeze(self.dim))
-        return outputs
-
-    def decodes(self, x):
-        outputs = []
-        for tensr in x:
-            outputs.append(tensr.unsqueeze(self.dim))
-        return outputs
-
-
 class KeepBBoxTransform(ItemTransform):
     def encodes(self, x: Union[list, tuple]):
-        if not isinstance(x[-1], (Tensor, np.ndarray)):
+        if not isinstance(x[-1], (torch.Tensor, np.ndarray)):
             if len(x) == 2:
                 y = [self.func(x[0])]
             elif len(x) > 2:
@@ -86,34 +68,3 @@ class KeepBBoxTransform(ItemTransform):
             y.append(x[-1])
             return y
         return self.func(x)
-
-
-class TrainingAugmentations(KeepBBoxTransform):
-    def __init__(self, augs, p: Union[float, list] = 0.2):
-        augs = listify(augs)
-        if isinstance(p, float):
-            p = [p] * len(augs)
-        assert len(p) == len(augs), (
-            "Either provide a single probability for all augs, or a list of probabilities of equal length as augs"
-        )
-        self.augs = augs
-        self.p = p
-        super().__init__()
-
-    def func(self, x):
-        for aug, p in zip(self.augs, self.p):
-            if np.random.rand() < p:
-                x = aug(x)
-        return x
-
-
-class GenericPairedOrganTransform(ItemTransform):
-    def __init__(self, func):
-        self.func = func
-
-    def encodes(self, x):
-        final_img_mask_pairs = []
-        for img_mask_pair in x:
-            final_img_mask_pairs.append(self.func(img_mask_pair))
-        return final_img_mask_pairs
-

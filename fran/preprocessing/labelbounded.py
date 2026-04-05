@@ -217,7 +217,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.results_df.to_csv(
             self.output_folder / "resampled_dataset_properties.csv", index=False
         )
-        self.create_dataset_stats_artifacts()
+        self.create_dataset_stats_artifacts(gif=True, label_stats=True)
 
     def store_labels_info(self):
         try:

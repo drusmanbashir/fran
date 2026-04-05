@@ -216,7 +216,7 @@ class EnsembleInferer:
         # labels: prefer explicit; else borrow from localiser run's configs
         if self.localiser_labels is None:
             p = load_params(run_w)
-            lab = p["configs"].get("label_localiser", None)
+            lab = p["configs"].get("label_region", None)
             labels = list(lab) if isinstance(lab, (list, set, tuple)) else lab
         else:
             labels = self.localiser_labels
@@ -745,7 +745,7 @@ if __name__ == "__main__":
 
     # %%
     # SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-    localiser_labels = set(TSL.label_localiser)
+    localiser_labels = set(TSL.label_region)
     runs = run_nodes2
     safe_mode = True
     patch_overlap = 0.2

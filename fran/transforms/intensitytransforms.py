@@ -6,7 +6,6 @@ import numpy as np
 import torch
 from fran.transforms.base import (
     ItemTransform,
-    KeepBBoxTransform,
     MonaiDictTransform,
     Transform,
 )
@@ -107,36 +106,6 @@ class _IntensityAugmentation:
         return self.aug_func(x[0], factor), x[1]
 
 
-# reversible transforms
-class IntensityNorm(Transform):
-    def __init__(self, zero_center=True):
-        """
-        params: zero_center = True, returns (x-mean)/std, False, returns x in range [0,1]
-        """
-        self.zero_center = zero_center
-
-    def encodes(self, img):
-        if self.zero_center == True:
-            self.mean = img.mean()
-            self.std = img.std()
-            img = (img - self.mean) / self.std
-            return img
-        else:
-            self.min = img.min()
-            self.range = img.max() - self.min
-            if self.min < 0:
-                img = img - self.min
-            img = img / (self.range + 1e-5)
-            return img
-
-    def decodes(self, img):
-        if self.zero_center == True:
-            img = self.std * (img + self.mean)
-        else:
-            img = img * self.range + self.min
-        return img
-
-
 def zero_to_one(func):
     @wraps(func)
     def _inner(img, *args, **kwargs):
@@ -149,6 +118,10 @@ def zero_to_one(func):
         return img
 
     return _inner
+
+
+def standardize(img, mn, std):
+    return (img - mn) / std
 
 
 @_IntensityAugmentation
