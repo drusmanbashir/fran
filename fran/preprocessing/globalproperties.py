@@ -41,8 +41,7 @@ def unique_idx(total_len, start=1):
         yield (x)
 
 
-class GlobalProperties(GetAttr):
-    _default = "project"
+class GlobalProperties():
     """
     Input: raw_data_folder and project_title
     Outputs: (after running process_cases()) :
@@ -65,7 +64,9 @@ class GlobalProperties(GetAttr):
         self.percentile_range = percentile_range
         self.clip_range = clip_range
         self.max_cases = max_cases
-        datasources = self.global_properties.get("datasources", [])
+        self.global_properties = self.project.global_properties
+        self.global_properties_filename = self.project.global_properties_filename
+        datasources = self.project.global_properties.get("datasources", [])
         assert len(datasources) > 0, (
             "No datasources found in project metadata. Run P.add_data([...]) before maybe_store_projectwide_properties()."
         )
@@ -398,43 +399,6 @@ class GlobalProperties(GetAttr):
     def unique_labels(self):
         pass
 
-    def collate_lm_labels(self):
-        """
-        Collate and organize landmark labels from all datasets in the project.
-
-        This method processes label groups, resolves dataset names, and creates
-        a unified label mapping across all datasets.
-        """
-        labels_all = []
-        # CODE: find relevance of lm_groups in modern version. Phase it out if redundant
-        lmgps = "lm_group"
-        keys = [k for k in self.global_properties.keys() if lmgps in k]
-        for key in keys:
-            shared_labels_gps = self.global_properties[key]["ds"]
-            labs_gp = [0]
-            for gp in shared_labels_gps:
-                tr()
-                ds_name = DS.resolve_ds_name(gp)
-                for c in self.case_properties:
-                    if ds_name == c["ds"]:
-                        labels = c["labels"]
-                        labels = self.serializable_obj(labels)
-                        labs_gp.extend(labels)
-
-            labs_gp = list(set(labs_gp))
-            dici = {"ds": ds_name, "label": labs_gp}
-            labels_all.extend(labs_gp)
-            print(labs_gp)
-            self.global_properties[key].update(
-                {"labels": labs_gp, "num_labels": len(labs_gp)}
-            )
-        self.global_properties["labels_all"] = list(set(labels_all))
-        labels_tot = len(labels_all)
-        if len(keys) > 1:
-            self._remap_labels(keys, labels_tot)
-        self.maybe_append_imported_labels()
-        self.save_global_properties()
-
     def serializable_obj(self, ints_list):
         """
         Converts a list of labels into a fully serializable object.
@@ -448,46 +412,9 @@ class GlobalProperties(GetAttr):
         ints_out = [int(x) for x in ints_list]
         return ints_out
 
-    def _remap_labels(self, keys, labels_tot):
-        """
-        Remap labels to ensure unique indices across all label groups.
-
-        Args:
-            keys: List of label group keys to process
-            labels_tot: Total number of labels to remap
-        """
-        uns = unique_idx(labels_tot)
-        self.global_properties["labels_all"] = []
-        for key in keys:
-            gp_labels = self.global_properties[key]["labels"]
-            labels_neo = []
-            for lab in gp_labels:
-                entry = next(uns)
-                labels_neo.append(entry)
-                self.global_properties["labels_all"].append(entry)
-            self.global_properties[key]["labels_neo"] = labels_neo
-
-    def maybe_append_imported_labels(self):
-        """
-        Append imported label sets to the global properties if they exist.
-
-        This method extends the labels_all list with additional labels from
-        imported labelsets found in label group configurations.
-        """
-        for key in self.lm_group_keys:
-            dici = self.global_properties[key]
-            largest_label = self.global_properties["labels_all"][-1]
-            if "imported_labelsets" in dici.keys():
-                n_labels_to_add = len(dici["imported_labelsets"])
-                labels = list(
-                    range(largest_label + 1, largest_label + 1 + n_labels_to_add)
-                )
-                self.global_properties["labels_all"].extend(labels)
-
 
 # %%
 if __name__ == "__main__":
-# %%
 # SECTION:--------------------------------------------- SETUPPPPPP-------------------------------------------------------------------------------------- <CR> <CR>
     from fran.managers import Project
     from fran.utils.common import *
@@ -495,7 +422,10 @@ if __name__ == "__main__":
     P = Project(project_title="totalseg")
     P = Project(project_title="nodes")
     P = Project(project_title="litstmp")
-    P = Project(project_title="test")
+    P = Project(project_title="test212")
+    P.create("test")
+    P.add_data([DS.drli_short])
+    P.maybe_store_projectwide_properties()
     G = GlobalProperties(P, max_cases=150)
     G._retrieve_h5_properties()
 # %%

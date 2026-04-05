@@ -463,21 +463,7 @@ class Trainer:
             "If no list is provided, fgbg_ratio must be an integer"
         )
 
-        try:
-            labels_all = configs["plan_train"]["labels_all"]
-        except KeyError:
-            cprint(
-                "No labels_all found in configs, will be inferred from dataset",
-                color="yellow",
-            )
-            return
 
-        if isinstance(ratios, list):
-            assert (a := len(ratios)) == (b := len(labels_all)), (
-                "Class ratios {0} do not match number of labels in dataset {1}".format(
-                    a, b
-                )
-            )
 
     def heuristic_batch_size(self):
         raise NotImplementedError
@@ -557,9 +543,10 @@ if __name__ == "__main__":
 
     P = Project("lidc")
     P = Project("kits2")
+    P = Project("test")
     C = ConfigMaker(P)
     # P.add_data([DS.totalseg])
-    C.setup(6)
+    C.setup(1)
 
     conf = C.configs
     print(conf["model_params"])
@@ -608,8 +595,8 @@ if __name__ == "__main__":
     debug_ = False
     profiler = False
     compiled = False
-    run_name = None
     run_name = "KITS2-NGALE"
+    run_name = None
     cbs = []
     wandb_grid_epoch_freq = 15
     val_every_n_epochs = 5

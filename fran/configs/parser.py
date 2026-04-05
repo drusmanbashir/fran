@@ -135,50 +135,6 @@ def labels_from_remapping(remapping_in):
     return labels_all
 
 
-def add_out_labels(plan: dict, global_props: Union[dict, None] = None) -> dict | None:
-    """
-    Priority:
-      1) plan['remapping_train']  -> infer mapping, return max(dest)+1
-      2) plan['remapping']        -> if [src, dest] or (src, dest) use max(dest)+1; if dict use max(values)+1
-      3) global_props['labels_all'] -> len + 1
-      4) default to 2
-    """
-    # --- 1) remapping_train ---
-    rmt = ast_literal_eval(plan.get("remapping_train"))
-    rms = ast_literal_eval(plan.get("remapping_source"))
-    rml = ast_literal_eval(plan.get("remapping_lbd"))
-    rmw = ast_literal_eval(plan.get("remapping_whole"))
-    mode = plan.get("mode")
-    labels_all_train = labels_from_remapping(rmt)
-    # elif (mode == "source" or mode == "whole") and rms:
-    labels_all_source = labels_from_remapping(rms)
-    # else: labels_all = global_props["labels_all"]
-    # elif mode == "lbd" and rml:
-    labels_all_lbd = labels_from_remapping(rml)
-
-    # elif mode == "whole" and rmw:
-    labels_all_whole = labels_from_remapping(rmw)
-    labels_all_datasources = global_props["labels_all"]
-    dici = {}
-    dici["labels_all_train"] = labels_all_train
-    dici["labels_all_source"] = labels_all_source
-    if labels_all_source == 0:
-        labels_all_source = sum(global_props["labels_all"])
-    dici["labels_all_lbd"] = labels_all_lbd
-    dici["labels_all_whole"] = labels_all_whole
-    dici["labels_all_datasources"] = labels_all_datasources
-    if mode == "source":
-        dici["labels_all_mode"] = labels_all_source
-    elif mode == "lbd" or mode == "pbd":
-        if labels_all_lbd == 0:
-            dici["labels_all_mode"] = labels_all_source
-        else:
-            dici["labels_all_mode"] = labels_all_lbd
-    elif mode == "whole":
-        dici["labels_all_mode"] = labels_all_whole
-    return dici
-
-
 def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
     def _parse_single_remapping(remapping):
         if isinstance(remapping, str) and "TSL" in remapping:
@@ -379,18 +335,7 @@ class ConfigMaker:
             plan_test = plan_train
 
         self._set_active_plans(plan_train, plan_valid, plan_test)
-        self.add_output_labels(verbose=verbose)
-        # self.add_out_channels(verbose=verbose)
         self.add_dataset_props()
-
-    def add_output_labels(self, verbose=True):
-        out_labels_dict = add_out_labels(
-            self.configs["plan_train"], self.project.global_properties
-        )
-        # out_labels = set(out_labels)
-        # out_labels.update([0])
-        self.configs["plan_train"].update(out_labels_dict)
-        # self.config[plan]["labels_all"] = labels_all
 
     def resolve_configuration_filename(self):
 
@@ -416,12 +361,6 @@ class ConfigMaker:
                 self.configs["dataset_params"][prop] = None
 
     # CODE: depcrecated add_out_channels as per folder labels_out are being computed in preprocessing
-    def add_out_channels(self, verbose=True):
-        out_ch = len(self.configs["plan_train"]["labels_all"])
-        self.configs["model_params"]["out_channels"] = out_ch
-        if verbose:
-            print("Out channels set to {}".format(out_ch))
-            print("-" * 20)
 
     def maybe_merge_source_plan(self, plan_key="plan_train"):
         """Merge source plan into the specified plan
@@ -434,9 +373,11 @@ class ConfigMaker:
         # Retrieve the main plan and source plan from the config dictionary
         main_plan = self.configs[plan_key]
         src_plan_key = main_plan.get("source_plan")
+        if is_excel_None(src_plan_key):
+            return
 
         # Ensure the source plan exists in the config before proceeding
-        if src_plan_key:
+        else:
             # Access the source plan
             src_plan_key = src_plan_key.replace(" ","")
             src_plan_k, src_plan_mode = src_plan_key.split(",")
@@ -611,7 +552,7 @@ if __name__ == "__main__":
 # %%
     P.global_properties
     C = ConfigMaker(P)
-    C.setup(2)
+    C.setup(1)
     pp(C.configs["plan_train"])
     pp(C.configs["plan_valid"])
     C.configs["plan_train"].keys()

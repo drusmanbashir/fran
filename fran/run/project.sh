@@ -7,4 +7,4 @@
 # python -m ipdb project_init.py -t totalseg --mnemonic totalseg --datasources totalseg
 # python -m ipdb project_init.py -t bones --mnemonic bones --datasources uls23_bone
 # python -m ipdb project_init.py -t kits2 --mnemonic kidneys --datasources kits23
-python -m ipdb project_init.py -t kits2 --mnemonic kidneys --datasources kits23
+python -m ipdb project_init.py -t test2 --mnemonic test --datasources drli_short

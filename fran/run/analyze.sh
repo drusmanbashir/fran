@@ -4,3 +4,4 @@
 # python -m ipdb analyze_resample.py -t lidc -p 8  -n 8
 # python -m ipdb analyze_resample.py -t kits2 -p 9  -n 6
 python analyze_resample.py -t totalseg -p 2 -n 6
+# python analyze_resample.py -t test -p 1 -n 6 -o

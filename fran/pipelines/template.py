@@ -26,20 +26,20 @@ if __name__ == "__main__":
 
     # P.add_data([DS['litsmall']])
     # P.maybe_store_projectwide_properties(overwrite=True)
-    # %%
+# %%
 
     C = ConfigMaker(P, configuration_filename=None)
     C.setup(1)
     C.plans
-    # %%
+# %%
     conf = C.configs
     plan = conf["plan_train"]
     print(conf["model_params"])
 
     plan = conf["plan_train"]
     # P.add_data([DS.totalseg])
-    # %%
-    # SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- FINE-TUNING RUN--------------------------------------------------------------------------------------
     bs = 8  # is good if LBD with 2 samples per case
     compiled = True
     profiler = False
@@ -57,10 +57,10 @@ if __name__ == "__main__":
     # conf["dataset_params"]["cache_rate"] = None
     matching_plan = folder_names_from_plan(P, plan)
     pp(matching_plan)
-    # %%
+# %%
     run_name = None
     Tm = Trainer(P.project_title, conf, run_name)
-    # %%
+# %%
     Tm.setup(
         compiled=compiled,
         batch_size=bs,
@@ -73,29 +73,29 @@ if __name__ == "__main__":
         description=description,
     )
 
-    # %%
+# %%
     P.get_train_val_files(conf["dataset_params"]["fold"], plan["datasources"])
-    # %%
+# %%
     # Tm.D.prepare_data()
     # Tm.D.setup()
     # Tm.D.batch_size=8
     Tm.N.compiled = compiled
     Tm.fit()
-    # %%
+# %%
 
     train_cases, valid_cases = P.get_train_val_files(
         conf["dataset_params"]["fold"], plan["datasources"]
     )
-    # %%
-    # SECTION:-------------------- DATA FOLDER H5PY file--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- DATA FOLDER H5PY file--------------------------------------------------------------------------------------
 
     test = False
     ds = Datasource(
         folder=Path("/s/datasets_bkp/litstmp"), name="litstmp", alias="tmp", test=test
     )
     ds.process()
-    # %%
-    # SECTION:-------------------- ANALYSE RESAMPE------------------------------------------------------------------------------------  <CR>
+# %%
+# SECTION:-------------------- ANALYSE RESAMPE------------------------------------------------------------------------------------  <CR>
 
     parser = argparse.ArgumentParser(description="Resampler")
 
@@ -135,29 +135,25 @@ if __name__ == "__main__":
 
     # args.num_processes = 1
     args.debug = False
-    # %%
+# %%
     args.plan = 11
     args.project_title = "litstmp"
 
     plan = conf["plan10"]
     plan["remapping_train"] = {1: 0}
-    # %%
-    if not "labels_all" in P.global_properties.keys():
-        P.set_lm_groups(plan["lm_groups"])
-        P.maybe_store_projectwide_properties(overwrite=True)
-
-    # %%
-    # SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
+# %%
+# %%
+# SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
     I = PreprocessingManager(args)
     # I.spacing =
-    # %%
-    # SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
     overwrite = True
     I.resample_dataset(overwrite=overwrite)
     I.R.get_tensor_folder_stats()
 
-    # %%
-    # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
+# %%
+# SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
     overwrite = False
     if I.plan["mode"] == "patch":
         # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
@@ -171,9 +167,9 @@ if __name__ == "__main__":
                 imported_labels=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],
             )
-    # %%
-    # %%
-    # SECTION:-------------------- troubleshoot--------------------------------------------------------------------------------------
+# %%
+# %%
+# SECTION:-------------------- troubleshoot--------------------------------------------------------------------------------------
 
     plan_name = args.plan_name
     L = LabelBoundedDataGenerator(
@@ -182,13 +178,13 @@ if __name__ == "__main__":
         plan_name=plan_name,
     )
 
-    # %%
+# %%
     overwrite = True
     L.setup(overwrite=overwrite)
     L.process()
 
     add_plan_to_db(P, L.plan, L.output_folder, db_path="plans.db")
-    # %%
+# %%
 
     img_file, lm_file = L.image_files[0], L.lm_files[0]
     img = torch.load(img_file, weights_only=False)
@@ -202,7 +198,7 @@ if __name__ == "__main__":
     fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/nodes/spc_080_080_150/images/nodes_21b_20210202_Thorax0p75I70f3.pt"
     t2 = torch.load(fn, weights_only=False)
     print(t2.meta.keys())
-    # %%
+# %%
     # Apply transforms
     data = L.transforms(data)
     data2 = L.transforms_dict["LT"](data)
@@ -214,11 +210,11 @@ if __name__ == "__main__":
 
     print(data4["lm"].max())
     print(data5["lm"].max())
-    # %%
+# %%
     print(lm_file)
     ttt = torch.load(img_file, weights_only=False)
     print(ttt.meta.keys())
-    # %%
+# %%
     # Get metadata and indices
     fg_indices = L.get_foreground_indices(data["lm"])
     bg_indices = L.get_background_indices(data["lm"])
@@ -234,7 +230,8 @@ if __name__ == "__main__":
         coords["end"],
     )
     # S
-    # %%
+# %%
 
     add_plan_to_db(I.L.plan, data_folder_lbd=I.L.output_folder, db_path=I.L.project.db)
 # %%
+

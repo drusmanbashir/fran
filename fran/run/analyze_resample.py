@@ -430,11 +430,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_known_args()[0]
 # %%
-    # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
-    # args.project_title="totalseg"
-    # args.plan = 2
-    # args.num_processes = 1
-    # args.overwrite=False
+    cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
+    args.project_title="test"
+    args.plan = 1
+    args.num_processes = 1
+    args.overwrite=True
     # args.debug=True
 
 # %%

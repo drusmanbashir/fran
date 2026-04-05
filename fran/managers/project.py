@@ -182,12 +182,6 @@ class Project(DictToAttr):
         else:
             self.save_global_properties()
 
-    def set_labels_all(self):
-        labs = []
-        datasources = self.global_properties["datasources"]
-        for ds in datasources:
-            labs.extend(ds["labels"])
-        self.global_properties["labels_all"] = list(set(labs))
 
     def _init_global_properties(self, mnemonic):
         self.global_properties = {
@@ -322,7 +316,6 @@ class Project(DictToAttr):
             self.populate_tbl(ds)
         self.populate_raw_data_folder()
         self.register_datasources(datasources, multiprocess=multiprocess)
-        self.set_labels_all()
         self.save_global_properties()
         headline("Now consider running maybe_store_projectwide_properties()")
 
@@ -1107,9 +1100,6 @@ class Project(DictToAttr):
         self._create_folds()
         labels_all = self.global_properties.get("labels_all", None)
         self.G = GlobalProperties(self, max_cases=max_cases, clip_range=clip_range)
-        if labels_all is None or len(labels_all) == 0:
-            headline("Labels have not been collated. Doing it now")
-            self.G.collate_lm_labels()
         if (
             not "mean_dataset_clipped" in self.global_properties.keys()
             or overwrite == True
@@ -1221,18 +1211,21 @@ class Project(DictToAttr):
 
 if __name__ == "__main__":
     from fran.utils.common import *
+    from fran.configs.parser import ConfigMaker
     P = Project(project_title="pancreas")
     P = Project(project_title="test")
-    P.create("test",datasources=[DS.drli_short,DS.lidc_short,DS.kits23_short])
+    P.create("test",datasources=[DS.drli_short, DS.lidc_short, DS.kits23_short])
+    P.add_data([DS.kits23])
     P.maybe_store_projectwide_properties()
     P.delete()
     P = Project(project_title="kits2")
-    P.add_data([DS.kits23])
     P._create_folds(overwrite=True)
     P.add_data([DS.lidc])
     P.create("kidney")
     # P.create(["litsmc", "lidc"])
     P.create_tables()
+    C = ConfigMaker(project=P)
+    C.setup(1)
     # P.create(mnemonic="nodes")
     # P = Project(project_title="totalseg")
     # P.create("nodes")

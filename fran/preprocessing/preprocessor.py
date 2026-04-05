@@ -340,7 +340,8 @@ class Preprocessor(GetAttr):
         for ds, remapping in zip(datasources, remappings):
             mask = self.df["ds"] == ds
             if mask.sum() == 0:
-                raise ValueError(f"Datasource {ds} not found in df")
+                ds_present = self.df.ds.unique().tolist()
+                raise ValueError(f"Datasource {ds} not found in df.\nDatasources present: {ds_present}")
             self.df.loc[mask, self.remapping_key] = [remapping] * mask.sum()
 
     def set_input_output_folders(self, data_folder, output_folder):
@@ -647,7 +648,11 @@ class Preprocessor(GetAttr):
             ray_fldr = COMMON_PATHS["ray_folder"]
             ray_tmp = Path(ray_fldr) / ("tmp")
             try:
-                ray.init(ignore_reinit_error=True, _temp_dir=str(ray_tmp))
+                ray.init(
+                    ignore_reinit_error=True,
+                    include_dashboard=False,
+                    _temp_dir=str(ray_tmp),
+                )
             except Exception as e:
                 print("Ray init warning:", e)
 
