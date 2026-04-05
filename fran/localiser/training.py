@@ -16,8 +16,8 @@ if __name__ == "__main__":
     from torch.nn.functional import interpolate
     from ultralytics import YOLO
 
-    # %%
-    # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
     fn = "/s/fran_storage/roboflow.txt"
 
     with open(fn, "r") as fl:
@@ -29,9 +29,9 @@ if __name__ == "__main__":
     ds_location = Path("/s/fran_storage/parasites-2")
     model = YOLO("yolo11n.pt")
     imsize = 256
-    # %%
-    # %%
-    # SECTION:-------------------- TRAIN--------------------------------------------------------------------------------------
+# %%
+# %%
+# SECTION:-------------------- TRAIN--------------------------------------------------------------------------------------
     results = model.train(
         data="/s/xnat_shadow/lidc2d_yolo/data.yaml",
         epochs=100,
@@ -39,8 +39,8 @@ if __name__ == "__main__":
         project="/s/yolo11_localiser",
     )
     # yolo task=detect mode=train model=yolo11s.pt data=/s/fran_storage/parasites-2/data.yaml epochs=40 imgsz=640 plots=True
-    # %%
-    # SECTION:-------------------- Inference--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- Inference--------------------------------------------------------------------------------------
     # Read JPG image using torchvision
     model = YOLO("/s/yolo11_localiser/train4/weights/last.pt")
     img_path = "/s/xnat_shadow/lidc2d_yolo/valid/images/lidc2_0001_2.jpg"
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     plt.title("Original Image")
     plt.show()
 
-    # %%
+# %%
     # Resize to 256x256
 
     # Run inference
@@ -75,7 +75,7 @@ if __name__ == "__main__":
     rr.save()
     bbox = rr.boxes
     rr.show()
-    # %%
+# %%
     detections = sv.Detections(rr.boxes.data, class_ids=rr.boxes.cls.cpu().numpy())
 
     # Convert tensor to numpy array for visualization
@@ -96,3 +96,4 @@ if __name__ == "__main__":
     # Display the image
     sv.plot_image(annotated_image)
 # %%
+

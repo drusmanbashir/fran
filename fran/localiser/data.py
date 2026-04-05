@@ -287,16 +287,16 @@ if __name__ == "__main__":
     dm.setup(stage="fit")
     dl = dm.train_dataloader()
 
-    # %%
+# %%
 
-    # %%
+# %%
     dici = dm.train_dicts[0]
     dici = dm.transforms_dict["N"](dici)
     dici = dm.transforms_dict["ExtractBbox"](dici)
 
-    # %%
+# %%
     img = torch.load(dici["image"])
-    # %%
+# %%
 
     fldr_prnt = Path("/s/xnat_shadow/lidc2d_yolo")
     fldr_train = fldr_prnt / "train"
@@ -306,7 +306,7 @@ if __name__ == "__main__":
     fldr_imgs = fldr / ("images")
     fldr_labels = fldr / ("labels")
 
-    # %%
+# %%
     dici2 = dm.ds_train[153]
     im = dici2["image"][0]
     lm = dici2["lm"][0]
@@ -323,7 +323,7 @@ if __name__ == "__main__":
     nm_txt = str(src_fn).replace("pt", "txt")
 
     save_image(imv, nm_jpg)
-    # %%
+# %%
 
     # Load image using torchvision.io.read_image
     image_path = "/home/ub/code/fran/fran/test1.jpg"
@@ -336,7 +336,7 @@ if __name__ == "__main__":
     plt.imshow(image_np)
     plt.axis("off")  # Remove axes for better visual appeal
     plt.show()
-    # %%
+# %%
 
     start_x, start_y, stop_x, stop_y = bb
     # img= torch.load(fn_img)
@@ -355,21 +355,21 @@ if __name__ == "__main__":
     )
     ax2.add_patch(rect)
 
-    # %%
+# %%
     L = LoadTorchd(["image", "lm"])
     ExtractBbox = BoundingRectd(keys=["lm"])
     MkB = MakeBinary(["lm"])
-    # %%
-    # %%
+# %%
+# %%
     plt.ion()
     plt.imshow(dici["lm"][0])
-    # %%
+# %%
     image_key = "image"
     box_key = "lm_bbox"
     label_key = "lm"
     patch_size = 92
     samples = 3
-    # %%
+# %%
 
     imv2 = imv.unsqueeze(0)
     imv2 = imv2.numpy()
@@ -384,27 +384,27 @@ if __name__ == "__main__":
 
     writer.set_data_array(imv5)
     writer.write("tmp.jpg", channel_dim=0)
-    # %%
+# %%
     np_data = np.arange(48).reshape(3, 4, 4)
     writer = PILWriter(np.uint8)
     writer.set_data_array(np_data, channel_dim=0)
     writer.write("test1.jpg", verbose=True)
-    # %%
-    # SECTION:-------------------- File Utils --------------------------------------------------------------------------------------
-    # %%
+# %%
+# SECTION:-------------------- File Utils --------------------------------------------------------------------------------------
+# %%
 
     fldr_prnt = Path("/s/xnat_shadow/lidc2d_yolo")
     fldr_train = fldr_prnt / "train"
     fldr_valid = fldr_prnt / "valid"
 
-    # %%
+# %%
     fldr = fldr_valid
     fldr_imgs = fldr / ("images")
     fldr_labels = fldr / ("labels")
 
     ds = dm.ds_val
 
-    # %%
+# %%
     for dici2 in pbar(ds):
         im = dici2["image"][0]
         # lm = dici2['lm'][0]
@@ -421,13 +421,13 @@ if __name__ == "__main__":
         print("Saving image: ", nm_jpg)
         save_image(imv, fldr_imgs / nm_jpg)
         write_list_to_txt(bbox, fldr_labels / nm_txt)
-    # %%
+# %%
 
     # Load image using torchvision.io.read_image
     image_path = "/home/ub/code/fran/fran/test1.jpg"
     image_tensor = io.read_image(image_path).float() / 255.0
-    # %%
-    # SECTION:-------------------- TROUBLESHOOT--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- TROUBLESHOOT--------------------------------------------------------------------------------------
 
     image_key = "image"
     label_key = "lm"
@@ -499,7 +499,7 @@ if __name__ == "__main__":
     Rp = RepeatChanneld(keys=[image_key], repeats=3)
     DelI = DeleteItemsd(keys=[label_key])
 
-    # %%
+# %%
     tfms_train = Compose(
         [
             L,
@@ -520,8 +520,8 @@ if __name__ == "__main__":
         ]
     )
     # tfms_val = Compose([L, MkB, ExtractBbox, CB, Et, Et2, ClipoBbox, YoloBbox])
-    # %%
-    # %%
+# %%
+# %%
 
     dm = DetectDataModule(data_dir="/s/xnat_shadow/lidc2d/")
     dm.prepare_data()
@@ -530,7 +530,7 @@ if __name__ == "__main__":
     dici = ds[0]
     dici = dm.ds_train.data[10]
     dici = tfms_train(dici)
-    # %%
+# %%
     dici = L(dici)
     dici = MkB(dici)
     dici = Et(dici)
@@ -547,7 +547,7 @@ if __name__ == "__main__":
     dici = ClipoBbox(dici)
     dici = YoloBbox(dici)
 
-    # %%
+# %%
 
     lm = dici["image"][0]
     lmv = torch.permute(lm, (1, 0))
@@ -556,8 +556,8 @@ if __name__ == "__main__":
 
     print(bbl)
     draw_image_bbox(lmv, *bbl)
-    # %%
-    # %%
+# %%
+# %%
     plt.imshow(dici["image"][0])
     # dici = BB(dici)
 # %%
@@ -577,3 +577,5 @@ if __name__ == "__main__":
 # EnsureTyped(keys=[label_key], dtype=torch.long),
 #
 # %%
+
+
