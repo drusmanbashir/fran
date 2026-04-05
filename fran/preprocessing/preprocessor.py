@@ -294,6 +294,8 @@ class Preprocessor(GetAttr):
         self.project = project
         self.plan = plan
         self.data_folder = data_folder
+        self.store_gifs = False
+        self.store_label_stats = True
         self.set_input_output_folders(data_folder, output_folder)
 
     def create_data_df(self):
@@ -444,11 +446,17 @@ class Preprocessor(GetAttr):
         required = [
             self.output_folder / "labels_all.json",
             self.output_folder / "resampled_dataset_properties.json",
-            stats_folder / "snapshot.gif",
-            stats_folder / "lesion_stats.csv",
         ]
+        if self.store_gifs:
+            required.append(stats_folder / "snapshot.gif")
+        if self.store_label_stats:
+            required.append(stats_folder / "lesion_stats.csv")
         missing = [pth for pth in required if not pth.exists()]
-        if stats_folder.exists() and not any(stats_folder.iterdir()):
+        if (
+            (self.store_gifs or self.store_label_stats)
+            and stats_folder.exists()
+            and not any(stats_folder.iterdir())
+        ):
             missing.append(stats_folder)
         if missing:
             print("Missing postprocess artifacts:")
@@ -468,7 +476,9 @@ class Preprocessor(GetAttr):
         store_labels_info(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
-        self.create_dataset_stats_artifacts(gif=True, label_stats=True)
+        self.create_dataset_stats_artifacts(
+            gif=self.store_gifs, label_stats=self.store_label_stats
+        )
         return 1
 
     def process(self, **process_kwargs):
@@ -555,6 +565,7 @@ class Preprocessor(GetAttr):
 
     def _store_dataset_properties(self):
         self.image_folder_stats, self.lm_folder_stats = self._collect_output_folder_stats()
+        print("Caculating data shape and intensity profile.")
         resampled_dataset_properties = self.create_properties_dict()
         resampled_dataset_properties_fname = (
             self.output_folder / "resampled_dataset_properties.json"

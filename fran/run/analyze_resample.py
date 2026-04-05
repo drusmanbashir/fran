@@ -24,8 +24,8 @@ def postprocess_complete(project, plan):
     stats_folder = folder / "dataset_stats"
     required = [
         folder / "labels_all.json",
-        stats_folder / "snapshot.gif",
         stats_folder / "lesion_stats.csv",
+        # stats_folder / "snapshot.gif",
     ]
     return all(pth.exists() for pth in required)
 

@@ -303,7 +303,9 @@ class NiftiToTorchDataGenerator(Preprocessor):
         store_labels_info(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
-        self.create_dataset_stats_artifacts(gif=True,label_stats=True)
+        self.create_dataset_stats_artifacts(
+            gif=self.store_gifs, label_stats=self.store_label_stats
+        )
 
     def generate_bboxes_from_lms_folder(self, bg_label=0, debug=False, num_processes=8):
         masks_folder = self.output_folder / ("lms")
