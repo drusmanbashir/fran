@@ -36,17 +36,22 @@ def main(args):
     overwrite = args.overwrite
     if args.num_processes < 1:
         args.num_processes = 1
+    print(
+        f"[analyze_resample] start project={args.project_title} plan={args.plan} overwrite={args.overwrite} num_processes={args.num_processes}"
+    )
 
     if args.plan == 0:
         # Process all plans
         plan_ids = C.plans["plan_id"].tolist()
         headline("Processing ALL Plans: {}".format(plan_ids))
         for plan_id in plan_ids:
+            print(f"[analyze_resample] setting up plan {plan_id}")
             C.setup(plan_id, plan_id)
             headline(plan_id)
             plan = C.configs["plan_train"]
             completed = confirm_plan_analyzed(P, plan)
             if overwrite or not all(completed.values()) or not postprocess_complete(P, plan):
+                print(f"[analyze_resample] processing plan {plan_id}")
                 args.plan = plan_id
                 process_plan(args)
             else:
@@ -54,32 +59,52 @@ def main(args):
     else:
         # Process specific plan
         headline("Processing plan {}".format(args.plan))
+        print(f"[analyze_resample] setting up plan {args.plan}")
         C.setup(args.plan, args.plan)
         plan = C.configs["plan_train"]
         completed = confirm_plan_analyzed(P, plan)
         if overwrite or not all(completed.values()) or not postprocess_complete(P, plan):
+            print(f"[analyze_resample] processing plan {args.plan}")
             process_plan(args)
         else:
             print(f"Plan {args.plan} already processed. Skipping")
 
 
 def process_plan(args):
+    print(f"[analyze_resample] creating PreprocessingManager for plan {args.plan}")
     I = PreprocessingManager(args)
+    print(
+        f"[analyze_resample] stage=resample_dataset plan={args.plan} mode={I.plan['mode']} num_processes={args.num_processes}"
+    )
     I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
+    print(f"[analyze_resample] stage=resample_dataset complete plan={args.plan}")
     # args.num_processes = 1
 
     if I.plan["mode"] == "pbd":
+        print(f"[analyze_resample] stage=generate_hires_patches_dataset plan={args.plan}")
         I.generate_hires_patches_dataset(overwrite=args.overwrite)
+        print(
+            f"[analyze_resample] stage=generate_hires_patches_dataset complete plan={args.plan}"
+        )
     elif I.plan["mode"] == "lbd":
         imported_folder = I.plan.get("imported_folder", None)
         if imported_folder is None:
+            print(f"[analyze_resample] stage=generate_lbd_dataset plan={args.plan}")
             I.generate_lbd_dataset(
                 overwrite=args.overwrite, num_processes=args.num_processes
             )
+            print(f"[analyze_resample] stage=generate_lbd_dataset complete plan={args.plan}")
         else:
+            print(
+                f"[analyze_resample] stage=generate_TSlabelboundeddataset plan={args.plan} imported_folder={imported_folder}"
+            )
             I.generate_TSlabelboundeddataset(
                 overwrite=args.overwrite, num_processes=args.num_processes
             )
+            print(
+                f"[analyze_resample] stage=generate_TSlabelboundeddataset complete plan={args.plan}"
+            )
+    print(f"[analyze_resample] finished plan {args.plan}")
     #
     # if not "labels_all" in P.global_properties.keys():
     #     P.set_lm_groups(plan["lm_groups"])
@@ -292,7 +317,7 @@ class PreprocessingManager:
 
         patches_fldr_name = "dim_{0}_{1}_{2}".format(*patch_size)
         output_folder = (
-            self.project.patches_folder / fixed_spacing_folder.name / patches_fldr_name
+            self.project.pbd_folder / fixed_spacing_folder.name / patches_fldr_name
         )
         # maybe_makedirs(output_folder)
         return output_folder
@@ -493,4 +518,3 @@ if __name__ == "__main__":
 # from label_analysis.dataset_stats import end2end_lms_stats_and_plots
 # from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
 # %%
-

@@ -187,7 +187,7 @@ def folder_names_from_plan(project, plan: dict):
         patch_folder_suff = "_".join([source_folder_suff, patch_str, source_plan_code])
     else:
         patch_folder_suff = "_".join([source_folder_suff, patch_str])
-    patch_folder = str(project.patches_folder / patch_folder_suff)
+    patch_folder = str(project.pbd_folder / patch_folder_suff)
     whole_folder_suff = maybe_join([patch_str, remapping_src_code, source_plan_code])
     whole_folder = str(project.whole_images_folder / whole_folder_suff)
 
@@ -264,7 +264,7 @@ if __name__ == "__main__":
     list_to_str = lambda x: "".join(int_to_str(v, 3) for v in x)
     patch_str = list_to_str(plan["patch_size"])
     patch_folder_suff = "_".join([source_folder_suff, patch_str])
-    patch_folder = str(project.patches_folder / patch_folder_suff)
+    patch_folder = str(project.pdb_folder / patch_folder_suff)
     whole_folder_suff = maybe_join([patch_str, remapping_src_code])
     whole_folder = str(project.whole_images_folder / whole_folder_suff)
 

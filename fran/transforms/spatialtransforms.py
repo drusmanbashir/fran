@@ -676,7 +676,7 @@ if __name__ == "__main__":
     src_patch_size = [220, 220, 110]
     patch_size = [160, 160, 128]
     images_folder = (
-        proj_defaults.patches_folder
+        proj_defaults.pbd_folder
         / ("spc_100_100_250")
         / ("dim_{0}_{0}_{2}".format(*src_patch_size))
         / ("images")

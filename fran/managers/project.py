@@ -509,7 +509,7 @@ class Project(DictToAttr):
             Path(COMMON_PATHS["cold_storage_folder"]) / "datasets"
         )
         self.fixed_spacing_folder = self.rapid_access_folder / ("fixed_spacing")
-        self.fixed_size_folder =self.rapid_access_folder / ("preprocessed/fixed_size") 
+        self.fixed_size_folder =self.rapid_access_folder / ("fixed_size") 
         self.dot_folder = self.rapid_access_folder/("dot")
         
         self.predictions_folder = Path(COMMON_PATHS["cold_storage_folder"]) / (
@@ -524,11 +524,9 @@ class Project(DictToAttr):
         self.configuration_filename = self.project_folder / ("experiment_configs.xlsx")
 
         self.global_properties_filename = self.project_folder / "global_properties.json"
-        self.patches_folder = self.rapid_access_folder / ("patches")
         self.cache_folder = self.rapid_access_folder / ("cache")
         self.lbd_folder = self.rapid_access_folder / ("lbd")
         self.pbd_folder = self.rapid_access_folder / ("pbd")
-        self.patches_folder = self.rapid_access_folder / ("patches")
         self.raw_dataset_properties_filename = (
             self.project_folder / "raw_dataset_properties.pkl"
         )

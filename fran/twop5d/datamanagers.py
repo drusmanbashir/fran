@@ -1033,7 +1033,7 @@ class DataManagerPatch(DataManagerSource):
         assert self.plan_train["mode"] == "patch", (
             f"Dataset mode must be 'patch' for DataManagerPatch, got '{self.plan_train['mode']}'"
         )
-        parent_folder = self.project.patches_folder
+        parent_folder = self.project.pbd_folder
         plan_name = "plan" + str(self.dataset_params["plan"])
         source_plan_name = self.plan_train["source_plan"]
         source_plan = self.config[source_plan_name]
