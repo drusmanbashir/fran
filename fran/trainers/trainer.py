@@ -463,6 +463,17 @@ class Trainer:
             "If no list is provided, fgbg_ratio must be an integer"
         )
 
+    def get_callback(self, cb=CaseIDRecorder):
+        trn = getattr(self, "trainer", None)
+        if trn is None:
+            print("Trainer is not initialized yet. No callbacks available.")
+            return
+        cbs = trn.callbacks
+        cbb = [c for c in cbs if isinstance(c, cb)][0]
+        if len(cbb) == 0:
+            print (cbs)
+            raise ValueError(f"Callback {cb} not found in trainer callbacks")
+        return cbb
 
 
     def heuristic_batch_size(self):
@@ -535,7 +546,7 @@ class Trainer:
 
 
 # %%
-# SECTION: -------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR>
+# SECTION: -------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.utils.common import *
@@ -569,13 +580,13 @@ if __name__ == "__main__":
     # counts = df.groupby("case_id").size()
     # counts2 = counts.sort_values(ascending=False)
     # bb= counts2.index[:200]
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR>
-    train_indices = None
-    bs = 10
-    device_id = 0
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR>
+    train_indices = 20
+    bs = 2
+    device_id = 1
 
-    batchsize_finder = False
     batchsize_finder = True
+    batchsize_finder = False
     # run_name ='LITS-1285'
     wandb = True
     override_dm = False
@@ -597,10 +608,10 @@ if __name__ == "__main__":
     run_name = "KITS2-NGALE"
     run_name = None
     cbs = []
-    wandb_grid_epoch_freq = 15
-    val_every_n_epochs = 5
+    wandb_grid_epoch_freq = 2
+    val_every_n_epochs = 1
 # %%
-# SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
@@ -659,5 +670,27 @@ if __name__ == "__main__":
     sw_device = "cuda:1"
     bs = 1  # start lower if you are hitting OOM
 # %%
+# %%
+#SECTION:-------------------- CBS--------------------------------------------------------------------------------------
+    N= Tm.N
+    trn = Tm.trainer
+    cbs = trn.callbacks
+    cb = CaseIDRecorder
+    cbb = [c for c in cbs if isinstance(c, cb)][0]
+    cc = cbb
 
+    cc.worst_case_ids
+# %%
+        vip_label_str = "loss_dice_label" + str(cc.vip_label)
+        df_label = df_long[df_long["label"] == vip_label_str].copy()
+        df_label["case_id"] = df_label["case_id"].astype(str)
+        case_order = (
+            df_label.groupby("case_id")["loss_dice"]
+            .var()
+            .fillna(0)
+            .sort_values(ascending=False)
+            .index.astype(str)
+            .tolist()
+ 
+# %%
 

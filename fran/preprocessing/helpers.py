@@ -258,6 +258,19 @@ def infer_dataset_stats_window(project):
     return "abdomen"
 
 
+def postprocess_artifacts_missing(data_folder:Path) ->dict:
+    missings={ "label_stats":True, "gif":True}
+    stats_folder = data_folder / "dataset_stats"
+    labels_stats_fn = data_folder / "lesion_stats.csv"
+    gif_fn = stats_folder / "snapshot.gif"
+    if labels_stats_fn.exists():
+        missings["label_stats"] = False
+    if gif_fn.exists():
+        missings["gif"] = False
+    return missings
+
+
+
 class BBoxesFromMask(object):
     """ """
 

@@ -2,7 +2,7 @@ import re
 import warnings
 from pathlib import Path
 from typing import Any
-
+from fran.utils.string_works import is_excel_None
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -104,6 +104,8 @@ class CaseIDRecorder(Callback):
         self.plot_x = plot_x
         self.width = 80 * self.plot_x + 200
         self._warned_plotly_export = False
+        if is_excel_None(vip_label):
+            vip_label = 1
         self.vip_label = vip_label
 
     def on_fit_start(self, trainer, pl_module):
@@ -325,7 +327,9 @@ class CaseIDRecorder(Callback):
         ]  # remove shape from the group
         case_ids = self.get_worst_case_ids(df_long, stage)
         if len(case_ids) == 0:
+            print(f"VIP label string is {self.vip_label}")
             raise ValueError("No worst case ids found, thers a bug in the code")
+
         for label in labels:
             figs_this_label = []
             df_label = df_long[df_long["label"] == label].copy()

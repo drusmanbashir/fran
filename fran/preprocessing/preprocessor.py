@@ -254,7 +254,7 @@ def _labels_from_lm_file(filename):
     return [int(v) for v in labels]
 
 
-def store_label_count(output_folder, num_processes=16):
+def store_labels_info(output_folder, num_processes=16):
     output_folder = Path(output_folder)
     lms_folder = output_folder / "lms"
     lm_files = list(lms_folder.glob("*pt"))
@@ -298,7 +298,7 @@ class Preprocessor(GetAttr):
         self.plan = plan
         self.data_folder = data_folder
         self.store_gifs = False
-        self.store_label_stats = False
+        self.store_label_stats = True
         self.set_input_output_folders(data_folder, output_folder)
 
     def _df_from_db(self):
@@ -495,7 +495,7 @@ class Preprocessor(GetAttr):
                 self.output_folder / "lms",
                 num_processes=getattr(self, "num_processes", 1),
             )
-        store_label_count(
+        store_labels_info(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
         self.create_dataset_stats_artifacts(
@@ -735,7 +735,9 @@ class Preprocessor(GetAttr):
         if overwrite == False:
             self.remove_completed_cases()
         if len(self.df) == 0:
-            self.run_postprocess_if_empty = self.postprocess_artifacts_missing()
+            missing_arts = postprocess_artifacts_missing(self.output_folder)
+            missing_all = all(missing_arts.values())
+            self.run_postprocess_if_empty = missing_all
             return
 
         worker_kwargs = self.build_worker_kwargs(device=device, **setup_kwargs)
