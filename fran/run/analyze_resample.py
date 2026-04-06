@@ -1,11 +1,12 @@
 # %%
 import ast
-import sys
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.managers import Project
 from fran.preprocessing.datasetanalyzers import *
-from fran.preprocessing.fixed_spacing import NiftiToTorchDataGenerator
-from fran.preprocessing.globalproperties import GlobalProperties
+from fran.preprocessing.fixed_spacing import (
+    NiftiToTorchDataGenerator,
+    ResampleDatasetniftiToTorch,
+)
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator
@@ -50,7 +51,11 @@ def main(args):
             headline(plan_id)
             plan = C.configs["plan_train"]
             completed = confirm_plan_analyzed(P, plan)
-            if overwrite or not all(completed.values()) or not postprocess_complete(P, plan):
+            if (
+                overwrite
+                or not all(completed.values())
+                or not postprocess_complete(P, plan)
+            ):
                 print(f"[analyze_resample] processing plan {plan_id}")
                 args.plan = plan_id
                 process_plan(args)
@@ -63,7 +68,11 @@ def main(args):
         C.setup(args.plan, args.plan)
         plan = C.configs["plan_train"]
         completed = confirm_plan_analyzed(P, plan)
-        if overwrite or not all(completed.values()) or not postprocess_complete(P, plan):
+        if (
+            overwrite
+            or not all(completed.values())
+            or not postprocess_complete(P, plan)
+        ):
             print(f"[analyze_resample] processing plan {args.plan}")
             process_plan(args)
         else:
@@ -76,13 +85,23 @@ def process_plan(args):
     print(
         f"[analyze_resample] stage=resample_dataset plan={args.plan} mode={I.plan['mode']} num_processes={args.num_processes}"
     )
-    I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
+    I.resample_dataset(
+        overwrite=args.overwrite,
+        num_processes=args.num_processes,
+        debug=args.debug,
+    )
     print(f"[analyze_resample] stage=resample_dataset complete plan={args.plan}")
     # args.num_processes = 1
 
     if I.plan["mode"] == "pbd":
-        print(f"[analyze_resample] stage=generate_hires_patches_dataset plan={args.plan}")
-        I.generate_hires_patches_dataset(overwrite=args.overwrite)
+        print(
+            f"[analyze_resample] stage=generate_hires_patches_dataset plan={args.plan}"
+        )
+        I.generate_hires_patches_dataset(
+            overwrite=args.overwrite,
+            num_processes=args.num_processes,
+            debug=args.debug,
+        )
         print(
             f"[analyze_resample] stage=generate_hires_patches_dataset complete plan={args.plan}"
         )
@@ -91,24 +110,26 @@ def process_plan(args):
         if imported_folder is None:
             print(f"[analyze_resample] stage=generate_lbd_dataset plan={args.plan}")
             I.generate_lbd_dataset(
-                overwrite=args.overwrite, num_processes=args.num_processes
+                overwrite=args.overwrite,
+                num_processes=args.num_processes,
+                debug=args.debug,
             )
-            print(f"[analyze_resample] stage=generate_lbd_dataset complete plan={args.plan}")
+            print(
+                f"[analyze_resample] stage=generate_lbd_dataset complete plan={args.plan}"
+            )
         else:
             print(
                 f"[analyze_resample] stage=generate_TSlabelboundeddataset plan={args.plan} imported_folder={imported_folder}"
             )
             I.generate_TSlabelboundeddataset(
-                overwrite=args.overwrite, num_processes=args.num_processes
+                overwrite=args.overwrite,
+                num_processes=args.num_processes,
+                debug=args.debug,
             )
             print(
                 f"[analyze_resample] stage=generate_TSlabelboundeddataset complete plan={args.plan}"
             )
     print(f"[analyze_resample] finished plan {args.plan}")
-    #
-    # if not "labels_all" in P.global_properties.keys():
-    #     P.set_lm_groups(plan["lm_groups"])
-    # P.maybe_store_projectwide_properties(overwrite=args.overwrite)
 
 
 @str_to_path(0)
@@ -142,16 +163,7 @@ def user_input(inp: str, out=int):
 
 
 class PreprocessingManager:
-    # Declare attributes that assimilate_args will set
-    project_title: str
-    num_processes: int
-    overwrite: bool
-    debug: bool
-
-    # dont use getattr
     def __init__(self, args, conf=None):
-        self.assimilate_args(args)
-        self.num_processes = args.num_processes
         P = Project(project_title=args.project_title)
         self.project = P
         if conf is None:
@@ -159,44 +171,9 @@ class PreprocessingManager:
             C.setup(args.plan)
             conf = C.configs
         self.plan = conf["plan_train"]
-        # self.plan['spacing'] = ast.literal_eval(self.plan['spacing'])
+        print("Project: {0}".format(args.project_title))
 
-        #
-        print("Project: {0}".format(self.project_title))
-
-    def __str__(self) -> str:
-        plan_details = "\n".join(
-            [f"{key}: {value}" for key, value in self.plan.items()]
-        )
-        return f"PreprocessingManager. Project: {self.project_title}\nPlan Details:\n{plan_details}"
-
-    def verify_dataset_integrity(self):
-        verify_dataset_integrity(
-            self.project.raw_data_folder, debug=self.debug, fix=not self.no_fix
-        )
-
-    def analyse_dataset(self):
-        if self._analyse_dataset_questions() == True:
-            self.GlobalP = GlobalProperties(
-                self.project, bg_label=0, clip_range=self.clip_range
-            )
-            self.GlobalP.store_projectwide_properties()
-            self.GlobalP.compute_std_mean_dataset(debug=self.debug)
-            self.GlobalP.collate_lm_labels()
-
-    def _analyse_dataset_questions(self):
-
-        global_properties = load_dict(self.project.global_properties_filename)
-        if not "total_voxels" in global_properties.keys():
-            return True
-        else:
-            reanalyse = input(
-                "Dataset global properties already computed. Re-analyse dataset (Y/y)?"
-            )
-            if reanalyse.lower() == "y":
-                return True
-
-    def resample_dataset(self, overwrite=False, num_processes=1):
+    def resample_dataset(self, overwrite=False, num_processes=1, debug=False):
         """
         Resamples dataset to target spacing and stores it in the cold_storage fixed_spacing_folder.
         Typically this will be a basis for further processing e.g., pbd, lbd dataset which will then be used in training
@@ -208,11 +185,12 @@ class PreprocessingManager:
             data_folder=self.project.raw_data_folder,
         )
 
-        self.R.setup(overwrite=overwrite, num_processes=num_processes)
+        self.R.setup(overwrite=overwrite, num_processes=num_processes, debug=debug)
         self.R.process()
-        self.resample_output_folder = self.R.output_folder
 
-    def generate_lbd_dataset(self, overwrite=False, device="cpu", num_processes=1):
+    def generate_lbd_dataset(
+        self, overwrite=False, device="cpu", num_processes=1, debug=False
+    ):
 
         resampled_data_folder = folder_names_from_plan(self.project, self.plan)[
             "data_folder_source"
@@ -228,7 +206,12 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=resampled_data_folder,
         )
-        self.L.setup(overwrite=overwrite, device=device, num_processes=num_processes)
+        self.L.setup(
+            overwrite=overwrite,
+            device=device,
+            num_processes=num_processes,
+            debug=debug,
+        )
         self.L.process()
 
     def generate_TSlabelboundeddataset(
@@ -236,6 +219,7 @@ class PreprocessingManager:
         device="cpu",
         overwrite=False,
         num_processes=1,
+        debug=False,
     ):
         """
         requires resampled folder to exist. Crops within this folder
@@ -249,7 +233,12 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=resampled_data_folder,
         )
-        self.L.setup(overwrite=overwrite, device=device, num_processes=num_processes)
+        self.L.setup(
+            overwrite=overwrite,
+            device=device,
+            num_processes=num_processes,
+            debug=debug,
+        )
         self.L.process()
 
     @ask_proceed("Generating low-res whole images to localise organ of interest")
@@ -286,7 +275,9 @@ class PreprocessingManager:
             self.WholeImageTM.output_folder_masks, 0, self.debug, self.num_processes
         )
 
-    def generate_hires_patches_dataset(self, debug=False, overwrite=False):
+    def generate_hires_patches_dataset(
+        self, debug=False, overwrite=False, num_processes=1
+    ):
 
         data_folder = self.get_source_data_folder_for_patch()
         PG = PatchDataGenerator(
@@ -296,7 +287,7 @@ class PreprocessingManager:
         )
         PG.setup(
             overwrite=overwrite,
-            num_processes=self.num_processes,
+            num_processes=num_processes,
             debug=debug,
         )
         PG.process(derive_bboxes=False)
@@ -313,88 +304,10 @@ class PreprocessingManager:
         data_foldre = Path(data_folder)
         return data_foldre
 
-    def create_patches_output_folder(self, fixed_spacing_folder, patch_size):
-
-        patches_fldr_name = "dim_{0}_{1}_{2}".format(*patch_size)
-        output_folder = (
-            self.project.pbd_folder / fixed_spacing_folder.name / patches_fldr_name
-        )
-        # maybe_makedirs(output_folder)
-        return output_folder
-
-    def assimilate_args(self, args):
-        for key, value in vars(args).items():
-            setattr(self, key, value)
-
-    def maybe_change_default_spacing(self, vals):
-        def _accept_defaults():
-            print("Accepting defaults")
-
-        try:
-            if isinstance(vals, str):
-                vals = ast.literal_eval(vals)
-            if all([isinstance(vals, (list, tuple)), len(vals) == 3]):
-                self.R.spacing = vals
-            elif isinstance(vals, (int, float)):
-                vals = [
-                    vals,
-                ] * 3
-                self.R.spacing = vals
-            else:
-                _accept_defaults()
-        except:
-            _accept_defaults()
-
-    def get_resampling_config(self, spacing):
-        resamping_config_fn = self.project.fixed_spacing_folder / (
-            "resampling_configs.json"
-        )
-        resampling_configs = load_dict(resamping_config_fn)
-        for config in resampling_configs:
-            if spacing == config["spacing"]:
-                return config
-        raise ValueError(
-            "No resampling config found for this spacing: {0}. \nAll configs are:\n{1}".format(
-                spacing, resampling_configs
-            )
-        )
-
-    @property
-    def resampling_configs(self):
-        return self.get_resampling_configs()
-
-
-def do_resempling(R, args):
-    dim0 = input("Change dim0 to (press enter to leave unchanged)")
-    dim1 = input("Change dim2 to (press enter to leave unchanged)")
-    dim2 = input("Change dim3 to (press enter to leave unchanged)")
-    spacing = [
-        float(a) if len(a) > 0 else b for a, b in zip([dim0, dim1, dim2], R.spacing)
-    ]
-    R.spacing = spacing
-    R.resample_cases(debug=False, overwrite=args.overwrite, multiprocess=True)
-
-
-def do_low_res(proj_defaults):
-    low_res_shape = get_list_input(
-        text="Enter low-res image shape (e.g., '128,128,128')", fnc=str_to_list_int
-    )
-    stage0_files = list(Path(proj_defaults.stage0_folder / "volumes").glob("*.pt"))
-
-    stage1_subfolder = (
-        proj_defaults.stage1_folder
-        / str(low_res_shape).strip("[]").replace(", ", "_")
-        / "volumes"
-    )
-    maybe_makedirs(stage1_subfolder)
-
-    args = [[fn, stage1_subfolder, low_res_shape, False] for fn in stage0_files]
-    multiprocess_multiarg(resample_img_mask_tensors, args, debug=False, io=True)
-
-
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
+    import sys
     import argparse
 
     from fran.utils.common import *
@@ -430,12 +343,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_known_args()[0]
 # %%
-    cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
-    args.project_title="test"
-    args.plan = 1
-    args.num_processes = 1
-    args.overwrite=True
-    # args.debug=True
+    # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
+    args.project_title="totalseg"
+    args.plan = 2
+    # args.project_title = "test"
+    # args.plan = 1
+    args.num_processes = 6
+    args.overwrite = False
+    args.debug = False
 
 # %%
     cprint("Project: {0}".format(args.project_title), color="green")
@@ -447,17 +362,22 @@ if __name__ == "__main__":
 
 # %%
     #
-    # I = PreprocessingManager(args)
-    # I.resample_dataset(overwrite=args.overwrite,num_processes=args.num_processes)
+    I = PreprocessingManager(args)
+    I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
+    I.plan["mode"]
+
 # %%
-    #     I.R = ResampleDatasetniftiToTorch(
-    #         project=I.project,
-    #         plan=I.plan,
-    #         data_folder=I.project.raw_data_folder,
-    #     )
+    I.R = ResampleDatasetniftiToTorch(
+        project=I.project,
+        plan=I.plan,
+        data_folder=I.project.raw_data_folder,
+    )
+
 # %%
     #
-    #     I.R.setup(overwrite=overwrite, num_processes=num_processes)
+    overwrite = False
+    num_processes = 8
+    I.R.setup(overwrite=overwrite, num_processes=num_processes)
     #     I.R.process()
     #     I.resample_output_folder = I.R.output_folder
     # resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
@@ -518,3 +438,4 @@ if __name__ == "__main__":
 # from label_analysis.dataset_stats import end2end_lms_stats_and_plots
 # from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
 # %%
+

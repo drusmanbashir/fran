@@ -543,10 +543,9 @@ if __name__ == "__main__":
 
     P = Project("lidc")
     P = Project("kits2")
-    P = Project("test")
+    P = Project("totalseg")
     C = ConfigMaker(P)
-    # P.add_data([DS.totalseg])
-    C.setup(1)
+    C.setup(2)
 
     conf = C.configs
     print(conf["model_params"])
@@ -575,8 +574,8 @@ if __name__ == "__main__":
     bs = 10
     device_id = 0
 
-    batchsize_finder = True
     batchsize_finder = False
+    batchsize_finder = True
     # run_name ='LITS-1285'
     wandb = True
     override_dm = False
@@ -647,6 +646,8 @@ if __name__ == "__main__":
     dl = tmv.dl
     iteri = iter(dl)
     batch = next(iteri)
+    ds = tmv.ds
+    ds[0]
 # %%
     batch["image"].shape
     batch["lm"].shape

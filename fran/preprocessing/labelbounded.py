@@ -9,7 +9,7 @@ from fran.configs.parser import is_excel_None
 from fran.preprocessing.preprocessor import (
     Preprocessor,
     generate_bboxes_from_lms_folder,
-    store_labels_info,
+    store_label_count,
 )
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.utils.folder_names import folder_names_from_plan
@@ -213,7 +213,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
 
-        self.store_labels_info()
+        self.store_label_count()
         self.results_df.to_csv(
             self.output_folder / "resampled_dataset_properties.csv", index=False
         )
@@ -221,7 +221,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             gif=self.store_gifs, label_stats=self.store_label_stats
         )
 
-    def store_labels_info(self):
+    def store_label_count(self):
         try:
             labels_all = self.results_df["labels"].sum()
             labels_all = set(labels_all)
@@ -229,9 +229,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             out_fn = self.output_folder / "labels_all.json"
             save_json(labels_all, out_fn)
         except:
-            print(
-                "labels_all is not set. You may need to run store_labels_info separately"
-            )
+            store_label_count(self.output_folder, num_processes=6)
 
     def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
         self.setup_workers(
@@ -510,5 +508,5 @@ if __name__ == "__main__":
 
     output_fldr = L.output_folder
 
-    store_labels_info(output_fldr)
+    store_label_count(output_fldr)
 # %%

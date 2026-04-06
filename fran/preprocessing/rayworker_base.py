@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 import ipdb
 import pandas as pd
+from fran.data.dataregistry import DS
 from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import (
@@ -231,10 +232,13 @@ class RayWorkerBase(Preprocessor):
         )
         dss = self.plan["datasources"]
         dss = parse_excel_datasources(dss)
+
         rem = self.plan[remapping_key]
         rem = parse_excel_remapping(rem)
         Remapping_tfms = {}
         for rez, ds in zip(rem, dss):
+            ds_name = DS[ds].name
+
             if rez is not None:
                 orig = list(rez.keys())
                 target = list(rez.values())
@@ -243,7 +247,7 @@ class RayWorkerBase(Preprocessor):
                 )
             else:
                 R = DummyTransform(keys=[lm_key])
-            Remapping_tfms[ds] = R
+            Remapping_tfms[ds_name] = R
         return Remapping_tfms
 
     def process(self, mini_df):

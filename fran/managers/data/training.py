@@ -217,7 +217,7 @@ class DataManagerDual(LightningDataModule):
                 self.train_manager.cases
             )
             if self.val_indices is None:
-                self.val_indices = int(len(self.train_manager.cases) * 0.2)
+                self.val_indices = max(1, int(len(self.train_manager.cases) * 0.2))
         if self.val_indices is not None:
             self.valid_manager.select_cases_from_inds(self.val_indices)
             self.valid_manager.data = self.valid_manager.create_data_dicts(
@@ -854,17 +854,17 @@ class DataManager(LightningDataModule):
 
     def _create_modal_ds(self):
         if is_excel_None(self.ds_type):
-            self.ds = Dataset(data=self.data, transform=self.transforms)
+            ds = Dataset(data=self.data, transform=self.transforms)
             print("Vanilla Pytorch Dataset set up.")
         elif self.cache_rate > 0.0:
-            self.ds = Dataset(
+            ds = Dataset(
                 data=self.data,
                 transform=self.transforms,
                 # cache_dir=self.cache_folder,
             )
-        elif self.ds_type == "lmdb":
+        elif ds_type == "lmdb":
             # BUG: LMDBDataset will slow training down. fix it  (see #8)
-            self.ds = LMDBDataset(
+            ds = LMDBDataset(
                 data=self.data,
                 transform=self.transforms,
                 cache_dir=self.cache_folder,
@@ -872,7 +872,7 @@ class DataManager(LightningDataModule):
             )
         else:
             raise NotImplementedError
-        return self.ds
+        return ds
 
     def _create_valid_ds(self):
         """
@@ -994,7 +994,7 @@ class DataManagerWhole(DataManagerSource):
         )
 
     def _create_valid_ds(self):
-        self._create_modal_ds()
+        return self._create_modal_ds()
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
@@ -1692,4 +1692,6 @@ if __name__ == "__main__":
     dici = Rva(dici)
     dici = Re(dici)
 
-# %%
+# %%       
+    D.val_indices = int(len(D.train_manager.cases) * 0.2)
+

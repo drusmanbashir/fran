@@ -26,8 +26,8 @@ if __name__ == "__main__":
           "/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/"
       )
       fix  = Path("/r/datasets/preprocessed/kits2/fixed_spacing/spc_080_080_150/images")
-      im_fn =  Path("/r/datasets/preprocessed/kits2/dot/064064064_rscf9f2eb13_ex0p20p10p1/images/kits23_00204_lab2_patch0.pt")
-      lm_fn = im_fn.str_replace("images", "lms")
+      im_fn =  Path("/r/datasets/preprocessed/totalseg/whole_images/096096096_e5141197/images/totalseg_s0711.pt")
+      lm_fn =  Path("/r/datasets/preprocessed/totalseg/whole_images/096096096_e5141197/lms/totalseg_s0711.pt")
       lm=torch.load(lm_fn, weights_only=False)
       im = torch.load(im_fn, weights_only=False)
       ImageMaskViewer([im,lm])

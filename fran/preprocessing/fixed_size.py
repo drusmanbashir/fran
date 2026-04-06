@@ -160,8 +160,11 @@ class FixedSizeDataGenerator(PatchDataGenerator):
         lms_fldr = self.data_folder / ("lms")
         lms = list(lms_fldr.glob("*"))
         imgs = list(images_fldr.glob("*"))
+        if len(imgs) == 0:
+            raise Exception(
+                "No images found in data folder {0}".format(self.data_folder)
+            )
         print("{0} images in data folder {1}".format(len(imgs), self.data_folder))
-
         self.dicis = []
         for img in imgs:
             case_id_info = info_from_filename(img.name, full_caseid=True)
@@ -262,22 +265,27 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.utils.common import *
 
-    P = Project(project_title="test")
+    P = Project(project_title="totalseg")
     C = ConfigMaker(P)
-    C.setup(1)
+    C.setup(2)
     conf = C.configs
     # P.maybe_store_projectwide_properties()
 
 # %%
     plan = conf["plan_train"]
 # %%
-    from monai.transforms import MaskIntensity
 
     F = FixedSizeDataGenerator(
         project=P,
         plan=plan,
-        data_folder=None,
+
+
     )
+# %%
+    F.setup(overwrite=True)
+
+# %%
+    F.process()
 # %%
     img_fn = "/r/datasets/preprocessed/test/fixed_spacing/spc_080_080_150_rsc5609df8a/images/kits23_00002.pt"
     lm_fn = "/r/datasets/preprocessed/test/fixed_spacing/spc_080_080_150_rsc5609df8a/lms/kits23_00002.pt"

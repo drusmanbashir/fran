@@ -248,7 +248,7 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
         self.results_df.to_csv(
             self.output_folder / "resampled_dataset_properties.csv", index=False
         )
-        self.store_labels_info()
+        self.store_label_count()
         self.create_dataset_stats_artifacts(
             gif=self.store_gifs, label_stats=self.store_label_stats
         )

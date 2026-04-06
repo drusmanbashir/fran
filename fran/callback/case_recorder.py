@@ -65,7 +65,7 @@ def infer_labels_and_update_out_channels(dm, configs: dict):
         labels_all = set(torch.unique(torch.cat(labels_all_chunks)).cpu().tolist())
         labels_all = set(sorted(int(v) for v in labels_all))
 
-        # Store with same format as Preprocessor.store_labels_info:
+        # Store with same format as Preprocessor.store_label_count:
         # sorted JSON list of integer label values.
         labels_all_sorted = sorted(int(v) for v in labels_all)
         save_json(labels_all_sorted, dm.train_manager.data_folder / "labels_all.json")

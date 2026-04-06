@@ -14,7 +14,7 @@ from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.preprocessor import (
     Preprocessor,
     get_tensor_stats,
-    store_labels_info,
+    store_label_count,
 )
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadSITKd
@@ -300,7 +300,7 @@ class NiftiToTorchDataGenerator(Preprocessor):
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
-        store_labels_info(
+        store_label_count(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
         self.create_dataset_stats_artifacts(
@@ -438,13 +438,14 @@ if __name__ == "__main__":
     # chunkify = lambda l, n: [l[i : i + n] for i in range(0, len(l), n)]
     # aa = chunkify(Rs.df,16)
 
-    P = Project("test")
+    # P = Project("test")
+    P = Project("totalseg")
 
     P.maybe_store_projectwide_properties()
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P)
-    C.setup(1)
+    C.setup(2)
     C.plans
     plan = C.configs["plan_train"]
     conf = C.configs

@@ -422,7 +422,7 @@ if __name__ == "__main__":
     P = Project(project_title="totalseg")
     P = Project(project_title="nodes")
     P = Project(project_title="litstmp")
-    P = Project(project_title="test212")
+    P = Project(project_title="test")
     P.create("test")
     P.add_data([DS.drli_short])
     P.maybe_store_projectwide_properties()

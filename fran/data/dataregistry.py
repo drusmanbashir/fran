@@ -31,6 +31,9 @@ class DatasetSpec:
         if images_folder.exists():
             return len(list(images_folder.glob("*")))
         return 0
+    @property
+    def name(self):
+        return self.ds if self.alias is None else self.alias
 
 
 class DatasetRegistry:
@@ -74,4 +77,5 @@ DS = DatasetRegistry()
 
 # %%
 if __name__ == "__main__":
+    ds = DS.drli_short
     pass

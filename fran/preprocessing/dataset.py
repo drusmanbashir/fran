@@ -531,19 +531,17 @@ class FGBGIndicesDataset(CropToLabelDataset):
 
 # %%
 if __name__ == "__main__":
-    # %%
-    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
+# %%
+# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
     from fran.utils.common import *
 
-    # %%
-    # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes")
     P = Project("totalseg")
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
-    C = ConfigMaker(P, configuration_filename=None)
-    C.setup(6)
+    C = ConfigMaker(P)
+    C.setup(2)
     C.plans
     conf = C.configs
     print(conf["model_params"])
@@ -551,15 +549,9 @@ if __name__ == "__main__":
     plan = conf["plan_train"]
     print(plan)
     plan["mode"]
-    # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
-    project = Project("litsmc")
-    df = None
-    spacing = [0.8, 0.8, 1.5]
-    half_precision = False
-    device = "cpu"
-    data_folder = "/s/xnat_shadow/crc/hard_cases"
 
-    # %%
+    # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
+# %%
     ds = ResamplerDataset(
         df=df,
         project=project,
@@ -570,8 +562,8 @@ if __name__ == "__main__":
     )
 
     ds.setup()
-    # %%
-    # %%
+# %%
+# %%
 
     dat = ds[0]
     im = dat["image"][0].cpu()
@@ -579,3 +571,4 @@ if __name__ == "__main__":
 
     ImageMaskViewer([im, lm])
 # %%
+

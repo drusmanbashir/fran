@@ -1,5 +1,6 @@
 # %%
 import shutil
+from fran.data.dataregistry import DS
 import itertools as il
 import sqlite3
 import subprocess
@@ -21,6 +22,7 @@ from fran.preprocessing.helpers import (
     infer_dataset_stats_window,
     sanitize_meta_for_monai,
 )
+from fran.utils.string_works import is_excel_None
 from fran.utils.dataset_properties import analyze_tensor_data_folder
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
@@ -252,7 +254,7 @@ def _labels_from_lm_file(filename):
     return [int(v) for v in labels]
 
 
-def store_labels_info(output_folder, num_processes=16):
+def store_label_count(output_folder, num_processes=16):
     output_folder = Path(output_folder)
     lms_folder = output_folder / "lms"
     lm_files = list(lms_folder.glob("*pt"))
@@ -281,6 +283,7 @@ def get_tensor_stats(tnsr) -> dict:
     }
     return dic
 
+
 class Preprocessor(GetAttr):
     _default = "project"
 
@@ -295,26 +298,41 @@ class Preprocessor(GetAttr):
         self.plan = plan
         self.data_folder = data_folder
         self.store_gifs = False
-        self.store_label_stats = True
+        self.store_label_stats = False
         self.set_input_output_folders(data_folder, output_folder)
+
+    def _df_from_db(self):
+        con = sqlite3.connect(str(self.project.db))
+        query = "SELECT case_id, image, lm, ds , alias FROM datasources"
+        df = pd.read_sql_query(query, con)
+        con.close()
+        dfs = []
+        for ds in df["ds"].unique():
+            df_ds = df[df["ds"] == ds].copy()
+            alias = df_ds["alias"].iloc[0]
+            if not is_excel_None(alias):
+                df_ds["ds"] = alias
+            dfs.append(df_ds)
+        df = pd.concat(dfs, ignore_index=True)
+        df = df.drop(columns=["alias"])
+        df["image"] = df["image"].apply(Path)
+        df["lm"] = df["lm"].apply(Path)
+        return df
+
+    def _df_from_folder(self):
+        df = create_df_from_folder(self.data_folder)
+        extract_ds = lambda x: x.split("_")[0]
+        df["ds"] = df["case_id"].apply(extract_ds)
+        return df
 
     def create_data_df(self):
         if self.data_folder is not None:
             data_folder = Path(self.data_folder)
             raw_data_folder = Path(self.project.raw_data_folder)
             if data_folder == raw_data_folder and Path(self.project.db).exists():
-                con = sqlite3.connect(str(self.project.db))
-                try:
-                    query = "SELECT case_id, image, lm, ds FROM datasources"
-                    self.df = pd.read_sql_query(query, con)
-                finally:
-                    con.close()
-                self.df["image"] = self.df["image"].apply(Path)
-                self.df["lm"] = self.df["lm"].apply(Path)
+                self.df = self._df_from_db()
             else:
-                self.df = create_df_from_folder(self.data_folder)
-                extract_ds = lambda x: x.split("_")[0]
-                self.df["ds"] = self.df["case_id"].apply(extract_ds)
+                self.df = self._df_from_folder()
             assert len(self.df) > 0, "No valid case files found in {}".format(
                 self.data_folder
             )
@@ -338,10 +356,13 @@ class Preprocessor(GetAttr):
             f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
         )
         for ds, remapping in zip(datasources, remappings):
-            mask = self.df["ds"] == ds
+            dss = getattr(DS, ds)
+            mask = self.df["ds"] == dss.name
             if mask.sum() == 0:
-                ds_present = self.df.ds.unique().tolist()
-                raise ValueError(f"Datasource {ds} not found in df.\nDatasources present: {ds_present}")
+                dss_in_df = self.df.ds.unique().tolist()
+                raise ValueError(
+                    f"Datasource {ds} not found in df.\nDatasources present: {dss_in_df}"
+                )
             self.df.loc[mask, self.remapping_key] = [remapping] * mask.sum()
 
     def set_input_output_folders(self, data_folder, output_folder):
@@ -474,7 +495,7 @@ class Preprocessor(GetAttr):
                 self.output_folder / "lms",
                 num_processes=getattr(self, "num_processes", 1),
             )
-        store_labels_info(
+        store_label_count(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
         self.create_dataset_stats_artifacts(
@@ -484,8 +505,8 @@ class Preprocessor(GetAttr):
 
     def process(self, **process_kwargs):
         if not hasattr(self, "df"):
-                print("No data frames have been created. Run setup")
-                return 0
+            print("No data frames have been created. Run setup")
+            return 0
         if len(self.df) == 0:
             if getattr(self, "run_postprocess_if_empty", False):
                 return self.run_postprocess_only(**process_kwargs)
@@ -565,7 +586,9 @@ class Preprocessor(GetAttr):
         return image_stats, lm_stats
 
     def _store_dataset_properties(self):
-        self.image_folder_stats, self.lm_folder_stats = self._collect_output_folder_stats()
+        self.image_folder_stats, self.lm_folder_stats = (
+            self._collect_output_folder_stats()
+        )
         print("Caculating data shape and intensity profile.")
         resampled_dataset_properties = self.create_properties_dict()
         resampled_dataset_properties_fname = (
@@ -697,7 +720,9 @@ class Preprocessor(GetAttr):
         debug = getattr(self, "debug", False)
         return (self.num_processes > 1) and (not debug)
 
-    def setup_workers(self, overwrite=False, num_processes=8, device="cpu", **setup_kwargs):
+    def setup_workers(
+        self, overwrite=False, num_processes=8, device="cpu", **setup_kwargs
+    ):
         self.num_processes = max(1, int(num_processes))
         if "debug" in setup_kwargs:
             self.debug = setup_kwargs["debug"]
@@ -742,16 +767,15 @@ if __name__ == "__main__":
     )
     lms = bboxes_fldr / "lms"
     generate_bboxes_from_lms_folder(lms, debug=False)
-    # %%
+# %%
     masks_folder = bboxes_fldr
     label_files = list(masks_folder.glob("*pt"))
-    label_files
-    # %%
+# %%
     bg_label = 0
     arguments = [
         [x, bg_label] for x in label_files
     ]  # 0.2 factor for thresholding as kidneys are small on low-res imaging and will be wiped out by default threshold 3000
-    # %%
+# %%
     debug = False
     num_processes = 12
     bboxes = multiprocess_multiarg(
@@ -762,7 +786,6 @@ if __name__ == "__main__":
     )
 
     df = pd.DataFrame(bboxes)
-    p
 
 # %%
 # %

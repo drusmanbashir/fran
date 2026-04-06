@@ -4,7 +4,7 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 
 import ipdb
 import ray
-from fran.data.dataregistry import DatasetRegistry
+from fran.data.dataregistry import DS, DatasetRegistry
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import BBoxFromPTd
@@ -110,11 +110,12 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         rem = parse_excel_remapping(rem)
         Remapping_tfms = {}
         for rez, ds in zip(rem, dss):
+            ds_name = DS[ds].name
             if rez is not None:
                 R = LabelRemapSITKd(keys=[lm_key], remapping=rez)
             else:
                 R = DummyTransform(keys=[lm_key])
-            Remapping_tfms[ds] = R
+            Remapping_tfms[ds_name] = R
         return Remapping_tfms
 
     def create_transforms(self, device):
@@ -241,7 +242,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             datasources, imported_folder__, remappings
         ):
             dici = {}
-            dici["ds"] = ds
+            dici["ds"] = DS[ds].name
             imported_folder = resolve_relative_path(imported_folder)
             dici["imported_folder"] = imported_folder
             dici["remapping_imported"] = remapping
@@ -347,7 +348,7 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.managers import Project
-    from fran.preprocessing.preprocessor import store_labels_info
+    from fran.preprocessing.preprocessor import store_label_count
     from fran.utils.common import *
     from fran.utils.folder_names import folder_names_from_plan
 
@@ -385,7 +386,7 @@ if __name__ == "__main__":
     overwrite = False
     L.setup(overwrite=overwrite, num_processes=num_processes, debug=debug)
     L.process()
-    store_labels_info(L.output_folder, 16)
+    store_label_count(L.output_folder, 16)
 # %%
     num_processes = 16
     L.create_data_df()
@@ -430,4 +431,3 @@ if __name__ == "__main__":
     data2["lm_imported"].shape
 
 # %%
-
