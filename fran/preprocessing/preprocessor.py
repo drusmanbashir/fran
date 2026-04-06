@@ -1,9 +1,7 @@
 # %%
-import shutil
 from fran.data.dataregistry import DS
 import itertools as il
 import sqlite3
-import subprocess
 from pathlib import Path
 import ray
 
@@ -19,6 +17,7 @@ import torch
 from fastcore.foundation import GetAttr
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import (
+    create_dataset_stats_artifacts,
     infer_dataset_stats_window,
     sanitize_meta_for_monai,
 )
@@ -27,36 +26,6 @@ from fran.utils.dataset_properties import analyze_tensor_data_folder
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
-
-
-def _show_gif_in_chrome_if_available(gif_path: Path) -> None:
-    gif_path = Path(gif_path).resolve()
-    print(f"Dataset stats GIF: {gif_path}")
-    chrome_path = next(
-        (
-            candidate
-            for candidate in (
-                "google-chrome",
-                "google-chrome-stable",
-                "chromium",
-                "chromium-browser",
-            )
-            if shutil.which(candidate)
-        ),
-        None,
-    )
-    if chrome_path is None:
-        print("Google Chrome not available, skipping GIF preview.")
-        return
-    try:
-        subprocess.Popen(
-            [chrome_path, "--new-window", gif_path.as_uri()],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception as e:
-        print(f"Failed to open dataset stats GIF in Chrome: {e}")
-
 
 def bboxes_to_df(bboxes):
     rows = []
@@ -498,8 +467,11 @@ class Preprocessor(GetAttr):
         store_labels_info(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
-        self.create_dataset_stats_artifacts(
-            gif=self.store_gifs, label_stats=self.store_label_stats
+        create_dataset_stats_artifacts(
+            output_folder=self.output_folder,
+            gif=self.store_gifs,
+            label_stats=self.store_label_stats,
+            gif_window=infer_dataset_stats_window(self.project),
         )
         return 1
 
@@ -633,36 +605,6 @@ class Preprocessor(GetAttr):
                 self.indices_subfolder,
             ]
         )
-
-    def create_dataset_stats_artifacts(self, gif: bool = True, label_stats=False):
-        dataset_root = Path(self.output_folder)
-        lms_folder = dataset_root / "lms"
-        if not lms_folder.exists():
-            print(f"Skipping dataset stats: missing labels folder {lms_folder}")
-            return
-        stats_folder = dataset_root / "dataset_stats"
-        from label_analysis.dataset_stats import end2end_lms_stats_and_plots
-        from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
-
-        if label_stats or gif:
-            maybe_makedirs([stats_folder])
-        if label_stats == True:
-            df, _ = end2end_lms_stats_and_plots(
-                lis_folder=lms_folder,
-                output_folder=stats_folder,
-            )
-        if gif == True:
-            output_gif = stats_folder / "snapshot.gif"
-            create_nifti_overlay_grid_gif(
-                dataset_root=dataset_root,
-                output_gif=output_gif,
-                grid_shape=(3, 3),
-                num_frames=30,
-                stride=4,
-                window=infer_dataset_stats_window(self.project),
-                fps=5,
-            )
-            _show_gif_in_chrome_if_available(output_gif)
 
     def ray_init(self):
         if not ray.is_initialized():

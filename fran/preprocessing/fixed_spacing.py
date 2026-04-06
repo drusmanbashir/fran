@@ -11,6 +11,10 @@ tr = ipdb.set_trace
 import pandas as pd
 import torch
 from fran.preprocessing import bboxes_function_version
+from fran.preprocessing.helpers import (
+    create_dataset_stats_artifacts,
+    infer_dataset_stats_window,
+)
 from fran.preprocessing.preprocessor import (
     Preprocessor,
     get_tensor_stats,
@@ -303,8 +307,11 @@ class NiftiToTorchDataGenerator(Preprocessor):
         store_label_count(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
-        self.create_dataset_stats_artifacts(
-            gif=self.store_gifs, label_stats=self.store_label_stats
+        create_dataset_stats_artifacts(
+            output_folder=self.output_folder,
+            gif=self.store_gifs,
+            label_stats=self.store_label_stats,
+            gif_window=infer_dataset_stats_window(self.project),
         )
 
     def generate_bboxes_from_lms_folder(self, bg_label=0, debug=False, num_processes=8):
@@ -470,7 +477,12 @@ if __name__ == "__main__":
     Rs.setup(num_processes=n_processes, overwrite=overwrite, debug=debug_)
 
 # %%
-    Rs.create_dataset_stats_artifacts(gif=True, label_stats=True)
+    create_dataset_stats_artifacts(
+        output_folder=Rs.output_folder,
+        gif=True,
+        label_stats=True,
+        gif_window=infer_dataset_stats_window(Rs.project),
+    )
     # Rs.process()
 # %%
 #SECTION:-------------------- TS--------------------------------------------------------------------------------------# %%

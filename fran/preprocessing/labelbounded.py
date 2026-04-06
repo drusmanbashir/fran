@@ -6,6 +6,10 @@ import pandas as pd
 import ray
 from fastcore.basics import GetAttr
 from fran.configs.parser import is_excel_None
+from fran.preprocessing.helpers import (
+    create_dataset_stats_artifacts,
+    infer_dataset_stats_window,
+)
 from fran.preprocessing.preprocessor import (
     Preprocessor,
     generate_bboxes_from_lms_folder,
@@ -217,8 +221,11 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         self.results_df.to_csv(
             self.output_folder / "resampled_dataset_properties.csv", index=False
         )
-        self.create_dataset_stats_artifacts(
-            gif=self.store_gifs, label_stats=self.store_label_stats
+        create_dataset_stats_artifacts(
+            output_folder=self.output_folder,
+            gif=self.store_gifs,
+            label_stats=self.store_label_stats,
+            gif_window=infer_dataset_stats_window(self.project),
         )
 
     def store_label_count(self):

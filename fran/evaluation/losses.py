@@ -149,19 +149,6 @@ class CombinedLoss(_DiceCELossMultiOutput):
         self.set_loss_dict(losses)
         return losses["loss"]
 
-    #
-    # def set_loss_dict(self, losses):
-    #     losses[1:] = [
-    #         ll.detach() for ll in losses[1:]
-    #     ]  # only l[0] needs gradient. rest are for logging
-    #     class_losses = losses[-1].mean(0)
-    #     separate_case_losses = list(losses[-1].view(-1))
-    #     self.loss_dict = {
-    #         x: y.item()
-    #         for x, y in zip(
-    #             self.labels, il.chain(losses[:3], class_losses, separate_case_losses)
-    #         )
-    #     }
 
     def set_loss_dict(self, losses):
         per_case_class = losses["loss_dice_unreduced"]  # [N, C]
@@ -353,6 +340,10 @@ class DeepSupervisionLoss(pl.LightningModule):
         filenames = meta.get("filename_or_obj")
         if isinstance(filenames, str):
             filenames = [filenames]
+        elif filenames is None:
+            filenames = [None] * bs
+        # elif len(filenames) < bs:
+        #     filenames = list(filenames) + [None] * (bs - len(filenames))
         case_ids = []
         for fn in filenames:
             if fn is None:

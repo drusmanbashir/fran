@@ -3,6 +3,10 @@ from pathlib import Path
 import pandas as pd
 import ray
 import torch
+from fran.preprocessing.helpers import (
+    create_dataset_stats_artifacts,
+    infer_dataset_stats_window,
+)
 from fran.preprocessing.preprocessor import Preprocessor, get_tensor_stats, store_label_count
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadTorchd
@@ -158,8 +162,11 @@ class FixedSizeDataGenerator(Preprocessor):
         store_label_count(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
-        self.create_dataset_stats_artifacts(
-            gif=self.store_gifs, label_stats=self.store_label_stats
+        create_dataset_stats_artifacts(
+            output_folder=self.output_folder,
+            gif=self.store_gifs,
+            label_stats=self.store_label_stats,
+            gif_window=infer_dataset_stats_window(self.project),
         )
 
 

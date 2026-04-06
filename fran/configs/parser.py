@@ -1,11 +1,16 @@
 # %%
 import ast
-from typing import Any, Union
+from typing import Any
 
 import ipdb
 import numpy as np
 import pandas as pd
 from fran.configs.mnemonics import Mnemonics
+from fran.preprocessing.helpers import (
+    create_dataset_stats_artifacts,
+    infer_dataset_stats_window,
+    postprocess_artifacts_missing,
+)
 from fran.utils.folder_names import (
     folder_names_from_plan,
 )
@@ -20,7 +25,7 @@ tr = ipdb.set_trace
 from openpyxl import load_workbook
 from utilz.helpers import *
 
-KEYS_STR_TO_LIST = ("spacing", "patch_size","expand_by", "ignore_labels")
+KEYS_STR_TO_LIST = ("spacing", "patch_size", "expand_by", "ignore_labels")
 # HACK: this may bug out later
 REMAPPING_DICT_OR_LIST = {
     "remapping_source": "dict",
@@ -53,6 +58,12 @@ def cases_in_folder(fldr) -> int:
     img_fldr = fldr / ("images")
     cases = list(img_fldr.glob("*"))
     n_cases = len(cases)
+
+
+
+
+
+
     return n_cases
 
 
@@ -133,6 +144,7 @@ def labels_from_remapping(remapping_in):
         remappings_out.append(labels_all)
     labels_all = max(remappings_out)
     return labels_all
+
 
 
 def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
@@ -297,7 +309,7 @@ class ConfigMaker:
         self,
         project,
     ):
-        self.project=project
+        self.project = project
         configuration_mnemonic = project.global_properties["mnemonic"]
         configuration_filename = self.resolve_configuration_filename()
         plans = pd.read_excel(
@@ -379,7 +391,7 @@ class ConfigMaker:
         # Ensure the source plan exists in the config before proceeding
         else:
             # Access the source plan
-            src_plan_key = src_plan_key.replace(" ","")
+            src_plan_key = src_plan_key.replace(" ", "")
             src_plan_k, src_plan_mode = src_plan_key.split(",")
             src_plan_k = ast_literal_eval(src_plan_k)
             source_plan = self.plans.loc[src_plan_k]
@@ -390,7 +402,7 @@ class ConfigMaker:
             # Iterate over the source plan keys and add any missing keys to the main plan
             for key in source_plan:
                 main_plan_val = main_plan.get(key)
-                if is_excel_None(main_plan_val) :
+                if is_excel_None(main_plan_val):
                     main_plan[key] = source_plan[key]
             # self.configs[plan_key] = main_plan
 
@@ -483,78 +495,71 @@ class ConfigMaker:
             preprocess.append(status)
 
         self.plans["preprocessed"] = preprocess
-    def create_plan_postproc_artifacts(self):
+
+    def create_plan_postproc_artifacts(
+        self, gif=True, label_stats=True, gif_window="abdomen"
+    ):
         plan = self.configs["plan_train"]
         mode = plan["mode"]
-        folders = folder_names_from_plan(self.project, plan)
-
-        if mode == "lbd":
-            from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-
-            folder_key = "data_folder_lbd"
-            generator_cls = LabelBoundedDataGenerator
-            generator = generator_cls(
-                project=self.project,
-                plan=plan,
-                data_folder=folders["data_folder_source"],
-                output_folder=folders[folder_key],
-            )
-        elif mode in ["patch", "pbd"]:
-            from fran.preprocessing.patch import PatchDataGenerator
-
-            folder_key = "data_folder_pbd"
-            generator_cls = PatchDataGenerator
-            generator = generator_cls(
-                project=self.project,
-                plan=plan,
-                data_folder=folders["data_folder_lbd"],
-                output_folder=folders[folder_key],
-            )
-        elif mode == "whole":
-            from fran.preprocessing.fixed_size2 import FixedSizeDataGenerator
-
-            folder_key = "data_folder_whole"
-            generator_cls = FixedSizeDataGenerator
-            generator = generator_cls(
-                project=self.project,
-                plan=plan,
-                data_folder=folders["data_folder_source"],
-                output_folder=folders[folder_key],
-            )
-        elif mode in ["source", "sourcepbd"]:
-            from fran.preprocessing.fixed_spacing import NiftiToTorchDataGenerator
-
-            folder_key = "data_folder_source"
-            generator_cls = NiftiToTorchDataGenerator
-            generator = generator_cls(
-                project=self.project,
-                plan=plan,
-                data_folder=self.project.raw_data_folder,
-                output_folder=folders[folder_key],
-            )
-        else:
-            raise NotImplementedError(f"Unknown mode: {mode}")
-
-        output_folder = Path(folders[folder_key])
-        stats_folder = output_folder / "dataset_stats"
-        missing_gif = not (stats_folder / "snapshot.gif").exists()
-        missing_label_stats = not (stats_folder / "lesion_stats.csv").exists()
-        missing_labels = not (output_folder / "labels_all.json").exists()
-        missing_props = not (output_folder / "resampled_dataset_properties.json").exists()
-
-        generator.store_gifs = missing_gif
-        generator.store_label_stats = missing_label_stats
-
-        if missing_labels or missing_props or missing_gif or missing_label_stats:
-            generator.run_postprocess_only()
-        return {
-            "mode": mode,
-            "output_folder": output_folder,
-            "missing_gif": missing_gif,
-            "missing_label_stats": missing_label_stats,
-            "missing_labels": missing_labels,
-            "missing_props": missing_props,
-        }
+        ff = folder_names_from_plan(self.project, plan)
+        data_folder_key = "data_folder_" + mode
+        data_folder = ff[data_folder_key]
+        missing = postprocess_artifacts_missing(data_folder)
+        create_gif = gif == True and missing["gif"] == True
+        create_label_stats = label_stats == True and missing["label_stats"] == True
+        if create_gif == False and create_label_stats == False:
+            print("No artifacts to create")
+            return missing
+        create_dataset_stats_artifacts(
+            output_folder=data_folder,
+            gif=create_gif,
+            label_stats=create_label_stats,
+            gif_window=gif_window,
+        )
+        #     folder_key = "data_folder_whole"
+        #     generator_cls = FixedSizeDataGenerator
+        #     generator = generator_cls(
+        #         project=self.project,
+        #         plan=plan,
+        #         data_folder=folders["data_folder_source"],
+        #         output_folder=folders[folder_key],
+        #     )
+        # elif mode in ["source", "sourcepbd"]:
+        #     from fran.preprocessing.fixed_spacing import NiftiToTorchDataGenerator
+        #
+        #     folder_key = "data_folder_source"
+        #     generator_cls = NiftiToTorchDataGenerator
+        #     generator = generator_cls(
+        #         project=self.project,
+        #         plan=plan,
+        #         data_folder=self.project.raw_data_folder,
+        #         output_folder=folders[folder_key],
+        #     )
+        # else:
+        #     raise NotImplementedError(f"Unknown mode: {mode}")
+        #
+        # output_folder = Path(folders[folder_key])
+        # stats_folder = output_folder / "dataset_stats"
+        # missing_gif = not (stats_folder / "snapshot.gif").exists()
+        # missing_label_stats = not (stats_folder / "lesion_stats.csv").exists()
+        # missing_labels = not (output_folder / "labels_all.json").exists()
+        # missing_props = not (output_folder / "resampled_dataset_properties.json").exists()
+        #
+        # generator.store_gifs = missing_gif
+        # generator.store_label_stats = missing_label_stats
+        #
+        # if missing_labels or missing_props or missing_gif or missing_label_stats:
+        #     generator.run_postprocess_only()
+        # return {
+        #     "mode": mode,
+        #     "output_folder": output_folder,
+        #     "missing_gif": missing_gif,
+        #     "missing_label_stats": missing_label_stats,
+        #     "missing_labels": missing_labels,
+        #     "missing_props": missing_props,
+        # }
+        #
+        #
 
 
 def load_config_from_workbook(settingsfilename) -> dict:
@@ -631,13 +636,8 @@ if __name__ == "__main__":
     C.configs["plan_train"]["labels_all_lbd"]
     plan = C.configs["plan_train"]
     pp(plan["spacing"])
-    mode =plan["mode"]
-
-    ff = folder_names_from_plan(P,plan)
-    data_folder_key = "data_folder_"+mode
-    data_folder = ff[data_folder_key]
-
-    stats_folder = Path(data_folder) / "dataset_stats"
+    mode = plan["mode"]
+    C.create_plan_postproc_artifacts()
 # %%
 
     main_plan = C.configs["plan_train"]
@@ -646,7 +646,7 @@ if __name__ == "__main__":
     # Ensure the source plan exists in the config before proceeding
     if src_plan_key:
         # Access the source plan
-        src_plan_key = src_plan_key.replace(" ","")
+        src_plan_key = src_plan_key.replace(" ", "")
         src_plan_k, src_plan_mode = src_plan_key.split(",")
         src_plan_k = ast_literal_eval(src_plan_k)
         source_plan = C.plans.loc[src_plan_k]
@@ -755,4 +755,11 @@ if __name__ == "__main__":
 # %%
     # C.maybe_merge_source_plan(plan_key)
     C.configs[plan_key] = parse_excel_dict(plan_selected)
+
     pp(C.configs[plan_key])
+    C.config 
+
+
+
+
+

@@ -581,18 +581,16 @@ if __name__ == "__main__":
     # counts2 = counts.sort_values(ascending=False)
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR>
-    train_indices = 20
-    bs = 2
+    bs = 13
     device_id = 1
-
     batchsize_finder = True
     batchsize_finder = False
     # run_name ='LITS-1285'
     wandb = True
+    wandb = False
     override_dm = False
     tags = []
     description = f"Trying single label for binary mask"
-
     conf["plan_train"]
 
     conf["dataset_params"]["cache_rate"] = 0.0
@@ -605,11 +603,12 @@ if __name__ == "__main__":
     debug_ = False
     profiler = False
     compiled = False
-    run_name = "KITS2-NGALE"
+    run_name="TOTALSEG-FREHA"
     run_name = None
     cbs = []
-    wandb_grid_epoch_freq = 2
-    val_every_n_epochs = 1
+    wandb_grid_epoch_freq = 20
+    val_every_n_epochs = 2
+    train_indices = None
 # %%
 # SECTION:-------------------- TOALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
@@ -670,27 +669,5 @@ if __name__ == "__main__":
     sw_device = "cuda:1"
     bs = 1  # start lower if you are hitting OOM
 # %%
-# %%
-#SECTION:-------------------- CBS--------------------------------------------------------------------------------------
-    N= Tm.N
-    trn = Tm.trainer
-    cbs = trn.callbacks
-    cb = CaseIDRecorder
-    cbb = [c for c in cbs if isinstance(c, cb)][0]
-    cc = cbb
-
-    cc.worst_case_ids
-# %%
-        vip_label_str = "loss_dice_label" + str(cc.vip_label)
-        df_label = df_long[df_long["label"] == vip_label_str].copy()
-        df_label["case_id"] = df_label["case_id"].astype(str)
-        case_order = (
-            df_label.groupby("case_id")["loss_dice"]
-            .var()
-            .fillna(0)
-            .sort_values(ascending=False)
-            .index.astype(str)
-            .tolist()
- 
 # %%
 

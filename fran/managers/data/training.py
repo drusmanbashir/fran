@@ -367,7 +367,6 @@ class DataManager(LightningDataModule):
         self.set_effective_batch_size()
         self.set_data_folder(data_folder)
         self.set_collate_fn(collate_fn)
-        self.override_batch_size_valid_split(split=self.split)
         self.debug = debug
 
 
@@ -951,6 +950,9 @@ class DataManager(LightningDataModule):
 
 
 class DataManagerSource(DataManager):
+    def __init__(self, project, configs: dict, batch_size=8, cache_rate=0.0 , **kwargs):
+        super().__init__(project, configs, batch_size, cache_rate, **kwargs)
+        self.override_batch_size_valid_split(split=self.split)
     def _set_collate_fn(self):
         if self.split == "train":
             self.collate_fn = source_collated
@@ -972,7 +974,7 @@ class DataManagerSource(DataManager):
         )
 
 
-class DataManagerWhole(DataManagerSource):
+class DataManagerWhole(DataManager):
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
         self.keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"

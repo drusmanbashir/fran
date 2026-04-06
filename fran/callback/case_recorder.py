@@ -2,7 +2,7 @@ import re
 import warnings
 from pathlib import Path
 from typing import Any
-from fran.utils.string_works import is_excel_None
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,6 +12,7 @@ import torch
 from fran.callback.base import *
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from tqdm.auto import tqdm
+from fran.utils.string_works import is_excel_None
 from utilz.cprint import cprint
 from utilz.fileio import load_json, save_json
 from utilz.stringz import headline
@@ -232,7 +233,6 @@ class CaseIDRecorder(Callback):
                 except AttributeError as e:
                     cprint(e, color="red")
 
-
     def _is_wandb_logger(self, trainer) -> bool:
         logger = getattr(trainer, "logger", None)
         if logger is None:
@@ -246,6 +246,7 @@ class CaseIDRecorder(Callback):
         if not self._is_wandb_logger(trainer):
             return
         import wandb
+
         try:
             run = trainer.logger.experiment
             table = wandb.Table(dataframe=df_long.reset_index(drop=True))
@@ -431,3 +432,5 @@ if __name__ == "__main__":
 
     key = f"case_recorder/fit/df_epoch_{epoch}"
 # _store(self,trainer, stage, loss_dict,epoch):
+
+

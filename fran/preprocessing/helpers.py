@@ -1,5 +1,7 @@
 # %%
+import shutil
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -258,7 +260,71 @@ def infer_dataset_stats_window(project):
     return "abdomen"
 
 
+def show_gif_in_chrome_if_available(gif_path: Path) -> None:
+    gif_path = Path(gif_path).resolve()
+    print(f"Dataset stats GIF: {gif_path}")
+    chrome_path = next(
+        (
+            candidate
+            for candidate in (
+                "google-chrome",
+                "google-chrome-stable",
+                "chromium",
+                "chromium-browser",
+            )
+            if shutil.which(candidate)
+        ),
+        None,
+    )
+    if chrome_path is None:
+        print("Google Chrome not available, skipping GIF preview.")
+        return
+    try:
+        subprocess.Popen(
+            [chrome_path, "--new-window", gif_path.as_uri()],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as e:
+        print(f"Failed to open dataset stats GIF in Chrome: {e}")
+
+
+def create_dataset_stats_artifacts(
+    output_folder,  gif: bool = True, label_stats=False, preview=True, gif_window="abdomen" 
+):
+    dataset_root = Path(output_folder)
+    lms_folder = dataset_root / "lms"
+    if not lms_folder.exists():
+        print(f"Skipping dataset stats: missing labels folder {lms_folder}")
+        return
+    stats_folder = dataset_root / "dataset_stats"
+    from label_analysis.dataset_stats import end2end_lms_stats_and_plots
+    from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
+
+    if label_stats or gif:
+        maybe_makedirs([stats_folder])
+    if label_stats == True:
+        df, _ = end2end_lms_stats_and_plots(
+            lis_folder=lms_folder,
+            output_folder=stats_folder,
+        )
+    if gif == True:
+        output_gif = stats_folder / "snapshot.gif"
+        create_nifti_overlay_grid_gif(
+            dataset_root=dataset_root,
+            output_gif=output_gif,
+            grid_shape=(3, 3),
+            num_frames=20,
+            stride=4,
+            window=gif_window,
+            fps=5,
+        )
+        if preview == True:
+            show_gif_in_chrome_if_available(output_gif)
+
+
 def postprocess_artifacts_missing(data_folder:Path) ->dict:
+    data_folder = Path(data_folder)
     missings={ "label_stats":True, "gif":True}
     stats_folder = data_folder / "dataset_stats"
     labels_stats_fn = data_folder / "lesion_stats.csv"

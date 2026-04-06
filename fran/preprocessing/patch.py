@@ -8,7 +8,11 @@ import pandas as pd
 import ray
 import torch
 from fran.preprocessing import bboxes_function_version
-from fran.preprocessing.helpers import sanitize_meta_for_monai
+from fran.preprocessing.helpers import (
+    create_dataset_stats_artifacts,
+    infer_dataset_stats_window,
+    sanitize_meta_for_monai,
+)
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.utils.folder_names import folder_names_from_plan
@@ -249,8 +253,11 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
             self.output_folder / "resampled_dataset_properties.csv", index=False
         )
         self.store_label_count()
-        self.create_dataset_stats_artifacts(
-            gif=self.store_gifs, label_stats=self.store_label_stats
+        create_dataset_stats_artifacts(
+            output_folder=self.output_folder,
+            gif=self.store_gifs,
+            label_stats=self.store_label_stats,
+            gif_window=infer_dataset_stats_window(self.project),
         )
 
 
