@@ -123,7 +123,6 @@ def process_items_whole(items):
     fns_imgs = []
     fns_labels = []
     for item in items:
-        item = item[0]  #
         imgs.append(item["image"])
         fns_imgs.append(item["image"].meta["filename_or_obj"])
         labels.append(item["lm"])
@@ -227,7 +226,7 @@ def source_collated(batch):
         fns_labels.extend(fns_labels_)
     if len(batch) == 1:
         fns_imgs = fns_imgs[0]
-        # fns_labels = fns_labels[0]
+        fns_labels = fns_labels[0]
     imgs_out = torch.stack(imgs, 0)
     lms_out = torch.stack(labels, 0)
 
@@ -238,8 +237,6 @@ def source_collated(batch):
 
 
 def whole_collated(batch):
-    # print(type(batch))
-    # print(len(batch))
     imgs, labels, fns_imgs, fns_labels = process_items_whole(batch)
     if len(batch) == 1:
         fns_imgs = fns_imgs[0]

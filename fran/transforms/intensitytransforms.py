@@ -97,15 +97,6 @@ class MakeBinary(MonaiDictTransform):
         return x
 
 
-class _IntensityAugmentation:
-    def __init__(self, aug_func):
-        self.aug_func = aug_func
-
-    def __call__(self, x, factor_range):
-        factor = np.random.uniform(*factor_range)
-        return self.aug_func(x[0], factor), x[1]
-
-
 def zero_to_one(func):
     @wraps(func)
     def _inner(img, *args, **kwargs):
@@ -122,49 +113,6 @@ def zero_to_one(func):
 
 def standardize(img, mn, std):
     return (img - mn) / std
-
-
-@_IntensityAugmentation
-@zero_to_one
-def log(img, factor):
-    return np.log(img + 1e-5) * factor
-
-
-@_IntensityAugmentation
-@zero_to_one
-def power(img, factor):
-    return img**factor
-
-
-@_IntensityAugmentation
-def noise(img, scale):
-    scale = np.abs(scale)  # has to be non_negative
-    noise = torch.normal(mean=0, std=scale, size=img.shape)
-    return img + noise
-
-
-@_IntensityAugmentation
-def brightness(img, factor):
-    return img * factor
-
-
-@_IntensityAugmentation
-def invert(img, factor):
-    return -img + factor
-
-
-@_IntensityAugmentation
-def shift(img, factor):
-    return img + factor
-
-
-@_IntensityAugmentation
-def contrast(img, factor):
-    clip_min, clip_max = img.min(), img.max()
-    img = img * factor
-    img = torch.clip(img, clip_min, clip_max)
-    return img
-
 
 # %%
 if __name__ == "__main__":

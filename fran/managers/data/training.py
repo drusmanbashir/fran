@@ -183,8 +183,8 @@ class DataManagerDual(LightningDataModule):
         self.cache_rate = cache_rate
         self.device = device
         self.ds_type = ds_type
-        self.keys_tr = "L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms"
-        self.keys_val = "L,E,N,Remap,ResizeP"
+        self.keys_tr = None
+        self.keys_val = None
         self.data_folder = data_folder if data_folder is not None else None
         self.manager_class_train = manager_class_train
         self.manager_class_valid = manager_class_valid
@@ -369,11 +369,6 @@ class DataManager(LightningDataModule):
         self.set_collate_fn(collate_fn)
         self.debug = debug
 
-
-    def override_batch_size_valid_split(self, split="valid"):
-        if split == "valid":
-            self.batch_size = self.effective_batch_size = 1
-            self.collate_fn = None
 
     def set_data_folder(self, data_folder):
         if data_folder is None:
@@ -952,7 +947,15 @@ class DataManager(LightningDataModule):
 class DataManagerSource(DataManager):
     def __init__(self, project, configs: dict, batch_size=8, cache_rate=0.0 , **kwargs):
         super().__init__(project, configs, batch_size, cache_rate, **kwargs)
+        self.keys_tr = "L,Remap,Ld,E,N,Rtr,F1,F2,Affine,ResizePC,IntensityTfms"
+        self.keys_val = "L,E,N,Remap,ResizeP"
+        if self.keys is None:
+            if self.split == "train":
+                self.keys = self.keys_tr
+            elif self.split == "valid":
+                self.keys = self.keys_val
         self.override_batch_size_valid_split(split=self.split)
+
     def _set_collate_fn(self):
         if self.split == "train":
             self.collate_fn = source_collated
@@ -968,17 +971,24 @@ class DataManagerSource(DataManager):
 
     def __repr__(self):
         return (
-            f"DataManagerSource("
-            + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
-            + ")"
+            f"DataManagerSource"
         )
 
+    def override_batch_size_valid_split(self, split="valid"):
+        if split == "valid":
+            self.batch_size = self.effective_batch_size = 1
+            self.collate_fn = None
 
 class DataManagerWhole(DataManager):
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
         self.keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"
         self.keys_val = "L,E,ResizeW,N"
+        if self.keys is None:
+            if self.split == "train":
+                self.keys = self.keys_tr
+            elif self.split == "valid":
+                self.keys = self.keys_val
 
     def _set_collate_fn(self):
         self.collate_fn = whole_collated
@@ -1050,7 +1060,8 @@ class DataManagerShort(DataManager):
 class DataManagerPatch(DataManagerSource):
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
-        self.set_tfm_keys()
+        if self.keys is None:
+            self.set_tfm_keys()
 
     def _set_collate_fn(self):
         if self.split == "test":
@@ -1210,6 +1221,9 @@ class DataManagerBaseline(DataManagerLBD):
 
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
+        if self.keys is None:
+            self.set_tfm_keys()
+            self.keys = self.keys_tr
         self.collate_fn = whole_collated
 
     def __str__(self):
@@ -1696,4 +1710,3 @@ if __name__ == "__main__":
 
 # %%       
     D.val_indices = int(len(D.train_manager.cases) * 0.2)
-

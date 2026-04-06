@@ -581,30 +581,26 @@ if __name__ == "__main__":
     # counts2 = counts.sort_values(ascending=False)
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR>
-    bs = 13
+# %%
+    bs = 14
     device_id = 1
     batchsize_finder = True
     batchsize_finder = False
     # run_name ='LITS-1285'
-    wandb = True
     wandb = False
+    wandb = True
+    override_dm = True
     override_dm = False
+
+    run_name = None
+    run_name="TOTALSEG-FREHA"
     tags = []
-    description = f"Trying single label for binary mask"
-    conf["plan_train"]
-
-    conf["dataset_params"]["cache_rate"] = 0.0
-    # print(conf['model_params']['out_channels'])
-
-    conf["dataset_params"]["cache_rate"]
-
+    description = f""
     conf["dataset_params"]["fold"] = 0
     lr = None
     debug_ = False
     profiler = False
     compiled = False
-    run_name="TOTALSEG-FREHA"
-    run_name = None
     cbs = []
     wandb_grid_epoch_freq = 20
     val_every_n_epochs = 2
@@ -636,9 +632,6 @@ if __name__ == "__main__":
     Tm.fit()
     # model(inputs)
 # %%
-    conf = Tm.configs
-    conf["model_params"]
-# %%
     N = Tm.N
     D = Tm.D
     D.setup()
@@ -648,19 +641,29 @@ if __name__ == "__main__":
 
 # %%
     tmt.collate_fn
-
     tmv.collate_fn
+    tmv.batch_size
     tmv.prepare_data()
-    tmv.effective_batch_size = 1
+# %%
     tmv.setup()
     dl = tmv.dl
     iteri = iter(dl)
-    batch = next(iteri)
+# %%
+    for i, batch in enumerate(iteri):
+        print(batch["image"].shape)
+
+# %%
     ds = tmv.ds
     ds[0]
+    dici = ds[0]
+    dici2 = ds[1]
 # %%
-    batch["image"].shape
-    batch["lm"].shape
+    tmt.setup()
+    dl2 = tmt.dl
+    iteri2 = iter(dl2)
+# %%
+    for i, batch in enumerate(iteri2):
+        print(batch["image"].shape)
 # %%
 
     patch_overlap = 0
