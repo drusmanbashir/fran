@@ -58,8 +58,8 @@ def write_list_to_txt(data_list, filepath, delimiter=" "):
                 f.write(line + "\n")
         else:
             # For flat lists, join all items with delimiter
-            line = delimiter.join(str(x) for x in data_list)
             f.write(line + "\n")
+            line = delimiter.join(str(x) for x in data_list)
 
 
 class DetectDS(Dataset):
@@ -270,6 +270,10 @@ if __name__ == "__main__":
     dm.prepare_data()
     dm.setup(stage="fit")
     dl = dm.train_dataloader()
+
+    ds = dm.ds_train
+    data = ds[0]
+    data.keys()
 
 # %%
 

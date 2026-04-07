@@ -2,7 +2,7 @@
 # link :https://blog.flaport.net/yolo-part-1.html
 import lightning as L
 import torch
-from fran.localiser.preprocessing.data import *
+from fran.localiser.data import *
 from fran.localiser.helpers import *
 from fran.localiser.loss import YOLOLoss
 from torch.optim.lr_scheduler import OneCycleLR
@@ -241,12 +241,12 @@ class TinyYOLOv2(L.LightningModule):
 
 # %
 if __name__ == "__main__":
-    # %%
-    # SECTION:-------------------- VOC--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- VOC--------------------------------------------------------------------------------------
     import glob
 
     import matplotlib.pyplot as plt
-    from fran.localiser.preprocessing.data import DetectDataModule
+    from fran.localiser.data import DetectDataModule
     from lightning.pytorch.callbacks import (
         LearningRateMonitor,
         ModelCheckpoint,
@@ -257,7 +257,7 @@ if __name__ == "__main__":
     from tqdm import tqdm
 
     device = "cuda"
-    # %%
+# %%
     network = TinyYOLOv2(bs=32, lr=1e-2, num_classes=20)
     import glob
 
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     valid_idxs = all_idxs[-4 * batch_size :]
     train_idxs = all_idxs[: -4 * batch_size]
 
-    # %%
+# %%
     network.to(device)
 
     for e in range(20):
@@ -302,34 +302,34 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
 
-    # %%
+# %%
     input_tensor = load_image_batch([33], 320)  # batch with single image of an airplane
     output_tensor = network(input_tensor.cuda())
     show_images_with_boxes(input_tensor, output_tensor)
     show_image_with_boxes(input_tensor, output_tensor)
-    # %%
-    # SECTION:-------------------- WEIGHTS--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- WEIGHTS--------------------------------------------------------------------------------------
 
     network2 = TinyYOLOv2a()
     # model = TinyYOLOv2.load_from_checkpoint("/home/ub/code/fran/fran/logs/lightning_logs/version_2/checkpoints/last.ckpt")
     input_tensor = load_image_batch([33], 320)  # batch with single image of an airplane
     network2.to(device)
     load_weights(network2)
-    # %%
+# %%
     output_tensor2 = network2(input_tensor.cuda())
     show_image_with_boxes(input_tensor, output_tensor2)
-    # %%
+# %%
     with torch.no_grad():
         preds = network(input_tensor.cuda(), False)
 
-    # %%
+# %%
 
     show_images_with_boxes(input_tensor, output_tensor2)
     filtered_tensor = filter_boxes(output_tensor2, 0.2)
     show_images_with_boxes(input_tensor, filtered_tensor)
 
-    # %%
-    # SECTION:-------------------- RETRAIN--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- RETRAIN--------------------------------------------------------------------------------------
     for p in network2.conv9.parameters():
         try:
             torch.nn.init.kaiming_normal_(p)
@@ -338,7 +338,7 @@ if __name__ == "__main__":
     batch_predictions = network2(input_tensor.cuda())
 
     show_images_with_boxes(input_tensor, batch_predictions)
-    # %%
+# %%
     batch_size = 256
     all_idxs = np.array(
         [
@@ -357,7 +357,7 @@ if __name__ == "__main__":
     valid_idxs = all_idxs[-4 * batch_size :]
     train_idxs = all_idxs[: -4 * batch_size]
 
-    # %%
+# %%
     for e in range(20):
         np.random.shuffle(train_idxs)
         range_ = tqdm(np.array_split(train_idxs, batch_size))
@@ -377,8 +377,8 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
 
-    # %%
-    # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
     from fran.utils.common import *
 
@@ -395,7 +395,7 @@ if __name__ == "__main__":
     network.to("cuda")
     devices = [0]
 
-    # %%
+# %%
     trainer = Trainer(
         max_epochs=100,
         accelerator="gpu",
@@ -416,11 +416,11 @@ if __name__ == "__main__":
             ),
         ],
     )
-    # %%
+# %%
     trainer.fit(network, dm)
 
-    # %%
-    # SECTION:-------------------- TROUBLE--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- TROUBLE--------------------------------------------------------------------------------------
 
     network.to(device)
     dm = DetectDataModule(data_dir="/s/xnat_shadow/lidc2d/", batch_size=1)
@@ -431,11 +431,11 @@ if __name__ == "__main__":
     iteri = iter(vdl)
     bb = next(iteri)
     img = bb["image"]
-    # %%
+# %%
     with torch.no_grad():
         preds = network(img.cuda(), True)
 
-    # %%
+# %%
 
     show_images_with_boxes(img, preds)
     filtered_tensor = filter_boxes(preds, 0.2)
@@ -443,12 +443,12 @@ if __name__ == "__main__":
 
     nms_tensor = nms(filtered_tensor, 0.5)
     show_images_with_boxes(img, nms_tensor)
-    # %%
+# %%
     ind = 0
     im = img[ind][0].detach().cpu()
     bb = preds[ind]
     bb.shape
-    # %%
+# %%
     for e in range(200):
         np.random.shuffle(train_idxs)
         range_ = tqdm(np.array_split(train_idxs, batch_size))
@@ -460,7 +460,7 @@ if __name__ == "__main__":
             valid_loss = lossfunc(valid_predictions, valid_labels).item()
             range_.set_postfix(valid_loss=valid_loss)
 
-    # %%
+# %%
     import matplotlib.pyplot as plt
 
     plt.ion()
@@ -472,8 +472,8 @@ if __name__ == "__main__":
     )
     plt.imshow(pil_img)
     plt.show()
-    # %%
-    # %%
+# %%
+# %%
 
     valid_labels = load_bboxes_batch(valid_idxs, size=320, num_bboxes=10)
     input_tensor = load_image_batch([33], 320)
@@ -484,13 +484,14 @@ if __name__ == "__main__":
     input_tensor = load_image_batch([8, 16, 33, 60], size=320)
     input_tensor = load_image_batch([33], size=320)
     output_tensor = network(input_tensor.cuda())
-    # %%
+# %%
     show_images_with_boxes(input_tensor, output_tensor)
     filtered_tensor = filter_boxes(output_tensor, 0.2)
     show_images_with_boxes(input_tensor, filtered_tensor)
 
-    # %%
+# %%
     nms_tensor = nms(filtered_tensor, 0.5)
     show_images_with_boxes(input_tensor, nms_tensor)
 
 # %%
+

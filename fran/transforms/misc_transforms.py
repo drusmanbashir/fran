@@ -116,7 +116,6 @@ class BoundingBoxYOLOd(MonaiDictTransform):
         centres = yolo_box_pt[:2]
         xmax = shape[0]
         ymax = shape[1]
-
         xscaled = yolo_box_pt[0][::2] / xmax
         yscaled = yolo_box_pt[0][1::2] / ymax
 
@@ -132,6 +131,30 @@ class BoundingBoxYOLOd(MonaiDictTransform):
         else:
             # yolo_box_scaled = yolo_box_scaled.unsqueeze(0)
             return yolo_box_scaled
+
+
+class BoundingBoxesYOLOd(BoundingBoxYOLOd):
+    def func(self, bb, shape):
+        box_converter = ConvertBoxMode(src_mode=self.src_mode, dst_mode=self.dst_mode)
+        if self.dim == 3:
+            raise NotImplementedError
+        yolo_box_pt = torch.as_tensor(box_converter(bb), dtype=torch.float32)
+        if yolo_box_pt.ndim == 1:
+            yolo_box_pt = yolo_box_pt.unsqueeze(0)
+
+        xmax = shape[0]
+        ymax = shape[1]
+        yolo_box_scaled = torch.zeros_like(yolo_box_pt)
+        yolo_box_scaled[:, ::2] = yolo_box_pt[:, ::2] / xmax
+        yolo_box_scaled[:, 1::2] = yolo_box_pt[:, 1::2] / ymax
+
+        if self.return_dict == True:
+            return {
+                "class": torch.zeros(yolo_box_scaled.shape[0], dtype=torch.long),
+                "centers": yolo_box_scaled[:, :2],
+                "size": yolo_box_scaled[:, 2:],
+            }
+        return yolo_box_scaled
 
 
 def one_hot(x, classes, axis=1):
