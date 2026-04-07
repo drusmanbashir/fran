@@ -8,7 +8,6 @@ sys.path += ["/home/ub/Dropbox/code/fran"]
 from functools import reduce
 
 import ipdb
-import torch
 import torch.nn.functional as F
 
 tr = ipdb.set_trace

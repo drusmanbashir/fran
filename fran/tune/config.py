@@ -7,7 +7,6 @@ import yaml
 from fran.configs.parser import ConfigMaker
 
 MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "totalseg"]
-tr = ipdb.set_trace
 
 if not sys.executable == "":  # workaround for slicer as it does not load ray tune
     from ray import tune

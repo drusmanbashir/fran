@@ -5,7 +5,6 @@ from pathlib import Path
 import ipdb
 import lightning as L
 import torch._dynamo as dynamo
-from fran.managers.project import Project
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from monai.inferers.inferer import SlidingWindowInferer
 from monai.transforms.post.array import AsDiscrete

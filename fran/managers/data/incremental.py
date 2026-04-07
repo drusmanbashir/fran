@@ -6,15 +6,9 @@ from utilz.helpers import set_autoreload
 
 set_autoreload()
 
-from pathlib import Path
-from typing import Optional
-
-import ipdb
-import pandas as pd
-from fastcore.basics import listify
 from fran.configs.parser import is_excel_None
+from fastcore.basics import listify
 from fran.data.collate import (
-    grid_collated,
     patch_collated,
     source_collated,
     whole_collated,
@@ -25,7 +19,6 @@ from utilz.fileio import load_yaml
 from utilz.helpers import find_matching_fn
 from utilz.stringz import (
     ast_literal_eval,
-    headline,
     info_from_filename,
     strip_extension,
 )

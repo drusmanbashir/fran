@@ -5,7 +5,7 @@ import ipdb
 import monai.transforms.spatial.functional as fm
 import skimage.transform as tf
 import torch.nn.functional as F
-from fran.transforms.base import ItemTransform, KeepBBoxTransform, MapTransform, MonaiDictTransform, Union, np, torch
+from fran.transforms.base import ItemTransform, KeepBBoxTransform, MonaiDictTransform, Union, np, torch
 from monai.config.type_definitions import KeysCollection, SequenceStr
 from monai.data.meta_obj import get_track_meta
 from monai.data.meta_tensor import MetaTensor
@@ -21,7 +21,7 @@ from monai.utils.enums import LazyAttr, Method, PytorchPadMode, TraceKeys
 from torch import cos, pi, sin
 
 # from utilz.fileio import *
-from utilz.helpers import load_dict, tr
+from utilz.helpers import load_dict
 from utilz.stringz import int_to_str
 
 tr = ipdb.set_trace
@@ -326,32 +326,6 @@ class ResizeToMetaSpatialShaped(MonaiDictTransform):
         return data
 
 
-class PermuteImageMask(RandomizableTransform, MapTransform):
-    def __init__(
-        self,
-        keys,
-        prob: float = 1,
-        do_transform: bool = True,
-    ):
-        MapTransform.__init__(self, keys, False)
-        RandomizableTransform.__init__(self, prob)
-        self.keys = keys
-        self.prob = prob
-        self.do_transform = do_transform
-
-    def func(self, x):
-        if np.random.rand() < self.p:
-            img, mask = x
-            sequence = (0,) + tuple(
-                np.random.choice([1, 2], size=2, replace=False)
-            )  # if dim0 is different, this will make pblms
-            img_permuted, mask_permuted = (
-                torch.permute(img, dims=sequence),
-                torch.permute(mask, dims=sequence),
-            )
-            return img_permuted, mask_permuted
-        else:
-            return x
 
 
 def one_hot(tnsr, classes, axis, fnc=torch.stack):

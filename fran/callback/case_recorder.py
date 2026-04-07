@@ -9,7 +9,7 @@ import pandas as pd
 import plotly.express as px
 import seaborn as sns
 import torch
-from fran.callback.base import Callback, cprint
+from fran.callback.base import Callback
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from tqdm.auto import tqdm
 from fran.utils.string_works import is_excel_None

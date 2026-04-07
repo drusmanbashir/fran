@@ -2,7 +2,6 @@
 import itertools as il
 from pathlib import Path
 
-import pandas as pd
 import ray
 from fastcore.basics import GetAttr
 from fran.configs.parser import is_excel_None

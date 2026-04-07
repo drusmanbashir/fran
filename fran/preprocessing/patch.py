@@ -25,7 +25,6 @@ from utilz.helpers import find_matching_fn, multiprocess_multiarg, pp
 from utilz.imageviewers import ImageMaskViewer, view_sitk
 from utilz.stringz import headline
 
-tr = ipdb.set_trace
 MIN_SIZE = 32
 
 from fran.preprocessing.preprocessor import Preprocessor

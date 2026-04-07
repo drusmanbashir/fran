@@ -1,4 +1,3 @@
-import os
 
 # Copyright The Lightning AI team.
 #
@@ -21,15 +20,6 @@ Automatically save model checkpoints during training.
 """
 
 import logging
-import os
-
-import lightning.pytorch as pl
-from lightning.fabric.utilities.types import _PATH
-from lightning.pytorch.utilities.rank_zero import WarningCache
-from typing_extensions import override
-
-log = logging.getLogger(__name__)
-warning_cache = WarningCache()
 
 
 from typing import override

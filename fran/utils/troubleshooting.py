@@ -17,13 +17,12 @@ from fran.data.dataloader import img_mask_bbox_collated
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss, F, Optional, nn, np, tr
 from fran.transforms.spatialtransforms import one_hot
 from fran.utils.common import common_vars_filename, load_yaml, os
-from lightning.pytorch import LightningDataModule, LightningModule, Trainer
+from lightning.pytorch import LightningDataModule
 
 # from fastcore.basics import GenttAttr
 from lightning.pytorch.callbacks import BatchSizeFinder, Callback
 from lightning.pytorch.loggers.neptune import NeptuneLogger
 from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
-from monai.data import DataLoader
 from monai.data.meta_obj import get_track_meta
 from monai.transforms.intensity.array import RandGaussianNoise
 from monai.transforms.spatial.array import Resize

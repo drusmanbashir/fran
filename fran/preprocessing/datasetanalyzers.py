@@ -8,7 +8,7 @@ from fran.transforms.imageio import LoadSITKd
 from utilz.fileio import Path, collections, get_extension, load_dict, load_image, save_dict, torch
 
 # sys.path += ["/home/ub/Dropbox/code/fran"]
-from utilz.helpers import get_fileslist_from_path, info_from_filename, logging, multiprocess_multiarg
+from utilz.helpers import get_fileslist_from_path, logging, multiprocess_multiarg
 from utilz.stringz import headline, info_from_filename
 
 

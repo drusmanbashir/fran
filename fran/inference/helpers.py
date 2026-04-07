@@ -23,12 +23,6 @@ def get_sitk_target_size_from_spacings(sitk_array, spacing_dest):
     return sz_dest
 
 
-def get_scale_factor_from_spacings(sz_source, spacing_source, spacing_dest):
-    scale_factor = [a / b for a, b in zip(spacing_source, spacing_dest)]
-    sz_dest = [round(a * b) for a, b in zip(sz_source, scale_factor)]
-    return sz_dest, scale_factor
-
-
 def rescale_bbox(scale_factor, bbox):
     bbox_out = []
     for a, b in zip(scale_factor, bbox):

@@ -243,9 +243,7 @@ class TinyYOLOv2(L.LightningModule):
 if __name__ == "__main__":
     # %%
     # SECTION:-------------------- VOC--------------------------------------------------------------------------------------
-    import glob
 
-    import matplotlib.pyplot as plt
     from fran.localiser.preprocessing.data import DetectDataModule
     from lightning.pytorch.callbacks import (
         LearningRateMonitor,
@@ -461,7 +459,6 @@ if __name__ == "__main__":
             range_.set_postfix(valid_loss=valid_loss)
 
     # %%
-    import matplotlib.pyplot as plt
 
     plt.ion()
     # matplotlib.use('Agg')

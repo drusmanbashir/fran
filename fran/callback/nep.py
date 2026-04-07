@@ -8,7 +8,7 @@ import lightning as pl
 import neptune
 import torch
 import torch.nn.functional as F
-from fran.configs.parser import ConfigMaker, load_yaml, np, pd
+from fran.configs.parser import ConfigMaker, np, pd
 from fran.transforms.spatialtransforms import one_hot
 from lightning.pytorch.callbacks import Callback
 from neptune.types import File

@@ -35,7 +35,6 @@ from fran.architectures.create_network import (
     pool_op_kernels_nnunet,
 )
 from fran.managers.nep import NeptuneManager
-from lightning.pytorch import LightningModule
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import (
     DeviceStatsMonitor,
@@ -50,7 +49,7 @@ except:
     pass
 
 import torch
-from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch import LightningModule
 
 
 def fix_dict_keys(input_dict, old_string, new_string):
@@ -741,11 +740,6 @@ if __name__ == "__main__":
     # %%
     # %%
     # SECTION:-------------------- HOOKS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
-
-    # %%
-    def c_hook(grad):
-        print(grad)
-        return grad + 2
 
     # %%
     a = torch.tensor(2.0, requires_grad=True)

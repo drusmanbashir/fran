@@ -1,7 +1,6 @@
 # %%
 from __future__ import annotations
 
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Sequence, Union
 
@@ -27,11 +26,11 @@ from monai.data.image_reader import (
 )
 from monai.data.meta_tensor import MetaTensor
 from monai.data.utils import is_supported_format, orientation_ras_lps
-from monai.transforms.io.array import SUPPORTED_READERS, LoadImage
+from monai.transforms.io.array import LoadImage
 from monai.transforms.transform import MapTransform
 from monai.transforms.utility.array import EnsureChannelFirst
 from monai.utils import ImageMetaKey as Key
-from monai.utils import ensure_tuple, optional_import
+from monai.utils import ensure_tuple
 from monai.utils.enums import MetaKeys, SpaceKeys
 from monai.utils.module import optional_import, require_pkg
 from torch.serialization import safe_globals

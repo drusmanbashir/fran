@@ -14,7 +14,6 @@ from utilz.cprint import cprint
 os.environ["TORCHDYNAMO_DISABLE"] = "1"  # set as early as possible in the process
 
 import ipdb
-import torch
 import torch._dynamo as dynamo
 from fran.managers import Project
 from tqdm.auto import tqdm as pbar
@@ -504,7 +503,6 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.data.dataregistry import DS
-    from fran.managers import Project
     from fran.managers.project import Project
     from fran.utils.common import *
     from label_analysis.totalseg import TotalSegmenterLabels

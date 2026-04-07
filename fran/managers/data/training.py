@@ -23,7 +23,6 @@ from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
 from fran.utils.folder_names import folder_names_from_plan
 from fran.utils.misc import convert_remapping
-from lightning import LightningDataModule
 from lightning.pytorch import LightningDataModule
 from monai.config.type_definitions import KeysCollection
 from monai.data import DataLoader, Dataset, GridPatchDataset, PatchIterd

@@ -1,6 +1,5 @@
 # %%
 import h5py
-import ipdb
 from fastcore.basics import listify
 from fran.configs.mnemonics import Mnemonics
 from fran.data.dataregistry import DS
@@ -8,9 +7,7 @@ from fran.data.datasource import Datasource, db_ops, val_indices
 from fran.data.patch_datasource import PatchDatasource
 from send2trash import send2trash
 from utilz.cprint import cprint
-from utilz.stringz import headline, info_from_filename
-
-tr = ipdb.set_trace
+from utilz.stringz import headline
 
 import csv
 import itertools as il
@@ -18,14 +15,13 @@ import json
 import os
 import sys
 from datetime import datetime
-from pathlib import Path
 
-from utilz.helpers import DictToAttr, Union, ask_proceed, find_matching_fn, load_dict, np, pd, set_autoreload, str_to_path, tr
+from utilz.helpers import DictToAttr, ask_proceed, np, pd, set_autoreload
 
 set_autoreload()
 
 sys.path += ["/home/ub/Dropbox/code"]
-from utilz.fileio import load_yaml, maybe_makedirs, save_dict
+from utilz.fileio import load_yaml, maybe_makedirs
 
 # if "XNAT_CONFIG_PATH" in os.environ:
 #     from xnat.object_oriented import *

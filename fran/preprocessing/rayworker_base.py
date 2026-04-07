@@ -1,9 +1,7 @@
 # ray_worker_base.py
 import traceback
-from typing import Any, Dict
 
 import ipdb
-import pandas as pd
 from fran.data.dataregistry import DS
 from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
 from fran.transforms.imageio import LoadTorchd
@@ -25,7 +23,6 @@ from utilz.cprint import cprint
 MIN_SIZE = 32  # min size in a single dimension of any image
 
 # plain, testable class (NOT a Ray actor)
-from typing import Any, Dict
 
 import pandas as pd
 from fran.preprocessing.preprocessor import Preprocessor
@@ -33,8 +30,6 @@ from fran.preprocessing.preprocessor import Preprocessor
 tr = ipdb.set_trace
 
 from typing import Any, Dict
-
-
 class RayWorkerBase(Preprocessor):
     def __init__(
         self,

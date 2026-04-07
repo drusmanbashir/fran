@@ -2,7 +2,7 @@
 import ast
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.managers import Project
-from fran.preprocessing.datasetanalyzers import Path, headline, multiprocess_multiarg
+from fran.preprocessing.datasetanalyzers import Path, multiprocess_multiarg
 from fran.preprocessing.fixed_spacing import (
     NiftiToTorchDataGenerator,
     ResampleDatasetniftiToTorch,

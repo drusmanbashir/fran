@@ -2,7 +2,6 @@
 from typing import Union
 
 import ipdb
-import pandas as pd
 from utilz.stringz import headline
 
 tr = ipdb.set_trace

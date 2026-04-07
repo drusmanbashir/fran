@@ -17,11 +17,6 @@ from monai.metrics import compute_dice
 
 
 @typedispatch
-def img_shape(x: sitk.Image):
-    return x.GetSize()
-
-
-@typedispatch
 def img_shape(x: torch.Tensor):
     return x.shape
 

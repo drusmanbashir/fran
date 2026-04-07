@@ -386,8 +386,6 @@ class DeepSupervisionLoss(pl.LightningModule):
 
 # %%
 if __name__ == "__main__":
-    from nnunet.utilities.nd_softmax import softmax_helper
-
     softmax_helper = lambda x: F.softmax(x, 1)
     P = Project("nodes")
     conf = ConfigMaker(P, configuration_filename=None).config

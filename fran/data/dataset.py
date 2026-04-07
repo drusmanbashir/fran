@@ -12,15 +12,14 @@ from functools import reduce
 from random import choice
 
 import ipdb
-import numpy as np
 from fastcore.basics import Dict
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import NormaliseClipd
-from fran.transforms.spatialtransforms import F, MapTransform, MetaTensor, get_affine_grid, pi, tr
+from fran.transforms.spatialtransforms import F, get_affine_grid, pi
 from monai.data.meta_tensor import MetaTensor
-from monai.transforms import Compose, MapTransform
+from monai.transforms import MapTransform
 from monai.transforms.io.array import SaveImage
-from utilz.helpers import Path, cleanup_fname, load_dict, torch
+from utilz.helpers import cleanup_fname, load_dict, torch
 from utilz.stringz import strip_extension
 
 tr = ipdb.set_trace
@@ -29,7 +28,6 @@ from pathlib import Path
 
 import itk
 import numpy as np
-import SimpleITK as sitk
 from monai.data.dataset import Dataset, PersistentDataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.compose import Compose

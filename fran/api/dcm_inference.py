@@ -1,17 +1,10 @@
 # %%
-import sys
-
 import matplotlib
-import SimpleITK as sitk
 
 matplotlib.use("Agg")  # Set non-interactive backend
 
 import ipdb
 from label_analysis.helpers import to_label
-
-tr = ipdb.set_trace
-
-import sys
 
 import SimpleITK as sitk
 

@@ -3,10 +3,7 @@ from __future__ import annotations
 
 import sqlite3
 
-import ipdb
-from utilz.stringz import headline, info_from_filename
-
-tr = ipdb.set_trace
+from utilz.stringz import headline
 
 from contextlib import contextmanager
 from pathlib import Path

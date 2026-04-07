@@ -1,5 +1,4 @@
 # get_metadata.py
-import io
 
 import numpy as np
 import torch

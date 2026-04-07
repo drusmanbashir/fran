@@ -19,9 +19,6 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
 from utilz.stringz import ast_literal_eval
 
-tr = ipdb.set_trace
-
-
 from openpyxl import load_workbook
 from utilz.helpers import Path, get_train_valid_test_lists_from_json, os, pp, tr
 
