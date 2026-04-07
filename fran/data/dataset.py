@@ -42,7 +42,6 @@ from monai.transforms.utility.dictionary import EnsureChannelFirstd
 # masks_folder=  proj_default_folders.preprocessing_output_folder/("masks")
 #
 from utilz.fileio import maybe_makedirs, sitk
-from utilz.fileio import maybe_makedirs
 from utilz.itk_sitk import ConvertSimpleItkImageToItkImage
 
 
