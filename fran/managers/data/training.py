@@ -66,7 +66,7 @@ COMMON_PATHS = load_yaml(common_vars_filename)
 tr = ipdb.set_trace
 
 
-class SimpleLoader(MapTransform):
+class SimpleTorchLoader(MapTransform):
     def __init__(self, keys: KeysCollection, allow_missing_keys=False):
         super().__init__(keys, allow_missing_keys)
 
@@ -841,10 +841,7 @@ class DataManager(LightningDataModule):
         print(
             f"[DEBUG] Example case: {self.data[0]['image'] if self.cases else 'None'}"
         )
-        if self.split == "train":
-            self.ds = self._create_modal_ds()
-        else:
-            self.ds = self._create_valid_ds()
+        self.ds = self._create_modal_ds()
 
     def _create_modal_ds(self):
         if is_excel_None(self.ds_type):
@@ -868,16 +865,6 @@ class DataManager(LightningDataModule):
             raise NotImplementedError
         return ds
 
-    def _create_valid_ds(self):
-        """
-        valid-ds is a GridPatchDataset to make training runs comparable
-        """
-        ds = Dataset(
-            data=self.data,
-            transform=self.transforms,
-            # cache_dir=self.cache_folder,
-        )
-        return ds
 
     @property
     def src_dims(self):
@@ -1005,8 +992,6 @@ class DataManagerWhole(DataManager):
             + ")"
         )
 
-    def _create_valid_ds(self):
-        return self._create_modal_ds()
 
     def create_data_dicts(self, fnames):
         fnames = [strip_extension(fn) for fn in fnames]
@@ -1197,7 +1182,7 @@ class DataManagerPatch(DataManagerSource):
                 keys=["lm"]
             )  # there will be no resizing if patch size and image size are same
 
-        self.transforms_dict["L"] = SimpleLoader(
+        self.transforms_dict["L"] = SimpleTorchLoader(
             keys=["image", "lm"], allow_missing_keys=False
         )
 
@@ -1375,7 +1360,7 @@ if __name__ == "__main__":
     dat6 = td["F1"](dat5)
     dat7 = td["ResizePC"](dat6)
 
-    S = SimpleLoader(keys=["image", "lm"], allow_missing_keys=False)
+    S = SimpleTorchLoader(keys=["image", "lm"], allow_missing_keys=False)
 
     dat3 = S(dat2)
 # %%
@@ -1560,15 +1545,6 @@ if __name__ == "__main__":
 
     b2 = D(b[0])
 # %%
-    #    b = D.valid_ds[1]
-    #    b['image'].shape
-# %%
-    #
-    #    dl = D.train_dataloader()
-# %%
-    #     iteri = iter(dl)
-    #     b = next(iteri)
-    #     im = b['image']
     lm = b["lm"]
     # %
 # SECTION:-------------------- DataManagerSource ------------------------------------------------------------------------------------------------------ <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>

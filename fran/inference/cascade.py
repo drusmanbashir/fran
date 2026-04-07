@@ -470,63 +470,11 @@ if __name__ == "__main__":
     best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
     run_w = best_runs["run_w"]
 
-    pp(best_runs)
+
 
 # %%
 
     from fran.data.dataregistry import DS
-
-    fldr_bosniak = Path("/s/datasets_bkp/bosniak/bosniak/kits2/nifti")
-    imgs_bosniak = list(fldr_bosniak.glob("*"))
-    fldr_lidc = DS["lidc"].folder / ("images")
-    fldr_curvas = DS["curvaspdac"].folder / ("images")
-    imgs_curvas = list(fldr_curvas.glob("*"))
-
-    fldr_colonmsd = DS["colonmsd10"].folder / ("images")
-    imgs_colonmsd = list(fldr_colonmsd.glob("*"))
-    imgs_lidc = list(fldr_lidc.glob("*"))
-
-    img_fna = "/s/xnat_shadow/litq/test/images_ub/"
-    fns = "/s/datasets_bkp/drli_short/images/"
-    img_fldr = Path("/s/xnat_shadow/lidc2/images/")
-    img_fn2 = "/s/xnat_shadow/crc/wxh/images/crc_CRC198_20170718_CAP1p51.nii.gz"
-    img_fn3 = "/s/xnat_shadow/crc/srn/images/crc_CRC002_20190415_CAP1p5.nii.gz"
-
-    # fldr_crc = Path("/s/xnat_shadow/crc/images_train_rad/images/")
-    fldr_crc = Path("/s/xnat_shadow/crc/images")
-    # srn_fldr = "/s/xnat_shadow/crc/srn/cases_with_findings/images/"
-    litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
-    litq_imgs = list(Path(litq_fldr).glob("*"))
-    t6_fldr = Path("/s/datasets_bkp/Task06Lung/images")
-    imgs_t6 = list(t6_fldr.glob("*"))
-    react_fldr = Path("/s/insync/react/sitk/images")
-    imgs_react = list(react_fldr.glob("*"))
-    imgs_crc = list(fldr_crc.glob("*"))
-    nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
-    nodesthick_imgs = list(nodesthick_fldr.glob("*"))
-
-    bones_fldr = Path("/s/xnat_shadow/bones/images")
-    bones_imgs = list(bones_fldr.glob("*"))
-
-    nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
-    nodes_fldr_training = Path("/s/xnat_shadow/nodes/images")
-    nodes_imgs = list(nodes_fldr.glob("*"))
-    nodes_imgs_training = list(nodes_fldr_training.glob("*"))
-    capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
-    capestart = list(capestart_fldr.glob("*"))
-
-    fldr_misc = Path("/s/xnat_shadow/misc/images")
-    imgs_misc = list(fldr_misc.glob("*"))
-    img_fns = [imgs_t6][:20]
-    localiser_labels = [45, 46, 47, 48, 49]
-    localiser_labels_litsmc = [1]
-    TSL = TotalSegmenterLabels()
-    lidc2_fldr = DS.lidc2.folder / ("images")
-    imgs_lidc2 = list(lidc2_fldr.glob("*"))
-
-    kits_fldr = DS.kits23.folder / ("images")
-    kits_imgs = list(kits_fldr.glob("*"))
-
 # %%
 # SECTION:-------------------- KITS--------------------------------------------------------------------------------------
 

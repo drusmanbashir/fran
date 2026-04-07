@@ -1,6 +1,5 @@
 # %
 
-# ImageMaskViewer([img_np,mask_np])
 
 from fran.inference.cascade import *
 from fran.managers.tune import *

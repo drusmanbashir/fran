@@ -7,11 +7,14 @@
 # results = model("https://ultralytics.com/images/bus.jpg")  # predict on an image
 # success = YOLO("yolov8n.pt").export(format="onnx")
 
+import torch
+from fran.transforms.spatialtransforms import Project2D
+from utilz.imageviewers import ImageMaskViewer
 if __name__ == "__main__":
     from pathlib import Path
 
+    import SimpleITK as sitk
     import supervision as sv
-    import torch
     from roboflow import Roboflow
     from torch.nn.functional import interpolate
     from ultralytics import YOLO
@@ -44,24 +47,39 @@ if __name__ == "__main__":
     # Read JPG image using torchvision
     model = YOLO("/s/yolo11_localiser/train4/weights/last.pt")
     img_path = "/s/xnat_shadow/lidc2d_yolo/valid/images/lidc2_0001_2.jpg"
-    tnsr_path = "/s/xnat_shadow/lidc2d/images/lidc2_0001_2.pt"
-    tnsr = torch.load(tnsr_path)
-    tnsr = tnsr.permute(0, 2, 1)
+    nii_path = "/home/ub/Documents/wb.nii.gz"
+    # tnsr_path = "/s/xnat_shadow/lidc2d/images/lidc2_0001_2.pt"
+    # tnsr = torch.load(tnsr_path)
+    img = sitk.ReadImage(nii_path)  # [H,W,C]
+    arr = sitk.GetArrayFromImage(img)  # [C,H,W]
+# %%
+    tnsr = torch.from_numpy(arr)  # Convert to PyTorch tensor
+
+    tnsr = tnsr.float()
+    tnsr2d = torch.mean(tnsr,dim=0)  
+    t2 = tnsr2d
+    t2 = t2.unsqueeze(0).unsqueeze(0)  # Add channel dimension [1,H,W]
+    t2.shape
+
+# %%
+
 
     # Convert to float and add batch dimension
-    tnsr = tnsr.float()
-    tnsr = tnsr.unsqueeze(0)  # [B,C,H,W]
 
     # Scale tensor between 0 and 1
-    tnsr = (tnsr - tnsr.min()) / (tnsr.max() - tnsr.min())
-    t2 = interpolate(tnsr, (imsize, imsize))
-    t3 = t2.repeat(1, 3, 1, 1)
+    pads = 80
+    t2 = (t2 - t2.min()) / (t2.max() - t2.min())
+    from torch.nn import functional as F
+    t2p = F.pad(t2,(pads,pads,pads,pads))
+    t3 = interpolate(t2p, (imsize, imsize))
+    t3 = t3.repeat(1, 3, 1, 1)
 
     # Display original tensor
+# %%
     import matplotlib.pyplot as plt
 
     plt.figure(figsize=(8, 8))
-    plt.imshow(t2[0].permute(1, 2, 0).cpu())  # Convert [C,H,W] to [H,W,C] for display
+    plt.imshow(t3[0].permute(1, 2, 0).cpu())  # Convert [C,H,W] to [H,W,C] for display
     plt.axis("off")
     plt.title("Original Image")
     plt.show()
@@ -69,7 +87,7 @@ if __name__ == "__main__":
 # %%
     # Resize to 256x256
 
-    # Run inference
+    # Run infrence
     res = model(t3)[0]
     rr = res[0]
     rr.save()
@@ -96,4 +114,5 @@ if __name__ == "__main__":
     # Display the image
     sv.plot_image(annotated_image)
 # %%
+
 

@@ -2,6 +2,8 @@
 from fran.data.dataregistry import DS
 import itertools as il
 import sqlite3
+
+from monai.transforms import Compose
 from pathlib import Path
 import ray
 
@@ -256,6 +258,7 @@ def get_tensor_stats(tnsr) -> dict:
 
 class Preprocessor(GetAttr):
     _default = "project"
+
 
     def __init__(
         self,
@@ -731,6 +734,24 @@ if __name__ == "__main__":
     )
 
     df = pd.DataFrame(bboxes)
+    df = df.explode("bbox_stats").reset_index(drop=True)
+
+
+
+    
+
+    
+
+
+
+
+
+
+
+
+
+
 
 # %%
 # %
+

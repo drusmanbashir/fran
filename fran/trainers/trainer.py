@@ -603,7 +603,7 @@ if __name__ == "__main__":
     compiled = False
     cbs = []
     wandb_grid_epoch_freq = 20
-    val_every_n_epochs = 2
+    val_every_n_epochs = 5
     train_indices = None
 # %%
 # SECTION:-------------------- TOALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>

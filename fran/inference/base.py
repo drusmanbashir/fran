@@ -1,6 +1,5 @@
 # %%
 import os
-import itertools as il
 
 from fran.inference.helpers import (
     filter_existing_files,
@@ -55,7 +54,6 @@ from monai.transforms.utility.dictionary import (
 from utilz.dictopts import DictToAttr, fix_ast
 
 
-
 def load_model_on_fabric(
     ModelClass,
     ckpt,
@@ -84,14 +82,12 @@ def load_model_on_fabric(
         ckpt_dict = torch.load(ckpt, map_location="cpu", weights_only=False)
         if "state_dict" not in ckpt_dict:
             raise RuntimeError(
-                "Checkpoint load failed and checkpoint is missing 'state_dict': "
-                f"{ckpt}"
+                f"Checkpoint load failed and checkpoint is missing 'state_dict': {ckpt}"
             ) from exc
 
         state_dict = ckpt_dict["state_dict"]
         if not any(
-            key.startswith(normalize_state_dict_prefix)
-            for key in state_dict.keys()
+            key.startswith(normalize_state_dict_prefix) for key in state_dict.keys()
         ):
             raise
 
@@ -121,12 +117,11 @@ def load_model_on_fabric(
     return model, fabric
 
 
-class BaseInferer( DictToAttr):
-
+class BaseInferer(DictToAttr):
     def __init__(
         self,
         run_name,
-        patch_overlap: float=0.0,
+        patch_overlap: float = 0.0,
         project_title=None,
         ckpt=None,
         params=None,
@@ -139,8 +134,8 @@ class BaseInferer( DictToAttr):
         save=True,
         k_largest=None,  # assign a number if there are organs involved
         debug=False,
-        keys_preproc = "E,S,N",
-        keys_postproc = "Sq,A,Re,Int",
+        keys_preproc="E,S,N",
+        keys_postproc="Sq,A,Re,Int",
         model_manager=UNetManager,
     ):
         """
@@ -150,15 +145,14 @@ class BaseInferer( DictToAttr):
         """
         torch.cuda.empty_cache()
         if not torch.cuda.is_available():
-            print("CUDA not available. All processes will be on CPU.")
-            safe_mode = True
+            raise RuntimeError("CUDA is not available. Inference cannot proceed.")
 
         self.debug = debug
         self.run_name = run_name
         self.keys_preproc = keys_preproc
         self.keys_postproc = keys_postproc
         self.model_manager = model_manager
-        self.keys_postproc_safe ="Sq,Re"
+        self.keys_postproc_safe = "Sq,Re"
         self.devices = devices
         self.save_channels = save_channels
         self.save = save
@@ -274,10 +268,12 @@ class BaseInferer( DictToAttr):
         )
 
     def setup(self):
-        if getattr(self, "model", None) is None or getattr(self, "fabric", None) is None:
+        if (
+            getattr(self, "model", None) is None
+            or getattr(self, "fabric", None) is None
+        ):
             self.create_and_set_preprocess_transforms()
             self.prepare_model()
-
 
     def maybe_filter_images(self, imgs, overwrite=False):
         imgs = listify(imgs)
@@ -346,9 +342,7 @@ class BaseInferer( DictToAttr):
 
         nw, bs = 0, 1  # Slicer bugs out
         self.ds = Dataset(data=data, transform=self.preprocess_compose)
-        dl = DataLoader(
-            self.ds, num_workers=nw, batch_size=bs, collate_fn=collate_fn
-        )
+        dl = DataLoader(self.ds, num_workers=nw, batch_size=bs, collate_fn=collate_fn)
         self.pred_dl = self.fabric.setup_dataloaders(dl)
 
     def create_preprocess_transforms(self):
@@ -421,7 +415,7 @@ class BaseInferer( DictToAttr):
             setattr(self, key, value)
 
     def tfms_from_dict(self, keys: str, tfms_dict):
-        keys= keys.replace(" ", "")
+        keys = keys.replace(" ", "")
         keys_list = keys.split(",")
         tfms = []
         for key in keys_list:
@@ -480,7 +474,7 @@ class BaseInferer( DictToAttr):
         return self.inferer(inputs=img, network=self.model)
 
     def predict_inner(self, batch):
-        img = batch["image"]   # already on correct device
+        img = batch["image"]  # already on correct device
 
         logits = self._run_swi(img)
 
@@ -496,7 +490,6 @@ class BaseInferer( DictToAttr):
         batch["pred"].meta = batch["image"].meta.copy()
         return batch
 
-
     @property
     def output_folder(self):
         run_name = listify(self.run_name)
@@ -506,12 +499,15 @@ class BaseInferer( DictToAttr):
 
 
 if __name__ == "__main__":
+    import itertools as il
+
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.data.dataregistry import DS
     from fran.managers import Project
     from fran.managers.project import Project
     from fran.utils.common import *
+    from label_analysis.totalseg import TotalSegmenterLabels
     from monai.transforms.post.dictionary import Activationsd, AsDiscreted
     from utilz.helpers import pp
 
@@ -549,6 +545,56 @@ if __name__ == "__main__":
     )
     imgs_litsmc = [list((fld / ("images")).glob("*")) for fld in fldr_litsmc]
     imgs_litsmc = list(il.chain.from_iterable(imgs_litsmc))
+    fldr_bosniak = Path("/s/datasets_bkp/bosniak/bosniak/kits2/nifti")
+    imgs_bosniak = list(fldr_bosniak.glob("*"))
+    fldr_lidc = DS["lidc"].folder / ("images")
+    fldr_curvas = DS["curvaspdac"].folder / ("images")
+    imgs_curvas = list(fldr_curvas.glob("*"))
+
+    fldr_colonmsd = DS["colonmsd10"].folder / ("images")
+    imgs_colonmsd = list(fldr_colonmsd.glob("*"))
+    imgs_lidc = list(fldr_lidc.glob("*"))
+
+    img_fna = "/s/xnat_shadow/litq/test/images_ub/"
+    fns = "/s/datasets_bkp/drli_short/images/"
+    img_fldr = Path("/s/xnat_shadow/lidc2/images/")
+    img_fn2 = "/s/xnat_shadow/crc/wxh/images/crc_CRC198_20170718_CAP1p51.nii.gz"
+    img_fn3 = "/s/xnat_shadow/crc/srn/images/crc_CRC002_20190415_CAP1p5.nii.gz"
+
+    # fldr_crc = Path("/s/xnat_shadow/crc/images_train_rad/images/")
+    fldr_crc = Path("/s/xnat_shadow/crc/images")
+    # srn_fldr = "/s/xnat_shadow/crc/srn/cases_with_findings/images/"
+    litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
+    litq_imgs = list(Path(litq_fldr).glob("*"))
+    t6_fldr = Path("/s/datasets_bkp/Task06Lung/images")
+    imgs_t6 = list(t6_fldr.glob("*"))
+    react_fldr = Path("/s/insync/react/sitk/images")
+    imgs_react = list(react_fldr.glob("*"))
+    imgs_crc = list(fldr_crc.glob("*"))
+    nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
+    nodesthick_imgs = list(nodesthick_fldr.glob("*"))
+
+    bones_fldr = Path("/s/xnat_shadow/bones/images")
+    bones_imgs = list(bones_fldr.glob("*"))
+
+    nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
+    nodes_fldr_training = Path("/s/xnat_shadow/nodes/images")
+    nodes_imgs = list(nodes_fldr.glob("*"))
+    nodes_imgs_training = list(nodes_fldr_training.glob("*"))
+    capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
+    capestart = list(capestart_fldr.glob("*"))
+
+    fldr_misc = Path("/s/xnat_shadow/misc/images")
+    imgs_misc = list(fldr_misc.glob("*"))
+    img_fns = [imgs_t6][:20]
+    localiser_labels = [45, 46, 47, 48, 49]
+    localiser_labels_litsmc = [1]
+    TSL = TotalSegmenterLabels()
+    lidc2_fldr = DS.lidc2.folder / ("images")
+    imgs_lidc2 = list(lidc2_fldr.glob("*"))
+
+    kits_fldr = DS.kits23.folder / ("images")
+    kits_imgs = list(kits_fldr.glob("*"))
 
     # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
 
@@ -587,6 +633,7 @@ if __name__ == "__main__":
 
     devices = [0]
 
+    patch_overlap = 0.5
 # %%
     run = best_runs["totalseg"]["run_ids"][0]
     safe_mode = True
@@ -597,7 +644,7 @@ if __name__ == "__main__":
 
     T = BaseInferer(
         run,
-        patch_overlap=0.25,
+        patch_overlap=patch_overlap,
         save_channels=save_channels,
         safe_mode=safe_mode,
         devices=devices,
@@ -606,8 +653,8 @@ if __name__ == "__main__":
 
 # %%
 
-
     # preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
+    imgs = kits_imgs
     imgs = imgs_curvas
     preds = T.run(imgs, chunksize=2, overwrite=overwrite)
 # %%
@@ -821,3 +868,5 @@ if __name__ == "__main__":
 # %%
     batch["pred"].shape
 # %%
+
+

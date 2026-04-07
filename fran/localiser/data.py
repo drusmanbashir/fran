@@ -117,6 +117,9 @@ class DetectDataModule(L.LightningDataModule):
         return data_dicts
 
     def create_transforms(self, probs=0.3, probs_intensity=0.3):
+
+        # keys_tr="L,MkB,  Et, Et2, N,IntensityTfms, Flip1, Flip2, Zoom, Resize, ExtractBbox, CB,YoloBbox, Rp ",  # NO ROTATION, No Del
+        # keys_val="L,MkB,Et, Et2, N, Resize,ExtractBbox, CB,YoloBbox,DelI, Rp",
         image_key = "image"
         label_key = "lm"
         box_key = "lm_bbox"
@@ -224,25 +227,6 @@ class DetectDataModule(L.LightningDataModule):
                 tfms.append(tfm)
         tfms = Compose(tfms)
         return tfms
-
-        tfms_train = Compose(
-            [
-                L,
-                MkB,
-                Rotate,
-                ExtractBbox,
-                CB,
-                Et,
-                Et2,
-                Z,
-                Flip1,
-                Flip2,
-                RotBbox,
-                ClipoBbox,
-                YoloBbox,
-            ]
-        )
-        tfms_val = Compose([L, MkB, ExtractBbox, CB, Et, Et2, ClipoBbox, YoloBbox])
 
     def setup(self, stage: str):
         # Assign train/val datasets for use in dataloaders

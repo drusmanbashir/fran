@@ -20,7 +20,7 @@ from utilz.helpers import find_matching_fn
 tr = ipdb.set_trace
 
 
-class Project2DProcessor:
+class Preprocessor2D:
     def __init__(self, fldr_imgs, fldr_lms, output_fldr):
         # input_fldr has subfolders images and lms
         self.fldr_imgs = fldr_imgs
@@ -30,9 +30,9 @@ class Project2DProcessor:
         self.output_fldr = Path(output_fldr)
         self.output_fldr_imgs = self.output_fldr / ("images")
         self.output_fldr_lms = self.output_fldr / ("lms")
+        self.tfms_keys = ["L", "N", "E", "P1", "P2", "P3"]
 
     def setup(self, batch_size=8):
-
         imgs = self.fldr_imgs.glob("*")
         imgs = [img for img in imgs if is_sitk_file(img)]
         lms = list(self.fldr_lms.glob("*"))
@@ -43,39 +43,58 @@ class Project2DProcessor:
                 dici = {"image": img, "lm": find_matching_fn(img, lms, tag=["all"])[0]}
                 data_dicts.append(dici)
 
-        L = LoadSITKd(keys=["image", "lm"])
-        N = NormalizeIntensityd(["image"])
-        E = EnsureChannelFirstd(["image", "lm"])
-        P1 = Project2D(
+        self.create_transforms()
+        self.ds = Dataset(data=data_dicts, transform=self.tfms_from_dict(self.tfms_keys))
+        self.create_dl(num_workers=batch_size * 2, batch_size=batch_size)
+
+    def create_transforms(self):
+        self.L = LoadSITKd(keys=["image", "lm"])
+        self.N = NormalizeIntensityd(["image"])
+        self.E = EnsureChannelFirstd(["image", "lm"])
+        self.P1 = Project2D(
             keys=["lm", "image"],
             operations=["sum", "mean"],
             dim=1,
             output_keys=["lm1", "image1"],
         )
-        P2 = Project2D(
+        self.P2 = Project2D(
             keys=["lm", "image"],
             operations=["sum", "mean"],
             dim=2,
             output_keys=["lm2", "image2"],
         )
-        P3 = Project2D(
+        self.P3 = Project2D(
             keys=["lm", "image"],
             operations=["sum", "mean"],
             dim=3,
             output_keys=["lm3", "image3"],
         )
-        BB1 = BoundingRectd(keys=["lm1"])
-        BB2 = BoundingRectd(keys=["lm2"])
-        BB3 = BoundingRectd(keys=["lm3"])
-        M = MetaToDict(keys=["image"], meta_keys=["filename_or_obj"])
+        self.BB1 = BoundingRectd(keys=["lm1"])
+        self.BB2 = BoundingRectd(keys=["lm2"])
+        self.BB3 = BoundingRectd(keys=["lm3"])
+        self.M = MetaToDict(keys=["image"], meta_keys=["filename_or_obj"])
+        self.D1 = DictToMetad(keys=["image1"], meta_keys=["lm1_bbox"])
+        self.D2 = DictToMetad(keys=["image2"], meta_keys=["lm2_bbox"])
+        self.D3 = DictToMetad(keys=["image3"], meta_keys=["lm3_bbox"])
+        self.transforms_dict = {
+            "L": self.L,
+            "N": self.N,
+            "E": self.E,
+            "P1": self.P1,
+            "P2": self.P2,
+            "P3": self.P3,
+            "BB1": self.BB1,
+            "BB2": self.BB2,
+            "BB3": self.BB3,
+            "M": self.M,
+            "D1": self.D1,
+            "D2": self.D2,
+            "D3": self.D3,
+        }
 
-        D1 = DictToMetad(keys=["image1"], meta_keys=["lm1_bbox"])
-        D2 = DictToMetad(keys=["image2"], meta_keys=["lm2_bbox"])
-        D3 = DictToMetad(keys=["image3"], meta_keys=["lm3_bbox"])
-
-        tfms = Compose([L, N, E, P1, P2, P3])
-        self.ds = Dataset(data=data_dicts, transform=tfms)
-        self.create_dl(num_workers=batch_size * 2, batch_size=batch_size)
+    def tfms_from_dict(self, keys):
+        tfms = [self.transforms_dict[key] for key in keys]
+        return Compose(tfms)
 
     def create_dl(self, num_workers=4, batch_size=4):
         # same function as labelbounded
@@ -163,23 +182,25 @@ class Project2DProcessor:
 
 
 # %%
+# %%
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 if __name__ == "__main__":
     fldr_imgs = Path("/s/xnat_shadow/lidc2/images/")
     fldr_lms = Path("/s/fran_storage/predictions/totalseg/LITS-860/")
 
-    P = Project2DProcessor(fldr_imgs, fldr_lms, "/s/xnat_shadow/lidc2d")
+    P = Preprocessor2D(fldr_imgs, fldr_lms, "/s/xnat_shadow/lidc2d")
 
     P.setup()
-    # %%
+# %%
 
-    # %%
+# %%
     P.process()
-    # %%
+# %%
     for i, dat in enumerate(P.ds):
         print(dat.keys())
-    # %%
+# %%
     a = next(iter(P.dl))
-    # %%
+# %%
     lms = list(fldr_lms.glob("*"))
     imgs = list(fldr_imgs.glob("*"))[:20]
 
