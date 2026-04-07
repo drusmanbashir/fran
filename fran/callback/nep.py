@@ -8,7 +8,7 @@ import lightning as pl
 import neptune
 import torch
 import torch.nn.functional as F
-from fran.configs.parser import *
+from fran.configs.parser import ConfigMaker, load_yaml, np, pd
 from fran.transforms.spatialtransforms import one_hot
 from lightning.pytorch.callbacks import Callback
 from neptune.types import File
@@ -16,7 +16,7 @@ from torchvision.utils import make_grid
 from utilz.fileio import load_yaml
 
 # from fran.managers.learner_plus import *
-from utilz.helpers import *
+from utilz.helpers import Union
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]

@@ -1,4 +1,3 @@
-from fran.utils.common import *
 
 # %matplotlib inline
 

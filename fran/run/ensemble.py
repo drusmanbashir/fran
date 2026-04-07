@@ -1,13 +1,11 @@
 # %%
 import itertools as il
 
-from fran.inference.cascade import *
+from fran.inference.cascade import CascadeInferer
 from fran.managers.project import Project
-from fran.managers.tune import *
+from fran.managers.tune import Path
 
 # from fran.inference.transforms import *
-from fran.transforms.spatialtransforms import *
-from utilz.imageviewers import *
 
 # ImageMaskViewer([img_np,mask_np])
 

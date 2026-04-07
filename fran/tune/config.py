@@ -12,7 +12,7 @@ tr = ipdb.set_trace
 if not sys.executable == "":  # workaround for slicer as it does not load ray tune
     from ray import tune
 
-from utilz.helpers import *
+from utilz.helpers import ast, pd, tr
 
 TUNE_VARS = [
     "base_ch_opts",

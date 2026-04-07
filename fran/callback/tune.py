@@ -1,4 +1,3 @@
-from fran.callback.base import *
 #
 # class TuneCheckpointCallback(TrackerCallback):
 #     order=51 # (Recorder callback order +1)

@@ -9,7 +9,6 @@ from fran.managers.data.training import (
     DataManagerWhole,
 )
 from fran.managers.project import Project
-from fran.utils.common import *
 
 
 @pytest.fixture

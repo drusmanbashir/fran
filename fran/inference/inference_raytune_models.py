@@ -1,6 +1,5 @@
 # %%
-from fran.inference.cascade import *
-from fran.managers.tune import *
+from fran.managers.tune import ast, pd
 
 
 # %%

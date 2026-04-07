@@ -23,7 +23,7 @@ tr = ipdb.set_trace
 
 
 from openpyxl import load_workbook
-from utilz.helpers import *
+from utilz.helpers import Path, get_train_valid_test_lists_from_json, os, pp, tr
 
 KEYS_STR_TO_LIST = ("spacing", "patch_size", "expand_by", "ignore_labels")
 # HACK: this may bug out later
