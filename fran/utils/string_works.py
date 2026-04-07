@@ -155,8 +155,8 @@ def strip_slicer_strings(fname: str):
     This is on extension-less fnames. Use strip_extension before this.
     """
     # pt = re.compile("(-?label(_\d)?)|_.*(_\d$)",re.IGNORECASE)
-    pt = re.compile("(_\d)?$", re.IGNORECASE)
-    pt2 = re.compile("(_\d)?-segment.*$", re.IGNORECASE)
+    pt = re.compile(r"(_\d)?$", re.IGNORECASE)
+    pt2 = re.compile(r"(_\d)?-segment.*$", re.IGNORECASE)
     fname = fname.replace("-label", "")
     fname = fname.replace("-test", "")
     fname_cl1 = fname.replace("-tissue", "")
@@ -227,7 +227,7 @@ def drop_digit_suffix(fname: str):
     Postprocessing will create multiple matches of the same case_id. This allows us to identify which case patches belong to
     """
 
-    pat = "(_\d{1,3})?$"
+    pat = r"(_\d{1,3})?$"
     fname_cl = re.sub(pat, "", fname)
     return fname_cl
 
@@ -276,12 +276,12 @@ if __name__ == "__main__":
     name = "lits_11_20111509.nii"
     name2 = "lits_11.nii"
     name3 = "lits_11_20111509_jacsde3d_thick.nii"
-    pt = "(-?label(_\d)?)|(_\d$)"
+    pt = r"(-?label(_\d)?)|(_\d$)"
     name = "drli_005.nrrd"
     nm = strip_extension(name)
     nm = strip_slicer_strings(nm)
 
-    pt = "(-?label(_\d)?)|(_\d$)"
+    pt = r"(-?label(_\d)?)|(_\d$)"
     re.sub(pt, nm)
     rpt_pt = "([a-z0-9]*_)"
     st = "litq_11_20190927_2"
@@ -291,7 +291,7 @@ if __name__ == "__main__":
     fname = "litq_40_20171117_1-label"
     pt_token = "(_[a-z0-9]*)"
     re.findall(pt_token, fname)
-    pt = re.compile("(([a-z0-9]*_)*)((-label)?(_\d)?)$", re.IGNORECASE)
+    pt = re.compile(r"(([a-z0-9]*_)*)((-label)?(_\d)?)$", re.IGNORECASE)
     jj = re.sub(pt, "", fname)
     print(jj)
-    pt = re.compile("(-?label(_\d)?)|_.*(_\d$)", re.IGNORECASE)
+    pt = re.compile(r"(-?label(_\d)?)|_.*(_\d$)", re.IGNORECASE)
