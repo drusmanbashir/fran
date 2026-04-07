@@ -2,7 +2,7 @@
 # link :https://blog.flaport.net/yolo-part-1.html
 import lightning as L
 import torch
-from fran.localiser.data import *
+from fran.localiser.preprocessing.data import *
 from fran.localiser.helpers import *
 from fran.localiser.loss import YOLOLoss
 from torch.optim.lr_scheduler import OneCycleLR
@@ -246,7 +246,7 @@ if __name__ == "__main__":
     import glob
 
     import matplotlib.pyplot as plt
-    from fran.localiser.data import DetectDataModule
+    from fran.localiser.preprocessing.data import DetectDataModule
     from lightning.pytorch.callbacks import (
         LearningRateMonitor,
         ModelCheckpoint,

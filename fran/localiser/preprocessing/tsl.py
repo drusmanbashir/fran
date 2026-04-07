@@ -1,8 +1,11 @@
 # %%
 from pathlib import Path
 
+from monai.transforms import Transform
 import ipdb
+import torch
 from fran.data.collate import as_is_collated
+from fran.localiser.preprocessing.preprocess import Preprocessor2D
 from fran.transforms.imageio import LoadSITKd, TorchWriter
 from fran.transforms.misc_transforms import DictToMetad, MetaToDict
 from fran.transforms.spatialtransforms import Project2D
@@ -13,7 +16,7 @@ from monai.transforms.croppad.dictionary import BoundingRectd
 from monai.transforms.intensity.dictionary import NormalizeIntensityd
 from monai.transforms.io.array import SaveImage
 from monai.transforms.spatial.dictionary import Orientationd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviceD
 from tqdm.auto import tqdm
 from utilz.fileio import is_sitk_file, maybe_makedirs
 from utilz.helpers import find_matching_fn
@@ -27,7 +30,7 @@ def tfms_from_dict(keys, transforms_dict):
     return Compose(tfms)
 
 
-class Preprocessor2D:
+class Preprocessor2DTSL():
     def __init__(self, data_folder, output_fldr):
         self.data_folder = Path(data_folder)
         self.fldr_imgs = self.data_folder / "images"
@@ -35,7 +38,7 @@ class Preprocessor2D:
         self.output_fldr = Path(output_fldr)
         self.output_fldr_imgs = self.output_fldr / ("images")
         self.output_fldr_lms = self.output_fldr / ("lms")
-        self.tfms_keys = "L,E,O,N,P1,P2,P3"
+        self.tfms_keys = "L,Dev,E,O,Remap,N,P1,P2,P3"
 
     def setup(self, batch_size=8):
         imgs = self.fldr_imgs.glob("*")
@@ -56,6 +59,7 @@ class Preprocessor2D:
     def create_transforms(self):
         self.L = LoadSITKd(keys=["image", "lm"])
         self.O = Orientationd(keys=["image", "lm"], axcodes="RAS")
+        self.Dev = ToDeviceD(keys=["image", "lm"], device="cuda")
         self.N = NormalizeIntensityd(["image"])
         self.E = EnsureChannelFirstd(["image", "lm"], channel_dim="no_channel")
         self.P1 = Project2D(
@@ -84,6 +88,7 @@ class Preprocessor2D:
         self.D2 = DictToMetad(keys=["image2"], meta_keys=["lm2_bbox"])
         self.D3 = DictToMetad(keys=["image3"], meta_keys=["lm3_bbox"])
         self.transforms_dict = {
+            "Dev": self.Dev,
             "L": self.L,
             "O": self.O,
             "N": self.N,
@@ -99,22 +104,11 @@ class Preprocessor2D:
             "D2": self.D2,
             "D3": self.D3,
         }
+        self.create_tsl_region_tfms()
 
     def create_tsl_region_tfms(self):
-        TSL = TotalSegmenterLabels()
-        excluded_tags = ["misc","background"]
-        df = TSL.df[~TSL.df.name_region.isin(excluded_tags)]
-        regions = df.name_region.unique()
-        self.Remaps ={}
-        for region in regions:
-            R = TSL.create_remapping("label_full", region, as_list=True)
-            self.Remaps[region] = MapLabelValued(keys=["lm"], orig_labels=R[0], target_labels=R[1])
-
-        remap_ap = TSL.create_remapping("label_full", regions[n], as_list=True)
-        remap_chest = TSL.create_remapping("label_full", regions[n+1], as_list=True)
-
-        R = MapLabelValued(keys=["lm"], orig_labels=remap_ap[0], target_labels=remap_ap[1])
-        R2 = MapLabelValued(keys=["lm"], orig_labels=remap_chest[0], target_labels=remap_chest[1])
+        self.Remap = MultiRemapsTSL(lm_key="lm")
+        self.transforms_dict["Remap"] =self.Remap
 
 
 
@@ -199,9 +193,29 @@ class Preprocessor2D:
             for img in lms3:
                 Sl3(img)
 
+class MultiRemapsTSL(Transform):
+    def __init__(self, lm_key):
+        self.lm_key = lm_key
+        TSL = TotalSegmenterLabels()
+        excluded_tags = ["misc","background"]
+        df = TSL.df[~TSL.df.name_region.isin(excluded_tags)]
+        self.regions = df.name_region.unique()
+        self.Remaps ={}
+        for region in self.regions:
+            remap = TSL.create_remapping("label_full", region, as_list=True)
+            R =MapLabelValued(keys=[self.lm_key], orig_labels=remap[0], target_labels=remap[1])
+            self.Remaps[region] = R
 
+
+    def __call__(self, data):
+        remapped_lms = []
+        for region, R in self.Remaps.items():
+            remapped_lm = R(data)
+            remapped_lms.append(remapped_lm[self.lm_key])
+        data[self.lm_key] = torch.concat(remapped_lms, dim=0)
+        return data
 # %%
-# SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# SECTION:-----------------------------------------------------------SETUP-----------------------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     from fran.data.dataregistry import DS
     from label_analysis.totalseg import TotalSegmenterLabels
@@ -210,10 +224,9 @@ if __name__ == "__main__":
     from utilz.imageviewers import ImageMaskViewer
 
     fldr_totalseg = DS["totalseg"].folder
-    P = Preprocessor2D(fldr_totalseg, "/s/xnat_shadow/totalseg2d")
+    P = Preprocessor2DTSL(fldr_totalseg, "/s/xnat_shadow/totalseg2d")
 # %%
     P.setup()
-    P.create_transforms()
     P.create_dl()
 # %%
     dl = P.dl
@@ -223,6 +236,7 @@ if __name__ == "__main__":
     batch.keys()
     batch["image1"][0].shape
 
+# %%
     img = batch["image1"][0]
     img2 = batch["image2"][0]
     lm2 = batch["lm2"][0]
@@ -251,15 +265,31 @@ if __name__ == "__main__":
     n = 0
     dici = P.data[n]
     dici = P.L(dici)
+    dici = P.Dev(dici)
     dici = P.E(dici)
     dici = P.O(dici)
     dici = P.N(dici)
-    # dici = P.P1(dici)
+    dici = P.Remap(dici)
     # dici = P.P2(dici)
     # dici = P.P3(dici)
 # %%
+    MM = MultiRemapsTSL(lm_key="lm")
+    dici2 = MM(dici)
+    lm = dici2["lm"]
+
+    lm.shape
+    lm1 = lm[0]
+    lm2 = lm[1]
+    lm3 = lm[2]
+
+    ImageMaskViewer([lm1, lm2 ], 'mm')
+# %%
     dici1 = R(dici)
     dici2 = R2(dici)
+    lm1 = dici1["lm"]
+    lm2 = dici2["lm"]
+
+    lm3 = torch.concat([lm1, lm2], dim=0)
 # %%
     lm1 = dici1["lm"]
     lm2 = dici2["lm"]

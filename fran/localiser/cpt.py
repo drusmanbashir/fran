@@ -255,7 +255,7 @@ def convert_cells_to_bboxes(predictions, anchors, s, is_predictions=True):
 import lightning as L
 import matplotlib.pyplot as plt
 import torch
-from fran.localiser.data import *
+from fran.localiser.preprocessing.data import *
 from fran.localiser.helpers import *
 from fran.localiser.loss import YOLOLoss
 from torch.optim.lr_scheduler import OneCycleLR

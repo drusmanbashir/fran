@@ -539,13 +539,16 @@ class DataManager(LightningDataModule):
         )
 
     def create_dataloader(self):
+        include = [k.strip() for k in self.keys.split(",") if k.strip()]
+        use_cuda_dev = "Dev" in include and str(self.device).startswith("cuda")
+        num_workers = 0 if use_cuda_dev else max(1, self.effective_batch_size * 2)
         self.dl = DataLoader(
             self.ds,
             batch_size=self.effective_batch_size,
-            num_workers=max(1, self.effective_batch_size * 2),
+            num_workers=num_workers,
             collate_fn=self.collate_fn,
-            persistent_workers=True,
-            pin_memory=True,
+            persistent_workers=num_workers > 0,
+            pin_memory=not use_cuda_dev,
         )
 
     # ----- filesystem -----

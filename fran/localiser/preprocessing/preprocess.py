@@ -1,5 +1,4 @@
 # %%
-
 from pathlib import Path
 
 import ipdb
@@ -14,7 +13,7 @@ from monai.transforms.croppad.dictionary import BoundingRectd
 from monai.transforms.intensity.dictionary import NormalizeIntensityd
 from monai.transforms.io.array import SaveImage
 from monai.transforms.spatial.dictionary import Orientationd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, MapLabelValued
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, MapLabelValued, ToDeviceD
 from tqdm.auto import tqdm
 from utilz.fileio import is_sitk_file, maybe_makedirs
 from utilz.helpers import find_matching_fn
@@ -57,6 +56,7 @@ class Preprocessor2D:
     def create_transforms(self):
         self.L = LoadSITKd(keys=["image", "lm"])
         self.O = Orientationd(keys=["image", "lm"], axcodes="RAS")
+        self.Dev = ToDeviceD(keys=["image", "lm"], device="cuda")
         self.N = NormalizeIntensityd(["image"])
         self.E = EnsureChannelFirstd(["image", "lm"], channel_dim="no_channel")
         self.P1 = Project2D(
