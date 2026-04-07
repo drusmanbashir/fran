@@ -16,10 +16,7 @@ import sys
 import SimpleITK as sitk
 
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
-from monai.apps.detection.transforms.array import *
-from monai.data.box_utils import *
-from monai.inferers.merger import *
-from utilz.itk_sitk import *
+from utilz.itk_sitk import Path, tr
 
 sys.path += ["/home/ub/code"]
 

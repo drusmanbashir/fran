@@ -9,7 +9,7 @@ import SimpleITK as sitk
 import torch
 from fran.transforms.imageio import ToTensorT
 from fran.transforms.spatialtransforms import one_hot
-from monai.metrics import *
+from monai.metrics import compute_dice
 
 # %%
 

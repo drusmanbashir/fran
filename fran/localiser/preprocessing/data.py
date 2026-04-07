@@ -38,7 +38,6 @@ from monai.transforms.utility.dictionary import (
 tr = ipdb.set_trace
 
 from monai.data import Dataset
-from monai.visualize import *
 from torch.utils.data import DataLoader, random_split
 
 

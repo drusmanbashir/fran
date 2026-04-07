@@ -1,7 +1,7 @@
 # %%
 
 
-from fran.managers.db import *
+from fran.managers.db import Path, add_plan_to_db
 
 # %%
 # SECTION:-------------------- Project creation--------------------------------------------------------------------------------------

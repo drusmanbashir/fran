@@ -26,7 +26,6 @@ from fran.managers.data.training import (
 from fran.managers.unet import UNetManager
 from fran.managers.wandb import WandbManager
 from fran.trainers.base import backup_ckpt, checkpoint_from_model_id, switch_ckpt_keys
-from fran.utils.common import *
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import (
     BatchSizeFinder,
