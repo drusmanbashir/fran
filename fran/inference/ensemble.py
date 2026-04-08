@@ -155,7 +155,7 @@ class EnsembleInferer:
         debug_patch: bool = False,
     ):
 
-        if debug == True:
+        if debug:
             debug_base = True
             debug_patch = True
         self.project = project
@@ -431,11 +431,11 @@ class EnsembleInferer:
         }
 
     def set_postprocess_tfms_keys_casc(self):
-        if self.safe_mode == False:
+        if not self.safe_mode:
             self.postprocess_tfms_keys_casc = self.keys_postproc_casc
         else:
             self.postprocess_tfms_keys_casc = self.keys_postproc_casc_safe
-        if self.save_casc_preds == True:
+        if self.save_casc_preds:
             self.postprocess_tfms_keys_casc += ",S"
 
     def set_postprocess_transforms_casc(self):
@@ -445,7 +445,7 @@ class EnsembleInferer:
         self.postprocess_compose_casc = Compose(self.postprocess_transforms_casc)
 
     def postprocess_casc(self, preds):
-        if self.debug == False:
+        if not self.debug:
             output = self.postprocess_compose_casc(preds)
         else:
             output = self.postprocess_iterate_casc(preds[0])
@@ -463,7 +463,7 @@ class EnsembleInferer:
     ) -> List[dict]:
         if not isinstance(images, list):
             images = [images]
-        if overwrite == False and (
+        if not overwrite and (
             isinstance(images[0], str) or isinstance(images[0], Path)
         ):
             images = filter_existing_files(images, self.output_folder)
@@ -608,7 +608,7 @@ class EnsembleInferer:
         return batch
 
     def postprocess(self, preds):
-        if self.debug == False:
+        if not self.debug:
             output = self.postprocess_compose(preds)
         else:
             output = self.postprocess_iterate(preds)

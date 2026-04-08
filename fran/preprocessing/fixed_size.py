@@ -1,7 +1,6 @@
 # %%
 from pathlib import Path
 
-import ipdb
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd, TorchWriter
 from fran.transforms.misc_transforms import LabelRemapd
@@ -16,7 +15,7 @@ from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
     SqueezeDimd,
 )
-from utilz.fileio import maybe_makedirs, sitk, torch, tr
+from utilz.fileio import maybe_makedirs, sitk, torch
 from utilz.helpers import chunks, find_matching_fn, folder_name_from_list, set_autoreload
 from utilz.imageviewers import ImageMaskViewer
 from utilz.stringz import info_from_filename
@@ -198,7 +197,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
             remapping = True
         else:
             remapping = False
-        results = ray.get(
+        ray.get(
             [
                 c.process.remote(
                     dicis,

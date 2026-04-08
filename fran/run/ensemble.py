@@ -47,7 +47,7 @@ class EnsembleActor(object):
             overwrite=overwrite,
             k_largest=k_largest,
         )
-        preds = En.run(fnames, chunksize=chunksize)
+        En.run(fnames, chunksize=chunksize)
         return 1
 
 
@@ -64,7 +64,6 @@ def main(args):
     localiser_labels = args.localiser_labels
     chunksize = args.chunksize
     safe_mode = args.safe_mode
-    save_channels = False
     k_largest = 1
     # run_ps=['LIT-62','LIT-63','LIT-64' 'LIT-44','LIT-59']
     # ensemble=["LITS-451","LITS-452","LITS-453","LITS-454","LITS-456"]
@@ -72,7 +71,6 @@ def main(args):
     # if not input_folder:
     #     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))
     #     fnames = list(mo_df.image_filenames)
-    save = True
     fns = list(Path(input_folder).glob("*"))
 
     fpl = int(len(fns) / n_lists)

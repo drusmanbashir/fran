@@ -5,7 +5,6 @@ from monai.transforms import Transform
 import ipdb
 import torch
 from fran.data.collate import as_is_collated
-from fran.localiser.preprocessing.preprocess import Preprocessor2D
 from fran.transforms.imageio import LoadSITKd, TorchWriter
 from fran.transforms.misc_transforms import DictToMetad, MetaToDict
 from fran.transforms.spatialtransforms import Project2D

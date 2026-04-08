@@ -116,7 +116,7 @@ class _DiceCELossMultiOutput(DiceCELoss):
                 f"got shape {input.shape} and {target.shape}."
             )
 
-        if self.softmax == True:
+        if self.softmax:
             input_activated = F.softmax(input, 1)
 
         dice_loss_unreduced = self.dice(input_activated, target)
@@ -145,7 +145,7 @@ class _DiceCELossMultiOutput(DiceCELoss):
         losses_for_logging.update(dice_loss_batches)
 
         dici_out = {"loss": total_loss, "losses_for_logging": losses_for_logging}
-        if compute_grad == True:
+        if compute_grad:
             jac = softmax_derivative(input_activated)
             grad_sigma_z = jac
             grad_L_sigma = torch.autograd.grad(
@@ -186,7 +186,8 @@ class _DiceCELossMultiOutput(DiceCELoss):
 
     def set_labels_batches(self, dice_loss_unreduced):
         bs, num_channels = dice_loss_unreduced.shape[0], dice_loss_unreduced.shape[1]
-        label_maker = lambda x: "loss_dice_batch{0}_label{1}".format(*x)
+        def label_maker(x):
+            return "loss_dice_batch{0}_label{1}".format(*x)
 
         separate_case_losses_labels = []
         for i in range(bs):
@@ -220,11 +221,12 @@ class DeepSupervisionLossCraig(pl.LightningModule):
             include_background=False, softmax=softmax
         )
         self.compute_grad = [False] * levels
-        if compute_grad == True:
+        if compute_grad:
             self.compute_grad[0] = True  # at the last level compute jacobian of softmax
 
     def create_labels(self, bs, fg_classes):
-        label_maker = lambda x: "loss_dice_batch{0}_label{1}".format(*x)
+        def label_maker(x):
+            return "loss_dice_batch{0}_label{1}".format(*x)
         batches = list(range(bs))
         classes = range_inclusive(1, fg_classes)
 

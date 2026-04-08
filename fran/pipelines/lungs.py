@@ -89,7 +89,7 @@ if __name__ == "__main__":
     args.project_title = "lidc2"
 
     # %%
-    if not "labels_all" in P.global_properties.keys():
+    if "labels_all" not in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=True)
     # SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
@@ -186,7 +186,7 @@ if __name__ == "__main__":
     batch_finder = False
     wandb = True
     tags = []
-    description = f"Partially trained up to 100 epochs"
+    description = "Partially trained up to 100 epochs"
 
     # device_id = 1
     device_id = 0
@@ -201,7 +201,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=600 if profiler == False else 1,
+        epochs=600 if not profiler else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
         wandb=wandb,

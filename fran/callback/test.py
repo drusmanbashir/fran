@@ -19,7 +19,7 @@ class PeriodicTest(Callback):
         dataloader_idx: int = 0,
     ) -> None:
         if dataloader_idx == 1:
-            if self.skip == True:
+            if self.skip:
                 raise StopIteration
             elif self.limit_batches is not None and batch_idx > self.limit_batches:
                 raise StopIteration

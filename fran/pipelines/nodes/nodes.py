@@ -55,7 +55,7 @@ if __name__ == "__main__":
     wandb = True
     override_dm = False
     tags = []
-    description = f"Partially trained up to 100 epochs"
+    description = "Partially trained up to 100 epochs"
 
     conf["plan_train"]
 
@@ -91,7 +91,7 @@ if __name__ == "__main__":
         batch_size=bs,
         devices=devices,
         cbs=cbs,
-        epochs=500 if profiler == False else 1,
+        epochs=500 if not profiler else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
         wandb=wandb,

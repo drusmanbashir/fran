@@ -56,7 +56,7 @@ class BaseInferer:
 
 def main():
     # Minimal call that will raise KeyError: 'config'
-    T = BaseInferer(run_name="demo", params=None)  # params=None ⇒ missing "config"
+    BaseInferer(run_name="demo", params=None)  # params=None ⇒ missing "config"
 
 
 if __name__ == "__main__":

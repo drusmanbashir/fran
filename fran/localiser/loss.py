@@ -67,11 +67,11 @@ class YOLOLoss(L.LightningModule):
     def forward(self, x, y):
         # x : pred
         # y : target
-        nT = y.shape[1]
+        y.shape[1]
         nA = self.anchors.shape[0]
         nB, _, nH, nW = x.shape
         nPixels = nH * nW
-        nAnchors = nA * nPixels
+        nA * nPixels
         y = y.to(dtype=x.dtype, device=x.device)
         x = x.view(nB, nA, -1, nH, nW).permute(0, 1, 3, 4, 2)
         nC = x.shape[-1] - 5

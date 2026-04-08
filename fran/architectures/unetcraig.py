@@ -66,7 +66,7 @@ class nnUNetCraig(Generic_UNet_PL):
         self.capture_grads = capture_grads
         self.final_final_nonlin = final_nonlin
         self.embedding_recorder = EmbeddingRecorder(record_embedding)
-        if self.capture_grads == True:
+        if self.capture_grads:
             final_conv = self.seg_outputs[-1]  # this is convblock
             final_conv.register_full_backward_hook(self.capture_grad_L_x)
             # self.final_final_nonlin.register_full_backward_hook(self.capture_grad_sigma)
@@ -111,7 +111,7 @@ class nnUNetCraig(Generic_UNet_PL):
         x = self.embedding_recorder(x)
 
         for uplevel in range(n_levels := (len(self.tu))):
-            if self.capture_grads == True and uplevel == (n_levels - 1):
+            if self.capture_grads and uplevel == (n_levels - 1):
                 capture_grad = True
             else:
                 capture_grad = False

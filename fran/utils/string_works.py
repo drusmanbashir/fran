@@ -244,7 +244,7 @@ def info_from_filename(fname: str, full_caseid=False):
     output_dic = {}
     for key, val in zip(tags, parts):
         output_dic[key] = val
-    if full_caseid == True:
+    if full_caseid:
         output_dic["case_id"] = output_dic["proj_title"] + "_" + output_dic["case_id"]
     return output_dic
 

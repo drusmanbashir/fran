@@ -126,7 +126,8 @@ def whole_image_suffix(row):
 
 
 def folder_names_from_plan(project, plan: dict):
-    list_to_str = lambda x: "".join(int_to_str(v, 3) for v in x)
+    def list_to_str(x):
+        return "".join(int_to_str(v, 3) for v in x)
 
     reg = load_registry()
     spc = plan.get("spacing")
@@ -261,7 +262,8 @@ if __name__ == "__main__":
     )
     lbd_folder = str(project.lbd_folder / lbd_folder_suff)
 
-    list_to_str = lambda x: "".join(int_to_str(v, 3) for v in x)
+    def list_to_str(x):
+        return "".join(int_to_str(v, 3) for v in x)
     patch_str = list_to_str(plan["patch_size"])
     patch_folder_suff = "_".join([source_folder_suff, patch_str])
     patch_folder = str(project.pdb_folder / patch_folder_suff)

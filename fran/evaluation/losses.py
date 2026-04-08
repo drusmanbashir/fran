@@ -117,7 +117,7 @@ class _DiceCELossMultiOutput(nn.Module):
                 f"input {tuple(input.shape)} vs target {tuple(target.shape)} mismatch"
             )
 
-        if use_mask == True:
+        if use_mask:
             mask = target != PAD_VALUE
         else:
             mask = None
@@ -176,7 +176,8 @@ class CombinedLoss(_DiceCELossMultiOutput):
         }
 
     def create_labels(self, bs, fg_classes):
-        label_maker = lambda x: "loss_dice_batch{0}_label{1}".format(*x)
+        def label_maker(x):
+            return "loss_dice_batch{0}_label{1}".format(*x)
         batches = list(range(bs))
         class_start = 0 if self.include_background else 1
         classes = range_inclusive(class_start, fg_classes)
@@ -211,9 +212,12 @@ class DeepSupervisionLoss(pl.LightningModule):
         )
 
     def create_labels(self, bs, fg_classes):
-        label_maker = lambda x: "loss_dice_batch{0}_label{1}".format(*x)
-        filename_maker = lambda x: "batch{0}_filename".format(x)
-        caseid_maker = lambda x: "batch{0}_case_id".format(x)
+        def label_maker(x):
+            return "loss_dice_batch{0}_label{1}".format(*x)
+        def filename_maker(x):
+            return "batch{0}_filename".format(x)
+        def caseid_maker(x):
+            return "batch{0}_case_id".format(x)
         class_start = 0 if self.include_background else 1
         classes = range_inclusive(class_start, fg_classes)
 
@@ -386,7 +390,8 @@ class DeepSupervisionLoss(pl.LightningModule):
 
 # %%
 if __name__ == "__main__":
-    softmax_helper = lambda x: F.softmax(x, 1)
+    def softmax_helper(x):
+        return F.softmax(x, 1)
     P = Project("nodes")
     conf = ConfigMaker(P, configuration_filename=None).config
     loss_params = conf["loss_params"]

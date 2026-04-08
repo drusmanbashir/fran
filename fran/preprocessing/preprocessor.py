@@ -3,7 +3,6 @@ from fran.data.dataregistry import DS
 import itertools as il
 import sqlite3
 
-from monai.transforms import Compose
 from pathlib import Path
 import ray
 
@@ -293,7 +292,8 @@ class Preprocessor(GetAttr):
 
     def _df_from_folder(self):
         df = create_df_from_folder(self.data_folder)
-        extract_ds = lambda x: x.split("_")[0]
+        def extract_ds(x):
+            return x.split("_")[0]
         df["ds"] = df["case_id"].apply(extract_ds)
         return df
 
@@ -341,7 +341,7 @@ class Preprocessor(GetAttr):
         raise NotImplementedError
 
     def save_pt(self, tnsr, subfolder, contiguous=True, suffix: str = None):
-        if contiguous == True:
+        if contiguous:
             tnsr = tnsr.contiguous()
         if hasattr(tnsr, "meta") and isinstance(tnsr.meta, dict):
             tnsr.meta = sanitize_meta_for_monai(dict(tnsr.meta))
@@ -511,9 +511,7 @@ class Preprocessor(GetAttr):
             fg_inds,
             bg_inds,
         ):
-            assert image.shape == lm.shape, "mismatch in shape".format(
-                image.shape, lm.shape
-            )
+            assert image.shape == lm.shape, "mismatch in shape"
             assert image.dim() == 4, "images should be cxhxwxd"
 
             inds = {
@@ -677,7 +675,7 @@ class Preprocessor(GetAttr):
             self.set_remapping_per_ds()
         self.register_existing_files()
         print("Overwrite:", overwrite)
-        if overwrite == False:
+        if not overwrite:
             self.remove_completed_cases()
         if len(self.df) == 0:
             missing_arts = postprocess_artifacts_missing(self.output_folder)

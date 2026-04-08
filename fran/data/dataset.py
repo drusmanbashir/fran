@@ -265,7 +265,7 @@ class ImageMaskBBoxDatasetLegacy(Dataset):
 
     def __getitem__(self, idx):
         self.set_bboxes_labels(idx)
-        if self.enforce_ratios == True:
+        if self.enforce_ratios:
             self.mandatory_label = self.randomize_label()
             self.maybe_randomize_idx()
 
@@ -291,7 +291,7 @@ class ImageMaskBBoxDatasetLegacy(Dataset):
         self.label_info = self.bboxes_per_id[idx][-1]
 
     def get_filename_bbox(self):
-        if self.enforce_ratios == True:
+        if self.enforce_ratios:
             candidate_indices = self.get_inds_with_label()
         else:
             candidate_indices = range(0, len(self.bboxes))
@@ -334,7 +334,7 @@ class ImageMaskBBoxDatasetLegacy(Dataset):
         for indx, bb in enumerate(case_bboxes):
             bbox_stats = bb["bbox_stats"]
             labels = [(a["label"]) for a in bbox_stats if not a["label"] == "all_fg"]
-            if contains_bg_only(bbox_stats) == True:
+            if contains_bg_only(bbox_stats):
                 labels = [0]
             else:
                 labels = [0] + labels
@@ -506,7 +506,7 @@ class PatchFGBGDataset(Dataset):
 class ImageMaskBBoxDatasetd(PatchFGBGDataset):
     def __getitem__(self, idx):
         self.set_bboxes_labels(idx)
-        if self.enforce_ratios == True:
+        if self.enforce_ratios:
             self.mandatory_label = self.randomize_label()
             self.maybe_randomize_idx()
 
@@ -532,7 +532,7 @@ class SavePatchd(MapTransform):
     def func(self, cropped_tnsr, bbox):
         chs = cropped_tnsr.shape[0]
         for ch in range(1, chs):
-            postfix = str(ch) if self.postfix_channel == True else None
+            postfix = str(ch) if self.postfix_channel else None
             img_full = fill_bbox(bbox, cropped_tnsr)
             img_save = img_full[ch : ch + 1]
 

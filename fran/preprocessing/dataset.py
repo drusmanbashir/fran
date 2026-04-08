@@ -186,10 +186,10 @@ class ResamplerDataset(GetAttr, Dataset):
         Re = RecastToFloatd(keys=["image", "lm"])
 
         Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
-        Ai = DictToMetad(
+        DictToMetad(
             keys=["image"], meta_keys=["image_fname"], renamed_keys=["filename"]
         )
-        Am = DictToMetad(
+        DictToMetad(
             keys=["lm"],
             meta_keys=[
                 "lm_fname",
@@ -222,9 +222,9 @@ class ResamplerDataset(GetAttr, Dataset):
         # tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
         tfms = [L, Rem, RemI, T, Re, Ind, E, Si, Rz, Ch]
 
-        if self.clip_center == True:
+        if self.clip_center:
             tfms.extend([N])
-        if self.half_precision == True:
+        if self.half_precision:
             H = HalfPrecisiond(keys=["image"])
             tfms.extend([H])
         self.transform = Compose(tfms)
@@ -265,7 +265,7 @@ class ImporterDataset(ResamplerDataset):
         plan: Dict containing keys spacing and expand_by
         """
         if remapping_imported is None:
-            assert merge_imported_labels == False, (
+            assert not merge_imported_labels, (
                 "If you are merging imported lms, a remapping for the imported labels must be specified"
             )
         self.project = project
@@ -284,7 +284,7 @@ class ImporterDataset(ResamplerDataset):
     def setup(self, overwrite=False):
         self.create_transforms()
         # self.set_transforms("R,LS,LT,D,Re,E,Rz,M,B,A")
-        if self.merge_imported_labels == True:
+        if self.merge_imported_labels:
             self.set_transforms("R,LS,LT,D,E,Rz,M,B,A,Ind")
         else:
             self.set_transforms("R,LS,LT,D,E,Rz,B,A,Ind")
@@ -462,7 +462,8 @@ class CropToLabelDataset(ImporterDataset, ResamplerDataset):
         if self.mask_label is None:
             select_fn = is_positive
         else:
-            select_fn = lambda lm: lm == self.mask_label
+            def select_fn(lm):
+                return lm == self.mask_label
         image_key = "image"
         lm_key = "lm"
 

@@ -8,8 +8,6 @@
 # success = YOLO("yolov8n.pt").export(format="onnx")
 
 import torch
-from fran.transforms.spatialtransforms import Project2D
-from utilz.imageviewers import ImageMaskViewer
 if __name__ == "__main__":
     from pathlib import Path
 

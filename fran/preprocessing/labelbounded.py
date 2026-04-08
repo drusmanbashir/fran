@@ -19,7 +19,7 @@ from fran.utils.folder_names import folder_names_from_plan
 from utilz.cprint import cprint
 from utilz.fileio import maybe_makedirs, np, save_json, tr
 from utilz.helpers import pp, resolve_device
-from utilz.stringz import headline, info_from_filename
+from utilz.stringz import headline
 
 MIN_SIZE = 32  # min size in a single dimension of any image
 
@@ -203,7 +203,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
                 self.output_folder / ("lms"),
                 num_processes=getattr(self, "num_processes", 1),
             )
-        elif derive_bboxes == False:
+        elif not derive_bboxes:
             print("No bboxes generated")
         else:
             print(
@@ -254,7 +254,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             "remapping_train",
         ]
         for key in self.plan.keys():
-            if not key in ignore_keys:
+            if key not in ignore_keys:
                 resampled_dataset_properties[key] = self.plan[key]
         return resampled_dataset_properties
 
@@ -480,7 +480,7 @@ if __name__ == "__main__":
     if derive_bboxes and ts[-1] == 4:  # only store if entire dset is processed
         L._store_dataset_properties()
         generate_bboxes_from_lms_folder(L.output_folder / ("lms"))
-    elif derive_bboxes == False:
+    elif not derive_bboxes:
         print("No bboxes generated")
     else:
         print(

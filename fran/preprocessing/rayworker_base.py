@@ -100,7 +100,7 @@ class RayWorkerBase(Preprocessor):
         return results
 
     def apply_transforms(self, data: dict):
-        if self.debug == False:
+        if not self.debug:
             return self.apply_transforms_compose(data)
         else:
             return self.apply_transforms_debug(data)
@@ -189,7 +189,8 @@ class RayWorkerBase(Preprocessor):
         if self.crop_to_label is None:
             select_fn = is_positive
         else:
-            select_fn = lambda lm: lm == self.crop_to_label
+            def select_fn(lm):
+                return lm == self.crop_to_label
         # Transform attributes in alphabetical order
         self.C = CropForegroundMinShaped(
             keys=self.tnsr_keys,

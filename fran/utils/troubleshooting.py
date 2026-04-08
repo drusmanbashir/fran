@@ -273,7 +273,7 @@ class NeptuneImageGridCallback(Callback):
             self.populate_grid(pl_module, batch)
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if self.validation_grid_created == False:
+        if not self.validation_grid_created:
             self.populate_grid(pl_module, batch)
             self.validation_grid_created = True
 
@@ -324,7 +324,7 @@ class NeptuneImageGridCallback(Callback):
             pred = pred[0]
         pred = pred.cpu()
 
-        if self.apply_activation == True:
+        if self.apply_activation:
             pred = F.softmax(pred.to(torch.float32), dim=1)
 
         img, label, pred = (
@@ -550,11 +550,11 @@ class NepImages(Callback):
             ["imgs", "preds", "lms"],
             [self.grid_imgs, self.grid_preds, self.grid_masks],
         ):
-            if isinstance(batch, (list, tuple)) and self.publish_deep_preds == False:
+            if isinstance(batch, (list, tuple)) and not self.publish_deep_preds:
                 batch = [x for x in batch if x.size()[2:] == self.patch_size][
                     0
                 ]  # gets that pred which has same shape as imgs
-            elif isinstance(batch, (list, tuple)) and self.publish_deep_preds == True:
+            elif isinstance(batch, (list, tuple)) and self.publish_deep_preds:
                 batch_tmp = [
                     F.interpolate(b, size=batch[-1].shape[2:], mode="trilinear")
                     for b in batch[:-1]
@@ -562,7 +562,7 @@ class NepImages(Callback):
                 batch = batch_tmp + batch[-1]
             batch = batch.cpu()
 
-            if self.apply_activation == True and category == "preds":
+            if self.apply_activation and category == "preds":
                 batch = F.softmax(batch, dim=1)
 
             imgs = self.img_to_grd(batch)
@@ -641,7 +641,7 @@ class UNetTrainer(LightningModule):
         # self.model= torch.nn.Linear(1572864,1)
 
     def _calc_loss(self, batch):
-        inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]
+        inputs, target, _bbox = batch["image"], batch["label"], batch["bbox"]
         self.pred = self.forward(inputs)
         target_listed = []
         for sc in self.deep_supervision_scales:
@@ -661,7 +661,7 @@ class UNetTrainer(LightningModule):
         return loss, loss_dict
 
     def training_step(self, batch, batch_idx):
-        inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]
+        inputs, _target, _bbox = batch["image"], batch["label"], batch["bbox"]
         self.pred = self.forward(inputs)
         pred2 = self.pred[0]
         loss = pred2.mean()
@@ -679,14 +679,14 @@ class UNetTrainer(LightningModule):
         ]
         metrics = [me for me in metrics if me in loss_dict.keys()]
         renamed = [prefix + "_" + nm for nm in metrics]
-        logger_dict = {
+        {
             neo_key: loss_dict[key] for neo_key, key in zip(renamed, metrics)
         }
         # self.logger.log_metrics(logger_dict)
         self.log(prefix + "_" + "loss_dice", loss_dict["loss_dice"], logger=True)
 
     def validation_step(self, batch, batch_idx):
-        inputs, target, bbox = batch["image"], batch["label"], batch["bbox"]
+        inputs, _target, _bbox = batch["image"], batch["label"], batch["bbox"]
         self.pred = self.forward(inputs)
         pred2 = self.pred[0]
         loss = pred2.mean()
@@ -774,7 +774,7 @@ class UNetTrainer(LightningModule):
             loss_func = CombinedLoss(
                 **self.loss_params, fg_classes=self.model_params["out_channels"] - 1
             )
-        if self.compiled == True:
+        if self.compiled:
             model = torch.compile(model)
         model = BoringModel()
         loss_func = nn.CrossEntropyLoss()

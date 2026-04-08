@@ -1,10 +1,8 @@
 # %%
 import matplotlib.pyplot as plt
-from fran.localiser.helpers import iou, iou_wh
 
 plt.ion()
 # matplotlib.use('Agg')
-import ipdb
 import numpy as np
 
 
@@ -13,7 +11,6 @@ import numpy as np
 import lightning as L
 import matplotlib.pyplot as plt
 import torch
-from fran.localiser.preprocessing.data import tr
 from fran.localiser.helpers import load_bboxes_batch, load_image_batch
 from fran.localiser.loss import YOLOLoss
 from torch.optim.lr_scheduler import OneCycleLR

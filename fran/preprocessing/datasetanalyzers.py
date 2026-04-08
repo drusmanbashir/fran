@@ -213,7 +213,7 @@ def case_analyzer_wrapper(
     case_ = dict()
     case_["case_id"] = S.case_id
     voxels = None
-    if get_voxels == True:
+    if get_voxels:
         voxels = S.get_bbox_only_voxels().float()
         S.properties["numel_fg"] = voxels.numel()
         if voxels.numel() == 0:
@@ -481,7 +481,7 @@ if __name__ == "__main__":
     # %%
     M.compute_std_mean_dataset(debug=False)
     M.case_properties = []
-    if overwrite == True or not M.h5f_fname.exists():
+    if overwrite or not M.h5f_fname.exists():
         get_voxels = True
         print("Voxels inside bbox will be dumped into: {}".format(M.h5f_fname))
     else:
@@ -529,7 +529,7 @@ if __name__ == "__main__":
     S.load_case()
     case_ = dict()
     case_["case_id"] = S.case_id
-    if get_voxels == True:
+    if get_voxels:
         voxels = S.get_bbox_only_voxels()
         S.properties["mean_fg"] = int(voxels.mean())
         S.properties["min_fg"] = int(voxels.min())

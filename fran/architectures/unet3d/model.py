@@ -126,13 +126,13 @@ class Abstract3DUNet(nn.Module):
         # in the last layer a 1×1 convolution reduces the number of output
         # channels to the number of labels
         self.final_conv = nn.Conv3d(f_maps[0], out_channels, 1)
-        if self_attention == True:
+        if self_attention:
             self.attention_gates = create_attention_gates(f_maps)
         else:
             self.attention_gates = [
                 None,
             ] * (len(f_maps) - 1)
-        if deep_supervision == True:
+        if deep_supervision:
             self.deep_segs = create_deep_segmenters(f_maps, out_channels)
         else:
             self.deep_segs = [
@@ -316,7 +316,7 @@ class Discriminator_ub(nn.Module):
         ]
         final_linear = self.compute_linear_layer(in_channels, patch_size, layers)
         activation = nn.Sigmoid()
-        if scalar_output == True:
+        if scalar_output:
             self.model = nn.Sequential(*layers, nn.Flatten(), final_linear, activation)
         else:
             self.model = nn.Sequential(*layers, activation)

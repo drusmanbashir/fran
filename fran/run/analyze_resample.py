@@ -263,7 +263,7 @@ class PreprocessingManager:
         )
         arglist_imgs, arglist_masks = self.WholeImageTM.get_args_for_resizing()
         for arglist in [arglist_imgs, arglist_masks]:
-            res = multiprocess_multiarg(
+            multiprocess_multiarg(
                 func=resize_and_save_tensors,
                 arguments=arglist,
                 num_processes=self.num_processes,

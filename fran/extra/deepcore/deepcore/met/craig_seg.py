@@ -71,7 +71,6 @@ class CraigSeg(EarlyTrain):
         )  # self.pred so that NeptuneImageGridCallback can use it
 
         loss = self.loss_fnc(pred, target.to("cuda"))
-        loss_dict = self.loss_fnc.loss_dict
         return loss, pred
 
     def create_loss_fnc(self):
@@ -266,7 +265,7 @@ if __name__ == "__main__":
     neptune = False
     tags = []
     cbs = []
-    description = f""
+    description = ""
     # %%
     # SECTION:-------------------- IMPORTANCE SAMPLING-------------------------------------------------------------------------------------- <CR> <CR> <CR>
     # %%
@@ -275,7 +274,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=50 if profiler == False else 1,
+        epochs=50 if not profiler else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
         cbs=cbs,

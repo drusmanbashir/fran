@@ -88,7 +88,7 @@ def create_model_from_conf(model_params, plan, deep_supervision=True):
     else:
         raise NotImplementedError
 
-    if model_params["compiled"] == True:
+    if model_params["compiled"]:
         model = torch.compile(model, dynamic=True)
     return model
 

@@ -159,7 +159,7 @@ class CaseIDRecorder(Callback):
         dataloader_idx: int = 0,
     ) -> None:
         loss_dict_full = pl_module.loss_dict_full
-        if self.incrementing == False:
+        if not self.incrementing:
             self.loss_dicts_valid.append(loss_dict_full)
         else:
             self.loss_dicts_train2.append(loss_dict_full)
@@ -174,7 +174,7 @@ class CaseIDRecorder(Callback):
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
     ) -> None:
         epoch = trainer.current_epoch + 1
-        if (epoch > 0 and epoch % self.freq == 0) or self.incrementing == True:
+        if (epoch > 0 and epoch % self.freq == 0) or self.incrementing:
             self.store_results(trainer)
             self.reset()
 
@@ -259,7 +259,7 @@ class CaseIDRecorder(Callback):
         epoch = trainer.current_epoch + 1
         self.dfs["epoch"] = epoch
         # cprint("CaseIDRecorder: Storing results", color = "green", italic=True)
-        if self.incrementing == False:
+        if not self.incrementing:
             for stage, loss_dicts in zip(
                 ["train", "valid"], [self.loss_dicts_train, self.loss_dicts_valid]
             ):
@@ -278,7 +278,7 @@ class CaseIDRecorder(Callback):
         df_train = pd.DataFrame(dicts)
         bad_cols = ["loss", "loss_ce", "loss_dice"]
         others = [col for col in df_train.columns if "filename" in col]
-        others2 = [col for col in df_train.columns if not "batch" in col]
+        others2 = [col for col in df_train.columns if "batch" not in col]
         bad_cols_all = bad_cols + others + others2
         cols = df_train.columns
         cols_to_remove = set(cols).intersection(set(bad_cols_all))

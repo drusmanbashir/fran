@@ -82,7 +82,7 @@ def as_is_collated(batch):
     keys = batch[0].keys()
     output_dict = {k: [] for k in keys}
     listlen = len(keys)
-    lists = [] * listlen
+    [] * listlen
     for i, item in enumerate(batch):
         for k in keys:
             tnsr = item[k]

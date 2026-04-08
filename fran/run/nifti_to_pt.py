@@ -41,7 +41,7 @@ if __name__ == "__main__":
     Rs.setup(overwrite=overwrite)
     Rs.process()
     # %%
-    if not "labels_all" in P.global_properties.keys():
+    if "labels_all" not in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=False)
     lm_group = P.global_properties["lm_group1"]

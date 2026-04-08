@@ -10,7 +10,7 @@ from fran.preprocessing.helpers import (
 from fran.preprocessing.preprocessor import Preprocessor, get_tensor_stats, store_label_count
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadTorchd
-from fran.transforms.misc_transforms import ChangeDtyped, DummyTransform, GetLabelsd
+from fran.transforms.misc_transforms import ChangeDtyped, GetLabelsd
 from fran.utils.folder_names import folder_names_from_plan
 from monai.transforms.spatial.dictionary import Resized
 from monai.transforms.utility.dictionary import EnsureChannelFirstd

@@ -7,19 +7,15 @@ from typing import Optional, Union
 import ipdb
 import SimpleITK as sitk
 import torch
-from fran.transforms.base import ItemTransform, MonaiDictTransform
-from label_analysis.geometry_pt import BBoxInfoFromPT
+from fran.transforms.base import MonaiDictTransform
 from label_analysis.helpers import listify, relabel
 from monai.apps.detection.transforms.array import ConvertBoxMode
 
 # from label_analysis.merge import merge_pt
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
 from monai.data.meta_tensor import MetaTensor
-from monai.transforms import MaskIntensity, dilate, erode
-from monai.transforms.croppad.dictionary import CropForegroundd
-from monai.transforms.transform import MapTransform, RandomizableTransform
+from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
-from utilz.stringz import ast_literal_eval
 
 tr = ipdb.set_trace
 
@@ -124,7 +120,7 @@ class BoundingBoxYOLOd(MonaiDictTransform):
         yolo_box_scaled[::2] = xscaled
         yolo_box_scaled[1::2] = yscaled
 
-        if self.return_dict == True:
+        if self.return_dict:
             centres = yolo_box_scaled[:2]
             sizes = yolo_box_scaled[2:]
             dat = {"class": 0, "centers": centres, "size": sizes}
@@ -286,7 +282,7 @@ class LoadTorchDict(MonaiDictTransform):
             dici = torch.load(d[key], weights_only=False)
             for k in self.select_keys:
                 mini_dict[k] = dici[k]
-            if self.drop_keys == True:
+            if self.drop_keys:
                 d.pop(key)
         d = d | mini_dict
         return d

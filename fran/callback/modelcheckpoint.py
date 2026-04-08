@@ -19,14 +19,13 @@ Model Checkpointing
 Automatically save model checkpoints during training.
 """
 
-import logging
 
 
 from typing import override
 
 import ipdb
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint, log, rank_zero_warn, warning_cache
+from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint, rank_zero_warn
 from lightning.pytorch.callbacks.model_checkpoint import _PATH
 
 tr = ipdb.set_trace

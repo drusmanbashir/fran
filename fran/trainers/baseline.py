@@ -62,7 +62,7 @@ if __name__ == "__main__":
     batch_finder = False
     neptune = True
     tags = []
-    description = f"Settingh up a baseline with small dttaset"
+    description = "Settingh up a baseline with small dttaset"
     # %%
 
     Tm = Trainer(proj, conf, run_name)
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=600 if profiler == False else 1,
+        epochs=600 if not profiler else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
         neptune=neptune,
@@ -287,7 +287,7 @@ if __name__ == "__main__":
     # %%
     idx = 0
     ds.set_bboxes_labels(idx)
-    if ds.enforce_ratios == True:
+    if ds.enforce_ratios:
         ds.mandatory_label = ds.randomize_label()
         ds.maybe_randomize_idx()
 

@@ -71,7 +71,6 @@ def load_checkpoint(
         get_model(model).load_state_dict(chkpt_model_state, strict=strict)
         print("\n --- Successfully loaded model from checkpoint.")
 
-        with_opt = False  # see fastai to add opt option
         # if hasopt and with_opt:
         #     try: opt.load_state_dict(state['opt'])
         #     ecept:

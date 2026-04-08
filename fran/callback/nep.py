@@ -29,7 +29,8 @@ _ast_keys = ["dataset_params,patch_size", "metadata,remapping_train"]
 _immutable_keys = [
     "fold"
 ]  # once set in a particular runs these will not be changed without corrupting the run
-str_to_key = lambda string: string.split(",")
+def str_to_key(string):
+    return string.split(",")
 
 
 def normalize(tensr, intensity_percentiles=[0.0, 1.0]):
@@ -133,15 +134,15 @@ class NeptuneImageGridCallback(Callback):
         return super().on_train_batch_start(trainer, pl_module, batch, batch_idx)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if trainer.store_preds == True:
+        if trainer.store_preds:
             self.populate_grid(pl_module, batch)
 
     def on_validation_batch_end(
         self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
     ):
-        if trainer.store_preds == True:
+        if trainer.store_preds:
             # if trainer.current_epoch % self.epoch_freq == 0:
-            if self.validation_grid_created == False:
+            if not self.validation_grid_created:
                 self.populate_grid(pl_module, batch)
                 self.validation_grid_created = True
 

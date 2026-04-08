@@ -100,7 +100,7 @@ def parse_devices(arg=None, format_as_cuda=False):
     if not ids:
         ids = [0]
 
-    if format_as_cuda == True:
+    if format_as_cuda:
         ids = [torch.device(f"cuda:{i}") for i in ids]
     return ids
 

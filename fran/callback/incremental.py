@@ -153,7 +153,7 @@ class UpdateDatasetOnPlateau(Callback):
 
     def on_train_epoch_end(self, trainer, pl_module):
         epoch = trainer.current_epoch + 1
-        if self.debug == True and epoch > 0 and epoch % 2 == 0:
+        if self.debug and epoch > 0 and epoch % 2 == 0:
             self._debug_switch(trainer, pl_module)
         else:
             if trainer.current_epoch < self.grace:

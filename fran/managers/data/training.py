@@ -442,7 +442,7 @@ class DataManager(LightningDataModule):
 
     def __repr__(self):
         return (
-            f"DataManager("
+            "DataManager("
             + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
             + ")"
         )
@@ -578,7 +578,7 @@ class DataManager(LightningDataModule):
         Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
         # self.transforms_dict["Ind"] = Ind
 
-        if self.plan["use_fg_indices"] == True:
+        if self.plan["use_fg_indices"]:
             Ld = LoadTorchDict(
                 keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"]
             )
@@ -652,7 +652,7 @@ class DataManager(LightningDataModule):
 
     def set_effective_batch_size(self):
         if (
-            not "samples_per_file" in self.plan or not self.split == "train"
+            "samples_per_file" not in self.plan or not self.split == "train"
         ):  # if split is valid, grid sampling is done and effective batch_size should be same as batch size
             self.plan["samples_per_file"] = 1
 
@@ -784,7 +784,7 @@ class DataManager(LightningDataModule):
             num_workers=num_workers,
             collate_fn=self.collate_fn,
             persistent_workers=persistent_workers,
-            pin_memory=True if self.debug==False else False,
+            pin_memory=True if not self.debug else False,
             shuffle=True,
         )
 
@@ -805,7 +805,7 @@ class DataManager(LightningDataModule):
             num_workers=num_workers,
             collate_fn=self.collate_fn,
             persistent_workers=persistent_workers,
-            pin_memory=True if self.debug==False else False,
+            pin_memory=True if not self.debug else False,
             shuffle=False,
             sampler=sampler,
         )
@@ -867,7 +867,7 @@ class DataManager(LightningDataModule):
 
     @property
     def src_dims(self):
-        if self.dataset_params["zoom"] == True:
+        if self.dataset_params["zoom"]:
             src_dims = self.dataset_params["src_dims"]
         else:
             src_dims = self.plan["patch_size"]
@@ -957,7 +957,7 @@ class DataManagerSource(DataManager):
 
     def __repr__(self):
         return (
-            f"DataManagerSource"
+            "DataManagerSource"
         )
 
     def override_batch_size_valid_split(self, split="valid"):
@@ -986,7 +986,7 @@ class DataManagerWhole(DataManager):
 
     def __repr__(self):
         return (
-            f"DataManagerWhole("
+            "DataManagerWhole("
             + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
             + ")"
         )
@@ -1104,7 +1104,7 @@ class DataManagerPatch(DataManagerSource):
         for indx, bb in enumerate(case_patches):
             bbox_stats = bb["bbox_stats"]
             labels = [(a["label"]) for a in bbox_stats if not a["label"] == "all_fg"]
-            if bbox_bg_only(bbox_stats) == True:
+            if bbox_bg_only(bbox_stats):
                 labels = [0]
             else:
                 labels = [0] + labels
@@ -1176,7 +1176,7 @@ class DataManagerPatch(DataManagerSource):
 
     def create_transforms(self):
         super().create_transforms()
-        if self.img_patch_size_match() == True:
+        if self.img_patch_size_match():
             self.ResizePC = DummyTransform(
                 keys=["lm"]
             )  # there will be no resizing if patch size and image size are same
@@ -1217,7 +1217,7 @@ class DataManagerBaseline(DataManagerLBD):
 
     def __repr__(self):
         return (
-            f"DataManagerBaseline("
+            "DataManagerBaseline("
             + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
             + ")"
         )

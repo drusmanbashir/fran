@@ -149,7 +149,7 @@ class LoadSITKd(MapTransform):
 
         direction = img.GetDirection()
         if len(direction) != 9:
-            raise NotImplemented
+            raise NotImplementedError
         else:
             direction = np.array(direction)
             direction = direction.reshape(3, 3)
@@ -226,7 +226,7 @@ class LoadSITKd(MapTransform):
             )
         else:
             header[MetaKeys.ORIGINAL_CHANNEL_DIM] = self.channel_dim
-        if get_labels == True:
+        if get_labels:
             labels = gl(img)
             header["labels"] = labels
 
@@ -405,7 +405,7 @@ class SITKReader(ITKReader):
 
         direction = img.GetDirection()
         if len(direction) != 9:
-            raise NotImplemented
+            raise NotImplementedError
         else:
             direction = np.array(direction)
             direction = direction.reshape(3, 3)

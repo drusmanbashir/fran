@@ -79,7 +79,7 @@ class UNetManager(LightningModule):
     def create_val_inferer(self):
         sw_device = "cuda"
         device = "cuda"  # or "cpu" if cuda fails oom
-        cprint(f"batch size")
+        cprint("batch size")
 
         batch_size = 1
         self.val_inferer = SlidingWindowInferer(
@@ -123,7 +123,7 @@ class UNetManager(LightningModule):
         return loss, loss_dict
 
     def maybe_store_preds(self, pred):
-        if hasattr(self.trainer, "store_preds") and self.trainer.store_preds == True:
+        if hasattr(self.trainer, "store_preds") and self.trainer.store_preds:
             if isinstance(pred, Union[tuple, list]):
                 self.pred = [p.detach().cpu() for p in pred]
             else:

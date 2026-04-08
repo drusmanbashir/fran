@@ -71,7 +71,7 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         imported_folder = plan["imported_folder"]
         self.imported_folder = Path(imported_folder)
         merge_imported_labels = plan["merge_imported_labels"]
-        if merge_imported_labels == True:
+        if merge_imported_labels:
             tfms_keys = (
                 "RemapI,LoadS,LoadT,Dev,Chan,Cast,Rsz,Merg,BBox,AppBx,Remap,Labels,Indx"
             )

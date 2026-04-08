@@ -188,7 +188,7 @@ class kCenterGreedy(EarlyTrain):
         self.model.no_grad = True
         with torch.no_grad():
             with self.model.embedding_recorder:
-                sample_num = self.n_train if index is None else len(index)
+                self.n_train if index is None else len(index)
                 matrix = []
 
                 data_loader = torch.utils.data.DataLoader(

@@ -310,7 +310,7 @@ class DataManager(LightningDataModule):
 
     def __repr__(self):
         return (
-            f"DataManager("
+            "DataManager("
             + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
             + ")"
         )
@@ -431,7 +431,7 @@ class DataManager(LightningDataModule):
             self.transforms_dict["Affine"] = Affine
 
         if "Resize" in include_keys:
-            Resize = Resized(
+            Resized(
                 keys=["image", "lm"],
                 spatial_size=self.plan["patch_size"],
                 mode=["linear", "nearest"],
@@ -510,7 +510,7 @@ class DataManager(LightningDataModule):
 
     def set_effective_batch_size(self):
         if (
-            not "samples_per_file" in self.plan or not self.split == "train"
+            "samples_per_file" not in self.plan or not self.split == "train"
         ):  # if split is valid, grid sampling is done and effective batch_size should be same as batch size
             self.plan["samples_per_file"] = 1
 
@@ -682,7 +682,7 @@ class DataManager(LightningDataModule):
 
     @property
     def src_dims(self):
-        if self.dataset_params["zoom"] == True:
+        if self.dataset_params["zoom"]:
             src_dims = self.dataset_params["src_dims"]
         else:
             src_dims = self.plan["patch_size"]
@@ -756,7 +756,7 @@ class DataManagerSource(DataManager):
 
     def __repr__(self):
         return (
-            f"DataManagerSource("
+            "DataManagerSource("
             + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
             + ")"
         )
@@ -796,7 +796,7 @@ class DataManagerWhole(DataManagerSource):
 
     def __repr__(self):
         return (
-            f"DataManagerWhole("
+            "DataManagerWhole("
             + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
             + ")"
         )
@@ -1001,7 +1001,7 @@ class DataManagerPatch(DataManagerSource):
         for indx, bb in enumerate(case_patches):
             bbox_stats = bb["bbox_stats"]
             labels = [(a["label"]) for a in bbox_stats if not a["label"] == "all_fg"]
-            if bbox_bg_only(bbox_stats) == True:
+            if bbox_bg_only(bbox_stats):
                 labels = [0]
             else:
                 labels = [0] + labels
@@ -1071,7 +1071,7 @@ class DataManagerBaseline(DataManagerLBD):
 
     def __repr__(self):
         return (
-            f"DataManagerBaseline("
+            "DataManagerBaseline("
             + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
             + ")"
         )
@@ -1095,7 +1095,7 @@ class DataManagerBaseline(DataManagerLBD):
         if source_ds_type == "lbd":
             parent_folder = self.project.lbd_folder
         else:
-            raise NotImplemented
+            raise NotImplementedError
         spacing = ast_literal_eval(source_plan["spacing"])
 
         data_folder = folder_name_from_list(
@@ -1307,7 +1307,7 @@ if __name__ == "__main__":
     output_dic = {}
     for key, val in zip(tags, parts):
         output_dic[key] = val
-    if full_caseid == True:
+    if full_caseid:
         output_dic["case_id"] = output_dic["proj_title"] + "_" + output_dic["case_id"]
 
     # %%

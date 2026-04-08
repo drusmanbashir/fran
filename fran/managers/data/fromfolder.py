@@ -110,9 +110,8 @@ class DataManagerTestFF(DataManager):
         }
 
     def setup(self):
-        headline(f"Setting up test/valid dataset")
+        headline("Setting up test/valid dataset")
         print("Src Dims: ", self.configs["dataset_params"]["src_dims"])
         print("Patch Size: ", self.plan["patch_size"])
-        keys_test = "L,E,N,Remap,ResizeP"
         self.create_transforms()
         self.set_transforms(self.keys)

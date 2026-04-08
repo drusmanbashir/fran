@@ -31,7 +31,7 @@ def sanitize_meta_for_monai(obj):
 
 
 def to_even(input_num, lower=True):
-    np.fnc = np.subtract if lower == True else np.add
+    np.fnc = np.subtract if lower else np.add
     output_num = np.fnc(input_num, input_num % 2)
     return int(output_num)
 
@@ -303,12 +303,12 @@ def create_dataset_stats_artifacts(
 
     if label_stats or gif:
         maybe_makedirs([stats_folder])
-    if label_stats == True:
+    if label_stats:
         df, _ = end2end_lms_stats_and_plots(
             lis_folder=lms_folder,
             output_folder=stats_folder,
         )
-    if gif == True:
+    if gif:
         output_gif = stats_folder / "snapshot.gif"
         create_nifti_overlay_grid_gif(
             dataset_root=dataset_root,
@@ -319,7 +319,7 @@ def create_dataset_stats_artifacts(
             window=gif_window,
             fps=5,
         )
-        if preview == True:
+        if preview:
             show_gif_in_chrome_if_available(output_gif)
 
 
@@ -425,11 +425,11 @@ def summarize_indices_folder(
 
 def compute_fgbg_ratio(resampled_dataset_properties_df, nnz_allowed):
     n_fg_total = resampled_dataset_properties_df["n_fg"].sum()
-    if nnz_allowed == True:
+    if nnz_allowed:
         inds = resampled_dataset_properties_df.index
     else:
         inds = resampled_dataset_properties_df.index[
-            resampled_dataset_properties_df["has_fg"] == True
+            resampled_dataset_properties_df["has_fg"]
         ]
     n_bg_total = resampled_dataset_properties_df.loc[inds, "n_bg"].sum()
     fgbg_ratio = n_fg_total / n_bg_total

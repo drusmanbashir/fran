@@ -1,9 +1,7 @@
 # %%
-from dataclasses import dataclass
 import itertools as il
 
 import ipdb
-from paramiko import SSHClient
 from utilz.cprint import cprint
 from monai.transforms.utility.dictionary import CastToTyped
 
@@ -18,7 +16,6 @@ import sys
 
 import numpy as np
 import torch
-from monai.transforms import SpatialCrop
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import AsDiscreted, Invertd
@@ -165,7 +162,7 @@ class WholeImageInferer(BaseInferer):
 
     def set_postprocess_tfms_keys(self):
         self.postprocess_tfms_keys = self.keys_postproc
-        if self.save == True:
+        if self.save:
             self.postprocess_tfms_keys += ",Sav"
 
 
@@ -215,13 +212,13 @@ class PatchInferer(BaseInferer):
     def set_postprocess_tfms_keys(self):
         
         self.postprocess_tfms_keys = self.keys_postproc
-        if self.safe_mode == True:
+        if self.safe_mode:
             self.postprocess_tfms_keys += ",CPU"
-        if self.save_channels == True:
+        if self.save_channels:
             self.postprocess_tfms_keys += ",Sa"
         if self.k_largest is not None:
             self.postprocess_tfms_keys += ",K"
-        if self.save == True:
+        if self.save:
             self.postprocess_tfms_keys += ",Sav"
 
 
@@ -371,7 +368,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         self.W.create_and_set_postprocess_transforms()
         bboxes = []
         for batch in self.W.predict():
-            if self.debug == True:
+            if self.debug:
                 tr()
                 print(batch["pred"].shape)
             # p = self.W.predict()
@@ -434,14 +431,14 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         }
 
     def set_postprocess_tfms_keys(self):
-        if self.safe_mode == False:
+        if not self.safe_mode:
             self.postprocess_tfms_keys = self.keys_postproc
         else:
             self.postprocess_tfms_keys = self.keys_postproc_safe
         if self.k_largest is not None:
             self.postprocess_tfms_keys += ",K"
         self.postprocess_tfms_keys += ",F"
-        if self.save == True:
+        if self.save:
             self.postprocess_tfms_keys += ",S"
 
 
@@ -474,7 +471,6 @@ if __name__ == "__main__":
 
 # %%
 
-    from fran.data.dataregistry import DS
 # %%
 # SECTION:-------------------- KITS--------------------------------------------------------------------------------------
 
@@ -574,7 +570,6 @@ if __name__ == "__main__":
 # %%
 # %%
 
-    import stat
 
     remote_dir_parent = str(remote_dir_parent)
 # %%
@@ -785,7 +780,7 @@ if __name__ == "__main__":
     spacing = get_patch_spacing(En.run_w)
     Sel = SelectLabels(keys=["pred"], labels=list(En.localiser_labels))
     B = BBoxFromPTd(keys=["pred"], spacing=spacing, expand_by=10)
-    if overwrite == False:
+    if not overwrite:
         print("Bbox overwrite not implemented yet")
     print("Starting localiser data prep and prediction")
 # %%
@@ -805,7 +800,7 @@ if __name__ == "__main__":
     En.W.create_and_set_postprocess_transforms()
     bboxes = []
     for batch in En.W.predict():
-        if En.debug == True:
+        if En.debug:
             tr()
         # p = En.W.predict()
         pred = En.W.postprocess(batch)
@@ -825,7 +820,7 @@ if __name__ == "__main__":
     pred_patches = En.patch_prediction(data)
     pred_patches = En.decollate_patches(pred_patches, En.bboxes)
     output = En.postprocess(pred_patches)
-    if En.save == True:
+    if En.save:
         En.save_pred(output)
     En.cuda_clear()
 
@@ -860,7 +855,7 @@ if __name__ == "__main__":
     chunksize = 12
     imgs_sublist = imgs_crc
     imgs_sublist = listify(imgs)
-    if En.overwrite == False and (
+    if not En.overwrite and (
         isinstance(imgs[0], str) or isinstance(imgs[0], Path)
     ):
         imgs = En.filter_existing_preds(imgs)

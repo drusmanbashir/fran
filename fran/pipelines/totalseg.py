@@ -56,7 +56,7 @@ if __name__ == "__main__":
     wandb = True
     override_dm = False
     tags = []
-    description = f"Partially trained up to 100 epochs"
+    description = "Partially trained up to 100 epochs"
 
     conf["plan_train"]
 
@@ -91,7 +91,7 @@ if __name__ == "__main__":
         batch_size=bs,
         devices=devices,
         cbs=cbs,
-        epochs=500 if profiler == False else 1,
+        epochs=500 if not profiler else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
         wandb=wandb,
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     # %%
 
     # SECTION:-------------------- GLOBAL PROPERTIES-------------------------------------------------------------------------------------- <CR>
-    if not "labels_all" in P.global_properties.keys():
+    if "labels_all" not in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=False)
     # %%

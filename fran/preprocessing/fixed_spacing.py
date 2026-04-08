@@ -74,9 +74,9 @@ class _NiftiResamplerBase(RayWorkerBase):
         self.device = device
         self.set_normalization_values(mean_std_mode)
         tfms_keys = "LoadS,Chan,Orient,Remap,Dev,Cast,SpImg,SpLm,Rsz,LmDType,Indx"
-        if self.clip_center == True:
+        if self.clip_center:
             tfms_keys += ",Norm"
-        if self.half_precision == True:
+        if self.half_precision:
             tfms_keys += ",Half"
         super().__init__(
             project=project,
@@ -402,9 +402,7 @@ class FGBGIndicesResampleDataset(NiftiToTorchDataGenerator):
             fg_inds,
             bg_inds,
         ):
-            assert image.shape == lm.shape, "mismatch in shape".format(
-                image.shape, lm.shape
-            )
+            assert image.shape == lm.shape, "mismatch in shape"
             assert image.dim() == 4, "images should be cxhxwxd"
             inds = {
                 "lm_fg_indices": fg_ind,
@@ -735,9 +733,7 @@ if __name__ == "__main__":
         fg_inds,
         bg_inds,
     ):
-        assert image.shape == lm.shape, "mismatch in shape".format(
-            image.shape, lm.shape
-        )
+        assert image.shape == lm.shape, "mismatch in shape"
         assert image.dim() == 4, "images should be cxhxwxd"
 
         inds = {

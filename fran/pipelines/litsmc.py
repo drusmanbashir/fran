@@ -50,7 +50,7 @@ if __name__ == "__main__":
     wandb = True
     tags = []
     override_dm_params = False
-    description = f"main litsmc run"
+    description = "main litsmc run"
     # plan['mode']
     # %%
     run_name = "LITS-1217"
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=devices,
-        epochs=600 if profiler == False else 1,
+        epochs=600 if not profiler else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
         wandb=wandb,
@@ -338,7 +338,7 @@ if __name__ == "__main__":
     if labels_all is None or len(labels_all) == 0:
         headline("Labels have not been collated. Doing it now")
         P.G.collate_lm_labels()
-    if not "mean_dataset_clipped" in P.global_properties.keys() or overwrite == True:
+    if "mean_dataset_clipped" not in P.global_properties.keys() or overwrite:
         P.G.store_projectwide_properties()
         P.G.compute_std_mean_dataset()
 # %%

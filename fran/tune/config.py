@@ -1,7 +1,6 @@
 # %%
 import sys
 
-import ipdb
 import numpy as np
 import yaml
 from fran.configs.parser import ConfigMaker
@@ -11,7 +10,7 @@ MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "tot
 if not sys.executable == "":  # workaround for slicer as it does not load ray tune
     from ray import tune
 
-from utilz.helpers import ast, pd, tr
+from utilz.helpers import ast, pd
 
 TUNE_VARS = [
     "base_ch_opts",
@@ -57,7 +56,7 @@ def out_channels_from_dict_or_cell(src_dest_labels):
 class RayTuneConfig(ConfigMaker):
     def __init__(self, project, configuration_filename=None):
         super().__init__(project, configuration_filename=configuration_filename)
-        if not "mom_low" in self.configs["model_params"].keys():
+        if "mom_low" not in self.configs["model_params"].keys():
             config = {
                 "mom_low": tune.sample_from(
                     lambda spec: np.random.uniform(0.6, 0.9100)

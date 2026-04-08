@@ -105,7 +105,7 @@ class DataManagerDualI(DataManagerDual):
         else:
             self.data_folder_valid = Path(data_folder_valid)
 
-        if save_hyperparameters == True:
+        if save_hyperparameters:
             self.save_hyperparameters(
                 "train1_indices", "project_title", "configs", logger=False
             )
@@ -160,7 +160,7 @@ class DataManagerDualI(DataManagerDual):
 
         train1_dicts = self.train_df.iloc[self.train1_indices].to_dict("records")
         train2_dicts = self.train_df[
-            self.train_df["used_in_training"] == False
+            not self.train_df["used_in_training"]
         ].to_dict("records")
 
         valid_dicts = self.create_data_dicts(
@@ -174,7 +174,7 @@ class DataManagerDualI(DataManagerDual):
 
     def _sync_train1_indices_from_df(self) -> None:
         self.train1_indices = pd.Index(
-            self.train_df.index[self.train_df["used_in_training"] == True]
+            self.train_df.index[self.train_df["used_in_training"]]
         )
 
     def add_train1_indices(self, indices) -> None:
@@ -196,7 +196,7 @@ class DataManagerDualI(DataManagerDual):
             self.train1_indices = pd.Index(idx)
 
     def access_dataframes(self):
-        existing_ = self.train_df.index[self.train_df["used_in_training"] == True]
+        existing_ = self.train_df.index[self.train_df["used_in_training"]]
         print("Already used in training {}".format(len(existing_)))
         self.train1_indices = create_pd_indices(self.train1_indices)
         if existing_.equals(self.train1_indices):
@@ -205,11 +205,11 @@ class DataManagerDualI(DataManagerDual):
             cprint("Using different indices", color="yellow", italic=True)
             self.update_dataframe_indices(self.train1_indices)
 
-        train1_dicts = self.train_df[self.train_df["used_in_training"] == True].to_dict(
+        train1_dicts = self.train_df[self.train_df["used_in_training"]].to_dict(
             "records"
         )
         train2_dicts = self.train_df[
-            self.train_df["used_in_training"] == False
+            not self.train_df["used_in_training"]
         ].to_dict("records")
         valid_dicts = self.valid_df.to_dict("records")
         return train1_dicts, train2_dicts, valid_dicts
@@ -665,13 +665,13 @@ if __name__ == "__main__":
     data = tmt.data_df.iloc[tmt.indices]
     data[:3].to_dict(orient="records")
     # %%
-    df.loc["in_use"] == True
-    bads = df.index[df["in_use"] == False]
+    df.loc["in_use"]
+    bads = df.index[not df["in_use"]]
 
     df.loc[bads]
     # %%
     df = tmt.data_df
-    ids = df.index[df["used_in_training"] == False]
+    ids = df.index[not df["used_in_training"]]
 
     df.loc[ids]["in_use"] = False
 

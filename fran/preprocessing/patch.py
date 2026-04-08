@@ -3,7 +3,6 @@ import os
 import shutil
 from pathlib import Path
 
-import ipdb
 import pandas as pd
 import ray
 import torch
@@ -20,7 +19,7 @@ from monai.transforms import SqueezeDimD
 from monai.transforms.spatial.dictionary import GridPatchd
 from monai.transforms.utility.dictionary import SplitDimD
 from utilz.cprint import cprint
-from utilz.fileio import load_dict, maybe_makedirs, save_dict, sitk, tr
+from utilz.fileio import load_dict, maybe_makedirs, save_dict, sitk
 from utilz.helpers import find_matching_fn, multiprocess_multiarg, pp
 from utilz.imageviewers import ImageMaskViewer, view_sitk
 from utilz.stringz import headline
@@ -111,7 +110,7 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
     def save_pt_patch(
         self, tnsr, fn_name, subfolder, contiguous=True, suffix: str = None
     ):
-        if contiguous == True:
+        if contiguous:
             tnsr = tnsr.contiguous()
         if hasattr(tnsr, "meta") and isinstance(tnsr.meta, dict):
             tnsr.meta = sanitize_meta_for_monai(dict(tnsr.meta))
@@ -542,7 +541,7 @@ if __name__ == "__main__":
     patch_overlap = [to_even(ol) for ol in patch_overlap]
     maybe_makedirs(PG.output_folder)
     PG.save_patches_config()
-    if overwrite == False:
+    if not overwrite:
         PG.remove_completed_cases()
     args = [
         [

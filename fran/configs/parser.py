@@ -2,13 +2,11 @@
 import ast
 from typing import Any
 
-import ipdb
 import numpy as np
 import pandas as pd
 from fran.configs.mnemonics import Mnemonics
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
-    infer_dataset_stats_window,
     postprocess_artifacts_missing,
 )
 from fran.utils.folder_names import (
@@ -154,10 +152,10 @@ def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
             remapping = TSL.create_remapping(
                 src, dest, as_list=as_list, as_dict=as_dict
             )
-        elif isinstance(remapping, dict) and as_dict == True:
+        elif isinstance(remapping, dict) and as_dict:
             remapping = remapping
         elif (
-            isinstance(remapping, list) and as_list == True and len(remapping) == 2
+            isinstance(remapping, list) and as_list and len(remapping) == 2
         ):  # its in correct format
             remapping = remapping
         elif remapping is None:
@@ -246,10 +244,9 @@ def make_patch_size(patch_dim0, patch_dim1):
 
 def get_imagelists_from_config(project, fold, patch_based, dim0, dim1):
     json_fname = project.validation_folds_filename
-    if patch_based == False:
+    if not patch_based:
         folder_name = project.stage1_folder / "{0}_{1}_{1}/images".format(
-            dim0, dim1, dim1
-        )
+            dim0, dim1, )
         train_list, valid_list, _ = get_train_valid_test_lists_from_json(
             project_title=project.project_title,
             fold=fold,
@@ -289,7 +286,7 @@ def load_config_from_worksheet(settingsfilename, sheet_name, engine="pd"):
     for row in df.iterrows():
         rr = row[1]
         rr = check_bool(rr)
-        var_type = rr["tune_type"]
+        rr["tune_type"]
         key = rr["var_name"]
         if sheet_name == "transform_factors":
             val = parse_excel_cell(rr["manual_value"])
@@ -471,7 +468,7 @@ class ConfigMaker:
         """Add preprocessing status column to plans dataframe"""
 
         preprocess = []
-        n_cases = len(self.project)
+        len(self.project)
 
         for plan_id in self.plans.index:
             self.setup(plan_id, False)
@@ -502,9 +499,9 @@ class ConfigMaker:
         data_folder_key = "data_folder_" + mode
         data_folder = ff[data_folder_key]
         missing = postprocess_artifacts_missing(data_folder)
-        create_gif = gif == True and missing["gif"] == True
-        create_label_stats = label_stats == True and missing["label_stats"] == True
-        if create_gif == False and create_label_stats == False:
+        create_gif = gif and missing["gif"]
+        create_label_stats = label_stats and missing["label_stats"]
+        if not create_gif and not create_label_stats:
             print("No artifacts to create")
             return missing
         create_dataset_stats_artifacts(

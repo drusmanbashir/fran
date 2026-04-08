@@ -3,19 +3,17 @@ import matplotlib
 
 matplotlib.use("Agg")  # Set non-interactive backend
 
-import ipdb
 from label_analysis.helpers import to_label
 
 import SimpleITK as sitk
 
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
-from utilz.itk_sitk import Path, tr
+from utilz.itk_sitk import Path
 
 sys.path += ["/home/ub/code"]
 
 # These are the usual ipython objects, including this one you are creating
 ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]
-import sys
 
 
 def overlay_img_pred(pred_fn, img_fn, out_fn):

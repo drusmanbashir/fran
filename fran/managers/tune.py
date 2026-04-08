@@ -35,8 +35,8 @@ def load_model_from_raytune_trial(folder_name, out_channels):
     params_dict = load_json(Path(folder_name) / "params.json")
     model = create_model_from_conf(params_dict, out_channels)
 
-    checkpoints_folder = folder_name / ("model_checkpoints")
-    chkpoint_filename = list((folder_name / ("model_checkpoints")).glob("model*"))[0]
+    folder_name / ("model_checkpoints")
+    list((folder_name / ("model_checkpoints")).glob("model*"))[0]
     load_checkpoint  # (folder_name / ("model_checkpoints"), model)
     # state_dict= torch.load(chkpoint_filename)
     # model.load_state_dict(state_dict['model'])
@@ -152,7 +152,7 @@ def train_with_tune(multi_gpu, neptune, max_num_epochs, proj_defaults, config):
     )
     lr = config["model_params"]["lr"]
     cbs = [TuneTrackerCallback(freq=6), TuneCheckpointCallback(freq=6)]
-    if neptune == True:
+    if neptune:
         cbs += [
             NeptuneCallback(
                 proj_defaults, config, run_name=tune.get_trial_name(), freq=6
@@ -174,10 +174,10 @@ def train_with_tune(multi_gpu, neptune, max_num_epochs, proj_defaults, config):
 
     learn = La.create_learner(cbs=cbs, device=None)
 
-    if multi_gpu == True:
+    if multi_gpu:
         learn.model = nn.DataParallel(learn.model)
 
-    if config["model_params"]["one_cycle"] == True:
+    if config["model_params"]["one_cycle"]:
         moms = (
             config["model_params"]["mom_high"],
             config["model_params"]["mom_low"],
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     import ray
 
     single_gpu = True
-    if single_gpu == True:
+    if single_gpu:
         ray.init(local_mode=True, num_cpus=1, num_gpus=2)
     debug_mode = False
     df_ray = pd.read_excel(

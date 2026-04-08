@@ -29,7 +29,7 @@ class EnsembleActor(object):
             debug=debug,
             overwrite_p=overwrite,
         )
-        preds = En.run(fnames)
+        En.run(fnames)
         return 1
 
 

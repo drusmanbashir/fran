@@ -12,7 +12,7 @@ def insert_plan_key(ckpt_fn):
 
     dic_tmp = torch.load(ckpt_fn)
     pp(dic_tmp.keys())
-    if not "plan" in dic_tmp["datamodule_hyper_parameters"].keys():
+    if "plan" not in dic_tmp["datamodule_hyper_parameters"].keys():
         print("No plan key. Adding")
         spacing = dic_tmp["datamodule_hyper_parameters"]["dataset_params"]["spacing"]
         dic_tmp["datamodule_hyper_parameters"]["plan"] = {"spacing": spacing}
@@ -457,7 +457,7 @@ if __name__ == "__main__":
     remove_loss_key_state_dict("LITS-911")
 
     pp(dic_tmp.keys())
-    if not "plan" in dic_tmp["datamodule_hyper_parameters"].keys():
+    if "plan" not in dic_tmp["datamodule_hyper_parameters"].keys():
         spacing = dic_tmp["datamodule_hyper_parameters"]["dataset_params"]["spacing"]
         dic_tmp["datamodule_hyper_parameters"]["plan"] = {"spacing": spacing}
         torch.save(dic_tmp, ckpt)

@@ -870,7 +870,7 @@ if __name__ == "__main__":
     batch_finder = False
     neptune = False
     tags = []
-    description = f""
+    description = ""
     config["dataset_params"]["batch_size"] = bs
     # %%
     # SECTION:-------------------- Dataloaders-------------------------------------------------------------------------------------- <CR> <CR> <CR>
@@ -967,7 +967,7 @@ if __name__ == "__main__":
     # %%
     class CAMTarget:
         def __call__(self, model_output):
-            output = model_output[0]
+            model_output[0]
 
             output_tumour = model_output[:, 2, :]
             return output_tumour.sum()

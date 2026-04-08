@@ -118,10 +118,8 @@ class StoreInfo(Callback):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        model = pl_module.model
 
         tr()
-        grad_z_normed = pl_module.loss_fnc.grad_L_z_normed
         # Gi_inside = model.grad_L_x * model.grad_sigma_z[0]
         # Gi_inside_normed_batch = [torch.linalg.norm(G) for G in Gi_inside]
         # # Gi_inside_normed = torch.stack(Gi_inside_normed_batch)
@@ -186,7 +184,7 @@ class UNetTrainer2(LightningModule):
         return super().on_after_backward()
 
     def maybe_store_preds(self, pred):
-        if hasattr(self.trainer, "store_preds") and self.trainer.store_preds == True:
+        if hasattr(self.trainer, "store_preds") and self.trainer.store_preds:
             if isinstance(pred, Union[tuple, list]):
                 self.pred = [p.detach().cpu() for p in pred]
             else:
@@ -373,7 +371,7 @@ class Trainer:
         cbs, logger, profiler = self.init_cbs(neptune, profiler, cbs, tags, description)
         self.D.prepare_data()
 
-        if self.config["model_params"]["compiled"] == True:
+        if self.config["model_params"]["compiled"]:
             self.N = torch.compile(self.N)
 
         self.trainer = TrainerL(
@@ -431,7 +429,7 @@ class Trainer:
             LearningRateMonitor(logging_interval="epoch"),
             TQDMProgressBar(refresh_rate=3),
         ]
-        if neptune == True:
+        if neptune:
             logger = NeptuneManager(
                 project=self.project,
                 run_id=self.run_name,
@@ -452,7 +450,7 @@ class Trainer:
         else:
             logger = None
 
-        if profiler == True:
+        if profiler:
             profiler = AdvancedProfiler(
                 dirpath=self.project.log_folder, filename="profiler"
             )
@@ -475,7 +473,7 @@ class Trainer:
             self.config["dataset_params"]["batch_size"] = batch_size
             # batch_size = self.config["dataset_params"]["batch_size"]
         if (
-            batchsize_finder == True
+            batchsize_finder
         ):  # note even if you set a batchsize, that will be overridden by this.
             batch_size = self.heuristic_batch_size()
             self.config["dataset_params"]["batch_size"] = batch_size
@@ -667,7 +665,7 @@ if __name__ == "__main__":
     tags = []
     cbs = [StoreInfo()]
     cbs = []
-    description = f""
+    description = ""
     # %%
     # SECTION:-------------------- IMPORTANCE SAMPLING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
@@ -677,7 +675,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=50 if profiler == False else 1,
+        epochs=50 if not profiler else 1,
         batchsize_finder=batch_finder,
         profiler=profiler,
         cbs=cbs,
@@ -999,7 +997,7 @@ if __name__ == "__main__":
     # %%
     idx = 0
     ds.set_bboxes_labels(idx)
-    if ds.enforce_ratios == True:
+    if ds.enforce_ratios:
         ds.mandatory_label = ds.randomize_label()
         ds.maybe_randomize_idx()
 

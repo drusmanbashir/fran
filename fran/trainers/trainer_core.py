@@ -312,7 +312,7 @@ class Trainer:
         early_stopping_min_delta=0.0,
         lr_floor=None,
     ):
-        if batchsize_finder == True:
+        if batchsize_finder:
             cbs += [
                 BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
                 BatchSizeSafetyMargin(buffer=1),
@@ -354,7 +354,7 @@ class Trainer:
             )
         logger = None
 
-        if profiler == True:
+        if profiler:
             profiler = AdvancedProfiler(
                 dirpath=self.project.log_folder, filename="profiler"
             )
@@ -435,7 +435,7 @@ class Trainer:
         raise NotImplementedError
 
     def init_trainer(self, epochs):
-        if self.test_every_n_epochs == True:
+        if self.test_every_n_epochs:
             unet_man = UNetManagerMulti
         else:
             unet_man = UNetManager
@@ -559,7 +559,7 @@ if __name__ == "__main__":
     batchsize_finder = False
     neptune = True
     tags = []
-    description = f"Partially trained up to 100 epochs"
+    description = "Partially trained up to 100 epochs"
     # %%
     # SECTION:-------------------- TOTALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     run_name = run_tsl
@@ -574,7 +574,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=600 if profiler == False else 1,
+        epochs=600 if not profiler else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
         neptune=neptune,
@@ -606,7 +606,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=600 if profiler == False else 1,
+        epochs=600 if not profiler else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
         neptune=neptune,
@@ -633,7 +633,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=[device_id],
-        epochs=600 if profiler == False else 1,
+        epochs=600 if not profiler else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
         neptune=neptune,

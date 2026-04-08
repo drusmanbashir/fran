@@ -40,7 +40,7 @@ from utilz.stringz import info_from_filename, str_to_path
 tr = ipdb.set_trace
 from pathlib import Path
 
-if is_hpc() == False:
+if not is_hpc():
     trash_fnc = send2trash
 else:
     trash_fnc = shutil.rmtree
@@ -226,7 +226,7 @@ class Project(DictToAttr):
         with db_ops(self.db) as cur:
             res = cur.execute(sql_str)
             output = res.fetchall()
-            if chain_output == True:
+            if chain_output:
                 output = list(il.chain.from_iterable(output))
         return output
 
@@ -572,7 +572,7 @@ class Project(DictToAttr):
     # @ask_proceed("Create train/valid folds (80:20) ")
     def _create_folds(self, pct_valid=0.15, shuffle=False, overwrite=False):
         self.delete_duplicates()
-        if overwrite == False:
+        if not overwrite:
             cases_unassigned = self.get_unassigned_cases()
         else:
             cases_unassigned = self.get_all_nontest_cases()
@@ -585,7 +585,7 @@ class Project(DictToAttr):
                     pct_valid, folds
                 )
             )
-            if shuffle == True:
+            if shuffle:
                 self.df_folds = self.df_folds.sample(frac=1).reset_index(drop=True)
             else:
                 self.df_folds = self.df_folds.sort_values("index")
@@ -986,7 +986,7 @@ class Project(DictToAttr):
             for e in exempted_tokens:
                 if e in str(folder):
                     exempt = True
-            if exempt == True:
+            if exempt:
                 folders_exempt.append(folder)
             else:
                 folders_non_exempt.append(folder)
@@ -1044,7 +1044,7 @@ class Project(DictToAttr):
             assert set(lm_groups) == set(self.datasources), (
                 "Expected all datasets {} in lm_groups".format(self.datasources)
             )
-            self.global_properties[f"lm_group1"] = lm_groups
+            self.global_properties["lm_group1"] = lm_groups
         print("LM groups created")
         for key in self.global_properties.keys():
             if "lm_group" in key:
@@ -1093,11 +1093,11 @@ class Project(DictToAttr):
         from fran.preprocessing.globalproperties import GlobalProperties
 
         self._create_folds()
-        labels_all = self.global_properties.get("labels_all", None)
+        self.global_properties.get("labels_all", None)
         self.G = GlobalProperties(self, max_cases=max_cases, clip_range=clip_range)
         if (
-            not "mean_dataset_clipped" in self.global_properties.keys()
-            or overwrite == True
+            "mean_dataset_clipped" not in self.global_properties.keys()
+            or overwrite
         ):
             self.G.store_projectwide_properties()
             self.G.compute_std_mean_dataset(multiprocess=multiprocess)

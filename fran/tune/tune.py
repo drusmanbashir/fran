@@ -53,7 +53,6 @@ def main(args):
 
     # C.add_dataset_props()
     num_epochs = 300
-    grace_period = 20
 
     tune_fn_with_params = tune.with_parameters(
         train_with_tune, project_title=P.project_title, num_epochs=num_epochs
@@ -77,7 +76,7 @@ def main(args):
         ),
         param_space=conf,
     )
-    results = tuner.fit()
+    tuner.fit()
 
 
 def load_model_from_raytune_trial(folder_name, out_channels):
@@ -205,7 +204,7 @@ def train_with_tune(config, project_title, num_epochs=10):
     neptune = False
     override_dm = False
     tags = []
-    description = f"Ray tune"
+    description = "Ray tune"
     Tm = RayTrainer(project_title, config, None)
     devices = 1
 

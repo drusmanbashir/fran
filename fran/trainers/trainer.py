@@ -35,7 +35,6 @@ from lightning.pytorch.callbacks import (
     ModelCheckpoint,
 )
 from lightning.pytorch.profilers import AdvancedProfiler
-from utilz.cprint import cprint
 from utilz.stringz import headline
 
 
@@ -338,13 +337,13 @@ class Trainer:
                 vip_label=self.configs["plan_train"].get("vip_label", 1), freq=2
             )
         ]
-        if batchsize_finder == True:
+        if batchsize_finder:
             cbs += [
                 BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
                 BatchSizeSafetyMargin(),
             ]
 
-        if self.debug == True:
+        if self.debug:
             cbs += [DebugEpochBatchLimit(n=10)]
 
         cbs += [
@@ -594,7 +593,7 @@ if __name__ == "__main__":
     run_name = None
     run_name="TOTALSEG-FREHA"
     tags = []
-    description = f""
+    description = ""
     conf["dataset_params"]["fold"] = 0
     lr = None
     debug_ = False
@@ -618,7 +617,7 @@ if __name__ == "__main__":
         debug=debug_,
         batch_size=bs,
         devices=[device_id],
-        epochs=600 if profiler == False else 1,
+        epochs=600 if not profiler else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
         wandb=wandb,

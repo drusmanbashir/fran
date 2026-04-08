@@ -392,7 +392,7 @@ class IncrementalTrainer(Trainer):
     def fit(self, max_restarts=3):
         increment_size = self.data_increment_size
         unused_samples = len(
-            self.D.train_df[self.D.train_df["used_in_training"] == False]
+            self.D.train_df[not self.D.train_df["used_in_training"]]
         )
         while unused_samples > 0:
             if not hasattr(self, "D"):
@@ -422,15 +422,15 @@ class IncrementalTrainer(Trainer):
             dm.update_dataframe_indices(indices_new)
             # self.trainer.save_checkpoint(str(self.ckpt))
             unused_samples = len(
-                self.D.train_df[self.D.train_df["used_in_training"] == False]
+                self.D.train_df[not self.D.train_df["used_in_training"]]
             )
             used_indices = self.D.train_df[
-                self.D.train_df["used_in_training"] == True
+                self.D.train_df["used_in_training"]
             ].index
             self.train1_indices = list(used_indices)
             increment_size = min(self.data_increment_size, unused_samples)
             cprint(
-                len(dm.train_df[dm.train_df["used_in_training"] == True]),
+                len(dm.train_df[dm.train_df["used_in_training"]]),
                 color="blue",
                 bold=True,
             )
@@ -519,7 +519,7 @@ if __name__ == "__main__":
     wandb = True
     override_dm = False
     tags = []
-    description = f"first run on partial ds"
+    description = "first run on partial ds"
 
     conf["plan_train"]
 
@@ -586,7 +586,7 @@ if __name__ == "__main__":
     ds[0]
     tmt = Tm.D.train_manager1
 
-    unused_samples = len(Tm.D.train_df[Tm.D.train_df["used_in_training"] == False])
+    unused_samples = len(Tm.D.train_df[not Tm.D.train_df["used_in_training"]])
     # %%
 
     dm = trainer.datamodule
@@ -712,7 +712,7 @@ if __name__ == "__main__":
     worst_case_ids = dice_loss[:n_samples].index
     indices_new = dm.train_df[dm.train_df["case_id"].isin(worst_case_ids)].index
     dm.update_dataframe_indices(indices_new)
-    len(dm.train_df[dm.train_df["used_in_training"] == True])
+    len(dm.train_df[dm.train_df["used_in_training"]])
     Tm.fit()
     # %%
     cir.dfs["train2"].to_csv("train2.csv")
@@ -757,7 +757,7 @@ if __name__ == "__main__":
     tmg.data_df.columns
     tmg.setup(stage="fit")
     df = tmg.data_df
-    df.loc[df["used_in_training"] == True, "image"]
+    df.loc[df["used_in_training"], "image"]
     tmg.create_incremental_dataloaders()
     len(tmg.ds[0])
     # %%
@@ -781,7 +781,7 @@ if __name__ == "__main__":
     # %%p""
     # %%
 
-    used_indices = Tm.D.train_df[Tm.D.train_df["used_in_training"] == True].index
+    used_indices = Tm.D.train_df[Tm.D.train_df["used_in_training"]].index
     # %%
 
     sd = torch.load(Tm.ckpt, map_location="cpu")

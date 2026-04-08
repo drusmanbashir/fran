@@ -5,7 +5,6 @@ from typing import Hashable, Mapping
 import numpy as np
 import torch
 from fran.transforms.base import (
-    ItemTransform,
     MonaiDictTransform,
     Transform,
 )
@@ -14,8 +13,6 @@ from monai.data.meta_obj import get_track_meta
 from monai.transforms import MapTransform, RandomizableTransform
 from monai.transforms.intensity.array import RandGaussianNoise
 from monai.utils.type_conversion import convert_to_tensor
-from scipy.ndimage.filters import gaussian_filter
-from torch.functional import Tensor
 
 
 class NormaliseClip(Transform):

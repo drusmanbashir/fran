@@ -262,7 +262,7 @@ if __name__ == "__main__":
         def _process(self,*tnsr_list):
             output=[]
             for tnsr in tnsr_list:
-                if self.mask_first==True:
+                if self.mask_first:
                     mask , img= tnsr[:,0:1,:], tnsr[:,1:,:]
                     mask = one_hot(mask,self.n_classes, axis = 1 ,fnc=torch.cat)
                     mask = mask.to(img.dtype)

@@ -268,7 +268,7 @@ def show_images_with_boxes(input_tensor, output_tensor):
             ):  # if the class index does not exist, don't draw anything:
                 continue
 
-            color = (  # green color when confident, red color when not confident.
+            (  # green color when confident, red color when not confident.
                 int((1 - (confidence.item()) ** 0.8) * 255),
                 int((confidence.item()) ** 0.8 * 255),
                 0,
@@ -325,7 +325,7 @@ def show_image_with_boxes(input_tensor, output_tensor):
             ):  # if the class index does not exist, don't draw anything:
                 continue
 
-            color = (  # green color when confident, red color when not confident.
+            (  # green color when confident, red color when not confident.
                 int((1 - (confidence.item()) ** 0.8) * 255),
                 int((confidence.item()) ** 0.8 * 255),
                 0,
@@ -430,8 +430,8 @@ def load_weights(
     network, filename="/s/fran_storage/checkpoints/detection/yolov2-tiny-voc.weights"
 ):
     with open(filename, "rb") as file:
-        version = np.fromfile(file, count=3, dtype=np.int32)
-        seen_so_far = np.fromfile(file, count=1, dtype=np.int32)
+        np.fromfile(file, count=3, dtype=np.int32)
+        np.fromfile(file, count=1, dtype=np.int32)
         weights = np.fromfile(file, dtype=np.float32)
         idx = 0
         print("loading weights")

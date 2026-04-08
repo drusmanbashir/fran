@@ -167,7 +167,7 @@ class BaseInferer(DictToAttr):
             self.params = load_params(run_name)
         else:
             self.params = params
-        assert not (safe_mode == True and save_channels == True), (
+        assert not (safe_mode and save_channels), (
             "Safe mode cannot be used with save_channels"
         )
         self.plan = fix_ast(self.params["configs"]["plan_train"], ["spacing"])
@@ -181,7 +181,7 @@ class BaseInferer(DictToAttr):
         else:
             self.project = infer_project(self.params)
         sw_device = "cuda"
-        if safe_mode == True:
+        if safe_mode:
             cprint(
                 "================================================================\nSafe mode is on. Stitching will be on CPU. Slower speed expected\n=================================================",
                 bg="red",
@@ -222,16 +222,16 @@ class BaseInferer(DictToAttr):
         self.preprocess_tfms_keys = self.keys_preproc
 
     def set_postprocess_tfms_keys(self):
-        if self.safe_mode == False:
+        if not self.safe_mode:
             self.postprocess_tfms_keys = self.keys_postproc
         else:
             self.postprocess_tfms_keys = self.keys_postproc_safe
         # self.postprocess_tfms_keys = "Sq,A,Re,Int"
-        if self.save_channels == True:
+        if self.save_channels:
             self.postprocess_tfms_keys += ",SaM"
         if self.k_largest is not None:
             self.postprocess_tfms_keys += ",K"
-        if self.save == True:
+        if self.save:
             self.postprocess_tfms_keys += ",Sav"
 
     def set_postprocess_transforms(self):
@@ -276,7 +276,7 @@ class BaseInferer(DictToAttr):
 
     def maybe_filter_images(self, imgs, overwrite=False):
         imgs = listify(imgs)
-        if overwrite == False and (
+        if not overwrite and (
             isinstance(imgs[0], str) or isinstance(imgs[0], Path)
         ):
             imgs = filter_existing_files(imgs, self.output_folder)
@@ -301,7 +301,7 @@ class BaseInferer(DictToAttr):
         return output
 
     def postprocess(self, preds):
-        if self.debug == False:
+        if not self.debug:
             output = self.postprocess_compose(preds)
         else:
             output = self.postprocess_iterate(preds)
@@ -716,7 +716,7 @@ if __name__ == "__main__":
         device=device,
     )
 # %%
-    if overwrite == False and (isinstance(imgs[0], str) or isinstance(imgs[0], Path)):
+    if not overwrite and (isinstance(imgs[0], str) or isinstance(imgs[0], Path)):
         imgs = T.filter_existing_preds(imgs)
     imgs = list_to_chunks(imgs, 4)
     # for imgs_sublist in imgs:
@@ -753,7 +753,7 @@ if __name__ == "__main__":
     logits = logits[0]  # model has deep supervision only 0 channel is needed
     # Collapse channels early; keep on same device
 # %%
-    if T.safe_mode == True or T.save_channels == False:
+    if T.safe_mode or not T.save_channels:
         labels = torch.argmax(logits, dim=1, keepdim=True)
         labels = labels.to(torch.uint8)
         batch["pred"] = labels
@@ -810,7 +810,7 @@ if __name__ == "__main__":
 
 # %%
     out_final = []
-    if T.save_channels == True:
+    if T.save_channels:
         tfms = [Sq, Sa, A, D, I]
     else:
         tfms = [Sq, A, D, I]
@@ -819,7 +819,7 @@ if __name__ == "__main__":
             keys=["pred"], independent=False, num_components=T.k_largest
         )  # label=1 is the organ
         tfms.insert(-1, K)
-    if T.safe_mode == True:
+    if T.safe_mode:
         tfms.insert(0, U)
     else:
         tfms.append(U)

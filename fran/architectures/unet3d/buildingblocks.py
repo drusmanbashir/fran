@@ -484,7 +484,7 @@ class Decoder(nn.Module):
             # concat joining
             self.joining = partial(self._joining, concat=True)
 
-        if deep_supervision == True:
+        if deep_supervision:
             pass
             # self.deep_supervision = nn.Conv3d(in_channels=out_channels,kernel_size=1,stride=1,bias=False)
         else:
@@ -581,7 +581,7 @@ def create_encoders(
     heavy,
 ):
     # create encoder path consisting of Encoder modules. Depth of the encoder is equal to `len(f_maps)`
-    Enc = EncoderHeavy if heavy == True else Encoder
+    Enc = EncoderHeavy if heavy else Encoder
     encoders = []
     for i, out_feature_num in enumerate(f_maps):
         if i == 0:

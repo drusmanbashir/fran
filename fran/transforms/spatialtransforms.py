@@ -3,21 +3,15 @@ import math
 
 import ipdb
 import monai.transforms.spatial.functional as fm
-import skimage.transform as tf
 import torch.nn.functional as F
 from fran.transforms.base import ItemTransform, KeepBBoxTransform, MonaiDictTransform, Union, np, torch
-from monai.config.type_definitions import KeysCollection, SequenceStr
-from monai.data.meta_obj import get_track_meta
-from monai.data.meta_tensor import MetaTensor
-from monai.transforms.croppad.array import CropForeground, SpatialPad
-from monai.transforms.inverse import InvertibleTransform
+from monai.config.type_definitions import KeysCollection
+from monai.transforms.croppad.array import CropForeground
 from monai.transforms.transform import (
-    LazyTransform,
     MapTransform,
     Randomizable,
     RandomizableTransform,
 )
-from monai.utils.enums import LazyAttr, Method, PytorchPadMode, TraceKeys
 from torch import cos, pi, sin
 
 # from utilz.fileio import *
@@ -25,7 +19,7 @@ from utilz.helpers import load_dict
 from utilz.stringz import int_to_str
 
 tr = ipdb.set_trace
-from monai.transforms.croppad.dictionary import Padd, RandSpatialCropd
+from monai.transforms.croppad.dictionary import RandSpatialCropd
 
 
 def _resize3d(data, spatial_shape, mode):
@@ -500,7 +494,7 @@ class PadDeficitImgMask(KeepBBoxTransform):
                 arr = F.pad(arr, pad_deficits, value=pv)
                 padded_arrays.append(arr)
             x = padded_arrays
-        if self.return_padding_array == True:
+        if self.return_padding_array:
             x.append(pad_deficits)
         return x
 
