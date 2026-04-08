@@ -23,20 +23,25 @@ from monai.transforms.spatial.dictionary import RandFlipd, RandRotated, RandZoom
 from monai.transforms.utility.dictionary import (
     DeleteItemsd,
     EnsureChannelFirstd,
+    MapTransform,
     EnsureTyped,
-    RepeatChanneld,
 )
 from torch.utils.data import random_split
 
-from fran.localiser.data.lidc import DetectDS, PreprocessorPT2JPG, write_list_to_txt
 
 tr = ipdb.set_trace
+from fran.localiser.preprocessing.data.pt2jpg import PreprocessorPT2JPG
+from fran.localiser.preprocessing.data.nii2pt_tsl import TSLRegions
 
 
-class DetectDataModuleTSL(PreprocessorPT2JPG):
-    keys_tr = "L,MkB,Et,Et2,N,IntensityTfms,Flip1,Flip2,Zoom,Resize,ExtractBbox,CB,YoloBboxes,Rp"
-    keys_val = "L,MkB,Et,Et2,N,Resize,ExtractBbox,CB,YoloBboxes,DelI,Rp"
+class PreprocessorPT2JPG_TSL(PreprocessorPT2JPG):
+    keys_tr = "L,MkB,Et,Et2,N,Flip1,Flip2,Zoom,Resize,ExtractBbox,CB,YoloBboxes"
+    keys_val = "L,MkB,Et,Et2,N,Resize,ExtractBbox,CB,YoloBboxes,DelI"
 
+    def __init__(self, data_dir: str = "./", batch_size: int = 4):
+        super().__init__(data_dir=data_dir, batch_size=batch_size)
+        self.tsl_regions = TSLRegions()
+        self.data_yaml = self.tsl_regions.data_yaml
     def create_transforms(self, probs=0.3, probs_intensity=0.3):
         image_key = "image"
         label_key = "lm"
@@ -99,7 +104,6 @@ class DetectDataModuleTSL(PreprocessorPT2JPG):
             RandShiftIntensityd(keys="image", offsets=0.1, prob=probs_int),
             RandAdjustContrastd(["image"], gamma=(0.7, 1.5)),
         ]
-        Rp = RepeatChanneld(keys=[image_key], repeats=3)
         DelI = DeleteItemsd(keys=[label_key])
         self.transforms_dict = {
             "N": N,
@@ -119,7 +123,6 @@ class DetectDataModuleTSL(PreprocessorPT2JPG):
             "Flip1": Flip1,
             "Flip2": Flip2,
             "Resize": Resize,
-            "Rp": Rp,
         }
 
     def set_transforms(self, keys_tr: str, keys_val: str):
@@ -144,26 +147,8 @@ class DetectDataModuleTSL(PreprocessorPT2JPG):
         return rows
 
     def data_yaml_lines(self):
-        lines = ["names:"]
-        for class_name in self.class_names:
-            lines.append("- " + class_name)
-        lines.extend(
-            [
-                "nc: " + str(len(self.class_names)),
-                "test: ../test/images",
-                "train: ../train/images",
-                "val: ../valid/images",
-                "",
-            ]
-        )
-        return lines
+        return self.tsl_regions.data_yaml_lines()
 
-    @property
-    def class_names(self):
-        return [
-            "class0",
-            "class1",
-            "class2",
-            "class3",
-            "class4",
-        ]
+    def write_data_yaml(self, out_dir):
+        with open(out_dir / "data.yaml", "w") as f:
+            f.write(self.data_yaml)

@@ -1,7 +1,8 @@
 from fran.data.dataregistry import DS
 from pathlib import Path
 
-from fran.localiser.data import DetectDataModule, PreprocessorNII2PT
+from fran.localiser.preprocessing.data.nii2pt import PreprocessorNII2PT
+from fran.localiser.preprocessing.data.pt2jpg import DetectDataModule
 
 
 if __name__ == "__main__":

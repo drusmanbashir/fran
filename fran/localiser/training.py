@@ -1,6 +1,4 @@
 # %%
-
-
 # Use the model
 # results = model.train(data="coco128.yaml", epochs=3)  # train the model
 # results = model.val()  # evaluate model performance on the validation set
@@ -11,6 +9,7 @@ import torch
 from fran.transforms.spatialtransforms import Project2D
 from utilz.imageviewers import ImageMaskViewer
 if __name__ == "__main__":
+    import os
     from pathlib import Path
 
     import SimpleITK as sitk
@@ -18,10 +17,11 @@ if __name__ == "__main__":
     from roboflow import Roboflow
     from torch.nn.functional import interpolate
     from ultralytics import YOLO
+    from utilz.fileio import load_yaml
 
 # %%
 # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
-    fn = "/s/fran_storage/roboflow.txt"
+    fn = "/s/fran_storage/conf/roboflow.txt"
 
     with open(fn, "r") as fl:
         api_k = fl.read().strip()
@@ -30,16 +30,74 @@ if __name__ == "__main__":
     project = rf.workspace("roboflow-100").project("parasites-1s07h")
     version = project.version(2)
     ds_location = Path("/s/fran_storage/parasites-2")
-    model = YOLO("yolo11n.pt")
     imsize = 256
+    device = 0
+    n_workers = 16
+    bs =256
+    data_folder = Path("/s/xnat_shadow/totalseg2d")
+    data_spec = data_folder / "jpg/data.yaml"
+    project_name = "totalseg_localiser"
+    single_cls = False
+    # Ultralytics keeps label-validation results in labels.cache and does not
+    # invalidate on class-count/name changes, so clear stale caches each run.
+    for cache_fn in (
+        data_folder / "jpg/train/labels.cache",
+        data_folder / "jpg/valid/labels.cache",
+        data_folder / "jpg/test/labels.cache",
+    ):
+        if cache_fn.exists():
+            cache_fn.unlink()
 # %%
+    n_epochs = 500
+    common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
+    COMMON_PATHS = load_yaml(common_vars_filename)
+    yolo_projec_folder = Path(COMMON_PATHS["yolo_output_folder"]) / project_name
+    resume_ckpt = None
+    # resume_ckpt = Path("/s/fran_storage/yolo_output/totalseg_localiser/train4/weights/last.pt")
+    patience = 40
+    optimiser = "AdamW"
+    lr0 = 1e-3
+    lrf = 1e-2
+    weight_decay = 5e-4
+    warmup_epochs = 3
+    close_mosaic = 10
+    mosaic = 0.5
+    scale = 0.2
+    translate = 0.1
+    fliplr = 0.5
+    cache = True
+    seed = 0
+    deterministic = True
+    plots = True
+    cos_lr = True
+    model = YOLO("yolo11n.pt") if resume_ckpt is None else YOLO(str(resume_ckpt))
 # %%
 # SECTION:-------------------- TRAIN--------------------------------------------------------------------------------------
     results = model.train(
-        data="/s/xnat_shadow/lidc2d_yolo/data.yaml",
-        epochs=100,
+        data=data_spec,
+        epochs=n_epochs,
         imgsz=imsize,
-        project="/s/yolo11_localiser",
+        project=yolo_projec_folder,
+        batch=bs,
+        device=device,
+        workers=n_workers,
+        patience=patience,
+        optimizer=optimiser,
+        lr0=lr0,
+        lrf=lrf,
+        weight_decay=weight_decay,
+        warmup_epochs=warmup_epochs,
+        close_mosaic=close_mosaic,
+        mosaic=mosaic,
+        scale=scale,
+        translate=translate,
+        fliplr=fliplr,
+        cache=cache,
+        seed=seed,
+        deterministic=deterministic,
+        plots=plots,
+        cos_lr=cos_lr,
+        resume=resume_ckpt is not None,
     )
     # yolo task=detect mode=train model=yolo11s.pt data=/s/fran_storage/parasites-2/data.yaml epochs=40 imgsz=640 plots=True
 # %%
@@ -56,7 +114,7 @@ if __name__ == "__main__":
     tnsr = torch.from_numpy(arr)  # Convert to PyTorch tensor
 
     tnsr = tnsr.float()
-    tnsr2d = torch.mean(tnsr,dim=0)  
+    tnsr2d = torch.mean(tnsr,dim=1)  
     t2 = tnsr2d
     t2 = t2.unsqueeze(0).unsqueeze(0)  # Add channel dimension [1,H,W]
     t2.shape
@@ -89,8 +147,9 @@ if __name__ == "__main__":
 
     # Run infrence
     res = model(t3)[0]
-    rr = res[0]
-    rr.save()
+# %%
+    rr = res[3]
+    # rr.save()
     bbox = rr.boxes
     rr.show()
 # %%
@@ -114,5 +173,3 @@ if __name__ == "__main__":
     # Display the image
     sv.plot_image(annotated_image)
 # %%
-
-

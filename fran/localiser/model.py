@@ -3,9 +3,9 @@
 import lightning as L
 import torch
 
-from fran.localiser.preprocessing.data import DetectDataModule
 from fran.localiser.helpers import filter_boxes, load_bboxes_batch, load_image_batch, load_weights, nms, np, plt, show_image_with_boxes, show_images, show_images_with_boxes
 from fran.localiser.loss import YOLOLoss
+from fran.localiser.preprocessing.data.pt2jpg import DetectDataModule
 from torch.optim.lr_scheduler import OneCycleLR
 
 
@@ -247,7 +247,7 @@ if __name__ == "__main__":
     import glob
 
     import matplotlib.pyplot as plt
-    from fran.localiser.data import DetectDataModule
+    from fran.localiser.preprocessing.data.pt2jpg import DetectDataModule
     from lightning.pytorch.callbacks import (
         LearningRateMonitor,
         ModelCheckpoint,
@@ -464,9 +464,16 @@ if __name__ == "__main__":
 # %%
     import matplotlib.pyplot as plt
 
+    import torch
     plt.ion()
     # matplotlib.use('Agg')
     import matplotlib.image as mpimg
+    fn = "/s/xnat_shadow/totalseg2d/pt/images/totalseg_s0230_b1.pt"
+    img = torch.load(fn, weights_only=False)
+    img1 = img[0].permute(0, 1 ).numpy()
+    plt.imshow(img1)
+
+    
 
     pil_img = mpimg.imread(
         "/s/datasets_bkp/VOCdevkit/VOC2007/SegmentationObject/000039.png"
@@ -495,4 +502,3 @@ if __name__ == "__main__":
     show_images_with_boxes(input_tensor, nms_tensor)
 
 # %%
-

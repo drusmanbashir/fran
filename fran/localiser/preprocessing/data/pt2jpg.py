@@ -104,6 +104,7 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         outputsize = [512, 512]
         probs_int = probs_intensity
 
+        N = NormalizeIntensityd([image_key])
         L = LoadTorchd([image_key, label_key])
         E = EnsureChannelFirstd(keys=[image_key])
         MkB = MakeBinary([label_key])
@@ -145,7 +146,6 @@ class PreprocessorPT2JPG(L.LightningDataModule):
             mode=["bilinear", "nearest"],
             lazy=True,
         )
-        N = NormalizeIntensityd(keys=[image_key])
         int_augs = [
             RandGaussianSmoothd(
                 keys=[image_key],

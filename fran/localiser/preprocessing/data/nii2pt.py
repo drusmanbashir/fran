@@ -8,7 +8,8 @@ import ray
 import torch
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.spatialtransforms import Project2D
-from monai.transforms import Compose
+from monai.transforms import Compose, Transform
+
 from monai.transforms.intensity.dictionary import NormalizeIntensityd
 from monai.transforms.spatial.dictionary import Orientationd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
@@ -25,6 +26,28 @@ def tfms_from_dict(keys, transforms_dict):
     return Compose(tfms)
 
 
+class WindowTensor3Channeld(Transform):
+    def __init__(self, image_key ):
+        self.windows = {
+            "b": [-450.0, 1050.0],
+            "c": [-1350.0, 150.0],
+            "a": [-150.0, 250.0],
+        }
+        self.image_key = image_key
+
+    def __call__(self, data):
+        image = data[self.image_key]
+
+        outs = []
+        for L, U in self.windows.values():
+            img = torch.clamp(image, L, U)
+            img = (img - L) / (U - L)
+            outs.append(img)
+
+        data[self.image_key] = torch.cat(outs, dim=0)
+        return data
+
+
 class _PreprocessorNII2PTWorkerBase:
     def __init__(self, output_folder, device="cpu", debug=False):
         self.output_folder = Path(output_folder)
@@ -37,7 +60,7 @@ class _PreprocessorNII2PTWorkerBase:
         self.transforms = tfms_from_dict(self.tfms_keys, self.transforms_dict)
 
     def worker_tfms_keys(self):
-        return "L,E,O,N,P1,P2,P3"
+        return "L,E,O,Win,P1,P2"
 
     def create_transforms(self, device="cpu"):
         self.L = LoadSITKd(keys=[self.image_key, self.lm_key])
@@ -45,8 +68,8 @@ class _PreprocessorNII2PTWorkerBase:
             keys=[self.image_key, self.lm_key], channel_dim="no_channel"
         )
         self.O = Orientationd(keys=[self.image_key, self.lm_key], axcodes="RAS")
+        self.N = NormalizeIntensityd(keys=[self.image_key])
         self.Dev = ToDeviced(keys=[self.image_key, self.lm_key], device=device)
-        self.N = NormalizeIntensityd([self.image_key])
         self.P1 = Project2D(
             keys=[self.lm_key, self.image_key],
             operations=["mean", "sum"],
@@ -65,15 +88,20 @@ class _PreprocessorNII2PTWorkerBase:
             dim=3,
             output_keys=["lm3", "image3"],
         )
+        self.Win = WindowTensor3Channeld(image_key=self.image_key)
+        # Axial XY projection is kept for reference but not used:
+        # it is a top-down/bottom-up view after RAS orientation and is not informative for YOLO.
         self.transforms_dict = {
             "L": self.L,
             "E": self.E,
             "O": self.O,
-            "Dev": self.Dev,
             "N": self.N,
+            "Dev": self.Dev,
             "P1": self.P1,
             "P2": self.P2,
             "P3": self.P3,
+            "Win": self.Win,
+
         }
 
     def save_pt(self, tnsr, subfolder, suffix):
@@ -82,12 +110,29 @@ class _PreprocessorNII2PTWorkerBase:
         out_fn = self.output_folder / subfolder / fn_name
         torch.save(tnsr.contiguous(), out_fn)
 
+    def image_suffixes(self):
+        if "Win" in self.tfms_keys:
+            suffixes = []
+            for window in self.Win.windows.keys():
+                for projection in [1, 2]:
+                    suffixes.append(f"{window}{projection}")
+            return suffixes
+        return [1, 2]
+
     def _process_row(self, row):
         dici = {"image": row["image"], "lm": row["lm"]}
         dici = self.transforms(dici)
-        for suffix in [1, 2, 3]:
-            self.save_pt(dici["image" + str(suffix)], "images", suffix)
-            self.save_pt(dici["lm" + str(suffix)], "lms", suffix)
+        for projection in [1, 2]:
+            image = dici["image" + str(projection)]
+            lm = dici["lm" + str(projection)]
+            if "Win" in self.tfms_keys:
+                for window_ind, window in enumerate(self.Win.windows.keys()):
+                    suffix = f"{window}{projection}"
+                    self.save_pt(image[[window_ind]], "images", suffix)
+                    self.save_pt(lm, "lms", suffix)
+            else:
+                self.save_pt(image, "images", projection)
+                self.save_pt(lm, "lms", projection)
         return {"case_id": row["case_id"], "ok": True}
 
     def process(self, df):
@@ -117,7 +162,6 @@ class PreprocessorNII2PT:
         self.output_fldr_lms = self.output_folder / "lms"
         self.actor_cls = PreprocessorNII2PTWorker
         self.local_worker_cls = PreprocessorNII2PTWorkerLocal
-
     def _df_from_folder(self):
         return create_df_from_folder(self.data_folder)
 
@@ -134,13 +178,10 @@ class PreprocessorNII2PT:
 
     def register_existing_files(self):
         existing = []
-        for suffix in [1, 2, 3]:
-            imgs = {
-                p.name for p in self.output_fldr_imgs.glob("*_" + str(suffix) + ".pt")
-            }
-            lms = {
-                p.name for p in self.output_fldr_lms.glob("*_" + str(suffix) + ".pt")
-            }
+        for suffix in self.local_worker_cls(self.output_folder).image_suffixes():
+            suffix = str(suffix)
+            imgs = {p.name for p in self.output_fldr_imgs.glob("*_" + suffix + ".pt")}
+            lms = {p.name for p in self.output_fldr_lms.glob("*_" + suffix + ".pt")}
             existing.append(imgs.intersection(lms))
         self.existing_output_fnames = set.intersection(*existing) if existing else set()
         print("Output folder: ", self.output_folder)
@@ -153,9 +194,10 @@ class PreprocessorNII2PT:
         if not getattr(self, "existing_output_fnames", None):
             return
         n_before = len(self.df)
+        suffix = self.local_worker_cls(self.output_folder).image_suffixes()[0]
         keep_mask = self.df["image"].apply(
             lambda x: (
-                strip_extension(Path(x).name) + "_1.pt"
+                strip_extension(Path(x).name) + "_" + str(suffix) + ".pt"
                 not in self.existing_output_fnames
             )
         )
@@ -209,9 +251,3 @@ class PreprocessorNII2PT:
             [item for sublist in self.results for item in sublist]
         )
         return self.results_df
-
-
-_Preprocessor2DWorkerBase = _PreprocessorNII2PTWorkerBase
-Preprocessor2DWorker = PreprocessorNII2PTWorker
-Preprocessor2DWorkerLocal = PreprocessorNII2PTWorkerLocal
-Preprocessor2D = PreprocessorNII2PT
