@@ -45,6 +45,8 @@ class WindowTensor3Channeld(Transform):
             outs.append(img)
 
         data[self.image_key] = torch.cat(outs, dim=0)
+        if hasattr(data[self.image_key], "meta"):
+            data[self.image_key].meta["original_channel_dim"] = 0
         return data
 
 
@@ -111,12 +113,6 @@ class _PreprocessorNII2PTWorkerBase:
         torch.save(tnsr.contiguous(), out_fn)
 
     def image_suffixes(self):
-        if "Win" in self.tfms_keys:
-            suffixes = []
-            for window in self.Win.windows.keys():
-                for projection in [1, 2]:
-                    suffixes.append(f"{window}{projection}")
-            return suffixes
         return [1, 2]
 
     def _process_row(self, row):
@@ -125,14 +121,8 @@ class _PreprocessorNII2PTWorkerBase:
         for projection in [1, 2]:
             image = dici["image" + str(projection)]
             lm = dici["lm" + str(projection)]
-            if "Win" in self.tfms_keys:
-                for window_ind, window in enumerate(self.Win.windows.keys()):
-                    suffix = f"{window}{projection}"
-                    self.save_pt(image[[window_ind]], "images", suffix)
-                    self.save_pt(lm, "lms", suffix)
-            else:
-                self.save_pt(image, "images", projection)
-                self.save_pt(lm, "lms", projection)
+            self.save_pt(image, "images", projection)
+            self.save_pt(lm, "lms", projection)
         return {"case_id": row["case_id"], "ok": True}
 
     def process(self, df):

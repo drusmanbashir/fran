@@ -674,7 +674,9 @@ if __name__ == "__main__":
 # SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
     run = run_nodes2[0]
     run = run_nodes3[0]
+    run_nodes = best_runs["nodes"]["run_ids"]
     run = run_nodes[0]
+
 
     debug_ = False
 

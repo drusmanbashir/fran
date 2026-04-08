@@ -468,12 +468,14 @@ if __name__ == "__main__":
     plt.ion()
     # matplotlib.use('Agg')
     import matplotlib.image as mpimg
-    fn = "/s/xnat_shadow/totalseg2d/pt/images/totalseg_s0230_b1.pt"
+# %%
+    fn = "/s/xnat_shadow/totalseg2d/pt/images/totalseg_s0003_c2.pt"
     img = torch.load(fn, weights_only=False)
     img1 = img[0].permute(0, 1 ).numpy()
     plt.imshow(img1)
 
     
+# %%
 
     pil_img = mpimg.imread(
         "/s/datasets_bkp/VOCdevkit/VOC2007/SegmentationObject/000039.png"

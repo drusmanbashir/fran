@@ -11,14 +11,7 @@ from monai.apps.detection.transforms.dictionary import ConvertBoxToStandardModed
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import BoundingRectd
-from monai.transforms.intensity.dictionary import (
-    NormalizeIntensityd,
-    RandAdjustContrastd,
-    RandGaussianNoised,
-    RandGaussianSmoothd,
-    RandScaleIntensityd,
-    RandShiftIntensityd,
-)
+from monai.transforms.intensity.dictionary import NormalizeIntensityd
 from monai.transforms.spatial.dictionary import RandFlipd, RandRotated, RandZoomd, Resized
 from monai.transforms.utility.dictionary import (
     DeleteItemsd,
@@ -35,20 +28,19 @@ from fran.localiser.preprocessing.data.nii2pt_tsl import TSLRegions
 
 
 class PreprocessorPT2JPG_TSL(PreprocessorPT2JPG):
-    keys_tr = "L,MkB,Et,Et2,N,Flip1,Flip2,Zoom,Resize,ExtractBbox,CB,YoloBboxes"
+    # keys_tr = "L,MkB,Et,Et2,N,Flip1,Flip2,Zoom,Resize,ExtractBbox,CB,YoloBboxes"
+    keys_tr = "L,MkB,Et,Et2,N,Resize,ExtractBbox,CB,YoloBboxes,DelI"
     keys_val = "L,MkB,Et,Et2,N,Resize,ExtractBbox,CB,YoloBboxes,DelI"
 
     def __init__(self, data_dir: str = "./", batch_size: int = 4):
         super().__init__(data_dir=data_dir, batch_size=batch_size)
         self.tsl_regions = TSLRegions()
         self.data_yaml = self.tsl_regions.data_yaml
-    def create_transforms(self, probs=0.3, probs_intensity=0.3):
+    def create_transforms(self, probs=0.3):
         image_key = "image"
         label_key = "lm"
         box_key = "lm_bbox"
         outputsize = [512, 512]
-        probs_int = probs_intensity
-
         L = LoadTorchd([image_key, label_key])
         E = EnsureChannelFirstd(keys=[image_key])
         MkB = MakeBinary([label_key])
@@ -91,19 +83,6 @@ class PreprocessorPT2JPG_TSL(PreprocessorPT2JPG):
             lazy=True,
         )
         N = NormalizeIntensityd(keys=[image_key])
-        int_augs = [
-            RandGaussianSmoothd(
-                keys=[image_key],
-                prob=probs_int,
-                sigma_x=(0.5, 1.0),
-                sigma_y=(0.5, 1.0),
-                sigma_z=(0.5, 1.0),
-            ),
-            RandScaleIntensityd(keys="image", factors=0.25, prob=probs_int),
-            RandGaussianNoised(keys=["image"], mean=0, prob=probs_int, std=0.1),
-            RandShiftIntensityd(keys="image", offsets=0.1, prob=probs_int),
-            RandAdjustContrastd(["image"], gamma=(0.7, 1.5)),
-        ]
         DelI = DeleteItemsd(keys=[label_key])
         self.transforms_dict = {
             "N": N,
@@ -119,7 +98,6 @@ class PreprocessorPT2JPG_TSL(PreprocessorPT2JPG):
             "CB": CB,
             "Rotate": Rotate,
             "Zoom": Zoom,
-            "IntensityTfms": int_augs,
             "Flip1": Flip1,
             "Flip2": Flip2,
             "Resize": Resize,
@@ -134,10 +112,7 @@ class PreprocessorPT2JPG_TSL(PreprocessorPT2JPG):
         tfms = []
         for key in keys:
             tfm = self.transforms_dict[key]
-            if key == "IntensityTfms":
-                tfms.extend(tfm)
-            else:
-                tfms.append(tfm)
+            tfms.append(tfm)
         return Compose(tfms)
 
     def format_bbox_rows(self, dici):

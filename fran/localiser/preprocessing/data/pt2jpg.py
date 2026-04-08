@@ -11,20 +11,12 @@ from monai.apps.detection.transforms.dictionary import ConvertBoxToStandardModed
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import BoundingRectd
-from monai.transforms.intensity.dictionary import (
-    NormalizeIntensityd,
-    RandAdjustContrastd,
-    RandGaussianNoised,
-    RandGaussianSmoothd,
-    RandScaleIntensityd,
-    RandShiftIntensityd,
-)
+from monai.transforms.intensity.dictionary import NormalizeIntensityd
 from monai.transforms.spatial.dictionary import RandFlipd, RandRotated, RandZoomd, Resized
 from monai.transforms.utility.dictionary import (
     DeleteItemsd,
     EnsureChannelFirstd,
     EnsureTyped,
-    RepeatChanneld,
 )
 from torch.utils.data import random_split
 from torchvision.utils import save_image
@@ -49,16 +41,11 @@ class DetectDS(Dataset):
         fldr = Path(fldr)
         self.fldr_imgs = fldr / "images"
         self.fldr_lms = fldr / "lms"
-        imgs = list(self.fldr_imgs.glob("*"))
-        lms = list(self.fldr_lms.glob("*"))
+        imgs = {img.name: img for img in self.fldr_imgs.glob("*")}
+        lms = {lm.name: lm for lm in self.fldr_lms.glob("*")}
         self.data_dicts = []
-        for img in imgs:
-            lm = [fn for fn in lms if fn.name == img.name]
-            if len(lm) == 1:
-                lm = lm[0]
-            else:
-                raise FileNotFoundError(f"Cannot find lm for {img}")
-            dici = {"image": img, "lm": lm}
+        for name in sorted(imgs.keys() & lms.keys()):
+            dici = {"image": imgs[name], "lm": lms[name]}
             self.data_dicts.append(dici)
 
     def __len__(self) -> int:
@@ -85,25 +72,19 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         self.val_dicts = self.create_data_dicts(imgs_val)
 
     def create_data_dicts(self, imgs):
-        lms = list(self.fldr_lms.glob("*"))
+        lms = {lm.name: lm for lm in self.fldr_lms.glob("*")}
         data_dicts = []
         for img in imgs:
-            lm = [fn for fn in lms if fn.name == img.name]
-            if len(lm) == 1:
-                lm = lm[0]
-            else:
-                raise FileNotFoundError(f"Cannot find lm for {img}")
-            dici = {"image": img, "lm": lm}
-            data_dicts.append(dici)
+            if img.name in lms:
+                dici = {"image": img, "lm": lms[img.name]}
+                data_dicts.append(dici)
         return data_dicts
 
-    def create_transforms(self, probs=0.3, probs_intensity=0.3):
+    def create_transforms(self, probs=0.3):
         image_key = "image"
         label_key = "lm"
         box_key = "lm_bbox"
         outputsize = [512, 512]
-        probs_int = probs_intensity
-
         N = NormalizeIntensityd([image_key])
         L = LoadTorchd([image_key, label_key])
         E = EnsureChannelFirstd(keys=[image_key])
@@ -146,20 +127,6 @@ class PreprocessorPT2JPG(L.LightningDataModule):
             mode=["bilinear", "nearest"],
             lazy=True,
         )
-        int_augs = [
-            RandGaussianSmoothd(
-                keys=[image_key],
-                prob=probs_int,
-                sigma_x=(0.5, 1.0),
-                sigma_y=(0.5, 1.0),
-                sigma_z=(0.5, 1.0),
-            ),
-            RandScaleIntensityd(keys="image", factors=0.25, prob=probs_int),
-            RandGaussianNoised(keys=["image"], mean=0, prob=probs_int, std=0.1),
-            RandShiftIntensityd(keys="image", offsets=0.1, prob=probs_int),
-            RandAdjustContrastd(["image"], gamma=(0.7, 1.5)),
-        ]
-        Rp = RepeatChanneld(keys=[image_key], repeats=3)
         DelI = DeleteItemsd(keys=[label_key])
         self.transforms_dict = {
             "N": N,
@@ -175,11 +142,9 @@ class PreprocessorPT2JPG(L.LightningDataModule):
             "CB": CB,
             "Rotate": Rotate,
             "Zoom": Zoom,
-            "IntensityTfms": int_augs,
             "Flip1": Flip1,
             "Flip2": Flip2,
             "Resize": Resize,
-            "Rp": Rp,
         }
 
     def set_transforms(self, keys_tr: str, keys_val: str):
@@ -191,10 +156,7 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         tfms = []
         for key in keys:
             tfm = self.transforms_dict[key]
-            if key == "IntensityTfms":
-                tfms.extend(tfm)
-            else:
-                tfms.append(tfm)
+            tfms.append(tfm)
         return Compose(tfms)
 
     def build_datasets(self):
@@ -215,8 +177,8 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         fldr_labels.mkdir(parents=True, exist_ok=True)
 
         for dici in tqdm(ds):
-            im = dici["image"][0]
-            imv = im.permute(1, 0)
+            im = dici["image"]
+            imv = im.permute(0, 2, 1)
             src_fn = Path(im.meta["filename_or_obj"])
             nm_jpg = src_fn.name.replace("pt", "jpg")
             nm_txt = src_fn.name.replace("pt", "txt")
@@ -248,5 +210,5 @@ class PreprocessorPT2JPG(L.LightningDataModule):
 
 
 class DetectDataModule(PreprocessorPT2JPG):
-    keys_tr = "L,MkB,Et,Et2,N,IntensityTfms,Flip1,Flip2,Zoom,Resize,ExtractBbox,CB,YoloBbox,Rp"
-    keys_val = "L,MkB,Et,Et2,N,Resize,ExtractBbox,CB,YoloBbox,DelI,Rp"
+    keys_tr = "L,MkB,Et,Et2,N,Flip1,Flip2,Zoom,Resize,ExtractBbox,CB,YoloBbox"
+    keys_val = "L,MkB,Et,Et2,N,Resize,ExtractBbox,CB,YoloBbox,DelI"

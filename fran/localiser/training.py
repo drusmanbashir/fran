@@ -6,6 +6,7 @@
 # success = YOLO("yolov8n.pt").export(format="onnx")
 
 import torch
+from fran.localiser.yolo_ct_augment import CTAugDetectionTrainer
 from fran.transforms.spatialtransforms import Project2D
 from utilz.imageviewers import ImageMaskViewer
 if __name__ == "__main__":
@@ -31,7 +32,7 @@ if __name__ == "__main__":
     version = project.version(2)
     ds_location = Path("/s/fran_storage/parasites-2")
     imsize = 256
-    device = 0
+    device = 1
     n_workers = 16
     bs =256
     data_folder = Path("/s/xnat_shadow/totalseg2d")
@@ -48,7 +49,7 @@ if __name__ == "__main__":
         if cache_fn.exists():
             cache_fn.unlink()
 # %%
-    n_epochs = 500
+    n_epochs = 600
     common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
     COMMON_PATHS = load_yaml(common_vars_filename)
     yolo_projec_folder = Path(COMMON_PATHS["yolo_output_folder"]) / project_name
@@ -62,18 +63,21 @@ if __name__ == "__main__":
     warmup_epochs = 3
     close_mosaic = 10
     mosaic = 0.5
-    scale = 0.2
+    scale = 0.3
     translate = 0.1
     fliplr = 0.5
+    flipud=0.1
     cache = True
     seed = 0
     deterministic = True
     plots = True
     cos_lr = True
-    model = YOLO("yolo11n.pt") if resume_ckpt is None else YOLO(str(resume_ckpt))
+    # model = YOLO("yolo11n.pt") if resume_ckpt is None else YOLO(str(resume_ckpt))
+    model = YOLO("yolo11m.pt") if resume_ckpt is None else YOLO(str(resume_ckpt))
 # %%
 # SECTION:-------------------- TRAIN--------------------------------------------------------------------------------------
     results = model.train(
+        trainer=CTAugDetectionTrainer,
         data=data_spec,
         epochs=n_epochs,
         imgsz=imsize,
@@ -92,20 +96,26 @@ if __name__ == "__main__":
         scale=scale,
         translate=translate,
         fliplr=fliplr,
+        flipud=flipud,
+
+        hsv_h=0.0,
+        hsv_s=0.0,
+        hsv_v=0.0,
         cache=cache,
         seed=seed,
         deterministic=deterministic,
         plots=plots,
         cos_lr=cos_lr,
         resume=resume_ckpt is not None,
+        val=True,
     )
     # yolo task=detect mode=train model=yolo11s.pt data=/s/fran_storage/parasites-2/data.yaml epochs=40 imgsz=640 plots=True
 # %%
 # SECTION:-------------------- Inference--------------------------------------------------------------------------------------
     # Read JPG image using torchvision
-    model = YOLO("/s/yolo11_localiser/train4/weights/last.pt")
+    model = YOLO("/s/fran_storage/yolo_output/totalseg_localiser/train15/weights/best.pt")
     img_path = "/s/xnat_shadow/lidc2d_yolo/valid/images/lidc2_0001_2.jpg"
-    nii_path = "/home/ub/Documents/wb.nii.gz"
+    nii_path = "/s/xnat_shadow/nodes/images_pending/nodes_72_20210714_CAP1p5SoftTissue.nii.gz"
     # tnsr_path = "/s/xnat_shadow/lidc2d/images/lidc2_0001_2.pt"
     # tnsr = torch.load(tnsr_path)
     img = sitk.ReadImage(nii_path)  # [H,W,C]
@@ -125,7 +135,7 @@ if __name__ == "__main__":
     # Convert to float and add batch dimension
 
     # Scale tensor between 0 and 1
-    pads = 80
+    pads = 0
     t2 = (t2 - t2.min()) / (t2.max() - t2.min())
     from torch.nn import functional as F
     t2p = F.pad(t2,(pads,pads,pads,pads))
@@ -148,10 +158,9 @@ if __name__ == "__main__":
     # Run infrence
     res = model(t3)[0]
 # %%
-    rr = res[3]
-    # rr.save()
-    bbox = rr.boxes
-    rr.show()
+    for rr in res:
+        bbox = rr.boxes
+        rr.show()
 # %%
     detections = sv.Detections(rr.boxes.data, class_ids=rr.boxes.cls.cpu().numpy())
 
