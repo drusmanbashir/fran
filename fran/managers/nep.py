@@ -5,17 +5,17 @@ import torch._dynamo
 from paramiko import SSHClient
 
 torch._dynamo.config.suppress_errors = True
-from pathlib import Path
-from typing import Any
+from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
 
-import neptune as nt
-import torch
-from fran.evaluation.losses import np
-from fran.utils.common import common_vars_filename, load_yaml
+import neptune as nt  # noqa: E402
+import torch  # noqa: E402
+from fran.evaluation.losses import np  # noqa: E402
+from fran.utils.common import common_vars_filename, load_yaml  # noqa: E402
 
 # from fastcore.basics import GenttAttr
-from lightning.pytorch.loggers.neptune import NeptuneLogger
-from utilz.fileio import maybe_makedirs
+from lightning.pytorch.loggers.neptune import NeptuneLogger  # noqa: E402
+from utilz.fileio import maybe_makedirs  # noqa: E402
 
 try:
     import numpy as np
@@ -147,7 +147,7 @@ class NeptuneManager(NeptuneLogger):
         try:
             ckpt = self.experiment["training/best_model_path"].fetch()
             return ckpt
-        except:
+        except Exception:
             print("No checkpoints in this run")
 
     @model_checkpoint.setter
@@ -335,8 +335,8 @@ if __name__ == "__main__":
     # %%
 
     # def download_checkpoints(self):
-    remote_dir = str(Path(self.model_checkpoint).parent)
-    latest_ckpt = self.shadow_remote_ckpts(remote_dir)
+    remote_dir = str(Path(self.model_checkpoint).parent)  # noqa: F821
+    latest_ckpt = self.shadow_remote_ckpts(remote_dir)  # noqa: F821
     if latest_ckpt:
-        self.nep_run["training"]["model"]["best_model_path"] = latest_ckpt
+        self.nep_run["training"]["model"]["best_model_path"] = latest_ckpt  # noqa: F821
 # SECTION:-------------------- TRBOUE--------------------------------------------------------------------------------------

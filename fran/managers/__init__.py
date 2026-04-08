@@ -1,4 +1,4 @@
-from .project import Project
+from .project import Project  # noqa: F401
 
 try:
     from .unet import UNetManager

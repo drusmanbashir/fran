@@ -39,7 +39,7 @@ nib, _ = optional_import("nibabel")
 Image, _ = optional_import("PIL.Image")
 nrrd, _ = optional_import("nrrd")
 
-__all__ = ["LoadImage", "SaveImage", "SUPPORTED_READERS"]
+__all__ = ["LoadImage", "SaveImage", "SUPPORTED_READERS"]  # noqa: F405
 
 SUPPORTED_READERS = {
     "pydicomreader": PydicomReader,
@@ -554,17 +554,17 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     project_title = "nodes"
-    proj = Project(project_title=project_title)
+    proj = Project(project_title=project_title)  # noqa: F405
 
     configuration_filename = (
         "/s/fran_storage/projects/lits32/experiment_configs_wholeimage.xlsx"
     )
     configuration_filename = None
 
-    configs = ConfigMaker(
+    configs = ConfigMaker(  # noqa: F405
         proj, raytune=False, configuration_filename=configuration_filename
     ).config
 

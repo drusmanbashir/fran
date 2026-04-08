@@ -81,11 +81,11 @@ def main(args):
 
 def process_plan(args):
     print(f"[analyze_resample] creating PreprocessingManager for plan {args.plan}")
-    I = PreprocessingManager(args)
+    mgr = PreprocessingManager(args)
     print(
-        f"[analyze_resample] stage=resample_dataset plan={args.plan} mode={I.plan['mode']} num_processes={args.num_processes}"
+        f"[analyze_resample] stage=resample_dataset plan={args.plan} mode={mgr.plan['mode']} num_processes={args.num_processes}"
     )
-    I.resample_dataset(
+    mgr.resample_dataset(
         overwrite=args.overwrite,
         num_processes=args.num_processes,
         debug=args.debug,
@@ -93,11 +93,11 @@ def process_plan(args):
     print(f"[analyze_resample] stage=resample_dataset complete plan={args.plan}")
     # args.num_processes = 1
 
-    if I.plan["mode"] == "pbd":
+    if mgr.plan["mode"] == "pbd":
         print(
             f"[analyze_resample] stage=generate_hires_patches_dataset plan={args.plan}"
         )
-        I.generate_hires_patches_dataset(
+        mgr.generate_hires_patches_dataset(
             overwrite=args.overwrite,
             num_processes=args.num_processes,
             debug=args.debug,
@@ -105,11 +105,11 @@ def process_plan(args):
         print(
             f"[analyze_resample] stage=generate_hires_patches_dataset complete plan={args.plan}"
         )
-    elif I.plan["mode"] == "lbd":
-        imported_folder = I.plan.get("imported_folder", None)
+    elif mgr.plan["mode"] == "lbd":
+        imported_folder = mgr.plan.get("imported_folder", None)
         if imported_folder is None:
             print(f"[analyze_resample] stage=generate_lbd_dataset plan={args.plan}")
-            I.generate_lbd_dataset(
+            mgr.generate_lbd_dataset(
                 overwrite=args.overwrite,
                 num_processes=args.num_processes,
                 debug=args.debug,
@@ -121,7 +121,7 @@ def process_plan(args):
             print(
                 f"[analyze_resample] stage=generate_TSlabelboundeddataset plan={args.plan} imported_folder={imported_folder}"
             )
-            I.generate_TSlabelboundeddataset(
+            mgr.generate_TSlabelboundeddataset(
                 overwrite=args.overwrite,
                 num_processes=args.num_processes,
                 debug=args.debug,
@@ -140,7 +140,7 @@ def verify_dataset_integrity(folder: Path, debug=False, fix=False):
     print("Verifying dataset integrity")
     subfolder = list(folder.glob("mask*"))[0]
     args = [[fn, fix] for fn in subfolder.glob("*")]
-    res = multiprocess_multiarg(verify_img_label_match, args, debug=debug, io=True)
+    res = multiprocess_multiarg(verify_img_label_match, args, debug=debug, io=True)  # noqa: F405
     errors = [item for item in res if re.search("mismatch", item[0], re.IGNORECASE)]
     if len(errors) > 0:
         outname = folder / ("errors.txt")
@@ -157,7 +157,7 @@ def user_input(inp: str, out=int):
     try:
         tmp = ast.literal_eval(tmp)
         tmp = out(tmp)
-    except:
+    except Exception:
         tmp = None
     return tmp
 
@@ -255,7 +255,7 @@ class PreprocessingManager:
             output_shape = [
                 output_shape,
             ] * 3
-        self.WholeImageTM = WholeImageTensorMaker(
+        self.WholeImageTM = WholeImageTensorMaker(  # noqa: F405
             self.project,
             source_spacing=self.plan["spacing"],
             output_size=output_shape,
@@ -264,14 +264,14 @@ class PreprocessingManager:
         arglist_imgs, arglist_masks = self.WholeImageTM.get_args_for_resizing()
         for arglist in [arglist_imgs, arglist_masks]:
             multiprocess_multiarg(
-                func=resize_and_save_tensors,
+                func=resize_and_save_tensors,  # noqa: F405
                 arguments=arglist,
                 num_processes=self.num_processes,
                 debug=self.debug,
                 io=True,
             )
         print("Now call bboxes_from_masks_folder")
-        generate_bboxes_from_masks_folder(
+        generate_bboxes_from_masks_folder(  # noqa: F405
             self.WholeImageTM.output_folder_masks, 0, self.debug, self.num_processes
         )
 
@@ -310,7 +310,7 @@ if __name__ == "__main__":
     import sys
     import argparse
 
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from utilz.cprint import cprint
 
     parser = argparse.ArgumentParser(description="Resampler")
@@ -362,63 +362,63 @@ if __name__ == "__main__":
 
 # %%
     #
-    I = PreprocessingManager(args)
-    I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
-    I.plan["mode"]
+    mgr = PreprocessingManager(args)
+    mgr.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
+    mgr.plan["mode"]
 
 # %%
-    I.R = ResampleDatasetniftiToTorch(
-        project=I.project,
-        plan=I.plan,
-        data_folder=I.project.raw_data_folder,
+    mgr.R = ResampleDatasetniftiToTorch(
+        project=mgr.project,
+        plan=mgr.plan,
+        data_folder=mgr.project.raw_data_folder,
     )
 
 # %%
     #
     overwrite = False
     num_processes = 8
-    I.R.setup(overwrite=overwrite, num_processes=num_processes)
-    #     I.R.process()
-    #     I.resample_output_folder = I.R.output_folder
-    # resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
+    mgr.R.setup(overwrite=overwrite, num_processes=num_processes)
+    #     mgr.R.process()
+    #     mgr.resample_output_folder = mgr.R.output_folder
+    # resampled_data_folder = folder_names_from_plan(mgr.project, mgr.plan)[
     #
     #        "data_folder_source"
     #    ]
 # %%
     #
-    #         data_folder = I.get_source_data_folder_for_patch()
+    #         data_folder = mgr.get_source_data_folder_for_patch()
     #         PG = PatchDataGenerator(
-    #             project=I.project,
-    #             plan=I.plan,
+    #             project=mgr.project,
+    #             plan=mgr.plan,
     #             data_folder=data_folder,
     #         )
     #         PG.setup(
     #             overwrite=overwrite,
-    #             num_processes=I.num_processes,
+    #             num_processes=mgr.num_processes,
     #             debug=debug,
     #         )
     #         PG.process(derive_bboxes=False)
-    #     I.R.create_dataset_stats_artifacts()
+    #     mgr.R.create_dataset_stats_artifacts()
     #
 # %%
     #     overwrite=False
     #     num_processes=8
     #
-    #     resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
+    #     resampled_data_folder = folder_names_from_plan(mgr.project, mgr.plan)[
     #         "data_folder_source"
     #     ]
     #
 # %%
-    #     I.L = LabelBoundedDataGeneratorImported(
-    #         project=I.project,
-    #         plan=I.plan,
+    #     mgr.L = LabelBoundedDataGeneratorImported(
+    #         project=mgr.project,
+    #         plan=mgr.plan,
     #         data_folder=resampled_data_folder,
     #     )
 # %%
 # %%
     #     device='cpu'
-    #     I.L.setup(overwrite=overwrite, device=device,num_processes=num_processes,debug=True)
-    #     I.L.process()
+    #     mgr.L.setup(overwrite=overwrite, device=device,num_processes=num_processes,debug=True)
+    #     mgr.L.process()
 # %%
     #
     #
@@ -426,7 +426,7 @@ if __name__ == "__main__":
     #     # sys.exit()
     sys.exit()
 # %%
-# dataset_root = Path(I.R.output_folder)
+# dataset_root = Path(mgr.R.output_folder)
 # lms_folder = dataset_root / "lms"
 # if not lms_folder.exists():
 #     print(f"Skipping dataset stats: missing labels folder {lms_folder}")

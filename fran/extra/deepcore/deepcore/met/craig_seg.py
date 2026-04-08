@@ -1,9 +1,6 @@
 # %%
 
-import ipdb
 from fran.trainers.impsamp import DeepSupervisionLoss, pool_op_kernels_nnunet
-
-tr = ipdb.set_trace
 
 import numpy as np
 import torch
@@ -160,7 +157,6 @@ class CraigSeg(EarlyTrain):
 
         self.model.no_grad = True
         with self.model.embedding_recorder:
-            tr()
             if self.balance:
                 # Do selection by class
                 selection_result = np.array([], dtype=np.int32)
@@ -229,10 +225,10 @@ if __name__ == "__main__":
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
     torch.set_float32_matmul_precision("medium")
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     project_title = "litsmc"
-    proj = Project(project_title=project_title)
+    proj = Project(project_title=project_title)  # noqa: F405
 
     configuration_filename = (
         "/s/fran_storage/projects/lits32/experiment_config_wholeimage.xlsx"
@@ -240,7 +236,7 @@ if __name__ == "__main__":
     configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
     configuration_filename = None
 
-    conf = ConfigMaker(
+    conf = ConfigMaker(  # noqa: F405
         proj,
     ).config
     conf["dataset_params"]["batch_size"] = 2
@@ -330,7 +326,6 @@ if __name__ == "__main__":
         targets = batch["lm"]
         batch_num = targets.shape[0]
         with torch.no_grad():
-            tr()
             bias_parameters_grads = torch.autograd.grad(
                 loss, C.model.embedding_recorder.embedding
             )

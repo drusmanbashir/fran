@@ -38,30 +38,30 @@ if __name__ == "__main__":
     from monai.utils.enums import LossReduction
     from utilz.imageviewers import ImageMaskViewer, view_sitk
 
-    P = Project(project_title="lits")
+    P = Project(project_title="lits")  # noqa: F821
     proj_defaults = P
 
     # %%
-    configs_excel = ConfigMaker(
+    configs_excel = ConfigMaker(  # noqa: F821
         proj_defaults.configuration_filename,
     ).config
-    train_list, valid_list, test_list = get_fold_case_ids(
+    train_list, valid_list, test_list = get_fold_case_ids(  # noqa: F821
         fold=configs_excel["metadata"]["fold"],
         json_fname=proj_defaults.validation_folds_filename,
     )
 
     # %%
-    gt_fldr = Path("/s/insync/datasets/crc_project/masks_ub")
-    imgs_fldr = Path("/s/datasets_bkp/litq/complete_cases/images")
-    pred_fldr = Path(
+    gt_fldr = Path("/s/insync/datasets/crc_project/masks_ub")  # noqa: F821
+    imgs_fldr = Path("/s/datasets_bkp/litq/complete_cases/images")  # noqa: F821
+    pred_fldr = Path(  # noqa: F821
         "/s/fran_storage/predictions/lits/ensemble_LITS-499_LITS-500_LITS-501_LITS-502_LITS-503/"
     )
     pred_fns = list(pred_fldr.glob("*"))
     gt_fns = list(gt_fldr.glob("*"))
 
     gt_fn = gt_fns[12]
-    gt_fn_clean = cleanup_fname(gt_fn.name)
-    pred_fn = [fn for fn in pred_fns if cleanup_fname(fn.name) == gt_fn_clean][0]
+    gt_fn_clean = cleanup_fname(gt_fn.name)  # noqa: F821
+    pred_fn = [fn for fn in pred_fns if cleanup_fname(fn.name) == gt_fn_clean][0]  # noqa: F821
     # %%
 
     gt = sitk.ReadImage(gt_fn)
@@ -78,29 +78,29 @@ if __name__ == "__main__":
     masks_valid = [
         filename
         for filename in label_files
-        if cleanup_fname(filename.name) in valid_list
+        if cleanup_fname(filename.name) in valid_list  # noqa: F821
     ]
     masks_train = [
         filename
         for filename in label_files
-        if cleanup_fname(filename.name) in train_list
+        if cleanup_fname(filename.name) in train_list  # noqa: F821
     ]
     imgs_valid = [
         proj_defaults.raw_data_folder / "images" / label_file.name
         for label_file in masks_valid
     ]
     imgs_test = [
-        filename for filename in img_files if cleanup_fname(filename.name) in test_list
+        filename for filename in img_files if cleanup_fname(filename.name) in test_list  # noqa: F821
     ]
     imgs_train = [
-        filename for filename in img_files if cleanup_fname(filename.name) in train_list
+        filename for filename in img_files if cleanup_fname(filename.name) in train_list  # noqa: F821
     ]
     # %%
     run_name = "LITS-122"
     preds_folder = list(proj_defaults.predictions_folder.glob(f"*{run_name}"))[0]
     pred_fns = list(preds_folder.glob("*"))
     pred_fn = pred_fns[0]
-    case_id = cleanup_fname(pred_fn.name)
+    case_id = cleanup_fname(pred_fn.name)  # noqa: F821
     # %%
 
     label_fn = [fn for fn in masks_train if "lits-128" in str(fn)][0]
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         reduction=LossReduction.NONE,
     )
     l2 = D2(input=pred_onehot, target=label_pt)
-    pp(l2)
+    pp(l2)  # noqa: F821
     # %%
     st = time.time()
     for i in range(10):

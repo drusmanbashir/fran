@@ -4,15 +4,11 @@ import sqlite3
 from collections import defaultdict
 from pathlib import Path
 
-import ipdb
 import numpy as np
 import torch
 from fran.data.dataregistry import DS
 from tqdm.auto import tqdm as pbar
 from utilz.stringz import info_from_filename
-
-tr = ipdb.set_trace
-
 
 from fran.preprocessing import (
     get_intensity_range,
@@ -416,7 +412,7 @@ class GlobalProperties():
 if __name__ == "__main__":
 # SECTION:--------------------------------------------- SETUPPPPPP-------------------------------------------------------------------------------------- <CR> <CR>
     from fran.managers import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project(project_title="totalseg")
     P = Project(project_title="nodes")
@@ -454,7 +450,7 @@ if __name__ == "__main__":
             dici = {"ds": ds, "label": labels}
             labs_gp.append(dici)
 # %%
-    df = pd.DataFrame(labs_gp)
+    df = pd.DataFrame(labs_gp)  # noqa: F405
     df = df.drop_duplicates(subset=["ds", "label"], keep="first").reset_index(drop=True)
 
 # %%
@@ -491,7 +487,7 @@ if __name__ == "__main__":
 # %%
     cid = "litqsmall_00008"
     cid = "litqsmall_00007"
-    aa = h5f_file[cid]
+    aa = h5f_file[cid]  # noqa: F405
 # %%
     f = unique_idx(5)
 
@@ -577,7 +573,6 @@ if __name__ == "__main__":
         shared_labels_gps = G.global_properties[key]["ds"]
         labs_gp = []
         for gp in shared_labels_gps:
-            tr()
             ds_name = DS.resolve_ds_name(gp)
             for cc in G.case_properties:
                 if ds_name == cc["ds"]:

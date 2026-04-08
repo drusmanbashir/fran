@@ -1,10 +1,6 @@
-import ipdb
 import torch
 
 from .coresetmethod import CoresetMethod
-
-tr = ipdb.set_trace
-
 
 from copy import deepcopy
 

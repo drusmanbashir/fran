@@ -2,7 +2,6 @@ import os
 import re
 from pathlib import Path
 
-import ipdb
 import lightning as L
 import torch._dynamo as dynamo
 from lightning.pytorch.utilities.types import STEP_OUTPUT
@@ -12,8 +11,6 @@ from monai.utils.enums import LossReduction
 from torch.nn import CrossEntropyLoss
 from utilz.cprint import cprint
 
-tr = ipdb.set_trace
-
 from typing import Any, Union
 
 import numpy as np
@@ -22,23 +19,23 @@ from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 from utilz.stringz import info_from_filename
 
 torch._dynamo.config.suppress_errors = True
-import itertools as il
-import operator
+import itertools as il  # noqa: E402
+import operator  # noqa: E402
 
-import torch
-import torch.nn.functional as F
-from fran.architectures.create_network import (
+import torch  # noqa: E402
+import torch.nn.functional as F  # noqa: E402
+from fran.architectures.create_network import (  # noqa: E402
     create_model_from_conf,
     pool_op_kernels_nnunet,
 )
-from fran.managers.project import Project
-from lightning.pytorch import LightningModule
-from monai.losses import DiceLoss
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from fran.managers.project import Project  # noqa: E402
+from lightning.pytorch import LightningModule  # noqa: E402
+from monai.losses import DiceLoss  # noqa: E402
+from torch.optim.lr_scheduler import ReduceLROnPlateau  # noqa: E402
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
-except:
+except Exception:
     pass
 
 
@@ -451,7 +448,7 @@ if __name__ == "__main__":
 # %%
 #SECTION:-------------------- setup--------------------------------------------------------------------------------------
     from fran.configs.parser import ConfigMaker
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project(project_title="kits2")
     C = ConfigMaker(P)
@@ -480,7 +477,7 @@ if __name__ == "__main__":
     batch = {"image": image[:, :, :128, :128, :64], "lm": lm[:, :, :128, :128, :64]}
 # %%
 
-    l, d = N._common_step(batch, 0, 1)
+    loss, d = N._common_step(batch, 0, 1)
 
     y = N.model(x)
     N.loss_fnc

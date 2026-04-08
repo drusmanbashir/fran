@@ -11,7 +11,6 @@ from collections.abc import Hashable, Mapping
 from functools import reduce
 from random import choice
 
-import ipdb
 from fastcore.basics import Dict
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import NormaliseClipd
@@ -22,7 +21,6 @@ from monai.transforms.io.array import SaveImage
 from utilz.helpers import cleanup_fname, load_dict, torch
 from utilz.stringz import strip_extension
 
-tr = ipdb.set_trace
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -143,7 +141,7 @@ class InferenceDatasetNii(Dataset):
 #         super().__init__(project, imgs,dataset_params_p)
 #         self.dataset_params_w= dataset_params_w
 #
-#     def set_transforms(I):
+#     def set_transforms(mgr):
 #         super().set_transforms()
 #         self.transform_w = Resize(spatial_size=self.dataset_params_w["patch_size"])
 #
@@ -257,7 +255,6 @@ class ImageMaskBBoxDatasetLegacy(Dataset):
                 bboxes_out.append(bb)
         if len(bboxes_out) == 0:
             print("Missing filename {0} from bboxfile".format(fname))
-            tr()
         return bboxes_out
 
     def __len__(self):
@@ -334,7 +331,7 @@ class ImageMaskBBoxDatasetLegacy(Dataset):
         for indx, bb in enumerate(case_bboxes):
             bbox_stats = bb["bbox_stats"]
             labels = [(a["label"]) for a in bbox_stats if not a["label"] == "all_fg"]
-            if contains_bg_only(bbox_stats):
+            if contains_bg_only(bbox_stats):  # noqa: F405
                 labels = [0]
             else:
                 labels = [0] + labels
@@ -381,7 +378,7 @@ class ImageMaskBBoxDatasetLegacy(Dataset):
             data_properties = load_dict(
                 self.parent_folder.parent / ("resampled_dataset_properties")
             )
-        except:
+        except Exception:
             raise FileNotFoundError
         return data_properties["dataset_min"]
 
@@ -489,7 +486,7 @@ class PatchFGBGDataset(Dataset):
             data_properties = load_dict(
                 self.parent_folder.parent / ("resampled_dataset_properties")
             )
-        except:
+        except Exception:
             raise FileNotFoundError
         return data_properties["dataset_min"]
 
@@ -707,19 +704,19 @@ def fg_in_bboxes(bboxes_unsorted):
 if __name__ == "__main__":
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from monai.transforms.croppad.dictionary import RandCropByPosNegLabeld
     from utilz.imageviewers import ImageMaskViewer
 
-    P = Project(project_title="litsmc")
+    P = Project(project_title="litsmc")  # noqa: F405
 
     global_properties = load_dict(P.global_properties_filename)
 # %%
     cids, _ = P.get_train_val_cids(0)
     bbox_fn = "/r/datasets/preprocessed/litsmc/patches/spc_080_080_150/dim_320_320_192_plan5/bboxes_info.pkl"
-    I = PatchFGBGDataset(case_ids=cids, bbox_fn=bbox_fn)
-    bbox = I.bboxes_per_id[10]
-    I.bboxes_per_id
+    mgr = PatchFGBGDataset(case_ids=cids, bbox_fn=bbox_fn)
+    bbox = mgr.bboxes_per_id[10]
+    mgr.bboxes_per_id
     bbox[0]
     bboxes_unsorted = load_dict(bbox_fn)
 # %%
@@ -764,7 +761,7 @@ if __name__ == "__main__":
     image = dici[0]["image"]
     lm = dici[0]["lm"]
 # %%
-    lm_fn = Path(bb["filename"])
+    lm_fn = Path(bb["filename"])  # noqa: F405
     img_fn = lm_fn.str_replace("lms", "images")
 
     img = torch.load(img_fn)
@@ -773,10 +770,10 @@ if __name__ == "__main__":
 
 # %%
 
-    bbox = I.bboxes_per_id[10]
+    bbox = mgr.bboxes_per_id[10]
 # %%
     bbox = bboxes_unsorted[9]
-    bstats = bb["bbox_stats"]
+    bstats = bb["bbox_stats"]  # noqa: F405
     labels = [b["label"] for b in bstats if not b["label"] == "all_fg"]
     lm_fn = Path(bbox["filename"])
     img_fn = lm_fn.str_replace("lms", "images")

@@ -1,7 +1,4 @@
 # %%
-import ipdb
-
-tr = ipdb.set_trace
 
 import torch
 import torch.nn.functional as F
@@ -66,7 +63,6 @@ def compute_gradients(predictions, target, loss_func):
 
     # Multiply gradients by softmax Jacobian
     grad_L_sigma = grad_L_sigma.unsqueeze(2)  # Add dimension for matrix multiplication
-    tr()
     grad_L_z = torch.matmul(jacobian, grad_L_sigma)
 
     return grad_L_z

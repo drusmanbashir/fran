@@ -113,15 +113,15 @@ def standardize(img, mn, std):
 
 # %%
 if __name__ == "__main__":
-    from fran.data.dataset import *
-    from fran.transforms.spatialtransforms import *
-    from fran.utils.common import *
+    from fran.data.dataset import *  # noqa: F403
+    from fran.transforms.spatialtransforms import *  # noqa: F403
+    from fran.utils.common import *  # noqa: F403
     from matplotlib import pyplot as plt
-    from utilz.fileio import *
-    from utilz.helpers import *
-    from utilz.imageviewers import *
+    from utilz.fileio import *  # noqa: F403
+    from utilz.helpers import *  # noqa: F403
+    from utilz.imageviewers import *  # noqa: F403
 
-    P = Project(project_title="litsmc")
+    P = Project(project_title="litsmc")  # noqa: F405
     proj_defaults = P
     # %%
 
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     model = torchvision.models.detection.ssd300_vgg16(pretrained=True)
     model.eval()
     # %%
-    fn = Path(
+    fn = Path(  # noqa: F405
         "/s/fran_storage/datasets/preprocessed/fixed_spacing/litsmc/spc_080_080_150/images/drli_024.pt"
     )
     im = torch.load(fn)
@@ -185,7 +185,7 @@ if __name__ == "__main__":
 
     # %%
 
-    plt.imshow(img)
+    plt.imshow(img)  # noqa: F405
     im1 = im1.detach().cpu()
     img = np.array(im1)
     img = np.transpose(img, (1, 2, 0))
@@ -194,21 +194,21 @@ if __name__ == "__main__":
     result_img = draw_boxes_and_labels(cv2_image, bbox, labels)
     cv2.imshow("image", result_img)
     # %%
-    mask_fn = Path("/home/ub/datasets/preprocessed/kits23/masks/kits23_00088.npy")
-    img_fn = Path("/home/ub/datasets/preprocessed/kits23/images/kits23_00088.npy")
-    bb = load_dict(bboxes_21)
+    mask_fn = Path("/home/ub/datasets/preprocessed/kits23/masks/kits23_00088.npy")  # noqa: F405
+    img_fn = Path("/home/ub/datasets/preprocessed/kits23/images/kits23_00088.npy")  # noqa: F405
+    bb = load_dict(bboxes_21)  # noqa: F405
     bboxes = [b for b in bb if b["filename"] == mask_fn][0]
     patch_size = [64, 256, 256]
     # %%
-    x, y, _ = train_ds[0]
+    x, y, _ = train_ds[0]  # noqa: F405
     # %%
-    xx, yy = invert([x, y], factor_range=[0.6, 1.2])
-    xx, yy = contrast([x, y], factor_range=[0, 1])
+    xx, yy = invert([x, y], factor_range=[0.6, 1.2])  # noqa: F405
+    xx, yy = contrast([x, y], factor_range=[0, 1])  # noqa: F405
     plt.hist(x.flatten())
     plt.hist(xx.flatten())
     # %%
-    b = partial(brightness, factor_range=[1.2, 1.3])
-    c = partial(brightness, factor_range=[1.2, 1.3])
+    b = partial(brightness, factor_range=[1.2, 1.3])  # noqa: F405
+    c = partial(brightness, factor_range=[1.2, 1.3])  # noqa: F405
     xx, yy = b([x, y])
 
 

@@ -1253,7 +1253,7 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     project_title = "kits2"
     proj = Project(project_title=project_title)
@@ -1307,7 +1307,7 @@ if __name__ == "__main__":
     data = D.valid_manager.data[n]
     dici = P.transforms_dict["RP"](data)
     dici = P.transforms_dict["L"](dici)
-    pp(dici["image"].meta)
+    pp(dici["image"].meta)  # noqa: F405
 # %%
 
     dici = td["Remap"](dici)
@@ -1329,9 +1329,9 @@ if __name__ == "__main__":
 
     batch_size = 3
     ds_type = None
-    D = DataManagerMulti(
-        project_title=proj_bones.project_title,
-        configs=config_bones,
+    D = DataManagerMulti(  # noqa: F405
+        project_title=proj_bones.project_title,  # noqa: F405
+        configs=config_bones,  # noqa: F405
         batch_size=batch_size,
         ds_type=ds_type,
         manager_class_train=DataManagerPatch,
@@ -1448,7 +1448,7 @@ if __name__ == "__main__":
 # %%
     D.train_ds[0]
 # %%
-    ds1 = PersistentDataset(
+    ds1 = PersistentDataset(  # noqa: F405
         data=D.valid_manager.data,
         transform=D.valid_manager.transforms,
         cache_dir=D.valid_manager.cache_folder,
@@ -1459,9 +1459,9 @@ if __name__ == "__main__":
 # SECTION:-------------------- LIVER-------------------------------------------------------------------------------------- <CR> <CR>
 
 # %%
-    D = DataManagerMulti(
-        project_title=proj_litsmc.project_title,
-        configs=config_litsmc,
+    D = DataManagerMulti(  # noqa: F405
+        project_title=proj_litsmc.project_title,  # noqa: F405
+        configs=config_litsmc,  # noqa: F405
         batch_size=batch_size,
         ds_type=ds_type,
     )
@@ -1472,14 +1472,14 @@ if __name__ == "__main__":
     batch_size = 2
     ds_type = "lmdb"
     ds_type = None
-    config_litsmc["dataset_params"]["mode"] = None
-    config_litsmc["dataset_params"]["cache_rate"] = 0
+    config_litsmc["dataset_params"]["mode"] = None  # noqa: F405
+    config_litsmc["dataset_params"]["cache_rate"] = 0  # noqa: F405
 
-    config_litsmc["plan_train"]
+    config_litsmc["plan_train"]  # noqa: F405
 # %%
-    D = DataManagerMulti(
-        project_title=proj_litsmc.project_title,
-        configs=config_litsmc,
+    D = DataManagerMulti(  # noqa: F405
+        project_title=proj_litsmc.project_title,  # noqa: F405
+        configs=config_litsmc,  # noqa: F405
         batch_size=batch_size,
         ds_type=ds_type,
     )
@@ -1487,14 +1487,14 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- FromFolder-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
-    Dev = EnsureTyped(keys=["image", "lm"], device=1)
+    Dev = EnsureTyped(keys=["image", "lm"], device=1)  # noqa: F405
     dat2 = Dev(dat)
 
 # SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
     # Test DataManagerWhole with DataManagerMulti
-    D = DataManagerMulti(
-        project=proj_tot, configs=config_tot, batch_size=4, ds_type=None
+    D = DataManagerMulti(  # noqa: F405
+        project=proj_tot, configs=config_tot, batch_size=4, ds_type=None  # noqa: F405
     )
     D.prepare_data()
     D.setup()
@@ -1515,13 +1515,13 @@ if __name__ == "__main__":
 # %%
 # %%
 
-    config_nodes["dataset_params"]["cache_rate"] = 0.5
+    config_nodes["dataset_params"]["cache_rate"] = 0.5  # noqa: F405
     # D3 = DataManagerLBD(project=proj_nodes,config=config_nodes,split='valid',ds_type='cache',cache_rate=0.5)
     D3 = DataManagerLBD.from_folder(
         data_folder="/r/datasets/preprocessed/tmp",
         split="valid",
-        project=proj_nodes,
-        config=config_nodes,
+        project=proj_nodes,  # noqa: F405
+        config=config_nodes,  # noqa: F405
         ds_type="lmdb",
     )
     D3.prepare_data()
@@ -1530,8 +1530,8 @@ if __name__ == "__main__":
 # SECTION:-------------------- DataManagerPlain-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 # %%
     batch_size = 2
-    D = DataManagerMulti(
-        project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None
+    D = DataManagerMulti(  # noqa: F405
+        project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None  # noqa: F405
     )
     # D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
 # %%
@@ -1550,8 +1550,8 @@ if __name__ == "__main__":
 
 # %%
     batch_size = 2
-    D = DataManagerMulti(
-        project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None
+    D = DataManagerMulti(  # noqa: F405
+        project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None  # noqa: F405
     )
     D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
 # %%
@@ -1574,8 +1574,8 @@ if __name__ == "__main__":
 
     batch_size = 2
     P = DataManagerPatch(
-        project=proj_bones,
-        configs=config_bones,
+        project=proj_bones,  # noqa: F405
+        configs=config_bones,  # noqa: F405
         batch_size=batch_size,
         ds_type=None,
         data_folder="/r/datasets/preprocessed/bones/fixed_spacing/spc_100_100_100",

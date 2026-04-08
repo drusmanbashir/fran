@@ -6,7 +6,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.preprocessing.fixed_spacing import NiftiToTorchDataGenerator
     from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from label_analysis.totalseg import TotalSegmenterLabels
 
     project = Project("litsmc")
@@ -15,7 +15,7 @@ if __name__ == "__main__":
     # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
     from fran.managers import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project(project_title="litsmc")
     spacing = [0.8, 0.8, 1.5]

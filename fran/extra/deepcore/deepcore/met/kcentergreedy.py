@@ -16,9 +16,9 @@ def k_center_greedy(
     already_selected=None,
     print_freq: int = 20,
 ):
-    if type(matrix) == torch.Tensor:
+    if isinstance(matrix, torch.Tensor):
         assert matrix.dim() == 2
-    elif type(matrix) == np.ndarray:
+    elif isinstance(matrix, np.ndarray):
         assert matrix.ndim == 2
         matrix = torch.from_numpy(matrix).requires_grad_(False).to(device)
 

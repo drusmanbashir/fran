@@ -438,7 +438,7 @@ class DataManager(LightningDataModule):
                 lazy=True,
             )
 
-            self.transforms_dict["Resize"] = Re
+            self.transforms_dict["Resize"] = Re  # noqa: F405
 
         if "Re" in include_keys:
             Re = ResizeWithPadOrCropd(
@@ -690,7 +690,7 @@ class DataManager(LightningDataModule):
 
     @property
     def cache_folder(self):
-        parent_folder = Path(COMMON_PATHS["cache_folder"]) / (
+        parent_folder = Path(COMMON_PATHS["cache_folder"]) / (  # noqa: F405
             self.project.project_title
         )
         return parent_folder / (self.data_folder.name)
@@ -1113,7 +1113,7 @@ class DataManagerBaseline(DataManagerLBD):
 
     @property
     def cache_folder(self):
-        parent_folder = Path(COMMON_PATHS["cache_folder"]) / (
+        parent_folder = Path(COMMON_PATHS["cache_folder"]) / (  # noqa: F405
             self.project.project_title
         )
         return parent_folder / (self.data_folder.name + "_baseline")
@@ -1160,7 +1160,7 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
     torch.set_float32_matmul_precision("medium")
@@ -1219,12 +1219,12 @@ if __name__ == "__main__":
 
     img = bt["image"][0]
     lm = bt["lm"][0]
-    ImageMaskViewer([img, lm])
+    ImageMaskViewer([img, lm])  # noqa: F405
     # %%
     tm.plan["patch_size"] = tm.plan["patch_size"][:2]
 
     E = ExtractContiguousSlicesd()
-    dici = E(data)
+    dici = E(data)  # noqa: F405
     # %%
     Rva = RandCropByPosNegLabeld(
         keys=["image", "lm"],
@@ -1250,7 +1250,7 @@ if __name__ == "__main__":
     # %%
     img = bt["image"][0]
     lm = bt["lm"][0]
-    ImageMaskViewer([img, lm])
+    ImageMaskViewer([img, lm])  # noqa: F405
 
     # %%
     dici = E(dici)
@@ -1261,7 +1261,7 @@ if __name__ == "__main__":
     # %%
 
     # %%
-    d
+    d  # noqa: F405
     D.setup()
 
     ds = D.train_ds
@@ -1302,22 +1302,22 @@ if __name__ == "__main__":
     # %%
 
     tags = ["proj_title", "case_id", "date", "desc"]
-    name = cleanup_fname(fname)
+    name = cleanup_fname(fname)  # noqa: F405
     parts = name.split("_")
     output_dic = {}
     for key, val in zip(tags, parts):
         output_dic[key] = val
-    if full_caseid:
+    if full_caseid:  # noqa: F405
         output_dic["case_id"] = output_dic["proj_title"] + "_" + output_dic["case_id"]
 
     # %%
 
-    fnames = [strip_extension(fn) for fn in fnames]
+    fnames = [strip_extension(fn) for fn in fnames]  # noqa: F405
     fnames = [fn + ".pt" for fn in fnames]
     fnames = fnames
-    images_fldr = self.data_folder / ("images")
-    lms_fldr = self.data_folder / ("lms")
-    inds_fldr = self.infer_inds_fldr(self.plan)
+    images_fldr = self.data_folder / ("images")  # noqa: F405
+    lms_fldr = self.data_folder / ("lms")  # noqa: F405
+    inds_fldr = self.infer_inds_fldr(self.plan)  # noqa: F405
     images = list(images_fldr.glob("*.pt"))
     data = []
     # %%
@@ -1337,9 +1337,9 @@ if __name__ == "__main__":
     cases = [strip_extension(fn) for fn in cases]
     cases = [fn + ".pt" for fn in cases]
     cases = cases
-    images_fldr = self.data_folder / ("images")
-    lms_fldr = self.data_folder / ("lms")
-    inds_fldr = self.infer_inds_fldr(self.plan)
+    images_fldr = self.data_folder / ("images")  # noqa: F405
+    lms_fldr = self.data_folder / ("lms")  # noqa: F405
+    inds_fldr = self.infer_inds_fldr(self.plan)  # noqa: F405
     images = list(images_fldr.glob("*.pt"))
     data = []
 
@@ -1372,7 +1372,7 @@ if __name__ == "__main__":
     lm_subfoldrs = list(tm.data_folder.glob("lms/*"))
 
     data = []
-    for case_ in pbar(cases):
+    for case_ in pbar(cases):  # noqa: F405
         img_matched = [fn for fn in image_subfoldrs if case_ == fn.name]
         lm_matched = [fn for fn in lm_subfoldrs if case_ == fn.name]
         assert len(img_matched) == 1 and len(lm_matched) == 1, (

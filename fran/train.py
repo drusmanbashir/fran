@@ -2,13 +2,10 @@
 from pathlib import Path
 
 # training.py — minimal runner to Tm.fit()
-import ipdb
 import pandas as pd
 import torch
 from fran.callback.case_recorder import CaseIDRecorder
 from fran.utils.misc import parse_devices
-
-tr = ipdb.set_trace
 
 import argparse
 

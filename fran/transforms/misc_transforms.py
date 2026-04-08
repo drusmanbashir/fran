@@ -4,7 +4,6 @@ from functools import partial
 from pathlib import Path
 from typing import Optional, Union
 
-import ipdb
 import SimpleITK as sitk
 import torch
 from fran.transforms.base import MonaiDictTransform
@@ -16,8 +15,6 @@ from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
 from monai.data.meta_tensor import MetaTensor
 from monai.transforms.transform import MapTransform
 from monai.transforms.utility.dictionary import FgBgToIndicesd
-
-tr = ipdb.set_trace
 
 import fran.transforms.intensitytransforms as intensity
 import fran.transforms.spatialtransforms as spatial
@@ -512,7 +509,7 @@ if __name__ == "__main__":
     tnser["lm_fg_indices"] = tnser["lm_fg_indicesmask_label"]
     tnser["lm_bg_indicesmask_label"].pop()
     dici = {"indices": tnser}
-    T = TensorToDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+    T = TensorToDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])  # noqa: F821
     dici = T(dici)
 
     # %%

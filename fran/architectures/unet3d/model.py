@@ -7,14 +7,9 @@ sys.path += ["/home/ub/Dropbox/code/fran"]
 
 from functools import reduce
 
-import ipdb
 import torch.nn.functional as F
 
-tr = ipdb.set_trace
-import ipdb
 import torch.nn as nn
-
-tr = ipdb.set_trace
 
 import torch
 from fran.architectures.unet3d.buildingblocks import (
@@ -377,7 +372,7 @@ if __name__ == "__main__":
 
     patch_size = [48, 128, 128]
 
-    summ = summary(
+    summ = summary(  # noqa: F821
         model,
         input_size=tuple([1, 1] + patch_size),
         col_names=["input_size", "output_size", "kernel_size"],
@@ -385,7 +380,7 @@ if __name__ == "__main__":
         verbose=0,
     )
     # %%
-    c = ConvLayer(1, 32, ndim=3)
+    c = ConvLayer(1, 32, ndim=3)  # noqa: F821
 
     # %%
     # %%
@@ -421,14 +416,14 @@ if __name__ == "__main__":
     # %%
 
     g = x.clone()
-    W_g = nn.Conv3d(in_channels=g.shape[1], out_channels=F_int, kernel_size=1)
+    W_g = nn.Conv3d(in_channels=g.shape[1], out_channels=F_int, kernel_size=1)  # noqa: F821
     W_x = nn.Conv3d(
         in_channels=encoder_features.shape[1],
-        out_channels=F_int,
+        out_channels=F_int,  # noqa: F821
         kernel_size=1,
         stride=2,
     )
-    psi = nn.Conv3d(in_channels=F_int, out_channels=1, kernel_size=1)
+    psi = nn.Conv3d(in_channels=F_int, out_channels=1, kernel_size=1)  # noqa: F821
     relu = nn.LeakyReLU()
     activation = nn.Sigmoid()
 

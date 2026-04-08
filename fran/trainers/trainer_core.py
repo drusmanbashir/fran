@@ -2,7 +2,6 @@
 import shutil
 from typing import Optional
 
-import ipdb
 from fastcore.all import in_ipython
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import infer_labels_and_update_out_channels
@@ -20,8 +19,6 @@ from lightning.pytorch.profilers import AdvancedProfiler
 from utilz.cprint import cprint
 from utilz.stringz import headline
 
-tr = ipdb.set_trace
-
 import os
 from pathlib import Path
 
@@ -37,7 +34,7 @@ from fran.managers.data.training import (
 
 torch._dynamo.config.suppress_errors = True
 
-from lightning.pytorch.callbacks import (
+from lightning.pytorch.callbacks import (  # noqa: E402
     BatchSizeFinder,
     DeviceStatsMonitor,
     EarlyStopping,
@@ -48,10 +45,10 @@ from lightning.pytorch.callbacks import (
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
-except:
+except Exception:
     pass
 
-import torch
+import torch  # noqa: E402
 
 
 def safe_log_dict(exp, base_path: str, d: dict):
@@ -60,7 +57,6 @@ def safe_log_dict(exp, base_path: str, d: dict):
     key by key with try/except so one bad key doesn't stop the rest.
     """
     for k, v in d.items():
-        tr()
         path = f"{base_path}/{k}" if base_path else k
         try:
             if isinstance(v, dict):

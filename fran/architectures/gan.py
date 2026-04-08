@@ -30,12 +30,12 @@ def crit_loss(real_pred,fake_pred,loss_fnc=nn.BCEWithLogitsLoss()):
     fake_loss = loss_fnc(fake_pred,fake_labels)
     return (real_loss + fake_loss)*0.5
 
-class GANLoss_ub(gan.GANModule):
+class GANLoss_ub(gan.GANModule):  # noqa: F821
     "Wrapper around `crit_loss_func` and `gen_loss_func`"
     def __init__(self,
         gen_loss_func:callable, # Generator loss function
         crit_loss_func:callable, # Critic loss function
-        gan_model:gan.GANModule # The GAN model
+        gan_model:gan.GANModule # The GAN model  # noqa: F821
     ):
         super().__init__()
         self.gen_loss_func = gen_loss_func
@@ -63,16 +63,16 @@ class GANLoss_ub(gan.GANModule):
         self.crit_loss = self.crit_loss_func(real_pred, fake_pred)
         return self.crit_loss
 
-@delegates()
-class GANLearner_ub(Learner):
+@delegates()  # noqa: F821
+class GANLearner_ub(Learner):  # noqa: F821
     "A `Learner` suitable for GANs."
     def __init__(self,
-        dls:DataLoaders, # DataLoaders object for GAN data
+        dls:DataLoaders, # DataLoaders object for GAN data  # noqa: F821
         generator:nn.Module, # Generator model
         critic:nn.Module, # Critic model
         gen_loss_func:callable, # Generator loss function
         crit_loss_func:callable, # Critic loss function
-        switcher:Callback=None, # Callback for switching between generator and critic training, defaults to `FixedGANSwitcher`
+        switcher:Callback=None, # Callback for switching between generator and critic training, defaults to `FixedGANSwitcher`  # noqa: F821
         gen_first:bool=False, # Whether we start with generator training
         switch_eval:bool=True, # Whether the model should be set to eval mode when calculating loss
         show_img:bool=True, # Whether to show example generated images during training
@@ -81,12 +81,13 @@ class GANLearner_ub(Learner):
         metrics=None, # Metrics
         **kwargs
     ):
-        gan = GANModule(generator, critic)
+        gan = GANModule(generator, critic)  # noqa: F821
         loss_func = GANLoss_ub(gen_loss_func, crit_loss_func, gan)
-        if switcher is None: switcher = FixedGANSwitcher()
-        trainer = GANTrainer(clip=clip, switch_eval=switch_eval, gen_first=gen_first, show_img=show_img)
+        if switcher is None:
+            switcher = FixedGANSwitcher()  # noqa: F821
+        trainer = GANTrainer(clip=clip, switch_eval=switch_eval, gen_first=gen_first, show_img=show_img)  # noqa: F821
         cbs = L(cbs) + L(trainer, switcher)
-        metrics = L(metrics) + L(*LossMetrics('gen_loss,crit_loss'))
+        metrics = L(metrics) + L(*LossMetrics('gen_loss,crit_loss'))  # noqa: F821
         super().__init__(dls, gan, loss_func=loss_func, cbs=cbs, metrics=metrics, **kwargs)
 
     def _do_one_batch(self):
@@ -96,14 +97,15 @@ class GANLearner_ub(Learner):
             self.loss_grad = self.loss_func(self.pred, *self.yb)
             self.loss = self.loss_grad.clone()
         self('after_loss')
-        if not self.training or not len(self.yb): return
-        self._with_events(self._backward, 'backward', CancelBackwardException)
-        self._with_events(self._step, 'step', CancelStepException)
+        if not self.training or not len(self.yb):
+            return
+        self._with_events(self._backward, 'backward', CancelBackwardException)  # noqa: F821
+        self._with_events(self._step, 'step', CancelStepException)  # noqa: F821
         self.opt.zero_grad()
 
     @classmethod
     def wgan(cls,
-        dls:DataLoaders, # DataLoaders object for GAN data
+        dls:DataLoaders, # DataLoaders object for GAN data  # noqa: F821
         generator:nn.Module, # Generator model
         critic:nn.Module, # Critic model
         switcher=None, # Callback for switching between generator and critic training, defaults to `FixedGANSwitcher(n_crit=5, n_gen=1)`
@@ -112,8 +114,9 @@ class GANLearner_ub(Learner):
         **kwargs
     ):
         "Create a [WGAN](https://arxiv.org/abs/1701.07875) from `dls`, `generator` and `critic`."
-        if switcher is None: switcher = FixedGANSwitcher(n_crit=5, n_gen=1)
-        return cls(dls, generator, critic, _tk_mean, _tk_diff, switcher=switcher, clip=clip, switch_eval=switch_eval, **kwargs)
+        if switcher is None:
+            switcher = FixedGANSwitcher(n_crit=5, n_gen=1)  # noqa: F821
+        return cls(dls, generator, critic, _tk_mean, _tk_diff, switcher=switcher, clip=clip, switch_eval=switch_eval, **kwargs)  # noqa: F821
 
 class ImageMaskBBoxDatasetSinglePatchVols(ImageMaskBBoxDataset):
     def __init__(self,case_ids, bbox_fn, ensure=['tumour']):
@@ -123,7 +126,8 @@ class ImageMaskBBoxDatasetSinglePatchVols(ImageMaskBBoxDataset):
             single_patch_vols =[] 
             for case_id in case_ids:
                 files_this_case = [fns for fns in all_files if case_id in str(fns)]
-                if len(files_this_case)==1: single_patch_vols.append(case_id)
+                if len(files_this_case) == 1:
+                    single_patch_vols.append(case_id)
             super().__init__(case_ids=single_patch_vols,bbox_fn=bbox_fn,ensure=ensure)
 
 class cGANBatchMaker(ItemTransform):
@@ -168,51 +172,51 @@ if __name__ == "__main__":
     bs,max_workers=8,16
     patch_size = target_size=[64,160,160]
 
-    import os; print(os.getcwd())
+    import os
+    print(os.getcwd())
 # %%
-    after_item_intensity=    {'brightness': [[0.7, 1.3], 0.1],
+    after_item_intensity=    {'brightness': [[0.7, 1.5], 0.01],
      'shift': [[-0.2, 0.2], 0.1],
      'noise': [[0, 0.1], 0.1],
-     'brightness': [[0.7, 1.5], 0.01],
      'contrast': [[0.7, 1.3], 0.1]}
     after_item_spatial = {'flip_random':0.5}
     intensity_augs,spatial_augs = create_augmentations(after_item_intensity,after_item_spatial)
 
     probabilities_intensity,probabilities_spatial = 0.1,0.5
-    after_item_intensity = TrainingAugmentations(augs=intensity_augs, p=probabilities_intensity)
-    after_item_spatial = TrainingAugmentations(augs=spatial_augs, p=probabilities_spatial)
+    after_item_intensity = TrainingAugmentations(augs=intensity_augs, p=probabilities_intensity)  # noqa: F821
+    after_item_spatial = TrainingAugmentations(augs=spatial_augs, p=probabilities_spatial)  # noqa: F821
     affine_vals ={'rotate_max': 0.392699081698724,
      'translate': [0.1, 0.1, 0.1],
      # 'scale_ranges': [0.75, 1.25],
      'shear': 1,
      'p': 0.4}
-    after_batch_affine =            AffineTrainingTransform3D(**affine_vals), 
+    after_batch_affine =            AffineTrainingTransform3D(**affine_vals),  # noqa: F821
     dest_labels = {"kidney":1,"tumour":2,"cyst":3}
 
 # %%
-    after_item_train = Pipeline([
-            DropBBoxFromDataset(),
-           MaskLabelRemap(remapping_train),
-            PermuteImageMask,
+    after_item_train = Pipeline([  # noqa: F821
+            DropBBoxFromDataset(),  # noqa: F821
+           MaskLabelRemap(remapping_train),  # noqa: F821
+            PermuteImageMask,  # noqa: F821
             # StrideRandom(patch_size=patch_size, stride_max=[2, 2, 2], pad_value=-0.49),
             # CropExtra(patch_size=patch_size), 
                                     # after_item_intensity, 
                                     # after_item_spatial, 
-                                    Unsqueeze
+                                    Unsqueeze  # noqa: F821
         ])
-    after_item_valid = Pipeline([
-            DropBBoxFromDataset(),
-           MaskLabelRemap(remapping_train), Unsqueeze],
+    after_item_valid = Pipeline([  # noqa: F821
+            DropBBoxFromDataset(),  # noqa: F821
+           MaskLabelRemap(remapping_train), Unsqueeze],  # noqa: F821
                                          )
-    after_batch_train = Pipeline([
+    after_batch_train = Pipeline([  # noqa: F821
             # AffineTrainingTransform3D(**affine_vals),
-            CropImgMask(patch_size),
-            PadDeficitImgMask(patch_size, 5),
+            CropImgMask(patch_size),  # noqa: F821
+            PadDeficitImgMask(patch_size, 5),  # noqa: F821
             # ResizeBatch(target_size=target_size),
             cGANBatchMaker(),
             cGANMaskOneHot(n_classes=4)
         ])
-    after_batch_valid = Pipeline([PadDeficitImgMask(patch_size, 5),
+    after_batch_valid = Pipeline([PadDeficitImgMask(patch_size, 5),  # noqa: F821
                     ResizeBatch(target_size=target_size),
                      cGANBatchMaker(),
             cGANMaskOneHot(n_classes=4)
@@ -220,24 +224,25 @@ if __name__ == "__main__":
 
 # %%
     common_vars_filename=os.environ['FRAN_CONF']
-    P = Project(project_title="lits"); proj_defaults= P
+    P = Project(project_title="lits")  # noqa: F821
+    proj_defaults= P
     
     dim0,dim1=64,160
     dataset_folder = proj_defaults.stage2_folder / "{0}_{1}_{1}".format(dim0, dim1)
     images_folder = dataset_folder / "volumes"
     bboxes_fname = dataset_folder / "bboxes_info"
-    train_list,valid_list ,_= get_fold_case_ids(fold=0, json_fname=proj_defaults.validation_folds_filename)
+    train_list,valid_list ,_= get_fold_case_ids(fold=0, json_fname=proj_defaults.validation_folds_filename)  # noqa: F821
     train_ds= ImageMaskBBoxDatasetSinglePatchVols(train_list,bboxes_fname,ensure='tumour')
     valid_ds = ImageMaskBBoxDatasetSinglePatchVols(valid_list,bboxes_fname,ensure='tumour')
 # %%
-    train_dl = TfmdDL(train_ds,
+    train_dl = TfmdDL(train_ds,  # noqa: F821
                       shuffle=True,
                       bs=bs,
                       num_workers=np.minimum(max_workers, bs * 2),
                       after_item=after_item_train,
                       after_batch=after_batch_train,
                       )
-    valid_dl = TfmdDL(valid_ds,
+    valid_dl = TfmdDL(valid_ds,  # noqa: F821
                       shuffle=False,
                       bs=bs,
                       num_workers=np.minimum(max_workers, bs * 4),
@@ -246,7 +251,7 @@ if __name__ == "__main__":
                       )
 
 # %%
-    class OneHotMask(Callback):
+    class OneHotMask(Callback):  # noqa: F821
         '''
         Assumes mask is the first index in the tensor
         '''
@@ -268,10 +273,11 @@ if __name__ == "__main__":
                     mask = mask.to(img.dtype)
                     tnsr = torch.cat([mask,img],axis=1)
                     output.append(tnsr)
-                else: print("Not imptlemented")
+                else:
+                    print("Not imptlemented")
             return output
 # %%
-    dls = DataLoaders(train_dl,valid_dl,device='cuda')
+    dls = DataLoaders(train_dl,valid_dl,device='cuda')  # noqa: F821
 
     fake, real = dls.one_batch()
 
@@ -286,14 +292,14 @@ if __name__ == "__main__":
     #
     # ImageMaskViewer([mask[0,0],mask[0,1]])
 # %%
-    learn = GANLearner(dls=dls,generator=G,critic=D, gen_loss_func=gen_loss, crit_loss_func=crit_loss,gen_first=False)
+    learn = GANLearner(dls=dls,generator=G,critic=D, gen_loss_func=gen_loss, crit_loss_func=crit_loss,gen_first=False)  # noqa: F821
 
     learn.to(device)
     learn = learn.to_fp16()
     # learn.fit(200, lr=2e-4)
     outputs=[]
     n_classes=4
-    for tnsr in x:
+    for tnsr in x:  # noqa: F821
             mask , img= tnsr[:,0:1,:], tnsr[:,1:,:]
             mask = one_hot(mask,n_classes, axis = 1 ,fnc=torch.cat)
             tnsr = torch.cat([mask,img],axis=1)
@@ -314,15 +320,15 @@ if __name__ == "__main__":
     fake ,real= learn.dls.valid.one_batch()
 
     n_classes = 4
-    dd(img, mask, n_classes, output, x)
-    pred = G(noise)
+    dd(img, mask, n_classes, output, x)  # noqa: F821
+    pred = G(noise)  # noqa: F821
     ImageMaskViewer([pred[0,1].detach().cpu(), real[0,1].detach().cpu()])
 # %%
     criterion_GAN = torch.nn.MSELoss()
-    criterion_voxelwise = diceloss()
+    criterion_voxelwise = diceloss()  # noqa: F821
 
-    generator = GeneratorUNet()
-    discriminator = Discriminator()
+    generator = GeneratorUNet()  # noqa: F821
+    discriminator = Discriminator()  # noqa: F821
 
 
     # Loss weight of L1 voxel-wise loss between translated image and real image
@@ -452,7 +458,7 @@ if __name__ == "__main__":
             prev_time = time.time()
 
             # Print log
-            sys.stdout.write(
+            sys.stdout.write(  # noqa: F821
                 "\r[Epoch %d/%d] [Batch %d/%d] [D loss: %f, D accuracy: %f, D update: %s] [G loss: %f, voxel: %f, adv: %f] ETA: %s"
                 % (
                     epoch,
@@ -479,7 +485,7 @@ if __name__ == "__main__":
 
 
 # %%
-    c= ConvLayer(1,16,ndim=3)
+    c= ConvLayer(1,16,ndim=3)  # noqa: F821
     order = 'cil'
     C = create_conv(1,16,3,1,order,1)
     S = nn.Sequential(OrderedDict(C))

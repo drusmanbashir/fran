@@ -2,10 +2,7 @@
 import hashlib
 from typing import Union
 
-import ipdb
 from fran.utils.string_works import is_excel_None
-
-tr = ipdb.set_trace
 
 # read a packaged template
 from importlib.resources import files
@@ -209,7 +206,7 @@ def folder_names_from_plan(project, plan: dict):
 if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project("lidc")
     C = ConfigMaker(P)
@@ -221,7 +218,7 @@ if __name__ == "__main__":
     folders = folder_names_from_plan(P, plan)
 
     aj = plan["imported_folder"]
-    pp(folders)
+    pp(folders)  # noqa: F405
     dd = short_code(aj)
 # %%
     reg = load_registry()
@@ -249,7 +246,7 @@ if __name__ == "__main__":
     source_folder_suff = maybe_join(
         [src_prefix, remapping_src_code]
     )  # note source_flder has no plan suffix
-    source_folder = project.fixed_spacing_folder / source_folder_suff
+    source_folder = project.fixed_spacing_folder / source_folder_suff  # noqa: F405
 
     lbd_folder_suff = maybe_join(
         [
@@ -260,15 +257,15 @@ if __name__ == "__main__":
             expand_by,
         ]
     )
-    lbd_folder = str(project.lbd_folder / lbd_folder_suff)
+    lbd_folder = str(project.lbd_folder / lbd_folder_suff)  # noqa: F405
 
     def list_to_str(x):
         return "".join(int_to_str(v, 3) for v in x)
     patch_str = list_to_str(plan["patch_size"])
     patch_folder_suff = "_".join([source_folder_suff, patch_str])
-    patch_folder = str(project.pdb_folder / patch_folder_suff)
+    patch_folder = str(project.pdb_folder / patch_folder_suff)  # noqa: F405
     whole_folder_suff = maybe_join([patch_str, remapping_src_code])
-    whole_folder = str(project.whole_images_folder / whole_folder_suff)
+    whole_folder = str(project.whole_images_folder / whole_folder_suff)  # noqa: F405
 
     folders = {
         "data_folder_source": source_folder,
@@ -277,7 +274,7 @@ if __name__ == "__main__":
         "data_folder_pbd": patch_folder,
     }
 
-    pp(folders)
+    pp(folders)  # noqa: F405
 # %%
 
     if isinstance(plan, dict):

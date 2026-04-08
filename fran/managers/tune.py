@@ -12,15 +12,15 @@ from utilz.helpers import set_autoreload
 
 set_autoreload()
 
-from fran.architectures.create_network import create_model_from_conf
-from fran.architectures.unet3d.model import UNet3D
-from fran.callback.nep import NeptuneImageGridCallback
-from fran.configs.parser import ast_literal_eval, load_metadata, make_patch_size
-from fran.managers.base import load_checkpoint
-from ray import tune
-from ray.air import session
-from utilz.fileio import load_json
-from utilz.helpers import make_channels
+from fran.architectures.create_network import create_model_from_conf  # noqa: E402
+from fran.architectures.unet3d.model import UNet3D  # noqa: E402
+from fran.callback.nep import NeptuneImageGridCallback  # noqa: E402
+from fran.configs.parser import ast_literal_eval, load_metadata, make_patch_size  # noqa: E402
+from fran.managers.base import load_checkpoint  # noqa: E402
+from ray import tune  # noqa: E402
+from ray.air import session  # noqa: E402
+from utilz.fileio import load_json  # noqa: E402
+from utilz.helpers import make_channels  # noqa: E402
 
 
 def out_channels_from_dict_or_cell(src_dest_labels):
@@ -145,19 +145,19 @@ def train_with_tune(multi_gpu, neptune, max_num_epochs, proj_defaults, config):
     store_experiment_name_in_config(
         proj_defaults, config, session.get_experiment_name()
     )
-    La = Trainer(
+    La = Trainer(  # noqa: F821
         proj_defaults=proj_defaults,
         config_dict=config,
         bs=config["dataset_params"]["bs"],
     )
     lr = config["model_params"]["lr"]
-    cbs = [TuneTrackerCallback(freq=6), TuneCheckpointCallback(freq=6)]
+    cbs = [TuneTrackerCallback(freq=6), TuneCheckpointCallback(freq=6)]  # noqa: F821
     if neptune:
         cbs += [
-            NeptuneCallback(
+            NeptuneCallback(  # noqa: F821
                 proj_defaults, config, run_name=tune.get_trial_name(), freq=6
             ),
-            NeptuneCheckpointCallback(
+            NeptuneCheckpointCallback(  # noqa: F821
                 resume=False,
                 checkpoints_parent_folder=proj_defaults.checkpoints_parent_folder,
             ),

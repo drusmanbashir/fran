@@ -4,11 +4,10 @@ from __future__ import annotations
 import monai
 from utilz.stringz import headline
 
-__all__ = ["FolderLayoutBase", "FolderLayout", "default_name_formatter"]
+__all__ = []
 
 import random
 
-import ipdb
 import numpy as np
 from fran.data.dataset import FillBBoxPatchesd
 from fran.managers import Project
@@ -22,8 +21,6 @@ from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import SaveImaged
 from monai.transforms.post.dictionary import VoteEnsembled
 from monai.transforms.utility.dictionary import CastToTyped, ToDeviceD
-
-tr = ipdb.set_trace
 
 import gc
 from pathlib import Path
@@ -178,7 +175,7 @@ class EnsembleInferer:
         self.keys_postproc_safe = "W,MR,Int"
 
         # Partition runs into cascade vs base-like
-        self.cascade_runs: List[Tuple[str, str]] = []  # (run_w, run_p)
+        self.cascade_runs: List[Tuple[str, str]] = []  # (run_w, run_p)  # noqa: F821
         self.patch_runs: List[str] = []
         self.base_runs: List[str] = []
         for r in self.runs:
@@ -201,7 +198,7 @@ class EnsembleInferer:
 
         self.out_channels = out_channels
         # Group cascades by their localiser run to share bbox extraction
-        self.cascade_groups: Dict[str, List[str]] = {}  # run_w -> [run_p...]
+        self.cascade_groups: Dict[str, List[str]] = {}  # run_w -> [run_p...]  # noqa: F821
         for run_w, run_p in self.cascade_runs:
             self.cascade_groups.setdefault(run_w, []).append(run_p)
 
@@ -454,7 +451,6 @@ class EnsembleInferer:
     def postprocess_iterate_casc(self, batch):
         for tfm in self.postprocess_transforms_casc:
             headline(tfm)
-            tr()
             batch = tfm(batch)
         return batch
 
@@ -603,7 +599,6 @@ class EnsembleInferer:
         batch["bounding_box"] = bbox
         for tfm in self.postprocess_transforms:
             headline(tfm)
-            tr()
             batch = tfm(batch)
         return batch
 
@@ -804,8 +799,8 @@ if __name__ == "__main__":
     # batch['image'].shape
 
     # S
-    params["configs"].keys()
-    params["configs"]["dataset_params"]["plan_train"]
+    params["configs"].keys()  # noqa: F821
+    params["configs"]["dataset_params"]["plan_train"]  # noqa: F821
     # S
     # %%
     # SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
@@ -1045,7 +1040,7 @@ if __name__ == "__main__":
     batch["LITS-1290"]
 
     # %%
-    fn = strip_extension(subject)
+    fn = strip_extension(subject)  # noqa: F821
     # %%
 
     chunk = nodes[1]

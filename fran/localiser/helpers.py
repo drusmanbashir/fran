@@ -212,13 +212,13 @@ def show_images_with_boxes(input_tensor, output_tensor):
     fig, axs = make_subplots(n_imgs)
     try:
         n_row = axs.shape[0]
-    except:
+    except Exception:
         n_row = 1
     for ind in range(n_imgs):
         try:
             ax_ind = divmod(ind, n_row)
             ax = axs[*ax_ind]
-        except:
+        except Exception:
             ax = axs
         img = input_tensor[ind]
         predictions = output_tensor[ind]
@@ -259,7 +259,7 @@ def show_images_with_boxes(input_tensor, output_tensor):
             ]
             try:  # either the class is given as the sixth feature
                 idx = int(class_.item())
-            except:  # or the 20 softmax probabilities are given as features 6-25
+            except Exception:  # or the 20 softmax probabilities are given as features 6-25
                 idx = int(torch.max(class_, 0)[1].item())
             try:
                 class_ = CLASSES[idx]  # the first index of torch.max is the argmax.
@@ -316,7 +316,7 @@ def show_image_with_boxes(input_tensor, output_tensor):
             ]
             try:  # either the class is given as the sixth feature
                 idx = int(class_.item())
-            except:  # or the 20 softmax probabilities are given as features 6-25
+            except Exception:  # or the 20 softmax probabilities are given as features 6-25
                 idx = int(torch.max(class_, 0)[1].item())
             try:
                 class_ = CLASSES[idx]  # the first index of torch.max is the argmax.

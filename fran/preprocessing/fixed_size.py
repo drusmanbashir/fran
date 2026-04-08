@@ -260,7 +260,7 @@ if __name__ == "__main__":
 
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project(project_title="totalseg")
     C = ConfigMaker(P)
@@ -354,8 +354,8 @@ if __name__ == "__main__":
     output_folder_lm = output_folder / "lms"
     maybe_makedirs([output_folder_im, output_folder_lm])
 
-    images_fldr = self.data_folder / ("images")
-    lms_fldr = self.data_folder / ("lms")
+    images_fldr = self.data_folder / ("images")  # noqa: F405
+    lms_fldr = self.data_folder / ("lms")  # noqa: F405
 
     lms = list(lms_fldr.glob("*"))
     imgs = list(images_fldr.glob("*"))
@@ -374,24 +374,24 @@ if __name__ == "__main__":
         [
             c.process.remote(
                 dicis,
-                spatial_size,
+                spatial_size,  # noqa: F405
                 output_folder_im,
                 output_folder_lm,
-                remapping_train=remapping_train,
+                remapping_train=remapping_train,  # noqa: F405
             )
             for c, dicis in zip(actors, dicis)
         ]
     )
     # dici = L(dici)
 # %%
-    dici = tfms(dici)
+    dici = tfms(dici)  # noqa: F405
 # %%
-    dici = L(dici)
-    dici = M(dici)
+    dici = L(dici)  # noqa: F405
+    dici = M(dici)  # noqa: F405
 # %%
-    dici = E(dici)
+    dici = E(dici)  # noqa: F405
 
-    dici = Rz(dici)
+    dici = Rz(dici)  # noqa: F405
 
     im, lm = dici["image"], dici["lm"]
 
@@ -414,7 +414,7 @@ if __name__ == "__main__":
     M = LabelRemapd(keys=["lm"], remapping=remapping_train)
     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
     Rz = Resized(
-        keys=["image", "lm"], spatial_size=spatial_size, mode=["linear", "nearest"]
+        keys=["image", "lm"], spatial_size=spatial_size, mode=["linear", "nearest"]  # noqa: F405
     )
     S = SqueezeDimd(keys=["image", "lm"])
 

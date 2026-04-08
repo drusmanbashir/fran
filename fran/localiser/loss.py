@@ -4,13 +4,9 @@ from fran.localiser.helpers import iou, iou_wh
 
 plt.ion()
 # matplotlib.use('Agg')
-import ipdb
-import lightning as L
-import numpy as np
-import torch
-
-tr = ipdb.set_trace
-
+import lightning as L  # noqa: E402
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
 
 # class YOLOLoss(torch.nn.modules.loss._Loss):
 class YOLOLoss(L.LightningModule):

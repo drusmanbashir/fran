@@ -1,7 +1,6 @@
 # %%
 import math
 
-import ipdb
 import monai.transforms.spatial.functional as fm
 import torch.nn.functional as F
 from fran.transforms.base import ItemTransform, KeepBBoxTransform, MonaiDictTransform, Union, np, torch
@@ -18,7 +17,6 @@ from torch import cos, pi, sin
 from utilz.helpers import load_dict
 from utilz.stringz import int_to_str
 
-tr = ipdb.set_trace
 from monai.transforms.croppad.dictionary import RandSpatialCropd
 
 
@@ -294,12 +292,12 @@ class ResizeToTensord(MonaiDictTransform):
     def __call__(self, data):
         tnsr = data[self.key_template_tensor]
 
-        if (l := len(tnsr.shape)) == 4:
+        if (ndim := len(tnsr.shape)) == 4:
             spatial_shape = tnsr[0].shape
-        elif l == 3:
+        elif ndim == 3:
             spatial_shape = tnsr.shape
         else:
-            raise ValueError("spatial size is not 3 or 4, but is {}".format(l))
+            raise ValueError("spatial size is not 3 or 4, but is {}".format(ndim))
         for key in self.key_iterator(data):
             data[key] = _resize3d(data[key], spatial_shape, self.mode)
         return data
@@ -634,11 +632,11 @@ def slices_from_lists(slc_start, slc_stop, stride=None):
 if __name__ == "__main__":
     from fran.data.dataset import ImageMaskBBoxDataset
     from fran.transforms.misc_transforms import create_augmentations
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     # %%
     # %%
-    P = Project(project_title="lits")
+    P = Project(project_title="lits")  # noqa: F405
     proj_defaults = P
     spacings = [1, 1, 1]
     src_patch_size = [220, 220, 110]
@@ -659,7 +657,7 @@ if __name__ == "__main__":
     masks = list((proj_defaults.raw_data_folder / ("lms")).glob("*"))
     img_fn = imgs[0]
     mask_fn = masks[0]
-    train_ids, val_ids, _ = get_fold_case_ids(
+    train_ids, val_ids, _ = get_fold_case_ids(  # noqa: F405
         fold=0, json_fname=proj_defaults.validation_folds_filename
     )
     train_ds = ImageMaskBBoxDataset(proj_defaults, train_ids, bboxes_fn)
@@ -668,10 +666,9 @@ if __name__ == "__main__":
     aa = train_ds.median_shape
     # %%
     after_item_intensity = {
-        "brightness": [[0.7, 1.3], 0.1],
+        "brightness": [[0.7, 1.5], 0.01],
         "shift": [[-0.2, 0.2], 0.1],
         "noise": [[0, 0.1], 0.1],
-        "brightness": [[0.7, 1.5], 0.01],
         "contrast": [[0.7, 1.3], 0.1],
     }
     after_item_spatial = {"flip_random": 0.5}
@@ -680,27 +677,27 @@ if __name__ == "__main__":
     )
 
     probabilities_intensity, probabilities_spatial = 0.1, 0.5
-    after_item_intensity = TrainingAugmentations(
+    after_item_intensity = TrainingAugmentations(  # noqa: F405
         augs=intensity_augs, p=probabilities_intensity
     )
-    after_item_spatial = TrainingAugmentations(
+    after_item_spatial = TrainingAugmentations(  # noqa: F405
         augs=spatial_augs, p=probabilities_spatial
     )
     # %%
     from fran.data.dataset import ImageMaskBBoxDataset
-    from utilz.imageviewers import *
+    from utilz.imageviewers import *  # noqa: F403
 
-    P = Project(project_title="lits")
+    P = Project(project_title="lits")  # noqa: F405
     proj_defaults = P
     # %%
     bboxes_pt_fn = proj_defaults.stage1_folder / ("cropped/images_pt/bboxes_info")
     bboxes_nii_fn = proj_defaults.stage1_folder / ("cropped/images_nii/bboxes_info")
     # %%
 
-    n_slices = data["n_slices"]
-    z = random.randint(1, n_slices - 2)
-    img_fns = data["image_fns"]
-    lm = data["lm"]
+    n_slices = data["n_slices"]  # noqa: F405
+    z = random.randint(1, n_slices - 2)  # noqa: F405
+    img_fns = data["image_fns"]  # noqa: F405
+    lm = data["lm"]  # noqa: F405
     image_prev = img_fns[z]
     image_curr = img_fns[z + 1]
     image_next = img_fns[z + 2]
@@ -723,7 +720,7 @@ if __name__ == "__main__":
 
     # %%
     # zz = int_to_str(14,3)
-    Affine = RandAffined(
+    Affine = RandAffined(  # noqa: F405
         keys=["image", "lm"],
         mode=["bilinear", "nearest"],
         prob=1,
@@ -736,15 +733,15 @@ if __name__ == "__main__":
     dici = Affine(dici)
     # %%
 
-    RP = RandomPatch()
+    RP = RandomPatch()  # noqa: F405
 
     # %%
-    Rva = RandCropByPosNegLabeld(
+    Rva = RandCropByPosNegLabeld(  # noqa: F405
         keys=["image", "lm"],
         label_key="lm",
         image_key="image",
         image_threshold=-2600,
-        spatial_size=tm.plan["patch_size"],
+        spatial_size=tm.plan["patch_size"],  # noqa: F405
         pos=1,
         neg=1,
         num_samples=1,
@@ -752,7 +749,7 @@ if __name__ == "__main__":
         allow_smaller=True,
     )
     # %%
-    tm.plan["patch_size"]
+    tm.plan["patch_size"]  # noqa: F405
     dici = Rva(dici)
 
     # %%

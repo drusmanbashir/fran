@@ -547,7 +547,7 @@ class Trainer:
 # SECTION: -------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from utilz.helpers import pp
 
     P = Project("lidc")

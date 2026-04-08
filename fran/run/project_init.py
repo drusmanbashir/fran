@@ -1,8 +1,5 @@
 # %%
 
-import ipdb
-
-tr = ipdb.set_trace
 
 # very top of project_init.py (above any 3rd-party imports)
 

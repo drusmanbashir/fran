@@ -2,7 +2,6 @@
 import itertools as il
 from typing import Callable, Optional
 
-import ipdb
 import lightning.pytorch as pl
 import numpy as np
 import torch
@@ -13,7 +12,6 @@ from torch.autograd.functional import jacobian
 from torchvision.utils import Union
 from utilz.helpers import range_inclusive
 
-tr = ipdb.set_trace
 import torch.nn.functional as F
 from monai.losses import DiceCELoss, DiceLoss
 
@@ -415,10 +413,10 @@ if __name__ == "__main__":
             retain_graph=True,
             create_graph=True,
         )[0]
-        autograd_jacobian[:, i, :, :, :, :] = grad
+        autograd_jacobian[:, i, :, :, :, :] = grad  # noqa: F821
 
     # Check if the manually computed Jacobian and the autograd Jacobian are close
-    if torch.allclose(manual_jacobian, autograd_jacobian, atol=1e-5):
+    if torch.allclose(manual_jacobian, autograd_jacobian, atol=1e-5):  # noqa: F821
         print("The manually computed Jacobian and autograd Jacobian match!")
     else:
         print(
@@ -426,7 +424,7 @@ if __name__ == "__main__":
         )
 
     # Optionally, print the difference between them
-    diff = torch.abs(manual_jacobian - autograd_jacobian)
+    diff = torch.abs(manual_jacobian - autograd_jacobian)  # noqa: F821
     print("Max difference:", diff.max())
     # %%
     # Define the tensors A and B for the short example

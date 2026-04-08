@@ -1,7 +1,6 @@
 # ray_worker_base.py
 import traceback
 
-import ipdb
 from fran.data.dataregistry import DS
 from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
 from fran.transforms.imageio import LoadTorchd
@@ -24,12 +23,10 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 
 # plain, testable class (NOT a Ray actor)
 
-import pandas as pd
-from fran.preprocessing.preprocessor import Preprocessor
+import pandas as pd  # noqa: E402
+from fran.preprocessing.preprocessor import Preprocessor  # noqa: E402
 
-tr = ipdb.set_trace
-
-from typing import Any, Dict
+from typing import Any, Dict  # noqa: E402
 class RayWorkerBase(Preprocessor):
     def __init__(
         self,
@@ -128,7 +125,6 @@ class RayWorkerBase(Preprocessor):
         for key in keys:
             if self.debug:
                 cprint(f"{key}", color="yellow")
-                tr()
             tfm = self.transforms_dict[key]
             if isinstance(tfm, dict):
                 ds = data["ds"]

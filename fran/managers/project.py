@@ -21,24 +21,22 @@ from utilz.helpers import DictToAttr, ask_proceed, np, pd, set_autoreload
 set_autoreload()
 
 sys.path += ["/home/ub/Dropbox/code"]
-from utilz.fileio import load_yaml, maybe_makedirs
+from utilz.fileio import load_yaml, maybe_makedirs  # noqa: E402
 
 # if "XNAT_CONFIG_PATH" in os.environ:
 #     from xnat.object_oriented import *
 common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
-import shutil
-import string
+import shutil  # noqa: E402
+import string  # noqa: E402
 
-import ipdb
-from fastcore.basics import Union
-from fran.utils.misc import is_hpc
-from utilz.fileio import load_dict, save_dict
-from utilz.helpers import find_matching_fn
-from utilz.stringz import info_from_filename, str_to_path
+from fastcore.basics import Union  # noqa: E402
+from fran.utils.misc import is_hpc  # noqa: E402
+from utilz.fileio import load_dict, save_dict  # noqa: E402
+from utilz.helpers import find_matching_fn  # noqa: E402
+from utilz.stringz import info_from_filename, str_to_path  # noqa: E402
 
-tr = ipdb.set_trace
-from pathlib import Path
+from pathlib import Path  # noqa: E402
 
 if not is_hpc():
     trash_fnc = send2trash
@@ -358,7 +356,7 @@ class Project(DictToAttr):
             try:
                 print("Deleting {} (if it exists)".format(fn))
                 fn.unlink()
-            except:
+            except Exception:
                 pass
 
     def purge_raw_data_folder(self):
@@ -441,7 +439,7 @@ class Project(DictToAttr):
         xnat_proj : str
             The XNAT project name.
         """
-        proj = Proj(xnat_proj)
+        proj = Proj(xnat_proj)  # noqa: F405
         rc = proj.resource("IMAGE_lm_FPATHS")
         csv_fn = rc.get("/tmp", extract=True)[0]
         pd.read_csv(csv_fn)
@@ -1131,7 +1129,7 @@ class Project(DictToAttr):
     def __repr__(self):
         try:
             pr = "Project {0}\n{1}".format(self.project_title, self.datasources)
-        except:
+        except Exception:
             pr = "Project {0}\n{1}".format(self.project_title, "Datasets Unknown")
         return pr
 
@@ -1205,7 +1203,7 @@ class Project(DictToAttr):
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 
 if __name__ == "__main__":
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from fran.configs.parser import ConfigMaker
     P = Project(project_title="pancreas")
     P = Project(project_title="test")

@@ -1,3 +1,3 @@
 # import sys
 #
-from .common import COMMON_PATHS
+from .common import COMMON_PATHS  # noqa: F401

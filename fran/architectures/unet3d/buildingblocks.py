@@ -49,7 +49,7 @@ def create_conv(
 
     try:
         index_of_conv = order.index("c") if "c" in order else order.index("s")
-    except:
+    except Exception:
         raise ValueError("Conv layer MUST be present")
     assert order[0] not in "rle", (
         "Non-linearity cannot be the first operation in the layer"

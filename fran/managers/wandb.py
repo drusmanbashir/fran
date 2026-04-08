@@ -1,9 +1,7 @@
 # %%
 from __future__ import annotations
 
-import ipdb
 
-tr = ipdb.set_trace
 import os
 import secrets
 from pathlib import Path
@@ -91,7 +89,7 @@ def _is_writable_dir(path: Path) -> bool:
         return False
 
 
-import stat
+import stat  # noqa: E402
 
 torch._dynamo.config.suppress_errors = True
 

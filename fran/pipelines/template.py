@@ -18,7 +18,7 @@ if __name__ == "__main__":
     from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
     from fran.run.analyze_resample import PreprocessingManager
     from fran.trainers.trainer import Trainer
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from fran.utils.folder_names import folder_names_from_plan
 
     P = Project("litstmp")
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     # conf["dataset_params"]["ds_type"] ='lmdb'
     # conf["dataset_params"]["cache_rate"] = None
     matching_plan = folder_names_from_plan(P, plan)
-    pp(matching_plan)
+    pp(matching_plan)  # noqa: F405
 # %%
     run_name = None
     Tm = Trainer(P.project_title, conf, run_name)
@@ -144,26 +144,26 @@ if __name__ == "__main__":
 # %%
 # %%
 # SECTION:-------------------- Initialize--------------------------------------------------------------------------------------
-    I = PreprocessingManager(args)
-    # I.spacing =
+    mgr = PreprocessingManager(args)
+    # mgr.spacing =
 # %%
 # SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
     overwrite = True
-    I.resample_dataset(overwrite=overwrite)
-    I.R.get_tensor_folder_stats()
+    mgr.resample_dataset(overwrite=overwrite)
+    mgr.R.get_tensor_folder_stats()
 
 # %%
 # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
     overwrite = False
-    if I.plan["mode"] == "patch":
-        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
-        I.generate_hires_patches_dataset()
-    elif I.plan["mode"] == "lbd":
+    if mgr.plan["mode"] == "patch":
+        # mgr.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+        mgr.generate_hires_patches_dataset()
+    elif mgr.plan["mode"] == "lbd":
         imported_folder = plan.get("imported_folder")
         if imported_folder is None:
-            I.generate_lbd_dataset(overwrite=overwrite)
+            mgr.generate_lbd_dataset(overwrite=overwrite)
         else:
-            I.generate_TSlabelboundeddataset(
+            mgr.generate_TSlabelboundeddataset(
                 imported_labels=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],
             )
@@ -232,6 +232,6 @@ if __name__ == "__main__":
     # S
 # %%
 
-    add_plan_to_db(I.L.plan, data_folder_lbd=I.L.output_folder, db_path=I.L.project.db)
+    add_plan_to_db(mgr.L.plan, data_folder_lbd=mgr.L.output_folder, db_path=mgr.L.project.db)
 # %%
 

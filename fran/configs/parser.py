@@ -363,7 +363,7 @@ class ConfigMaker:
                 self.configs["dataset_params"][prop] = self.project.global_properties[
                     prop
                 ]
-            except:
+            except Exception:
                 self.configs["dataset_params"][prop] = None
 
     # CODE: depcrecated add_out_channels as per folder labels_out are being computed in preprocessing
@@ -584,12 +584,12 @@ def parse_excel_cell(cell_val):
         if any(p in cell_val for p in ("[", "{", "(")):
             try:
                 return _to_py(ast.literal_eval(cell_val))
-            except:
+            except Exception:
                 return cell_val
         else:
             try:
                 return _to_py(ast.literal_eval(cell_val))
-            except:
+            except Exception:
                 return cell_val
     return _to_py(cell_val)
 
@@ -671,10 +671,10 @@ if __name__ == "__main__":
 
     existing_fldr = folder_names_from_plan(P, plan)["data_folder_source"]
     img_fldr = existing_fldr / ("images")
-    len(list(img_fldr.glob("*"))) == len(project)
+    len(list(img_fldr.glob("*"))) == len(project)  # noqa: F821
 # %%
 
-    lbd_subfolder = folder_names_from_plan(project, plan)["data_folder_lbd"]
+    lbd_subfolder = folder_names_from_plan(project, plan)["data_folder_lbd"]  # noqa: F821
     lbd_img_fldr = Path(lbd_subfolder) / ("images")
     len(list(lbd_img_fldr.glob("*")))
 # %%

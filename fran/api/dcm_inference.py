@@ -10,7 +10,7 @@ import SimpleITK as sitk
 # from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
 from utilz.itk_sitk import Path
 
-sys.path += ["/home/ub/code"]
+sys.path += ["/home/ub/code"]  # noqa: F821
 
 # These are the usual ipython objects, including this one you are creating
 ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]

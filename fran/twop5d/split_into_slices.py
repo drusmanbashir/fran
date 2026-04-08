@@ -12,7 +12,7 @@ from utilz.fileio import maybe_makedirs
 def cases_to_separate_folders(src_dir):
     fnames = os.listdir(src_dir)
     pattern = re.compile(r"^(.*)_slice\d{3}.pt$")  # Captures prefix before "_slice###"
-    for fname in pbar(fnames):
+    for fname in pbar(fnames):  # noqa: F821
         if not os.path.isfile(os.path.join(src_dir, fname)):
             continue
         match = pattern.match(fname)

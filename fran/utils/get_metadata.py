@@ -49,7 +49,7 @@ def convert(img_fn: str, out_path: str):
 
 
 # get_metadata.py
-import io
+import io  # noqa: E402
 
 
 def convert_to_bytes(img_fn: str) -> bytes:

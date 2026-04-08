@@ -39,21 +39,21 @@ def generate_dataset(project_title):
     # args.plan = 6
     args.num_processes = 4
     args.overwrite = False
-    I = PreprocessingManager(args)
-    I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
+    mgr = PreprocessingManager(args)
+    mgr.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
     # args.num_processes = 1
 
-    if I.plan["mode"] == "patch":
-        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
-        I.generate_hires_patches_dataset(overwrite=args.overwrite)
-    elif I.plan["mode"] == "lbd":
-        imported_folder = I.plan.get("imported_folder", None)
+    if mgr.plan["mode"] == "patch":
+        # mgr.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+        mgr.generate_hires_patches_dataset(overwrite=args.overwrite)
+    elif mgr.plan["mode"] == "lbd":
+        imported_folder = mgr.plan.get("imported_folder", None)
         if imported_folder is None:
-            I.generate_lbd_dataset(
+            mgr.generate_lbd_dataset(
                 overwrite=args.overwrite, num_processes=args.num_processes
             )
         else:
-            I.generate_TSlabelboundeddataset(
+            mgr.generate_TSlabelboundeddataset(
                 overwrite=args.overwrite, num_processes=args.num_processes
             )
 
@@ -97,7 +97,7 @@ def build_datasets_from_yaml(
             overwrite=overwrite,
             plan=None,
         )
-        pm = PreprocessingManagerTune(args)
+        pm = PreprocessingManagerTune(args)  # noqa: F821
 
         # Apply overrides from permutation
         for k, v in spec.items():
@@ -172,21 +172,21 @@ if __name__ == "__main__":
         spacing = vars["spacing"]["value"][i]
         for n in range(len(vars["expand_by"]["value"])):
             expand_by = vars["expand_by"]["value"][n]
-            I = PreprocessingManager(args)
-            I.plan["mode"] = "lbd"
-            I.plan["expand_by"] = expand_by
-            I.plan["spacing"] = spacing
+            mgr = PreprocessingManager(args)
+            mgr.plan["mode"] = "lbd"
+            mgr.plan["expand_by"] = expand_by
+            mgr.plan["spacing"] = spacing
 
-            I.resample_dataset(
+            mgr.resample_dataset(
                 overwrite=args.overwrite, num_processes=args.num_processes
             )
-            imported_folder = I.plan.get("imported_folder", None)
+            imported_folder = mgr.plan.get("imported_folder", None)
             if imported_folder is None:
-                I.generate_lbd_dataset(
+                mgr.generate_lbd_dataset(
                     overwrite=args.overwrite, num_processes=args.num_processes
                 )
             else:
-                I.generate_TSlabelboundeddataset(
+                mgr.generate_TSlabelboundeddataset(
                     overwrite=args.overwrite, num_processes=args.num_processes
                 )
 # %%

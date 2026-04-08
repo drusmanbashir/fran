@@ -6,18 +6,18 @@ from utilz.helpers import set_autoreload
 
 set_autoreload()
 
-from fran.configs.parser import is_excel_None
-from fastcore.basics import listify
-from fran.data.collate import (
+from fran.configs.parser import is_excel_None  # noqa: E402
+from fastcore.basics import listify  # noqa: E402
+from fran.data.collate import (  # noqa: E402
     patch_collated,
     source_collated,
     whole_collated,
 )
-from fran.utils.folder_names import folder_names_from_plan
-from tqdm.auto import tqdm as pbar
-from utilz.fileio import load_yaml
-from utilz.helpers import find_matching_fn
-from utilz.stringz import (
+from fran.utils.folder_names import folder_names_from_plan  # noqa: E402
+from tqdm.auto import tqdm as pbar  # noqa: E402
+from utilz.fileio import load_yaml  # noqa: E402
+from utilz.helpers import find_matching_fn  # noqa: E402
+from utilz.stringz import (  # noqa: E402
     ast_literal_eval,
     info_from_filename,
     strip_extension,
@@ -26,15 +26,14 @@ from utilz.stringz import (
 common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 
-import os
-from dataclasses import dataclass, replace
-from pathlib import Path
-from typing import Optional
+import os  # noqa: E402
+from dataclasses import dataclass, replace  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Optional  # noqa: E402
 
-import ipdb
-import pandas as pd
-from fran.data.collate import grid_collated
-from fran.managers.data.training import (
+import pandas as pd  # noqa: E402
+from fran.data.collate import grid_collated  # noqa: E402
+from fran.managers.data.training import (  # noqa: E402
     DataManager,
     DataManagerBaseline,
     DataManagerDual,
@@ -43,15 +42,12 @@ from fran.managers.data.training import (
     DataManagerSource,
     DataManagerWhole,
 )
-from utilz.cprint import cprint
-from utilz.fileio import load_yaml
-from utilz.stringz import headline
+from utilz.cprint import cprint  # noqa: E402
+from utilz.fileio import load_yaml  # noqa: E402
+from utilz.stringz import headline  # noqa: E402
 
 common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
-
-tr = ipdb.set_trace
-
 
 def create_pd_indices(indices: int | list):
     if isinstance(indices, pd.Index):
@@ -369,7 +365,7 @@ class DataManagerI(DataManager):
                     ),
                     color="yellow",
                 )
-            except:
+            except Exception:
                 cprint(
                     "Size of dataset not available for {}".format(self.split),
                     color="yellow",

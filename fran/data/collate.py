@@ -7,9 +7,6 @@ from torch.utils.data.dataloader import (
 )
 
 _loaders = (_MultiProcessingDataLoaderIter, _SingleProcessDataLoaderIter)
-import ipdb
-
-tr = ipdb.set_trace
 
 @dataclass
 class VarType:
@@ -331,7 +328,7 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- SOURCE COLLATED-------------------------------------------------------------------------------------- <CR> <CR>
 
-    d1 = ResizePC(E(L(d1)))
+    d1 = ResizePC(E(L(d1)))  # noqa: F821
     d2 = E(L(d2))
     d3 = Res(d2)
 # %%

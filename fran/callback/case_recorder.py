@@ -122,8 +122,8 @@ class CaseIDRecorder(Callback):
 
     def on_train_batch_start(
         self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
+        trainer: "pl.Trainer",  # noqa: F821
+        pl_module: "pl.LightningModule",  # noqa: F821
         batch: Any,
         batch_idx: int,
     ) -> None:
@@ -131,8 +131,8 @@ class CaseIDRecorder(Callback):
 
     def on_validation_batch_start(
         self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
+        trainer: "pl.Trainer",  # noqa: F821
+        pl_module: "pl.LightningModule",  # noqa: F821
         batch: Any,
         batch_idx: int,
     ) -> None:
@@ -140,8 +140,8 @@ class CaseIDRecorder(Callback):
 
     def on_train_batch_end(
         self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
+        trainer: "pl.Trainer",  # noqa: F821
+        pl_module: "pl.LightningModule",  # noqa: F821
         outputs: STEP_OUTPUT,
         batch: Any,
         batch_idx: int,
@@ -151,8 +151,8 @@ class CaseIDRecorder(Callback):
 
     def on_validation_batch_end(
         self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
+        trainer: "pl.Trainer",  # noqa: F821
+        pl_module: "pl.LightningModule",  # noqa: F821
         outputs: STEP_OUTPUT,
         batch: Any,
         batch_idx: int,
@@ -171,7 +171,7 @@ class CaseIDRecorder(Callback):
         self.incrementing = False
 
     def on_validation_epoch_end(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"  # noqa: F821
     ) -> None:
         epoch = trainer.current_epoch + 1
         if (epoch > 0 and epoch % self.freq == 0) or self.incrementing:

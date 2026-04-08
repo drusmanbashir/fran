@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 
 # training.py — minimal runner to Tm.fit()
-import ipdb
 import torch
 from fran.utils.misc import parse_devices
-
-tr = ipdb.set_trace
-
 
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project

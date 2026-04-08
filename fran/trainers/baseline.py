@@ -161,7 +161,7 @@ if __name__ == "__main__":
         print(vals)
         # print(vals)
         if vals.max() > 8:
-            tr()
+            tr()  # noqa: F821
             # print("Rat")
             dici = {"lm": lm.meta["filename_or_obj"], "vals": vals}
             dicis.append(dici)
@@ -173,16 +173,16 @@ if __name__ == "__main__":
     dici = ds.transform(dici)
 
     # %%
-    L = LoadImaged(
+    L = LoadImaged(  # noqa: F821
         keys=["image", "lm"],
         image_only=True,
         ensure_channel_first=False,
         simple_keys=True,
     )
-    L.register(TorchReader())
+    L.register(TorchReader())  # noqa: F821
 
-    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-    Rtr = RandCropByPosNegLabeld(
+    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")  # noqa: F821
+    Rtr = RandCropByPosNegLabeld(  # noqa: F821
         keys=["image", "lm"],
         label_key="lm",
         image_key="image",
@@ -196,9 +196,9 @@ if __name__ == "__main__":
         lazy=True,
         allow_smaller=False,
     )
-    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])  # noqa: F821
 
-    Rva = RandCropByPosNegLabeld(
+    Rva = RandCropByPosNegLabeld(  # noqa: F821
         keys=["image", "lm"],
         label_key="lm",
         image_key="image",
@@ -212,13 +212,13 @@ if __name__ == "__main__":
         lazy=False,
         allow_smaller=True,
     )
-    Re = ResizeWithPadOrCropd(
+    Re = ResizeWithPadOrCropd(  # noqa: F821
         keys=["image", "lm"],
         spatial_size=D.dataset_params["patch_size"],
         lazy=False,
     )
 
-    Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
+    Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])  # noqa: F821
     # %%
     D.prepare_data()
     D.setup(None)
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     ImageMaskViewer([dici[0]["image"][0], dici[0]["lm"][0]])
 
     # %%
-    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
+    Ld = LoadTorchDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])  # noqa: F821
     dici = Ld(dici)
     # %%
 
@@ -252,7 +252,7 @@ if __name__ == "__main__":
     ImageMaskViewer([tt, tt2])
     # %%
 
-    Re = ResizeWithPadOrCropd(
+    Re = ResizeWithPadOrCropd(  # noqa: F821
         keys=["image", "lm"],
         spatial_size=D.dataset_params["patch_size"],
         lazy=False,
@@ -296,7 +296,7 @@ if __name__ == "__main__":
     dici = {"image": img, "lm": lm, "bbox": bbox}
     dici = ds.transform(dici)
 
-    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
+    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")  # noqa: F821
     dici = E(dici)
     # %%
     # img = ds.create_metatensor(img_fn)
@@ -310,8 +310,8 @@ if __name__ == "__main__":
     dici = ds[4]
     dici.keys()
     dat
-    dici = {"image": img_fn, "lm": label_fn}
-    im = torch.load(img_fn)
+    dici = {"image": img_fn, "lm": label_fn}  # noqa: F821
+    im = torch.load(img_fn)  # noqa: F821
 
     im.shape
 
@@ -339,12 +339,12 @@ if __name__ == "__main__":
     batch = b
     inputs, target, bbox = batch["image"], batch["lm"], batch["bbox"]
 
-    [pp(a["filename"]) for a in bbox]
+    [pp(a["filename"]) for a in bbox]  # noqa: F821
     # %%
     preds = N.model(inputs.cuda())
     pred = preds[0]
     pred = pred.detach().cpu()
-    pp(pred.shape)
+    pp(pred.shape)  # noqa: F821
     # %%
     n = 1
     img = inputs[n, 0]
@@ -357,7 +357,7 @@ if __name__ == "__main__":
     fn2 = "/home/ub/datasets/preprocessed/lits32/patches/spc_080_080_150/dim_192_192_128/masks/lits_4_1.pt"
     img = torch.load(fn)
     mask = torch.load(fn2)
-    pp(img.shape)
+    pp(img.shape)  # noqa: F821
     # %%
 
     ImageMaskViewer([img, mask])
@@ -366,10 +366,10 @@ if __name__ == "__main__":
 
     Tm.trainer.callback_metrics
     # %%
-    ckpt = Path(
+    ckpt = Path(  # noqa: F821
         "/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt"
     )
-    kk = torch.load(self.ckpt)
+    kk = torch.load(self.ckpt)  # noqa: F821
     kk["datamodule_hyper_parameters"].keys()
     kk.keys()
     kk["datamodule_hyper_parameters"]

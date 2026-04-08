@@ -1,10 +1,8 @@
 # %%
 from typing import Union
 
-import ipdb
 from utilz.stringz import headline
 
-tr = ipdb.set_trace
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -54,7 +52,7 @@ COLUMNS_NONCRIT = [
     "data_folder_whole",
 ]
 COLUMNS_ALL = COLUMNS_CRITICAL + COLUMNS_NONCRIT
-import json
+import json  # noqa: E402
 
 
 def _normalize_for_db(v):
@@ -232,13 +230,13 @@ if __name__ == "__main__":
 
     # %%
     # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from fran.utils.folder_names import folder_names_from_plan
     from utilz.helpers import folder_name_from_list
 
-    P = Project("litstmp")
+    P = Project("litstmp")  # noqa: F405
     # P._create_plans_table()
-    P = Project("nodes")
+    P = Project("nodes")  # noqa: F405
     # P.create("lits")
 
     # P.add_data([DS.litq, DS.lits, DS.drli, DS.litqsmall])
@@ -356,7 +354,7 @@ if __name__ == "__main__":
     con.commit()
     # %%
     from fran.managers import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project("totalseg")
     # P._create_plans_table()
@@ -422,8 +420,8 @@ if __name__ == "__main__":
     #     )
     # %%
     #     db_path = P.db
-    with sqlite3.connect(db_path) as conn:
-        row = conn.execute(sql, params).fetchone()
+    with sqlite3.connect(db_path) as conn:  # noqa: F405
+        row = conn.execute(sql, params).fetchone()  # noqa: F405
     # %%
 
     """Return row data if a row where all provided key->value pairs match (for known columns)."""
@@ -434,7 +432,7 @@ if __name__ == "__main__":
         v_norm = _normalize_for_db(plan[k])  # keep your normalizer
         if v_norm is None:
             conds.append(f'"{k}" IS NULL')
-        elif _is_zeroish(v_norm):  # must handle "0", 0, 0.0
+        elif _is_zeroish(v_norm):  # must handle "0", 0, 0.0  # noqa: F405
             conds.append(f'("{k}" = ? OR "{k}" IS NULL)')
             params.append("0")  # TEXT schema → compare as string
         else:
@@ -469,7 +467,7 @@ if __name__ == "__main__":
     }
 
     # %%
-    data_folder_source = I.R.output_folder
+    data_folder_source = I.R.output_folder  # noqa: F405
     data_folder_lbd = None
     data_folder_whole = None
     data_folder_pbd = None

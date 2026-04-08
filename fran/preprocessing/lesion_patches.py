@@ -89,7 +89,7 @@ if __name__ == "__main__":
     print("y:", y)  # e.g. tensor([1])
 
     img = x[0, 0]
-    ImageMaskViewer([img.detach().cpu(), img])
+    ImageMaskViewer([img.detach().cpu(), img])  # noqa: F821
     # %%
     # ResNet3D classification accepts this
     model = resnet18(
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     labs_all = []
     for lmfn in lms:
         lms = lmfln + "/" + lmfn
-        lm = sitk.ReadImage(lms)
+        lm = sitk.ReadImage(lms)  # noqa: F821
         llas = get_labels(lm)
         labs_all.append([llas, lms])
 # %%

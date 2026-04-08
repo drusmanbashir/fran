@@ -21,23 +21,23 @@ if __name__ == "__main__":
     # conf["dataset_params"]["src_dims"]
     # %%
 
-    project_title = P.project_title
+    project_title = P.project_title  # noqa: F821
 
-    Tm = RayTrainer(project_title, conf, None)
+    Tm = RayTrainer(project_title, conf, None)  # noqa: F821
 
-    lr = conf["model_params"]["lr"]
+    lr = conf["model_params"]["lr"]  # noqa: F821
     bs = 4
     devices = 1
-    headline(f"Training with conf: {conf}")
-    lr = conf["model_params"]["lr"]
-    conf["dataset_params"]["src_dims"] = make_patch_size(
-        conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"]
+    headline(f"Training with conf: {conf}")  # noqa: F821
+    lr = conf["model_params"]["lr"]  # noqa: F821
+    conf["dataset_params"]["src_dims"] = make_patch_size(  # noqa: F821
+        conf["dataset_params"]["src_dim0"], conf["dataset_params"]["src_dim1"]  # noqa: F821
     )
-    conf["plan_train"]["patch_size"] = make_patch_size(
-        conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"]
+    conf["plan_train"]["patch_size"] = make_patch_size(  # noqa: F821
+        conf["plan_train"]["patch_dim0"], conf["plan_train"]["patch_dim1"]  # noqa: F821
     )
-    headline(conf["dataset_params"]["src_dims"])
-    headline(conf["plan_train"]["patch_size"])
+    headline(conf["dataset_params"]["src_dims"])  # noqa: F821
+    headline(conf["plan_train"]["patch_size"])  # noqa: F821
 
     compiled = False
     neptune = False
@@ -50,7 +50,7 @@ if __name__ == "__main__":
         compiled=compiled,
         batch_size=bs,
         devices=devices,
-        epochs=num_epochs,
+        epochs=num_epochs,  # noqa: F821
         batchsize_finder=False,
         profiler=False,
         neptune=neptune,
@@ -62,19 +62,19 @@ if __name__ == "__main__":
     # %%
     # %%
     # SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
-    conf["dataset_params"]["src_dim1"]
-    conf2 = conf.copy()
-    conf2["dataset_params"]["src_dim0"] = conf["dataset_params"]["src_dim0"].sample()
-    conf2["dataset_params"]["src_dim1"] = conf["dataset_params"]["src_dim1"].sample()
-    conf2["plan_train"]["patch_dim0"] = conf["plan_train"]["patch_dim0"].sample()
-    conf2["plan_train"]["patch_dim1"] = conf["plan_train"]["patch_dim1"].sample()
-    conf2["plan_train"]["expand_by"] = conf["plan_train"]["expand_by"].sample()
+    conf["dataset_params"]["src_dim1"]  # noqa: F821
+    conf2 = conf.copy()  # noqa: F821
+    conf2["dataset_params"]["src_dim0"] = conf["dataset_params"]["src_dim0"].sample()  # noqa: F821
+    conf2["dataset_params"]["src_dim1"] = conf["dataset_params"]["src_dim1"].sample()  # noqa: F821
+    conf2["plan_train"]["patch_dim0"] = conf["plan_train"]["patch_dim0"].sample()  # noqa: F821
+    conf2["plan_train"]["patch_dim1"] = conf["plan_train"]["patch_dim1"].sample()  # noqa: F821
+    conf2["plan_train"]["expand_by"] = conf["plan_train"]["expand_by"].sample()  # noqa: F821
     # %%
-    conf2["plan_train"]["patch_size"] = make_patch_size(
+    conf2["plan_train"]["patch_size"] = make_patch_size(  # noqa: F821
         conf2["plan_train"]["patch_dim0"], conf2["plan_train"]["patch_dim1"]
     )
     print(conf2["plan_train"]["patch_size"])
-    conf2["dataset_params"]["src_dims"] = make_patch_size(
+    conf2["dataset_params"]["src_dims"] = make_patch_size(  # noqa: F821
         conf2["dataset_params"]["src_dim0"], conf2["dataset_params"]["src_dim1"]
     )
     # %%
@@ -85,6 +85,6 @@ if __name__ == "__main__":
     plan["expand_by"]
     conf2["plan_valid"]
     conf2["plan_train"]["patch_size"]
-    statuses = confirm_plan_analyzed(P, plan)
+    statuses = confirm_plan_analyzed(P, plan)  # noqa: F821
 
 # %%

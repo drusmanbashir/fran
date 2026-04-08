@@ -1,4 +1,3 @@
-import ipdb
 import torch
 import torch.nn.functional as F
 from fran.architectures.dynunet import DynUNet, DynUNet_UB, get_kernel_strides
@@ -14,8 +13,6 @@ from monai.networks.nets import SwinUNETR
 from nnunet.network_architecture.generic_UNet import ConvDropoutNormNonlin
 from nnunet.network_architecture.initialization import InitWeights_He
 from torch import nn
-
-tr = ipdb.set_trace
 
 from fran.configs.parser import make_patch_size
 
@@ -277,7 +274,7 @@ if __name__ == "__main__":
     )
     from fran.configs.parser import ConfigMaker
     from fran.managers.project import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from nnunetv2.experiment_planning.experiment_planners.network_topology import (
         get_pool_and_conv_props,
     )
@@ -422,6 +419,6 @@ if __name__ == "__main__":
     print(summ2)
     # %%
     input = torch.rand(1, 1, 128, 128, 96).to("cuda")
-    output = T.model(input)
+    output = T.model(input)  # noqa: F405
     output.shape
 # %%

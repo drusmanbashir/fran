@@ -1,14 +1,11 @@
 # %%
 import shutil
 
-import ipdb
 import lightning as pl
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint
 from lightning.pytorch.profilers import AdvancedProfiler
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from torch.utils.data import DataLoader, Subset
-
-tr = ipdb.set_trace
 
 from typing import Any, Union
 
@@ -26,30 +23,30 @@ from fran.managers.data import (
 )
 
 torch._dynamo.config.suppress_errors = True
-import itertools as il
-import operator
+import itertools as il  # noqa: E402
+import operator  # noqa: E402
 
-import torch.nn.functional as F
-from fran.architectures.create_network import (
+import torch.nn.functional as F  # noqa: E402
+from fran.architectures.create_network import (  # noqa: E402
     create_model_from_conf,
     pool_op_kernels_nnunet,
 )
-from fran.managers.nep import NeptuneManager
-from lightning.pytorch import Trainer as TrainerL
-from lightning.pytorch.callbacks import (
+from fran.managers.nep import NeptuneManager  # noqa: E402
+from lightning.pytorch import Trainer as TrainerL  # noqa: E402
+from lightning.pytorch.callbacks import (  # noqa: E402
     DeviceStatsMonitor,
     LearningRateMonitor,
     TQDMProgressBar,
 )
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau  # noqa: E402
 
 try:
-    hpc_settings_fn = os.environ["HPC_SETTINGS"]
-except:
+    hpc_settings_fn = os.environ["HPC_SETTINGS"]  # noqa: F821
+except Exception:
     pass
 
-import torch
-from lightning.pytorch import LightningModule
+import torch  # noqa: E402
+from lightning.pytorch import LightningModule  # noqa: E402
 
 
 def fix_dict_keys(input_dict, old_string, new_string):
@@ -118,15 +115,13 @@ class StoreInfo(Callback):
         batch: Any,
         batch_idx: int,
     ) -> None:
-
-        tr()
         # Gi_inside = model.grad_L_x * model.grad_sigma_z[0]
         # Gi_inside_normed_batch = [torch.linalg.norm(G) for G in Gi_inside]
         # # Gi_inside_normed = torch.stack(Gi_inside_normed_batch)
         # Gi_inside_normed.shape
         L_rho = 5
 
-        Gi = Gi_inside_normed_batch * L_rho
+        Gi = Gi_inside_normed_batch * L_rho  # noqa: F405
         ks = batch["image"].meta["filename_or_obj"]
         dici = {k: G.item() for k, G in zip(ks, Gi)}
         self.dicis.append(dici)
@@ -332,7 +327,7 @@ def update_nep_run_from_config(nep_run, config):
 def maybe_ddp(devices):
     if devices == 1 or isinstance(devices, Union[list, str, tuple]):
         return "auto"
-    ip = get_ipython()
+    ip = get_ipython()  # noqa: F405
     if ip:
         print("Using interactive-shell ddp strategy")
         return "ddp_notebook"
@@ -346,7 +341,7 @@ class Trainer:
         self.project = project
         self.config = config
         self.run_name = run_name
-        self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
+        self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)  # noqa: F405
         self.qc_config(config, project)
 
     def setup(
@@ -463,7 +458,7 @@ class Trainer:
 
     def set_strategy(self, devices):
         self.strategy = maybe_ddp(devices)
-        if type(devices) == int and devices > 1:
+        if isinstance(devices, int) and devices > 1:
             self.sync_dist = True
         else:
             self.sync_dist = False
@@ -524,7 +519,7 @@ class Trainer:
         return D
 
     def init_unet_trainer(self, epochs):
-        N = UNetTrainerCraig(
+        N = UNetTrainerCraig(  # noqa: F405
             self.project,
             self.config["dataset_params"],
             self.config["model_params"],
@@ -535,7 +530,7 @@ class Trainer:
 
     def load_trainer(self, **kwargs):
         try:
-            N = UNetTrainerCraig.load_from_checkpoint(
+            N = UNetTrainerCraig.load_from_checkpoint(  # noqa: F405
                 self.ckpt,
                 project=self.project,
                 dataset_params=self.config["dataset_params"],
@@ -543,8 +538,7 @@ class Trainer:
                 **kwargs,
             )
             print("Model loaded from checkpoint: ", self.ckpt)
-        except:
-            tr()
+        except Exception:
             ckpt_state = self.state_dict["state_dict"]
             ckpt_state_updated = fix_dict_keys(ckpt_state, "model", "model._orig_mod")
             # print(ckpt_state_updated.keys())
@@ -555,7 +549,7 @@ class Trainer:
             torch.save(state_dict_neo, self.ckpt)
             shutil.move(self.ckpt, ckpt_old)
 
-            N = UNetTrainer.load_from_checkpoint(
+            N = UNetTrainer.load_from_checkpoint(  # noqa: F405
                 self.ckpt,
                 project=self.project,
                 dataset_params=self.config["dataset_params"],
@@ -630,10 +624,10 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision("medium")
 
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     project_title = "litsmc"
-    proj = Project(project_title=project_title)
+    proj = Project(project_title=project_title)  # noqa: F405
 
     configuration_filename = (
         "/s/fran_storage/projects/lits32/experiment_config_wholeimage.xlsx"
@@ -641,7 +635,7 @@ if __name__ == "__main__":
     configuration_filename = "/s/fran_storage/projects/litsmc/experiment_config.xlsx"
     configuration_filename = None
 
-    conf = ConfigMaker(
+    conf = ConfigMaker(  # noqa: F405
         proj,
     ).config
 
@@ -834,7 +828,7 @@ if __name__ == "__main__":
     print(f"x.grad: {x.grad}")
 
     # Remove the hook after use
-    y1_hook.remove()
+    y1_hook.remove()  # noqa: F405
     # %%
     d = torch.tensor(4.0, requires_grad=True)
     d.register_hook(lambda grad: print(grad))
@@ -871,7 +865,6 @@ if __name__ == "__main__":
         print(vals)
         # print(vals)
         if vals.max() > 8:
-            tr()
             # print("Rat")
             dici = {"lm": lm.meta["filename_or_obj"], "vals": vals}
             dicis.append(dici)
@@ -1020,8 +1013,8 @@ if __name__ == "__main__":
     dici = ds[4]
     dici.keys()
     dat
-    dici = {"image": img_fn, "lm": label_fn}
-    im = torch.load(img_fn)
+    dici = {"image": img_fn, "lm": label_fn}  # noqa: F405
+    im = torch.load(img_fn)  # noqa: F405
 
     im.shape
 
@@ -1079,13 +1072,13 @@ if __name__ == "__main__":
     ckpt = Path(
         "/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt"
     )
-    kk = torch.load(self.ckpt)
+    kk = torch.load(self.ckpt)  # noqa: F405
     kk["datamodule_hyper_parameters"].keys()
     kk.keys()
     kk["datamodule_hyper_parameters"]
 
     # %%
-    model = trainer.model.model
+    model = trainer.model.model  # noqa: F405
     model.grad_L_x.shape
     model.grad_sigma_z.shape
 

@@ -8,7 +8,6 @@ import torch
 from utilz.cprint import cprint
 from utilz.stringz import headline
 
-tr = ipdb.set_trace
 import shutil
 
 from fran.utils.common import COMMON_PATHS
@@ -58,7 +57,6 @@ def checkpoint_from_model_id(
                     )
                 ) from e2
     elif sort_method == "best":
-        tr()
     if normalize_keys:
         sd = torch.load(ckpt, map_location="cpu", weights_only=False)
         compiled = bool(sd["hyper_parameters"]["configs"]["model_params"]["compiled"])

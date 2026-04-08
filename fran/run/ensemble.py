@@ -14,7 +14,7 @@ tot_gpus = 2
 n_lists = 2
 
 
-import ray
+import ray  # noqa: E402
 
 ray.init(num_gpus=tot_gpus)
 
@@ -77,7 +77,7 @@ def main(args):
     inds = [[fpl * x, fpl * (x + 1)] for x in range(n_lists - 1)]
     inds.append([fpl * (n_lists - 1), None])
 
-    chunks = list(il.starmap(slice_list, zip([fns] * n_lists, inds)))
+    chunks = list(il.starmap(slice_list, zip([fns] * n_lists, inds)))  # noqa: F405
     actors = [EnsembleActor.remote() for _ in range(n_lists)]
     results = ray.get(
         [
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     import argparse
     import os
 
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     common_vars_filename = os.environ["FRAN_CONF"]
     # runs_ensemble=["LITS-444","LITS-443","LITS-439","LITS-436","LITS-445"]

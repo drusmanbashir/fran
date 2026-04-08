@@ -5,7 +5,7 @@ from time import sleep
 
 import torch.nn as nn
 from fran.extra.deepcore.deepcore import datasets, met, nets
-from fran.extra.deepcore.utils import *
+from fran.extra.deepcore.utils import *  # noqa: F403
 from torchvision import transforms
 
 
@@ -44,7 +44,7 @@ def main():
         help="fraction of data to be selected (default: 0.1)",
     )
     parser.add_argument(
-        "--seed", default=int(time.time() * 1000) % 100000, type=int, help="random seed"
+        "--seed", default=int(time.time() * 1000) % 100000, type=int, help="random seed"  # noqa: F405
     )
     parser.add_argument(
         "-j",
@@ -92,7 +92,7 @@ def main():
         dest="weight_decay",
     )
     parser.add_argument(
-        "--nesterov", default=True, type=str_to_bool, help="if set nesterov"
+        "--nesterov", default=True, type=str_to_bool, help="if set nesterov"  # noqa: F405
     )
     parser.add_argument(
         "--scheduler",
@@ -183,7 +183,7 @@ def main():
         "--selection_nesterov",
         "-sn",
         default=True,
-        type=str_to_bool,
+        type=str_to_bool,  # noqa: F405
         help="if set nesterov whiling performing selection",
     )
     parser.add_argument(
@@ -210,7 +210,7 @@ def main():
     parser.add_argument(
         "--balance",
         default=True,
-        type=str_to_bool,
+        type=str_to_bool,  # noqa: F405
         help="whether balance selection is performed per class",
     )
 
@@ -244,7 +244,7 @@ def main():
     )
 
     args = parser.parse_args()
-    args.device = "cuda" if torch.cuda.is_available() else "cpu"
+    args.device = "cuda" if torch.cuda.is_available() else "cpu"  # noqa: F405
 
     if args.train_batch is None:
         args.train_batch = args.batch
@@ -259,7 +259,7 @@ def main():
         # Load checkpoint
         try:
             print("=> Loading checkpoint '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume, map_location=args.device)
+            checkpoint = torch.load(args.resume, map_location=args.device)  # noqa: F405
             assert {
                 "exp",
                 "epoch",
@@ -345,7 +345,7 @@ def main():
             class_names,
         )
 
-        torch.random.manual_seed(args.seed)
+        torch.random.manual_seed(args.seed)  # noqa: F405
 
         if "subset" in checkpoint.keys():
             subset = checkpoint["subset"]
@@ -388,20 +388,20 @@ def main():
         # Handle weighted subset
         if_weighted = "weights" in subset.keys()
         if if_weighted:
-            dst_subset = WeightedSubset(dst_train, subset["indices"], subset["weights"])
+            dst_subset = WeightedSubset(dst_train, subset["indices"], subset["weights"])  # noqa: F405
         else:
-            dst_subset = torch.utils.data.Subset(dst_train, subset["indices"])
+            dst_subset = torch.utils.data.Subset(dst_train, subset["indices"])  # noqa: F405
 
         # BackgroundGenerator for ImageNet to speed up dataloaders
         if args.dataset == "ImageNet":
-            train_loader = DataLoaderX(
+            train_loader = DataLoaderX(  # noqa: F405
                 dst_subset,
                 batch_size=args.train_batch,
                 shuffle=True,
                 num_workers=args.workers,
                 pin_memory=True,
             )
-            test_loader = DataLoaderX(
+            test_loader = DataLoaderX(  # noqa: F405
                 dst_test,
                 batch_size=args.train_batch,
                 shuffle=False,
@@ -409,14 +409,14 @@ def main():
                 pin_memory=True,
             )
         else:
-            train_loader = torch.utils.data.DataLoader(
+            train_loader = torch.utils.data.DataLoader(  # noqa: F405
                 dst_subset,
                 batch_size=args.train_batch,
                 shuffle=True,
                 num_workers=args.workers,
                 pin_memory=True,
             )
-            test_loader = torch.utils.data.DataLoader(
+            test_loader = torch.utils.data.DataLoader(  # noqa: F405
                 dst_test,
                 batch_size=args.train_batch,
                 shuffle=False,
@@ -442,9 +442,9 @@ def main():
             if args.device == "cpu":
                 print("Using CPU.")
             elif args.gpu is not None:
-                torch.cuda.set_device(args.gpu[0])
+                torch.cuda.set_device(args.gpu[0])  # noqa: F405
                 network = nets.nets_utils.MyDataParallel(network, device_ids=args.gpu)
-            elif torch.cuda.device_count() > 1:
+            elif torch.cuda.device_count() > 1:  # noqa: F405
                 network = nets.nets_utils.MyDataParallel(network).cuda()
 
             if "state_dict" in checkpoint.keys():
@@ -455,7 +455,7 @@ def main():
 
             # Optimizer
             if args.optimizer == "SGD":
-                optimizer = torch.optim.SGD(
+                optimizer = torch.optim.SGD(  # noqa: F405
                     network.parameters(),
                     args.lr,
                     momentum=args.momentum,
@@ -463,11 +463,11 @@ def main():
                     nesterov=args.nesterov,
                 )
             elif args.optimizer == "Adam":
-                optimizer = torch.optim.Adam(
+                optimizer = torch.optim.Adam(  # noqa: F405
                     network.parameters(), args.lr, weight_decay=args.weight_decay
                 )
             else:
-                optimizer = torch.optim.__dict__[args.optimizer](
+                optimizer = torch.optim.__dict__[args.optimizer](  # noqa: F405
                     network.parameters(),
                     args.lr,
                     momentum=args.momentum,
@@ -477,17 +477,17 @@ def main():
 
             # LR scheduler
             if args.scheduler == "CosineAnnealingLR":
-                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(  # noqa: F405
                     optimizer, len(train_loader) * args.epochs, eta_min=args.min_lr
                 )
             elif args.scheduler == "StepLR":
-                scheduler = torch.optim.lr_scheduler.StepLR(
+                scheduler = torch.optim.lr_scheduler.StepLR(  # noqa: F405
                     optimizer,
                     step_size=len(train_loader) * args.step_size,
                     gamma=args.gamma,
                 )
             else:
-                scheduler = torch.optim.lr_scheduler.__dict__[args.scheduler](optimizer)
+                scheduler = torch.optim.lr_scheduler.__dict__[args.scheduler](optimizer)  # noqa: F405
             scheduler.last_epoch = (start_epoch - 1) * len(train_loader)
 
             if "opt_dict" in checkpoint.keys():
@@ -497,7 +497,7 @@ def main():
             if "rec" in checkpoint.keys():
                 rec = checkpoint["rec"]
             else:
-                rec = init_recorder()
+                rec = init_recorder()  # noqa: F405
 
             best_prec1 = (
                 checkpoint["best_acc1"] if "best_acc1" in checkpoint.keys() else 0.0
@@ -505,7 +505,7 @@ def main():
 
             # Save the checkpont with only the susbet.
             if args.save_path != "" and args.resume == "":
-                save_checkpoint(
+                save_checkpoint(  # noqa: F405
                     {"exp": exp, "subset": subset, "sel_args": selection_args},
                     os.path.join(
                         args.save_path,
@@ -519,7 +519,7 @@ def main():
 
             for epoch in range(start_epoch, args.epochs):
                 # train for one epoch
-                train(
+                train(  # noqa: F405
                     train_loader,
                     network,
                     criterion,
@@ -533,7 +533,7 @@ def main():
 
                 # evaluate on validation set
                 if args.test_interval > 0 and (epoch + 1) % args.test_interval == 0:
-                    prec1 = test(test_loader, network, criterion, epoch, args, rec)
+                    prec1 = test(test_loader, network, criterion, epoch, args, rec)  # noqa: F405
 
                     # remember best prec@1 and save checkpoint
                     is_best = prec1 > best_prec1
@@ -541,8 +541,8 @@ def main():
                     if is_best:
                         best_prec1 = prec1
                         if args.save_path != "":
-                            rec = record_ckpt(rec, epoch)
-                            save_checkpoint(
+                            rec = record_ckpt(rec, epoch)  # noqa: F405
+                            save_checkpoint(  # noqa: F405
                                 {
                                     "exp": exp,
                                     "epoch": epoch + 1,
@@ -580,8 +580,8 @@ def main():
                             + "%f.ckpt" % best_prec1,
                         ),
                     )
-                except:
-                    save_checkpoint(
+                except Exception:
+                    save_checkpoint(  # noqa: F405
                         {
                             "exp": exp,
                             "epoch": args.epochs,

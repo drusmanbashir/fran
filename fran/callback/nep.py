@@ -20,7 +20,7 @@ from utilz.helpers import Union
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
-except:
+except Exception:
     pass
 
 from fran.utils.colour_palette import colour_palette
@@ -64,7 +64,7 @@ def get_neptune_config():
     """
     Returns particular project workspace
     """
-    commons = load_yaml(common_vars_filename)
+    commons = load_yaml(common_vars_filename)  # noqa: F405
     project_name = commons["neptune_project"]
     api_token = commons["neptune_api_token"]
     return project_name, api_token
@@ -262,7 +262,7 @@ class NeptuneLogBestCkpt(Callback):
 # %%
 
 if __name__ == "__main__":
-    P = Project(project_title="lits")
+    P = Project(project_title="lits")  # noqa: F821
     proj_defaults = P
     config = ConfigMaker(
         proj_defaults.configuration_filename,
@@ -277,10 +277,10 @@ if __name__ == "__main__":
         df.dropna(inplace=True)
         return df
 
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     project_title = "lits"
-    project = Project(project_title=project_title)
+    project = Project(project_title=project_title)  # noqa: F405
 
     # trial_name = "kits_675_080"
     # folder_name = get_raytune_folder_from_trialname(project, trial_name)

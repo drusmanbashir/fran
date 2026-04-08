@@ -46,7 +46,7 @@ def main(args) -> None:
 
     entity = resolve_entity()
     api = wandb.Api()
-    run = resolve_run(
+    run = resolve_run(  # noqa: F821
         api=api, entity=entity, project=args.project, run_name=args.run_name
     )
 
@@ -142,20 +142,20 @@ if __name__ == "__main__":
     epochs = None if args.epoch is None else set(args.epoch)
     stages = set(args.stage)
 
-    matches = list(iter_case_recorder_files(run, stages=stages, epochs=epochs))
+    matches = list(iter_case_recorder_files(run, stages=stages, epochs=epochs))  # noqa: F821
     if len(matches) == 0:
         raise FileNotFoundError(
-            f"No case_recorder tables found for run {run.path} with the requested filters."
+            f"No case_recorder tables found for run {run.path} with the requested filters."  # noqa: F821
         )
 
-    print(f"Resolved run: {run.path}")
+    print(f"Resolved run: {run.path}")  # noqa: F821
     print(f"Downloading {len(matches)} files to {out_root.resolve()}")
 
     for remote_file, stage, epoch, ext in sorted(
         matches, key=lambda item: (item[1], item[2], item[3])
     ):
         dest = destination_path(
-            out_root=out_root, run=run, stage=stage, epoch=epoch, ext=ext
+            out_root=out_root, run=run, stage=stage, epoch=epoch, ext=ext  # noqa: F821
         )
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists() and not args.overwrite:
@@ -171,10 +171,10 @@ if __name__ == "__main__":
 
 
 # %%
-import json
-from pathlib import Path
-import pandas as pd
-import wandb
+import json  # noqa: E402
+from pathlib import Path  # noqa: E402
+import pandas as pd  # noqa: E402
+import wandb  # noqa: E402
 
 ENTITY = "drubashir"          # change if needed
 PROJECT = "kits2"

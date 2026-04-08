@@ -10,7 +10,7 @@ MNEMONICS = ["litsmall", "lits", "litq", "liver", "lidc", "lungs", "nodes", "tot
 if not sys.executable == "":  # workaround for slicer as it does not load ray tune
     from ray import tune
 
-from utilz.helpers import ast, pd
+from utilz.helpers import ast, pd  # noqa: E402
 
 TUNE_VARS = [
     "base_ch_opts",

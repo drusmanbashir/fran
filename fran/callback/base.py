@@ -1,6 +1,5 @@
 # %%
 
-import ipdb
 import torch
 import torch.nn.functional as F
 import torchvision
@@ -8,10 +7,7 @@ from fran.utils.common import PAD_VALUE
 from lightning.pytorch.callbacks import Callback
 from utilz.cprint import cprint
 
-tr = ipdb.set_trace
-import ray
 
-tr2 = ray.util.pdb.set_trace
 # %%
 
 

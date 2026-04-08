@@ -1,23 +1,21 @@
 # %%
-import ipdb
 from fran.evaluation.craigloss import CombinedLoss, DeepSupervisionLossCraig
 from fran.extra.deepcore.deepcore.met.met_utils import submodular_optimizer
 from fran.extra.deepcore.deepcore.met.met_utils.euclidean import euclidean_dist_pair_np
 from torch.utils.data import DataLoader, Subset
 
-tr = ipdb.set_trace
 import numpy as np
 import torch._dynamo
 
 torch._dynamo.config.suppress_errors = True
-import itertools as il
-import operator
+import itertools as il  # noqa: E402
+import operator  # noqa: E402
 
-from fran.architectures.create_network import (
+from fran.architectures.create_network import (  # noqa: E402
     create_model_from_conf_nnUNetCraig,
     pool_op_kernels_nnunet,
 )
-from fran.managers.unet import UNetManagerFabric
+from fran.managers.unet import UNetManagerFabric  # noqa: E402
 
 
 class UNetManagerCraig(UNetManagerFabric):
@@ -140,7 +138,6 @@ class UNetManagerCraig(UNetManagerFabric):
             with torch.no_grad():
                 # Compute bias and weight gradients
                 bias_parameters_grads = torch.autograd.grad(loss, outputs)[0]
-                tr()
                 weight_parameters_grads = self.model.embedding_recorder.embedding.view(
                     batch_num, 1, self.embedding_dim
                 ).repeat(1, self.args.num_classes, 1) * bias_parameters_grads.view(

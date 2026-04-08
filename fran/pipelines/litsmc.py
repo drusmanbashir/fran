@@ -15,7 +15,7 @@ if __name__ == "__main__":
     from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
     from fran.run.analyze_resample import PreprocessingManager
     from fran.trainers.trainer import Trainer
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from monai.data.dataset import GDSDataset
     from utilz.imageviewers import ImageMaskViewer
 
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     print(conf["model_params"])
 
     plan = conf["plan_train"]
-    pp(plan)
+    pp(plan)  # noqa: F405
     # %%
 
     devices = 2
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     # SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR> <CR> <CR>
 
     test = False
-    ds = Datasource(
+    ds = Datasource(  # noqa: F405
         folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test
     )
     ds.process()
@@ -149,53 +149,53 @@ if __name__ == "__main__":
 
     # args.num_processes = 1
     args.debug = True
-    args.plan_name = active_plan
+    args.plan_name = active_plan  # noqa: F405
     args.project_title = "litsmc"
 
     plans = conf[args.plan_name]
     # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR> <CR> <CR>
-    I = PreprocessingManager(args)
-    # I.spacing =
+    mgr = PreprocessingManager(args)
+    # mgr.spacing =
     # %%
     # SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR> <CR> <CR>
     overwrite = False
-    I.resample_dataset(overwrite=overwrite)
-    I.R.get_tensor_folder_stats()
+    mgr.resample_dataset(overwrite=overwrite)
+    mgr.R.get_tensor_folder_stats()
 
     # %%
     # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR> <CR> <CR>
 
     overwrite = False
-    I.plan_name = "jj"
-    if I.plan["mode"] == "patch":
-        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
-        I.generate_hires_patches_dataset()
-    elif I.plan["mode"] == "lbd":
+    mgr.plan_name = "jj"
+    if mgr.plan["mode"] == "patch":
+        # mgr.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+        mgr.generate_hires_patches_dataset()
+    elif mgr.plan["mode"] == "lbd":
         if plan["imported_folder"] is None:
-            I.generate_lbd_dataset(overwrite=overwrite)
+            mgr.generate_lbd_dataset(overwrite=overwrite)
         else:
-            I.generate_TSlabelboundeddataset(
+            mgr.generate_TSlabelboundeddataset(
                 remapping_imported=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],
             )
     # %%
 
-    L = LabelBoundedDataGeneratorImported(
+    L = LabelBoundedDataGeneratorImported(  # noqa: F405
         project=P,
         plan=plan,
-        folder_suffix=plan_name,
-        imported_folder=imported_folder,
-        merge_imported_labels=merge_imported_labels,
-        remapping=remapping,
+        folder_suffix=plan_name,  # noqa: F405
+        imported_folder=imported_folder,  # noqa: F405
+        merge_imported_labels=merge_imported_labels,  # noqa: F405
+        remapping=remapping,  # noqa: F405
     )
 
     # %%
     device = "cpu"
     overwrite = True
     L = LabelBoundedDataGenerator(
-        project=I.project,
-        plan=I.plan,
-        plan_name=I.plan_name,
+        project=mgr.project,
+        plan=mgr.plan,
+        plan_name=mgr.plan_name,
     )
     # %%
     L.setup(overwrite=overwrite, device=device)
@@ -336,7 +336,7 @@ if __name__ == "__main__":
     clip_range = None
     P.G = GlobalProperties(P, max_cases=max_cases, clip_range=clip_range)
     if labels_all is None or len(labels_all) == 0:
-        headline("Labels have not been collated. Doing it now")
+        headline("Labels have not been collated. Doing it now")  # noqa: F405
         P.G.collate_lm_labels()
     if "mean_dataset_clipped" not in P.global_properties.keys() or overwrite:
         P.G.store_projectwide_properties()

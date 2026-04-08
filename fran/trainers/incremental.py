@@ -2,7 +2,6 @@
 import shutil
 from typing import Optional
 
-import ipdb
 from fastcore.all import in_ipython
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import CaseIDRecorder
@@ -15,8 +14,6 @@ from fran.trainers.base import backup_ckpt, checkpoint_from_model_id, switch_ckp
 from fran.trainers.trainer import Trainer
 from utilz.cprint import cprint
 from utilz.stringz import headline
-
-tr = ipdb.set_trace
 
 import os
 from pathlib import Path
@@ -34,14 +31,14 @@ from fran.managers.data.incremental import (
 
 torch._dynamo.config.suppress_errors = True
 
-from lightning.pytorch.callbacks import BatchSizeFinder, ModelCheckpoint
+from lightning.pytorch.callbacks import BatchSizeFinder, ModelCheckpoint  # noqa: E402
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
-except:
+except Exception:
     pass
 
-import torch
+import torch  # noqa: E402
 
 
 class IncrementalTrainer(Trainer):
@@ -483,7 +480,7 @@ if __name__ == "__main__":
     set_autoreload()
     from fran.configs.parser import ConfigMaker
     from tqdm.auto import tqdm as pbar
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project("kits2")
     # P.add_data([DS.totalseg])
@@ -495,7 +492,7 @@ if __name__ == "__main__":
 
     planT = conf["plan_train"]
     planV = conf["plan_valid"]
-    pp(planT)
+    pp(planT)  # noqa: F405
 
     print(planT["mode"])
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
@@ -589,14 +586,14 @@ if __name__ == "__main__":
     unused_samples = len(Tm.D.train_df[not Tm.D.train_df["used_in_training"]])
     # %%
 
-    dm = trainer.datamodule
+    dm = trainer.datamodule  # noqa: F405
     dl = dm.train_manager.dl2
     cprint(
         "Running a validation epoch on remaining training data",
         color="yellow",
         bold=True,
     )
-    trainer.validate(model=pl_module, dataloaders=dl)
+    trainer.validate(model=pl_module, dataloaders=dl)  # noqa: F405
     # %%
     N = Tm.N
     aa = N._common_step(b, 0)
@@ -612,7 +609,7 @@ if __name__ == "__main__":
     cache_rate = 0
     ds_type = Tm.configs["dataset_params"]["ds_type"]
     ds_type = "cache"
-    D = DataManagerMultiI(
+    D = DataManagerMultiI(  # noqa: F405
         Tm.project,
         configs=Tm.configs,
         batch_size=Tm.configs["dataset_params"]["batch_size"],
@@ -669,7 +666,7 @@ if __name__ == "__main__":
     ld = cir.loss_dicts_train
     [a.keys() for a in ld]
     # %%
-    df2 = pd.DataFrame(ld)
+    df2 = pd.DataFrame(ld)  # noqa: F405
     df2.to_csv("tmp.csv")
 
     mini_df = cir.create_limited_df(ld)
@@ -689,7 +686,7 @@ if __name__ == "__main__":
         df1.columns = df1.columns.str.replace(batch_var, "")
         print(df1.columns)
         dfs.append(df1)
-    df_final = pd.concat(dfs, axis=0)
+    df_final = pd.concat(dfs, axis=0)  # noqa: F405
     df_final.dropna(inplace=True)
     print(df_final)
     # %%
@@ -722,8 +719,8 @@ if __name__ == "__main__":
         fns = meta["filename_or_obj"]
         for fn in fns:
             fn_name = fn.split("/")[-1]
-            cids1.append(info_from_filename(fn_name, full_caseid=True)["case_id"])
-    cids1 = set(cids1)
+            cids1.append(info_from_filename(fn_name, full_caseid=True)["case_id"])  # noqa: F405
+    cids1 = set(cids1)  # noqa: F405
     # %%
     cids2 = []
     dl2 = Tm.D.train_manager.dl2

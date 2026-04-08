@@ -17,7 +17,7 @@ from fran.managers.tune import ast, pd
 #         except:
 #             if with_opt: warn("Could not load the optimizer state.")
 #     elif with_opt: warn("Saved filed doesn't contain an optimizer state.")
-class BoundingBoxes_to_lists(Transform):
+class BoundingBoxes_to_lists(Transform):  # noqa: F821
     def encodes(self, bounding_boxes):
         slices_as_num = []
         for bb in bounding_boxes[1:]:
@@ -75,7 +75,7 @@ if __name__ == "__main__":
     # %%
 
     # %%
-    df = pd.read_excel(df_fn)
+    df = pd.read_excel(df_fn)  # noqa: F821
     # %%
     df = df.sort_values(by=["score0"], ascending=True)
     df.columns
@@ -91,15 +91,15 @@ if __name__ == "__main__":
     # %%
     ims = []
     for fn in [img_fn, pred_fn]:
-        img2 = sitk.ReadImage(str(fn))
-        arr = sitk.GetArrayFromImage(img2)
+        img2 = sitk.ReadImage(str(fn))  # noqa: F821
+        arr = sitk.GetArrayFromImage(img2)  # noqa: F821
         ims.append(arr)
     # %%
     # bb = bboxes[1][2],bboxes[1][1],bboxes[1][0]
     i = 1
-    ImageMaskViewer(
+    ImageMaskViewer(  # noqa: F821
         [ims[0][bboxes[i]].transpose(2, 1, 0), ims[1][bboxes[i]].transpose(2, 1, 0)]
     )
     # %%
-    ImageMaskViewer([ims[0].transpose(2, 1, 0), ims[1].transpose(2, 1, 0)])
+    ImageMaskViewer([ims[0].transpose(2, 1, 0), ims[1].transpose(2, 1, 0)])  # noqa: F821
 # %%

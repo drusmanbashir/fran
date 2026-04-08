@@ -1,10 +1,8 @@
 from pathlib import Path
 
-import ipdb
 import torch
 from utilz.fileio import str_to_path
 
-tr = ipdb.set_trace
 import re
 
 
@@ -68,7 +66,7 @@ def load_checkpoint(
         #         chkpt_model_state_fixed[neo_key] = chkpt_model_state[key]
         #     get_model(model).load_state_dict(chkpt_model_state_fixed, strict=strict)
         # else:
-        get_model(model).load_state_dict(chkpt_model_state, strict=strict)
+        get_model(model).load_state_dict(chkpt_model_state, strict=strict)  # noqa: F821
         print("\n --- Successfully loaded model from checkpoint.")
 
         # if hasopt and with_opt:

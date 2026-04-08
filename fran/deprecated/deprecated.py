@@ -16,7 +16,7 @@ def insert_plan_key(ckpt_fn):
         print("No plan key. Adding")
         spacing = dic_tmp["datamodule_hyper_parameters"]["dataset_params"]["spacing"]
         dic_tmp["datamodule_hyper_parameters"]["plan"] = {"spacing": spacing}
-        torch.save(dic_tmp, ckpt)
+        torch.save(dic_tmp, ckpt)  # noqa: F821
     else:
         print("Found plan key. No change")
 
@@ -261,8 +261,8 @@ if __name__ == "__main__":
 
     # %%
     dici["datamodule_hyper_parameters"]["config"]["plan_train"]["remapping"] = None
-    dici["hyper_parameters"]["config"]["plan_train"] = plan
-    dici["hyper_parameters"]["config"]["plan_valid"] = plan
+    dici["hyper_parameters"]["config"]["plan_train"] = plan  # noqa: F821
+    dici["hyper_parameters"]["config"]["plan_valid"] = plan  # noqa: F821
 
     # CODE: adding plan index for NODES only
     dici["hyper_parameters"]["config"]["dataset_params"]["plan_train"] = 2
@@ -294,7 +294,7 @@ if __name__ == "__main__":
 
     # %%
 
-    dd = copy_dict_structure(dict_src, dict_dest)
+    dd = copy_dict_structure(dict_src, dict_dest)  # noqa: F821
 
     dd["hyper_parameters"].keys()
     dd["hyper_parameters"]["config"].keys()
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     keys = find_key_in_dict(dici, "plan")
     key_j = get_key_path(keys[0])
 
-    val = get_nested_value(dici, keys[0])
+    val = get_nested_value(dici, keys[0])  # noqa: F821
     dici["hyper_parameters"]["config"][
         "plan_train"
     ]  # =dici['hyper_parameters']['config']['plan'].copy()
@@ -379,58 +379,58 @@ if __name__ == "__main__":
     dici["hyper_parameters"].keys()
     torch.save(dici, ckpt2_neo)
     # %%
-    pp(dict_dest["hyper_parameters"].keys())
+    pp(dict_dest["hyper_parameters"].keys())  # noqa: F821
     pp(dict_src["hyper_parameters"].keys())
     # %%
     dd = copy_dict_structure(
-        dict_src["hyper_parameters"], dict_dest["hyper_parameters"]
+        dict_src["hyper_parameters"], dict_dest["hyper_parameters"]  # noqa: F821
     )
     dd2 = copy_dict_structure(
         dict_src["datamodule_hyper_parameters"],
-        dict_dest["datamodule_hyper_parameters"],
+        dict_dest["datamodule_hyper_parameters"],  # noqa: F821
     )
-    dict_dest["hyper_parameters"].keys()  # =dd
-    dict_dest["datamodule_hyper_parameters"].keys()  # =dd2
-    torch.save(dict_dest, ckpt2)
+    dict_dest["hyper_parameters"].keys()  # =dd  # noqa: F821
+    dict_dest["datamodule_hyper_parameters"].keys()  # =dd2  # noqa: F821
+    torch.save(dict_dest, ckpt2)  # noqa: F821
     # %%
-    dic_dest["hyper_parameters"]["plan"] = dic_dest["datamodule_hyper_parameters"][
+    dic_dest["hyper_parameters"]["plan"] = dic_dest["datamodule_hyper_parameters"][  # noqa: F821
         "config"
     ]["plan"].copy()
-    dic_dest["hyper_parameters"]["plan"]
-    dic_dest["datamodule_hyper_parameters"]["config"]["plan"]["patch_size"] = dic_dest[
+    dic_dest["hyper_parameters"]["plan"]  # noqa: F821
+    dic_dest["datamodule_hyper_parameters"]["config"]["plan"]["patch_size"] = dic_dest[  # noqa: F821
         "datamodule_hyper_parameters"
     ]["config"]["dataset_params"]["patch_size"]
-    dic_dest["datamodule_hyper_parameters"]["config"]["plan"]
-    dic_dest["datamodule_hyper_parameters"]["dataset_params"]["plan"]
-    dic_dest["datamodule_hyper_parameters"]["plan"] = dic_dest[
+    dic_dest["datamodule_hyper_parameters"]["config"]["plan"]  # noqa: F821
+    dic_dest["datamodule_hyper_parameters"]["dataset_params"]["plan"]  # noqa: F821
+    dic_dest["datamodule_hyper_parameters"]["plan"] = dic_dest[  # noqa: F821
         "datamodule_hyper_parameters"
     ]["config"]["plan"].copy()
 
-    dic_tmp["datamodule_hyper_parameters"]["config"].keys()
-    dic_tmp["datamodule_hyper_parameters"]["config"]["plan"]
+    dic_tmp["datamodule_hyper_parameters"]["config"].keys()  # noqa: F821
+    dic_tmp["datamodule_hyper_parameters"]["config"]["plan"]  # noqa: F821
     # %%
 
     # %%
-    dic_tmp["hyper_parameters"]["plan"] = dic_tmp["datamodule_hyper_parameters"][
+    dic_tmp["hyper_parameters"]["plan"] = dic_tmp["datamodule_hyper_parameters"][  # noqa: F821
         "dataset_params"
     ].copy()
-    dic_tmp["hyper_parameters"]  # .pop('plan')
-    dic_tmp["datamodule_hyper_parameters"].pop("plan")
+    dic_tmp["hyper_parameters"]  # .pop('plan')  # noqa: F821
+    dic_tmp["datamodule_hyper_parameters"].pop("plan")  # noqa: F821
     # dic_tmp['hyper_parameters']['plan'] =dic_tmp['datamodule_hyper_parameters']['dataset_params'].copy()
-    dic_tmp["datamodule_hyper_parameters"]["plan"] = dic_tmp[
+    dic_tmp["datamodule_hyper_parameters"]["plan"] = dic_tmp[  # noqa: F821
         "datamodule_hyper_parameters"
     ]["dataset_params"].copy()
-    dic_tmp["datamodule_hyper_parameters"]["dataset_params"]
-    dic_tmp["datamodule_hyper_parameters"]["config"]["plan"]
+    dic_tmp["datamodule_hyper_parameters"]["dataset_params"]  # noqa: F821
+    dic_tmp["datamodule_hyper_parameters"]["config"]["plan"]  # noqa: F821
     # dic_tmp['datamodule_hyper_parameters']['config'] = {'plan':dic_tmp['datamodule_hyper_parameters']['plan'].copy()}
-    torch.save(dic_tmp, ckpt)
+    torch.save(dic_tmp, ckpt)  # noqa: F821
     # %%
-    insert_plan_key(ckpt)
+    insert_plan_key(ckpt)  # noqa: F821
     # %%
     # SECTION:-------------------- Spacing to config key-------------------------------------------------------------------------------------- <CR>
 
     keys = ["spacing"]
-    dici = dic_tmp["datamodule_hyper_parameters"]["plan"]
+    dici = dic_tmp["datamodule_hyper_parameters"]["plan"]  # noqa: F821
     dici["spacing"] = ".8,.8,1.5"
 
     # %%
@@ -456,11 +456,11 @@ if __name__ == "__main__":
     # %%
     remove_loss_key_state_dict("LITS-911")
 
-    pp(dic_tmp.keys())
-    if "plan" not in dic_tmp["datamodule_hyper_parameters"].keys():
-        spacing = dic_tmp["datamodule_hyper_parameters"]["dataset_params"]["spacing"]
-        dic_tmp["datamodule_hyper_parameters"]["plan"] = {"spacing": spacing}
-        torch.save(dic_tmp, ckpt)
+    pp(dic_tmp.keys())  # noqa: F821
+    if "plan" not in dic_tmp["datamodule_hyper_parameters"].keys():  # noqa: F821
+        spacing = dic_tmp["datamodule_hyper_parameters"]["dataset_params"]["spacing"]  # noqa: F821
+        dic_tmp["datamodule_hyper_parameters"]["plan"] = {"spacing": spacing}  # noqa: F821
+        torch.save(dic_tmp, ckpt)  # noqa: F821
     # %%
     # SECTION:-------------------- filename_or_obj-------------------------------------------------------------------------------------- <CR>
 

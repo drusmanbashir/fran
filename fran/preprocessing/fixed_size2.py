@@ -179,7 +179,7 @@ if __name__ == "__main__":
 
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project(project_title="totalseg")
     C = ConfigMaker(P)

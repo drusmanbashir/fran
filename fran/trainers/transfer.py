@@ -133,7 +133,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
 
     from fran.managers import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project("kits2")
     # conf['model_params']['lr']=1e-3

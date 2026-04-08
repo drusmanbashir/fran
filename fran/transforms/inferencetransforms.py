@@ -3,7 +3,6 @@ from pathlib import Path
 from collections.abc import Hashable, Mapping
 from typing import Any, Sequence
 
-import ipdb
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
 from monai.data.meta_tensor import MetaTensor
 from monai.transforms.io.dictionary import SaveImaged
@@ -11,8 +10,6 @@ from monai.transforms.post.dictionary import KeepLargestConnectedComponentd
 from monai.transforms.transform import MapTransform
 from monai.transforms.utils import generate_spatial_bounding_box
 from utilz.stringz import strip_extension
-
-tr = ipdb.set_trace
 
 import torch
 

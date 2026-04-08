@@ -1,9 +1,6 @@
 # %%
 from pathlib import Path
 
-import ipdb
-
-tr = ipdb.set_trace
 
 import os
 import shutil
@@ -50,8 +47,7 @@ def load_unet_trainer(ckpt, project, config, lr, **kwargs):
             **kwargs,
         )
         print("Model loaded from checkpoint: ", ckpt)
-    except:
-        tr()
+    except Exception:
         ckpt_dict = torch.load(ckpt, weights_only=False)
         state_dict = ckpt_dict["state_dict"]
         ckpt_state = state_dict["state_dict"]
@@ -830,7 +826,7 @@ if __name__ == "__main__":
 
     fn_results = "/s/fran_storage/predictions/litsmc/LITS-933_fixed_mc/results/summary_LITS-933.xlsx"
     df_res = pd.read_excel(fn_results)
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     project_title = "litsmc"
     proj = Project(project_title=project_title)
@@ -953,7 +949,7 @@ if __name__ == "__main__":
     ImageMaskViewer([inputs[n][0].detach().cpu(), pred[0][n][3].detach().cpu()])
     # %%
 
-    preds[0].shape
+    preds[0].shape  # noqa: F405
     n = 1
     # %%
     # SECTION:-------------------- Train-------------------------------------------------------------------------------------- <CR>
@@ -961,7 +957,7 @@ if __name__ == "__main__":
         callbacks=cbs, precision="bf16-mixed", should_train=False, devices=devices
     )
     # %%
-    Tm.fit(model=N, train_loader=train_dl, val_loader=val_dl)
+    Tm.fit(model=N, train_loader=train_dl, val_loader=val_dl)  # noqa: F405
     # SECTION:-------------------- GRADCAM-------------------------------------------------------------------------------------- <CR>
 
     # %%
@@ -974,7 +970,7 @@ if __name__ == "__main__":
 
     # %%
 
-    iteri = iter(val_dl)
+    iteri = iter(val_dl)  # noqa: F405
     batch = next(iteri)
     input_tensor = batch["image"][3:7, :]
     target_layers = [N.model.tu[-1]]
@@ -1004,13 +1000,13 @@ if __name__ == "__main__":
     dfs_val = pd.concat(S.dfs_val)
     dfs_val.to_csv("val_prefitted.csv", index=False)
     # %%
-    iteri = iter(train_dl)
+    iteri = iter(train_dl)  # noqa: F405
     batch = next(iteri)
     print(batch["image"].meta["filename_or_obj"])
     # %%
 
     limit_batches: Union[int, float] = float("inf")
-    val_loader = val_dl
+    val_loader = val_dl  # noqa: F405
     iterable = Tm.progbar_wrapper(
         val_loader, total=min(len(val_loader), limit_batches), desc="Validation"
     )
@@ -1024,7 +1020,7 @@ if __name__ == "__main__":
 
         Tm.fabric.call("on_validation_batch_start", batch, batch_idx)
 
-        out = model.validation_step(batch, batch_idx)
+        out = model.validation_step(batch, batch_idx)  # noqa: F405
         # avoid gradients in stored/accumulated values -> prevents potential OOM
         out = apply_to_collection(out, torch.Tensor, lambda x: x.detach())
 
@@ -1033,8 +1029,8 @@ if __name__ == "__main__":
 
         Tm._format_iterable(iterable, Tm._current_val_return, "val")
     # %%
-    A = np.array([[1, 2, 3]])  # 1x3 matrix
-    B = np.array(
+    A = np.array([[1, 2, 3]])  # 1x3 matrix  # noqa: F405
+    B = np.array(  # noqa: F405
         [
             [4, 5, 6],  # 3x3 matrix
             [7, 8, 9],
@@ -1044,7 +1040,7 @@ if __name__ == "__main__":
 
     # Performing the matrix multiplication
     A * B
-    result = np.matmul(A, B)
+    result = np.matmul(A, B)  # noqa: F405
     # %%
     # %%
     # SECTION:-------------------- TROUBLESHOOTING--------------------------------------------------------------------------------------
@@ -1101,8 +1097,8 @@ if __name__ == "__main__":
     # %%
 
     model = N
-    val_loader = val_dl
-    train_loader = train_dl
+    val_loader = val_dl  # noqa: F405
+    train_loader = train_dl  # noqa: F405
     Tm.fabric.launch()
     # setup dataloaders
     train_loader = Tm.fabric.setup_dataloaders(

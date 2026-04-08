@@ -14,7 +14,7 @@ if __name__ == "__main__":
     from fran.managers.data import DataManagerMulti
     from fran.run.analyze_resample import PreprocessingManager
     from fran.trainers.trainer import Trainer
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from utilz.imageviewers import ImageMaskViewer
 
     P = Project("lidc2")
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     print(conf["model_params"])
 
     plan = conf["plan_train"]
-    pp(plan)
+    pp(plan)  # noqa: F405
 
     # %%
     # SECTION:-------------------- Project creation--------------------------------------------------------------------------------------
@@ -93,35 +93,35 @@ if __name__ == "__main__":
         P.set_lm_groups(plan["lm_groups"])
         P.maybe_store_projectwide_properties(overwrite=True)
     # SECTION:-------------------- Resampling --------------------------------------------------------------------------------------
-    I = PreprocessingManager(args)
-    I.resample_dataset(overwrite=False)
-    I.R.get_tensor_folder_stats()
+    mgr = PreprocessingManager(args)
+    mgr.resample_dataset(overwrite=False)
+    mgr.R.get_tensor_folder_stats()
 
     # %%
     # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------
 
     overwrite = False
-    I.plan_name = "jj"
-    if I.plan["mode"] == "patch":
-        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
-        I.generate_hires_patches_dataset()
-    elif I.plan["mode"] == "lbd":
+    mgr.plan_name = "jj"
+    if mgr.plan["mode"] == "patch":
+        # mgr.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+        mgr.generate_hires_patches_dataset()
+    elif mgr.plan["mode"] == "lbd":
         if plan["imported_folder"] is None:
-            I.generate_lbd_dataset(overwrite=overwrite)
+            mgr.generate_lbd_dataset(overwrite=overwrite)
         else:
-            I.generate_TSlabelboundeddataset(
+            mgr.generate_TSlabelboundeddataset(
                 imported_labels=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],
             )
     # %%
 
-    L = LabelBoundedDataGeneratorImported(
+    L = LabelBoundedDataGeneratorImported(  # noqa: F405
         project=P,
         plan=plan,
-        folder_suffix=plan_name,
-        imported_folder=imported_folder,
-        merge_imported_labels=merge_imported_labels,
-        remapping=remapping,
+        folder_suffix=plan_name,  # noqa: F405
+        imported_folder=imported_folder,  # noqa: F405
+        merge_imported_labels=merge_imported_labels,  # noqa: F405
+        remapping=remapping,  # noqa: F405
     )
 
     # %%

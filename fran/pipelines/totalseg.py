@@ -14,7 +14,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.run.analyze_resample import PreprocessingManager
     from fran.trainers.trainer import Trainer
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from fran.utils.folder_names import folder_names_from_plan
     from utilz.imageviewers import ImageMaskViewer
     P = Project("totalseg")
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     planT = conf["plan_train"]
     planV = conf["plan_valid"]
     conf["plan_valid"] = conf["plan_train"].copy()
-    pp(planT)
+    pp(planT)  # noqa: F405
 
     planT["mode"]
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
@@ -165,7 +165,7 @@ if __name__ == "__main__":
 
     # SECTION:-------------------- GLOBAL PROPERTIES-------------------------------------------------------------------------------------- <CR>
     if "labels_all" not in P.global_properties.keys():
-        P.set_lm_groups(plan["lm_groups"])
+        P.set_lm_groups(plan["lm_groups"])  # noqa: F405
         P.maybe_store_projectwide_properties(overwrite=False)
     # %%
     # ECTION:-------------------- ANALYSE RESAMPLE------------------------------------------------------------------------------------  <CR>
@@ -215,15 +215,15 @@ if __name__ == "__main__":
     C._set_active_plans(6, 6)
     plan = conf["plan_train"]
 
-    pp(plan)
+    pp(plan)  # noqa: F405
     # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
 
     aa = folder_names_from_plan(P, plan)
 
-    I = PreprocessingManager(args)
+    mgr = PreprocessingManager(args)
 
     # %%
-    Rs = NiftiToTorchDataGenerator(
+    Rs = NiftiToTorchDataGenerator(  # noqa: F405
         P,
         plan,
         data_folder=P.raw_data_folder,
@@ -233,28 +233,28 @@ if __name__ == "__main__":
     Rs.setup(overwrite=overwrite)
     Rs.process()
 
-    add_plan_to_db(
+    add_plan_to_db(  # noqa: F405
         P, Rs.plan, db_path=Rs.project.db, data_folder_source=Rs.output_folder
     )
-    # I.spacing =
+    # mgr.spacing =
     # %%
     # SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
-    I.resample_dataset(overwrite=False)
-    I.R.get_tensor_folder_stats()
+    mgr.resample_dataset(overwrite=False)
+    mgr.R.get_tensor_folder_stats()
 
     # %%
     # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
 
     overwrite = False
-    I.plan_name = "jj"
-    if I.plan["mode"] == "patch":
-        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
-        I.generate_hires_patches_dataset()
-    elif I.plan["mode"] == "lbd":
+    mgr.plan_name = "jj"
+    if mgr.plan["mode"] == "patch":
+        # mgr.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+        mgr.generate_hires_patches_dataset()
+    elif mgr.plan["mode"] == "lbd":
         if plan["imported_folder"] is None:
-            I.generate_lbd_dataset(overwrite=overwrite)
+            mgr.generate_lbd_dataset(overwrite=overwrite)
         else:
-            I.generate_TSlabelboundeddataset(
+            mgr.generate_TSlabelboundeddataset(
                 imported_labels=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],
             )
@@ -265,10 +265,10 @@ if __name__ == "__main__":
     # %%
     # %%
     # SECTION:-------------------- TS-------------------------------------------------------------------------------------- <CR>
-    I.R = NiftiToTorchDataGenerator(
-        project=I.project,
-        spacing=I.plan["spacing"],
-        data_folder=I.project.raw_data_folder,
+    mgr.R = NiftiToTorchDataGenerator(  # noqa: F405
+        project=mgr.project,
+        spacing=mgr.plan["spacing"],
+        data_folder=mgr.project.raw_data_folder,
     )
     # S
     # %%
@@ -276,13 +276,13 @@ if __name__ == "__main__":
 
     safe_mode = False
     run_tot = ["LITS-1088"]
-    W = WholeImageInferer(
+    W = WholeImageInferer(  # noqa: F405
         run_tot[0], safe_mode=safe_mode, k_largest=None, save_channels=False
     )
     # %%
 
-    nodesthick_imgs = list(nodesthick_fldr.glob("*"))
-    nodes_imgs = list(nodes_fldr.glob("*"))
+    nodesthick_imgs = list(nodesthick_fldr.glob("*"))  # noqa: F405
+    nodes_imgs = list(nodes_fldr.glob("*"))  # noqa: F405
     preds = W.run(nodes_imgs, chunksize=1, overwrite=False)
     p = preds[0]["pred"][0]
 

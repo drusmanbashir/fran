@@ -378,7 +378,7 @@ if __name__ == "__main__":
     # %%
     # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     torch.set_warn_always(False)
     dm = DetectDataModule(data_dir="/s/xnat_shadow/lidc2d/", batch_size=32)

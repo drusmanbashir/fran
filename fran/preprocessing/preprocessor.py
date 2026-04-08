@@ -6,9 +6,6 @@ import sqlite3
 from pathlib import Path
 import ray
 
-import ipdb
-
-tr = ipdb.set_trace
 
 import numpy as np
 import pandas as pd
@@ -358,7 +355,7 @@ class Preprocessor(GetAttr):
         except OSError as e:
             # get filesystem info
             try:
-                usage = shutil.disk_usage(os.path.dirname(fn))
+                usage = shutil.disk_usage(os.path.dirname(fn))  # noqa: F821
                 fsinfo = f"Total={usage.total // (1024**3)}G, Used={usage.used // (1024**3)}G, Free={usage.free // (1024**3)}G"
             except Exception:
                 fsinfo = "disk usage unavailable"
@@ -428,7 +425,7 @@ class Preprocessor(GetAttr):
             print(
                 "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
             )
-        add_plan_to_db(self.plan, self.output_folder, db_path=self.project.db)
+        add_plan_to_db(self.plan, self.output_folder, db_path=self.project.db)  # noqa: F821
 
     def initialize_process_state(self):
         self.create_output_folders()

@@ -34,7 +34,7 @@ from utilz.stringz import info_from_filename
 
 
 # CODE: TO BE DELETED
-class ResamplerDataset(GetAttr, Dataset):
+class ResamplerDataset(GetAttr, Dataset):  # noqa: F821
     """A dataset class that handles resampling of medical images and their labels.
 
     This dataset loads SITK images and labels, applies various transformations including
@@ -93,7 +93,7 @@ class ResamplerDataset(GetAttr, Dataset):
         """Initialize the dataset by creating transforms and data dictionaries."""
         self.create_transforms()
         data = self.create_data_dicts(overwrite=overwrite)
-        Dataset.__init__(self, data, self.transform)
+        Dataset.__init__(self, data, self.transform)  # noqa: F405
 
     #
     # def __getitem__(self, index):
@@ -139,9 +139,9 @@ class ResamplerDataset(GetAttr, Dataset):
     def _get_ds_remapping(self, ds):
         if ds:
             try:
-                remapping = get_ds_remapping(ds, self.global_properties)
+                remapping = get_ds_remapping(ds, self.global_properties)  # noqa: F405
                 return remapping
-            except:
+            except Exception:
                 return None
         return None
 
@@ -289,7 +289,7 @@ class ImporterDataset(ResamplerDataset):
         else:
             self.set_transforms("R,LS,LT,D,E,Rz,B,A,Ind")
         data = self.create_data_dicts(overwrite=overwrite)
-        Dataset.__init__(self, data=data, transform=self.transform)
+        Dataset.__init__(self, data=data, transform=self.transform)  # noqa: F405
 
     def _get_ds_remapping(self, ds):
         return self.remapping_imported
@@ -433,7 +433,7 @@ class CropToLabelDataset(ImporterDataset, ResamplerDataset):
         self.create_transforms()
         self.set_transforms("LT,D,E,C,Ind")
         data = self.create_data_dicts(overwrite=overwrite)
-        Dataset.__init__(self, data=data, transform=self.transform)
+        Dataset.__init__(self, data=data, transform=self.transform)  # noqa: F405
 
     def create_data_dicts(self, overwrite=False):
         return ResamplerDataset.create_data_dicts(self, overwrite=overwrite)
@@ -445,7 +445,7 @@ class CropToLabelDataset(ImporterDataset, ResamplerDataset):
             row = self.df.iloc[index]
             ds = row.get("ds")
             if not is_excel_None(ds):
-                remapping = get_ds_remapping(ds, self.global_properties)
+                remapping = get_ds_remapping(ds, self.global_properties)  # noqa: F405
             else:
                 remapping = None
             img_fname = row["image"]
@@ -533,7 +533,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR>
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project("totalseg")
     # P._create_plans_table()
@@ -551,12 +551,12 @@ if __name__ == "__main__":
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
 # %%
     ds = ResamplerDataset(
-        df=df,
-        project=project,
-        data_folder=data_folder,
-        spacing=spacing,
-        half_precision=half_precision,
-        device=device,
+        df=df,  # noqa: F405
+        project=project,  # noqa: F405
+        data_folder=data_folder,  # noqa: F405
+        spacing=spacing,  # noqa: F405
+        half_precision=half_precision,  # noqa: F405
+        device=device,  # noqa: F405
     )
 
     ds.setup()

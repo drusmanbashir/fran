@@ -25,7 +25,7 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 
 # plain, testable class (NOT a Ray actor)
 
-import pandas as pd
+import pandas as pd  # noqa: E402
 
 
 class _LBDSamplerWorkerBase(RayWorkerBase):
@@ -233,7 +233,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             labels_all = list(labels_all)
             out_fn = self.output_folder / "labels_all.json"
             save_json(labels_all, out_fn)
-        except:
+        except Exception:
             store_label_count(self.output_folder, num_processes=6)
 
     def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
@@ -332,7 +332,7 @@ if __name__ == "__main__":
     # %%
     # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR>
     from fran.managers import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     project_title = "lidc"
     P = Project(project_title=project_title)
@@ -415,7 +415,7 @@ if __name__ == "__main__":
         "shape": list(image.shape),
     }
 
-    d
+    d  # noqa: F405
     # %%
 
     # %%
@@ -468,8 +468,8 @@ if __name__ == "__main__":
         print(row)
         tr()
         # %%
-        remap = I.L.plan["remapping"]
-        I.L.df = I.L.df.assign(remapping=[remap] * len(I.L.df))
+        remap = I.L.plan["remapping"]  # noqa: F405
+        I.L.df = I.L.df.assign(remapping=[remap] * len(I.L.df))  # noqa: F405
 
     # %%
     L.results_df = pd.DataFrame(il.chain.from_iterable(L.results))
@@ -492,17 +492,17 @@ if __name__ == "__main__":
             "since some files skipped, dataset stats are not being stored. run L.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
         )
     # %%
-    add_plan_to_db(
+    add_plan_to_db(  # noqa: F405
         L.project, L.plan, db_path=L.project.db, data_folder_lbd=L.output_folder
     )
 
     # %%
 
-    add_plan_to_db(
-        L.project, I.L.plan, db_path=I.L.project.db, data_folder_lbd=I.L.output_folder
+    add_plan_to_db(  # noqa: F405
+        L.project, I.L.plan, db_path=I.L.project.db, data_folder_lbd=I.L.output_folder  # noqa: F405
     )
     # %%
-    add_plan_to_db(
+    add_plan_to_db(  # noqa: F405
         L.project,
         L.plan,
         db_path=L.project.db,

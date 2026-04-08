@@ -133,8 +133,8 @@ class MultiCaseAnalyzer(GetAttr):
                 len(new_cases), len(prev_processed_cases)
             )
         )
-        assert (l := len(new_cases)) == (
-            l2 := (len(all_case_ids) - len(prev_processed_cases))
+        assert len(new_cases) == (
+            len(all_case_ids) - len(prev_processed_cases)
         ), "Difference in number of new cases"
         if len(new_cases) == 0:
             print("No new cases found.")
@@ -242,7 +242,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.preprocessing.helpers import get_label_stats
     from fran.transforms.imageio import ToTensorT
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from utilz.imageviewers import ImageMaskViewer
 
     P2 = Project(project_title="totalseg")
@@ -264,12 +264,12 @@ if __name__ == "__main__":
     multiprocess = True
     debug = True
     args_list = [
-        [case_tuple, ds.bg_label, return_voxels] for case_tuple in ds.new_cases
+        [case_tuple, ds.bg_label, return_voxels] for case_tuple in ds.new_cases  # noqa: F405
     ]
 
     # %%
-    case_tuple = ds.new_cases[0]
-    ds.outputs = multiprocess_multiarg(
+    case_tuple = ds.new_cases[0]  # noqa: F405
+    ds.outputs = multiprocess_multiarg(  # noqa: F405
         func=case_analyzer_wrapper,
         arguments=args_list,
         num_processes=num_processes,
@@ -284,28 +284,28 @@ if __name__ == "__main__":
 
     # %%
     cases = []
-    res = P.sql_query(ss)
+    res = P.sql_query(ss)  # noqa: F405
     for dad in res:
         case_ = {"case_id": dad[0] + "_" + dad[1], "label_symlink": dad[2]}
         cases.append(case_)
     # %%
     cases = set(cases)
     new_cases = cases.difference(existing_cases)
-    assert (l := len(new_cases)) == (l2 := (len(cases) - len(existing_cases))), (
+    assert len(new_cases) == (len(cases) - len(existing_cases)), (
         "Difference in number of new cases"
     )
     label_fns = [c["label_symlink"] for c in cases if c["case_id"] in new_cases]
     # %%
     fn = Path(label_fns[0])
-    aa = bboxes_function_version(fn, 0)
+    aa = bboxes_function_version(fn, 0)  # noqa: F405
     fn2 = fn.str_replace("lms", "images")
     img = torch.load(fn2)
     mask = torch.load(fn)
     # ImageMaskViewer([img,mask])
     # %% [markdown]
-    b = bboxes_function_version(fn, proj_defaults)
+    b = bboxes_function_version(fn, proj_defaults)  # noqa: F405
     # %%
-    A = BBoxesFromMask(fn, 0)
+    A = BBoxesFromMask(fn, 0)  # noqa: F405
     aa = A()
     # %%
     P = Project("lidc")
@@ -358,7 +358,7 @@ if __name__ == "__main__":
 
     P = Project(project_title="litsmc")
     proj_defaults = P
-    M = GlobalProperties(proj_defaults, bg_label=0)
+    M = GlobalProperties(proj_defaults, bg_label=0)  # noqa: F405
 
     # %%
     debug_ = True
@@ -373,7 +373,7 @@ if __name__ == "__main__":
     M.compute_std_mean_dataset(num_processes=1, debug=debug)
     # %%
     M.global_properties = load_dict(M.global_properties_outfilename)
-    percentile_label, intensity_percentile_range = get_intensity_range(
+    percentile_label, intensity_percentile_range = get_intensity_range(  # noqa: F405
         M.global_properties
     )
     clip_range = [-5, 200]
@@ -384,7 +384,7 @@ if __name__ == "__main__":
     img = ToTensorT()(img_fname)
     if clip_range is not None:
         img = torch.clip(img, min=clip_range[0], max=clip_range[1])
-    var = (img - dataset_mean) ** 2
+    var = (img - dataset_mean) ** 2  # noqa: F405
 
     # %%
     args = [[fname, M.dataset_mean, M.clip_range] for fname in img_fnames]
@@ -401,7 +401,7 @@ if __name__ == "__main__":
     # ### KITS19
 
     # %%
-    R = NiftiToTorchDataGenerator(
+    R = NiftiToTorchDataGenerator(  # noqa: F405
         proj_defaults, minimum_final_spacing=0.0, enforce_isotropy=False
     )
     # %%
@@ -417,7 +417,7 @@ if __name__ == "__main__":
     # %%
 
     res = multiprocess_multiarg(
-        bboxes_function_version, arguments, 16, debug=False, io=True
+        bboxes_function_version, arguments, 16, debug=False, io=True  # noqa: F405
     )
 
     # %%
@@ -428,7 +428,7 @@ if __name__ == "__main__":
     # %%
     # # Getting bbox properties from preprocessed images
     # ### KITS21 cropped nifti files bboxes
-    M.std = torch.sqrt(std_num.sum() / M.total_voxels)
+    M.std = torch.sqrt(std_num.sum() / M.total_voxels)  # noqa: F405
 
     # %%
     P = Project(project_title="lits")
@@ -440,13 +440,13 @@ if __name__ == "__main__":
     # %%
 
     res = multiprocess_multiarg(
-        bboxes_function_version, arguments, 48, debug=False, io=True
+        bboxes_function_version, arguments, 48, debug=False, io=True  # noqa: F405
     )
     # %%
 
     import collections
 
-    od = collections.OrderedDict(sorted(gp.items()))
+    od = collections.OrderedDict(sorted(gp.items()))  # noqa: F405
     # %%
 
     # %%
@@ -535,8 +535,8 @@ if __name__ == "__main__":
         S.properties["min_fg"] = int(voxels.min())
         S.properties["max_fg"] = int(voxels.max())
         S.properties["std_fg"] = int(voxels.std())
-        S.properties[percentile_range_to_str(percentile_range)] = np.percentile(
-            voxels, percentile_range
+        S.properties[percentile_range_to_str(percentile_range)] = np.percentile(  # noqa: F405
+            voxels, percentile_range  # noqa: F405
         )
     case_["properties"] = S.properties
     output = {"case": case_, "voxels": voxels}
@@ -547,7 +547,7 @@ if __name__ == "__main__":
     # %%
 
     db_name = "/s/fran_storage/projects/lilun/cases.db"
-    conn = sqlite3.connect(db_name)
+    conn = sqlite3.connect(db_name)  # noqa: F405
 
     ss = """ALTER TABLE datasources RENAME COLUMN mask_symlink to lm_symlink"""
     conn.execute(ss)

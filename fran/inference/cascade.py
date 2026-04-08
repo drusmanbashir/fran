@@ -10,8 +10,6 @@ from fran.transforms.misc_transforms import SelectLabels
 from fran.utils.misc import parse_devices
 from utilz.helpers import info_from_filename
 
-tr = ipdb.set_trace
-
 import sys
 
 import numpy as np
@@ -369,7 +367,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         bboxes = []
         for batch in self.W.predict():
             if self.debug:
-                tr()
                 print(batch["pred"].shape)
             # p = self.W.predict()
             pred = self.W.postprocess(batch)
@@ -801,7 +798,6 @@ if __name__ == "__main__":
     bboxes = []
     for batch in En.W.predict():
         if En.debug:
-            tr()
         # p = En.W.predict()
         pred = En.W.postprocess(batch)
         pred = Sel(pred)

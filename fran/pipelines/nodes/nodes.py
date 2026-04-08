@@ -13,7 +13,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.run.analyze_resample import PreprocessingManager
     from fran.trainers.trainer import Trainer
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from fran.utils.folder_names import folder_names_from_plan
     from lightning.pytorch.callbacks import BatchSizeFinder
 
@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     planT = conf["plan_train"]
     planV = conf["plan_valid"]
-    pp(planT)
+    pp(planT)  # noqa: F405
 
     planT["mode"]
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
@@ -179,9 +179,9 @@ if __name__ == "__main__":
     pred2 = pred2.permute(0, 1, 4, 2, 3)
     ImageMaskViewer([image[0][0].detach().cpu(), pred2[0][1].detach().cpu()])
     # %%
-    D2.prepare_data()
-    D2.setup()
-    dl2 = D2.val_dataloader()
+    D2.prepare_data()  # noqa: F405
+    D2.setup()  # noqa: F405
+    dl2 = D2.val_dataloader()  # noqa: F405
     image2 = next(iter(dl2))["image"]
 
     N.loss_fn(image2, pred2)
@@ -250,40 +250,40 @@ if __name__ == "__main__":
     planT = conf[args.plan_name]
     # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
     # %%
-    I = PreprocessingManager(args)
-    # I.spacing =
+    mgr = PreprocessingManager(args)
+    # mgr.spacing =
     # %%
     # SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
     overwrite = True
-    I.resample_dataset(overwrite=overwrite)
-    I.R.get_tensor_folder_stats()
+    mgr.resample_dataset(overwrite=overwrite)
+    mgr.R.get_tensor_folder_stats()
 
     # %%
     # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
     overwrite = True
-    if I.plan["mode"] == "patch":
-        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
-        I.generate_hires_patches_dataset()
-    elif I.plan["mode"] == "lbd":
+    if mgr.plan["mode"] == "patch":
+        # mgr.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+        mgr.generate_hires_patches_dataset()
+    elif mgr.plan["mode"] == "lbd":
         if "imported_folder" not in planT.keys():
-            I.generate_lbd_dataset(overwrite=overwrite)
+            mgr.generate_lbd_dataset(overwrite=overwrite)
         else:
-            I.generate_TSlabelboundeddataset(
+            mgr.generate_TSlabelboundeddataset(
                 imported_labels=planT["imported_labels"],
                 imported_folder=planT["imported_folder"],
                 overwrite=overwrite,
             )
     # %%
-    L = LabelBoundedDataGenerator(project=I.project, plan=I.plan, plan_name=I.plan_name)
+    L = LabelBoundedDataGenerator(project=mgr.project, plan=mgr.plan, plan_name=mgr.plan_name)  # noqa: F405
     # %%
 
-    L = LabelBoundedDataGeneratorImported(
+    L = LabelBoundedDataGeneratorImported(  # noqa: F405
         project=P,
         plan=planT,
-        folder_suffix=plan_name,
-        imported_folder=imported_folder,
-        merge_imported_labels=merge_imported_labels,
-        remapping=remapping,
+        folder_suffix=plan_name,  # noqa: F405
+        imported_folder=imported_folder,  # noqa: F405
+        merge_imported_labels=merge_imported_labels,  # noqa: F405
+        remapping=remapping,  # noqa: F405
     )
 
     # %%
@@ -417,7 +417,7 @@ if __name__ == "__main__":
     # %%
 
     folder_names_from_plan(P, planT)
-    add_plan_to_db(
+    add_plan_to_db(  # noqa: F405
         planT, "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2", P.db
     )
     # %%

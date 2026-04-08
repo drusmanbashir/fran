@@ -34,7 +34,7 @@ def save_network_output(output_path, output, logger=None):
     if logger is not None:
         logger.info(f"Saving network output to: {output_path}...")
     output = output.detach().cpu()[0]
-    with h5py.File(output_path, "w") as f:
+    with h5py.File(output_path, "w") as f:  # noqa: F821
         f.create_dataset("predictions", data=output, compression="gzip")
 
 

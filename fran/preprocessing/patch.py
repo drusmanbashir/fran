@@ -26,7 +26,7 @@ from utilz.stringz import headline
 
 MIN_SIZE = 32
 
-from fran.preprocessing.preprocessor import Preprocessor
+from fran.preprocessing.preprocessor import Preprocessor  # noqa: E402
 
 
 class _PBDSamplerWorkerBase(RayWorkerBase):
@@ -264,7 +264,7 @@ if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
     from fran.preprocessing.helpers import to_even
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from label_analysis.totalseg import TotalSegmenterLabels
     from utilz.fileio import load_dict, maybe_makedirs
 
@@ -447,7 +447,7 @@ if __name__ == "__main__":
     output_folder = Path("/r/datasets/tmp")
     dataset_properties = PG.dataset_properties
     maybe_makedirs(output_folder)
-    Pr = PatchGenerator(
+    Pr = PatchGenerator(  # noqa: F405
         dataset_properties,
         output_folder,
         patch_size,
@@ -488,8 +488,8 @@ if __name__ == "__main__":
     # remapping=self.remapping,
     # %%
     # def set_transforms(self, keys_tr: str = "R,L1,L2,Re,E,Rz,M,B,A"):
-    I.setup()
-    dici = I[2]
+    I.setup()  # noqa: F405
+    dici = I[2]  # noqa: F405
     print(dici.keys())
 
     # %%
@@ -522,7 +522,7 @@ if __name__ == "__main__":
     imported_fn = find_matching_fn(fn, imported_folder.glob("*")[0])
     lm_imp = sitk.ReadImage(imported_fn)
     print(lm_imp.GetSpacing())
-    dici = {"lm": lm_pt, "lm_imported": lm_imp, "remapping": remapping}
+    dici = {"lm": lm_pt, "lm_imported": lm_imp, "remapping": remapping}  # noqa: F405
 
     # %%
     # %%
@@ -541,7 +541,7 @@ if __name__ == "__main__":
     patch_overlap = [to_even(ol) for ol in patch_overlap]
     maybe_makedirs(PG.output_folder)
     PG.save_patches_config()
-    if not overwrite:
+    if not overwrite:  # noqa: F405
         PG.remove_completed_cases()
     args = [
         [
@@ -561,18 +561,18 @@ if __name__ == "__main__":
     ImageMaskViewer([lm_out[0], dici["lm_imported"][0]], data_types=["lm", "lm"])
     view_sitk(dici["lm_imported"], lm_imp, data_types=["lm", "lm"])
     config = {
-        "spacing": PI.spacing,
-        "expand_by": PI.expand_by,
-        "imported_folder": PI.imported_folder,
-        "imported_labelsets": PI.imported_labelsets,
+        "spacing": PI.spacing,  # noqa: F405
+        "expand_by": PI.expand_by,  # noqa: F405
+        "imported_folder": PI.imported_folder,  # noqa: F405
+        "imported_labelsets": PI.imported_labelsets,  # noqa: F405
     }
 
     # %%
 
-    lm2 = merge_pt(dici["lm_imported"][0], dici["lm"])[0]
+    lm2 = merge_pt(dici["lm_imported"][0], dici["lm"])[0]  # noqa: F405
     ImageMaskViewer([lm_out[0], dici["lm_imported"][0]], data_types=["lm", "lm"])
     lm = sitk.ReadImage(fn)
-    lm_out = merge(lm_imp, lm)
+    lm_out = merge(lm_imp, lm)  # noqa: F405
 
     view_sitk(lm, lm_out, data_types=["lm", "lm"])
     # %%
@@ -580,7 +580,7 @@ if __name__ == "__main__":
     P = PatchDataGenerator(
         dataset_properties,
         output_folder,
-        output_patch_size,
+        output_patch_size,  # noqa: F405
         info,
         patch_overlap,
         expand_by,
@@ -605,17 +605,17 @@ if __name__ == "__main__":
     info = inf[0]
     # %%
     # %%
-    I.transform = C
+    I.transform = C  # noqa: F405
 
-    dici = I.data[0]
+    dici = I.data[0]  # noqa: F405
     dici = C(dici)
     print(dici["bounding_box"])
     # %%
-    dici = R(dici)
-    dici = L1(dici)
-    dici = L2(dici)
-    dici = e(dici)
-    dici = E(dici)
+    dici = R(dici)  # noqa: F405
+    dici = L1(dici)  # noqa: F405
+    dici = L2(dici)  # noqa: F405
+    dici = e(dici)  # noqa: F405
+    dici = E(dici)  # noqa: F405
     # %%
     bb = dici["bounding_box"]
     print(bb)

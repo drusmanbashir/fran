@@ -1,9 +1,5 @@
 # %%
 # training.py — minimal runner to Tm.fit()
-import ipdb
-
-tr = ipdb.set_trace
-
 
 from typing import List, Union
 

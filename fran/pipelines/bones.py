@@ -9,7 +9,7 @@ if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
     from fran.managers import Project
     from fran.trainers.trainer import Trainer
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     P = Project("bones")
     # P.add_data([DS.totalseg])
@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
     planT = conf["plan_train"]
     planV = conf["plan_valid"]
-    pp(planT)
+    pp(planT)  # noqa: F405
 
     print(planT["mode"])
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)

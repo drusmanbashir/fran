@@ -41,7 +41,7 @@ class ModelCheckpointUB(ModelCheckpoint):
     def __warn_if_dir_not_empty(self, dirpath: _PATH) -> None:
         if (
             self.save_top_k != 0
-            and _is_dir(self._fs, dirpath, strict=True)
+            and _is_dir(self._fs, dirpath, strict=True)  # noqa: F821
             and len(self._fs.ls(dirpath)) > 0
         ):
             rank_zero_warn(f"Checkpoint directory {dirpath} exists and is not empty.")
@@ -70,9 +70,9 @@ class ModelCheckpointUB(ModelCheckpoint):
             name = trainer.loggers[0].name
             version = trainer.loggers[0].version
             version = version if isinstance(version, str) else f"version_{version}"
-            ckpt_path = os.path.join(save_dir, str(name), version, "checkpoints")
+            ckpt_path = os.path.join(save_dir, str(name), version, "checkpoints")  # noqa: F821
         else:
             # if no loggers, use default_root_dir
-            ckpt_path = os.path.join(trainer.default_root_dir, "checkpoints")
+            ckpt_path = os.path.join(trainer.default_root_dir, "checkpoints")  # noqa: F821
 
         return ckpt_path

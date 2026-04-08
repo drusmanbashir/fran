@@ -11,7 +11,7 @@ if __name__ == "__main__":
     from fran.run.analyze_resample import PreprocessingManager
     from fran.trainers.trainer import Trainer
     from fran.tune.tune import RayTuneConfig
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from fran.utils.folder_names import folder_names_from_plan
 
     P = Project("nodes")
@@ -21,10 +21,10 @@ if __name__ == "__main__":
     C.setup()
     C.plans
     conf = C.configs
-    pp(conf["model_params"])
-    pp(conf["dataset_params"])
+    pp(conf["model_params"])  # noqa: F405
+    pp(conf["dataset_params"])  # noqa: F405
     plan = conf["plan_train"]
-    pp(plan)
+    pp(plan)  # noqa: F405
 
     # plan['mode']
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     conds, params = [], []
     # %%
     for k in keys:
-        v = _normalize_for_db(plan[k])
+        v = _normalize_for_db(plan[k])  # noqa: F405
         if v is None:
             conds.append(f'"{k}" IS NULL')
         else:
@@ -97,12 +97,12 @@ if __name__ == "__main__":
             params.append(v)
     # %%
     sql = (
-        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_pbd FROM "{TABLE}" WHERE '
+        f'SELECT id, data_folder_source, data_folder_lbd, data_folder_whole, data_folder_pbd FROM "{TABLE}" WHERE '  # noqa: F405
         + " AND ".join(conds)
         + " LIMIT 1"
     )
     db_path = P.db
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path) as conn:  # noqa: F405
         row = conn.execute(sql, params).fetchone()
     # %%
 
@@ -130,15 +130,15 @@ if __name__ == "__main__":
     # SECTION:-------------------- Project creation-------------------------------------------------------------------------------------- <CR>
 
     # P.delete()
-    DS = DS
+    DS = DS  # noqa: F405
     P.add_data([DS.nodes, DS.nodesthick])
     # P.add_data([DS.totalseg])
     # %%
     # SECTION:-------------------- DATA FOLDER H5PY file-------------------------------------------------------------------------------------- <CR>
 
     test = False
-    ds = Datasource(
-        folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test
+    ds = Datasource(  # noqa: F405
+        folder=Path("/s/xnat_shadow/nodes"), name="nodes", alias="nodes", test=test  # noqa: F405
     )
     ds.process()
     # %%
@@ -189,40 +189,40 @@ if __name__ == "__main__":
     plan = conf[args.plan_name]
     # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
     # %%
-    I = PreprocessingManager(args)
-    # I.spacing =
+    mgr = PreprocessingManager(args)
+    # mgr.spacing =
     # %%
     # SECTION:-------------------- Resampling -------------------------------------------------------------------------------------- <CR>
     overwrite = True
-    I.resample_dataset(overwrite=overwrite)
-    I.R.get_tensor_folder_stats()
+    mgr.resample_dataset(overwrite=overwrite)
+    mgr.R.get_tensor_folder_stats()
 
     # %%
     # SECTION:--------------------  Processing based on MODE ------------------------------------------------------------------ <CR>
     overwrite = True
-    if I.plan["mode"] == "patch":
-        # I.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
-        I.generate_hires_patches_dataset()
-    elif I.plan["mode"] == "lbd":
+    if mgr.plan["mode"] == "patch":
+        # mgr.generate_TSlabelboundeddataset("lungs","/s/fran_storage/predictions/totalseg/LITS-827")
+        mgr.generate_hires_patches_dataset()
+    elif mgr.plan["mode"] == "lbd":
         if "imported_folder" not in plan.keys():
-            I.generate_lbd_dataset(overwrite=overwrite)
+            mgr.generate_lbd_dataset(overwrite=overwrite)
         else:
-            I.generate_TSlabelboundeddataset(
+            mgr.generate_TSlabelboundeddataset(
                 imported_labels=plan["imported_labels"],
                 imported_folder=plan["imported_folder"],
                 overwrite=overwrite,
             )
     # %%
-    L = LabelBoundedDataGenerator(project=I.project, plan=I.plan, plan_name=I.plan_name)
+    L = LabelBoundedDataGenerator(project=mgr.project, plan=mgr.plan, plan_name=mgr.plan_name)  # noqa: F405
     # %%
 
-    L = LabelBoundedDataGeneratorImported(
+    L = LabelBoundedDataGeneratorImported(  # noqa: F405
         project=P,
         plan=plan,
-        folder_suffix=plan_name,
-        imported_folder=imported_folder,
-        merge_imported_labels=merge_imported_labels,
-        remapping=remapping,
+        folder_suffix=plan_name,  # noqa: F405
+        imported_folder=imported_folder,  # noqa: F405
+        merge_imported_labels=merge_imported_labels,  # noqa: F405
+        remapping=remapping,  # noqa: F405
     )
 
     # %%
@@ -240,7 +240,7 @@ if __name__ == "__main__":
     conf["dataset_params"]["mode"] = None
     conf["dataset_params"]["cache_rate"] = 0.5
 
-    D = DataManagerMulti(
+    D = DataManagerMulti(  # noqa: F405
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,
@@ -289,7 +289,7 @@ if __name__ == "__main__":
 
     im = dici[0]["image"]
     lm = dici[0]["lm"]
-    ImageMaskViewer([im[0], lm[0]])
+    ImageMaskViewer([im[0], lm[0]])  # noqa: F405
     # %%
 
     tv = Tm.D.valid_manager
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     im = batch["image"]
     im = im.permute(0, 1, 4, 2, 3)
     lm = lm.permute(0, 1, 4, 2, 3)
-    ImageMaskViewer([im[n][0], lm[n][0]])
+    ImageMaskViewer([im[n][0], lm[n][0]])  # noqa: F405
     # %%
     # SECTION:-------------------- TROUBLE-------------------------------------------------------------------------------------- <CR>
 
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     ds_type = "lmdb"
     ds_type = None
 
-    D = DataManagerMulti(
+    D = DataManagerMulti(  # noqa: F405
         project_title=P.project_title,
         config=conf,
         batch_size=batch_size,
@@ -349,13 +349,13 @@ if __name__ == "__main__":
     # %%
     n = 0
     im = batch["image"][n][0]
-    ImageMaskViewer([im, batch["lm"][n][0]])
+    ImageMaskViewer([im, batch["lm"][n][0]])  # noqa: F405
     # while iteri:
     #     print(batch['image'].shape)
     # %%
 
     folder_names_from_plan(P, plan)
-    add_plan_to_db(
+    add_plan_to_db(  # noqa: F405
         plan, "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2", P.db
     )
     # %%
@@ -372,4 +372,4 @@ if __name__ == "__main__":
 
     im = img[n][0].detach().cpu()
     lm = pp[n][0].detach().cpu()
-    ImageMaskViewer([im, lm])
+    ImageMaskViewer([im, lm])  # noqa: F405

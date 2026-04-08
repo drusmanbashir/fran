@@ -2,7 +2,6 @@
 import itertools as il
 from typing import Callable, Optional, TypeAlias
 
-import ipdb
 import lightning.pytorch as pl
 import numpy as np
 import torch
@@ -12,7 +11,6 @@ from monai.utils.enums import DiceCEReduction, LossReduction
 from monai.utils.module import look_up_option
 from utilz.helpers import info_from_filename, range_inclusive
 
-tr = ipdb.set_trace
 import torch.nn.functional as F
 from fran.utils.common import PAD_VALUE
 from monai.losses import MaskedDiceLoss
@@ -392,8 +390,8 @@ class DeepSupervisionLoss(pl.LightningModule):
 if __name__ == "__main__":
     def softmax_helper(x):
         return F.softmax(x, 1)
-    P = Project("nodes")
-    conf = ConfigMaker(P, configuration_filename=None).config
+    P = Project("nodes")  # noqa: F821
+    conf = ConfigMaker(P, configuration_filename=None).config  # noqa: F821
     loss_params = conf["loss_params"]
 
     targ = torch.load("tests/files/image.pt", weights_only=False)

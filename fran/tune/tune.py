@@ -7,7 +7,6 @@ from datetime import datetime
 # from fran.architectures.unet3d.model import  *
 from pathlib import Path
 
-import ipdb
 import torch
 from fran.managers import Project
 from fran.tune.config import RayTuneConfig, out_channels_from_dict_or_cell
@@ -15,7 +14,6 @@ from fran.tune.trainer import RayTrainer
 from ray.tune.schedulers import ASHAScheduler
 from utilz.stringz import headline
 
-tr = ipdb.set_trace
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
 from fran.configs.parser import load_metadata, make_patch_size

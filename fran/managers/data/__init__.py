@@ -4,7 +4,7 @@ Kept guarded to avoid forcing heavy dependencies in light import contexts.
 """
 
 try:
-    from .training import (
+    from .training import (  # noqa: F401
         DataManagerBaseline,
         DataManagerLBD,
         DataManagerPatch,

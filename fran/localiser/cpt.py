@@ -3,17 +3,17 @@ import matplotlib.pyplot as plt
 
 plt.ion()
 # matplotlib.use('Agg')
-import numpy as np
+import numpy as np  # noqa: E402
 
 
 # %%
 # link :https://blog.flaport.net/yolo-part-1.html
-import lightning as L
-import matplotlib.pyplot as plt
-import torch
-from fran.localiser.helpers import load_bboxes_batch, load_image_batch
-from fran.localiser.loss import YOLOLoss
-from torch.optim.lr_scheduler import OneCycleLR
+import lightning as L  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
+import torch  # noqa: E402
+from fran.localiser.helpers import load_bboxes_batch, load_image_batch  # noqa: E402
+from fran.localiser.loss import YOLOLoss  # noqa: E402
+from torch.optim.lr_scheduler import OneCycleLR  # noqa: E402
 
 
 class TinyYOLOv2(L.LightningModule):

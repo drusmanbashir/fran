@@ -1,16 +1,12 @@
 # %%
 from __future__ import annotations
 
-import ipdb
-
-tr = ipdb.set_trace
 
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional
 
-import ipdb
 import yaml
 
 if "XNAT_CONFIG_PATH" in os.environ:

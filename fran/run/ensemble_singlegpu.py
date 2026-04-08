@@ -43,7 +43,7 @@ def main(args):
     half = args.half
     debug = args.debug
     ensemble = args.ensemble
-    P = Project(project_title=args.t)
+    P = Project(project_title=args.t)  # noqa: F821
     proj_defaults = P
     # if not input_folder:
     #     mo_df = pd.read_csv(Path("/s/datasets_bkp/litq/complete_cases/cases_metadata.csv"))

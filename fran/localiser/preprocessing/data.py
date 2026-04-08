@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import ipdb
 import lightning as L
 import torch
 from fran.transforms.imageio import LoadTorchd
@@ -32,8 +31,6 @@ from monai.transforms.utility.dictionary import (
     EnsureTyped,
     RepeatChanneld,
 )
-
-tr = ipdb.set_trace
 
 from monai.data import Dataset
 from torch.utils.data import DataLoader, random_split
@@ -521,11 +518,11 @@ if __name__ == "__main__":
     dici = Rotate(dici)
     dici = ExtractBbox(dici)
     dici = CB(dici)
-    dici = Z(dici)
+    dici = Z(dici)  # noqa: F821
     dici = Flip1(dici)
     dici = Flip2(dici)
-    dici = RotBbox(dici)
-    dici = ClipoBbox(dici)
+    dici = RotBbox(dici)  # noqa: F821
+    dici = ClipoBbox(dici)  # noqa: F821
     dici = YoloBbox(dici)
 
 # %%

@@ -3,44 +3,44 @@ import torch._dynamo
 from paramiko import SSHClient
 
 torch._dynamo.config.suppress_errors = True
-import itertools as il
-import operator
-from typing import Any, Hashable, Mapping
+import itertools as il  # noqa: E402
+import operator  # noqa: E402
+from typing import Any, Hashable, Mapping  # noqa: E402
 
-import neptune as nt
-import torch
-from fran.architectures.create_network import (
+import neptune as nt  # noqa: E402
+import torch  # noqa: E402
+from fran.architectures.create_network import (  # noqa: E402
     create_model_from_conf,
     pool_op_kernels_nnunet,
 )
-from fran.data.dataloader import img_mask_bbox_collated
-from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss, F, Optional, nn, np, tr
-from fran.transforms.spatialtransforms import one_hot
-from fran.utils.common import common_vars_filename, load_yaml, os
-from lightning.pytorch import LightningDataModule
+from fran.data.dataloader import img_mask_bbox_collated  # noqa: E402
+from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss, F, Optional, nn, np, tr  # noqa: E402
+from fran.transforms.spatialtransforms import one_hot  # noqa: E402
+from fran.utils.common import common_vars_filename, load_yaml, os  # noqa: E402
+from lightning.pytorch import LightningDataModule  # noqa: E402
 
 # from fastcore.basics import GenttAttr
-from lightning.pytorch.callbacks import BatchSizeFinder, Callback
-from lightning.pytorch.loggers.neptune import NeptuneLogger
-from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
-from monai.data.meta_obj import get_track_meta
-from monai.transforms.intensity.array import RandGaussianNoise
-from monai.transforms.spatial.array import Resize
-from monai.transforms.transform import MapTransform, RandomizableTransform
-from monai.utils.type_conversion import convert_to_tensor
-from neptune.types import File
-from torchvision.utils import make_grid
-from utilz.fileio import Path, load_dict, maybe_makedirs
-from utilz.helpers import get_ipython
+from lightning.pytorch.callbacks import BatchSizeFinder, Callback  # noqa: E402
+from lightning.pytorch.loggers.neptune import NeptuneLogger  # noqa: E402
+from monai.config.type_definitions import DtypeLike, NdarrayOrTensor  # noqa: E402
+from monai.data.meta_obj import get_track_meta  # noqa: E402
+from monai.transforms.intensity.array import RandGaussianNoise  # noqa: E402
+from monai.transforms.spatial.array import Resize  # noqa: E402
+from monai.transforms.transform import MapTransform, RandomizableTransform  # noqa: E402
+from monai.utils.type_conversion import convert_to_tensor  # noqa: E402
+from neptune.types import File  # noqa: E402
+from torchvision.utils import make_grid  # noqa: E402
+from utilz.fileio import Path, load_dict, maybe_makedirs  # noqa: E402
+from utilz.helpers import get_ipython  # noqa: E402
 
 try:
     hpc_settings_fn = os.environ["HPC_SETTINGS"]
-except:
+except Exception:
     pass
 
-import torch
-from lightning.pytorch import LightningModule, Trainer
-from torch.utils.data import DataLoader, Dataset
+import torch  # noqa: E402
+from lightning.pytorch import LightningModule, Trainer  # noqa: E402
+from torch.utils.data import DataLoader, Dataset  # noqa: E402
 
 
 class BoringModel(nn.Module):
@@ -384,7 +384,7 @@ class NeptuneManager(NeptuneLogger, Callback):
         try:
             ckpt = self.experiment["training/model/best_model_path"].fetch()
             return ckpt
-        except:
+        except Exception:
             print("No checkpoints in this run")
 
     @model_checkpoint.setter
@@ -652,7 +652,7 @@ class UNetTrainer(LightningModule):
                 target_downsampled = F.interpolate(target, size=size, mode="nearest")
                 target_listed.append(target_downsampled)
         loss = self.loss_fnc(self.pred, target_listed[0])
-        loss = self.loss_fnc(self.pred, tt)
+        loss = self.loss_fnc(self.pred, tt)  # noqa: F405
         target_listed[0].shape
         tt = target.squeeze(1).long()
         tt.require
@@ -843,12 +843,12 @@ if __name__ == "__main__":
     # warnings.filterwarnings("ignore", "TypedStorage is deprecated.*")
 
     torch.set_float32_matmul_precision("medium")
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
 
     project_title = "lits32"
-    proj = Project(project_title=project_title)
+    proj = Project(project_title=project_title)  # noqa: F405
 
-    conf = ConfigMaker(
+    conf = ConfigMaker(  # noqa: F405
         proj,
     ).config
     # configs = ConfigMaker(project, raytune=False).config

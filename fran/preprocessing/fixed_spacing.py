@@ -1,12 +1,9 @@
 # %%
 from pathlib import Path
 
-import ipdb
 import ray
 from fran.utils.folder_names import folder_names_from_plan
 from utilz.helpers import find_matching_fn, multiprocess_multiarg
-
-tr = ipdb.set_trace
 
 import pandas as pd
 import torch
@@ -338,7 +335,7 @@ class NiftiToTorchDataGenerator(Preprocessor):
             if not any(matches):
                 saved_specs.append(specs)
                 save_dict(saved_specs, specs_file)
-        except:
+        except Exception:
             saved_specs = [specs]
             save_dict(saved_specs, specs_file)
 
@@ -430,7 +427,7 @@ if __name__ == "__main__":
     from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
     from fran.transforms.inferencetransforms import ToCPUd
     from fran.transforms.misc_transforms import FgBgToIndicesd2, LabelRemapd
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from monai.transforms.utility.dictionary import (
         EnsureChannelFirstd,
         FgBgToIndicesd,
@@ -524,7 +521,7 @@ if __name__ == "__main__":
         print(
             "since some files skipped, dataset stats are not being stored. run Rs.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
         )
-    add_plan_to_db(Rs.plan, db_path=Rs.project.db, data_folder_source=Rs.output_folder)
+    add_plan_to_db(Rs.plan, db_path=Rs.project.db, data_folder_source=Rs.output_folder)  # noqa: F405
 # %%
     N = NiftiResampler(**actor_kwargs)
     # for mini_df in dds:
@@ -533,8 +530,8 @@ if __name__ == "__main__":
 # %%
     remapping = parse_nested_remapping(N.plan, "remapping_source", as_dict=True)
     data = []
-    for index in range(len(df)):
-        row = df.iloc[index]
+    for index in range(len(df)):  # noqa: F405
+        row = df.iloc[index]  # noqa: F405
         dici = N._dici_from_df_row(row, remapping)
         data.append(dici)
 # %%
@@ -550,7 +547,7 @@ if __name__ == "__main__":
         N.save_indices(inds, N.indices_subfolder)
         N.save_pt(dici["image"][0], "images")
         N.save_pt(dici["lm"][0], "lms")
-        N.extract_image_props(image)
+        N.extract_image_props(image)  # noqa: F405
 # %%
 # SECTION:-------------------- ResampleDatasetniftiToTorch-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
     spacing = [1, 1, 1]
@@ -626,7 +623,7 @@ if __name__ == "__main__":
     print(dici["image"].meta["filename_or_obj"], dici["lm"].meta["filename_or_obj"])
 
     L = LoadSITKd(keys=["image", "lm"], image_only=True)
-    T = ToDeviced(keys=["image", "lm"], device=Rx.device)
+    T = ToDeviced(keys=["image", "lm"], device=Rx.device)  # noqa: F405
     Re = RecastToFloatd(keys=["image", "lm"])
 
     Ind = FgBgToIndicesd(keys=["lm"], image_key="image", image_threshold=-2600)
@@ -641,31 +638,31 @@ if __name__ == "__main__":
     E = EnsureChannelFirstd(
         keys=["image", "lm"], channel_dim="no_channel"
     )  # funny shape output mismatch
-    Si = Spacingd(keys=["image"], pixdim=Rx.spacing, mode="trilinear")
-    Rz = ResizeDynamicd(keys=["lm"], key_spatial_size="image", mode="nearest")
+    Si = Spacingd(keys=["image"], pixdim=Rx.spacing, mode="trilinear")  # noqa: F405
+    Rz = ResizeDynamicd(keys=["lm"], key_spatial_size="image", mode="nearest")  # noqa: F405
 
     # Sm = Spacingd(keys=["lm"], pixdim=Rx.spacing,mode="nearest")
     N = NormaliseClipd(
         keys=["image"],
-        clip_range=Rx.global_properties["intensity_clip_range"],
-        mean=Rx.mean,
-        std=Rx.std,
+        clip_range=Rx.global_properties["intensity_clip_range"],  # noqa: F405
+        mean=Rx.mean,  # noqa: F405
+        std=Rx.std,  # noqa: F405
     )
 
-    tf = Compose([R, L, T, Re, Ind])
+    tf = Compose([R, L, T, Re, Ind])  # noqa: F405
     dici = tf(dici)
 # %%
-    I.Resampler.shapes = np.array(I.Resampler.shapes)
-    fn_dict = I.Resampler.output_folder / "info.json"
+    I.Resampler.shapes = np.array(I.Resampler.shapes)  # noqa: F405
+    fn_dict = I.Resampler.output_folder / "info.json"  # noqa: F405
 
     dici = {
-        "median_shape": np.median(I.Resampler.shapes, 0).tolist(),
-        "spacing": I.Resampler.spacing,
+        "median_shape": np.median(I.Resampler.shapes, 0).tolist(),  # noqa: F405
+        "spacing": I.Resampler.spacing,  # noqa: F405
     }
     save_dict(dici, fn_dict)
 
-    resampled_dataset_properties["median_shape"] = np.median(
-        I.Resampler.shapes, 0
+    resampled_dataset_properties["median_shape"] = np.median(  # noqa: F405
+        I.Resampler.shapes, 0  # noqa: F405
     ).tolist()
 # %%
     tnsr = torch.load(
@@ -710,7 +707,7 @@ if __name__ == "__main__":
         "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/resampled_dataset_properties.json",
     )
 # %%
-    dl = I.R.dl
+    dl = I.R.dl  # noqa: F405
     iteri = iter(dl)
     batch = next(iteri)
 # %%
@@ -741,10 +738,10 @@ if __name__ == "__main__":
             "lm_bg_indices": bg_ind,
             "meta": image.meta,
         }
-        I.R.save_indices(inds, I.R.indices_subfolder)
-        I.R.save_pt(image[0], "images")
-        I.R.save_pt(lm[0], "lms")
-        I.R.extract_image_props(image)
+        I.R.save_indices(inds, I.R.indices_subfolder)  # noqa: F405
+        I.R.save_pt(image[0], "images")  # noqa: F405
+        I.R.save_pt(lm[0], "lms")  # noqa: F405
+        I.R.extract_image_props(image)  # noqa: F405
 
 # %%
 

@@ -13,13 +13,10 @@ from utilz.cprint import cprint
 
 os.environ["TORCHDYNAMO_DISABLE"] = "1"  # set as early as possible in the process
 
-import ipdb
 import torch._dynamo as dynamo
 from fran.managers import Project
 from tqdm.auto import tqdm as pbar
 from utilz.stringz import headline
-
-tr = ipdb.set_trace
 
 from pathlib import Path
 
@@ -257,7 +254,6 @@ class BaseInferer(DictToAttr):
         batch["bounding_box"] = bbox
         for tfm in self.postprocess_transforms:
             headline(tfm)
-            tr()
             batch = tfm(batch)
         return batch
 
@@ -504,7 +500,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.data.dataregistry import DS
     from fran.managers.project import Project
-    from fran.utils.common import *
+    from fran.utils.common import *  # noqa: F403
     from label_analysis.totalseg import TotalSegmenterLabels
     from monai.transforms.post.dictionary import Activationsd, AsDiscreted
     from utilz.helpers import pp
@@ -536,10 +532,10 @@ if __name__ == "__main__":
     img_nodes = list(fldr_nodes.glob("*"))
     img_nodes2 = list(fldr_nodes2.glob("*"))
     fldr_litsmc = (
-        Path(D["litq"].folder),
-        Path(D["drli"].folder),
-        Path(D["lits"].folder),
-        Path(D["litqsmall"].folder),
+        Path(D["litq"].folder),  # noqa: F405
+        Path(D["drli"].folder),  # noqa: F405
+        Path(D["lits"].folder),  # noqa: F405
+        Path(D["litqsmall"].folder),  # noqa: F405
     )
     imgs_litsmc = [list((fld / ("images")).glob("*")) for fld in fldr_litsmc]
     imgs_litsmc = list(il.chain.from_iterable(imgs_litsmc))
@@ -621,7 +617,7 @@ if __name__ == "__main__":
         overwrite=overwrite,
     )
 # %%
-    data = P.ds.data[0]
+    data = P.ds.data[0]  # noqa: F405
 # %%
 # SECTION:-------------------- TOTALSEG-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 
@@ -670,9 +666,9 @@ if __name__ == "__main__":
 # %%
 # %%
 # SECTION:--------------------  NODES-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
-    run = run_nodes2[0]
-    run = run_nodes3[0]
-    run = run_nodes[0]
+    run = run_nodes2[0]  # noqa: F405
+    run = run_nodes3[0]  # noqa: F405
+    run = run_nodes[0]  # noqa: F405
 
     debug_ = False
 
@@ -785,16 +781,16 @@ if __name__ == "__main__":
     out_final.append(tmp)
 # %%
     if T.save:
-        T.save_pred(output)
+        T.save_pred(output)  # noqa: F405
     if T.safe_mode:
         T.reset()
 # %%
 
-    T = En.Ps[0]
+    T = En.Ps[0]  # noqa: F405
     Sq = SqueezeDimd(keys=["pred", "image"], dim=0)
 
-    # below is expensive on large number of channels and on discrete data I am unsure if it uses nearest neighbours
-    # I = Invertd(
+    # below is expensive on large number of channels and on discrete data mgr am unsure if it uses nearest neighbours
+    # mgr = Invertd(
     #     keys=["pred"], transform=T.ds.transform, orig_keys=["image"]
     # )  # watchout: use detach beforeharnd. make sure spacing are correct in preds
     A = Activationsd(keys="pred", softmax=True)
@@ -806,14 +802,14 @@ if __name__ == "__main__":
         output_postfix="",
         separate_folder=False,
     )
-    I = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
+    mgr = ResizeToMetaSpatialShaped(keys=["pred"], mode="nearest")
 
 # %%
     out_final = []
     if T.save_channels:
-        tfms = [Sq, Sa, A, D, I]
+        tfms = [Sq, Sa, A, D, mgr]
     else:
-        tfms = [Sq, A, D, I]
+        tfms = [Sq, A, D, mgr]
     if T.k_largest:
         K = KeepLargestConnectedComponentWithMetad(
             keys=["pred"], independent=False, num_components=T.k_largest
@@ -831,26 +827,26 @@ if __name__ == "__main__":
     batch = A(batch)
     batch = D(batch)
     batch = U(batch)
-    batch = I(batch)
+    batch = mgr(batch)
 
     x = torch.rand(1, 1, 128, 128, 96).to("cuda")
     output = T.model(x)
     [a.shape for a in output]
 
 # %%
-    if En.devices == "cpu":
+    if En.devices == "cpu":  # noqa: F405
         fabric_devices = "auto"
         accelerator = device = "cpu"
     else:
-        fabric_devices = En.devices
-        device_id = En.devices[0]
+        fabric_devices = En.devices  # noqa: F405
+        device_id = En.devices[0]  # noqa: F405
         device = torch.device(f"cuda:{device_id}")
         accelerator = "gpu"
     model = UNetManager.load_from_checkpoint(
-        En.ckpt,
-        plan=En.plan,
-        project_title=En.project.project_title,
-        dataset_params=En.dataset_params,
+        En.ckpt,  # noqa: F405
+        plan=En.plan,  # noqa: F405
+        project_title=En.project.project_title,  # noqa: F405
+        dataset_params=En.dataset_params,  # noqa: F405
         strict=False,
         map_location=device,
     )
@@ -858,7 +854,7 @@ if __name__ == "__main__":
     fabric = Fabric(
         precision="bf16-mixed", devices=fabric_devices, accelerator=accelerator
     )
-    En.model = fabric.setup(model)
+    En.model = fabric.setup(model)  # noqa: F405
 
 # %%
     tfms_keys = T.preprocess_tfms_keys

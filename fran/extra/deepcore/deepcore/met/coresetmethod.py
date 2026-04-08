@@ -5,7 +5,7 @@ class CoresetMethod(object):
         self.dst_train = dst_train
         try:
             self.num_classes = len(dst_train.classes)
-        except:
+        except Exception:
             self.num_classes = None
         self.fraction = fraction
         self.random_seed = random_seed

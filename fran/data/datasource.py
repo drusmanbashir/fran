@@ -228,13 +228,13 @@ class Datasource(GetAttr):
             inf = info_from_filename(fns[0].name, full_caseid=True)
             case_id = inf["case_id"]
             all_case_ids.append(case_id)
-        assert (l1 := len(all_case_ids)) == (l2 := len(set(all_case_ids))), (
+        assert len(all_case_ids) == len(set(all_case_ids)), (
             "Duplicate case_ids found. Run fix_repeat_caseids() on parent folder"
         )
         new_case_ids = set(all_case_ids).difference(prev_processed_cases)
         # print("Found {0} new cases\nCases already processed in a previous session: {1}".format(len(new_case_ids), len(prev_processed_cases)))
-        assert (l := len(new_case_ids)) == (
-            l2 := (len(all_case_ids) - len(prev_processed_cases))
+        assert len(new_case_ids) == (
+            len(all_case_ids) - len(prev_processed_cases)
         ), "Difference in number of new cases"
         if len(new_case_ids) == 0:
             print("No new cases found.")
@@ -463,7 +463,7 @@ if __name__ == "__main__":
     # ds = Datasource(nodesthick_fldr, "nodesthick")
     ds.process()
 
-    end2end_lms_stats_and_plots(ds.folder / ("lms"))
+    end2end_lms_stats_and_plots(ds.folder / ("lms"))  # noqa: F821
 # %%
     ds = Datasource(ln_fldr, "lidc")
     ds = Datasource(litsmall_fldr.folder, "litsmall")
@@ -500,7 +500,7 @@ if __name__ == "__main__":
 
     fn = "/s/xnat_shadow/nodes/lms/nodes_73_410705_CAP1p5Br383.nii.gz"
     lm = sitk.ReadImage(fn)
-    get_labels(lm)
+    get_labels(lm)  # noqa: F821
 #
 # %%
 #     labs_list = []
