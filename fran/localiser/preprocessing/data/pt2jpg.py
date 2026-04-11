@@ -4,6 +4,7 @@ from pathlib import Path
 import ipdb
 import lightning as L
 import torch
+from fran.localiser.transforms import NormaliseZeroToOne
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.intensitytransforms import MakeBinary
 from fran.transforms.misc_transforms import BoundingBoxYOLOd
@@ -11,7 +12,6 @@ from monai.apps.detection.transforms.dictionary import ConvertBoxToStandardModed
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
 from monai.transforms.croppad.dictionary import BoundingRectd
-from monai.transforms.intensity.dictionary import NormalizeIntensityd
 from monai.transforms.spatial.dictionary import RandFlipd, RandRotated, RandZoomd, Resized
 from monai.transforms.utility.dictionary import (
     DeleteItemsd,
@@ -85,10 +85,10 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         label_key = "lm"
         box_key = "lm_bbox"
         outputsize = [512, 512]
-        N = NormalizeIntensityd([image_key])
+        N = NormaliseZeroToOne([image_key])
         L = LoadTorchd([image_key, label_key])
         E = EnsureChannelFirstd(keys=[image_key])
-        MkB = MakeBinary([label_key])
+        ToBinary = MakeBinary([label_key])
         Et = EnsureTyped(keys=[image_key], dtype=torch.float32)
         Et2 = EnsureTyped(keys=[label_key], dtype=torch.long)
         E2 = EnsureTyped(keys=[image_key], dtype=torch.float16)
@@ -133,7 +133,7 @@ class PreprocessorPT2JPG(L.LightningDataModule):
             "L": L,
             "E": E,
             "Et": Et,
-            "MkB": MkB,
+            "ToBinary": ToBinary,
             "Et2": Et2,
             "E2": E2,
             "ExtractBbox": ExtractBbox,
@@ -210,5 +210,5 @@ class PreprocessorPT2JPG(L.LightningDataModule):
 
 
 class DetectDataModule(PreprocessorPT2JPG):
-    keys_tr = "L,MkB,Et,Et2,N,Flip1,Flip2,Zoom,Resize,ExtractBbox,CB,YoloBbox"
-    keys_val = "L,MkB,Et,Et2,N,Resize,ExtractBbox,CB,YoloBbox,DelI"
+    keys_tr = "L,ToBinary,Et,Et2,N,Flip1,Flip2,Zoom,Resize,ExtractBbox,CB,YoloBbox"
+    keys_val = "L,ToBinary,Et,Et2,N,Resize,ExtractBbox,CB,YoloBbox,DelI"

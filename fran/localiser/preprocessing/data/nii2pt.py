@@ -6,48 +6,19 @@ import numpy as np
 import pandas as pd
 import ray
 import torch
+from fran.localiser.transforms import WindowTensor3Channeld, tfms_from_dict
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.spatialtransforms import Project2D
-from monai.transforms import Compose, Transform
 
 from monai.transforms.intensity.dictionary import NormalizeIntensityd
 from monai.transforms.spatial.dictionary import Orientationd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 from utilz.fileio import maybe_makedirs
 from utilz.helpers import create_df_from_folder
+from utilz.imageviewers import ImageMaskViewer
 from utilz.stringz import strip_extension
 
 tr = ipdb.set_trace
-
-
-def tfms_from_dict(keys, transforms_dict):
-    keys = keys.replace(" ", "").split(",")
-    tfms = [transforms_dict[key] for key in keys]
-    return Compose(tfms)
-
-
-class WindowTensor3Channeld(Transform):
-    def __init__(self, image_key ):
-        self.windows = {
-            "b": [-450.0, 1050.0],
-            "c": [-1350.0, 150.0],
-            "a": [-150.0, 250.0],
-        }
-        self.image_key = image_key
-
-    def __call__(self, data):
-        image = data[self.image_key]
-
-        outs = []
-        for L, U in self.windows.values():
-            img = torch.clamp(image, L, U)
-            img = (img - L) / (U - L)
-            outs.append(img)
-
-        data[self.image_key] = torch.cat(outs, dim=0)
-        if hasattr(data[self.image_key], "meta"):
-            data[self.image_key].meta["original_channel_dim"] = 0
-        return data
 
 
 class _PreprocessorNII2PTWorkerBase:
@@ -113,6 +84,12 @@ class _PreprocessorNII2PTWorkerBase:
         torch.save(tnsr.contiguous(), out_fn)
 
     def image_suffixes(self):
+        if "Win" in self.tfms_keys:
+            suffixes = []
+            for window in self.Win.windows.keys():
+                for projection in [1, 2]:
+                    suffixes.append(f"{window}{projection}")
+            return suffixes
         return [1, 2]
 
     def _process_row(self, row):
@@ -121,8 +98,14 @@ class _PreprocessorNII2PTWorkerBase:
         for projection in [1, 2]:
             image = dici["image" + str(projection)]
             lm = dici["lm" + str(projection)]
-            self.save_pt(image, "images", projection)
-            self.save_pt(lm, "lms", projection)
+            if "Win" in self.tfms_keys:
+                for window_ind, window in enumerate(self.Win.windows.keys()):
+                    suffix = f"{window}{projection}"
+                    self.save_pt(image[[window_ind]], "images", suffix)
+                    self.save_pt(lm, "lms", suffix)
+            else:
+                self.save_pt(image, "images", projection)
+                self.save_pt(lm, "lms", projection)
         return {"case_id": row["case_id"], "ok": True}
 
     def process(self, df):
@@ -241,3 +224,86 @@ class PreprocessorNII2PT:
             [item for sublist in self.results for item in sublist]
         )
         return self.results_df
+
+
+# %%
+if __name__ == "__main__":
+#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+
+    data_folder = "/s/fran_storage/datasets/raw_data/lidc"
+    output_folder = "/tmp/nii2pt_debug"
+
+    worker = PreprocessorNII2PTWorkerLocal(output_folder=output_folder)
+    mini_df = pd.DataFrame(
+        [
+            {
+                "case_id": "lidc_0001",
+                "image": str(Path(data_folder) / "images" / "lidc_0001.nii.gz"),
+                "lm": str(Path(data_folder) / "lms" / "lidc_0001.nii.gz"),
+            },
+            {
+                "case_id": "lidc_0002",
+                "image": str(Path(data_folder) / "images" / "lidc_0002.nii.gz"),
+                "lm": str(Path(data_folder) / "lms" / "lidc_0002.nii.gz"),
+            },
+        ]
+    )
+
+# %%
+    def print_dici(dici, label):
+        print("\n" + "=" * 80)
+        print(label)
+        for key, value in dici.items():
+            if hasattr(value, "shape"):
+                print(
+                    key,
+                    type(value).__name__,
+                    "shape=",
+                    tuple(value.shape),
+                    "dtype=",
+                    value.dtype,
+                )
+                if hasattr(value, "meta") and "filename_or_obj" in value.meta:
+                    print("  filename_or_obj:", value.meta["filename_or_obj"])
+            else:
+                print(key, value)
+
+# %%
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.max_colwidth", 100)
+
+    print(mini_df)
+    ind = 0
+    row = mini_df.iloc[ind]
+
+    dici = {"image": row["image"], "lm": row["lm"]}
+    L = worker.transforms_dict["L"]
+    E = worker.transforms_dict["E"]
+    O = worker.transforms_dict["O"]
+    
+    Win = worker.transforms_dict["Win"]
+    P1 = worker.transforms_dict["P1"]
+    P2 = worker.transforms_dict["P2"]
+
+# %%
+    row0 = mini_df.iloc[0]
+    row1 = mini_df.iloc[1]
+    dici1 = {"image": row1["image"], "lm": row1["lm"]}
+    print_dici(dici1, "Before transforms")
+    dici2 = L(dici1)
+    dici2 = E(dici2)
+    dici2 = O(dici2)
+    print_dici(dici2, "After LEO")
+# %%
+    dici3 = Win(dici2)
+    print_dici(dici3, "After Win")
+    image = dici3["image"]
+    lm = dici3["lm"]
+    ImageMaskViewer([image,lm],'im')
+
+# %%
+    print("print_dici(dici0, 'after L')")
+    print("dici0 = E(dici0)")
+    print("dici0 = O(dici0)")
+    print("dici0 = Win(dici0)")
+    print("dici0 = P1(dici0)")

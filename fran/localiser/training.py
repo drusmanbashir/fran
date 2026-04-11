@@ -1,29 +1,36 @@
 # %%
-# Use the model
+# use the model
 # results = model.train(data="coco128.yaml", epochs=3)  # train the model
 # results = model.val()  # evaluate model performance on the validation set
 # results = model("https://ultralytics.com/images/bus.jpg")  # predict on an image
 # success = YOLO("yolov8n.pt").export(format="onnx")
 
-import torch
-from fran.localiser.yolo_ct_augment import CTAugDetectionTrainer
-from fran.transforms.spatialtransforms import Project2D
-from utilz.imageviewers import ImageMaskViewer
+
+# %%
+from fran.transforms.intensitytransforms import standardize
+
+
 if __name__ == "__main__":
     import os
     from pathlib import Path
 
     import SimpleITK as sitk
     import supervision as sv
+    import torch
+    from fran.localiser.yolo_ct_augment import (
+        WINDOW_PRESETS,
+        CTAugDetectionTrainer,
+        apply_window_tensor,
+    )
     from roboflow import Roboflow
+    from torch.nn import functional as F
     from torch.nn.functional import interpolate
     from ultralytics import YOLO
     from utilz.fileio import load_yaml
 
-# %%
 # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# %%
     fn = "/s/fran_storage/conf/roboflow.txt"
-
     with open(fn, "r") as fl:
         api_k = fl.read().strip()
 
@@ -34,7 +41,7 @@ if __name__ == "__main__":
     imsize = 256
     device = 1
     n_workers = 16
-    bs =256
+    bs = 256
     data_folder = Path("/s/xnat_shadow/totalseg2d")
     data_spec = data_folder / "jpg/data.yaml"
     project_name = "totalseg_localiser"
@@ -66,7 +73,7 @@ if __name__ == "__main__":
     scale = 0.3
     translate = 0.1
     fliplr = 0.5
-    flipud=0.1
+    flipud = 0.1
     cache = True
     seed = 0
     deterministic = True
@@ -97,7 +104,6 @@ if __name__ == "__main__":
         translate=translate,
         fliplr=fliplr,
         flipud=flipud,
-
         hsv_h=0.0,
         hsv_s=0.0,
         hsv_v=0.0,
@@ -112,73 +118,55 @@ if __name__ == "__main__":
     # yolo task=detect mode=train model=yolo11s.pt data=/s/fran_storage/parasites-2/data.yaml epochs=40 imgsz=640 plots=True
 # %%
 # SECTION:-------------------- Inference--------------------------------------------------------------------------------------
-    # Read JPG image using torchvision
-    model = YOLO("/s/fran_storage/yolo_output/totalseg_localiser/train15/weights/best.pt")
-    img_path = "/s/xnat_shadow/lidc2d_yolo/valid/images/lidc2_0001_2.jpg"
-    nii_path = "/s/xnat_shadow/nodes/images_pending/nodes_72_20210714_CAP1p5SoftTissue.nii.gz"
-    # tnsr_path = "/s/xnat_shadow/lidc2d/images/lidc2_0001_2.pt"
-    # tnsr = torch.load(tnsr_path)
-    img = sitk.ReadImage(nii_path)  # [H,W,C]
-    arr = sitk.GetArrayFromImage(img)  # [C,H,W]
-# %%
-    tnsr = torch.from_numpy(arr)  # Convert to PyTorch tensor
-
-    tnsr = tnsr.float()
-    tnsr2d = torch.mean(tnsr,dim=1)  
-    t2 = tnsr2d
-    t2 = t2.unsqueeze(0).unsqueeze(0)  # Add channel dimension [1,H,W]
-    t2.shape
-
-# %%
-
-
-    # Convert to float and add batch dimension
-
-    # Scale tensor between 0 and 1
-    pads = 0
-    t2 = (t2 - t2.min()) / (t2.max() - t2.min())
-    from torch.nn import functional as F
-    t2p = F.pad(t2,(pads,pads,pads,pads))
-    t3 = interpolate(t2p, (imsize, imsize))
-    t3 = t3.repeat(1, 3, 1, 1)
-
-    # Display original tensor
-# %%
+    import cv2
     import matplotlib.pyplot as plt
+    import numpy as np
+
+    model = YOLO(
+        "/s/fran_storage/yolo_output/totalseg_localiser/train21/weights/best.pt"
+    )
+# %%
+    nii_path = "/media/UB/datasets/kits23/images/kits23_00005.nii.gz"
+    img = sitk.ReadImage(nii_path)
+    arr = sitk.GetArrayFromImage(img)
+
+    x = torch.from_numpy(arr).float().unsqueeze(0)
+    chs = []
+    for window in WINDOW_PRESETS:
+        chs.append(apply_window_tensor(x, window))
+    x = torch.cat(chs, dim=0)
+    x = torch.mean(x, dim=1)
+    x = x.unsqueeze(0)
+    x = interpolate(x, (imsize, imsize))
+
+    res = model(x)
+    rr = res[0]
+
+    image_np = (x[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+    image_np = np.ascontiguousarray(image_np.copy())
+    boxes = rr.boxes.xyxy.cpu().numpy().astype(int)
+    confs = rr.boxes.conf.cpu().numpy()
+    clss = rr.boxes.cls.cpu().numpy().astype(int)
+
+    for box, conf, cls_id in zip(boxes, confs, clss):
+        x1, y1, x2, y2 = box
+        label = f"{rr.names[cls_id]} {conf:.2f}"
+        cv2.rectangle(image_np, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(
+            image_np,
+            label,
+            (x1, max(0, y1 - 5)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 255, 0),
+            1,
+            cv2.LINE_AA,
+        )
 
     plt.figure(figsize=(8, 8))
-    plt.imshow(t3[0].permute(1, 2, 0).cpu())  # Convert [C,H,W] to [H,W,C] for display
+    plt.imshow(image_np)
     plt.axis("off")
-    plt.title("Original Image")
+    plt.title("YOLO prediction")
     plt.show()
 
-# %%
-    # Resize to 256x256
-
-    # Run infrence
-    res = model(t3)[0]
-# %%
-    for rr in res:
-        bbox = rr.boxes
-        rr.show()
-# %%
-    detections = sv.Detections(rr.boxes.data, class_ids=rr.boxes.cls.cpu().numpy())
-
-    # Convert tensor to numpy array for visualization
-    image_np = (t2[0].permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
-
-    # Create supervision annotators
-    bounding_box_annotator = sv.BoundingBoxAnnotator()
-    label_annotator = sv.LabelAnnotator()
-
-    # Annotate the image with our inference results
-    annotated_image = bounding_box_annotator.annotate(
-        scene=image_np, detections=detections
-    )
-    annotated_image = label_annotator.annotate(
-        scene=annotated_image, detections=detections
-    )
-
-    # Display the image
-    sv.plot_image(annotated_image)
 # %%
