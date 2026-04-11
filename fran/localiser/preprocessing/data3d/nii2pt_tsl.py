@@ -1,5 +1,5 @@
-import ray
 # %%
+import ray
 from pathlib import Path
 
 import ipdb
@@ -58,37 +58,33 @@ from fran.localiser.preprocessing.data3d.nii2pt import (
 from fran.localiser.transforms import MultiRemapsTSL
 
 class DynamicResized(Resized):
-        def __init__(self, keys, mode, min_size, lazy=False ):
-            super().__init__(keys=keys, mode=mode, spatial_size=None, lazy=lazy)
-            self.min_size = min_size
-            assert len(min_size) == 3, "min_size should be a list of 3 values for 3D resizing"
-        def _get_spatial_size(self, img):
-            if img.ndim == 4:
-                sz = img.shape[1:]
-            else:
-                sz = img.shape
+    def __init__(self, keys, mode,min_size):
+        assert len(min_size) == 3, "min_size should be a tuple of (min_height, min_width, min_depth)"
+        self.min_size = min_size
+        super().__init__(keys=keys, spatial_size=None, mode=mode)
 
-            output_sz = []
-            for s, mins in zip(sz, self.min_size):
-                if s < mins:
-                    output_sz.append(s)
-                else:
-                    output_sz.append(mins)
-            return output_sz
-    
-        def __call__(self, data):
-            img_key = self.keys[0]
-            img = data[img_key]
-            self.spatial_size = self._get_spatial_size(img)
-            return super().__call__(data)
+    def _get_spatial_size(self, img):
+        if img.ndim == 4:
+            shpe = img.shape[1:]  # (C, H, W, D)
+        else: raise ValueError(f"Unsupported image dimensions: {img.ndim}. Expected 4")
+        return shpe
 
-def three_slices(n: int):
-    step = n // 3
+    def __call__(self, data, lazy=None):
+        img = data[self.keys[0]]
+        spatial_size = self._get_spatial_size(img)
+        new_size = [min(s, m) for s, m in zip(spatial_size, self.min_size)]
+        self.resizer.spatial_size = new_size
+        return super().__call__(data, lazy=lazy)
+
 
 
 class _NII2PTTSLWorkerBase3D(_PreprocessorNII2PTWorkerBase3D):
+    def __init__(self, output_folder, max_output_size, device="cpu", debug=False):
+        assert len(max_output_size) == 3, "max_output_size should be a tuple of (max_height, max_width, max_depth)"
+        self.max_output_size = max_output_size
+        super().__init__(output_folder, device, debug)
     def worker_tfms_keys(self):
-        return "L,E,O,Remap"
+        return "L,E,O,DynRes,Remap"
 
     def create_transforms(self, device="cpu"):
         self.label_key = "label"
@@ -98,8 +94,8 @@ class _NII2PTTSLWorkerBase3D(_PreprocessorNII2PTWorkerBase3D):
         super().create_transforms(device=device)
 
         self.box_key = "lm_bbox"
+        self.DynRes = DynamicResized(keys=[self.image_key, self.lm_key], mode=["trilinear", "nearest"], min_size=self.max_output_size)
 
-        self.outputsize = [512, 512]
         self.Ld = LoadTorchd([self.image_key, self.label_key])
         self.E = EnsureChannelFirstd(keys=[self.image_key])
         self.ToBinary = MakeBinary([self.label_key])
@@ -111,15 +107,12 @@ class _NII2PTTSLWorkerBase3D(_PreprocessorNII2PTWorkerBase3D):
         self.YoloBboxes = BoundingBoxesYOLOd(
             [self.box_key], 2, key_template_tensor=self.label_key, output_keys=["bbox_yolo"]
         )
-        self.Resize = Resized(
-            keys=[self.image_key, self.lm_key],
-            spatial_size=self.outputsize,
-            mode=["bilinear", "nearest"],
-            lazy=True,
-        )
         self.N = NormaliseZeroToOne(keys=[self.image_key])
         self.Remap = MultiRemapsTSL(lm_key=self.lm_key)
         self.transforms_dict["Remap"] = self.Remap
+        self.transforms_dict["DynRes"] = self.DynRes
+
+
 
 
 @ray.remote(num_cpus=1)
@@ -131,14 +124,22 @@ class TSLWorkerLocal3D(_NII2PTTSLWorkerBase3D):
     pass
 
 
-class PreprocessorNII2TTSL3D(PreprocessorNII2PT3D):
-    def __init__(self, data_folder, output_folder):
+class PreprocessorNII2PTTSL3D(PreprocessorNII2PT3D):
+    def __init__(self, data_folder, output_folder, max_output_size):
+        self.max_output_size = max_output_size
         super().__init__(data_folder, output_folder)
         self.actor_cls = TSLWorker3D
         self.local_worker_cls = TSLWorkerLocal3D
 
+    def build_worker_kwargs(self, device, debug):
+        return {
+            "max_output_size": self.max_output_size,
+            "output_folder": self.output_folder,
+            "device": device,
+            "debug": debug,
+        }
 
-PreprocessorNII2PTTSL3D = PreprocessorNII2TTSL3D
+
 
 
 # %%
@@ -160,7 +161,12 @@ if __name__ == "__main__":
     output_folder = "/s//tmp/nii2pt_tsl3d_debug"
 # %%
 
-    w = _NII2PTTSLWorkerBase3D(output_folder=output_folder)
+    img_dir = Path(output_folder) / "images"
+    lm_dir = Path(output_folder) / "lms"
+    maybe_makedirs([img_dir, lm_dir])
+    P = PreprocessorNII2PTTSL3D(data_folder=data_folder, output_folder=output_folder, max_output_size=(256, 256, 256))
+    P.setup()
+# %%
     mini_df = pd.DataFrame(
         [
             {
@@ -202,6 +208,7 @@ if __name__ == "__main__":
     print(mini_df)
     ind = 0
     row = mini_df.iloc[ind]
+    w._process_row(row)
 
     dici = {"image": row["image"], "lm": row["lm"]}
     L = w.transforms_dict["L"]
@@ -212,8 +219,8 @@ if __name__ == "__main__":
 
     R = w.transforms_dict["Resize"]
 
-    w.outputsize= [256,256,256]
 # %%
+    
     dici = dici2
     img = dici["image"]
     if img.ndim == 4:
@@ -227,14 +234,8 @@ if __name__ == "__main__":
             output_sz.append(s)
         else:
             output_sz.append(256)
-
-    rz = Resized(
-            keys=[w.image_key, w.lm_key],
-            spatial_size=output_sz,
-            mode=["trilinear", "nearest"],
-            lazy=False,)
-# %%
     Remap = w.transforms_dict["Remap"]
+    dici = w.transforms(dici)
 
 # %%
     row0 = mini_df.iloc[0]
@@ -303,5 +304,4 @@ if __name__ == "__main__":
 
     ImageMaskViewer([img[0], lm[0]], "im")
 # %%
-
 

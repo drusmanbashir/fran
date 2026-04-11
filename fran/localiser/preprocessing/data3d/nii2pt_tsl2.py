@@ -52,25 +52,6 @@ from utilz.helpers import create_df_from_folder
 from utilz.stringz import strip_extension
 
 
-class DynamicResized(Resized):
-    def __init__(self, keys, mode,min_size, lazy=False):
-        assert len(min_size) == 3, "min_size should be a tuple of (min_height, min_width, min_depth)"
-        self.min_size = min_size
-        super().__init__(keys=keys, spatial_size=None, mode=mode, lazy=lazy)
-
-    def _get_spatial_size(self, img):
-        if img.ndim == 4:
-            shpe = img.shape[1:]  # (C, H, W, D)
-        else: raise ValueError(f"Unsupported image dimensions: {img.ndim}. Expected 4")
-        return shpe
-
-    def __call__(self, data):
-        img = data[self.keys[0]]
-        spatial_size = self._get_spatial_size(img)
-        new_size = [min(s, m) for s, m in zip(spatial_size, self.min_size)]
-        self.resizer.spatial_size = new_size
-        return super().__call__(data)
-
 class _PreprocessorNII2JPGWorkerBase:
     def __init__(self, output_folder,output_size, device="cpu", debug=False):
         self.output_folder = Path(output_folder)
@@ -125,7 +106,6 @@ class _PreprocessorNII2JPGWorkerBase:
         self.Et2 = EnsureTyped(keys=[self.label_key], dtype=torch.long)
         self.E2 = EnsureTyped(keys=[self.image_key], dtype=torch.float16)
         self.ExtractBbox = BoundingRectd(keys=[self.label_key])
-        self.DynResize = DynamicResized(keys=[self.image_key, self.label_key], mode=["trilinear", "nearest"], min_size=self.min_output_size)
         self.CB = ConvertBoxToStandardModed(mode="xxyy", box_keys=[box_key])
         self.YoloBboxes = BoundingBoxesYOLOd(
             [box_key], 2, key_template_tensor=self.label_key, output_keys=["bbox_yolo"]
@@ -180,17 +160,8 @@ class _PreprocessorNII2JPGWorkerBase:
     def _process_row(self, row):
         dici = {"image": row["image"], "lm": row["lm"]}
         dici = self.transforms(dici)
-        for projection in [1, 2]:
-            image = dici["image" + str(projection)]
-            lm = dici["lm" + str(projection)]
-            if "Win" in self.tfms_keys:
-                for window_ind, window in enumerate(self.Win.windows.keys()):
-                    suffix = f"{window}{projection}"
-                    self.save_pt(image[[window_ind]], "images", suffix)
-                    self.save_pt(lm, "lms", suffix)
-            else:
-                self.save_pt(image, "images", projection)
-                self.save_pt(lm, "lms", projection)
+        self.save_pt(image, "images", None)
+        self.save_pt(lm, "lms", None)
         return {"case_id": row["case_id"], "ok": True}
 
     def process(self, df):
@@ -417,7 +388,7 @@ if __name__ == "__main__":
     from utilz.imageviewers import ImageMaskViewer
 
 # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
-    data_folder = DS["totalseg"].folder
+    data_folder = DS["totalseg"].foldemr
     img_fns = sorted((Path(data_folder) / "images").glob("*.nii.gz"))
     img_fn = img_fns[0]
     lm_fn = Path(data_folder) / "lms" / img_fn.name
@@ -483,7 +454,6 @@ if __name__ == "__main__":
     dici3 = O1(dici2)
     dici3['image'].shape
     dici3['lm'].shape
-    DR = DynamicResized(keys=[w.image_key, w.lm_key], mode=["trilinear", "nearest"], min_size=output_size)
     dici4 = DR(dici3)
           
     print_dici(dici3, "After O")
