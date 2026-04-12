@@ -6,9 +6,11 @@ from monai.transforms.utility.dictionary import MapLabelValued
 
 
 class TSLRegions:
-    def __init__(self):
+    def __init__(self, exclude:list[str]=None):
         tsl = TotalSegmenterLabels()
         excluded_tags = ["misc", "background"]
+        if exclude is not None:
+            excluded_tags.extend(exclude)
         df = tsl.df[~tsl.df.name_region.isin(excluded_tags)]
         self.tsl = tsl
         self.regions = df.name_region.unique().tolist()
@@ -31,7 +33,7 @@ class TSLRegions:
 
 
 class MultiRemapsTSLMonai(Transform):
-    def __init__(self, lm_key):
+    def __init__(self, lm_key, exclude:list[str]=None):
         self.lm_key = lm_key
         self.tsl_regions = TSLRegions()
         self.regions = self.tsl_regions.regions
@@ -53,9 +55,9 @@ class MultiRemapsTSLMonai(Transform):
 
 
 class MultiRemapsTSL(Transform):
-    def __init__(self, lm_key):
+    def __init__(self, lm_key, exclude:list[str]=None):
         self.lm_key = lm_key
-        self.tsl_regions = TSLRegions()
+        self.tsl_regions = TSLRegions(exclude=exclude)
         self.regions = self.tsl_regions.regions
         self.luts = {}
         max_label = int(self.tsl_regions.tsl.df.label_full.max())
@@ -84,6 +86,6 @@ if __name__ == '__main__':
     T.tsl.create_remapping("label_full", "neck", as_list=True)
     T.regions
 
-    M= MultiRemapsTSL("lm")
-    M.remaps
+    M= MultiRemapsTSL("lm", ["gut"])
+    M.regions
 

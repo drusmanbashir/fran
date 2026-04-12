@@ -202,7 +202,6 @@ class UnsqueezeDimd(MapTransform):
         for k in self.keys:
             d[k] = d[k].unsqueeze(self.dim)
         return d
-# %%
 class ExtractContiguousSlicesd(RandomizableTransform, MapTransform):
     """
     Extract 3 contiguous slices (z-1, z, z+1) from image and label volumes.
@@ -284,6 +283,7 @@ class Project2D(MonaiDictTransform, Randomizable):
             self.dim = self.R.randint(1, 4)
 
     def func(self, data, operation):
+        data = data.clone()
         data = operation(data, dim=self.dim)
         return data
 

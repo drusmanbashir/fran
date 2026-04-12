@@ -1,72 +1,33 @@
 # %%
 import ray
-from pathlib import Path
-
-import ipdb
-import numpy as np
-import pandas as pd
-import ray
 import torch
-from fran.localiser.transforms import (
-    MultiRemapsTSL,
-    NormaliseZeroToOne,
-    TSLRegions,
-    WindowTensor3Channeld,
-    tfms_from_dict,
-)
-from fran.localiser.transforms.tsl import MultiRemapsTSLMonai
-from fran.transforms.imageio import LoadSITKd
-from fran.transforms.spatialtransforms import Project2D
-
-from monai.transforms.spatial.dictionary import Orientationd
-from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
-from utilz.fileio import maybe_makedirs
-from utilz.helpers import create_df_from_folder
-from utilz.imageviewers import ImageMaskViewer
-from utilz.stringz import strip_extension
-
-
-import lightning as L
-import numpy as np
-import pandas as pd
-import ray
-import torch
-from fran.localiser.preprocessing.data.nii2pt import _PreprocessorNII2PTWorkerBase
-from fran.localiser.preprocessing.data.pt2jpg import write_list_to_txt
-from fran.transforms.imageio import LoadTorchd
-from fran.transforms.intensitytransforms import MakeBinary
-from fran.transforms.misc_transforms import BoundingBoxesYOLOd
-from monai.apps.detection.transforms.dictionary import ConvertBoxToStandardModed
-from monai.data.dataset import Dataset
-from monai.transforms.croppad.dictionary import BoundingRectd
-from monai.transforms.spatial.dictionary import Resized
-from monai.transforms.utility.dictionary import (
-    DeleteItemsd,
-    EnsureChannelFirstd,
-    EnsureTyped,
-)
-from torch.utils.data import random_split
-from torchvision.utils import save_image
-from tqdm.auto import tqdm
-from utilz.fileio import maybe_makedirs
-from utilz.helpers import create_df_from_folder
-from utilz.stringz import strip_extension
 from fran.localiser.preprocessing.data3d.nii2pt import (
     PreprocessorNII2PT3D,
     _PreprocessorNII2PTWorkerBase3D,
 )
-from fran.localiser.transforms import MultiRemapsTSL
+from fran.localiser.transforms import MultiRemapsTSL, NormaliseZeroToOne
+from fran.transforms.imageio import LoadTorchd
+from fran.transforms.intensitytransforms import MakeBinary
+from fran.transforms.misc_transforms import BoundingBoxesYOLOd
+from monai.apps.detection.transforms.dictionary import ConvertBoxToStandardModed
+from monai.transforms.croppad.dictionary import BoundingRectd
+from monai.transforms.spatial.dictionary import Resized
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, EnsureTyped
+
 
 class DynamicResized(Resized):
-    def __init__(self, keys, mode,min_size):
-        assert len(min_size) == 3, "min_size should be a tuple of (min_height, min_width, min_depth)"
+    def __init__(self, keys, mode, min_size):
+        assert len(min_size) == 3, (
+            "min_size should be a tuple of (min_height, min_width, min_depth)"
+        )
         self.min_size = min_size
         super().__init__(keys=keys, spatial_size=None, mode=mode)
 
     def _get_spatial_size(self, img):
         if img.ndim == 4:
             shpe = img.shape[1:]  # (C, H, W, D)
-        else: raise ValueError(f"Unsupported image dimensions: {img.ndim}. Expected 4")
+        else:
+            raise ValueError(f"Unsupported image dimensions: {img.ndim}. Expected 4")
         return shpe
 
     def __call__(self, data, lazy=None):
@@ -77,12 +38,14 @@ class DynamicResized(Resized):
         return super().__call__(data, lazy=lazy)
 
 
-
 class _NII2PTTSLWorkerBase3D(_PreprocessorNII2PTWorkerBase3D):
     def __init__(self, output_folder, max_output_size, device="cpu", debug=False):
-        assert len(max_output_size) == 3, "max_output_size should be a tuple of (max_height, max_width, max_depth)"
+        assert len(max_output_size) == 3, (
+            "max_output_size should be a tuple of (max_height, max_width, max_depth)"
+        )
         self.max_output_size = max_output_size
         super().__init__(output_folder, device, debug)
+
     def worker_tfms_keys(self):
         return "L,E,O,DynRes,Remap"
 
@@ -94,7 +57,11 @@ class _NII2PTTSLWorkerBase3D(_PreprocessorNII2PTWorkerBase3D):
         super().create_transforms(device=device)
 
         self.box_key = "lm_bbox"
-        self.DynRes = DynamicResized(keys=[self.image_key, self.lm_key], mode=["trilinear", "nearest"], min_size=self.max_output_size)
+        self.DynRes = DynamicResized(
+            keys=[self.image_key, self.lm_key],
+            mode=["trilinear", "nearest"],
+            min_size=self.max_output_size,
+        )
 
         self.Ld = LoadTorchd([self.image_key, self.label_key])
         self.E = EnsureChannelFirstd(keys=[self.image_key])
@@ -105,14 +72,15 @@ class _NII2PTTSLWorkerBase3D(_PreprocessorNII2PTWorkerBase3D):
         self.ExtractBbox = BoundingRectd(keys=[self.label_key])
         self.CB = ConvertBoxToStandardModed(mode="xxyy", box_keys=[self.box_key])
         self.YoloBboxes = BoundingBoxesYOLOd(
-            [self.box_key], 2, key_template_tensor=self.label_key, output_keys=["bbox_yolo"]
+            [self.box_key],
+            2,
+            key_template_tensor=self.label_key,
+            output_keys=["bbox_yolo"],
         )
         self.N = NormaliseZeroToOne(keys=[self.image_key])
         self.Remap = MultiRemapsTSL(lm_key=self.lm_key)
         self.transforms_dict["Remap"] = self.Remap
         self.transforms_dict["DynRes"] = self.DynRes
-
-
 
 
 @ray.remote(num_cpus=1)
@@ -140,17 +108,17 @@ class PreprocessorNII2PTTSL3D(PreprocessorNII2PT3D):
         }
 
 
-
-
 # %%
 if __name__ == "__main__":
     from pathlib import Path
 
+    import lightning as L
     import pandas as pd
 
 # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
     import torch
     from fran.data.dataregistry import DS
+    from utilz.fileio import maybe_makedirs
     from utilz.imageviewers import ImageMaskViewer
 
     data_folder = "/s/fran_storage/datasets/raw_data/lidc"
@@ -164,8 +132,13 @@ if __name__ == "__main__":
     img_dir = Path(output_folder) / "images"
     lm_dir = Path(output_folder) / "lms"
     maybe_makedirs([img_dir, lm_dir])
-    P = PreprocessorNII2PTTSL3D(data_folder=data_folder, output_folder=output_folder, max_output_size=(256, 256, 256))
+    P = PreprocessorNII2PTTSL3D(
+        data_folder=data_folder,
+        output_folder=output_folder,
+        max_output_size=(256, 256, 256),
+    )
     P.setup()
+    P.process()
 # %%
     mini_df = pd.DataFrame(
         [
@@ -215,12 +188,10 @@ if __name__ == "__main__":
     E = w.transforms_dict["E"]
     O = w.transforms_dict["O"]
 
-
-
     R = w.transforms_dict["Resize"]
 
 # %%
-    
+
     dici = dici2
     img = dici["image"]
     if img.ndim == 4:
@@ -249,9 +220,9 @@ if __name__ == "__main__":
 
 # %%
     dici3 = rz(dici2)
-    dici3['lm'].shape
+    dici3["lm"].shape
     dici4 = Remap(dici3)
-    
+
     print_dici(dici3, "After Remap")
     img = dici4["image"]
     lm = dici4["lm"]
