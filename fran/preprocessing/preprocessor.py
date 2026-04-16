@@ -1,4 +1,4 @@
-# %%
+e %%
 from fran.data.dataregistry import DS
 import itertools as il
 import sqlite3
@@ -625,11 +625,21 @@ class Preprocessor(GetAttr):
             except Exception as e:
                 print("Ray init warning:", e)
 
+    def split_dataframe_for_workers(self, df, num_processes: int):
+        if len(df) == 0:
+            return []
+        n = max(1, min(len(df), int(num_processes)))
+        return [
+            df.iloc[idx].reset_index(drop=True)
+            for idx in np.array_split(np.arange(len(df)), n)
+            if len(idx) > 0
+        ]
+
     def ray_prepare(self, actor_cls, actor_kwargs: dict, num_processes: int):
         self.ray_init()
         n = max(1, min(len(self.df), int(num_processes))) if len(self.df) else 0
         self.n_actors = n
-        self.mini_dfs = np.array_split(self.df, n) if n else []
+        self.mini_dfs = self.split_dataframe_for_workers(self.df, n)
         self.actors = [actor_cls.remote(**actor_kwargs) for _ in range(n)] if n else []
 
     def ray_run(self, actor_method: str = "process"):
@@ -754,4 +764,3 @@ if __name__ == "__main__":
 
 # %%
 # %
-

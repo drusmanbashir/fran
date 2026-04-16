@@ -490,7 +490,7 @@ if __name__ == "__main__":
     Rs.create_data_df()
     Rs.register_existing_files()
     mini_df = Rs.mini_dfs[0]
-    Rs.mini_dfs = np.array_split(Rs.df, num_processes)
+    Rs.mini_dfs = Rs.split_dataframe_for_workers(Rs.df, num_processes)
 # %%
     Rs.process()
     #

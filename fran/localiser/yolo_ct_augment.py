@@ -10,7 +10,6 @@ from ultralytics.data.dataset import YOLODataset
 from ultralytics.models.yolo.detect.train import DetectionTrainer
 from ultralytics.utils import DEFAULT_CFG
 from ultralytics.utils import colorstr
-from ultralytics.utils.torch_utils import de_parallel
 
 
 class CTIntensityAugment:
@@ -257,9 +256,16 @@ class CTAugDetectionTrainer(DetectionTrainer):
     def use_3d_pt_dataset(self, img_path):
         return len(list(Path(img_path).glob("*.pt"))) > 0
 
+    def _get_stride(self):
+        if not self.model:
+            return 32
+        m = self.model.module if hasattr(self.model, "module") else self.model
+        return max(int(m.stride.max()), 32)
+
     def build_dataset(self, img_path, mode="train", batch=None):
+        gs = self._get_stride()
+
         if self.use_3d_pt_dataset(img_path):
-            gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
             return CTAugYOLODataset3D(
                 img_path=img_path,
                 imgsz=self.args.imgsz,
@@ -269,7 +275,7 @@ class CTAugDetectionTrainer(DetectionTrainer):
                 rect=self.args.rect,
                 cache=None,
                 single_cls=self.args.single_cls or False,
-                stride=int(gs),
+                stride=gs,
                 pad=0.0,
                 prefix=colorstr(f"{mode}: "),
                 task=self.args.task,
@@ -277,9 +283,10 @@ class CTAugDetectionTrainer(DetectionTrainer):
                 data=self.data,
                 fraction=self.args.fraction,
             )
+
         if mode != "train":
             return super().build_dataset(img_path, mode=mode, batch=batch)
-        gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
+
         return CTAugYOLODataset(
             img_path=img_path,
             imgsz=self.args.imgsz,
@@ -289,7 +296,7 @@ class CTAugDetectionTrainer(DetectionTrainer):
             rect=self.args.rect,
             cache=self.args.cache or None,
             single_cls=self.args.single_cls or False,
-            stride=int(gs),
+            stride=gs,
             pad=0.0,
             prefix=colorstr(f"{mode}: "),
             task=self.args.task,
@@ -297,8 +304,6 @@ class CTAugDetectionTrainer(DetectionTrainer):
             data=self.data,
             fraction=self.args.fraction,
         )
-
-
 # %%
 if __name__ == "__main__":
 #SECTION:-------------------- SETUP--------------------------------------------------------------------------------------

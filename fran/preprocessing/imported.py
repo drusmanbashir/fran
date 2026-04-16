@@ -391,7 +391,7 @@ if __name__ == "__main__":
     num_processes = 16
     L.create_data_df()
     L.register_existing_files()
-    L.mini_dfs = np.array_split(L.df, num_processes)
+    L.mini_dfs = L.split_dataframe_for_workers(L.df, num_processes)
 # %%
 
     mini_df = L.mini_dfs[0]

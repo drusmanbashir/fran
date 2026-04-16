@@ -1,36 +1,53 @@
 import random
 from pathlib import Path
 
-from pathlib import Path
-
-from ultralytics.data.dataset import YOLODataset
-import numpy as np
 import ipdb
-from matplotlib.transforms import Transform
+import numpy as np
 import torch
-from fran.configs.parser import ConfigMaker
-from fran.localiser.helpers import draw_image_lm_bbox, show_images_with_boxes
-from fran.transforms.imageio import LoadTorchd
-from monai.data.dataset import Dataset
-from torch.utils.data import random_split
-from torchvision.utils import save_image
-from tqdm.auto import tqdm
-
+from fran.localiser.helpers import draw_image_lm_bbox
+from fran.managers.project import Project
+from matplotlib.transforms import Transform
+from ultralytics.data.dataset import YOLODataset
+from utilz.cprint import cprint
 from utilz.stringz import info_from_filename
 
 tr = ipdb.set_trace
 
 import cv2
-from monai.transforms.transform import MapTransform, RandomizableTransform
 import numpy as np
 import torch
+from fran.localiser.helpers import draw_image_lm_bbox
+from fran.localiser.transforms.transforms import (
+    NormaliseZeroTo255,
+    WindowTensor3Channeld,
+    WindowTensor3ChannkjeldRand,
+)
+from fran.managers.project import Project
+from fran.transforms.imageio import TorchReader
+from fran.transforms.intensitytransforms import MakeBinary, RandRandGaussianNoised
+from fran.transforms.misc_transforms import BoundingBoxesYOLOd
 from fran.transforms.spatialtransforms import Project2D
+from monai.apps.detection.transforms.dictionary import ConvertBoxToStandardModed
+from monai.transforms import Compose as MonaiCompose
+from monai.transforms.croppad.dictionary import BoundingRectd
+from monai.transforms.intensity.dictionary import (
+    RandAdjustContrastd,
+    RandScaleIntensityd,
+    RandShiftIntensityd,
+)
+from monai.transforms.io.dictionary import LoadImaged
+from monai.transforms.spatial.dictionary import (
+    RandFlipd,
+    RandRotated,
+    RandZoomd,
+    Resized,
+)
+from monai.transforms.utility.dictionary import DeleteItemsd, EnsureTyped
+from ultralytics.data.augment import Compose as YOLOCompose
 from ultralytics.data.dataset import YOLODataset
 from ultralytics.models.yolo.detect.train import DetectionTrainer
-from ultralytics.utils import colorstr
+from ultralytics.utils import DEFAULT_CFG, colorstr
 from ultralytics.utils.torch_utils import de_parallel
-
-from utilz.imageviewers import ImageMaskViewer
 
 
 class Fix2DBBox(Transform):
@@ -39,13 +56,12 @@ class Fix2DBBox(Transform):
 
     def __call__(self, data):
         for key in self.bbox_keys:
-                data[key] = self.yyxx_to_xxyy(data[key])
+            data[key] = self.yyxx_to_xxyy(data[key])
         return data
 
+    def yyxx_to_xxyy(self, bb):
+        return bb[:, [2, 3, 0, 1]]
 
-    def yyxx_to_xxyy(self,bb):
-          return bb[:, [2, 3, 0, 1]]
-        
 
 class CTIntensityAugment:
     def __init__(
@@ -86,13 +102,13 @@ class CTIntensityAugment:
         labels["img"] = (np.clip(img, 0.0, 1.0) * 255).astype(np.uint8)
         return labels
 
+
 WINDOW_TO_IND_MAP = {"a": 0, "b": 1, "c": 2}
 WINDOW_PRESETS = {
     "b": [-450.0, 1050.0],
     "c": [-1350.0, 150.0],
     "a": [-150.0, 250.0],
 }
-
 
 
 def apply_window_tensor(image, window, randomize=False):
@@ -132,25 +148,112 @@ class CTAugYOLODataset(YOLODataset):
 
 
 class CTAugYOLODataset3D(YOLODataset):
-    def __init__(self, *args, **kwargs):
-        self.window = RandomWindowTensor3Channeld("image", randomize=kwargs["augment"])
-        self.P1 = Project2D(
-            keys=["lm", "image"],
-            operations=["sum", "mean"],
-            dim=1,
-            output_keys=["lm1", "image1"],
+    keys_tr = "LT,ToBinary,Et,Et2,WinR,P1,P2,IntAugs,Flip1,Flip2,Zoom,Resize2D,N255,LM2YoloBBox,DelI"
+    keys_val = "LT,ToBinary,Et,Et2,Win,P1,P2,Resize2D,N255,LM2YoloBBox,DelI"
+
+    def __init__(
+        self,
+        project: Project,
+        configs: dict,
+        data_folder: str,
+        mode: str,  # "train" | "val"
+        imgsz: int,
+        *args,
+        **kwargs,
+    ):
+
+        augment = mode == "train"
+        self.debug = kwargs.pop("debug", False)
+        self.data_folder = Path(data_folder)
+        self.project = project
+        self.configs = configs
+        self.mode = mode
+        self.keys = self.keys_tr if augment else self.keys_val
+        self.create_data_dicts()
+
+        super().__init__(
+            img_path=str(Path(data_folder) / "images"),
+            imgsz=imgsz,
+            augment=augment,
+            *args,
+            **kwargs,
         )
-        self.P2 = Project2D(
-            keys=["lm", "image"],
-            operations=["sum", "mean"],
-            dim=2,
-            output_keys=["lm2", "image2"],
-        )
-        super().__init__(*args, **kwargs)
+
+    def create_data_dicts(self):
+        case_ids = None
+        # Put fold/split selection here. Set case_ids to the selected case_id list.
+        # train, val = self.project.get_train_val_case_ids(fold=...)
+        if self.mode == "train":
+            pass
+
+        elif self.mode == "val":
+            pass
+        else:
+            raise ValueError(f"Invalid mode {self.mode}")
+
+        imgs_folder = self.data_folder / "images"
+        img_fns = list(imgs_folder.glob("*.pt"))
+        lms_folder = self.data_folder / "lms"
+        self.data_dicts = []
+        for fn in img_fns:
+            case_id = info_from_filename(fn.name, full_caseid=True)["case_id"]
+            if case_ids is None or case_id in case_ids:
+                lm_fn = lms_folder / fn.name
+                assert lm_fn.exists(), (
+                    f"Landmark file {lm_fn} does not exist for image {fn}"
+                )
+                dici = {"img": fn, "lm": lm_fn}
+                self.data_dicts.append(dici)
+
+    def tfms_from_dict(self, keys: str):
+        keys2 = keys.replace(" ", "")
+        keys_list = keys2.split(",")
+        tfms = []
+        for key in keys_list:
+            try:
+                tfm = self.transforms_dict[key]
+                tfms.append(tfm)
+            except KeyError as e:
+                print("All keys are: ", self.transforms_dict.keys())
+                print(f"Transform {key} not found.")
+                raise e
+
+        tfms = MonaiCompose(tfms)
+        return tfms
+
+    def apply_monai_transforms(self, data: dict):
+        if self.debug == False:
+            return self.monai_tfms(data)
+        else:
+            return self.apply_monai_transforms_debug(data)
+
+    def apply_monai_transforms_debug(self, data: dict):
+        keys = self.keys
+        keys = keys.replace(" ", "").split(",")
+        for key in keys:
+            cprint(f"{key}", color="yellow")
+            tr()
+            tfm = self.transforms_dict[key]
+            if isinstance(data, list | tuple):
+                data = data[0]
+            data = tfm(data)
+        return data
+
+    def apply_yolo_transforms(self, label: dict):
+        if self.debug == False:
+            return self.transforms(label)
+        else:
+            return self.apply_yolo_transforms_debug(label)
+
+    def apply_yolo_transforms_debug(self, label: dict):
+        for tfm in self.transforms.transforms:
+            cprint(tfm.__class__.__name__, color="yellow")
+            tr()
+            label = tfm(label)
+        return label
 
     def get_img_files(self, img_path):
-        p = Path(img_path)
-        files = sorted(str(fn) for fn in p.glob("*.pt"))
+        files = [str(dici["img"]) for dici in self.data_dicts]
         assert len(files) > 0, f"{self.prefix}No pt files found in {img_path}"
         if self.fraction < 1:
             n_files = round(len(files) * self.fraction)
@@ -193,38 +296,31 @@ class CTAugYOLODataset3D(YOLODataset):
             lm = lm.unsqueeze(0)
         return image, lm
 
-    def create_bbox_array(self, lm):
-        if lm.ndim == 2:
-            lm = lm.unsqueeze(0)
-        h, w = lm.shape[-2:]
-        boxes = []
-        classes = []
-        for cls_id, channel in enumerate(lm):
-            coords = torch.nonzero(channel > 0, as_tuple=False)
-            if len(coords) == 0:
-                continue
-            y0 = coords[:, 0].min().item()
-            y1 = coords[:, 0].max().item() + 1
-            x0 = coords[:, 1].min().item()
-            x1 = coords[:, 1].max().item() + 1
-            xc = 0.5 * (x0 + x1) / w
-            yc = 0.5 * (y0 + y1) / h
-            bw = (x1 - x0) / w
-            bh = (y1 - y0) / h
-            boxes.append([xc, yc, bw, bh])
-            classes.append([cls_id])
-        if len(boxes) == 0:
-            cls = np.zeros((0, 1), dtype=np.float32)
-            bboxes = np.zeros((0, 4), dtype=np.float32)
-        else:
-            cls = np.asarray(classes, dtype=np.float32)
-            bboxes = np.asarray(boxes, dtype=np.float32)
-        return cls, bboxes
+    def extract_classes_yolobbox(self, data):
+        lm1bb = data["bbox_yolo1"]
+        valid1 = lm1bb.sum(axis=1) > 0
+        n1 = lm1bb.shape[0]
+        cls1 = torch.arange(n1).reshape(-1, 1)
+        data["bbox_yolo1"] = lm1bb[valid1]
+        data["cls1"] = cls1[valid1]
 
-    def make_projection_label(self, base_label, image, lm, index):
+        lm2bb = data["bbox_yolo2"]
+        valid2 = lm2bb.sum(axis=1) > 0
+        n2 = lm2bb.shape[0]
+        cls2 = torch.arange(n1, n1 + n2).reshape(-1, 1)
+        data["bbox_yolo2"] = lm2bb[valid2]
+        data["cls2"] = cls2[valid2]
+        return data
+
+    def make_projection_label(self, base_label, image, bboxes, cls, index):
+        if hasattr(image, "as_tensor"):
+            image = image.as_tensor()
         image_np = image.permute(1, 2, 0).contiguous().cpu().numpy()
-        image_np = (np.clip(image_np, 0.0, 1.0) * 255).astype(np.uint8)
-        cls, bboxes = self.create_bbox_array(lm)
+        image_np = np.clip(image_np, 0.0, 255.0).astype(np.uint8)
+        bboxes = torch.as_tensor(bboxes).float().cpu().numpy()
+        if bboxes.ndim == 1:
+            bboxes = bboxes[None]
+        cls = torch.as_tensor(cls).float().cpu().numpy()
         label = {
             "im_file": base_label["im_file"],
             "shape": image_np.shape[:2],
@@ -246,7 +342,7 @@ class CTAugYOLODataset3D(YOLODataset):
     def get_image_and_label(self, index):
         base_label = self.labels[index]
         image, lm = self.load_pt_pair(index)
-        data = {"image": image, "lm": lm}
+        data = {"img": image, "lm": lm}
         data = self.window(data)
         data = self.P1(data)
         data = self.P2(data)
@@ -256,50 +352,296 @@ class CTAugYOLODataset3D(YOLODataset):
                 self.make_projection_label(
                     base_label=base_label,
                     image=data[f"image{suffix}"],
-                    lm=data[f"lm{suffix}"],
+                    bboxes=data[f"bbox_yolo{suffix}"],
+                    cls=data[f"cls{suffix}"],
                     index=index,
                 )
             )
         return out
 
     def __getitem__(self, index):
-        labels = self.get_image_and_label(index)
+        dici = self.data_dicts[index]
+        dici_out = self.apply_monai_transforms(dici)
+        labels = self.get_image_and_label_from_dict(index, dici_out)
         out = []
         for label in labels:
-            out.append(self.transforms(label))
+            out.append(self.apply_yolo_transforms(label))
         return out
 
-    def build_transforms(self, hyp=None):
-        hyp.mosaic = 0.0
-        hyp.mixup = 0.0
-        transforms = super().build_transforms(hyp)
-        if self.augment:
-            transforms.insert(-1, CTIntensityAugment())
-        return transforms
+    def get_image_and_label_from_dict(self, index, data):
+        data = self.extract_classes_yolobbox(data)
+        base_label = self.labels[index]
+        out = []
+        for suffix in [1, 2]:
+            out.append(
+                self.make_projection_label(
+                    base_label=base_label,
+                    image=data[f"image{suffix}"],
+                    bboxes=data[f"bbox_yolo{suffix}"],
+                    cls=data[f"cls{suffix}"],
+                    index=index,
+                )
+            )
+        return out
+
+    def trace_item_shapes(self, index):
+        traces = []
+        data = self.apply_monai_transforms(self.data_dicts[index])
+        for key in [
+            "img",
+            "lm",
+            "image1",
+            "lm1",
+            "bbox_yolo1",
+            "image2",
+            "lm2",
+            "bbox_yolo2",
+        ]:
+            if key in data:
+                value = data[key]
+                traces.append((key, tuple(value.shape)))
+        labels = self.get_image_and_label_from_dict(index, data)
+        for i, label in enumerate(labels):
+            traces.append((f"label{i}_img", label["img"].shape))
+            traces.append((f"label{i}_cls", label["cls"].shape))
+            traces.append((f"label{i}_boxes", label["instances"].bboxes.shape))
+            formatted = self.apply_yolo_transforms(label)
+            traces.append((f"formatted{i}_img", tuple(formatted["img"].shape)))
+            traces.append((f"formatted{i}_cls", tuple(formatted["cls"].shape)))
+            traces.append((f"formatted{i}_boxes", tuple(formatted["bboxes"].shape)))
+        return traces
+
+    def save_bbox_review_images(self, folder, n_images=16, channel=0, batch_size=4):
+        folder = Path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        saved = 0
+        for start in range(0, len(self.data_dicts), batch_size):
+            for index in range(start, min(start + batch_size, len(self.data_dicts))):
+                data = self.apply_monai_transforms(self.data_dicts[index])
+                for suffix in [1, 2]:
+                    img = data[f"image{suffix}"][channel]
+                    lm = data[f"lm{suffix}"]
+                    boxes = data[f"lm{suffix}_bbox"]
+                    valid = boxes.sum(axis=1) > 0
+                    for cls, box in zip(
+                        torch.arange(boxes.shape[0])[valid], boxes[valid]
+                    ):
+                        lm_cls = lm[int(cls)]
+                        filename = (
+                            folder
+                            / f"{saved:03d}_case{index}_p{suffix}_c{int(cls)}.jpg"
+                        )
+                        draw_image_lm_bbox(
+                            img, lm_cls, *box.tolist(), filename=filename
+                        )
+                        saved += 1
+                        if saved == n_images:
+                            return
 
     @staticmethod
     def collate_fn(batch):
         flat_batch = []
         for item in batch:
-            if isinstance(item, list):
-                flat_batch.extend(item)
-            else:
-                flat_batch.append(item)
+            flat_batch.extend(item)
         return YOLODataset.collate_fn(flat_batch)
+
+    def build_transforms(self, hyp=None):
+        image_key = "img"
+        lm_key = "lm"
+        box_keys = ["lm1_bbox", "lm2_bbox"]
+
+        imgs_proj_keys = ["image1", "image2"]
+        lms_proj_keys = ["lm1", "lm2"]
+        proj_keys_all = imgs_proj_keys + lms_proj_keys
+        int_augs = {
+            "contrast": [0.7, 1.3],
+            "shift": [-1.0, 1.0],
+            "scale": [-1.0, 1.0],
+            "noise_ub": [0.0, 0.25],
+            "noise": [0.05, 0.25],
+            "brightness": [0.7, 2.0],
+            "flip": 1,
+        }
+        probs_intensity = 0.5
+        probs_spatial = 0.3
+        output_size = (256, 256)
+        LT = LoadImaged(keys=[image_key, lm_key], reader=TorchReader)
+        YoloBboxes = BoundingBoxesYOLOd(
+            keys=box_keys,
+            dim=2,
+            key_template_tensor=lms_proj_keys[0],
+            output_keys=["bbox_yolo1", "bbox_yolo2"],
+        )
+        P1 = Project2D(
+            keys=[image_key, lm_key],
+            operations=["mean", "sum"],
+            dim=1,
+            output_keys=["image1", "lm1"],
+        )
+        P2 = Project2D(
+            keys=[image_key, lm_key],
+            operations=["mean", "sum"],
+            dim=2,
+            output_keys=["image2", "lm2"],
+        )
+        WinR = WindowTensor3ChanneldRand(image_key=image_key, prob=0.5, jitter=100)
+        Win = WindowTensor3Channeld(image_key=image_key)
+
+        IntensityTfms = [
+            RandScaleIntensityd(
+                keys=["image1", "image2"],
+                factors=int_augs["scale"],
+                prob=probs_intensity,
+            ),
+            RandRandGaussianNoised(
+                keys=["image1"],
+                std_limits=int_augs["noise"],
+                prob=probs_intensity,
+            ),
+            RandRandGaussianNoised(
+                keys=["image2"],
+                std_limits=int_augs["noise"],
+                prob=probs_intensity,
+            ),
+            RandShiftIntensityd(
+                keys=["image1", "image2"],
+                offsets=int_augs["shift"],
+                prob=probs_intensity,
+            ),
+            RandAdjustContrastd(
+                ["image1", "image2"], gamma=int_augs["contrast"], prob=probs_intensity
+            ),
+        ]
+        IntAugs = MonaiCompose(IntensityTfms)
+        # self.transforms_dict["IntensityTfms"] = IntensityTfms
+
+        ToBinary = MakeBinary([lm_key])
+        Et = EnsureTyped(keys=[image_key], dtype=torch.float32)
+        Et2 = EnsureTyped(keys=[lm_key], dtype=torch.long)
+        ExtractBbox = BoundingRectd(keys=lms_proj_keys)  # returns y0, y1, x0, x1
+        FixBB = Fix2DBBox(bbox_keys=box_keys)
+
+        CB = ConvertBoxToStandardModed(
+            mode="xxyy", box_keys=box_keys
+        )  # mode = current mode
+        Rotate = RandRotated(
+            keys=[image_key, lm_key],
+            prob=probs_spatial,
+            keep_size=True,
+            mode=["bilinear", "nearest"],
+            range_x=[0.4, 0.4],
+            lazy=False,
+        )
+        Zoom = RandZoomd(
+            keys=[image_key, lm_key],
+            mode=["bilinear", "nearest"],
+            prob=probs_spatial,
+            min_zoom=0.7,
+            max_zoom=1.4,
+            padding_mode="constant",
+            keep_size=True,
+            lazy=False,
+        )
+
+        Flip1 = RandFlipd(
+            keys=proj_keys_all, prob=probs_spatial, spatial_axis=0, lazy=False
+        )
+        Flip2 = RandFlipd(
+            keys=proj_keys_all, prob=probs_spatial, spatial_axis=1, lazy=False
+        )
+        Resize2D = Resized(
+            keys=proj_keys_all,
+            spatial_size=output_size,
+            mode=["bilinear", "bilinear", "nearest", "nearest"],
+            lazy=False,
+        )
+        N255 = NormaliseZeroTo255(keys=imgs_proj_keys)
+        LM2YoloBBox = MonaiCompose([ExtractBbox, FixBB, CB, YoloBboxes])
+        DelI = DeleteItemsd(keys=[lm_key, image_key])
+        self.transforms_dict = {
+            "LT": LT,
+            "ToBinary": ToBinary,
+            "Et": Et,
+            "Et2": Et2,
+            "P1": P1,
+            "P2": P2,
+            "IntAugs": IntAugs,
+            "LM2YoloBBox": LM2YoloBBox,
+            "DelI": DelI,
+            "CB": CB,
+            "Rotate": Rotate,
+            "Zoom": Zoom,
+            "Flip1": Flip1,
+            "Flip2": Flip2,
+            "Resize2D": Resize2D,
+            "N255": N255,
+            "WinR": WinR,
+            "Win": Win,
+        }
+
+        self.monai_tfms = self.tfms_from_dict(self.keys)
+        yolo_tfms = super().build_transforms(hyp)
+
+        # keep only safe YOLO tfms
+        yolo_tfms = YOLOCompose(
+            [
+                t
+                for t in yolo_tfms.transforms
+                if t.__class__.__name__ in ["LetterBox", "Format"]
+            ]
+        )
+
+        return yolo_tfms
 
 
 class CTAugDetectionTrainer(DetectionTrainer):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
+        self.fran_project = overrides.pop("fran_project")
+        self.fran_configs = overrides.pop("fran_configs")
+        self.fran_data_folder = overrides.pop("fran_data_folder")
+        self.fran_debug = overrides.pop("fran_debug", False)
+        super().__init__(cfg=cfg, overrides=overrides, _callbacks=_callbacks)
+
+    def preprocess_batch(self, batch):
+        device = self.device
+
+        imgs = batch["img"].to(device, non_blocking=True).float()
+        lms = batch["lm"].to(device, non_blocking=True)
+
+        # ---- GPU transforms ----
+        imgs = self.apply_window_gpu(imgs)
+        imgs, lms = self.project_2d_gpu(imgs, lms)
+        bboxes, cls = self.compute_bboxes_gpu(lms)
+
+        # normalize
+        imgs = imgs.clamp(0, 1)
+
+        batch_out = {
+            "img": imgs,
+            "cls": cls,
+            "bboxes": bboxes,
+            "batch_idx": torch.arange(len(imgs), device=device),
+        }
+
+        return batch_out
+
     def use_3d_pt_dataset(self, img_path):
         return len(list(Path(img_path).glob("*.pt"))) > 0
 
     def build_dataset(self, img_path, mode="train", batch=None):
         if self.use_3d_pt_dataset(img_path):
             gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
+            data_folder = self.fran_data_folder
+            if data_folder is None:
+                data_folder = Path(img_path).parent
             return CTAugYOLODataset3D(
-                img_path=img_path,
+                project=self.fran_project,
+                configs=self.fran_configs,
+                data_folder=data_folder,
+                mode=mode,
+                debug=self.fran_debug,
                 imgsz=self.args.imgsz,
                 batch_size=batch,
-                augment=mode == "train",
                 hyp=self.args,
                 rect=self.args.rect,
                 cache=None,
@@ -362,13 +704,15 @@ class CustomYOLODataset(YOLODataset):
         """
         labels = []
         for im_file in self.im_files:
-            labels.append({
-                "im_file": im_file,                         # str (can be dummy)
-                "cls": np.zeros((0, 1), dtype=np.float32),  # (N,1)
-                "bboxes": np.zeros((0, 4), dtype=np.float32),  # (N,4)
-                "normalized": True,
-                "bbox_format": "xywh",
-            })
+            labels.append(
+                {
+                    "im_file": im_file,  # str (can be dummy)
+                    "cls": np.zeros((0, 1), dtype=np.float32),  # (N,1)
+                    "bboxes": np.zeros((0, 4), dtype=np.float32),  # (N,4)
+                    "normalized": True,
+                    "bbox_format": "xywh",
+                }
+            )
         return labels
 
     # -----------------------------
@@ -384,9 +728,9 @@ class CustomYOLODataset(YOLODataset):
         # -----------------------------
         # YOU FILL THESE
         # -----------------------------
-        img = None        # numpy array (H, W, C)
-        cls = None        # np.ndarray (N,1) float32
-        bboxes = None     # np.ndarray (N,4) float32
+        img = None  # numpy array (H, W, C)
+        cls = None  # np.ndarray (N,1) float32
+        bboxes = None  # np.ndarray (N,4) float32
 
         # -----------------------------
         # REQUIRED STRUCTURE
@@ -429,268 +773,109 @@ class CustomYOLODataset(YOLODataset):
         Only override if you change output structure
         """
         return YOLODataset.collate_fn(batch)
+
+
 # %%
 if __name__ == "__main__":
-    import lightning as L
-    from fran.localiser.transforms import NormaliseZeroToOne
-    from fran.transforms.intensitytransforms import MakeBinary
-    from fran.transforms.misc_transforms import BoundingBoxYOLOd
-    from monai.apps.detection.transforms.dictionary import ConvertBoxToStandardModed
-    from monai.transforms import Compose
-    from monai.transforms.croppad.dictionary import BoundingRectd
-    from monai.transforms.spatial.dictionary import RandFlipd, RandRotated, RandZoomd, Resized
-    from monai.transforms.utility.dictionary import DeleteItemsd, EnsureChannelFirstd, EnsureTyped
-    from monai.transforms.compose import Compose
-    from fran.localiser.transforms import MultiRemapsTSL, NormaliseZeroToOne
-    from fran.localiser.transforms.transforms import WindowTensor3ChanneldRand
-    from fran.transforms.imageio import TorchReader
-    from fran.transforms.intensitytransforms import MakeBinary, RandRandGaussianNoised
-    from fran.transforms.misc_transforms import BoundingBoxesYOLOd
-    from monai.apps.detection.transforms.dictionary import ConvertBoxToStandardModed
-    from monai.transforms.croppad.dictionary import BoundingRectd
-    from monai.transforms.intensity.dictionary import RandAdjustContrastd, RandScaleIntensityd, RandShiftIntensityd
-    from monai.transforms.io.dictionary import LoadImaged
-    from monai.transforms.utility.dictionary import EnsureChannelFirstd, EnsureTyped
+    from fran.configs.parser import ConfigMaker
+    from fran.localiser.helpers import draw_image_bbox
+    from fran.localiser.transforms.tsl import TSLRegions
+
 # SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
-    from fran.managers.project import Project
 
     P = Project(project_title="totalseg")
     C = ConfigMaker(P)
 
 # %%
-    mode= "train"
+
+    T = TSLRegions()
+    names = T.regions
+    names_ap = [region + "_ap" for region in names]
+    names_lat = [region + "_lat" for region in names]
+    names = names_ap + names_lat
+    names_dici = {x: i for i, x in enumerate(names)}
+    nc = len(names)
+    data = {"names": names_dici, "nc": nc}
+
+# %%
     data_folder = "/s/tmp/nii2pt_tsl3d_debug"
-    train,val = P.get_train_val_case_ids(fold=1)
-    if mode == "train":
-        case_ids = train
-
-    elif mode == "val":
-        case_ids = val
-    else: 
-        raise ValueError(f"Invalid mode {mode}")
-
-    imgs_folder = Path(data_folder) / "images"
-    img_fns = list(imgs_folder.glob("*.pt"))
-    lms_folder = Path(data_folder) / "lms"
+    batch = 4
+    mode = "train"
+    img_size = 256
+    classes = 10
+    hyp = DEFAULT_CFG
 # %%
-    img_fns_final = []
-    for fn in img_fns:
-        case_id = info_from_filename(fn.name,full_caseid=True)["case_id"]
-        if case_id in train:
-            img_fns_final.append(fn)
-
-# %%
-
-    img_fn = Path("/s/tmp/nii2pt_tsl3d_debug/images/totalseg_s1424.pt")
-    lm_fn = Path("/s/tmp/nii2pt_tsl3d_debug/lms/totalseg_s1424.pt")
-    img = torch.load(img_fn, weights_only=False)
-
-# %%
-    image_key = "image"
-    lm_key = "lm"
-    box_keys = ["lm1_bbox", "lm2_bbox"]
-    max_output_size = (256, 256, 256)
-    label_key = "cls"
-    label_key = "label"
-
-    imgs_proj_keys = ["image1", "image2"]
-    lms_proj_keys= ["lm1", "lm2"]
-    proj_keys_all = imgs_proj_keys + lms_proj_keys
-    int_augs = {
-    "contrast": [0.7, 1.3],
-    "shift": [-1.0, 1.0],
-    "scale": [-1.0, 1.0],
-    "noise_ub": [0.0, 0.25],
-    "noise": [0.05, 0.25],
-    "brightness": [0.7, 2.0],
-    "flip": 1,
-    }
-
-# %%
-    probs_intensity = 0.5
-    probs_spatial = 0.3
-    output_size = (256, 256)
-    LT = LoadImaged(keys=[image_key, lm_key], reader=TorchReader)
-    E = EnsureChannelFirstd(keys=[image_key])
-    ToBinary = MakeBinary([label_key])
-    Et = EnsureTyped(keys=[image_key], dtype=torch.float32)
-    Et2 = EnsureTyped(keys=[label_key], dtype=torch.long)
-    E2 = EnsureTyped(keys=[image_key], dtype=torch.float16)
-
-    # YoloBbox = BoundingBoxYOLOd(
-    #     [box_key], 2, key_template_tensor=lm_key, output_keys=["bbox_yolo"]
-    # )
-    YoloBboxes = BoundingBoxesYOLOd(
-        keys = box_keys,
-        dim=2,
-        key_template_tensor=lms_proj_keys[0],
-        output_keys=["bbox_yolo1", "bbox_yolo2"],
+    C = CTAugYOLODataset3D(
+        project=P,
+        configs=C,
+        data_folder=data_folder,
+        mode=mode,
+        imgsz=img_size,
+        batch_size=batch,
+        hyp=hyp,
+        rect=False,
+        cache=None,
+        single_cls=False,
+        stride=1,
+        pad=0.0,
+        prefix=colorstr(f"{mode}: "),
+        task="detect",
+        classes=None,
+        data=data,
+        fraction=1.0,
     )
-    N = NormaliseZeroToOne(keys=[image_key])
-    Remap = MultiRemapsTSL(lm_key=lm_key)
 # %%
-    P1 = Project2D(
-        keys=[image_key, lm_key],
-        operations=["mean", "sum"],
-        dim=1,
-        output_keys=["image1", "lm1"],
+    #
+    # n = 6
+    # dat  = C[n]
+    # dici = C.data_dicts[n]
+    # img = dќici['img']
+    # lm =dici  dici['lm']
+    #
+    #
+    keys_tr = "LT,ToBinary,Et,Et2,WinR,P1,P2,IntAugs,Flip1,Flip2,Zoom,Resize2D,N255,LM2YoloBBox,DelI"
+# %%
+    img.shape
+    lm.shape
+
+# %%
+    index = 0
+    dici_out = C.monai_tfms(dici)
+    labels = C.get_image_and_label_from_dict(index, dici_out)
+    out = []
+    for label in labels:
+        out.append(C.transforms(label))
+
+    dat = out[0]
+# %%
+    img = dat["img"]
+    bbx = dat["bboxes"]
+    n = 0
+    bbo = bbx[n]
+# %%
+    draw_image_bbox(
+        img=img[1],
+        start_x=bbo[0],
+        start_y=bbo[1],
+        stop_x=bbo[2],
+        stop_y=bbo[3],
     )
-    P2 = Project2D(
-        keys=[image_key, lm_key],
-        operations=["mean", "sum"],
-        dim=2,
-        output_keys=["image2", "lm2"],
-    )
-    Win = WindowTensor3ChanneldRand(image_key="image", prob=0.5, jitter=100)
-
-    IntensityTfms = [
-        RandScaleIntensityd(
-            keys=["image1", "image2"], factors=int_augs["scale"], prob=probs_intensity
-        ),
-        RandRandGaussianNoised(
-            keys=["image1", "image2"], std_limits=int_augs["noise"], prob=probs_intensity
-        ),
-        RandShiftIntensityd(
-            keys=["image1", "image2"], offsets=int_augs["shift"], prob=probs_intensity
-        ),
-        RandAdjustContrastd(
-            ["image1", "image2"], gamma=int_augs["contrast"], prob=probs_intensity
-        ),
-    ]
-    IntAugs = Compose(IntensityTfms)
-    # self.transforms_dict["IntensityTfms"] = IntensityTfms
-
-    ToBinary = MakeBinary([lm_key])
-    Et = EnsureTyped(keys=[image_key], dtype=torch.float32)
-    Et2 = EnsureTyped(keys=[lm_key], dtype=torch.long)
-    E2 = EnsureTyped(keys=[image_key], dtype=torch.float16)
-    ExtractBbox = BoundingRectd(keys=lms_proj_keys) # returns y0, y1, x0, x1
-    FixBB = Fix2DBBox(bbox_keys=box_keys)
-
-    CB = ConvertBoxToStandardModed(mode="xxyy", box_keys=box_keys) #mode = current mode
-    Rotate = RandRotated(
-        keys=[image_key, lm_key],
-        prob=probs_spatial,
-        keep_size=True,
-        mode=["bilinear", "nearest"],
-        range_x=[0.4, 0.4],
-        lazy=False,
-    )
-    Zoom = RandZoomd(
-        keys=[image_key, lm_key],
-        mode=["bilinear", "nearest"],
-        prob=probs_spatial,
-        min_zoom=0.7,
-        max_zoom=1.4,
-        padding_mode="constant",
-        keep_size=True,
-        lazy=False,
-    )
-
-    Flip1 = RandFlipd(
-        keys=proj_keys_all, prob=probs_spatial, spatial_axis=0, lazy=False
-    )
-    Flip2 = RandFlipd(
-        keys=proj_keys_all, prob=probs_spatial, spatial_axis=1, lazy=False
-    )
-    Resize2D = Resized(
-        keys=proj_keys_all,
-        spatial_size=output_size,
-        mode=["bilinear","bilinear", "nearest","nearest" ],
-        lazy=False,
-    )
-    LM2YoloBBox = Compose([ExtractBbox, FixBB, CB, YoloBboxes])
-    DelI = DeleteItemsd(keys=[lm_key])
-    transforms_dict = {
-        "LT": LT,
-        "ToBinary": ToBinary,
-        "Et": Et,
-        "Et2": Et2,
-        "P1": P1,
-        "P2": P2,
-        "IntAugs": IntAugs,
-        "LM2YoloBBox": LM2YoloBBox,
-        "DelI": DelI,
-        "CB": CB,
-        "Rotate": Rotate,
-        "Zoom": Zoom,
-        "Flip1": Flip1,
-        "Flip2": Flip2,
-        "Resize2D": Resize2D,
-        "Win": Win,
-    }
-
-    # keys_tr = "LT,ToBinary,Et,Et2,Win,P1,P2,IntAugs,Flip1,Flip2,Zoom,Resize2D"#
-    keys_tr = "LT,ToBinary,Et,Et2,Win,P1,P2,IntAugs,Flip1,Flip2,Zoom,Resize2D,LM2YoloBBox,DelI"
-    keys_val = "LT,ToBinary,Et,Et2,Win,P1,P2,Resize2D,LM2YoloBBox,DelI"
-# %%
-    dici2 = {"image": img_fn, "lm": lm_fn}
-    for k in keys_tr.split(","):
-        dici2 = transforms_dict[k](dici2)
-        dici2.keys()
-
-# %%
-    dici2['bbox_yolo1']
-    lm1bb = dici2['bbox_yolo1']
-    valid1 = lm1bb.sum(axis=1) > 0
-    N1 = lm1bb.shape[0]
-    c1= torch.arange(N1).reshape(-1,1)
-    out = torch.cat([c1,lm1bb], dim=1)
-    cls_bbox1 = out[valid1]
-# %%
-    lm2bb = dici2['bbox_yolo2']
-    valid2 = lm2bb.sum(axis=1) > 0
-    N2 = lm2bb.shape[0]
-    c2= torch.arange(N1,N1+N2).reshape(-1,1)
-    out2 = torch.cat([c2,lm2bb], dim=1)
-    cls_bbox2 = out2[valid2]
-
-# %%
-    dici = {"img": [dici2['image1'], dici2['image2']],
-            "cls": [c1,c2],
-            "bboxes": [lm1bb, lm2bb]
-            }
-# %%
-    print(cls_bbox1)
-
-# %%
-    lm2bb = dici2['bbox_yolo2']
-    valid2 = lm2bb.sum(axis=1) > 0
-    N2 = lm2bb.shape[0]
-    c2= np.arange(N1,N1+N2).reshape(-1,1).astype(np.float32)
-    out2 = np.hstack([c2,lm2bb])
-    cls_bbox2 = out2[valid2]
-# %%
-                                           
-
-
-
-    valid = (lm_for_cls.sum(axis=1) > 0)
-    cls_out = torch.nonzero(torch.tensor(valid)).float()
-
-
-    
-
-
-
-
-
 
 # %%
     draw_image_lm_bbox(
-      img=input_tensor[0],
-      lm=lm[n],
-      start_x=bbo[0],
-      start_y=bbo[1],
-      stop_x=bbo[2],
-      stop_y=bbo[3],
+        img=input_tensor[0],
+        lm=lm[n],
+        start_x=bbo[0],
+        start_y=bbo[1],
+        stop_x=bbo[2],
+        stop_y=bbo[3],
     )
 # %%
 
-
     lmfn = Path("/tmp/lm.pt")
     torch.save(lm, lmfn)
-    dici2['bbox1_yolo']
+    dici2["bbox1_yolo"]
 
 
 # %%
+

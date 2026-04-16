@@ -21,26 +21,22 @@ class NormaliseZeroToOne(MapTransform):
             data[key] = image
         return data
 
-
-class WindowTensor3Channeld(Transform):
-    def __init__(self, image_key):
-        self.windows = {
-            "b": [-450.0, 1050.0],
-            "c": [-1350.0, 150.0],
-            "a": [-150.0, 250.0],
-        }
-        self.image_key = image_key
-
+class NormaliseZeroTo255(MapTransform):
     def __call__(self, data):
-        image = data[self.image_key]
-        outs = []
-        for L, U in self.windows.values():
-            img = torch.clamp(image, L, U)
-            img = (img - L) / (U - L)
-            outs.append(img)
+        for key in self.keys:
+            image = data[key]
+            image = image - image.min()
+            denom = image.max()
 
-        data[self.image_key] = torch.cat(outs, dim=0)
+            if denom > 0:
+                image = image / denom
+
+            image = image * 255.0
+
+            data[key] = image
+
         return data
+
 
 class CombineProjections(RandomizableTransform):
 
@@ -92,6 +88,24 @@ class CombineProjections(RandomizableTransform):
                 rgb.append(img[ind])
             rgb = torch.stack(rgb, dim=0)
             return rgb
+class WindowTensor3Channeld(Transform):
+    def __init__(self, image_key):
+        self.windows = {
+            "b": [-450.0, 1050.0],
+            "c": [-1350.0, 150.0],
+            "a": [-150.0, 250.0],
+        }
+        self.image_key = image_key
+
+    def __call__(self, data):
+        image = data[self.image_key]
+        outs = []
+        for L, U in self.windows.values():
+            img = torch.clamp(image, L, U)
+            img = (img - L) / (U - L)
+            outs.append(img)
+        data[self.image_key] = torch.cat(outs, dim=0)
+        return data
 
 class WindowTensor3ChanneldRand( RandomizableTransform):
     '''

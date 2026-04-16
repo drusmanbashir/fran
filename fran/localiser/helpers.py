@@ -1,11 +1,15 @@
 # %% import math
 
+import math
+
+import cv2
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torchvision
 from PIL import Image
+from torch.nn.functional import interpolate
 
 CLASSES = ["img"]
 
@@ -32,6 +36,12 @@ CLASSES = (
     "tvmonitor",
 )
 CLASS2NUM = {class_: idx for idx, class_ in enumerate(CLASSES)}
+
+
+def _get_window_ops():
+    from .yolo_ct_augment import WINDOW_PRESETS, apply_window_tensor
+
+    return WINDOW_PRESETS, apply_window_tensor
 
 
 def filter_boxes(output_tensor, threshold):
@@ -476,3 +486,149 @@ def load_weights(
                     layer.weight.data
                 )
                 idx += n
+
+def draw_tensor_boxes(imtnsr, rr, filename=None, show=True):
+    image_np = (imtnsr[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+    image_np = np.ascontiguousarray(image_np.copy())
+    image_h, image_w = image_np.shape[:2]
+    boxes = rr.boxes.xyxy.cpu().numpy().astype(int)
+    confs = rr.boxes.conf.cpu().numpy()
+    clss = rr.boxes.cls.cpu().numpy().astype(int)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.3
+    thickness = 1
+    pad = 2
+    bg_alpha = 0.4
+    palette = [
+        (0, 255, 0),
+        (255, 140, 0),
+        (0, 200, 255),
+        (255, 80, 160),
+        (180, 80, 255),
+        (255, 220, 0),
+    ]
+
+    def overlaps(rect_a, rect_b):
+        ax1, ay1, ax2, ay2 = rect_a
+        bx1, by1, bx2, by2 = rect_b
+        return not (ax2 <= bx1 or bx2 <= ax1 or ay2 <= by1 or by2 <= ay1)
+
+    placed_label_rects = []
+    detections = sorted(
+        zip(boxes, confs, clss, range(len(boxes))),
+        key=lambda det: (det[0][1], det[0][0]),
+    )
+
+    for box, conf, cls_id, det_idx in detections:
+        x1, y1, x2, y2 = box
+        x1 = max(0, min(x1, image_w - 1))
+        x2 = max(0, min(x2, image_w - 1))
+        y1 = max(0, min(y1, image_h - 1))
+        y2 = max(0, min(y2, image_h - 1))
+        label = f"{rr.names[cls_id]} {conf:.2f}"
+        color = palette[det_idx % len(palette)]
+        cv2.rectangle(image_np, (x1, y1), (x2, y2), color, 2)
+        (text_w, text_h), baseline = cv2.getTextSize(
+            label, font, font_scale, thickness
+        )
+        label_w = text_w + 2 * pad
+        label_h = text_h + baseline + 2 * pad
+        label_x2 = x1 - 2
+        label_x1 = label_x2 - label_w
+        if label_x1 < 0:
+            label_x1 = 0
+            label_x2 = label_w
+        base_y1 = max(0, min(y1, image_h - label_h))
+        label_y1 = base_y1
+        step = label_h + 2
+        max_down_steps = max(0, (image_h - label_h - base_y1) // step)
+        max_up_steps = max(0, base_y1 // step)
+        candidate_offsets = [0]
+        for step_idx in range(1, max(max_down_steps, max_up_steps) + 1):
+            if step_idx <= max_down_steps:
+                candidate_offsets.append(step_idx * step)
+            if step_idx <= max_up_steps:
+                candidate_offsets.append(-step_idx * step)
+
+        for offset in candidate_offsets:
+            candidate_y1 = base_y1 + offset
+            candidate_rect = (
+                label_x1,
+                candidate_y1,
+                label_x2,
+                candidate_y1 + label_h,
+            )
+            if not any(
+                overlaps(candidate_rect, placed_rect)
+                for placed_rect in placed_label_rects
+            ):
+                label_y1 = candidate_y1
+                break
+
+        label_y2 = min(image_h - 1, label_y1 + label_h)
+        text_org = (label_x1 + pad, label_y2 - baseline - pad)
+        placed_label_rects.append((label_x1, label_y1, label_x2, label_y2))
+
+        overlay = image_np.copy()
+        cv2.rectangle(
+            overlay,
+            (label_x1, label_y1),
+            (label_x2, label_y2),
+            color,
+            -1,
+        )
+        cv2.addWeighted(overlay, bg_alpha, image_np, 1 - bg_alpha, 0, image_np)
+        cv2.putText(
+            image_np,
+            label,
+            text_org,
+            font,
+            font_scale,
+            (0, 0, 0),
+            thickness,
+            cv2.LINE_AA,
+        )
+
+    if filename is not None:
+        Image.fromarray(image_np).save(filename)
+    if show:
+        plt.figure(figsize=(8, 8))
+        plt.imshow(image_np)
+        plt.axis("off")
+        plt.title("YOLO prediction")
+        plt.show()
+    return image_np
+
+
+def validate_yolo_input(x):
+    # Direct tensor inputs to YOLO are expected to already be float32 in [0, 1].
+    x = x.float().contiguous()
+    x_min = x.min().item()
+    x_max = x.max().item()
+    assert x_min >= 0.0 and x_max <= 1.0, (
+        f"YOLO tensor input must be normalized to [0, 1], got [{x_min:.4f}, {x_max:.4f}]"
+    )
+    return x
+
+def make_multiwindow_inference_tensor(image, imsize=256):
+    WINDOW_PRESETS, apply_window_tensor = _get_window_ops()
+    chs = []
+    for window in WINDOW_PRESETS:
+        chs.append(apply_window_tensor(image, window))
+    x = torch.cat(chs, dim=0)
+    x = torch.mean(x, dim=1)
+    x = x.unsqueeze(0)
+    x = interpolate(x, (imsize, imsize))
+    return validate_yolo_input(x)
+
+def make_singlewindow_inference_tensor(image, window, imsize=256):
+    _, apply_window_tensor = _get_window_ops()
+    ch = apply_window_tensor(image, window)
+    x = ch.mean(dim=1, keepdim=True).repeat(1, 3, 1, 1)
+    x = interpolate(x, (imsize, imsize))
+    return validate_yolo_input(x)
+
+def jpg_to_tensor(fn):
+    img = Image.open(fn).convert("RGB")
+    x = torch.from_numpy(np.array(img))
+    return x

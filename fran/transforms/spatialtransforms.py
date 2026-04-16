@@ -259,7 +259,7 @@ class ExtractContiguousSlicesd(RandomizableTransform, MapTransform):
 
 class Project2D(MonaiDictTransform, Randomizable):
     def __init__(
-        self, keys: KeysCollection, operations=["sum"], dim=None, output_keys=None
+        self, keys: KeysCollection, dim, operations , suffix, output_keys=None
     ):
         super().__init__(keys)
         assert len(keys) == len(operations), (
@@ -268,6 +268,7 @@ class Project2D(MonaiDictTransform, Randomizable):
         self.operations = [getattr(torch, operation) for operation in operations]
         self.output_keys = output_keys if output_keys else keys
         self.dim = dim
+        self.suffix = suffix
         self.do_randomize = False if dim else True
 
     def __call__(self, data: dict):
@@ -285,6 +286,7 @@ class Project2D(MonaiDictTransform, Randomizable):
     def func(self, data, operation):
         data = data.clone()
         data = operation(data, dim=self.dim)
+        data.meta["project2d"]= {"dim": self.dim, "operation": operation.__name__, "suffix": self.suffix}
         return data
 
 

@@ -6,7 +6,7 @@ from monai.transforms.utility.dictionary import MapLabelValued
 
 
 class TSLRegions:
-    def __init__(self, exclude:list[str]=None):
+    def __init__(self, exclude:list[str]=None, projections=["ap","lat"]):
         tsl = TotalSegmenterLabels()
         excluded_tags = ["misc", "background"]
         if exclude is not None:
@@ -14,15 +14,20 @@ class TSLRegions:
         df = tsl.df[~tsl.df.name_region.isin(excluded_tags)]
         self.tsl = tsl
         self.regions = df.name_region.unique().tolist()
+        self.projections = projections
         self.data_yaml = "\n".join(self.data_yaml_lines())
 
     def data_yaml_lines(self):
         lines = ["names:"]
-        for region in self.regions:
-            lines.append("- " + region)
+        classes =[]
+        for proj in self.projections:
+            for region in self.regions:
+                clas = region+"_"+proj
+                classes.append(clas)
+                lines.append("- " + clas)
         lines.extend(
             [
-                "nc: " + str(len(self.regions)),
+                "nc: " + str(len(classes)),
                 "test: ../test/images",
                 "train: ../train/images",
                 "val: ../valid/images",
@@ -81,11 +86,15 @@ class MultiRemapsTSL(Transform):
 
 # %%
 if __name__ == '__main__':
-    T = TSLRegions()
+    T = TSLRegions(exclude=["gut"])
     print(T.data_yaml)
     T.tsl.create_remapping("label_full", "neck", as_list=True)
     T.regions
 
     M= MultiRemapsTSL("lm", ["gut"])
     M.regions
+
+# %%
+# %%
+    classes
 

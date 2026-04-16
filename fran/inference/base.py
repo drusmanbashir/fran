@@ -654,8 +654,10 @@ if __name__ == "__main__":
 # %%
 
     # preds = T.run(imgs_crc, chunksize=2, overwrite=overwrite)
-    imgs = kits_imgs
-    imgs = imgs_curvas
+    # imgs = kits_imgs
+    # imgs = imgs_curvas
+
+    imgs = nodes_imgs_training
     preds = T.run(imgs, chunksize=2, overwrite=overwrite)
 # %%
     preds = T.run(img_nodes, chunksize=2, overwrite=overwrite)
@@ -684,7 +686,7 @@ if __name__ == "__main__":
     safe_mode = True
     bs = 1
     overwrite = True
-    devices = [1]
+    devices = [0]
     save_channels = False
 
     T = BaseInferer(
@@ -696,7 +698,8 @@ if __name__ == "__main__":
     )
 
 # %%
-    preds = T.run(img_nodes[1], chunksize=2, overwrite=overwrite)
+    imgs = nodes_imgs_training
+    preds = T.run(imgs, chunksize=2, overwrite=overwrite)
     preds[0]["pred"].meta
 # %%
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>

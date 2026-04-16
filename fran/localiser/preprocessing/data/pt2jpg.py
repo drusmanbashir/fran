@@ -4,6 +4,7 @@ from pathlib import Path
 import ipdb
 import lightning as L
 import torch
+from fran.localiser.preprocessing.data.processing_args import write_processing_args
 from fran.localiser.transforms import NormaliseZeroToOne
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.intensitytransforms import MakeBinary
@@ -11,7 +12,7 @@ from fran.transforms.misc_transforms import BoundingBoxYOLOd
 from monai.apps.detection.transforms.dictionary import ConvertBoxToStandardModed
 from monai.data.dataset import Dataset
 from monai.transforms import Compose
-from monai.transforms.croppad.dictionary import BoundingRectd
+from monai.transforms.croppad.dictionary import BoundingRectd, SpatialPadd
 from monai.transforms.spatial.dictionary import RandFlipd, RandRotated, RandZoomd, Resized
 from monai.transforms.utility.dictionary import (
     DeleteItemsd,
@@ -24,16 +25,21 @@ from tqdm.auto import tqdm
 
 tr = ipdb.set_trace
 
+import subprocess
 
 def write_list_to_txt(data_list, filepath, delimiter=" "):
     with open(filepath, "w") as f:
+        if not data_list:
+            subprocess.run(["echo", f"No labels: {filepath}"])
+            return
+
         if isinstance(data_list[0], (list, tuple)):
             for item in data_list:
-                line = delimiter.join(str(x) for x in item)
-                f.write(line + "\n")
+                f.write(delimiter.join(str(x) for x in item) + "\n")
         else:
-            line = delimiter.join(str(x) for x in data_list)
-            f.write(line + "\n")
+            f.write(delimiter.join(str(x) for x in data_list) + "\n")
+
+
 
 
 class DetectDS(Dataset):
@@ -53,12 +59,20 @@ class DetectDS(Dataset):
 
 
 class PreprocessorPT2JPG(L.LightningDataModule):
-    def __init__(self, data_dir: str = "./", batch_size: int = 4):
+    def __init__(
+        self,
+        data_dir: str = "./",
+        batch_size: int = 4,
+        merge_windows: bool = False,
+        outputsize=(512, 512),
+    ):
         super().__init__()
         self.batch_size = batch_size
         self.data_dir = Path(data_dir)
         self.fldr_imgs = self.data_dir / "images"
         self.fldr_lms = self.data_dir / "lms"
+        self.merge_windows = merge_windows
+        self.outputsize = list(outputsize)
 
     def prepare_data(self):
         imgs = list(self.fldr_imgs.glob("*"))
@@ -84,7 +98,7 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         image_key = "image"
         label_key = "lm"
         box_key = "lm_bbox"
-        outputsize = [512, 512]
+        self.transform_probs = probs
         N = NormaliseZeroToOne([image_key])
         L = LoadTorchd([image_key, label_key])
         E = EnsureChannelFirstd(keys=[image_key])
@@ -121,11 +135,22 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         Flip2 = RandFlipd(
             keys=[image_key, label_key], prob=probs, spatial_axis=1, lazy=True
         )
-        Resize = Resized(
-            keys=[image_key, label_key],
-            spatial_size=outputsize,
-            mode=["bilinear", "nearest"],
-            lazy=True,
+        Resize = Compose(
+            [
+                Resized(
+                    keys=[image_key, label_key],
+                    spatial_size=max(self.outputsize),
+                    size_mode="longest",
+                    mode=["bilinear", "nearest"],
+                    lazy=True,
+                ),
+                SpatialPadd(
+                    keys=[image_key, label_key],
+                    spatial_size=self.outputsize,
+                    method="symmetric",
+                    lazy=True,
+                ),
+            ]
         )
         DelI = DeleteItemsd(keys=[label_key])
         self.transforms_dict = {
@@ -170,6 +195,18 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         bbox = [0] + dici["bbox_yolo"].tolist()
         return bbox
 
+    def prepare_image_for_export(self, image):
+        if self.merge_windows:
+            if image.shape[0] != 3:
+                raise ValueError(
+                    "merge_windows=True expects 3 image channels, "
+                    f"got shape {tuple(image.shape)}"
+                )
+            return image
+        if image.shape[0] == 1:
+            return image.repeat(3, 1, 1)
+        return image
+
     def export_split(self, ds, split_dir):
         fldr_imgs = split_dir / "images"
         fldr_labels = split_dir / "labels"
@@ -177,7 +214,7 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         fldr_labels.mkdir(parents=True, exist_ok=True)
 
         for dici in tqdm(ds):
-            im = dici["image"]
+            im = self.prepare_image_for_export(dici["image"])
             imv = im.permute(0, 2, 1)
             src_fn = Path(im.meta["filename_or_obj"])
             nm_jpg = src_fn.name.replace("pt", "jpg")
@@ -201,12 +238,29 @@ class PreprocessorPT2JPG(L.LightningDataModule):
         with open(out_dir / "data.yaml", "w") as f:
             f.write("\n".join(self.data_yaml_lines()))
 
+    def processing_args(self, out_dir):
+        return {
+            "class": self.__class__.__name__,
+            "data_dir": self.data_dir,
+            "out_dir": out_dir,
+            "batch_size": self.batch_size,
+            "merge_windows": self.merge_windows,
+            "outputsize": self.outputsize,
+            "keys_tr": self.keys_tr,
+            "keys_val": self.keys_val,
+            "transform_probs": getattr(self, "transform_probs", None),
+        }
+
+    def write_processing_args(self, out_dir):
+        return write_processing_args(out_dir, self.processing_args(out_dir))
+
     def export_yolo_dataset(self, out_dir):
         out_dir = Path(out_dir)
         self.build_datasets()
         self.export_split(self.ds_train, out_dir / "train")
         self.export_split(self.ds_val, out_dir / "valid")
         self.write_data_yaml(out_dir)
+        self.write_processing_args(out_dir)
 
 
 class DetectDataModule(PreprocessorPT2JPG):

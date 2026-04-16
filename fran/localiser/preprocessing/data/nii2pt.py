@@ -6,12 +6,13 @@ import numpy as np
 import pandas as pd
 import ray
 import torch
+from fran.localiser.preprocessing.data.processing_args import write_processing_args
 from fran.localiser.transforms import WindowTensor3Channeld, tfms_from_dict
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.spatialtransforms import Project2D
 
 from monai.transforms.intensity.dictionary import NormalizeIntensityd
-from monai.transforms.spatial.dictionary import Orientationd
+from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, ToDeviced
 from utilz.fileio import maybe_makedirs
 from utilz.helpers import create_df_from_folder
@@ -22,18 +23,28 @@ tr = ipdb.set_trace
 
 
 class _PreprocessorNII2PTWorkerBase:
-    def __init__(self, output_folder, device="cpu", debug=False):
+    def __init__(
+        self,
+        output_folder,
+        num_projections=2,
+        device="cpu",
+        debug=False,
+        merge_windows=False,
+    ):
         self.output_folder = Path(output_folder)
         self.device = device
         self.debug = debug
+        self.num_projections = num_projections
+        self.merge_windows = merge_windows
         self.image_key = "image"
         self.lm_key = "lm"
+        self.projections_dims = {"lat": 1, "ap": 2, "ax": 3}
         self.tfms_keys = self.worker_tfms_keys()
         self.create_transforms(device=device)
         self.transforms = tfms_from_dict(self.tfms_keys, self.transforms_dict)
 
     def worker_tfms_keys(self):
-        return "L,E,O,Win,P1,P2"
+        return "L,E,O,R,Win,P1,P2"
 
     def create_transforms(self, device="cpu"):
         self.L = LoadSITKd(keys=[self.image_key, self.lm_key])
@@ -41,24 +52,32 @@ class _PreprocessorNII2PTWorkerBase:
             keys=[self.image_key, self.lm_key], channel_dim="no_channel"
         )
         self.O = Orientationd(keys=[self.image_key, self.lm_key], axcodes="RAS")
+        self.R = Spacingd(
+            keys=[self.image_key, self.lm_key],
+            pixdim=(0.8, 0.8, 0.8),
+            mode=("trilinear", "nearest"),
+        )
         self.N = NormalizeIntensityd(keys=[self.image_key])
         self.Dev = ToDeviced(keys=[self.image_key, self.lm_key], device=device)
         self.P1 = Project2D(
             keys=[self.lm_key, self.image_key],
             operations=["mean", "sum"],
-            dim=1,
+            dim=self.projections_dims["lat"],
+            suffix="lat",
             output_keys=["lm1", "image1"],
         )
         self.P2 = Project2D(
             keys=[self.lm_key, self.image_key],
             operations=["sum", "mean"],
-            dim=2,
+            dim=self.projections_dims["ap"],
+            suffix="ap",
             output_keys=["lm2", "image2"],
         )
         self.P3 = Project2D(
             keys=[self.lm_key, self.image_key],
             operations=["sum", "mean"],
-            dim=3,
+            dim=self.projections_dims["ax"],
+            suffix="ax",
             output_keys=["lm3", "image3"],
         )
         self.Win = WindowTensor3Channeld(image_key=self.image_key)
@@ -68,13 +87,13 @@ class _PreprocessorNII2PTWorkerBase:
             "L": self.L,
             "E": self.E,
             "O": self.O,
+            "R": self.R,
             "N": self.N,
             "Dev": self.Dev,
             "P1": self.P1,
             "P2": self.P2,
             "P3": self.P3,
             "Win": self.Win,
-
         }
 
     def save_pt(self, tnsr, subfolder, suffix):
@@ -84,21 +103,21 @@ class _PreprocessorNII2PTWorkerBase:
         torch.save(tnsr.contiguous(), out_fn)
 
     def image_suffixes(self):
-        if "Win" in self.tfms_keys:
+        if "Win" in self.tfms_keys and not self.merge_windows:
             suffixes = []
             for window in self.Win.windows.keys():
-                for projection in [1, 2]:
+                for projection in range(1, self.num_projections + 1):
                     suffixes.append(f"{window}{projection}")
             return suffixes
-        return [1, 2]
+        return list(range(1, self.num_projections + 1))
 
     def _process_row(self, row):
         dici = {"image": row["image"], "lm": row["lm"]}
         dici = self.transforms(dici)
-        for projection in [1, 2]:
+        for projection in range(1, self.num_projections + 1):
             image = dici["image" + str(projection)]
             lm = dici["lm" + str(projection)]
-            if "Win" in self.tfms_keys:
+            if "Win" in self.tfms_keys and not self.merge_windows:
                 for window_ind, window in enumerate(self.Win.windows.keys()):
                     suffix = f"{window}{projection}"
                     self.save_pt(image[[window_ind]], "images", suffix)
@@ -126,7 +145,14 @@ class PreprocessorNII2PTWorkerLocal(_PreprocessorNII2PTWorkerBase):
 
 
 class PreprocessorNII2PT:
-    def __init__(self, data_folder, output_folder):
+    # stores n = case_id * num_proj * windows
+    def __init__(
+        self,
+        data_folder,
+        output_folder,
+        num_projections=2,
+        merge_windows=False,
+    ):
         self.data_folder = Path(data_folder)
         self.output_folder = Path(output_folder)
         self.fldr_imgs = self.data_folder / "images"
@@ -135,6 +161,9 @@ class PreprocessorNII2PT:
         self.output_fldr_lms = self.output_folder / "lms"
         self.actor_cls = PreprocessorNII2PTWorker
         self.local_worker_cls = PreprocessorNII2PTWorkerLocal
+        self.num_projections = num_projections
+        self.merge_windows = merge_windows
+
     def _df_from_folder(self):
         return create_df_from_folder(self.data_folder)
 
@@ -151,7 +180,12 @@ class PreprocessorNII2PT:
 
     def register_existing_files(self):
         existing = []
-        for suffix in self.local_worker_cls(self.output_folder).image_suffixes():
+        worker = self.local_worker_cls(
+            self.output_folder,
+            num_projections=self.num_projections,
+            merge_windows=self.merge_windows,
+        )
+        for suffix in worker.image_suffixes():
             suffix = str(suffix)
             imgs = {p.name for p in self.output_fldr_imgs.glob("*_" + suffix + ".pt")}
             lms = {p.name for p in self.output_fldr_lms.glob("*_" + suffix + ".pt")}
@@ -164,10 +198,13 @@ class PreprocessorNII2PT:
         )
 
     def remove_completed_cases(self):
-        if not getattr(self, "existing_output_fnames", None):
-            return
         n_before = len(self.df)
-        suffix = self.local_worker_cls(self.output_folder).image_suffixes()[0]
+        worker = self.local_worker_cls(
+            self.output_folder,
+            num_projections=self.num_projections,
+            merge_windows=self.merge_windows,
+        )
+        suffix = worker.image_suffixes()[0]
         keep_mask = self.df["image"].apply(
             lambda x: (
                 strip_extension(Path(x).name) + "_" + str(suffix) + ".pt"
@@ -186,11 +223,15 @@ class PreprocessorNII2PT:
             "output_folder": self.output_folder,
             "device": device,
             "debug": debug,
+            "num_projections": self.num_projections,
+            "merge_windows": self.merge_windows,
         }
 
     def setup(self, overwrite=False, num_processes=8, device="cpu", debug=False):
         self.create_output_folders()
+        self.overwrite = overwrite
         self.num_processes = max(1, int(num_processes))
+        self.device = device
         self.debug = debug
         self.create_data_df()
         self.register_existing_files()
@@ -201,15 +242,36 @@ class PreprocessorNII2PT:
         worker_kwargs = self.build_worker_kwargs(device=device, debug=debug)
         if self.use_ray:
             n = min(len(self.df), self.num_processes)
-            self.mini_dfs = np.array_split(self.df, n)
+            self.mini_dfs = [
+                self.df.iloc[idx].reset_index(drop=True)
+                for idx in np.array_split(np.arange(len(self.df)), n)
+            ]
             self.actors = [self.actor_cls.remote(**worker_kwargs) for _ in range(n)]
         else:
             self.mini_dfs = [self.df]
             self.local_worker = self.local_worker_cls(**worker_kwargs)
 
+    def processing_args(self):
+        return {
+            "class": self.__class__.__name__,
+            "data_folder": self.data_folder,
+            "output_folder": self.output_folder,
+            "num_projections": self.num_projections,
+            "merge_windows": self.merge_windows,
+            "overwrite": getattr(self, "overwrite", None),
+            "num_processes": getattr(self, "num_processes", None),
+            "device": getattr(self, "device", None),
+            "debug": getattr(self, "debug", None),
+        }
+
+    def write_processing_args(self):
+        return write_processing_args(self.output_folder, self.processing_args())
+
     def process(self):
         if len(self.df) == 0:
-            return pd.DataFrame([])
+            self.results_df = pd.DataFrame([])
+            self.write_processing_args()
+            return self.results_df
         if self.use_ray:
             results = ray.get(
                 [
@@ -223,12 +285,13 @@ class PreprocessorNII2PT:
         self.results_df = pd.DataFrame(
             [item for sublist in self.results for item in sublist]
         )
+        self.write_processing_args()
         return self.results_df
 
 
 # %%
 if __name__ == "__main__":
-#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 
     data_folder = "/s/fran_storage/datasets/raw_data/lidc"
     output_folder = "/tmp/nii2pt_debug"
@@ -280,7 +343,7 @@ if __name__ == "__main__":
     L = worker.transforms_dict["L"]
     E = worker.transforms_dict["E"]
     O = worker.transforms_dict["O"]
-    
+
     Win = worker.transforms_dict["Win"]
     P1 = worker.transforms_dict["P1"]
     P2 = worker.transforms_dict["P2"]
@@ -299,7 +362,7 @@ if __name__ == "__main__":
     print_dici(dici3, "After Win")
     image = dici3["image"]
     lm = dici3["lm"]
-    ImageMaskViewer([image,lm],'im')
+    ImageMaskViewer([image, lm], "im")
 
 # %%
     print("print_dici(dici0, 'after L')")

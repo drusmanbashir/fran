@@ -9,7 +9,7 @@ from fran.callback.case_recorder import CaseIDRecorder
 from fran.utils.misc import parse_devices
 
 tr = ipdb.set_trace
-
+/home/ub/mambaforge
 import argparse
 
 from fran.configs.parser import ConfigMaker
@@ -238,4 +238,5 @@ if __name__ == "__main__":
     # print(parse_devices(args.devices))
     # %%
     main(args)
+            
 # %%

@@ -1,4 +1,6 @@
-
+import matplotlib
+matplotlib.get_backend()
+matplotlib.use("Qt5Agg")
 from pathlib import Path
 
 import torch
@@ -26,9 +28,10 @@ if __name__ == "__main__":
           "/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/"
       )
       fix  = Path("/r/datasets/preprocessed/kits2/fixed_spacing/spc_080_080_150/images")
-      im_fn =  Path("/r/datasets/preprocessed/totalseg/whole_images/096096096_e5141197/images/totalseg_s0711.pt")
-      lm_fn =  Path("/r/datasets/preprocessed/totalseg/whole_images/096096096_e5141197/lms/totalseg_s0711.pt")
+      im_fn =  Path("/s/xnat_shadow/totalseg2d/pt/images/totalseg_s0009_1.pt")
+      lm_fn =  Path("/s/xnat_shadow/totalseg2d/pt/lms/totalseg_s0009_1.pt")
       lm=torch.load(lm_fn, weights_only=False)
+      lm.shape
       im = torch.load(im_fn, weights_only=False)
       ImageMaskViewer([im,lm])
 # %%

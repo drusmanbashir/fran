@@ -555,7 +555,7 @@ if __name__ == "__main__":
     P = Project("kits2")
     P = Project("totalseg")
     C = ConfigMaker(P)
-    C.setup(2)
+    C.setup(1)
 
     conf = C.configs
     print(conf["model_params"])
@@ -581,8 +581,8 @@ if __name__ == "__main__":
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
-    bs = 14
-    device_id = 1
+    bs = 2
+    device_id = 0
     batchsize_finder = True
     batchsize_finder = False
     # run_name ='LITS-1285'
@@ -591,8 +591,8 @@ if __name__ == "__main__":
     override_dm = True
     override_dm = False
 
-    run_name = None
     run_name="TOTALSEG-FREHA"
+    run_name = None
     tags = []
     description = f""
     conf["dataset_params"]["fold"] = 0
