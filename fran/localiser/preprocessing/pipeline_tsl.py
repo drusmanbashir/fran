@@ -10,7 +10,7 @@ from fran.localiser.preprocessing.data.pt2jpg_tsl import PreprocessorPT2JPG_TSL
 # %%
 if __name__ == "__main__":
     src_3d = DS["totalseg"].folder
-    merge_windows = True
+    merge_windows = False
     letterbox = True
     outputsize = [512, 512]
     if merge_windows:

@@ -1,4 +1,4 @@
-e %%
+# %%
 from fran.data.dataregistry import DS
 import itertools as il
 import sqlite3

@@ -57,7 +57,6 @@ if __name__ == "__main__":
         if cache_fn.exists():
             cache_fn.unlink()
 # %%
-    wandb: bool = True
     n_epochs = 600
     common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
     COMMON_PATHS = load_yaml(common_vars_filename)
