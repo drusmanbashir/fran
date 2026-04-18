@@ -1212,6 +1212,15 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from fran.configs.parser import ConfigMaker
     P = Project(project_title="pancreas")
+    projs = ["test2", "test21", "test212", "testx", "t2"]
+    P = Project(project_title=projs[0])
+    P.delete()
+# %%
+    for proj in projs:
+        P = Project(project_title=proj)
+        P.delete()
+
+# %%
     P = Project(project_title="test")
     P.create("test",datasources=[DS.drli_short, DS.lidc_short, DS.kits23_short,DS.litq])
     P.add_data([DS.drli_short, DS.lidc_short, DS.kits23_short,DS.nodes])

@@ -1,5 +1,6 @@
 # %%
 import os
+import pickle
 
 from fran.inference.helpers import (
     filter_existing_files,
@@ -65,6 +66,7 @@ def load_model_on_fabric(
     fabric_kwargs=None,
     normalize_checkpoint_fn=None,
     normalize_state_dict_prefix="model._orig_mod",
+    weights_only=False,
     **kwargs,
 ):
     resolved_map_location = "cuda" if map_location is None else map_location
@@ -73,9 +75,10 @@ def load_model_on_fabric(
             ckpt,
             map_location=resolved_map_location,
             strict=strict,
+            weights_only=weights_only,
             **kwargs,
         )
-    except RuntimeError as exc:
+    except (RuntimeError, pickle.UnpicklingError) as exc:
         if normalize_checkpoint_fn is None:
             raise
 
@@ -96,6 +99,7 @@ def load_model_on_fabric(
             ckpt,
             map_location=resolved_map_location,
             strict=strict,
+            weights_only=weights_only,
             **kwargs,
         )
 
@@ -499,104 +503,9 @@ class BaseInferer(DictToAttr):
 
 
 if __name__ == "__main__":
-    import itertools as il
-
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
-    from fran.data.dataregistry import DS
-    from fran.managers import Project
-    from fran.managers.project import Project
-    from fran.utils.common import *
-    from label_analysis.totalseg import TotalSegmenterLabels
-    from monai.transforms.post.dictionary import Activationsd, AsDiscreted
-    from utilz.helpers import pp
-
-    conf_fldr = os.environ["FRAN_CONF"]
-    from utilz.fileio import load_yaml
-
-    best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
-    run_w = best_runs["run_w"]
-    runs_tot_all = best_runs["totalseg"]
-    run_tot_big = runs_tot_all["run_ids"][0]
-# %%
-    pp(best_runs)
-
-    proj = Project(project_title="totalseg")
-
-# %%
-# SECTION:-------------------- FILES and FOLDERS-------------------------------------------------------------------------------------- <CR> <CR>
-
-    fldr_crc = Path("/s/xnat_shadow/crc/images")
-    imgs_crc = list(fldr_crc.glob("*"))
-
-    fldr_curvas = DS["curvaspdac"].folder / ("images")
-    imgs_curvas = list(fldr_curvas.glob("*"))
-    fldr_lidc = DS["lidc"].folder / ("images")
-    imgs_lidc = list(fldr_lidc.glob("*"))
-    fldr_nodes = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
-    fldr_nodes2 = Path("/s/xnat_shadow/nodes/images")
-    img_nodes = list(fldr_nodes.glob("*"))
-    img_nodes2 = list(fldr_nodes2.glob("*"))
-    fldr_litsmc = (
-        Path(D["litq"].folder),
-        Path(D["drli"].folder),
-        Path(D["lits"].folder),
-        Path(D["litqsmall"].folder),
-    )
-    imgs_litsmc = [list((fld / ("images")).glob("*")) for fld in fldr_litsmc]
-    imgs_litsmc = list(il.chain.from_iterable(imgs_litsmc))
-    fldr_bosniak = Path("/s/datasets_bkp/bosniak/bosniak/kits2/nifti")
-    imgs_bosniak = list(fldr_bosniak.glob("*"))
-    fldr_lidc = DS["lidc"].folder / ("images")
-    fldr_curvas = DS["curvaspdac"].folder / ("images")
-    imgs_curvas = list(fldr_curvas.glob("*"))
-
-    fldr_colonmsd = DS["colonmsd10"].folder / ("images")
-    imgs_colonmsd = list(fldr_colonmsd.glob("*"))
-    imgs_lidc = list(fldr_lidc.glob("*"))
-
-    img_fna = "/s/xnat_shadow/litq/test/images_ub/"
-    fns = "/s/datasets_bkp/drli_short/images/"
-    img_fldr = Path("/s/xnat_shadow/lidc2/images/")
-    img_fn2 = "/s/xnat_shadow/crc/wxh/images/crc_CRC198_20170718_CAP1p51.nii.gz"
-    img_fn3 = "/s/xnat_shadow/crc/srn/images/crc_CRC002_20190415_CAP1p5.nii.gz"
-
-    # fldr_crc = Path("/s/xnat_shadow/crc/images_train_rad/images/")
-    fldr_crc = Path("/s/xnat_shadow/crc/images")
-    # srn_fldr = "/s/xnat_shadow/crc/srn/cases_with_findings/images/"
-    litq_fldr = "/s/xnat_shadow/litq/test/images_ub/"
-    litq_imgs = list(Path(litq_fldr).glob("*"))
-    t6_fldr = Path("/s/datasets_bkp/Task06Lung/images")
-    imgs_t6 = list(t6_fldr.glob("*"))
-    react_fldr = Path("/s/insync/react/sitk/images")
-    imgs_react = list(react_fldr.glob("*"))
-    imgs_crc = list(fldr_crc.glob("*"))
-    nodesthick_fldr = Path("/s/xnat_shadow/nodesthick/images")
-    nodesthick_imgs = list(nodesthick_fldr.glob("*"))
-
-    bones_fldr = Path("/s/xnat_shadow/bones/images")
-    bones_imgs = list(bones_fldr.glob("*"))
-
-    nodes_fldr = Path("/s/xnat_shadow/nodes/images_pending/thin_slice/images")
-    nodes_fldr_training = Path("/s/xnat_shadow/nodes/images")
-    nodes_imgs = list(nodes_fldr.glob("*"))
-    nodes_imgs_training = list(nodes_fldr_training.glob("*"))
-    capestart_fldr = Path("/s/insync/datasets/capestart/nodes_2025/images")
-    capestart = list(capestart_fldr.glob("*"))
-
-    fldr_misc = Path("/s/xnat_shadow/misc/images")
-    imgs_misc = list(fldr_misc.glob("*"))
-    img_fns = [imgs_t6][:20]
-    localiser_labels = [45, 46, 47, 48, 49]
-    localiser_labels_litsmc = [1]
-    TSL = TotalSegmenterLabels()
-    lidc2_fldr = DS.lidc2.folder / ("images")
-    imgs_lidc2 = list(lidc2_fldr.glob("*"))
-
-    kits_fldr = DS.kits23.folder / ("images")
-    kits_imgs = list(kits_fldr.glob("*"))
-
-    # img_nodes = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]
+    from fran.inference.common_vars import *
 
 # %%
 # SECTION:-------------------- LITSMC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
@@ -755,7 +664,7 @@ if __name__ == "__main__":
     if T.safe_mode:
         img = img.to("cpu")
 
-    logits = T.inferer(inputs=img, network=T.model)  # [B,117,D,H,W]
+    logits = T.inferer(inputs=img, network=T.model)  # [B,117,DS,H,W]
 # %%
     logits = logits[0]  # model has deep supervision only 0 channel is needed
     # Collapse channels early; keep on same device
@@ -805,7 +714,7 @@ if __name__ == "__main__":
     #     keys=["pred"], transform=T.ds.transform, orig_keys=["image"]
     # )  # watchout: use detach beforeharnd. make sure spacing are correct in preds
     A = Activationsd(keys="pred", softmax=True)
-    D = AsDiscreted(keys=["pred"], argmax=True)  # ,threshold=0.5)
+    DS = AsDiscreted(keys=["pred"], argmax=True)  # ,threshold=0.5)
     U = ToCPUd(keys=["image", "pred"])
     Sa = SaveMultiChanneld(
         keys=["pred"],
@@ -818,9 +727,9 @@ if __name__ == "__main__":
 # %%
     out_final = []
     if T.save_channels == True:
-        tfms = [Sq, Sa, A, D, I]
+        tfms = [Sq, Sa, A, DS, I]
     else:
-        tfms = [Sq, A, D, I]
+        tfms = [Sq, A, DS, I]
     if T.k_largest:
         K = KeepLargestConnectedComponentWithMetad(
             keys=["pred"], independent=False, num_components=T.k_largest
@@ -836,7 +745,7 @@ if __name__ == "__main__":
 # %%
     batch = Sq(batch)
     batch = A(batch)
-    batch = D(batch)
+    batch = DS(batch)
     batch = U(batch)
     batch = I(batch)
 
@@ -873,5 +782,3 @@ if __name__ == "__main__":
 # %%
     batch["pred"].shape
 # %%
-
-

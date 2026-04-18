@@ -1,29 +1,11 @@
 # %%
-from dataclasses import dataclass
 import itertools as il
-
-import ipdb
-from paramiko import SSHClient
-from utilz.cprint import cprint
-from monai.transforms.utility.dictionary import CastToTyped
-
-from fran.trainers.base import checkpoint_from_model_id
-from fran.transforms.misc_transforms import SelectLabels
-from fran.utils.misc import parse_devices
-from utilz.helpers import info_from_filename
-
-tr = ipdb.set_trace
-
 import sys
 
+import ipdb
 import numpy as np
 import torch
-from monai.transforms import SpatialCrop
-from monai.transforms.compose import Compose
-from monai.transforms.io.dictionary import SaveImaged
-from monai.transforms.post.dictionary import AsDiscreted, Invertd
-from monai.transforms.spatial.dictionary import Resized
-
+from fastcore.foundation import listify
 from fran.data.dataset import FillBBoxPatchesd
 from fran.inference.base import (
     BaseInferer,
@@ -31,33 +13,21 @@ from fran.inference.base import (
     load_images_nifti,
     load_params,
 )
+from fran.trainers.base import checkpoint_from_model_id
 from fran.transforms.inferencetransforms import (
     BBoxFromPTd,
     KeepLargestConnectedComponentWithMetad,
     MakeWritabled,
     RenameDictKeys,
 )
-
-
-
-
-
-   
-
-
-
-# from monai.transforms.utility.dictionary import AddChanneld, EnsureTyped
-
-
-# from utilz.itk_sitk import *
-
-sys.path += ["/home/ub/code"]
-
-# These are the usual ipython objects, including this one you are creating
-ipython_vars = ["In", "Out", "exit", "quit", "get_ipython", "ipython_vars"]
-import sys
-
-from fastcore.foundation import listify
+from fran.transforms.misc_transforms import SelectLabels
+from fran.utils.misc import parse_devices
+from monai.transforms.compose import Compose
+from monai.transforms.io.dictionary import SaveImaged
+from monai.transforms.post.dictionary import AsDiscreted, Invertd
+from monai.transforms.spatial.dictionary import Resized
+from monai.transforms.utility.dictionary import CastToTyped
+from utilz.cprint import cprint
 
 sys.path += ["/home/ub/Dropbox/code/fran/"]
 
@@ -121,7 +91,6 @@ class WholeImageInferer(BaseInferer):
         patch_overlap=None,
         keys_preproc="E,ResW,N",
         keys_postproc="Sq,Re",
-
         **kwargs,
     ):
         """
@@ -139,7 +108,6 @@ class WholeImageInferer(BaseInferer):
             keys_preproc=keys_preproc,
             keys_postproc=keys_postproc,
             **kwargs,
-
         )
 
     def set_preprocess_tfms_keys(self):
@@ -213,7 +181,7 @@ class PatchInferer(BaseInferer):
         self.postprocess_transforms_dict["InvP"] = InvP
 
     def set_postprocess_tfms_keys(self):
-        
+
         self.postprocess_tfms_keys = self.keys_postproc
         if self.safe_mode == True:
             self.postprocess_tfms_keys += ",CPU"
@@ -448,21 +416,20 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 # %%
 if __name__ == "__main__":
     import time
+    from pathlib import Path
+
     import SimpleITK as sitk
+    from fran.inference.base import list_to_chunks
+    from fran.managers import Project
     from fran.managers.wandb import (
         download_path_no_wandb,
         download_wandb_checkpoint,
         get_wandb_checkpoint,
     )
-    from label_analysis.totalseg import TotalSegmenterLabels
-    from pathlib import Path
-    from fran.inference.base import list_to_chunks
-    from utilz.imageviewers import ImageMaskViewer
-# SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
-
-    # ... run your application ...
-    from fran.managers import Project
     from fran.utils.common import *
+    from label_analysis.totalseg import TotalSegmenterLabels
+    from utilz.helpers import info_from_filename
+    from utilz.imageviewers import ImageMaskViewer
 
     conf_fldr = os.environ["FRAN_CONF"]
     from utilz.fileio import load_yaml
@@ -470,19 +437,22 @@ if __name__ == "__main__":
     best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
     run_w = best_runs["run_w"]
 
-
-
 # %%
 
-    from fran.data.dataregistry import DS
 # %%
 # SECTION:-------------------- KITS--------------------------------------------------------------------------------------
+    TSL = TotalSegmenterLabels()
 
     P = Project("kits2")
     _, val = P.get_train_val_case_ids(fold=1)
-    kits_imgs = [img for img in kits_imgs if info_from_filename(img.name, full_caseid=True)["case_id"] in val]
-    devices = [1]
-    run_kid = "KITS2-bah"
+    kits_imgs = [
+        img
+        for img in kits_imgs
+        if info_from_filename(img.name, full_caseid=True)["case_id"] in val
+    ]
+    devices = [0]
+    # run_kid = best_runs["kidneys"]["run_ids"][0]
+    run_kid = best_runs["kidneys"]["run_ids"][1]
 
     run_tot = best_runs["totalseg"]["run_ids"][0]
     run_kw = run_tot
@@ -518,8 +488,8 @@ if __name__ == "__main__":
     )
 
 # %%
-    imgs = imgs_bosniak[:10]
     imgs = kits_imgs
+    imgs = imgs_bosniak
     preds = En.run(imgs, chunksize=4, overwrite=overwrite)
 # %%
     pred = preds[0]["pred"]
@@ -573,8 +543,6 @@ if __name__ == "__main__":
     ckpt = download_wandb_checkpoint(P, run_id)
 # %%
 # %%
-
-    import stat
 
     remote_dir_parent = str(remote_dir_parent)
 # %%
@@ -922,3 +890,5 @@ if __name__ == "__main__":
     lm = sitk.ReadImage(fn)
 
     lm.GetSize()
+
+
