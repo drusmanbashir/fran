@@ -10,7 +10,7 @@ from fran.preprocessing.fixed_spacing import (
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator
-from fran.utils.folder_names import folder_names_from_plan
+from fran.utils.folder_names import FolderNames
 from utilz.fileio import os, save_list, str_to_path
 from utilz.helpers import ask_proceed, re
 from utilz.stringz import headline
@@ -21,7 +21,7 @@ common_vars_filename = os.environ["FRAN_CONF"]
 def postprocess_complete(project, plan):
     if plan["mode"] != "lbd":
         return True
-    folder = Path(folder_names_from_plan(project, plan)["data_folder_lbd"])
+    folder = Path(FolderNames(project, plan).folders["data_folder_lbd"])
     stats_folder = folder / "dataset_stats"
     required = [
         folder / "labels_all.json",
@@ -192,7 +192,7 @@ class PreprocessingManager:
         self, overwrite=False, device="cpu", num_processes=1, debug=False
     ):
 
-        resampled_data_folder = folder_names_from_plan(self.project, self.plan)[
+        resampled_data_folder = FolderNames(self.project, self.plan).folders[
             "data_folder_source"
         ]
 
@@ -225,7 +225,7 @@ class PreprocessingManager:
         requires resampled folder to exist. Crops within this folder
         """
 
-        resampled_data_folder = folder_names_from_plan(self.project, self.plan)[
+        resampled_data_folder = FolderNames(self.project, self.plan).folders[
             "data_folder_source"
         ]
         self.L = LabelBoundedDataGeneratorImported(
@@ -299,7 +299,7 @@ class PreprocessingManager:
         C2 = ConfigMaker(self.project)
         C2.setup(src_plan_idx)
         src_plan_full = C2.configs["plan_train"]
-        data_fldrs = folder_names_from_plan(self.project, src_plan_full)
+        data_fldrs = FolderNames(self.project, src_plan_full).folders
         data_folder = data_fldrs[f"data_folder_{src_plan_mode}"]
         data_foldre = Path(data_folder)
         return data_foldre
@@ -380,7 +380,7 @@ if __name__ == "__main__":
     I.R.setup(overwrite=overwrite, num_processes=num_processes)
     #     I.R.process()
     #     I.resample_output_folder = I.R.output_folder
-    # resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
+    # resampled_data_folder = FolderNames(I.project, I.plan).folders[
     #
     #        "data_folder_source"
     #    ]
@@ -404,7 +404,7 @@ if __name__ == "__main__":
     #     overwrite=False
     #     num_processes=8
     #
-    #     resampled_data_folder = folder_names_from_plan(I.project, I.plan)[
+    #     resampled_data_folder = FolderNames(I.project, I.plan).folders[
     #         "data_folder_source"
     #     ]
     #

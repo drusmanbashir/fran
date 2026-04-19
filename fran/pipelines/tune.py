@@ -12,7 +12,7 @@ if __name__ == "__main__":
     from fran.trainers.trainer import Trainer
     from fran.tune.tune import RayTuneConfig
     from fran.utils.common import *
-    from fran.utils.folder_names import folder_names_from_plan
+    from fran.utils.folder_names import FolderNames
 
     P = Project("nodes")
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     Tm.fit()
 
     # %%
-    matching_plan = folder_names_from_plan(P, plan)
+    matching_plan = FolderNames(P, plan).folders
 
     matching_plan
 
@@ -354,7 +354,7 @@ if __name__ == "__main__":
     #     print(batch['image'].shape)
     # %%
 
-    folder_names_from_plan(P, plan)
+    FolderNames(P, plan).folders
     add_plan_to_db(
         plan, "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_plan2", P.db
     )

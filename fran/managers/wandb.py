@@ -1,5 +1,6 @@
 # %%
 from __future__ import annotations
+from fran.configs.mnemonics import Mnemonics
 
 import ipdb
 
@@ -144,19 +145,15 @@ def _flatten_for_wandb(payload: dict, prefix: str = "") -> dict:
 
 def get_wandb_config():
     commons = load_yaml(common_vars_filename)
-    api_token = commons.get("wandb_api_token")
-    entity = commons.get("wandb_entity")
-    return entity, api_token
+    api_token = commons["wandb_api_token"]
+    return api_token
 
 
 def get_wandb_project(project, mode: str = "online"):
-    entity, api_token = get_wandb_config()
-    if api_token:
-        os.environ["WANDB_API_KEY"] = api_token
-    if entity:
-        os.environ.setdefault("WANDB_ENTITY", entity)
+    api_token = get_wandb_config()
+    os.environ["WANDB_API_KEY"] = api_token
     api = wandb.Api()
-    path = f"{entity}/{project.project_title}" if entity else project.project_title
+    path = project.project_title
     return {"api": api, "path": path, "mode": mode}
 
 
@@ -174,13 +171,12 @@ def _extract_word_suffix(value: str, prefix: str) -> Optional[str]:
 
 
 def _new_run_id(
-    entity: Optional[str],
     project_title: str,
     width: int = 4,
     run_prefix: Optional[str] = None,
 ) -> str:
+    path = project_title
     prefix = _normalize_run_prefix(run_prefix or project_title)
-    path = f"{entity}/{project_title}" if entity else project_title
     mode = str(os.environ.get("WANDB_MODE", "")).lower()
     if mode in {"offline", "disabled", "dryrun"}:
         suffix = random_fake_word(3, 5).upper()
@@ -258,15 +254,11 @@ class WandbManager(WandbLogger):
     ):
         self.project = project
         self.prefix = prefix.rstrip("/")
-        self.wandb_project_name = wandb_project_name or project.project_title
+        self.wandb_project_name = wandb_project_name or self.derive_project_name()
         self.run_prefix = run_prefix or project.project_title
-        self.entity, api_token = get_wandb_config()
+        api_token = get_wandb_config()
         save_dir = _resolve_wandb_save_dir(project)
-
-        if api_token:
-            os.environ["WANDB_API_KEY"] = api_token
-        if self.entity:
-            os.environ.setdefault("WANDB_ENTITY", self.entity)
+        os.environ["WANDB_API_KEY"] = api_token
 
         if run_id:
             resolved_run_id = run_id
@@ -276,7 +268,6 @@ class WandbManager(WandbLogger):
         else:
             width = int(os.environ.get("FRAN_WANDB_SEQ_WIDTH", "2"))
             resolved_run_id = _new_run_id(
-                entity=self.entity,
                 project_title=self.wandb_project_name,
                 width=width,
                 run_prefix=self.run_prefix,
@@ -291,7 +282,6 @@ class WandbManager(WandbLogger):
 
         super().__init__(
             project=self.wandb_project_name,
-            entity=self.entity,
             name=name,
             save_dir=save_dir,
             log_model=("all" if log_model_checkpoints else False),
@@ -302,6 +292,15 @@ class WandbManager(WandbLogger):
             if self._mode not in {"disabled", "offline"}
             else self._empty_df()
         )
+
+
+    def derive_project_name(self) -> str:
+        mnemonic = self.project.global_properties["mnemonic"]
+        Ms = Mnemonics()
+        M = Ms[mnemonic]
+        wandb_project= M.wandb
+        return wandb_project
+        
 
     def _path(self, leaf: str) -> str:
         return f"{self.prefix}/{leaf}" if self.prefix else leaf
@@ -317,11 +316,7 @@ class WandbManager(WandbLogger):
         return self.experiment
 
     def _project_path(self) -> str:
-        return (
-            f"{self.entity}/{self.wandb_project_name}"
-            if self.entity
-            else self.wandb_project_name
-        )
+        return self.wandb_project_name
 
     def _run_path(self, run_id: Optional[str] = None) -> str:
         run_id = run_id or self.run_id
@@ -364,11 +359,7 @@ class WandbManager(WandbLogger):
     def fetch_project_df(self, columns=None):
         try:
             api = wandb.Api()
-            path = (
-                f"{self.entity}/{self.wandb_project_name}"
-                if self.entity
-                else self.wandb_project_name
-            )
+            path = self.wandb_project_name
             runs = list(api.runs(path))
         except Exception:
             return self._empty_df(columns=columns)
@@ -529,18 +520,18 @@ class WandbManager(WandbLogger):
         return str(self.project.checkpoints_parent_folder)
 
 
+# %%
 if __name__ == "__main__":
 # %%
-    # llSECTION:-------------------- ------------------------------------------------------------------------------------- <CR>
+# %%
+#SECTION:-------------------- setup--------------------------------------------------------------------------------------
 
     from fran.managers.project import Project
 
-    P = Project(project_title="kits2")
+    P = Project(project_title="kits23")
     _resolve_wandb_save_dir(P)
 # %%
     W = WandbManager(project=P)
-    os.environ["WANDB_MODE"] = "online"
-    api = wandb.Api()
     runs = api.runs()
     aa = list(runs)
     print(_new_run_id("drubashir", "kits2"))

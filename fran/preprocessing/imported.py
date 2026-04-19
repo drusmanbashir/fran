@@ -53,6 +53,8 @@ def resolve_relative_path(pth: str) -> str:
 
 
 class _LBDImportedSamplerWorkerBase(RayWorkerBase):
+    remapping_key = "remapping_lbd_kbd"
+
     def __init__(
         self,
         project,
@@ -89,7 +91,6 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
             device=device,
             debug=debug,
             tfms_keys=tfms_keys,
-            remapping_key="remapping_lbd",
         )
 
     def _create_data_dict(self, row):
@@ -214,6 +215,11 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
     _default = "project"
     """
 
+    actor_cls = LBDImportedSamplerWorkerImpl
+    local_worker_cls = LBDImportedSamplerWorkerLocal
+    remapping_key = "remapping_lbd_kbd"
+    subfolder_key = "data_folder_lbd"
+
     def __init__(
         self,
         project,
@@ -248,8 +254,6 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
             dici["remapping_imported"] = remapping
             dicis.append(dici)
         self.ds_imported_folder_remapping = dicis
-        self.actor_cls = LBDImportedSamplerWorkerImpl
-        self.local_worker_cls = LBDImportedSamplerWorkerLocal
 
     def create_data_df(self) -> None:
         """
@@ -350,7 +354,7 @@ if __name__ == "__main__":
     from fran.managers import Project
     from fran.preprocessing.preprocessor import store_label_count
     from fran.utils.common import *
-    from fran.utils.folder_names import folder_names_from_plan
+    from fran.utils.folder_names import FolderNames
 
     project_title = "kits2"
     P = Project(project_title=project_title)
@@ -372,7 +376,7 @@ if __name__ == "__main__":
 
 # %%
 # SECTION:-------------------- Imported labels-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-    resampled_data_folder = folder_names_from_plan(P, plan)["data_folder_source"]
+    resampled_data_folder = FolderNames(P, plan).folders["data_folder_source"]
 
 # %%
     L = LabelBoundedDataGeneratorImported(

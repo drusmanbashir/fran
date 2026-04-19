@@ -6,6 +6,7 @@ Kept guarded to avoid forcing heavy dependencies in light import contexts.
 try:
     from .training import (
         DataManagerBaseline,
+        DataManagerKBD,
         DataManagerLBD,
         DataManagerPatch,
         DataManagerSource,

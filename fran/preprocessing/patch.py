@@ -15,7 +15,7 @@ from fran.preprocessing.helpers import (
 )
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
-from fran.utils.folder_names import folder_names_from_plan
+from fran.utils.folder_names import FolderNames
 from monai.transforms import SqueezeDimD
 from monai.transforms.spatial.dictionary import GridPatchd
 from monai.transforms.utility.dictionary import SplitDimD
@@ -156,11 +156,17 @@ class PBDSamplerWorkerLocal(_PBDSamplerWorkerBase):
 
 
 class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
+    actor_cls = PBDSamplerWorkerImpl
+    local_worker_cls = PBDSamplerWorkerLocal
+    remapping_key = None
+    input_subfolder_key = "data_folder_lbd"
+    subfolder_key = "data_folder_pbd"
+
     def __init__(
         self, project, plan, data_folder, output_folder=None, patch_overlap=0.2
     ):
 
-        existing_fldr = folder_names_from_plan(project, plan).get("data_folder_pbd")
+        existing_fldr = FolderNames(project, plan).folders.get(self.subfolder_key)
         existing_fldr = Path(existing_fldr)
         if existing_fldr.exists():
             headline(
@@ -178,22 +184,19 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
             data_folder=data_folder,
             output_folder=output_folder,
         )
-        self.actor_cls = PBDSamplerWorkerImpl
-        self.local_worker_cls = PBDSamplerWorkerLocal
-        self.remapping_key = None
 
     def create_data_df(self):
         Preprocessor.create_data_df(self)
 
     def set_input_output_folders(self, data_folder, output_folder):
         if data_folder is None:
-            data_folder = folder_names_from_plan(self.project, self.plan)[
-                "data_folder_lbd"
+            data_folder = FolderNames(self.project, self.plan).folders[
+                self.input_subfolder_key
             ]
         self.data_folder = Path(data_folder)
         if output_folder is None:
-            pbd_subfolder = folder_names_from_plan(self.project, self.plan)[
-                "data_folder_pbd"
+            pbd_subfolder = FolderNames(self.project, self.plan).folders[
+                self.subfolder_key
             ]
             self.output_folder = Path(pbd_subfolder)
         else:
@@ -252,7 +255,7 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
         )
         self.store_label_count()
         create_dataset_stats_artifacts(
-            output_folder=self.output_folder,
+            lms_folder=self.output_folder/"lms",
             gif=self.store_gifs,
             label_stats=self.store_label_stats,
             gif_window=infer_dataset_stats_window(self.project),
@@ -286,7 +289,7 @@ if __name__ == "__main__":
     # %%
     spacing = plan["spacing"]
     # plan["remapping_imported"][0]
-    existing_fldrs = folder_names_from_plan(P, plan)
+    existing_fldrs = FolderNames(P, plan).folders
 
     fldr_pbd = existing_fldrs["data_folder_pbd"]
 
@@ -297,7 +300,7 @@ if __name__ == "__main__":
     C2 = ConfigMaker(P)
     C2.setup(src_plan_idx)
     src_plan_full = C2.configs["plan_train"]
-    data_fldrs = folder_names_from_plan(P, src_plan_full)
+    data_fldrs = FolderNames(P, src_plan_full).folders
     data_folder = data_fldrs[f"data_folder_{src_plan_mode}"]
     data_foldre = Path(data_folder)
     patch_size = plan["patch_size"]

@@ -369,7 +369,7 @@ if __name__ == "__main__":
     ckpt = Path(
         "/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt"
     )
-    kk = torch.load(self.ckpt)
+    kk = torch.load(self.ckpt, weights_only=False)
     kk["datamodule_hyper_parameters"].keys()
     kk.keys()
     kk["datamodule_hyper_parameters"]

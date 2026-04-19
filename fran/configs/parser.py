@@ -12,7 +12,7 @@ from fran.preprocessing.helpers import (
     postprocess_artifacts_missing,
 )
 from fran.utils.folder_names import (
-    folder_names_from_plan,
+    FolderNames,
 )
 from fran.utils.string_works import is_excel_None
 from label_analysis.totalseg import TotalSegmenterLabels
@@ -29,7 +29,7 @@ KEYS_STR_TO_LIST = ("spacing", "patch_size", "expand_by", "ignore_labels")
 # HACK: this may bug out later
 REMAPPING_DICT_OR_LIST = {
     "remapping_source": "dict",
-    "remapping_lbd": "dict",
+    "remapping_lbd_kbd": "dict",
     "remapping_whole": "dict",
     "remapping_train": "dict",
     "remapping_imported": "dict",
@@ -70,7 +70,7 @@ def cases_in_folder(fldr) -> int:
 def confirm_plan_analyzed(project, plan):
 
     n_cases = len(project)
-    folders = folder_names_from_plan(project, plan)
+    folders = FolderNames(project, plan).folders
     existing_src_fldr = folders["data_folder_source"]
     cases_in_src_folder = cases_in_folder(existing_src_fldr)
     src_fldr_full = n_cases == cases_in_src_folder
@@ -463,7 +463,7 @@ class ConfigMaker:
         ]
 
     def validate_plans(self):
-        for remp_key in ["remapping_source", "remapping_lbd"]:
+        for remp_key in ["remapping_source", "remapping_lbd_kbd"]:
             for plan_name in "plan_valid", "plan_test":
                 assert (
                     self.configs[plan_name][remp_key]
@@ -501,7 +501,7 @@ class ConfigMaker:
     ):
         plan = self.configs["plan_train"]
         mode = plan["mode"]
-        ff = folder_names_from_plan(self.project, plan)
+        ff = FolderNames(self.project, plan).folders
         data_folder_key = "data_folder_" + mode
         data_folder = ff[data_folder_key]
         missing = postprocess_artifacts_missing(data_folder)
@@ -511,7 +511,7 @@ class ConfigMaker:
             print("No artifacts to create")
             return missing
         create_dataset_stats_artifacts(
-            output_folder=data_folder,
+            lms_folder=data_folder/"lms",
             gif=create_gif,
             label_stats=create_label_stats,
             gif_window=gif_window,
@@ -633,7 +633,6 @@ if __name__ == "__main__":
     pp(C.configs["plan_train"])
     pp(C.configs["plan_valid"])
     C.configs["plan_train"].keys()
-    C.configs["plan_train"]["labels_all_lbd"]
     plan = C.configs["plan_train"]
     pp(plan["spacing"])
     mode = plan["mode"]
@@ -675,12 +674,12 @@ if __name__ == "__main__":
     conf["plan_train"]["remapping_imported"]
 # %%
 
-    existing_fldr = folder_names_from_plan(P, plan)["data_folder_source"]
+    existing_fldr = FolderNames(P, plan).folders["data_folder_source"]
     img_fldr = existing_fldr / ("images")
     len(list(img_fldr.glob("*"))) == len(project)
 # %%
 
-    lbd_subfolder = folder_names_from_plan(project, plan)["data_folder_lbd"]
+    lbd_subfolder = FolderNames(project, plan).folders["data_folder_lbd"]
     lbd_img_fldr = Path(lbd_subfolder) / ("images")
     len(list(lbd_img_fldr.glob("*")))
 # %%
@@ -700,14 +699,12 @@ if __name__ == "__main__":
     plan = C.configs["plan_train"]
 # %%
     global_props = C.project.global_properties
-    global_props["labels_all"]
-    rmt = plan.get("remapping_train")
     rmt = ast_literal_eval(rmt)
 
     rms = plan.get("remapping_source")
 
     rms = ast_literal_eval(rms)
-    rml = plan.get("remapping_lbd")
+    rml = plan.get("remapping_lbd_kbd")
 
     rml = ast_literal_eval(rml)
     rmi = plan.get("remapping_imported")

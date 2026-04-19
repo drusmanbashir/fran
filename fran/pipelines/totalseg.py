@@ -15,7 +15,7 @@ if __name__ == "__main__":
     from fran.run.analyze_resample import PreprocessingManager
     from fran.trainers.trainer import Trainer
     from fran.utils.common import *
-    from fran.utils.folder_names import folder_names_from_plan
+    from fran.utils.folder_names import FolderNames
     from utilz.imageviewers import ImageMaskViewer
     P = Project("totalseg")
     # P.add_data([DS.totalseg])
@@ -218,7 +218,7 @@ if __name__ == "__main__":
     pp(plan)
     # SECTION:-------------------- Initialize-------------------------------------------------------------------------------------- <CR>
 
-    aa = folder_names_from_plan(P, plan)
+    aa = FolderNames(P, plan).folders
 
     I = PreprocessingManager(args)
 

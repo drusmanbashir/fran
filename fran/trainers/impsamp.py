@@ -408,12 +408,12 @@ class Trainer:
             self.lr = lr
         elif lr and self.ckpt:
             self.lr = lr
-            self.state_dict = torch.load(self.ckpt)
+            self.state_dict = torch.load(self.ckpt, weights_only=False)
             self.state_dict["lr_schedulers"][0]["_last_lr"][0] = lr
             torch.save(self.state_dict, self.ckpt)
 
         elif lr is None and self.ckpt:
-            self.state_dict = torch.load(self.ckpt)
+            self.state_dict = torch.load(self.ckpt, weights_only=False)
             self.lr = self.state_dict["lr_schedulers"][0]["_last_lr"][0]
         else:
             self.lr = self.config["model_params"]["lr"]
@@ -537,12 +537,14 @@ class Trainer:
         return N
 
     def load_trainer(self, **kwargs):
+        weights_only = kwargs.pop("weights_only", False)
         try:
             N = UNetTrainerCraig.load_from_checkpoint(
                 self.ckpt,
                 project=self.project,
                 dataset_params=self.config["dataset_params"],
                 lr=self.lr,
+                weights_only=weights_only,
                 **kwargs,
             )
             print("Model loaded from checkpoint: ", self.ckpt)
@@ -563,6 +565,7 @@ class Trainer:
                 project=self.project,
                 dataset_params=self.config["dataset_params"],
                 lr=self.lr,
+                weights_only=weights_only,
                 **kwargs,
             )
         return N
@@ -571,7 +574,9 @@ class Trainer:
         DMClass = resolve_datamanager(
             self.state_dict["datamodule_hyper_parameters"]["config"]["plan"]["mode"]
         )
-        D = DMClass.load_from_checkpoint(self.ckpt, project=self.project)
+        D = DMClass.load_from_checkpoint(
+            self.ckpt, project=self.project, weights_only=False
+        )
         return D
 
     def resolve_datamanager(self, mode: str):
@@ -592,10 +597,15 @@ class Trainer:
         return DMClass
 
     def fit(self):
-        self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+        self.trainer.fit(
+            model=self.N,
+            datamodule=self.D,
+            ckpt_path=self.ckpt,
+            weights_only=False,
+        )
 
     def fix_state_dict_keys(self, bad_str="model", good_str="model._orig_mod"):
-        state_dict = torch.load(self.ckpt)
+        state_dict = torch.load(self.ckpt, weights_only=False)
         ckpt_state = state_dict["state_dict"]
         ckpt_state_updated = fix_dict_keys(ckpt_state, bad_str, good_str)
         state_dict_neo = state_dict.copy()
@@ -1087,7 +1097,7 @@ if __name__ == "__main__":
     ckpt = Path(
         "/s/fran_storage/checkpoints/litsmc/Untitled/LITS-709/checkpoints/epoch=81-step=1886.ckpt"
     )
-    kk = torch.load(self.ckpt)
+    kk = torch.load(self.ckpt, weights_only=False)
     kk["datamodule_hyper_parameters"].keys()
     kk.keys()
     kk["datamodule_hyper_parameters"]

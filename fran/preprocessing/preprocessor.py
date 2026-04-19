@@ -1,22 +1,16 @@
 # %%
-from fran.data.dataregistry import DS
 import itertools as il
 import sqlite3
-
-from monai.transforms import Compose
 from pathlib import Path
-import ray
 
 import ipdb
-import pandas as pd
-
-tr = ipdb.set_trace
-
 import numpy as np
 import pandas as pd
+import ray
 import SimpleITK as sitk
 import torch
 from fastcore.foundation import GetAttr
+from fran.data.dataregistry import DS
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
@@ -24,11 +18,12 @@ from fran.preprocessing.helpers import (
     postprocess_artifacts_missing,
     sanitize_meta_for_monai,
 )
-from fran.utils.string_works import is_excel_None
 from fran.utils.dataset_properties import analyze_tensor_data_folder
+from fran.utils.string_works import is_excel_None
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
+
 
 def bboxes_to_df(bboxes):
     rows = []
@@ -259,7 +254,6 @@ def get_tensor_stats(tnsr) -> dict:
 class Preprocessor(GetAttr):
     _default = "project"
 
-
     def __init__(
         self,
         project,
@@ -315,7 +309,7 @@ class Preprocessor(GetAttr):
             self.df = self.project.df
             self.case_ids = self.project.case_ids
 
-        self.df = self.df.applymap(lambda x: x.lower() if isinstance(x, str) else x)
+        self.df = self.df.map(lambda x: x.lower() if isinstance(x, str) else x)
         print("Total number of cases: ", len(self.df))
 
     def set_remapping_per_ds(self):
@@ -472,7 +466,7 @@ class Preprocessor(GetAttr):
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
         create_dataset_stats_artifacts(
-            output_folder=self.output_folder,
+            lms_folder=self.output_folder/"lms",
             gif=self.store_gifs,
             label_stats=self.store_label_stats,
             gif_window=infer_dataset_stats_window(self.project),
@@ -635,26 +629,14 @@ class Preprocessor(GetAttr):
             if len(idx) > 0
         ]
 
-    def ray_prepare(self, actor_cls, actor_kwargs: dict, num_processes: int):
+    def ray_prepare(self, actor_kwargs: dict, num_processes: int):
         self.ray_init()
         n = max(1, min(len(self.df), int(num_processes))) if len(self.df) else 0
         self.n_actors = n
         self.mini_dfs = self.split_dataframe_for_workers(self.df, n)
-        self.actors = [actor_cls.remote(**actor_kwargs) for _ in range(n)] if n else []
-
-    def ray_run(self, actor_method: str = "process"):
-        if not getattr(self, "actors", None):
-            print("No actors created. Did you run ray_prepare()?")
-            self.results_df = pd.DataFrame([])
-            return self.results_df
-        futs = [
-            getattr(a, actor_method).remote(mdf)
-            for a, mdf in zip(self.actors, self.mini_dfs)
-        ]
-        results_lists = ray.get(futs)
-        flat = list(il.chain.from_iterable(results_lists))
-        self.results_df = pd.DataFrame(flat) if flat else pd.DataFrame([])
-        return self.results_df
+        self.actors = (
+            [self.actor_cls.remote(**actor_kwargs) for _ in range(n)] if n else []
+        )
 
     def extra_worker_kwargs(self, **setup_kwargs):
         return {}
@@ -684,7 +666,7 @@ class Preprocessor(GetAttr):
             self.debug = setup_kwargs["debug"]
         self.run_postprocess_if_empty = False
         self.create_data_df()
-        if hasattr(self, "remapping_key"):
+        if getattr(self, "remapping_key", None) is not None:
             self.set_remapping_per_ds()
         self.register_existing_files()
         print("Overwrite:", overwrite)
@@ -703,7 +685,7 @@ class Preprocessor(GetAttr):
                 f"use_ray={self.use_ray} (num_processes={self.num_processes}, debug={self.debug})"
             )
         if self.use_ray:
-            self.ray_prepare(self.actor_cls, worker_kwargs, self.num_processes)
+            self.ray_prepare(worker_kwargs, self.num_processes)
         else:
             self.mini_dfs = [self.df]
             self.local_worker = self.local_worker_cls(**worker_kwargs)
@@ -747,20 +729,13 @@ if __name__ == "__main__":
     df = df.explode("bbox_stats").reset_index(drop=True)
 
 
-
-    
-
-    
-
-
-
-
-
-
-
-
-
-
-
 # %%
+    output_folder = "/r/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144/lms"
+    create_dataset_stats_artifacts(
+            lms_folder=output_folder,
+            gif=True,
+            label_stats=True,
+            gif_window="abdomen",
+        )
+
 # %

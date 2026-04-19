@@ -80,7 +80,7 @@ def _dm_class_from_ckpt(ckpt_path: str | Path):
     Decide which DM class the checkpoint expects, using datamodule hyperparams.
     Minimises crash risk when test_every_n_epochs differs from the run that created the ckpt.
     """
-    sd = torch.load(ckpt_path, map_location="cpu")
+    sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
     # your DMs store keys_test only on Multi
     return DataManagerMulti if "keys_test" in hp else DataManagerDual
@@ -195,7 +195,7 @@ class Trainer:
 
     def load_dm(self, batch_size=None, override_dm_checkpoint=False):
         if override_dm_checkpoint:
-            sd = torch.load(self.ckpt, map_location="cpu")
+            sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
             backup_ckpt(self.ckpt)
             sd["datamodule_hyper_parameters"]["configs"] = self.configs
             headline("Overriding datamodule checkpoint.")
@@ -217,6 +217,7 @@ class Trainer:
             project_title=self.project.project_title,
             batch_size=batch_size,
             map_location="cpu",
+            weights_only=False,
         )
 
         if batch_size:
@@ -274,7 +275,7 @@ class Trainer:
             self.lr = lr
         elif lr and self.ckpt:
             self.lr = lr
-            sd = torch.load(self.ckpt, map_location="cpu")
+            sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
 
             for g in sd["optimizer_states"][0]["param_groups"]:
                 g["lr"] = float(self.lr)
@@ -448,9 +449,14 @@ class Trainer:
         return N
 
     def load_trainer(self, map_location="cpu", **kwargs):
+        weights_only = kwargs.pop("weights_only", False)
         try:
             N = UNetManager.load_from_checkpoint(
-                self.ckpt, map_location=map_location, strict=True, **kwargs
+                self.ckpt,
+                map_location=map_location,
+                strict=True,
+                weights_only=weights_only,
+                **kwargs,
             )
             # N = UNetManager.load_from_checkpoint(
             #     self.ckpt,
@@ -461,7 +467,11 @@ class Trainer:
         except RuntimeError:
             switch_ckpt_keys(self.ckpt)
             N = UNetManager.load_from_checkpoint(
-                self.ckpt, map_location=map_location, strict=True, **kwargs
+                self.ckpt,
+                map_location=map_location,
+                strict=True,
+                weights_only=weights_only,
+                **kwargs,
             )
 
         print("Model loaded from checkpoint: ", self.ckpt)
@@ -488,7 +498,12 @@ class Trainer:
 
     def fit(self):
         try:
-            self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+            self.trainer.fit(
+                model=self.N,
+                datamodule=self.D,
+                ckpt_path=self.ckpt,
+                weights_only=False,
+            )
         except KeyboardInterrupt:
             try:
                 import wandb

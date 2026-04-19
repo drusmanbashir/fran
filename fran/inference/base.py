@@ -769,6 +769,7 @@ if __name__ == "__main__":
         dataset_params=En.dataset_params,
         strict=False,
         map_location=device,
+        weights_only=False,
     )
     model.eval()
     fabric = Fabric(

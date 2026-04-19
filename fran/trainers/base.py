@@ -207,7 +207,7 @@ if __name__ == "__main__":
         "/s/fran_storage/checkpoints/nodes/nodes/LITS-1290/checkpoints/last.ckpt"
     )
     ckpt_path2 = "/s/fran_storage/checkpoints/nodes/nodes/LITS-1290/checkpoints/last.ckpt_bkp_bkp_bkp"
-    state_dict = torch.load(ckpt_path)
+    state_dict = torch.load(ckpt_path, weights_only=False)
     ckpt_state = state_dict["state_dict"]
     k1 = list(ckpt_state.keys())[0]
     k1_splits = k1.split(".")

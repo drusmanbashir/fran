@@ -18,6 +18,7 @@ from fran.managers import Project
 from fran.managers.data.training import (
     DataManagerBaseline,
     DataManagerDual,
+    DataManagerKBD,
     DataManagerLBD,
     DataManagerPatch,
     DataManagerSource,
@@ -257,6 +258,7 @@ class Trainer:
             batch_size=batch_size,
             val_sampling=self.val_sampling,
             map_location="cpu",
+            weights_only=False,
         )
         if batch_size:
             D.configs["dataset_params"]["batch_size"] = int(batch_size)
@@ -489,14 +491,23 @@ class Trainer:
         return N
 
     def load_trainer(self, map_location="cpu", **kwargs):
+        weights_only = False
         try:
             N = UNetManager.load_from_checkpoint(
-                self.ckpt, map_location=map_location, strict=True, **kwargs
+                self.ckpt,
+                map_location=map_location,
+                strict=True,
+                weights_only=weights_only,
+                **kwargs,
             )
         except RuntimeError:
             switch_ckpt_keys(self.ckpt)
             N = UNetManager.load_from_checkpoint(
-                self.ckpt, map_location=map_location, strict=True, **kwargs
+                self.ckpt,
+                map_location=map_location,
+                strict=True,
+                weights_only=weights_only,
+                **kwargs,
             )
         print("Model loaded from checkpoint: ", self.ckpt)
         return N
@@ -510,6 +521,8 @@ class Trainer:
             DMClass = DataManagerWhole
         elif mode == "lbd":
             DMClass = DataManagerLBD
+        elif mode == "kbd":
+            DMClass = DataManagerKBD
         elif mode == "baseline":
             DMClass = DataManagerBaseline
         else:
@@ -520,7 +533,12 @@ class Trainer:
 
     def fit(self):
         try:
-            self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+            self.trainer.fit(
+                model=self.N,
+                datamodule=self.D,
+                ckpt_path=self.ckpt,
+                weights_only=False,
+            )
         except KeyboardInterrupt:
             try:
                 import wandb
@@ -552,10 +570,10 @@ if __name__ == "__main__":
     from utilz.helpers import pp
 
     P = Project("lidc")
-    P = Project("kits2")
     P = Project("totalseg")
+    P = Project("kits23")
     C = ConfigMaker(P)
-    C.setup(1)
+    C.setup(2)
 
     conf = C.configs
     print(conf["model_params"])
@@ -581,7 +599,7 @@ if __name__ == "__main__":
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
-    bs = 2
+    bs = 6
     device_id = 0
     batchsize_finder = True
     batchsize_finder = False
@@ -591,8 +609,8 @@ if __name__ == "__main__":
     override_dm = True
     override_dm = False
 
-    run_name="TOTALSEG-FREHA"
     run_name = None
+    run_name = "KITS23-SIRIG"
     tags = []
     description = f""
     conf["dataset_params"]["fold"] = 0
@@ -602,11 +620,10 @@ if __name__ == "__main__":
     compiled = False
     cbs = []
     wandb_grid_epoch_freq = 20
-    val_every_n_epochs = 5
+    val_every_n_epochs = 2
     train_indices = None
 # %%
-# SECTION:-------------------- TOALSEG TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-
+# SECTION:--------------------  TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
     Tm.setup(
@@ -672,4 +689,3 @@ if __name__ == "__main__":
     bs = 1  # start lower if you are hitting OOM
 # %%
 # %%
-

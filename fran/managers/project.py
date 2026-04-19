@@ -518,6 +518,7 @@ class Project(DictToAttr):
         self.global_properties_filename = self.project_folder / "global_properties.json"
         self.cache_folder = self.rapid_access_folder / ("cache")
         self.lbd_folder = self.rapid_access_folder / ("lbd")
+        self.kbd_folder = self.rapid_access_folder / ("kbd")
         self.pbd_folder = self.rapid_access_folder / ("pbd")
         self.raw_dataset_properties_filename = (
             self.project_folder / "raw_dataset_properties.pkl"
@@ -1212,13 +1213,9 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from fran.configs.parser import ConfigMaker
     P = Project(project_title="pancreas")
-    projs = ["test2", "test21", "test212", "testx", "t2"]
+    projs = ["test"]
     P = Project(project_title=projs[0])
-    P.delete()
 # %%
-    for proj in projs:
-        P = Project(project_title=proj)
-        P.delete()
 
 # %%
     P = Project(project_title="test")

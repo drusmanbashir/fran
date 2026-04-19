@@ -19,7 +19,7 @@ if __name__ == "__main__":
     from fran.run.analyze_resample import PreprocessingManager
     from fran.trainers.trainer import Trainer
     from fran.utils.common import *
-    from fran.utils.folder_names import folder_names_from_plan
+    from fran.utils.folder_names import FolderNames
 
     P = Project("litstmp")
     # P.create(mnemonic="litsmall")
@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
     # conf["dataset_params"]["ds_type"] ='lmdb'
     # conf["dataset_params"]["cache_rate"] = None
-    matching_plan = folder_names_from_plan(P, plan)
+    matching_plan = FolderNames(P, plan).folders
     pp(matching_plan)
 # %%
     run_name = None

@@ -140,7 +140,7 @@ class IncrementalTrainer(Trainer):
 
     def load_dm(self, batch_size=None, override_dm_checkpoint=False):
         if override_dm_checkpoint:
-            sd = torch.load(self.ckpt, map_location="cpu")
+            sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
             backup_ckpt(self.ckpt)
             sd["datamodule_hyper_parameters"]["configs"] = self.configs
             headline("Overriding datamodule checkpoint.")
@@ -154,6 +154,7 @@ class IncrementalTrainer(Trainer):
             project_title=self.project.project_title,
             batch_size=batch_size,
             map_location="cpu",
+            weights_only=False,
         )
 
         if batch_size:
@@ -204,7 +205,7 @@ class IncrementalTrainer(Trainer):
             self.lr = lr
         elif lr and self.ckpt:
             self.lr = lr
-            sd = torch.load(self.ckpt, map_location="cpu")
+            sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
 
             for g in sd["optimizer_states"][0]["param_groups"]:
                 g["lr"] = float(self.lr)
@@ -349,9 +350,14 @@ class IncrementalTrainer(Trainer):
         return N
 
     def load_trainer(self, map_location="cpu", **kwargs):
+        weights_only = kwargs.pop("weights_only", False)
         try:
             N = UNetManager.load_from_checkpoint(
-                self.ckpt, map_location=map_location, strict=True, **kwargs
+                self.ckpt,
+                map_location=map_location,
+                strict=True,
+                weights_only=weights_only,
+                **kwargs,
             )
             # N = UNetManager.load_from_checkpoint(
             #     self.ckpt,
@@ -362,7 +368,11 @@ class IncrementalTrainer(Trainer):
         except RuntimeError:
             switch_ckpt_keys(self.ckpt)
             N = UNetManager.load_from_checkpoint(
-                self.ckpt, map_location=map_location, strict=True, **kwargs
+                self.ckpt,
+                map_location=map_location,
+                strict=True,
+                weights_only=weights_only,
+                **kwargs,
             )
 
         print("Model loaded from checkpoint: ", self.ckpt)
@@ -397,7 +407,12 @@ class IncrementalTrainer(Trainer):
         while unused_samples > 0:
             if not hasattr(self, "D"):
                 self.D = self.init_dm()
-            self.trainer.fit(model=self.N, datamodule=self.D, ckpt_path=self.ckpt)
+            self.trainer.fit(
+                model=self.N,
+                datamodule=self.D,
+                ckpt_path=self.ckpt,
+                weights_only=False,
+            )
             # Only use finder/safety callbacks on the very first fit invocation.
             self.remove_cbs([BatchSizeFinder, BatchSizeSafetyMargin])
             # self.trainer.fit(model=self.N, datamodule=self.D)
@@ -762,7 +777,12 @@ if __name__ == "__main__":
     len(tmg.ds[0])
     # %%
 
-    Tm.trainer.fit(model=Tm.N, datamodule=Tm.D, ckpt_path=Tm.ckpt)
+    Tm.trainer.fit(
+        model=Tm.N,
+        datamodule=Tm.D,
+        ckpt_path=Tm.ckpt,
+        weights_only=False,
+    )
     D = Tm.D
     dl = D.train_dataloader()
     batch = next(iter(dl))
@@ -784,7 +804,7 @@ if __name__ == "__main__":
     used_indices = Tm.D.train_df[Tm.D.train_df["used_in_training"] == True].index
     # %%
 
-    sd = torch.load(Tm.ckpt, map_location="cpu")
+    sd = torch.load(Tm.ckpt, map_location="cpu", weights_only=False)
 
     for g in sd["optimizer_states"][0]["param_groups"]:
         g["lr"] = float(Tm.lr)

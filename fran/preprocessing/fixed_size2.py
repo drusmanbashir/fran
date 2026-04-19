@@ -11,7 +11,7 @@ from fran.preprocessing.preprocessor import Preprocessor, get_tensor_stats, stor
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import ChangeDtyped, DummyTransform, GetLabelsd
-from fran.utils.folder_names import folder_names_from_plan
+from fran.utils.folder_names import FolderNames
 from monai.transforms.spatial.dictionary import Resized
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 
@@ -19,6 +19,8 @@ from utilz.fileio import maybe_makedirs
 
 
 class _FixedSizeWorkerBase(RayWorkerBase):
+    remapping_key = "remapping_whole"
+
     def __init__(
         self,
         project,
@@ -36,7 +38,6 @@ class _FixedSizeWorkerBase(RayWorkerBase):
             device=device,
             debug=debug,
             tfms_keys="LoadT,Chan,Remap,Resize,LmDType,Labels",
-            remapping_key="remapping_whole",
         )
 
     def _create_data_dict(self, row: pd.Series):
@@ -54,7 +55,9 @@ class _FixedSizeWorkerBase(RayWorkerBase):
         self.Chan = EnsureChannelFirstd(
             keys=[self.image_key, self.lm_key], channel_dim="no_channel"
         )
-        self.Remap = self.create_monai_remapping_per_ds("remapping_whole", self.lm_key)
+        self.Remap = self.create_monai_remapping_per_ds(
+            self.remapping_key, self.lm_key
+        )
         self.Resize = Resized(
             keys=[self.image_key, self.lm_key],
             spatial_size=self.plan["patch_size"],
@@ -100,9 +103,14 @@ class FixedSizeWorkerLocal(_FixedSizeWorkerBase):
 
 class FixedSizeDataGenerator(Preprocessor):
     _default = "project"
+    actor_cls = FixedSizeWorkerImpl
+    local_worker_cls = FixedSizeWorkerLocal
+    remapping_key = "remapping_whole"
+    input_subfolder_key = "data_folder_source"
+    subfolder_key = "data_folder_whole"
 
     def __init__(self, project, plan, data_folder=None, output_folder=None):
-        existing_fldr = folder_names_from_plan(project, plan)["data_folder_whole"]
+        existing_fldr = FolderNames(project, plan).folders[self.subfolder_key]
         existing_fldr = Path(existing_fldr)
         if existing_fldr.exists():
             print(
@@ -111,23 +119,20 @@ class FixedSizeDataGenerator(Preprocessor):
                 )
             )
             output_folder = existing_fldr
-        self.remapping_key = "remapping_whole"
         super().__init__(
             project=project,
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
         )
-        self.actor_cls = FixedSizeWorkerImpl
-        self.local_worker_cls = FixedSizeWorkerLocal
 
     def set_input_output_folders(self, data_folder, output_folder):
-        folders = folder_names_from_plan(self.project, self.plan)
+        folders = FolderNames(self.project, self.plan).folders
         if data_folder is None:
-            data_folder = folders["data_folder_source"]
+            data_folder = folders[self.input_subfolder_key]
         self.data_folder = Path(data_folder)
         if output_folder is None:
-            output_folder = folders["data_folder_whole"]
+            output_folder = folders[self.subfolder_key]
         self.output_folder = Path(output_folder)
 
     def create_output_folders(self):
@@ -163,7 +168,7 @@ class FixedSizeDataGenerator(Preprocessor):
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
         create_dataset_stats_artifacts(
-            output_folder=self.output_folder,
+            lms_folder=self.output_folder/"lms",
             gif=self.store_gifs,
             label_stats=self.store_label_stats,
             gif_window=infer_dataset_stats_window(self.project),

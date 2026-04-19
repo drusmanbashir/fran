@@ -5,7 +5,7 @@ import ipdb
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.transforms.imageio import LoadTorchd, TorchWriter
 from fran.transforms.misc_transforms import LabelRemapd
-from fran.utils.folder_names import folder_names_from_plan
+from fran.utils.folder_names import FolderNames
 from label_analysis.geometry_pt import BBoxInfoFromPT
 from monai.transforms import Compose, MaskIntensity
 from monai.transforms.io.dictionary import SaveImaged
@@ -141,13 +141,16 @@ class FixedSizeMaker(object):
 
 class FixedSizeDataGenerator(PatchDataGenerator):
     _default = "project"
+    actor_cls = FixedSizeMaker
+    remapping_key = "remapping_whole"
+    input_subfolder_key = "data_folder_source"
+    subfolder_key = "data_folder_whole"
 
     def __init__(self, project, plan, data_folder=None, output_folder=None) -> None:
         # HACK: below is same as preprocessor init. Come back to this while u update PatchDataGenerator
         self.project = project
         self.plan = plan
         self.data_folder = data_folder
-        self.remapping_key = "remapping_whole"
         self.data_folder = data_folder
         self.set_input_output_folders(data_folder, output_folder)
 
@@ -195,7 +198,7 @@ class FixedSizeDataGenerator(PatchDataGenerator):
 
     def create_tensors(self, num_processes):
         dicis = list(chunks(self.dicis, num_processes))
-        actors = [FixedSizeMaker.remote() for _ in range(num_processes)]
+        actors = [self.actor_cls.remote() for _ in range(num_processes)]
         if self.plan[self.remapping_key] is not None:
             remapping = True
         else:
@@ -214,13 +217,12 @@ class FixedSizeDataGenerator(PatchDataGenerator):
         )
 
     def set_input_output_folders(self, data_folder=None, output_folder=None):
-        folders = folder_names_from_plan(self.project, self.plan)
-
+        folders = FolderNames(self.project, self.plan).folders
         if data_folder is None:
-            data_folder = folders["data_folder_source"]
+            data_folder = folders[self.input_subfolder_key]
         self.data_folder = Path(data_folder)
         if output_folder is None:
-            whole_subfolder = folders["data_folder_whole"]
+            whole_subfolder = folders[self.subfolder_key]
             self.output_folder = Path(whole_subfolder)
         else:
             self.output_folder = Path(output_folder)

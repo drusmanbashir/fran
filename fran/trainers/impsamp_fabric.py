@@ -41,12 +41,14 @@ def init_unet_trainer(project, config, lr):
 
 
 def load_unet_trainer(ckpt, project, config, lr, **kwargs):
+    weights_only = kwargs.pop("weights_only", False)
     try:
         N = UNetManagerCraig.load_from_checkpoint(
             ckpt,
             project=project,
             dataset_params=config["dataset_params"],
             lr=lr,
+            weights_only=weights_only,
             **kwargs,
         )
         print("Model loaded from checkpoint: ", ckpt)
@@ -69,6 +71,7 @@ def load_unet_trainer(ckpt, project, config, lr, **kwargs):
             project=project,
             dataset_params=config["dataset_params"],
             lr=lr,
+            weights_only=weights_only,
             **kwargs,
         )
     return N

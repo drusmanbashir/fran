@@ -50,14 +50,23 @@ class TrainingManagerTransfer(Trainer):
         del self.model_source
 
     def load_source_trainer(self, map_location: str = "cpu", **kwargs):
+        weights_only = kwargs.pop("weights_only", False)
         try:
             source = UNetManager.load_from_checkpoint(
-                self.source_ckpt, map_location=map_location, strict=True, **kwargs
+                self.source_ckpt,
+                map_location=map_location,
+                strict=True,
+                weights_only=weights_only,
+                **kwargs,
             )
         except RuntimeError:
             switch_ckpt_keys(self.source_ckpt)
             source = UNetManager.load_from_checkpoint(
-                self.source_ckpt, map_location=map_location, strict=True, **kwargs
+                self.source_ckpt,
+                map_location=map_location,
+                strict=True,
+                weights_only=weights_only,
+                **kwargs,
             )
         headline(f"Source model loaded from checkpoint: {self.source_ckpt}")
         return source

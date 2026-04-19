@@ -395,10 +395,6 @@ class GlobalProperties():
     #         except:
     #             print("A valid clip_range is not entered. Using intensity-default")
     #             self.clip_range = intensity_percentile_range
-    @property
-    def unique_labels(self):
-        pass
-
     def serializable_obj(self, ints_list):
         """
         Converts a list of labels into a fully serializable object.

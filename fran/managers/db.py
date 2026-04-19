@@ -26,7 +26,7 @@ COLUMNS_CRITICAL = [
     "mode",
     "imported_folder",
     "remapping_source_code",
-    "remapping_lbd_code",
+    "remapping_lbd_kbd_code",
     "remapping_imported_code",
     "merge_imported_labels",
 ]
@@ -40,7 +40,7 @@ COLUMNS_TEXT = [
     "mode",
     "imported_folder",
     "remapping_source_code",
-    "remapping_lbd_code",
+    "remapping_lbd_kbd_code",
     "remapping_imported_code",
     "data_folder_whole",
     "data_folder_pbd",
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     # %%
     # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR>
     from fran.utils.common import *
-    from fran.utils.folder_names import folder_names_from_plan
+    from fran.utils.folder_names import FolderNames
     from utilz.helpers import folder_name_from_list
 
     P = Project("litstmp")
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     conn.commit()
     # %%
     plan = C.conf["plan_train"]
-    folder_names_from_plan(P, plan)
+    FolderNames(P, plan).folders
 
     # %%
     # SECTION:-------------------- DELETE ROW BASED ON COL VALUE MATCH--------------------------------------------------------------------------------------
@@ -284,7 +284,7 @@ if __name__ == "__main__":
         "mode",
         "imported_folder",
         "remapping_source",
-        "remapping_lbd",
+        "remapping_lbd_kbd",
         "remapping_imported",
         "data_folder_whole",
         "data_folder_pbd",
@@ -503,6 +503,6 @@ if __name__ == "__main__":
         data_folder_field = "data_folder_pbd"
         data_folder_value = data_folder_pbd
 
-    folder_names = folder_names_from_plan(P, plan)
+    folder_names = FolderNames(P, plan).folders
     folder_names[data_folder_field] = data_folder_value
 # %%

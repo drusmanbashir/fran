@@ -6,18 +6,19 @@ from typing import ClassVar
 @dataclass(frozen=True)
 class Mnemonic:
     name: str
-    aliases: tuple[str, ...] = ()
+    aliases: tuple[str, ...] 
+    wandb: str
 
 
 class Mnemonics:
-    lungs: ClassVar[Mnemonic] = Mnemonic("lungs", ("lung", "lidc"))
-    liver: ClassVar[Mnemonic] = Mnemonic("liver", ("liver", "lits", "litsmc"))
-    kidneys: ClassVar[Mnemonic] = Mnemonic("kidneys", ("kidney", "kits2", "kits23"))
-    nodes: ClassVar[Mnemonic] = Mnemonic("nodes", ("nodes",))
-    pancreas: ClassVar[Mnemonic] = Mnemonic("pancreas", ("pancreas",))
-    colon: ClassVar[Mnemonic] = Mnemonic("colon", ("colon",))
-    totalseg: ClassVar[Mnemonic] = Mnemonic("totalseg", ("totalseg",))
-    test: ClassVar[Mnemonic] = Mnemonic("test", ("test",))
+    lungs: ClassVar[Mnemonic] = Mnemonic("lungs", ("lung", "lidc"), "LIDC")
+    liver: ClassVar[Mnemonic] = Mnemonic("liver", ("liver", "lits", "litsmc"), "LITS")
+    kidneys: ClassVar[Mnemonic] = Mnemonic("kidneys", ("kidney", "kits2", "kits23"), "KITS")
+    nodes: ClassVar[Mnemonic] = Mnemonic("nodes", ("nodes",), "NODES")
+    pancreas: ClassVar[Mnemonic] = Mnemonic("pancreas", ("pancreas",), "PANCREAS")
+    colon: ClassVar[Mnemonic] = Mnemonic("colon", ("colon",), "COLON")
+    totalseg: ClassVar[Mnemonic] = Mnemonic("totalseg", ("totalseg",), "TOTALSEG")
+    test: ClassVar[Mnemonic] = Mnemonic("test", ("test",), "TEST")
 
     _all: ClassVar[tuple[Mnemonic, ...]] = (
         lungs,
@@ -41,5 +42,7 @@ class Mnemonics:
         except KeyError:
             raise ValueError(f"Unknown mnemonic: {s}")
 
+    def __getitem__(self, s: str) -> Mnemonic:
+        return self._index[s.strip().lower()]
 
 # %%

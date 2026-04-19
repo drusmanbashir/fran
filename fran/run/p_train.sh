@@ -3,6 +3,5 @@
 # python train.py --project litsmc --devices [0] --bs 10 --fold 1 --bsf true --epochs 500
 # python train.py --project litsmc --run-name LITS-811 --epochs 500 --lr 11e-4 --bs 8
 # python train.py --project kits2 --plan-num 1 --fold 1 --epochs 600 --bs 4 --bsf true --devices [1] --wandb true --val-every-n-epochs 5 --run-name KITS2-bah
-# python train.py --project kits2 --plan-num 1 --fold 1 --epochs 600 --bs 4 --bsf true --devices [1] --wandb true --val-every-n-epochs 5 --run-name KITS2-bah
 # python train.py --project totalseg --plan-num 2 --fold 1 --epochs 400 --bsf true --devices [1] --wandb true --val-every-n-epochs 2
-python train.py --project totalseg --plan-num 2 --fold 1 --epochs 400 ---devices [1] --wandb true --val-every-n-epochs 2  --run-name TOTALSEG-FREHA
+python /home/ub/code/fran/fran/run/train.py --project kits23 --plan-num 2 --fold 1 --epochs 500 --devices [0] --wandb true --val-every-n-epochs 2 --run-name KITS23-SIRIG

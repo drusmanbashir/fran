@@ -290,10 +290,10 @@ def show_gif_in_chrome_if_available(gif_path: Path) -> None:
 
 
 def create_dataset_stats_artifacts(
-    output_folder,  gif: bool = True, label_stats=False, preview=True, gif_window="abdomen" 
+    lms_folder,  gif: bool = True, label_stats=False, preview=True, gif_window="abdomen" 
 ):
-    dataset_root = Path(output_folder)
-    lms_folder = dataset_root / "lms"
+    lms_folder = Path(lms_folder)
+    dataset_root = lms_folder.parent
     if not lms_folder.exists():
         print(f"Skipping dataset stats: missing labels folder {lms_folder}")
         return

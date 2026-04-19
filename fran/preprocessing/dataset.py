@@ -312,29 +312,6 @@ class ImporterDataset(ResamplerDataset):
         }
         return dici
 
-    def case_id_file_match(self, case_id, fileslist):
-        """Match a case ID to its corresponding file in a list of files.
-
-        Args:
-            case_id (str): The case identifier to match.
-            fileslist (list): List of Path objects to search through.
-
-        Returns:
-            Path: The matched file path.
-
-        Raises:
-            Exception: If exactly one matching file is not found.
-        """
-        # cids = [info_from_filename(fn.name, full_caseid=True)["case_id"] for fn in fileslist]
-        fns = [
-            fn
-            for fn in fileslist
-            if info_from_filename(fn.name, full_caseid=True)["case_id"] == case_id
-        ]
-        if len(fns) != 1:
-            tr()
-        return fns[0]
-
     def create_transforms(self):
         image_key = "image"
         lm_key = "lm"
@@ -571,4 +548,3 @@ if __name__ == "__main__":
 
     ImageMaskViewer([im, lm])
 # %%
-

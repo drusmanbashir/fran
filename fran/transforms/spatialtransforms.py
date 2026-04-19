@@ -1,6 +1,5 @@
 # %%
 import math
-
 import ipdb
 import monai.transforms.spatial.functional as fm
 import skimage.transform as tf
@@ -190,6 +189,151 @@ class CropForegroundMinShaped(MapTransform):
             )
 
         return d
+
+class CropByYolo(MapTransform):
+    def __init__(
+        self,
+        keys=("image", "lm"),
+        lm_key="lm",
+        bbox_key="bbox",
+        margin=20,
+        sanitize=True,
+        allow_missing_keys=False,
+    ):
+        super().__init__(keys=keys, allow_missing_keys=allow_missing_keys)
+        self.lm_key = lm_key
+        self.bbox_key = bbox_key
+        self.margin = float(margin)
+        self.sanitize = bool(sanitize)
+        self.logger = logging.getLogger(__name__)
+
+    def __call__(self, data):
+        dici = dict(data)
+        self._assert_3d(dici)
+        first_crop = self._crop_keys(dici, dici[self.bbox_key])
+        if not self.sanitize:
+            return first_crop
+
+        fg_before = self._fg_count(dici)
+        fg_after = self._fg_count(first_crop)
+        if fg_before == fg_after:
+            return first_crop
+
+        self._log_sanitize_mismatch(
+            stage="first",
+            data=dici,
+            fg_before=fg_before,
+            fg_after=fg_after,
+        )
+
+        expanded_crop = self._try_expanded_crop(
+            data=dici,
+            bbox=dici[self.bbox_key],
+            first_crop=first_crop,
+        )
+
+        fg_after_expanded = self._fg_count(expanded_crop)
+        if fg_after_expanded != fg_before:
+            self._log_sanitize_mismatch(
+                stage="expanded",
+                data=dici,
+                fg_before=fg_before,
+                fg_after=fg_after_expanded,
+            )
+        return expanded_crop
+
+    def _crop_keys(self, data: dict, bbox: dict) -> dict:
+        from localiser.utils.bbox_helpers import crop_to_yolo_bbox
+        out = dict(data)
+        for key in self.key_iterator(out):
+            out[key] = crop_to_yolo_bbox (out[key], bbox)
+        return out
+
+    def _fg_count(self, data: dict) -> int:
+        return int(torch.count_nonzero(data[self.lm_key]).item())
+
+    def _try_expanded_crop(
+        self,
+        *,
+        data: dict,
+        bbox: dict,
+        first_crop: dict,
+    ) -> dict:
+        expanded_bbox = self._expand_bbox_mm(
+            bbox=bbox,
+            lm=data[self.lm_key],
+            margin_mm=self.margin,
+        )
+        expanded_crop = self._crop_keys(data, expanded_bbox)
+        expanded_crop[self.bbox_key] = expanded_bbox
+        return expanded_crop
+
+    def _assert_3d(self, data: dict):
+        for key in self.key_iterator(data):
+            assert data[key].ndim == 3, (
+                f"CropByYolo expects 3D tensors, got {key}.ndim={data[key].ndim}"
+            )
+
+    def _expand_bbox_mm(self, bbox: dict, lm, margin_mm: float) -> dict:
+        bbox_out = copy.deepcopy(bbox)
+        spacing = self._spacing_from_affine(lm)
+        spatial_shape = self._spatial_shape(lm)
+        axis_map = {"ap": 0, "width": 1, "height": 2}
+
+        for key, axis in axis_map.items():
+            start, end = bbox_out[key]
+            start = float(start)
+            end = float(end)
+            vox_margin = int(np.ceil(margin_mm / spacing[axis]))
+            delta = vox_margin / max(int(spatial_shape[axis]), 1)
+            bbox_out[key] = (max(0.0, start - delta), min(1.0, end + delta))
+        return bbox_out
+
+    def _spacing_from_affine(self, lm) -> np.ndarray:
+        affine = lm.meta["affine"]
+        affine = torch.as_tensor(affine).detach().cpu().numpy()
+        spacing = np.sqrt((affine[:3, :3] ** 2).sum(axis=0))
+        spacing = np.where(spacing > 0, spacing, 1.0)
+        return spacing
+
+    @staticmethod
+    def _spatial_shape(tensor):
+        return tuple(int(v) for v in tensor.shape)
+
+    def _log_context(self, data: dict):
+        case_id = data.get("case_id")
+        bbox_fn = data.get("bbox_fn")
+        return case_id, bbox_fn
+
+    def _log_sanitize_mismatch(
+        self,
+        *,
+        stage: str,
+        data: dict,
+        fg_before: int,
+        fg_after: int,
+    ) -> None:
+        case_id,  bbox_fn = self._log_context(data)
+        if stage == "first":
+            self.logger.warning(
+                "CropByYolo fg mismatch (first crop): case_id=%s bbox=%s fg_before=%d fg_after=%d; retrying with %.1fmm margin",
+                case_id,
+                bbox_fn,
+                fg_before,
+                fg_after,
+                self.margin,
+            )
+            return
+
+        if stage == "expanded":
+            self.logger.error(
+                "CropByYolo fg mismatch persists after expansion: case_id=%sbbox=%s fg_before=%d fg_after_expanded=%d",
+                case_id,
+                bbox_fn,
+                fg_before,
+                fg_after,
+            )
+
 
 
 class UnsqueezeDimd(MapTransform):

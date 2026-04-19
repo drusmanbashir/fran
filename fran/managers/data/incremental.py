@@ -19,7 +19,7 @@ from fran.data.collate import (
     source_collated,
     whole_collated,
 )
-from fran.utils.folder_names import folder_names_from_plan
+from fran.utils.folder_names import FolderNames
 from tqdm.auto import tqdm as pbar
 from utilz.fileio import load_yaml
 from utilz.helpers import find_matching_fn
@@ -120,7 +120,7 @@ class DataManagerDualI(DataManagerDual):
     def derive_data_folder(self, plan):
         mode = plan["mode"]
         key = "data_folder_{}".format(mode)
-        folders = folder_names_from_plan(self.project, plan)
+        folders = FolderNames(self.project, plan).folders
         data_folder = folders[key]
         data_folder = Path(data_folder)
         if not data_folder.exists() or len(list(data_folder.rglob("*.pt"))) == 0:

@@ -193,19 +193,72 @@ class Datasource(GetAttr):
         Loads h5_fname to get list of already completed cases.
         Any new cases will be processed and added to project.h5_fname
         """
+        case_id_map = self._current_case_id_map()
+        current_case_ids = set(case_id_map.keys())
+        prev_processed_cases = self._read_h5_case_ids()
 
+        if self.h5_fname.exists():
+            print(
+                "Found {} previously processed cases".format(
+                    len(prev_processed_cases)
+                )
+            )
+        else:
+            print(
+                "First time preprocessing dataset. Will create new file: {}".format(
+                    self.h5_fname
+                )
+            )
+
+        kept_case_ids = sorted(current_case_ids.intersection(prev_processed_cases))
+        removed_case_ids = sorted(prev_processed_cases.difference(current_case_ids))
+        if len(removed_case_ids) > 0:
+            print(
+                "Found {} h5 case_ids not present in images. "
+                "Run update_datasource() to remove them.".format(len(removed_case_ids))
+            )
+        self.raw_dataset_properties = self._load_raw_dataset_properties(kept_case_ids)
+
+        new_case_ids = current_case_ids.difference(prev_processed_cases)
+        if len(new_case_ids) == 0:
+            print("No new cases found.")
+            self.new_cases = []
+        else:
+            print("Found {0} new cases".format(len(new_case_ids)))
+            self.new_cases = [
+                file_tuple
+                for case_id, file_tuple in case_id_map.items()
+                if case_id in new_case_ids
+            ]
+
+    def _current_case_id_map(self):
+        case_id_map = {}
+        for file_tuple in self.verified_pairs:
+            case_id = info_from_filename(file_tuple[0].name, full_caseid=True)[
+                "case_id"
+            ]
+            assert case_id not in case_id_map, (
+                "Duplicate case_ids found. Run fix_repeat_caseids() on parent folder"
+            )
+            case_id_map[case_id] = file_tuple
+        return case_id_map
+
+    def _read_h5_case_ids(self):
         h5py = import_h5py()
         try:
             with h5py.File(self.h5_fname, "r") as h5f:
-                prev_processed_cases = list(h5f.keys())
-                print(
-                    "Found {} previously processed cases".format(
-                        len(prev_processed_cases)
-                    )
-                )
-                # Populate raw_dataset_properties from existing h5 file
-                self.raw_dataset_properties = []
-                for case_id in prev_processed_cases:
+                return set(h5f.keys())
+        except FileNotFoundError:
+            return set()
+
+    def _load_raw_dataset_properties(self, case_ids):
+        h5py = import_h5py()
+        raw_dataset_properties = []
+        try:
+            with h5py.File(self.h5_fname, "r") as h5f:
+                for case_id in case_ids:
+                    if case_id not in h5f:
+                        continue
                     case_data = {
                         "case_id": case_id,
                         "properties": {
@@ -218,39 +271,75 @@ class Datasource(GetAttr):
                             "std_fg": h5f[case_id].attrs["std_fg"],
                         },
                     }
-                    self.raw_dataset_properties.append(case_data)
+                    raw_dataset_properties.append(case_data)
         except FileNotFoundError:
-            print(
-                "First time preprocessing dataset. Will create new file: {}".format(
-                    self.h5_fname
-                )
+            return []
+        return raw_dataset_properties
+
+    def _delete_h5_case_ids(self, case_ids):
+        if len(case_ids) == 0:
+            return
+        h5py = import_h5py()
+        with h5py.File(self.h5_fname, "a") as h5f:
+            for case_id in case_ids:
+                if case_id in h5f:
+                    del h5f[case_id]
+
+    def update_datasource(
+        self,
+        return_voxels=True,
+        num_processes=8,
+        multiprocess=True,
+        debug=False,
+        dry_run=False,
+    ):
+        """
+        Reconcile fg_voxels.h5 with current image filenames.
+
+        Stale h5 case_ids are deleted only when this method is called with
+        dry_run=False. Newly added cases are then processed into the h5 file.
+        """
+        case_id_map = self._current_case_id_map()
+        current_case_ids = set(case_id_map.keys())
+        h5_case_ids = self._read_h5_case_ids()
+
+        added_case_ids = sorted(current_case_ids.difference(h5_case_ids))
+        removed_case_ids = sorted(h5_case_ids.difference(current_case_ids))
+        kept_case_ids = sorted(current_case_ids.intersection(h5_case_ids))
+
+        summary = {
+            "h5_fname": str(self.h5_fname),
+            "added_case_ids": added_case_ids,
+            "removed_case_ids": removed_case_ids,
+            "kept_case_ids": kept_case_ids,
+            "processed_case_ids": [],
+        }
+
+        if dry_run:
+            return summary
+
+        self._delete_h5_case_ids(removed_case_ids)
+        self.raw_dataset_properties = self._load_raw_dataset_properties(kept_case_ids)
+
+        added_case_ids_set = set(added_case_ids)
+        self.new_cases = [
+            file_tuple
+            for case_id, file_tuple in case_id_map.items()
+            if case_id in added_case_ids_set
+        ]
+
+        if len(self.new_cases) > 0:
+            self.process(
+                return_voxels=return_voxels,
+                num_processes=num_processes,
+                multiprocess=multiprocess,
+                debug=debug,
             )
-            self.raw_dataset_properties = []
-            prev_processed_cases = set()
-        all_case_ids = []
-        for fns in self.verified_pairs:
-            inf = info_from_filename(fns[0].name, full_caseid=True)
-            case_id = inf["case_id"]
-            all_case_ids.append(case_id)
-        assert (l1 := len(all_case_ids)) == (l2 := len(set(all_case_ids))), (
-            "Duplicate case_ids found. Run fix_repeat_caseids() on parent folder"
-        )
-        new_case_ids = set(all_case_ids).difference(prev_processed_cases)
-        # print("Found {0} new cases\nCases already processed in a previous session: {1}".format(len(new_case_ids), len(prev_processed_cases)))
-        assert (l := len(new_case_ids)) == (
-            l2 := (len(all_case_ids) - len(prev_processed_cases))
-        ), "Difference in number of new cases"
-        if len(new_case_ids) == 0:
-            print("No new cases found.")
-            self.new_cases = []
-        else:
-            print("Found {0} new cases".format(len(new_case_ids)))
-            self.new_cases = [
-                file_tuple
-                for file_tuple in self.verified_pairs
-                if info_from_filename(file_tuple[0].name, full_caseid=True)["case_id"]
-                in new_case_ids
-            ]  # file_tuple[0]
+            summary["processed_case_ids"] = [
+                output["case"]["case_id"] for output in self.outputs
+            ]
+
+        return summary
 
     def process(
         self,
@@ -459,6 +548,8 @@ if __name__ == "__main__":
     curvas_fldr = DS["curvaspdac"]
     bones_fldr = "/s/agent_rw/datasets/fully_annotated/ULS23_Radboudumc_Bone"
     dlr = DS["kits23_short"]
+    dl2 = DS["kits23"]
+    ds = Datasource(dl2.folder, "kits23")
 # %%
     ds = Datasource(bones_fldr, "bones")
     ds = Datasource(curvas_fldr.folder)

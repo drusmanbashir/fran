@@ -21,7 +21,7 @@ from fran.preprocessing.helpers import bbox_bg_only, compute_fgbg_ratio
 from fran.transforms.imageio import TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
-from fran.utils.folder_names import folder_names_from_plan
+from fran.utils.folder_names import FolderNames
 from fran.utils.misc import convert_remapping
 from lightning import LightningDataModule
 from lightning.pytorch import LightningDataModule
@@ -316,6 +316,7 @@ class DataManagerDual(LightningDataModule):
             "pbd": DataManagerPatch,
             "sourcepbd": DataManagerPatch,
             "lbd": DataManagerLBD,
+            "kbd": DataManagerKBD,
             "baseline": DataManagerBaseline,
         }
 
@@ -703,6 +704,7 @@ class DataManager(LightningDataModule):
             "sourcepbd",
             "pbd",
             "lbd",
+            "kbd",
             "dot",
         ], f"Set a value for mode in 'whole', 'patch' or 'source', got {dataset_mode}"
 
@@ -762,7 +764,7 @@ class DataManager(LightningDataModule):
     def derive_data_folder(self, plan):
         mode = plan["mode"]
         key = "data_folder_{}".format(mode)
-        folders = folder_names_from_plan(self.project, plan)
+        folders = FolderNames(self.project, plan).folders
         data_folder = folders[key]
         data_folder = Path(data_folder)
         if not data_folder.exists() or len(list(data_folder.rglob("*.pt"))) == 0:
@@ -1026,6 +1028,23 @@ class DataManagerLBD(DataManagerSource):
             "LBD Data Manager with plan {} and dataset parameters: {} "
             "(using LBD folder: {})".format(
                 self.plan, self.dataset_params, self.project.lbd_folder
+            )
+        )
+
+
+class DataManagerKBD(DataManagerLBD):
+    def __repr__(self):
+        return (
+            f"DataManagerKBD(plan={self.plan}, "
+            f"dataset_params={self.dataset_params}, "
+            f"kbd_folder={self.project.kbd_folder})"
+        )
+
+    def __str__(self):
+        return (
+            "KBD Data Manager with plan {} and dataset parameters: {} "
+            "(using KBD folder: {})".format(
+                self.plan, self.dataset_params, self.project.kbd_folder
             )
         )
 

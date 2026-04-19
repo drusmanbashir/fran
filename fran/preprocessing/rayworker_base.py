@@ -36,6 +36,8 @@ from typing import Any, Dict
 
 
 class RayWorkerBase(Preprocessor):
+    remapping_key = None
+
     def __init__(
         self,
         project,
@@ -54,7 +56,7 @@ class RayWorkerBase(Preprocessor):
             data_folder=data_folder,
             output_folder=output_folder,
         )
-        self.remapping_key = remapping_key
+        self.remapping_key = remapping_key or self.remapping_key
         self.crop_to_label = crop_to_label  # redundant
         self.debug = debug
         self.image_key = "image"

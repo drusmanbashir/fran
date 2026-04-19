@@ -125,99 +125,160 @@ def whole_image_suffix(row):
     return patch_str
 
 
-def folder_names_from_plan(project, plan: dict):
-    list_to_str = lambda x: "".join(int_to_str(v, 3) for v in x)
+class FolderNames:
+    def __init__(self, project, plan):
+        self.project = project
+        self.plan = plan
+        self.reg = load_registry()
+        self.spc = plan.get("spacing")
+        self.expand_by = expand_by_conv(self.reg, "expand_by", plan.get("expand_by"))
 
-    reg = load_registry()
-    spc = plan.get("spacing")
-    src_prefix = spacing_to_str("spc", spc)
+    @staticmethod
+    def list_to_str(x):
+        return "".join(int_to_str(v, 3) for v in x)
 
-    expand_by = expand_by_conv(reg, "expand_by", plan.get("expand_by"))
+    @property
+    def source_plan_code(self):
+        if not hasattr(self, "_source_plan_code"):
+            source_plan = self.plan.get("source_plan", None)
+            if source_plan is not None:
+                assert self.plan["mode"] in ["lbd", "pbd","whole"], (
+                    "Folder names are not implemented with source_plan unless the mode is lbd or pbd"
+                )
+            self._source_plan_code = short_code(source_plan)
+        return self._source_plan_code
 
-    remapping_src = short_code(plan.get("remapping_source"))
-    remapping_src_code = short_code(remapping_src)
-    if remapping_src_code:
-        remapping_src_code = "rsc" + remapping_src_code
+    @property
+    def remapping_lbd_kbd_code(self):
+        remapping_lbd = self.plan.get("remapping_lbd_kbd")
+        remapping_lbd_kbd_code = short_code(remapping_lbd)
+        if remapping_lbd_kbd_code:
+            remapping_lbd_kbd_code = "rlb" + remapping_lbd_kbd_code
+        return remapping_lbd_kbd_code
 
-    source_plan = plan.get("source_plan", None)
-    if source_plan is not None:
-        assert plan["mode"] in ["lbd", "pbd","whole"], (
-            "Folder names are not implemented with source_plan unless the mode is lbd or pbd"
-        )
-    source_plan_code = short_code(source_plan)
 
-    remapping_lbd = plan.get("remapping_lbd")
-    remapping_lbd_code = short_code(remapping_lbd)
-    if remapping_lbd_code:
-        remapping_lbd_code = "rlb" + remapping_lbd_code
+    @property
+    def remapping_imported_code(self):
+        remapping_imported = self.plan.get("remapping_imported")
+        remapping_imported_code = short_code(remapping_imported)
+        if remapping_imported_code:
+            remapping_imported_code = "ric" + remapping_imported_code
 
-    remapping_imported = plan.get("remapping_imported")
-    remapping_imported_code = short_code(remapping_imported)
-    if remapping_imported_code:
-        remapping_imported_code = "ric" + remapping_imported_code
+        return remapping_imported_code
 
-    source_folder_suff = maybe_join([src_prefix, remapping_src_code])
-    source_folder = project.fixed_spacing_folder / source_folder_suff
+    @property
+    def remapping_src_code(self):
+        remapping_src = short_code(self.plan.get("remapping_source"))
+        remapping_src_code = short_code(remapping_src)
+        if remapping_src_code:
+            remapping_src_code = "rsc" + remapping_src_code
+        return remapping_src_code
 
-    if source_plan_code:
+    @property
+    def source_folder_suff(self):
+        return maybe_join([self.src_prefix, self.remapping_src_code])
+
+    @property
+    def patch_str(self):
+        return self.list_to_str(self.plan["patch_size"])
+
+    @property
+    def kbd_folder(self):
+        localiser_regions_code = short_code(self.plan.get("localiser_regions"))
+        kbd_folder_suff = maybe_join(
+                [
+                    self.src_prefix,
+                    self.remapping_lbd_kbd_code,
+                    self.remapping_imported_code,
+                    self.remapping_lbd_kbd_code,
+                    localiser_regions_code,
+                    self.source_plan_code,
+                ]
+            )
+        kbd_folder = str(self.project.kbd_folder / kbd_folder_suff)
+        return kbd_folder
+
+
+
+    @property
+    def lbd_folder(self):
         lbd_folder_suff = maybe_join(
-            [
-                src_prefix,
-                remapping_lbd_code,
-                remapping_imported_code,
-                remapping_lbd_code,
-                expand_by,
-                source_plan_code,
-            ]
-        )
-    else:
-        lbd_folder_suff = maybe_join(
-            [
-                src_prefix,
-                remapping_lbd_code,
-                remapping_imported_code,
-                remapping_lbd_code,
-                expand_by,
-            ]
-        )
+                [
+                    self.src_prefix,
+                    self.remapping_lbd_kbd_code,
+                    self.remapping_imported_code,
+                    self.remapping_lbd_kbd_code,
+                    self.expand_by,
+                    self.source_plan_code,
+                ]
+            )
+        lbd_folder = str(self.project.lbd_folder / lbd_folder_suff)
+        return lbd_folder
 
-    lbd_folder = str(project.lbd_folder / lbd_folder_suff)
-    patch_str = list_to_str(plan["patch_size"])
-    if source_plan_code:
-        patch_folder_suff = "_".join([source_folder_suff, patch_str, source_plan_code])
-    else:
-        patch_folder_suff = "_".join([source_folder_suff, patch_str])
-    patch_folder = str(project.pbd_folder / patch_folder_suff)
-    whole_folder_suff = maybe_join([patch_str, remapping_src_code, source_plan_code])
-    whole_folder = str(project.whole_images_folder / whole_folder_suff)
+    
 
-    folders = {
-        "data_folder_source": source_folder,
-        "data_folder_lbd": lbd_folder,
-        "data_folder_whole": whole_folder,
-        "data_folder_pbd": patch_folder,
-        "data_folder_sourcepbd": source_folder,
-    }
-    return folders
+    @property
+    def patch_folder(self):
+        if self.source_plan_code:
+            patch_folder_suff = "_".join([self.source_folder_suff, self.patch_str, self.source_plan_code])
+        else:
+            patch_folder_suff = "_".join([self.source_folder_suff, self.patch_str])
+        patch_folder = str(self.project.pbd_folder / patch_folder_suff)
+        return patch_folder
+
+    @property
+    def whole_folder(self):
+        whole_folder_suff = maybe_join([self.patch_str, self.remapping_src_code, self.source_plan_code])
+        whole_folder = str(self.project.whole_images_folder / whole_folder_suff)
+        return whole_folder
 
 
+    @property
+    def src_prefix(self):
+        return spacing_to_str("spc", self.spc)
+
+    @property
+    def source_folder(self):
+        source_folder = self.project.fixed_spacing_folder / self.source_folder_suff
+        return source_folder
+
+
+    @property
+    def folders(self):
+        folders = {
+            "data_folder_source": self.source_folder,
+            "data_folder_lbd": self.lbd_folder,
+            "data_folder_whole": self.whole_folder,
+            "data_folder_pbd": self.patch_folder,
+            "data_folder_sourcepbd": self.source_folder,
+            "data_folder_kbd": self.kbd_folder,
+        }
+        return folders
+
+
+
+    
 
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR>
 if __name__ == "__main__":
+    from utilz.helpers import pp
+
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
     from fran.utils.common import *
 
-    P = Project("lidc")
+    P = Project("kits2")
     C = ConfigMaker(P)
-    C.setup(6)
+    C.setup(2)
     plan = C.configs["plan_train"]
     # df = pd.read_excel("/home/ub/code/fran/configurations/experiment_configs_totalseg.xlsx", sheet_name="plans")
+    F = FolderNames(P, plan)
+    F.folders
     # row = df.iloc[3]
-
-    folders = folder_names_from_plan(P, plan)
+    FolderNames(P, plan).folders
+# %%
 
     aj = plan["imported_folder"]
     pp(folders)
@@ -235,7 +296,7 @@ if __name__ == "__main__":
     if remapping_src_code:
         remapping_src_code = "rsc" + remapping_src_code
 
-    remapping_lbd = plan.get("remapping_lbd")
+    remapping_lbd = plan.get("remapping_lbd_kbd")
     remapping_lbd_code = short_code(remapping_lbd)
     if remapping_lbd_code:
         remapping_lbd_code = "rlb" + remapping_lbd_code
@@ -287,3 +348,4 @@ if __name__ == "__main__":
     project = P
 # %%
 # %%
+

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import ipdb
 import ray
-from fran.utils.folder_names import folder_names_from_plan
+from fran.utils.folder_names import FolderNames
 from utilz.helpers import find_matching_fn, multiprocess_multiarg
 
 tr = ipdb.set_trace
@@ -54,6 +54,8 @@ def generate_bboxes_from_lms_folder(
 
 
 class _NiftiResamplerBase(RayWorkerBase):
+    remapping_key = "remapping_source"
+
     def __init__(
         self,
         project,
@@ -86,7 +88,6 @@ class _NiftiResamplerBase(RayWorkerBase):
             device=device,
             debug=debug,
             tfms_keys=tfms_keys,
-            remapping_key="remapping_source",
         )
 
     def set_input_output_folders(self, data_folder, output_folder):
@@ -99,7 +100,7 @@ class _NiftiResamplerBase(RayWorkerBase):
         return {
             "image": row["image"],
             "lm": row["lm"],
-            "remapping_source": row["remapping_source"],
+            cls.remapping_key: row[cls.remapping_key],
             "ds": row["ds"],
         }
 
@@ -138,13 +139,13 @@ class _NiftiResamplerBase(RayWorkerBase):
             keys=["lm"],
             meta_keys=[
                 "lm_fname",
-                "remapping_source",
+                self.remapping_key,
                 "lm_fg_indices",
                 "lm_bg_indices",
             ],
             renamed_keys=[
                 "filename",
-                "remapping_source",
+                self.remapping_key,
                 "lm_fg_indices",
                 "lm_bg_indices",
             ],
@@ -226,6 +227,11 @@ class NiftiResamplerLocal(_NiftiResamplerBase):
 
 
 class NiftiToTorchDataGenerator(Preprocessor):
+    actor_cls = NiftiResampler
+    local_worker_cls = NiftiResamplerLocal
+    remapping_key = "remapping_source"
+    subfolder_key = "data_folder_source"
+
     def __init__(
         self,
         project,
@@ -236,7 +242,7 @@ class NiftiToTorchDataGenerator(Preprocessor):
         clip_center=False,
     ):
 
-        existing_fldr = folder_names_from_plan(project, plan)["data_folder_source"]
+        existing_fldr = FolderNames(project, plan).folders[self.subfolder_key]
         existing_fldr = Path(existing_fldr)
         if existing_fldr.exists():
             print(
@@ -247,13 +253,9 @@ class NiftiToTorchDataGenerator(Preprocessor):
             output_folder = existing_fldr
         self.clip_center = clip_center
         self.half_precision = half_precision
-        self.remapping_key = "remapping_source"
         super().__init__(
             project, plan, output_folder=output_folder, data_folder=data_folder
         )
-
-        self.actor_cls = NiftiResampler
-        self.local_worker_cls = NiftiResamplerLocal
 
     def extra_worker_kwargs(self, **setup_kwargs):
         return {
@@ -307,7 +309,7 @@ class NiftiToTorchDataGenerator(Preprocessor):
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
         create_dataset_stats_artifacts(
-            output_folder=self.output_folder,
+            lms_folder=self.output_folder/"lms",
             gif=self.store_gifs,
             label_stats=self.store_label_stats,
             gif_window=infer_dataset_stats_window(self.project),
@@ -323,42 +325,16 @@ class NiftiToTorchDataGenerator(Preprocessor):
             num_processes,
         )
 
-    def update_specsfile(self):
-        lbd_output_folder = self.project.lbd_folder / (self.output_folder.name)
-        specs = {
-            "plan": self.plan,
-            "output_folder": str(self.output_folder),
-            "lbd_output_folder": str(lbd_output_folder),
-        }
-        specs_file = self.output_folder.parent / ("resampling_configs")
-
-        try:
-            saved_specs = load_dict(specs_file)
-            matches = [specs == dic for dic in saved_specs]
-            if not any(matches):
-                saved_specs.append(specs)
-                save_dict(saved_specs, specs_file)
-        except:
-            saved_specs = [specs]
-            save_dict(saved_specs, specs_file)
-
-    #
-    # def get_tensor_folder_stats(self, debug=True):
-    #     img_filenames = (self.output_folder / ("images")).glob("*")
-    #     args = [[img_fn] for img_fn in img_filenames]
-    #     results = multiprocess_multiarg(get_tensorfile_stats, args, debug=debug,io=True)
-    #     self.results = pd.DataFrame(results).values
-    #     self._store_dataset_properties()
 
     def set_input_output_folders(self, data_folder, output_folder):
         self.data_folder = Path(data_folder)
         if output_folder is not None:
             self.output_folder = Path(output_folder)
         else:
-            src_subfolder = folder_names_from_plan(self.project, self.plan)[
-                "data_folder_source"
+            src_subfolder = FolderNames(self.project, self.plan).folders[
+                self.subfolder_key
             ]
-            self.output_folder = self.project.fixed_spacing_folder / (src_subfolder)
+            self.output_folder = src_subfolder
 
     @property
     def indices_subfolder(self):
@@ -445,9 +421,8 @@ if __name__ == "__main__":
     # aa = chunkify(Rs.df,16)
 
     # P = Project("test")
-    P = Project("totalseg")
+    P = Project("kits23")
 
-    P.maybe_store_projectwide_properties()
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P)
@@ -461,7 +436,7 @@ if __name__ == "__main__":
     plan = conf["plan_train"]
     plan["mode"]
 
-    folder_names_from_plan(P, plan)
+    FolderNames(P, plan).folders
     print(P.global_properties)
 # %%
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
@@ -474,10 +449,11 @@ if __name__ == "__main__":
     overwrite = True
     n_processes = 2
     Rs.setup(num_processes=n_processes, overwrite=overwrite, debug=debug_)
+    Rs.process()
 
 # %%
     create_dataset_stats_artifacts(
-        output_folder=Rs.output_folder,
+        lms_folder=Rs.output_folder,
         gif=True,
         label_stats=True,
         gif_window=infer_dataset_stats_window(Rs.project),
