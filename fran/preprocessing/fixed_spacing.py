@@ -2,13 +2,8 @@
 from pathlib import Path
 
 import ipdb
-import ray
-from fran.utils.folder_names import FolderNames
-from utilz.helpers import find_matching_fn, multiprocess_multiarg
-
-tr = ipdb.set_trace
-
 import pandas as pd
+import ray
 import torch
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import (
@@ -30,9 +25,11 @@ from fran.transforms.misc_transforms import (
     RecastToFloatd,
 )
 from fran.transforms.spatialtransforms import ResizeToTensord
+from fran.utils.folder_names import FolderNames
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from tqdm.auto import tqdm as pbar
-from utilz.fileio import load_dict, save_dict
+from utilz.fileio import save_dict
+from utilz.helpers import find_matching_fn, multiprocess_multiarg
 
 
 def generate_bboxes_from_lms_folder(
@@ -93,7 +90,6 @@ class _NiftiResamplerBase(RayWorkerBase):
     def set_input_output_folders(self, data_folder, output_folder):
         self.data_folder = data_folder
         self.output_folder = output_folder
-
 
     @classmethod
     def _create_data_dict(cls, row):
@@ -309,7 +305,7 @@ class NiftiToTorchDataGenerator(Preprocessor):
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
         create_dataset_stats_artifacts(
-            lms_folder=self.output_folder/"lms",
+            lms_folder=self.output_folder / "lms",
             gif=self.store_gifs,
             label_stats=self.store_label_stats,
             gif_window=infer_dataset_stats_window(self.project),
@@ -324,7 +320,6 @@ class NiftiToTorchDataGenerator(Preprocessor):
             debug,
             num_processes,
         )
-
 
     def set_input_output_folders(self, data_folder, output_folder):
         self.data_folder = Path(data_folder)
@@ -401,13 +396,14 @@ if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker, parse_nested_remapping
     from fran.inference.base import list_to_chunks
     from fran.managers import Project
+    from utilz.fileio import load_dict
     from utilz.helpers import set_autoreload
 
     set_autoreload()
 
     from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
     from fran.transforms.inferencetransforms import ToCPUd
-    from fran.transforms.misc_transforms import FgBgToIndicesd2, LabelRemapd
+    from fran.transforms.fg_indices import FgBgToIndicesd2, LabelRemapd
     from fran.utils.common import *
     from monai.transforms.utility.dictionary import (
         EnsureChannelFirstd,
@@ -460,7 +456,7 @@ if __name__ == "__main__":
     )
     # Rs.process()
 # %%
-#SECTION:-------------------- TS--------------------------------------------------------------------------------------# %%
+# SECTION:-------------------- TS--------------------------------------------------------------------------------------# %%
 
     num_processes = 1
     Rs.create_data_df()
@@ -749,3 +745,5 @@ if __name__ == "__main__":
 
 
 # %%
+
+

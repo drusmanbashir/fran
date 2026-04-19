@@ -54,6 +54,19 @@ SUPPORTED_READERS = {
 tr = ipdb.set_trace
 
 
+class SimpleTorchLoader(MapTransform):
+    def __init__(self, keys: KeysCollection, allow_missing_keys=False):
+        super().__init__(keys, allow_missing_keys)
+
+    def __call__(self, data):
+
+        for key in self.key_iterator(data):
+            data_ = data[key]
+            data_out = torch.load(data_, weights_only=False)
+            data[key] = data_out
+        return data
+
+
 class ToTensorT(Transform):
     def __init__(self, encode_dtype=None):
         self.encode_dtype = encode_dtype

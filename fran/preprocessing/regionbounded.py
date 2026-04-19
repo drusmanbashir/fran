@@ -10,21 +10,15 @@ import ray
 import torch
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
-import localiser.inference.base as localiser_base
 from localiser.inference.base import (
     LocaliserInfererPT,
-    bbox_from_file,
-    crop_to_yolo_bbox,
     load_yolo_specs,
 )
+from localiser.utils.bbox_helpers import bbox_from_file, crop_to_yolo_bbox
 from monai.transforms.transform import MapTransform
 from ultralytics import YOLO
 from utilz.fileio import load_yaml
 from utilz.stringz import ast_literal_eval, info_from_filename
-
-# localiser.inference.base.bbox_from_file expects this module global but does
-# not define it in current localiser builds.
-
 
 class CropByYolo(MapTransform):
     def __init__(

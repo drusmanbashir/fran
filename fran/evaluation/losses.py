@@ -22,6 +22,12 @@ TensorSeq: TypeAlias = list[torch.Tensor] | tuple[torch.Tensor, ...]
 # Cell
 
 
+def _detach_for_logging(value):
+    if torch.is_tensor(value):
+        return value.detach()
+    return value
+
+
 class _DiceCELossMultiOutput(nn.Module):
     def __init__(
         self,
@@ -171,9 +177,7 @@ class CombinedLoss(_DiceCELossMultiOutput):
                 per_case_class.reshape(-1),
             )
         )
-        self.loss_dict = {
-            k: (v.item() if torch.is_tensor(v) else v) for k, v in zip(keys, vals)
-        }
+        self.loss_dict = {k: _detach_for_logging(v) for k, v in zip(keys, vals)}
 
     def create_labels(self, bs, fg_classes):
         label_maker = lambda x: "loss_dice_batch{0}_label{1}".format(*x)
@@ -354,33 +358,19 @@ class DeepSupervisionLoss(pl.LightningModule):
             case_ids.append(parsed["case_id"])
 
         self.loss_dict = {
-            "loss": (
-                losses["loss"].item()
-                if torch.is_tensor(losses["loss"])
-                else losses["loss"]
-            ),
-            "loss_ce": (
-                losses["loss_ce"].item()
-                if torch.is_tensor(losses["loss_ce"])
-                else losses["loss_ce"]
-            ),
-            "loss_dice": (
-                losses["loss_dice"].item()
-                if torch.is_tensor(losses["loss_dice"])
-                else losses["loss_dice"]
-            ),
+            "loss": _detach_for_logging(losses["loss"]),
+            "loss_ce": _detach_for_logging(losses["loss_ce"]),
+            "loss_dice": _detach_for_logging(losses["loss_dice"]),
         }
         for class_id, loss in zip(class_ids, class_losses):
-            self.loss_dict[f"loss_dice_label{class_id}"] = (
-                loss.item() if torch.is_tensor(loss) else loss
-            )
+            self.loss_dict[f"loss_dice_label{class_id}"] = _detach_for_logging(loss)
         for batch_ind in range(bs):
             self.loss_dict[f"batch{batch_ind}_filename"] = filenames[batch_ind]
             self.loss_dict[f"batch{batch_ind}_case_id"] = case_ids[batch_ind]
             for class_ind, class_id in enumerate(class_ids):
                 val = per_case_class[batch_ind][class_ind]
                 self.loss_dict[f"loss_dice_batch{batch_ind}_label{class_id}"] = (
-                    val.item() if torch.is_tensor(val) else val
+                    _detach_for_logging(val)
                 )
 
 

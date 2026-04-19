@@ -120,6 +120,22 @@ class CaseIDRecorder(Callback):
     def _before_batch(self, batch):
         self.files_this_batch = batch["image"].meta["filename_or_obj"]
 
+    def _should_collect_batch(self, trainer) -> bool:
+        epoch = trainer.current_epoch + 1
+        return self.incrementing or (epoch > 0 and epoch % self.freq == 0)
+
+    @staticmethod
+    def _to_python_value(value):
+        if isinstance(value, torch.Tensor):
+            value = value.detach().cpu()
+            if value.numel() == 1:
+                return value.item()
+            return value.tolist()
+        return value
+
+    def _snapshot_loss_dict(self, loss_dict: dict) -> dict:
+        return {key: self._to_python_value(val) for key, val in loss_dict.items()}
+
     def on_train_batch_start(
         self,
         trainer: "pl.Trainer",
@@ -127,7 +143,8 @@ class CaseIDRecorder(Callback):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        self._before_batch(batch)
+        if self._should_collect_batch(trainer):
+            self._before_batch(batch)
 
     def on_validation_batch_start(
         self,
@@ -136,7 +153,8 @@ class CaseIDRecorder(Callback):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        self._before_batch(batch)
+        if self._should_collect_batch(trainer):
+            self._before_batch(batch)
 
     def on_train_batch_end(
         self,
@@ -146,8 +164,10 @@ class CaseIDRecorder(Callback):
         batch: Any,
         batch_idx: int,
     ) -> None:
+        if not self._should_collect_batch(trainer):
+            return
         loss_dict_full = pl_module.loss_dict_full
-        self.loss_dicts_train.append(loss_dict_full)
+        self.loss_dicts_train.append(self._snapshot_loss_dict(loss_dict_full))
 
     def on_validation_batch_end(
         self,
@@ -158,7 +178,10 @@ class CaseIDRecorder(Callback):
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> None:
+        if not self._should_collect_batch(trainer):
+            return
         loss_dict_full = pl_module.loss_dict_full
+        loss_dict_full = self._snapshot_loss_dict(loss_dict_full)
         if self.incrementing == False:
             self.loss_dicts_valid.append(loss_dict_full)
         else:
@@ -432,5 +455,4 @@ if __name__ == "__main__":
 
     key = f"case_recorder/fit/df_epoch_{epoch}"
 # _store(self,trainer, stage, loss_dict,epoch):
-
 

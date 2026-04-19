@@ -18,7 +18,7 @@ from fran.data.collate import patch_collated, source_collated, whole_collated
 from fran.data.dataset import NormaliseClipd
 from fran.managers.project import Project
 from fran.preprocessing.helpers import bbox_bg_only, compute_fgbg_ratio
-from fran.transforms.imageio import SimpleTorchLoader, TorchReader
+from fran.transforms.imageio import TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
 from fran.utils.folder_names import FolderNames
@@ -64,6 +64,19 @@ common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 
 tr = ipdb.set_trace
+
+
+class SimpleTorchLoader(MapTransform):
+    def __init__(self, keys: KeysCollection, allow_missing_keys=False):
+        super().__init__(keys, allow_missing_keys)
+
+    def __call__(self, data):
+
+        for key in self.key_iterator(data):
+            data_ = data[key]
+            data_out = torch.load(data_, weights_only=False)
+            data[key] = data_out
+        return data
 
 
 def _is_grid_patch_padded(coords, original_spatial_shape) -> bool:
@@ -768,20 +781,37 @@ class DataManager(LightningDataModule):
         if isinstance(self.ds, GridPatchDataset):
             return 0, False
         else:
-            num_workers = min(8, self.effective_batch_size * 2)
-            persistent_workers = True
+            num_workers = self.dataset_params.get("num_workers")
+            if num_workers is None:
+                num_workers = min(24, self.effective_batch_size * 4)
+            num_workers = int(num_workers)
+            persistent_workers = bool(
+                self.dataset_params.get("persistent_workers", True)
+            )
+            if num_workers <= 0:
+                persistent_workers = False
             return num_workers, persistent_workers
+
+    def _loader_kwargs(self, num_workers: int, persistent_workers: bool) -> dict:
+        pin_memory = bool(self.dataset_params.get("pin_memory", True))
+        kwargs = {
+            "num_workers": int(num_workers),
+            "persistent_workers": bool(persistent_workers),
+            "pin_memory": pin_memory,
+        }
+        prefetch_factor = self.dataset_params.get("prefetch_factor")
+        if int(num_workers) > 0 and prefetch_factor is not None:
+            kwargs["prefetch_factor"] = int(prefetch_factor)
+        return kwargs
 
     def create_train_dataloader(self):
         num_workers, persistent_workers = self._num_workers()
         self.dl = DataLoader(
             self.ds,
             batch_size=self.effective_batch_size,
-            num_workers=num_workers,
             collate_fn=self.collate_fn,
-            persistent_workers=persistent_workers,
-            pin_memory=True if self.debug==False else False,
             shuffle=True,
+            **self._loader_kwargs(num_workers, persistent_workers),
         )
 
     def create_valid_dataloader(self):
@@ -798,12 +828,10 @@ class DataManager(LightningDataModule):
         self.dl = DataLoader(
             self.ds,
             batch_size=self.effective_batch_size,
-            num_workers=num_workers,
             collate_fn=self.collate_fn,
-            persistent_workers=persistent_workers,
-            pin_memory=True if self.debug==False else False,
             shuffle=False,
             sampler=sampler,
+            **self._loader_kwargs(num_workers, persistent_workers),
         )
 
     def create_dataloader(self):

@@ -20,6 +20,7 @@ from typing import Any, Union
 import numpy as np
 import torch._dynamo
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
+from fran.transforms.batch_affine import BatchRandAffined3D
 from utilz.stringz import info_from_filename
 
 torch._dynamo.config.suppress_errors = True
@@ -57,12 +58,14 @@ class UNetManager(LightningModule):
         self.sync_dist = sync_dist
         self.project = Project(project_title)
         self.save_hyperparameters("project_title", "configs", "lr")
+        self.configs = configs
         self.plan = configs["plan_train"]
         self.model_params = configs["model_params"]
         self.loss_params = configs["loss_params"]
         self.lr = lr if lr else self.model_params["lr"]
         self.model = self.create_model()
         self.monitor =monitor
+        self.batch_affine = self.create_batch_affine()
 
     # def on_fit_start(self):
     #     self.create_loss_fnc()
@@ -72,6 +75,23 @@ class UNetManager(LightningModule):
         self.create_loss_fnc()
         self.create_val_loss_fnc()
         super().setup(stage="fit")
+
+    def create_batch_affine(self):
+        if not self.hparams.configs["dataset_params"].get("batch_affine", False):
+            return None
+        affine3d = self.hparams.configs["affine3d"]
+        return BatchRandAffined3D(
+            keys=["image", "lm"],
+            mode=["bilinear", "nearest"],
+            prob=affine3d["p"],
+            rotate_range=affine3d["rotate_range"],
+            scale_range=affine3d["scale_range"],
+        )
+
+    def on_after_batch_transfer(self, batch, dataloader_idx):
+        if self.training and self.batch_affine is not None:
+            batch = self.batch_affine(batch)
+        return batch
 
     def on_fit_start(self) -> None:
         self.create_val_inferer()

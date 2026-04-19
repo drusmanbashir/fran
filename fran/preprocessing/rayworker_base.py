@@ -4,12 +4,12 @@ from typing import Any, Dict
 
 import ipdb
 import pandas as pd
-from fran.data.dataregistry import DS
 from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
+from fran.data.dataregistry import DS
+from fran.transforms.fg_indices import FgBgToIndicesSubsampled, FgBgToIndicesd2
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import (
     DummyTransform,
-    FgBgToIndicesd2,
     GetLabelsd,
 )
 from fran.transforms.spatialtransforms import CropForegroundMinShaped
@@ -140,7 +140,7 @@ class RayWorkerBase(Preprocessor):
             if isinstance(tfm, dict):
                 ds = data["ds"]
                 tfm = tfm[ds]
-            if isinstance(data,list|tuple):
+            if isinstance(data, list | tuple):
                 data = data[0]
             data = tfm(data)
         return data
@@ -208,7 +208,7 @@ class RayWorkerBase(Preprocessor):
 
         self.Dev = ToDeviced(device=device, keys=self.tnsr_keys)
         self.Chan = EnsureChannelFirstd(keys=self.tnsr_keys, channel_dim="no_channel")
-        self.Indx = FgBgToIndicesd2(
+        self.Indx = FgBgToIndicesSubsampled(
             keys=[self.lm_key],
             image_key=self.image_key,
             ignore_labels=self.plan.get("fg_indices_exclude", []),
@@ -309,3 +309,5 @@ class RayWorkerBase(Preprocessor):
 # %%
 # parse_excel_remapping
 # parse_excel_datasources(self.plan["datasources"])
+
+

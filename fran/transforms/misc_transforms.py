@@ -18,7 +18,7 @@ from monai.data.meta_tensor import MetaTensor
 from monai.transforms import MaskIntensity, dilate, erode
 from monai.transforms.croppad.dictionary import CropForegroundd
 from monai.transforms.transform import MapTransform, RandomizableTransform
-from monai.transforms.utility.dictionary import FgBgToIndicesd
+from fran.transforms.fg_indices import FgBgToIndicesd
 from utilz.stringz import ast_literal_eval
 
 tr = ipdb.set_trace
@@ -185,74 +185,6 @@ class GetLabelsd(MapTransform):
         labels = torch.unique(lm).detach().cpu().tolist()
         d[self.output_key] = [int(v) for v in labels]
         return d
-
-
-class FgBgToIndicesd2(FgBgToIndicesd):
-    """
-    modified version. This allows 'ignore_labels' entry of fg labels which will be considered part of bg for indexing
-    """
-
-    def __init__(
-        self,
-        keys: KeysCollection,
-        ignore_labels: list | int = [],
-        fg_postfix: str = "_fg_indices",
-        bg_postfix: str = "_bg_indices",
-        image_key=None,
-        image_threshold: float = 0,
-        output_shape=None,
-        allow_missing_keys: bool = False,
-    ) -> None:
-        super().__init__(
-            keys,
-            fg_postfix,
-            bg_postfix,
-            image_key,
-            image_threshold,
-            output_shape,
-            allow_missing_keys,
-        )
-        if isinstance(ignore_labels, int):
-            ignore_labels = [ignore_labels]
-        self.ignore_labels = ignore_labels
-
-    def __call__(
-        self, data: Mapping[Hashable, NdarrayOrTensor]
-    ) -> dict[Hashable, NdarrayOrTensor]:
-        def _plain_tensor(x):
-            # FgBgToIndices from MONAI can fail on batched MetaTensor metadata collation.
-            # Convert to raw tensor for robust indexing/collation.
-            if hasattr(x, "as_tensor"):
-                x = x.as_tensor()
-            if isinstance(x, torch.Tensor):
-                return x
-            return torch.as_tensor(x)
-
-        d = dict(data)
-        image = _plain_tensor(d[self.image_key]) if self.image_key else None
-        for key in self.key_iterator(d):
-            lm_src = d[key]
-            if self.ignore_labels:
-                lm = _plain_tensor(lm_src).clone()
-                for label in self.ignore_labels:
-                    lm[lm == label] = 0
-                if lm.max() == 0:
-                    fname = None
-                    meta = getattr(lm_src, "meta", None)
-                    if isinstance(meta, dict):
-                        fname = meta.get("filename_or_obj")
-                    print("Warning: No foreground in label {}".format(fname))
-                    print("Not removing any labels to avoid bugs")
-                    lm = _plain_tensor(lm_src).clone()
-            else:
-                lm = _plain_tensor(lm_src)
-            d[str(key) + self.fg_postfix], d[str(key) + self.bg_postfix] = (
-                self.converter(lm, image)
-            )
-
-        return d
-
-    # keys=["lm"], image_key="image", image_threshold=-2600)
 
 
 class ApplyBBoxd(MapTransform):
