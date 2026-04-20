@@ -981,8 +981,16 @@ class Project(DictToAttr):
             json.dump(state, f, indent=2)
         return run_folder, csv_path, json_path
 
-    @ask_proceed("Remove all project files and folders?")
-    def delete(self):
+    def delete(self, interactive=True):
+        if interactive:
+            print("Remove all project files and folders?")
+            decision = input("Proceed (Y/y) or Skip (N/n)?: ")
+            if decision not in "YyNn":
+                decision = input("Proceed (Y/y) or Skip (N/n)?: ")
+            if decision.lower() != "y":
+                print("Skipped project delete")
+                return False
+
         exempted_tokens = ["checkpoints", "predictions"]
         folders_exempt = []
         folders_non_exempt = []
@@ -1001,6 +1009,7 @@ class Project(DictToAttr):
 
         print("Deleted all except: {}".format(folders_exempt))
         print("Delete those manually if you need to")
+        return True
 
     def set_lm_groups(self, lm_groups: list = None):
         """

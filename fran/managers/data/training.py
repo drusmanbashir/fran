@@ -768,7 +768,7 @@ class DataManager(LightningDataModule):
         if isinstance(self.ds, GridPatchDataset):
             return 0, False
         else:
-            num_workers = min(8, self.effective_batch_size * 2)
+            num_workers = min(6, self.effective_batch_size * 2)
             persistent_workers = True
             return num_workers, persistent_workers
 

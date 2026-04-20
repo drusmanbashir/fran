@@ -30,13 +30,6 @@ if __name__ == "__main__":
         dest="num_processes",
         help="Number of worker processes for Datasource.process()",
     )
-    parser.add_argument(
-        "n_processes",
-        nargs="?",
-        type=int,
-        default=None,
-        help=argparse.SUPPRESS,
-    )
     args = parser.parse_known_args()[0]
     if args.num_processes is None:
         args.num_processes = 1 if args.n_processes is None else args.n_processes
