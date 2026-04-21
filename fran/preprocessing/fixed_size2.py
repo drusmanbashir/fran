@@ -149,7 +149,7 @@ class FixedSizeDataGenerator(Preprocessor):
 
     def setup(self, overwrite=False, num_processes=8, device="cpu", debug=False):
         self.create_output_folders()
-        self.setup_workers(
+        super().setup(
             overwrite=overwrite,
             num_processes=num_processes,
             device=device,

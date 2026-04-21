@@ -75,6 +75,9 @@ class RayWorkerBase(Preprocessor):
 
         # Apply transforms
         data = self.apply_transforms(data)
+        preprocess_events = self._normalize_preprocess_events(
+            data.get("_preprocess_events")
+        )
         labels_key = f"{self.lm_key}_labels"
         labels = data.get(labels_key)
         image = data["image"]
@@ -103,8 +106,33 @@ class RayWorkerBase(Preprocessor):
             "n_fg": len(lm_fg_indices),
             "n_bg": len(lm_bg_indices),
             "labels": labels,
+            "_preprocess_events": preprocess_events,
         }
         return results
+
+    @staticmethod
+    def _normalize_preprocess_events(events):
+        if events is None:
+            return []
+        if isinstance(events, dict):
+            events = [events]
+        if not isinstance(events, list):
+            return []
+        normalized = []
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            error_type = event.get("error_type")
+            error_message = event.get("error_message")
+            if error_type is None and error_message is None:
+                continue
+            normalized.append(
+                {
+                    "error_type": "WARNING" if error_type is None else str(error_type),
+                    "error_message": "" if error_message is None else str(error_message),
+                }
+            )
+        return normalized
 
     def apply_transforms(self, data: dict):
         if self.debug == False:
@@ -259,6 +287,7 @@ class RayWorkerBase(Preprocessor):
                 outs.append(self._process_row(row))
 
             except Exception as e:
+                trace = traceback.format_exc()
                 print(
                     f"[{self.__class__.__name__}] error:"
                     f"\n  case_id={row.get('case_id')}"
@@ -266,13 +295,19 @@ class RayWorkerBase(Preprocessor):
                     f"\n  lm={row.get('lm')}"
                     f"\n  lm_imported={row.get('lm_imported')}"
                 )
-                traceback.print_exc()  # <- this is the key
+                print(trace.rstrip())
                 outs.append(
                     {
                         "case_id": row.get("case_id"),
                         "ok": False,
                         "err": repr(e),
                         "labels": None,
+                        "_preprocess_events": [],
+                        "_preprocess_error": {
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                            "traceback": trace,
+                        },
                     }
                 )
 
@@ -309,5 +344,4 @@ class RayWorkerBase(Preprocessor):
 # %%
 # parse_excel_remapping
 # parse_excel_datasources(self.plan["datasources"])
-
 

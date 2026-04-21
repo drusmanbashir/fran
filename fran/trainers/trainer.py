@@ -15,7 +15,7 @@ from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
 from fran.managers import Project
-from fran.managers.data.training import (
+from fran.managers.data.training2 import (
     DataManagerBaseline,
     DataManagerDual,
     DataManagerKBD,
@@ -135,6 +135,7 @@ class Trainer:
         lr_floor=None,
         wandb_grid_epoch_freq: int = 5,
         permanent_checkpoint_every_n_epochs: int = 100,
+        dual_ssd: bool = False,
     ):
         if isinstance(train_indices, str):
             train_indices = train_indices.strip()
@@ -146,6 +147,7 @@ class Trainer:
         self.val_indices = val_indices
         self.val_sampling = float(val_sampling)
         self.debug = bool(debug)
+        self.dual_ssd = bool(dual_ssd)
         self.maybe_alter_configs(batch_size, compiled)
         self.set_lr(lr)
 
@@ -232,6 +234,7 @@ class Trainer:
             train_indices=self.train_indices,
             val_indices=self.val_indices,
             val_sampling=self.val_sampling,
+            dual_ssd=self.dual_ssd,
         )
 
         labels_all = self.configs["plan_train"].get("labels_all")
@@ -257,6 +260,7 @@ class Trainer:
             project_title=self.project.project_title,
             batch_size=batch_size,
             val_sampling=self.val_sampling,
+            dual_ssd=self.dual_ssd,
             map_location="cpu",
             weights_only=False,
         )
@@ -609,8 +613,8 @@ if __name__ == "__main__":
     override_dm = True
     override_dm = False
 
-    run_name = None
     run_name = "KITS23-SIRIG"
+    run_name = None
     tags = []
     description = f""
     conf["dataset_params"]["fold"] = 0

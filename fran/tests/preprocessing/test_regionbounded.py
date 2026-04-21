@@ -6,6 +6,7 @@ import torch
 from monai.data.meta_tensor import MetaTensor
 
 from fran.preprocessing import regionbounded
+from fran.transforms.spatialtransforms import CropForegroundMinShaped
 
 
 def _metatensor(data, filename):
@@ -39,6 +40,7 @@ def test_region_generator_adds_bbox_fn_by_case_id(tmp_path, monkeypatch):
         regionbounded.RegionBoundedDataGenerator
     )
     generator.data_folder = tmp_path
+    generator.output_folder = tmp_path
 
     generator.create_data_df()
 
@@ -69,6 +71,7 @@ def test_region_generator_errors_on_duplicate_bbox_matches(tmp_path, monkeypatch
         regionbounded.RegionBoundedDataGenerator
     )
     generator.data_folder = tmp_path
+    generator.output_folder = tmp_path
 
     with pytest.raises(ValueError, match="Duplicate bbox matches"):
         generator.create_data_df()
@@ -126,3 +129,100 @@ def test_crop_by_yolo_default_margin_recovers_cropped_label():
     assert transform.margin == 20
     assert torch.count_nonzero(out["lm"]) == torch.count_nonzero(lm)
     assert out["image"].shape == out["lm"].shape
+    assert "_preprocess_events" in out
+    assert out["_preprocess_events"][0]["error_type"] == "CropByYolo"
+    assert "bbox_txt_path=/tmp/case_001.txt" in out["_preprocess_events"][0]["error_message"]
+
+
+def test_crop_by_yolo_with_fg_fallback_uses_fg_crop_when_yolo_loses_fg():
+    image = _metatensor(torch.zeros((12, 12, 12)), "image.pt")
+    lm = _metatensor(torch.zeros((12, 12, 12), dtype=torch.uint8), "lm.pt")
+    lm[4:9, 4:9, 4:9] = 1
+    fg_before = int(torch.count_nonzero(lm).item())
+    bbox = {"width": (0.0, 0.1), "ap": (0.0, 0.1), "height": (0.0, 0.1)}
+
+    cropper_yolo = regionbounded.CropByYolo(
+        keys=["image", "lm"],
+        lm_key="lm",
+        bbox_key="bbox",
+        margin=0,
+        sanitize=True,
+    )
+    cropper_fg = CropForegroundMinShaped(
+        keys=["image", "lm"],
+        source_key="lm",
+        min_shape=(4, 4, 4),
+        margin=0,
+    )
+    transform = regionbounded.CropByYoloWithForegroundFallbackd(
+        keys=["image", "lm"],
+        lm_key="lm",
+        bbox_key="bbox",
+        cropper_yolo=cropper_yolo,
+        cropper_fg=cropper_fg,
+    )
+
+    out = transform(
+        {
+            "case_id": "case_00486",
+            "image": image,
+            "lm": lm,
+            "bbox": bbox,
+            "bbox_fn": Path("/tmp/case_00486.txt"),
+        }
+    )
+
+    assert out["image"].ndim == 3
+    assert out["lm"].ndim == 3
+    assert int(torch.count_nonzero(out["lm"]).item()) == fg_before
+    events = out.get("_preprocess_events", [])
+    event_types = [ev["error_type"] for ev in events]
+    assert "CropByYolo" in event_types
+    assert "CropByYoloFallback" in event_types
+    fallback_messages = [
+        ev["error_message"] for ev in events if ev["error_type"] == "CropByYoloFallback"
+    ]
+    assert any("verified_fg_preserved=True" in msg for msg in fallback_messages)
+
+
+def test_crop_by_yolo_with_fg_fallback_noop_when_yolo_preserves_fg():
+    image = _metatensor(torch.zeros((10, 10, 10)), "image.pt")
+    lm = _metatensor(torch.zeros((10, 10, 10), dtype=torch.uint8), "lm.pt")
+    lm[2:8, 2:8, 2:8] = 1
+    bbox = {"width": (0.1, 0.9), "ap": (0.1, 0.9), "height": (0.1, 0.9)}
+    fg_before = int(torch.count_nonzero(lm).item())
+
+    cropper_yolo = regionbounded.CropByYolo(
+        keys=["image", "lm"],
+        lm_key="lm",
+        bbox_key="bbox",
+        margin=20,
+        sanitize=True,
+    )
+    cropper_fg = CropForegroundMinShaped(
+        keys=["image", "lm"],
+        source_key="lm",
+        min_shape=(4, 4, 4),
+        margin=0,
+    )
+    transform = regionbounded.CropByYoloWithForegroundFallbackd(
+        keys=["image", "lm"],
+        lm_key="lm",
+        bbox_key="bbox",
+        cropper_yolo=cropper_yolo,
+        cropper_fg=cropper_fg,
+    )
+
+    out = transform(
+        {
+            "case_id": "case_ok",
+            "image": image,
+            "lm": lm,
+            "bbox": bbox,
+            "bbox_fn": Path("/tmp/case_ok.txt"),
+        }
+    )
+
+    assert int(torch.count_nonzero(out["lm"]).item()) == fg_before
+    events = out.get("_preprocess_events", [])
+    assert all(ev["error_type"] != "CropByYoloFallback" for ev in events)

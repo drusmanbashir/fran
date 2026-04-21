@@ -18,7 +18,11 @@ from utilz.stringz import headline
 tr = ipdb.set_trace
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
-from fran.configs.parser import load_metadata, make_patch_size
+from fran.configs.parser import (
+    load_metadata,
+    make_patch_size,
+    make_src_dims_from_patch_size,
+)
 from fran.managers.base import load_checkpoint
 
 # only vars below will be tuned
@@ -189,13 +193,16 @@ def tune_from_spec(tune_type: str, tune_value, q=None):
 
 
 def setup_tune_params(configs):
-    configs["dataset_params"]["src_dims"] = make_patch_size(
-        configs["dataset_params"]["src_dim0"], configs["dataset_params"]["src_dim1"]
-    )
     configs["plan_train"]["patch_size"] = make_patch_size(
         configs["plan_train"]["patch_dim0"], configs["plan_train"]["patch_dim1"]
     )
     configs["plan_valid"]["patch_size"] = configs["plan_train"]["patch_size"]
+    configs["plan_train"]["src_dims"] = make_src_dims_from_patch_size(
+        configs["plan_train"]["patch_size"]
+    )
+    configs["plan_valid"]["src_dims"] = make_src_dims_from_patch_size(
+        configs["plan_valid"]["patch_size"]
+    )
     return configs
 
 
@@ -214,12 +221,12 @@ def train_with_tune(config, project_title, num_epochs=10):
     headline(f"Training with config: {config}")
 
     lr = config["model_params"]["lr"]
-    if config["dataset_params"]["src_dims"][0] > 160:
+    if config["plan_train"]["src_dims"][0] > 160:
         bs = 1
     else:
         bs = 2
 
-    headline(config["dataset_params"]["src_dims"])
+    headline(config["plan_train"]["src_dims"])
 
     headline(config["plan_train"]["patch_size"])
 

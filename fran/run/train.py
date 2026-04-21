@@ -124,6 +124,7 @@ def main(args):
             batchsize_finder=args.batchsize_finder,
             train_indices=train_indices,
             val_every_n_epochs=args.val_every_n_epochs,
+            dual_ssd=args.dual_ssd,
         )
         Tm.N.compiled = args.compiled
         Tm.fit()
@@ -224,6 +225,12 @@ if __name__ == "__main__":
         default=False,
         help="Enable batch size finder",
         dest="batchsize_finder",
+    )
+    parser.add_argument(
+        "--dual-ssd",
+        type=str2bool,
+        default=False,
+        help="Stage every other data dict on rapid_access_folder2",
     )
     args = parser.parse_known_args()[0]
     # %%

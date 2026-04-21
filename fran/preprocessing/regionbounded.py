@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import logging
 import os
 from pathlib import Path
 
@@ -10,6 +9,7 @@ import ray
 import torch
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
+from fran.transforms.spatialtransforms import CropForegroundMinShaped
 from localiser.inference.base import (
     LocaliserInfererPT,
     load_yolo_specs,
@@ -35,7 +35,6 @@ class CropByYolo(MapTransform):
         self.bbox_key = bbox_key
         self.margin = float(margin)
         self.sanitize = bool(sanitize)
-        self.logger = logging.getLogger(__name__)
 
     def __call__(self, data):
         dici = dict(data)
@@ -142,27 +141,134 @@ class CropByYolo(MapTransform):
         fg_before: int,
         fg_after: int,
     ) -> None:
-        case_id,  bbox_fn = self._log_context(data)
+        case_id, bbox_fn = self._log_context(data)
         if stage == "first":
-            self.logger.warning(
-                "CropByYolo fg mismatch (first crop): case_id=%s bbox=%s fg_before=%d fg_after=%d; retrying with %.1fmm margin",
-                case_id,
-                bbox_fn,
-                fg_before,
-                fg_after,
-                self.margin,
+            self._register_warning(
+                data,
+                "CropByYolo fg mismatch (first crop): "
+                f"case_id={case_id} bbox_txt_path={bbox_fn} fg_before={fg_before} "
+                f"fg_after={fg_after}; retrying with {self.margin:.1f}mm margin",
             )
             return
 
         if stage == "expanded":
-            self.logger.error(
-                "CropByYolo fg mismatch persists after expansion: case_id=%sbbox=%s fg_before=%d fg_after_expanded=%d",
-                case_id,
-                bbox_fn,
-                fg_before,
-                fg_after,
+            self._register_warning(
+                data,
+                "CropByYolo fg mismatch persists after expansion: "
+                f"case_id={case_id} bbox_txt_path={bbox_fn} fg_before={fg_before} "
+                f"fg_after_expanded={fg_after}",
             )
 
+    @staticmethod
+    def _register_warning(data: dict, message: str) -> None:
+        events = data.get("_preprocess_events")
+        if not isinstance(events, list):
+            events = []
+        events.append({"error_type": "CropByYolo", "error_message": str(message)})
+        data["_preprocess_events"] = events
+
+
+class CropByYoloWithForegroundFallbackd(MapTransform):
+    """
+    Run YOLO crop first, then fallback to foreground crop if FG voxels are still lost.
+    """
+
+    def __init__(
+        self,
+        min_shape,
+        keys=("image", "lm"),
+        lm_key="lm",
+        bbox_key="bbox",
+        allow_missing_keys=False,
+    ):
+        super().__init__(keys=keys, allow_missing_keys=allow_missing_keys)
+        self.lm_key = lm_key
+        self.bbox_key = bbox_key
+        self.cropper_yolo =  CropByYolo(
+            keys=keys,
+            lm_key=lm_key,
+            bbox_key=bbox_key,
+            margin=20,
+            sanitize=True,
+            allow_missing_keys=allow_missing_keys,
+        )
+        self.cropper_fg =CropForegroundMinShaped (
+            keys=keys, source_key=lm_key, allow_missing_keys=allow_missing_keys, min_shape=min_shape)
+
+    def __call__(self, data):
+        original = dict(data)
+        lm = data[self.lm_key]
+        assert lm.ndim == 3, "CropByYoloWithForegroundFallbackd expects 3D tensors"
+        fg_before = self._fg_count(original)
+        yolo_out = self.cropper_yolo(dict(original))
+        fg_after_yolo = self._fg_count(yolo_out)
+        if fg_after_yolo == fg_before:
+            return yolo_out
+
+        fallback_input = dict(original)
+        yolo_events = yolo_out.get("_preprocess_events")
+        if isinstance(yolo_events, list):
+            fallback_input["_preprocess_events"] = list(yolo_events)
+
+        fallback_out = self.apply_crop_fg(fallback_input)
+        fg_after_fallback = self._fg_count(fallback_out)
+        verified_fg_preserved = fg_after_fallback == fg_before
+
+        case_id = original.get("case_id")
+        bbox_fn = original.get("bbox_fn")
+        message = (
+            "CropByYolo fallback to CropForegroundMinShaped: "
+            f"case_id={case_id} bbox={bbox_fn} "
+            f"fg_before={fg_before} fg_after_yolo={fg_after_yolo} "
+            f"fg_after_fallback={fg_after_fallback} "
+            f"verified_fg_preserved={verified_fg_preserved}"
+        )
+        self._register_event(fallback_out, message)
+        if not verified_fg_preserved:
+            raise ValueError(message)
+        return fallback_out
+
+    def apply_crop_fg(self, fallback_input):
+        fallback_input = self._temporarily_channel_first(fallback_input)
+        fallback_out = self.cropper_fg(fallback_input)
+        fallback_out = self._restore_spatial_only(fallback_out)
+        return fallback_out
+
+
+    def _fg_count(self, data: dict) -> int:
+        return int(torch.count_nonzero(data[self.lm_key]).item())
+
+    def _temporarily_channel_first(self, data: dict) -> dict:
+        d = dict(data)
+        added_channel_keys = []
+        for key in self.key_iterator(d):
+            x = d[key]
+            if x.ndim == 3:
+                d[key] = x.unsqueeze(0)
+                added_channel_keys.append(key)
+            elif x.ndim != 4:
+                raise ValueError(
+                    f"Fallback crop expects 3D/4D tensors for key='{key}', got ndim={x.ndim}"
+                )
+        d["_fg_fallback_added_channel_keys"] = added_channel_keys
+        return d
+
+    def _restore_spatial_only(self, data: dict) -> dict:
+        d = dict(data)
+        added_channel_keys = d.pop("_fg_fallback_added_channel_keys", [])
+        for key in added_channel_keys:
+            d[key] = d[key].squeeze(0)
+        return d
+
+    @staticmethod
+    def _register_event(data: dict, message: str) -> None:
+        events = data.get("_preprocess_events")
+        if not isinstance(events, list):
+            events = []
+        events.append(
+            {"error_type": "CropByYoloFallback", "error_message": str(message)}
+        )
+        data["_preprocess_events"] = events
 
 class _RBDSamplerWorkerBase(RayWorkerBase):
     remapping_key = "remapping_lbd_kbd"
@@ -191,12 +297,18 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
 
     def create_transforms(self, device):
         super().create_transforms(device=device)
-        self.CropByYolo = CropByYolo(
+        self.cropper_yolo = CropByYolo(
             keys=["image", "lm"],
             lm_key="lm",
             bbox_key="bbox",
             margin=20,
             sanitize=True,
+        )
+        self.CropByYolo = CropByYoloWithForegroundFallbackd(
+            min_shape=self.plan["src_dims"],
+            keys=["image", "lm"],
+            lm_key="lm",
+            bbox_key="bbox",
         )
         self.transforms_dict["CropByYolo"] = self.CropByYolo
 
@@ -245,36 +357,19 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
     subfolder_key = "data_folder_kbd"
 
     def create_data_df(self):
-        super().create_data_df()
-        bbox_files = sorted(self.loc_folder.glob("*.txt"))
-        if len(bbox_files) == 0:
-            raise FileNotFoundError(f"No bbox txt files found in {self.loc_folder}")
+          super().create_data_df()
+          bbox_files = sorted(self.loc_folder.glob("*.txt"))
+          for bbox_fn in bbox_files:
+              bbox_fn = Path(bbox_fn)
+              case_id = info_from_filename(bbox_fn.name, full_caseid=True)["case_id"]
+              matches = self.df.index[self.df["case_id"].astype(str) == str(case_id)]
+              if len(matches) == 0:
+                  print(f"No match found for {bbox_fn}, case_id: {case_id}")
+                  continue
 
-        by_case = self._index_bbox_files_by_case_id(bbox_files)
-        resolved_bbox_fns = []
-        missing = []
-        duplicates = {}
-        for case_id in self.df["case_id"].tolist():
-            case_key = str(case_id).lower()
-            matches = by_case.get(case_key, [])
-            if len(matches) == 0:
-                missing.append(case_key)
-            elif len(matches) > 1:
-                duplicates[case_key] = [str(fn) for fn in matches]
-            else:
-                resolved_bbox_fns.append(matches[0].resolve())
+              self.df.loc[matches, "bbox_fn"] = bbox_fn.resolve()
 
-        if missing or duplicates:
-            msg = [f"Failed deterministic bbox matching in {self.loc_folder}."]
-            if missing:
-                msg.append(f"Missing bbox files for case_ids ({len(missing)}): {missing}")
-            if duplicates:
-                msg.append("Duplicate bbox matches found:")
-                for case_id, fns in sorted(duplicates.items()):
-                    msg.append(f"  - {case_id}: {fns}")
-            raise ValueError("\n".join(msg))
 
-        self.df = self.df.assign(bbox_fn=resolved_bbox_fns)
 
     def _index_bbox_files_by_case_id(self, bbox_files: list[Path]) -> dict[str, list[Path]]:
         mapping: dict[str, list[Path]] = {}
@@ -299,30 +394,71 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
                 keys.add(str(case_id).lower())
         return {k for k in keys if k}
 
-    def process(self, derive_bboxes=False):
-        self.infer_yolo_bboxes()
-        return super().process(derive_bboxes=derive_bboxes)
+    def attach_bbox_fns(self):
+      bbox_files = sorted(self.loc_folder.glob("*.txt"))
+      by_case = {
+          info_from_filename(fn.name, full_caseid=True)["case_id"]: fn.resolve()
+          for fn in bbox_files
+      }
+
+      self.df["bbox_fn"] = self.df["case_id"].astype(str).map(by_case)
+
+    def missing_bbox_mask(self):
+      if "bbox_fn" not in self.df.columns:
+          return np.ones(len(self.df), dtype=bool)
+      return self.df["bbox_fn"].isna()
 
     def infer_yolo_bboxes(self):
-        conf_fldr = os.environ["FRAN_CONF"]
-        best_runs = load_yaml(Path(conf_fldr) / "best_runs.yaml")
-        yolo_fldr = best_runs["localiser"][0]
-        self.yolo_specs = load_yolo_specs(yolo_fldr)
-        ckpt = self.yolo_specs["ckpt"]
-        model = YOLO(ckpt)
-        classes_in_bbox = self.get_region_indices()
-        imsize = self.yolo_specs["specs"]["imgsz"]
-        self.I = LocaliserInfererPT(
-            model,
-            classes_in_bbox,
-            imsize=imsize,
-            window="a",
-            projection_dim=(1, 2),
-            out_folder=self.loc_folder,
-            batch_size=64,
-        )
-        imgs = self.df.image.tolist()
-        self.I.run(imgs, overwrite=False)
+      missing = self.missing_bbox_mask()
+      imgs = self.df.loc[missing, "image"].tolist()
+      if not imgs:
+          return
+
+      conf_fldr = os.environ["FRAN_CONF"]
+      best_runs = load_yaml(Path(conf_fldr) / "best_runs.yaml")
+      yolo_fldr = best_runs["localiser"][0]
+      self.yolo_specs = load_yolo_specs(yolo_fldr)
+
+      ckpt = self.yolo_specs["ckpt"]
+      model = YOLO(ckpt)
+      classes_in_bbox = self.get_region_indices()
+      imsize = self.yolo_specs["specs"]["imgsz"]
+
+      self.I = LocaliserInfererPT(
+          model,
+          classes_in_bbox,
+          imsize=imsize,
+          window="a",
+          projection_dim=(1, 2),
+          out_folder=self.loc_folder,
+          batch_size=64,
+      )
+      self.I.run(imgs, overwrite=False)
+
+    def process(self, derive_bboxes=False):
+      self.maybe_infer_bboxes()
+
+      missing = self.df["bbox_fn"].isna()
+      if missing.any():
+          case_ids = self.df.loc[missing, "case_id"].tolist()
+          raise ValueError(f"Missing bbox_fn for {len(case_ids)} cases: {case_ids}")
+
+      if getattr(self, "use_ray", False):
+          self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
+      else:
+          self.mini_dfs = [self.df]
+
+      return super().process(derive_bboxes=derive_bboxes)
+
+
+    def create_data_df(self):
+      super().create_data_df()
+      self.attach_bbox_fns()
+
+    def maybe_infer_bboxes(self):
+      self.infer_yolo_bboxes()
+      self.attach_bbox_fns()
+
 
     def get_region_indices(self):
         regions = self.plan["localiser_regions"]
@@ -349,15 +485,12 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
 
     @property
     def loc_folder(self):
-        return Path(self.data_folder) / "localisers"
+        return Path(self.output_folder) / "localisers"
 
-    @property
-    def loc_fldr(self):
-        return self.loc_folder
 
 
 # %%
-# SECTION:-------------------- setup--------------------------------------------------------------------------------------
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- if __name__ == "__main__":
 if __name__ == "__main__":
     from pathlib import Path
 
@@ -387,33 +520,61 @@ if __name__ == "__main__":
     existing_fldr = FolderNames(P, plan).folders.get("data_folder_source", None)
     pp(existing_fldr)
 # %%
-    conf_fldr = os.environ["FRAN_CONF"]
-    regions = plan["localiser_regions"]
-    best_runs = load_yaml(Path(conf_fldr) / "best_runs.yaml")
-
-    yolo_fldr = best_runs["localiser"][0]
-    yolo_specs = load_yolo_specs(yolo_fldr)
-    ckpt = yolo_specs["ckpt"]
-    data = yolo_specs["data"]
-    specs = yolo_specs["specs"]
-    class_names = data["names"]
-    class_to_ind = {n: x for x, n in enumerate(class_names)}
-# %%
-    regions = regions.replace(" ", "")
-    regions_list = regions.split(",")
-    classes_in_bbox = []
-    for k in class_to_ind.keys():
-        for region in regions_list:
-            if region in k:
-                classes_in_bbox.append(class_to_ind[k])
-
-# %%
 
     overwrite=True
     num_processes = 16
     R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr)
     R.setup(num_processes=num_processes, overwrite=overwrite)
-    R.process()
+    # R.process()
+# %%
+    RR = RBDSamplerWorkerLocal(
+        project=R.project,
+        plan=R.plan,
+        data_folder=R.data_folder,
+        output_folder=R.output_folder,
+    )
+
+    row = R.df.iloc[0]
+    dici = {
+        "case_id": row["case_id"],
+        "image": row["image"],
+        "lm": row["lm"],
+        "ds": row["ds"],
+        "remapping": row["remapping"],
+        "bbox_fn": row["bbox_fn"],
+    }
+    dici["bbox"] = bbox_from_file(dici["bbox_fn"])
+
+# %%
+    dici = RR.transforms_dict["LoadT"](dici)
+    dici = RR.transforms_dict["Dev"](dici)
+    dici = RR.transforms_dict["CropByYolo"](dici)
+    dici = RR.transforms_dict["Chan"](dici)
+    dici = RR.transforms_dict["Remap"][dici["ds"]](dici)
+    dici = RR.transforms_dict["Labels"](dici)
+    dici = RR.transforms_dict["Indx"](dici)
+
+# %%
+    image = dici["image"]
+    lm = dici["lm"]
+    lm_fg_indices = dici["lm_fg_indices"]
+    lm_bg_indices = dici["lm_bg_indices"]
+    labels = dici["lm_labels"]
+
+    assert image.shape == lm.shape, "mismatch in shape"
+    assert image.dim() == 4, "images should be cxhxwxd"
+
+    inds = {
+        "lm_fg_indices": lm_fg_indices,
+        "lm_bg_indices": lm_bg_indices,
+        "meta": image.meta,
+    }
+
+    # Optional local debug writes, same as worker side-effects.
+    # RR.save_indices(inds, RR.indices_subfolder)
+    # RR.save_pt(image[0], "images")
+    # RR.save_pt(lm[0], "lms")
+
 # %%
     row = R.df.iloc[0]
     dici = {"case_id": row["case_id"], "image": row["image"], "lm": row["lm"]}
@@ -528,3 +689,71 @@ if __name__ == "__main__":
         output_folder=R.output_folder,
     )
     RR.process(mini_df)
+# %%
+
+
+  case_id = "kits23_00486"
+
+  row = R.df[R.df["case_id"].astype(str) == case_id].iloc[0]
+
+  dici = {
+      "case_id": row["case_id"],
+      "image": row["image"],
+      "lm": row["lm"],
+      "ds": row["ds"],
+      "remapping": row["remapping"],
+      "bbox_fn": row["bbox_fn"],
+  }
+  dici["bbox"] = bbox_from_file(dici["bbox_fn"])
+
+# %%
+  RR = RBDSamplerWorkerLocal(
+      project=R.project,
+      plan=R.plan,
+      data_folder=R.data_folder,
+      output_folder=R.output_folder,
+  )
+
+  dici = RR.transforms_dict["LoadT"](dici)
+  dici = RR.transforms_dict["Dev"](dici)
+
+  C = CropByYolo(
+      keys=["image", "lm"],
+      lm_key="lm",
+      bbox_key="bbox",
+      margin=20,
+      sanitize=True,
+  )
+
+  dici2 = C(dici)
+# %%
+    img = dici['image']
+    lm = dici['lm']
+    ImageMaskViewer([img, lm])
+
+# %%
+
+  dici["image"].shape, dici["lm"].shape
+  dici2["image"].shape, dici2["lm"].shape
+
+  dici["lm"].count_nonzero().item(), dici2["lm"].count_nonzero().item()
+
+  dici2.get("_preprocess_events")
+
+  Fallback wrapper too:
+
+  CF = CropByYoloWithForegroundFallbackd(
+      min_shape=R.plan["src_dims"],
+      keys=["image", "lm"],
+      lm_key="lm",
+      bbox_key="bbox",
+  )
+
+  dici3 = CF(dici)
+
+  dici3["image"].shape, dici3["lm"].shape
+
+  dici3["lm"].count_nonzero().item()
+
+  dici3.get("_preprocess_events")
+# %%

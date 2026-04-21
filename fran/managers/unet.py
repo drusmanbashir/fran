@@ -79,6 +79,7 @@ class UNetManager(LightningModule):
     def create_batch_affine(self):
         if not self.hparams.configs["dataset_params"].get("batch_affine", False):
             return None
+
         affine3d = self.hparams.configs["affine3d"]
         return BatchRandAffined3D(
             keys=["image", "lm"],

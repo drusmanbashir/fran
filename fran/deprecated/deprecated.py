@@ -188,42 +188,47 @@ if __name__ == "__main__":
     run_src = "LITS-1217"
     project_title = "litsmc"
     value = 4
-    # %%
+# %%
     project_title = "lidc2"
     value = 3
-    # %%
+# %%
     run_src = "LITS-1230"
     project_title = "nodes"
     value = 3
-    # %%
+# %%
     run_src = "LITS-1088"
     project_title = "totalseg"
     value = 2
 
-    # %%
-    run_src = "LITS-1120"
+# %%
+    run_src = "KITS-SIRIG"
     project_title = "totalseg"
     value = 2
-    # %%
+# %%
     ckpt_src = (
         "/s/fran_storage/checkpoints/nodes/nodes/NODES-0087/checkpoints/last.ckpt"
     )
-    # %%
-    # SECTION:-------------------- OLDER settings did not have a config param in UNet. Block below copies that from datamodule-------------------------------------------------------------------------------------- <CR>
-    run_src = "KITS-0009"
+# %%
+# SECTION:-------------------- OLDER settings did not have a config param in UNet. Block below copies that from datamodule-------------------------------------------------------------------------------------- <CR>
+    run_src = "KITS23-SIRIG"
     ckpt_src = (
         "/s/fran_storage/checkpoints/nodes/nodes/NODES-0093/checkpoints/last.ckpt"
     )
     ckpt_src = checkpoint_from_model_id(run_src)
     dict_src = torch.load(ckpt_src, map_location="cpu", weights_only=False)
-    # %%
-    # SECTION:-------------------- CONFIG --> CONFIGS--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- CONFIG --> CONFIGS--------------------------------------------------------------------------------------
 
     dici = dict_src.copy()
     dici["datamodule_hyper_parameters"].keys()
     print(dici["datamodule_hyper_parameters"]["train1_indices"])
-    # %%
-    dici["datamodule_hyper_parameters"]["configs"]
+# %%
+    src_dims = dici["datamodule_hyper_parameters"]["configs"]['dataset_params']['src_dims']
+    dici["datamodule_hyper_parameters"]["configs"]['plan_train']['src_dims']= src_dims
+    dici["datamodule_hyper_parameters"]["configs"]['plan_valid']['src_dims']= src_dims
+
+    torch.save(dici, ckpt_src)
+# %%
     dici["hyper_parameters"]["configs"]  #
     dici["hyper_parameters"]["configs"] = dici["hyper_parameters"]["config"].copy()
     dici["datamodule_hyper_parameters"]["configs"] = dici[
@@ -235,13 +240,13 @@ if __name__ == "__main__":
     del dici["hyper_parameters"]["config"]
     dici["hyper_parameters"].keys()
     torch.save(dici, ckpt_src)
-    # %%
+# %%
     dici["datamodule_hyper_parameters"]["configs"]["plan_train"]
     dici["datamodule_hyper_parameters"]["configs"].keys()
     dici["hyper_parameters"]["configs"]
     dici["hyper_parameters"]["configs"]
-    # %%
-    # SECTION:-------------------- OTHER--------------------------------------------------------------------------------------
+# %%
+# SECTION:-------------------- OTHER--------------------------------------------------------------------------------------
     pp(dici.keys())
     pp(dici["hyper_parameters"].keys())
     dici["hyper_parameters"]["lr"]
@@ -259,7 +264,7 @@ if __name__ == "__main__":
     dici["hyper_parameters"]["config"]["plan_train"]["remapping"] = None
     dici["hyper_parameters"]["config"]["plan_valid"] = pln
 
-    # %%
+# %%
     dici["datamodule_hyper_parameters"]["config"]["plan_train"]["remapping"] = None
     dici["hyper_parameters"]["config"]["plan_train"] = plan
     dici["hyper_parameters"]["config"]["plan_valid"] = plan
@@ -268,11 +273,11 @@ if __name__ == "__main__":
     dici["hyper_parameters"]["config"]["dataset_params"]["plan_train"] = 2
     dici["hyper_parameters"]["config"]["dataset_params"]["plan_valid"] = 2
     dici["hyper_parameters"]["config"]["dataset_params"]
-    # %%
+# %%
     dici["datamodule_hyper_parameters"]["config"]["plan_valid"]  # =pln
     dici["datamodule_hyper_parameters"]["config"]  # ['plan_train']#=pln
     torch.save(dici, ckpt_src)
-    # %%
+# %%
 
     dici["hyper_parameters"].keys()
     dici["hyper_parameters"]["project_title"] = project_title
@@ -281,7 +286,7 @@ if __name__ == "__main__":
     dici["datamodule_hyper_parameters"]["project_title"] = project_title
     torch.save(dici, ckpt_src)
 
-    # %%
+# %%
     run2 = "LITS-1088"
     ckpt2 = checkpoint_from_model_id(run2)
     ckpt2_neo = ckpt2.str_replace(".ckpt", "_neo.ckpt")
@@ -292,15 +297,15 @@ if __name__ == "__main__":
     torch.save(dici, ckpt_src)
     torch.save(dici, ckpt_src)
 
-    # %%
+# %%
 
     dd = copy_dict_structure(dict_src, dict_dest)
 
     dd["hyper_parameters"].keys()
     dd["hyper_parameters"]["config"].keys()
     torch.save(dd, ckpt2_neo)
-    # %%
-    # SECTION:-------------------- PATCH_SIZE TO PLAN-------------------------------------------------------------------------------------- <CR>
+# %%
+# SECTION:-------------------- PATCH_SIZE TO PLAN-------------------------------------------------------------------------------------- <CR>
 
     # dici['state_dict']= dict_dest['state_dict'].copy()
 
@@ -323,7 +328,7 @@ if __name__ == "__main__":
     ].copy()
     dici["datamodule_hyper_parameters"]["config"]
     torch.save(dici, ckpt_src)
-    # %%
+# %%
     dici["hyper_parameters"]["config"] = {}
 
     dici["hyper_parameters"]["config"].keys()
@@ -342,7 +347,7 @@ if __name__ == "__main__":
     dici["hyper_parameters"]["config"]["loss_params"] = dici["hyper_parameters"][
         "loss_params"
     ].copy()
-    # %%
+# %%
     dici["hyper_parameters"]["config"].keys()
     dici["hyper_parameters"]["config"]["plan"]["patch_size"]  # =[96,96,96]
 
@@ -356,7 +361,7 @@ if __name__ == "__main__":
     ].keys()  # ['dataset_params']['patch_size'] = [96,96,96]#=
     dici["hyper_parameters"]["project"]
     dict_src["hyper_parameters"]["project"]
-    # %%
+# %%
     dici["datamodule_hyper_parameters"].keys()
     dici["datamodule_hyper_parameters"]["dataset_params"]
     dici["datamodule_hyper_parameters"]["config"] = dici["hyper_parameters"][
@@ -378,10 +383,10 @@ if __name__ == "__main__":
     ].copy()
     dici["hyper_parameters"].keys()
     torch.save(dici, ckpt2_neo)
-    # %%
+# %%
     pp(dict_dest["hyper_parameters"].keys())
     pp(dict_src["hyper_parameters"].keys())
-    # %%
+# %%
     dd = copy_dict_structure(
         dict_src["hyper_parameters"], dict_dest["hyper_parameters"]
     )
@@ -392,7 +397,7 @@ if __name__ == "__main__":
     dict_dest["hyper_parameters"].keys()  # =dd
     dict_dest["datamodule_hyper_parameters"].keys()  # =dd2
     torch.save(dict_dest, ckpt2)
-    # %%
+# %%
     dic_dest["hyper_parameters"]["plan"] = dic_dest["datamodule_hyper_parameters"][
         "config"
     ]["plan"].copy()
@@ -408,9 +413,9 @@ if __name__ == "__main__":
 
     dic_tmp["datamodule_hyper_parameters"]["config"].keys()
     dic_tmp["datamodule_hyper_parameters"]["config"]["plan"]
-    # %%
+# %%
 
-    # %%
+# %%
     dic_tmp["hyper_parameters"]["plan"] = dic_tmp["datamodule_hyper_parameters"][
         "dataset_params"
     ].copy()
@@ -424,36 +429,36 @@ if __name__ == "__main__":
     dic_tmp["datamodule_hyper_parameters"]["config"]["plan"]
     # dic_tmp['datamodule_hyper_parameters']['config'] = {'plan':dic_tmp['datamodule_hyper_parameters']['plan'].copy()}
     torch.save(dic_tmp, ckpt)
-    # %%
+# %%
     insert_plan_key(ckpt)
-    # %%
-    # SECTION:-------------------- Spacing to config key-------------------------------------------------------------------------------------- <CR>
+# %%
+# SECTION:-------------------- Spacing to config key-------------------------------------------------------------------------------------- <CR>
 
     keys = ["spacing"]
     dici = dic_tmp["datamodule_hyper_parameters"]["plan"]
     dici["spacing"] = ".8,.8,1.5"
 
-    # %%
+# %%
 
-    # %%
-    # SECTION:-------------------- CKPT manual fix-------------------------------------------------------------------------------------- <CR>
+# %%
+# SECTION:-------------------- CKPT manual fix-------------------------------------------------------------------------------------- <CR>
 
     ckpt_fn = "/s/fran_storage/checkpoints/litsmc/litsmc/LITS-999/checkpoints/last.ckpt"
-    # %%
+# %%
     ckp = torch.load(ckpt_fn)
     ckp.keys()
     ckp["datamodule_hyper_parameters"]["dataset_params"]["batch_size"] = 12
     ckp["datamodule_hyper_parameters"]["batch_size"] = 12
     ckp["datamodule_hyper_parameters"]["config"]
     torch.save(ckp, ckpt_fn)
-    # %%
+# %%
     fn = "/s/fran_storage/checkpoints/lidc2/lidc2/LITS-911/checkpoints/epoch=499-step=8000.ckpt"
     std = torch.load(fn)
     ckpt_state = std["state_dict"]
     ckpt_state = remove_loss_key_state_dict(ckpt_state)
     torch.save(std, fn)
 
-    # %%
+# %%
     remove_loss_key_state_dict("LITS-911")
 
     pp(dic_tmp.keys())
@@ -461,10 +466,10 @@ if __name__ == "__main__":
         spacing = dic_tmp["datamodule_hyper_parameters"]["dataset_params"]["spacing"]
         dic_tmp["datamodule_hyper_parameters"]["plan"] = {"spacing": spacing}
         torch.save(dic_tmp, ckpt)
-    # %%
-    # SECTION:-------------------- filename_or_obj-------------------------------------------------------------------------------------- <CR>
+# %%
+# SECTION:-------------------- filename_or_obj-------------------------------------------------------------------------------------- <CR>
 
-    # %%
+# %%
     fldr = Path(
         "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_150_150_150"
     )
@@ -476,3 +481,4 @@ if __name__ == "__main__":
         del lm.meta["filename"]
         torch.save(lm, fn)
 # %%
+

@@ -683,7 +683,7 @@ class DataManager(LightningDataModule):
     @property
     def src_dims(self):
         if self.dataset_params["zoom"] == True:
-            src_dims = self.dataset_params["src_dims"]
+            src_dims = self.plan["src_dims"]
         else:
             src_dims = self.plan["patch_size"]
         return src_dims

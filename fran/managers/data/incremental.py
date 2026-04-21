@@ -356,7 +356,7 @@ class DataManagerI(DataManager):
         print(stage)
         if stage == "fit":
             headline(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
-            print("Src Dims: ", self.configs["dataset_params"]["src_dims"])
+            print("Src Dims: ", self.plan["src_dims"])
             print("Patch Size: ", self.plan["patch_size"])
             print("Using fg indices: ", self.plan["use_fg_indices"])
 

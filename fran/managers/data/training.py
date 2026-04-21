@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import os
+import shutil
 from functools import reduce
 from operator import add
 from pathlib import Path
@@ -162,6 +163,7 @@ class DataManagerDual(LightningDataModule):
         val_indices=None,
         val_sampling=1.0,
         debug=False,
+        dual_ssd=True,
     ):
         super().__init__()
         self.project = Project(project_title)
@@ -179,6 +181,7 @@ class DataManagerDual(LightningDataModule):
         self.val_indices = val_indices
         self.val_sampling = float(val_sampling)
         self.debug = debug
+        self.dual_ssd = dual_ssd
 
         if save_hyperparameters:
             self.save_hyperparameters(
@@ -187,6 +190,7 @@ class DataManagerDual(LightningDataModule):
                 "train_indices",
                 "val_indices",
                 "val_sampling",
+                "dual_ssd",
                 logger=False,
             )
 
@@ -200,14 +204,14 @@ class DataManagerDual(LightningDataModule):
                 f"Limiting training dataset size to{self.train_indices}", color="yellow"
             )
             self.train_manager.select_cases_from_inds(self.train_indices)
-            self.train_manager.data = self.train_manager.create_data_dicts(
+            self.train_manager.data = self.train_manager.create_staged_data_dicts(
                 self.train_manager.cases
             )
             if self.val_indices is None:
                 self.val_indices = max(1, int(len(self.train_manager.cases) * 0.2))
         if self.val_indices is not None:
             self.valid_manager.select_cases_from_inds(self.val_indices)
-            self.valid_manager.data = self.valid_manager.create_data_dicts(
+            self.valid_manager.data = self.valid_manager.create_staged_data_dicts(
                 self.valid_manager.cases
             )
 
@@ -268,7 +272,8 @@ class DataManagerDual(LightningDataModule):
             ds_type=self.ds_type,
             keys=self.keys_tr,
             data_folder=self.data_folder,
-            debug= self.debug
+            debug= self.debug,
+            dual_ssd=self.dual_ssd,
         )
         self.valid_manager = cls_val(
             project=self.project,
@@ -281,7 +286,8 @@ class DataManagerDual(LightningDataModule):
             keys=self.keys_val,
             data_folder=self.data_folder,
             val_sampling=self.val_sampling,
-            debug = self.debug
+            debug = self.debug,
+            dual_ssd=self.dual_ssd,
         )
 
     def _call_prepare_data(self):
@@ -331,12 +337,15 @@ class DataManager(LightningDataModule):
         collate_fn=None,
         data_folder: Optional[str | Path] = None,
         val_sampling=1.0,
-        debug = False
+        debug = False,
+        dual_ssd=True,
     ):
 
         super().__init__()
         if save_hyperparameters:
-            self.save_hyperparameters("project", "configs", "split", logger=False)
+            self.save_hyperparameters(
+                "project", "configs", "split", "dual_ssd", logger=False
+            )
         device = resolve_device(device)
 
         self.project = project
@@ -348,6 +357,7 @@ class DataManager(LightningDataModule):
         self.split = split
         self.keys = keys
         self.val_sampling = float(val_sampling)
+        self.dual_ssd = dual_ssd
         self.set_plan()
 
         self.maybe_fix_remapping_dtype()
@@ -705,7 +715,40 @@ class DataManager(LightningDataModule):
         if not hasattr(self, "cases"):
             self.cases_from_project_split()
         # Create data dictionaries for this split
-        self.data = self.create_data_dicts(self.cases)
+        self.data = self.create_staged_data_dicts(self.cases)
+
+    def create_staged_data_dicts(self, cases):
+        data = self.create_data_dicts(cases)
+        if self.dual_ssd:
+            data = self.copy_data_dicts_to_rapid_access_folder2(data)
+        return data
+
+    def copy_data_dicts_to_rapid_access_folder2(self, data):
+        cprint("Copying half of the data to rapid_access_folder2", color="green")
+        src_root = Path(COMMON_PATHS["rapid_access_folder"])
+        dst_root = Path(COMMON_PATHS["rapid_access_folder2"])
+        keys = ("image", "lm", "indices")
+        copied = list(data)
+        for i, dici in enumerate(pbar(data)):
+            if i % 2 == 0:
+                continue
+            out = dict(dici)
+            for key in keys:
+                out[key] = self._copy_value_to_rapid_access_folder2(
+                    out[key], src_root, dst_root
+                )
+            copied[i] = out
+        return copied
+
+    def _copy_value_to_rapid_access_folder2(self, value, src_root, dst_root):
+        src = Path(value)
+        dst = dst_root / src.relative_to(src_root)
+        if dst.exists():
+            return str(dst)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        cprint(f"Copying {src} to {dst}", color="green")
+        shutil.copy2(src, dst)
+        return str(dst)
 
     def cases_from_project_split(self):
         nnz_allowed = self.plan.get("nnz_allowed", False)
@@ -768,8 +811,8 @@ class DataManager(LightningDataModule):
         if isinstance(self.ds, GridPatchDataset):
             return 0, False
         else:
-            num_workers = min(6, self.effective_batch_size * 2)
-            persistent_workers = True
+            num_workers = min(12, self.effective_batch_size * 2)
+            persistent_workers = False
             return num_workers, persistent_workers
 
     def create_train_dataloader(self):
@@ -816,7 +859,7 @@ class DataManager(LightningDataModule):
         # Create transforms for this split
 
         headline(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
-        print("Src Dims: ", self.configs["dataset_params"]["src_dims"])
+        print("Src Dims: ", self.plan["src_dims"])
         print("Patch Size: ", self.plan["patch_size"])
         print("Using fg indices: ", self.plan["use_fg_indices"])
 
@@ -864,7 +907,7 @@ class DataManager(LightningDataModule):
     @property
     def src_dims(self):
         if self.dataset_params["zoom"] == True:
-            src_dims = self.dataset_params["src_dims"]
+            src_dims = self.plan["src_dims"]
         else:
             src_dims = self.plan["patch_size"]
         return src_dims
@@ -1268,7 +1311,7 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "kits2"
+    project_title = "kits23"
     proj = Project(project_title=project_title)
 
     CL = ConfigMaker(proj)
@@ -1276,7 +1319,7 @@ if __name__ == "__main__":
     conf = CL.configs
 # %%
 # SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR>
-    batch_size = 2
+    batch_size = 4
     ds_type = "lmdb"
     ds_type = None
     proj_tit = proj.project_title
@@ -1287,6 +1330,7 @@ if __name__ == "__main__":
         configs=conf,
         batch_size=batch_size,
         ds_type=ds_type,
+        dual_ssd=True,
     )
 
 # %%

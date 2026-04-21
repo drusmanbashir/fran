@@ -222,7 +222,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             store_label_count(self.output_folder, num_processes=6)
 
     def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
-        self.setup_workers(
+        super().setup(
             overwrite=overwrite,
             num_processes=num_processes,
             device=device,

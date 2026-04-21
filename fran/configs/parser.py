@@ -247,6 +247,10 @@ def make_patch_size(patch_dim0, patch_dim1):
     return patch_size
 
 
+def make_src_dims_from_patch_size(patch_size):
+    return [int(dim * 1.1) for dim in patch_size]
+
+
 def get_imagelists_from_config(project, fold, patch_based, dim0, dim1):
     json_fname = project.validation_folds_filename
     if patch_based == False:
@@ -326,6 +330,13 @@ class ConfigMaker:
         self.plans = self.plans.set_index("plan_id", drop=False)
         configs = load_config_from_workbook(configuration_filename)
         self.configs = parse_excel_dict(configs, KEYS_STR_TO_LIST)
+        self.plans["src_dims"] = self.plans.apply(
+            lambda row: make_src_dims_from_patch_size(
+                make_patch_size(row["patch_dim0"], row["patch_dim1"])
+            ),
+            axis=1,
+        )
+
 
     def setup(
         self,
@@ -461,6 +472,15 @@ class ConfigMaker:
         self.configs["plan_test"]["patch_size"] = self.configs["plan_train"][
             "patch_size"
         ]
+        self.configs["plan_train"]["src_dims"] = make_src_dims_from_patch_size(
+            self.configs["plan_train"]["patch_size"]
+        )
+        self.configs["plan_valid"]["src_dims"] = make_src_dims_from_patch_size(
+            self.configs["plan_valid"]["patch_size"]
+        )
+        self.configs["plan_test"]["src_dims"] = make_src_dims_from_patch_size(
+            self.configs["plan_test"]["patch_size"]
+        )
 
     def validate_plans(self):
         for remp_key in ["remapping_source", "remapping_lbd_kbd"]:
@@ -755,7 +775,6 @@ if __name__ == "__main__":
 
     pp(C.configs[plan_key])
     C.config 
-
 
 
 

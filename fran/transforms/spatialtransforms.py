@@ -1,5 +1,11 @@
 # %%
+import csv
+import fcntl
+import logging
 import math
+import os
+from pathlib import Path
+
 import ipdb
 import monai.transforms.spatial.functional as fm
 import skimage.transform as tf
@@ -191,6 +197,17 @@ class CropForegroundMinShaped(MapTransform):
         return d
 
 class CropByYolo(MapTransform):
+    audit_columns = (
+        "case_id",
+        "bbox_fn",
+        "status",
+        "stage",
+        "fg_before",
+        "fg_after",
+        "margin",
+        "message",
+    )
+
     def __init__(
         self,
         keys=("image", "lm"),
@@ -198,6 +215,7 @@ class CropByYolo(MapTransform):
         bbox_key="bbox",
         margin=20,
         sanitize=True,
+        report_path=None,
         allow_missing_keys=False,
     ):
         super().__init__(keys=keys, allow_missing_keys=allow_missing_keys)
@@ -205,6 +223,7 @@ class CropByYolo(MapTransform):
         self.bbox_key = bbox_key
         self.margin = float(margin)
         self.sanitize = bool(sanitize)
+        self.report_path = report_path
         self.logger = logging.getLogger(__name__)
 
     def __call__(self, data):
@@ -212,11 +231,30 @@ class CropByYolo(MapTransform):
         self._assert_3d(dici)
         first_crop = self._crop_keys(dici, dici[self.bbox_key])
         if not self.sanitize:
+            if self.report_path:
+                fg_before = self._fg_count(dici)
+                fg_after = self._fg_count(first_crop)
+                self._append_audit_row(
+                    data=dici,
+                    status="NORMAL",
+                    stage="sanitize_disabled",
+                    fg_before=fg_before,
+                    fg_after=fg_after,
+                    message="NORMAL",
+                )
             return first_crop
 
         fg_before = self._fg_count(dici)
         fg_after = self._fg_count(first_crop)
         if fg_before == fg_after:
+            self._append_audit_row(
+                data=dici,
+                status="NORMAL",
+                stage="first",
+                fg_before=fg_before,
+                fg_after=fg_after,
+                message="NORMAL",
+            )
             return first_crop
 
         self._log_sanitize_mismatch(
@@ -239,6 +277,26 @@ class CropByYolo(MapTransform):
                 data=dici,
                 fg_before=fg_before,
                 fg_after=fg_after_expanded,
+            )
+            self._append_audit_row(
+                data=dici,
+                status="ERROR",
+                stage="expanded",
+                fg_before=fg_before,
+                fg_after=fg_after_expanded,
+                message="Foreground mismatch persists after expansion.",
+            )
+        else:
+            self._append_audit_row(
+                data=dici,
+                status="WARNING",
+                stage="recovered",
+                fg_before=fg_before,
+                fg_after=fg_after_expanded,
+                message=(
+                    f"First crop foreground mismatch recovered after expansion "
+                    f"with {self.margin:.1f}mm margin."
+                ),
             )
         return expanded_crop
 
@@ -305,6 +363,47 @@ class CropByYolo(MapTransform):
         bbox_fn = data.get("bbox_fn")
         return case_id, bbox_fn
 
+    def _append_audit_row(
+        self,
+        *,
+        data: dict,
+        status: str,
+        stage: str,
+        fg_before,
+        fg_after,
+        message: str,
+    ) -> None:
+        if not self.report_path:
+            return
+
+        case_id, bbox_fn = self._log_context(data)
+        row = {
+            "case_id": "" if case_id is None else str(case_id),
+            "bbox_fn": "" if bbox_fn is None else str(bbox_fn),
+            "status": status,
+            "stage": stage,
+            "fg_before": "" if fg_before is None else int(fg_before),
+            "fg_after": "" if fg_after is None else int(fg_after),
+            "margin": float(self.margin),
+            "message": message,
+        }
+        self._append_csv_row(row)
+
+    def _append_csv_row(self, row: dict) -> None:
+        report_path = Path(self.report_path)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        with report_path.open("a+", newline="") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                handle.seek(0, os.SEEK_END)
+                write_header = handle.tell() == 0
+                writer = csv.DictWriter(handle, fieldnames=self.audit_columns)
+                if write_header:
+                    writer.writeheader()
+                writer.writerow(row)
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
     def _log_sanitize_mismatch(
         self,
         *,
@@ -313,7 +412,7 @@ class CropByYolo(MapTransform):
         fg_before: int,
         fg_after: int,
     ) -> None:
-        case_id,  bbox_fn = self._log_context(data)
+        case_id, bbox_fn = self._log_context(data)
         if stage == "first":
             self.logger.warning(
                 "CropByYolo fg mismatch (first crop): case_id=%s bbox=%s fg_before=%d fg_after=%d; retrying with %.1fmm margin",
@@ -327,7 +426,7 @@ class CropByYolo(MapTransform):
 
         if stage == "expanded":
             self.logger.error(
-                "CropByYolo fg mismatch persists after expansion: case_id=%sbbox=%s fg_before=%d fg_after_expanded=%d",
+                "CropByYolo fg mismatch persists after expansion: case_id=%s bbox=%s fg_before=%d fg_after_expanded=%d",
                 case_id,
                 bbox_fn,
                 fg_before,

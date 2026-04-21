@@ -271,7 +271,7 @@ class NiftiToTorchDataGenerator(Preprocessor):
         device="cpu",
         debug=False,
     ):
-        self.setup_workers(
+        super().setup(
             overwrite=overwrite,
             num_processes=num_processes,
             device=device,
@@ -745,5 +745,4 @@ if __name__ == "__main__":
 
 
 # %%
-
 

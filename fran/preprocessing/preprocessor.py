@@ -1,4 +1,5 @@
 # %%
+import json
 import itertools as il
 import sqlite3
 from pathlib import Path
@@ -10,10 +11,12 @@ import ray
 import SimpleITK as sitk
 import torch
 from fastcore.foundation import GetAttr
+from tqdm.auto import tqdm
 from fran.data.dataregistry import DS
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
+    import_h5py,
     infer_dataset_stats_window,
     postprocess_artifacts_missing,
     sanitize_meta_for_monai,
@@ -251,8 +254,296 @@ def get_tensor_stats(tnsr) -> dict:
     return dic
 
 
+HDF5_SHARD_CHUNKS = {
+    (192, 192, 128): {
+        "image": (192, 192, 128),
+        "lm": (192, 192, 128),
+        "indices": (262144,),
+    }
+}
+
+
+def _normalize_src_dims(src_dims):
+    dims = tuple(int(v) for v in src_dims)
+    if len(dims) != 3 or any(v <= 0 for v in dims):
+        raise ValueError(f"src_dims must be 3 positive ints, got {src_dims}")
+    return dims
+
+
+def _hdf5_chunks_for(shape, key, src_dims: tuple=(192, 192, 128)):
+    shape = tuple(int(v) for v in shape)
+    # src_dims = _normalize_src_dims(src_dims)
+    conf = HDF5_SHARD_CHUNKS.get(
+        src_dims,
+        {"image": src_dims, "lm": src_dims, "indices": (262144,)},
+    )
+
+    if key in ("image", "lm"):
+        if len(shape) != 3:
+            raise ValueError(f"{key} expected 3D shape, got {shape}")
+        base = conf[key]
+        return tuple(min(int(dim), int(chunk_dim)) for dim, chunk_dim in zip(shape, base))
+
+    if key in ("indices", "lm_fg_indices", "lm_bg_indices"):
+        if len(shape) != 1:
+            raise ValueError(f"{key} expected 1D shape, got {shape}")
+        idx_chunk = int(conf["indices"][0])
+        return (max(1, min(int(shape[0]), idx_chunk)),)
+
+    raise KeyError(f"Unknown HDF5 chunk key: {key}")
+
+
+def _load_torch_for_hdf5(path):
+    return torch.load(path, map_location="cpu", weights_only=False)
+
+
+def _to_numpy_cpu(value):
+    if torch.is_tensor(value):
+        return value.detach().cpu().numpy()
+    return np.asarray(value)
+
+
+def _create_index_dataset(case_grp, name, data, src_dims, ds_kwargs):
+    if int(data.shape[0]) > 0:
+        case_grp.create_dataset(
+            name,
+            data=data,
+            chunks=_hdf5_chunks_for(data.shape, name, src_dims),
+            **ds_kwargs,
+        )
+        return
+    case_grp.create_dataset(name, data=data, **ds_kwargs)
+
+
+def _write_case_to_hdf5_shard(
+    h5f,
+    case_id,
+    image_pt,
+    lm_pt,
+    indices_pt,
+    src_dims,
+    compression,
+    compression_opts,
+):
+    image = _to_numpy_cpu(_load_torch_for_hdf5(image_pt))
+    lm = _to_numpy_cpu(_load_torch_for_hdf5(lm_pt))
+    indices = _load_torch_for_hdf5(indices_pt)
+
+    if not isinstance(indices, dict):
+        raise ValueError(f"indices file must be a dict: {indices_pt}")
+    if "lm_fg_indices" not in indices or "lm_bg_indices" not in indices:
+        raise KeyError(f"indices dict missing lm_fg_indices/lm_bg_indices: {indices_pt}")
+
+    fg = _to_numpy_cpu(indices["lm_fg_indices"]).reshape(-1)
+    bg = _to_numpy_cpu(indices["lm_bg_indices"]).reshape(-1)
+
+    ds_kwargs = {}
+    if compression is not None:
+        ds_kwargs["compression"] = compression
+        if compression_opts is not None:
+            ds_kwargs["compression_opts"] = compression_opts
+        ds_kwargs["shuffle"] = True
+
+    cases_grp = h5f.require_group("cases")
+    case_grp = cases_grp.create_group(case_id)
+    case_grp.create_dataset(
+        "image",
+        data=image,
+        chunks=_hdf5_chunks_for(image.shape, "image", src_dims),
+        **ds_kwargs,
+    )
+    case_grp.create_dataset(
+        "lm",
+        data=lm,
+        chunks=_hdf5_chunks_for(lm.shape, "lm", src_dims),
+        **ds_kwargs,
+    )
+    _create_index_dataset(
+        case_grp=case_grp,
+        name="lm_fg_indices",
+        data=fg,
+        src_dims=src_dims,
+        ds_kwargs=ds_kwargs,
+    )
+    _create_index_dataset(
+        case_grp=case_grp,
+        name="lm_bg_indices",
+        data=bg,
+        src_dims=src_dims,
+        ds_kwargs=ds_kwargs,
+    )
+
+    case_grp.attrs["image_pt"] = str(image_pt)
+    case_grp.attrs["lm_pt"] = str(lm_pt)
+    case_grp.attrs["indices_pt"] = str(indices_pt)
+    case_grp.attrs["image_shape"] = list(image.shape)
+    case_grp.attrs["lm_shape"] = list(lm.shape)
+
+    meta = indices.get("meta")
+    if isinstance(meta, dict):
+        meta = sanitize_meta_for_monai(dict(meta))
+        case_grp.attrs["meta_json"] = json.dumps(meta, default=str)
+        filename_or_obj = meta.get("filename_or_obj")
+        if filename_or_obj is not None:
+            case_grp.attrs["source_meta_filename_or_obj"] = str(filename_or_obj)
+    elif meta is not None:
+        case_grp.attrs["meta_json"] = json.dumps(meta, default=str)
+
+
+def _build_shard_groups(case_records, cases_per_shard, max_shard_bytes):
+    assert cases_per_shard is None or max_shard_bytes is None
+    if max_shard_bytes is not None:
+        max_shard_bytes = int(max_shard_bytes)
+        if max_shard_bytes <= 0:
+            raise ValueError(f"max_shard_bytes must be > 0, got {max_shard_bytes}")
+        groups = []
+        current = []
+        current_bytes = 0
+        for rec in case_records:
+            rec_bytes = rec["total_bytes"]
+            if current and current_bytes + rec_bytes > max_shard_bytes:
+                groups.append(current)
+                current = [rec]
+                current_bytes = rec_bytes
+            else:
+                current.append(rec)
+                current_bytes += rec_bytes
+        if current:
+            groups.append(current)
+        return groups
+
+    cases_per_shard = int(cases_per_shard)
+    if cases_per_shard <= 0:
+        raise ValueError(f"cases_per_shard must be > 0, got {cases_per_shard}")
+
+    return [
+        case_records[idx : idx + cases_per_shard]
+        for idx in range(0, len(case_records), cases_per_shard)
+    ]
+
+
+def create_hdf5_shards(
+    output_folder,
+    src_dims=(192, 192, 128),
+    cases_per_shard=5,
+    max_shard_bytes=None,
+    overwrite=False,
+    compression="gzip",
+    compression_opts=1,
+):
+    output_folder = Path(output_folder)
+    src_dims = _normalize_src_dims(src_dims)
+    images_folder = output_folder / "images"
+    lms_folder = output_folder / "lms"
+    indices_folder = output_folder / "indices"
+
+    for folder in (images_folder, lms_folder, indices_folder):
+        if not folder.exists():
+            raise FileNotFoundError(f"Required folder missing: {folder}")
+
+    src_tag = "_".join(str(v) for v in src_dims)
+    shards_folder = output_folder / "hdf5_shards" / f"src_{src_tag}"
+    manifest_fn = shards_folder / "manifest.json"
+    maybe_makedirs([shards_folder])
+
+    existing_shards = sorted(shards_folder.glob("shard_*.h5"))
+    if manifest_fn.exists() and not overwrite:
+        print(f"HDF5 shards already present, skipping: {manifest_fn}")
+        return existing_shards
+    if existing_shards and not overwrite:
+        raise FileExistsError(
+            f"Existing shard files found in {shards_folder}. Set overwrite=True to regenerate."
+        )
+    if overwrite:
+        for pth in existing_shards:
+            pth.unlink()
+        if manifest_fn.exists():
+            manifest_fn.unlink()
+
+    image_case_ids = {pth.stem for pth in images_folder.glob("*.pt")}
+    lm_case_ids = {pth.stem for pth in lms_folder.glob("*.pt")}
+    indices_case_ids = {pth.stem for pth in indices_folder.glob("*.pt")}
+    case_ids = sorted(image_case_ids & lm_case_ids & indices_case_ids)
+    if len(case_ids) == 0:
+        raise ValueError(
+            f"No shared case IDs found across images/lms/indices in {output_folder}"
+        )
+
+    case_records = []
+    for case_id in case_ids:
+        image_pt = images_folder / f"{case_id}.pt"
+        lm_pt = lms_folder / f"{case_id}.pt"
+        indices_pt = indices_folder / f"{case_id}.pt"
+        total_bytes = image_pt.stat().st_size + lm_pt.stat().st_size + indices_pt.stat().st_size
+        case_records.append(
+            {
+                "case_id": case_id,
+                "image_pt": image_pt,
+                "lm_pt": lm_pt,
+                "indices_pt": indices_pt,
+                "total_bytes": int(total_bytes),
+            }
+        )
+
+    shard_groups = _build_shard_groups(case_records, cases_per_shard, max_shard_bytes)
+    h5py = import_h5py()
+    shard_paths = []
+    shard_manifest = []
+    for shard_idx, shard_cases in enumerate(shard_groups):
+        shard_fn = shards_folder / f"shard_{shard_idx:04d}.h5"
+        with h5py.File(shard_fn, "w") as h5f:
+            case_ids_shard = [rec["case_id"] for rec in shard_cases]
+            h5f.attrs["format"] = "fran_hdf5_shards_v1"
+            h5f.attrs["src_dims"] = list(src_dims)
+            h5f.attrs["cases_per_shard"] = int(cases_per_shard)
+            h5f.attrs["case_ids_json"] = json.dumps(case_ids_shard)
+            h5f.attrs["compression"] = "" if compression is None else str(compression)
+            h5f.attrs["compression_opts"] = -1 if compression_opts is None else int(
+                compression_opts
+            )
+
+            for rec in shard_cases:
+                _write_case_to_hdf5_shard(
+                    h5f=h5f,
+                    case_id=rec["case_id"],
+                    image_pt=rec["image_pt"],
+                    lm_pt=rec["lm_pt"],
+                    indices_pt=rec["indices_pt"],
+                    src_dims=src_dims,
+                    compression=compression,
+                    compression_opts=compression_opts,
+                )
+
+        shard_paths.append(shard_fn)
+        shard_manifest.append({"shard": shard_fn.name, "case_ids": case_ids_shard})
+
+    manifest = {
+        "format": "fran_hdf5_shards_v1",
+        "src_dims": list(src_dims),
+        "compression": compression,
+        "compression_opts": compression_opts,
+        "cases_per_shard": int(cases_per_shard),
+        "max_shard_bytes": max_shard_bytes,
+        "num_cases": len(case_records),
+        "num_shards": len(shard_paths),
+        "shards": shard_manifest,
+    }
+    save_json(manifest, manifest_fn)
+    print(f"Wrote {len(shard_paths)} HDF5 shards in {shards_folder}")
+    return shard_paths
+
+
 class Preprocessor(GetAttr):
     _default = "project"
+    PREPROCESS_LOG_COLUMNS = [
+        "case_id",
+        "status",
+        "image",
+        "lm",
+        "error_type",
+        "error_message",
+        "traceback",
+    ]
 
     def __init__(
         self,
@@ -407,7 +698,105 @@ class Preprocessor(GetAttr):
         return [self.local_worker.process(self.mini_dfs[0])]
 
     def flatten_results(self, results):
-        return pd.DataFrame(il.chain.from_iterable(results))
+        df = pd.DataFrame(il.chain.from_iterable(results))
+        audit_cols = [col for col in df.columns if str(col).startswith("_preprocess_")]
+        if audit_cols:
+            df = df.drop(columns=audit_cols)
+        return df
+
+    @staticmethod
+    def _coerce_log_value(value):
+        if value is None:
+            return ""
+        return str(value)
+
+    @staticmethod
+    def _normalize_preprocess_events(events):
+        if events is None:
+            return []
+        if isinstance(events, dict):
+            events = [events]
+        if not isinstance(events, list):
+            return []
+        normalized = []
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            error_type = event.get("error_type")
+            error_message = event.get("error_message")
+            if error_type is None and error_message is None:
+                continue
+            normalized.append(
+                {
+                    "error_type": "WARNING" if error_type is None else str(error_type),
+                    "error_message": "" if error_message is None else str(error_message),
+                }
+            )
+        return normalized
+
+    def build_preprocessing_log_rows(self, results):
+        if len(results) != len(self.mini_dfs):
+            raise ValueError(
+                "Worker output group mismatch: "
+                f"got {len(results)} worker output groups for {len(self.mini_dfs)} mini_dfs"
+            )
+        rows = []
+        for mini_df, worker_outs in zip(self.mini_dfs, results):
+            if len(worker_outs) != len(mini_df):
+                raise ValueError(
+                    "Worker output length mismatch: "
+                    f"got {len(worker_outs)} rows for mini_df of size {len(mini_df)}"
+                )
+            for (_, src_row), worker_out in zip(mini_df.iterrows(), worker_outs):
+                case_id = self._coerce_log_value(src_row.get("case_id"))
+                image = self._coerce_log_value(src_row.get("image"))
+                lm = self._coerce_log_value(src_row.get("lm"))
+                status = "OK"
+                error_type = ""
+                error_message = ""
+                trace = ""
+                if isinstance(worker_out, dict):
+                    err_info = worker_out.get("_preprocess_error")
+                    if isinstance(err_info, dict):
+                        status = "ERROR"
+                        error_type = self._coerce_log_value(err_info.get("error_type"))
+                        error_message = self._coerce_log_value(
+                            err_info.get("error_message")
+                        )
+                        trace = self._coerce_log_value(err_info.get("traceback"))
+                    else:
+                        events = self._normalize_preprocess_events(
+                            worker_out.get("_preprocess_events")
+                        )
+                        if events:
+                            status = "WARNING"
+                            unique_types = []
+                            messages = []
+                            for event in events:
+                                evt_type = event["error_type"]
+                                if evt_type not in unique_types:
+                                    unique_types.append(evt_type)
+                                messages.append(event["error_message"])
+                            error_type = "; ".join(unique_types)
+                            error_message = "; ".join(messages)
+                rows.append(
+                    {
+                        "case_id": case_id,
+                        "status": status,
+                        "image": image,
+                        "lm": lm,
+                        "error_type": error_type,
+                        "error_message": error_message,
+                        "traceback": trace,
+                    }
+                )
+        return rows
+
+    def write_preprocessing_log(self, results):
+        rows = self.build_preprocessing_log_rows(results)
+        df = pd.DataFrame(rows, columns=self.PREPROCESS_LOG_COLUMNS)
+        log_fn = self.output_folder / "preprocessing_log.csv"
+        df.to_csv(log_fn, index=False)
 
     def postprocess_results(self, **process_kwargs):
         ts = self.results_df.shape
@@ -471,6 +860,7 @@ class Preprocessor(GetAttr):
             label_stats=self.store_label_stats,
             gif_window=infer_dataset_stats_window(self.project),
         )
+        self._maybe_create_hdf5_shards(**process_kwargs)
         return 1
 
     def process(self, **process_kwargs):
@@ -484,9 +874,26 @@ class Preprocessor(GetAttr):
             return 0
         self.initialize_process_state()
         self.results = self.run_worker_jobs()
+        self.write_preprocessing_log(self.results)
         self.results_df = self.flatten_results(self.results)
         self.postprocess_results(**process_kwargs)
+        self._maybe_create_hdf5_shards(**process_kwargs)
         return self.results_df
+
+    def create_hdf5_shards(self, **kwargs):
+        return create_hdf5_shards(output_folder=self.output_folder, **kwargs)
+
+    def _maybe_create_hdf5_shards(self, **process_kwargs):
+        if not process_kwargs.get("create_hdf5_shards", False):
+            return []
+        return self.create_hdf5_shards(
+            src_dims=process_kwargs.get("src_dims", (192, 192, 128)),
+            cases_per_shard=process_kwargs.get("cases_per_shard", 5),
+            max_shard_bytes=process_kwargs.get("max_shard_bytes"),
+            overwrite=process_kwargs.get("overwrite_hdf5_shards", False),
+            compression=process_kwargs.get("hdf5_compression", "gzip"),
+            compression_opts=process_kwargs.get("hdf5_compression_opts", 1),
+        )
 
     def process_batch(self, batch):
         images, lms, fg_inds, bg_inds = (
@@ -658,7 +1065,7 @@ class Preprocessor(GetAttr):
         debug = getattr(self, "debug", False)
         return (self.num_processes > 1) and (not debug)
 
-    def setup_workers(
+    def setup(
         self, overwrite=False, num_processes=8, device="cpu", **setup_kwargs
     ):
         self.num_processes = max(1, int(num_processes))
@@ -697,8 +1104,33 @@ class Preprocessor(GetAttr):
 
 
 # %%
-
+# %%
+#SECTION:-------------------- --------------------------------------------------------------------------------------
 if __name__ == "__main__":
+# %%
+#SECTION:-------------------- setup--------------------------------------------------------------------------------------
+    from pathlib import Path
+
+    from fran.configs.parser import ConfigMaker
+    from fran.managers import Project
+    from fran.utils.common import *
+    from fran.utils.folder_names import FolderNames
+    from monai.transforms.io.dictionary import LoadImaged
+    from fran.transforms.imageio import TorchReader
+    from utilz.helpers import pp
+
+    project_title = "kits23"
+    P = Project(project_title=project_title)
+    # P.maybe_store_projectwide_properties()
+    # spacing = [1.5, 1.5, 1.5]
+
+    C = ConfigMaker(P)
+    C.setup(2)
+    C.plans
+    conf = C.configs
+    plan = conf["plan_train"]
+# %%
+#
     bboxes_fldr = Path(
         "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex000"
     )
@@ -706,8 +1138,124 @@ if __name__ == "__main__":
         "/r/datasets/preprocessed/lidc/lbd/spc_075_075_075_rlb109adb5e_rlb109adb5e_ex000"
     )
     lms = bboxes_fldr / "lms"
-    generate_bboxes_from_lms_folder(lms, debug=False)
+    # generate_bboxes_from_lms_folder(lms, debug=False)
+
 # %%
+
+    src_dims = conf["dataset_params"]["src_dims"] 
+    src_dims = tuple(src_dims)
+    cases_per_shard=4
+    # max_shard_bytes=2_000_000_000
+    max_shard_bytes=None
+    overwrite=False
+    compression="gzip"
+    compression_opts=1
+# %%
+    output_folder = "/r/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144"
+    output_folder = Path(output_folder)
+    images_folder = output_folder / "images"
+    lms_folder = output_folder / "lms"
+    indices_folder = output_folder / "indices"
+
+    shards_folder = R.output_folder / "hdf5_shards"
+# %%
+#     src_tag = "_".join(str(v) for v in src_dims)
+#     shards_folder = output_folder / "hdf5_shards" / f"src_{src_tag}"
+#     manifest_fn = shards_folder / "manifest.json"
+#     maybe_makedirs([shards_folder])
+#
+#     existing_shards = sorted(shards_folder.glob("shard_*.h5"))
+#     if manifest_fn.exists() and not overwrite:
+#         print(f"HDF5 shards already present, skipping: {manifest_fn}")
+#         return existing_shards
+#     if existing_shards and not overwrite:
+#         raise FileExistsError(
+#             f"Existing shard files found in {shards_folder}. Set overwrite=True to regenerate."
+#         )
+#     if overwrite:
+#         for pth in existing_shards:
+#             pth.unlink()
+#         if manifest_fn.exists():
+#             manifest_fn.unlink()
+#
+# # %%
+    image_case_ids = {pth.stem for pth in images_folder.glob("*.pt")}
+    lm_case_ids = {pth.stem for pth in lms_folder.glob("*.pt")}
+    indices_case_ids = {pth.stem for pth in indices_folder.glob("*.pt")}
+    case_ids = sorted(image_case_ids & lm_case_ids & indices_case_ids)
+    if len(case_ids) == 0:
+        raise ValueError(
+            f"No shared case IDs found across images/lms/indices in {output_folder}"
+        )
+
+    case_records = []
+    for case_id in case_ids:
+        image_pt = images_folder / f"{case_id}.pt"
+        lm_pt = lms_folder / f"{case_id}.pt"
+        indices_pt = indices_folder / f"{case_id}.pt"
+        total_bytes = image_pt.stat().st_size + lm_pt.stat().st_size + indices_pt.stat().st_size
+        case_records.append(
+            {
+                "case_id": case_id,
+                "image_pt": image_pt,
+                "lm_pt": lm_pt,
+                "indices_pt": indices_pt,
+                "total_bytes": int(total_bytes),
+            }
+        )
+# %%
+
+    shard_groups = _build_shard_groups(case_records, cases_per_shard, max_shard_bytes)
+    h5py = import_h5py()
+    shard_paths = []
+    shard_manifest = []
+    for shard_idx, shard_cases in tqdm(enumerate(shard_groups)):
+        shard_fn = shards_folder / f"shard_{shard_idx:04d}.h5"
+        with h5py.File(shard_fn, "w") as h5f:
+
+            case_ids_shard = [rec["case_id"] for rec in shard_cases]
+            h5f.attrs["format"] = "fran_hdf5_shards_v1"
+            h5f.attrs["src_dims"] = list(src_dims)
+            h5f.attrs["cases_per_shard"] = int(cases_per_shard)
+            h5f.attrs["case_ids_json"] = json.dumps(case_ids_shard)
+            h5f.attrs["compression"] = "" if compression is None else str(compression)
+            h5f.attrs["compression_opts"] = -1 if compression_opts is None else int(
+                compression_opts
+            )
+            for rec in shard_cases:
+                _write_case_to_hdf5_shard(
+                    h5f=h5f,
+                    case_id=rec["case_id"],
+                    image_pt=rec["image_pt"],
+                    lm_pt=rec["lm_pt"],
+                    indices_pt=rec["indices_pt"],
+                    src_dims=src_dims,
+                    compression=compression,
+                    compression_opts=compression_opts,
+                )
+            cprint(f"Writing file {shard_fn}", "blue")
+
+        shard_paths.append(shard_fn)
+        shard_manifest.append({"shard": shard_fn.name, "case_ids": case_ids_shard})
+# %%
+
+    manifest = {
+        "format": "fran_hdf5_shards_v1",
+        "src_dims": list(src_dims),
+        "compression": compression,
+        "compression_opts": compression_opts,
+        "cases_per_shard": int(cases_per_shard),
+        "max_shard_bytes": max_shard_bytes,
+        "num_cases": len(case_records),
+        "num_shards": len(shard_paths),
+        "shards": shard_manifest,
+    }
+    save_json(manifest, manifest_fn)
+    print(f"Wrote {len(shard_paths)} HDF5 shards in {shards_folder}")
+    # return shard_paths
+
+
+
     masks_folder = bboxes_fldr
     label_files = list(masks_folder.glob("*pt"))
 # %%
