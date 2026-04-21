@@ -643,8 +643,8 @@ if __name__ == "__main__":
 
     P = Project(project_title="test")
     P = Project(project_title="pancreas")
-    P = Project(project_title="kidneys")
     P = Project(project_title="totalseg")
+    P = Project(project_title="kits23")
 
 # %%
     P.global_properties
@@ -654,7 +654,7 @@ if __name__ == "__main__":
     pp(C.configs["plan_valid"])
     C.configs["plan_train"].keys()
     plan = C.configs["plan_train"]
-    pp(plan["spacing"])
+    pp(plan["src_dims"])
     mode = plan["mode"]
     C.create_plan_postproc_artifacts()
 # %%
@@ -687,7 +687,7 @@ if __name__ == "__main__":
 # %%
     df = C.plans
 # %%
-    conf = C.configj
+    conf = C.config
     pp(conf["dataset_params"])
     pp(conf["plan_train"])
     conf["plan_train"]["imported_folder"]
