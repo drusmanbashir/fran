@@ -6,13 +6,8 @@ import pandas as pd
 import ray
 from fastcore.basics import GetAttr
 from fran.configs.parser import is_excel_None
-from fran.preprocessing.helpers import (
-    create_dataset_stats_artifacts,
-    infer_dataset_stats_window,
-)
 from fran.preprocessing.preprocessor import (
     Preprocessor,
-    generate_bboxes_from_lms_folder,
     store_label_count,
 )
 from fran.preprocessing.rayworker_base import RayWorkerBase
@@ -175,41 +170,6 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             self.output_folder = Path(output_folder)
 
         cprint(f"Data folder is {self.data_folder}", color="yellow")
-
-    def process(self, derive_bboxes=True):
-        return super().process(derive_bboxes=derive_bboxes)
-
-    def postprocess_results(self, **process_kwargs):
-        derive_bboxes = process_kwargs["derive_bboxes"]
-        ts = self.results_df.shape
-        if derive_bboxes and ts[-1] == 4:  # only store if entire dset is processed
-            self._store_dataset_properties()
-            generate_bboxes_from_lms_folder(
-                self.output_folder / ("lms"),
-                num_processes=getattr(self, "num_processes", 1),
-            )
-        elif derive_bboxes == False:
-            print("No bboxes generated")
-        else:
-            print(
-                "self.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(
-                    ts, ts[-1]
-                )
-            )
-            print(
-                "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
-            )
-
-        self.store_label_count()
-        self.results_df.to_csv(
-            self.output_folder / "resampled_dataset_properties.csv", index=False
-        )
-        create_dataset_stats_artifacts(
-            lms_folder=self.output_folder/"lms",
-            gif=self.store_gifs,
-            label_stats=self.store_label_stats,
-            gif_window=infer_dataset_stats_window(self.project),
-        )
 
     def store_label_count(self):
         try:
@@ -452,22 +412,7 @@ if __name__ == "__main__":
     L.results_df = pd.DataFrame(il.chain.from_iterable(L.results))
 # %%
 
-    derive_bboxes = False
-    ts = L.results_df.shape
-    if derive_bboxes and ts[-1] == 4:  # only store if entire dset is processed
-        L._store_dataset_properties()
-        generate_bboxes_from_lms_folder(L.output_folder / ("lms"))
-    elif derive_bboxes == False:
-        print("No bboxes generated")
-    else:
-        print(
-            "L.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(
-                ts, ts[-1]
-            )
-        )
-        print(
-            "since some files skipped, dataset stats are not being stored. run L.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
-        )
+    L.postprocess_results()
 # %%
     add_plan_to_db(
         L.project, L.plan, db_path=L.project.db, data_folder_lbd=L.output_folder

@@ -435,7 +435,7 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
       )
       self.I.run(imgs, overwrite=False)
 
-    def process(self, derive_bboxes=False):
+    def process(self):
       self.maybe_infer_bboxes()
 
       missing = self.df["bbox_fn"].isna()
@@ -448,7 +448,7 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
       else:
           self.mini_dfs = [self.df]
 
-      return super().process(derive_bboxes=derive_bboxes)
+      return super().process()
 
 
     def create_data_df(self):
@@ -692,40 +692,40 @@ if __name__ == "__main__":
 # %%
 
 
-  case_id = "kits23_00486"
+    case_id = "kits23_00486"
 
-  row = R.df[R.df["case_id"].astype(str) == case_id].iloc[0]
+    row = R.df[R.df["case_id"].astype(str) == case_id].iloc[0]
 
-  dici = {
-      "case_id": row["case_id"],
-      "image": row["image"],
-      "lm": row["lm"],
-      "ds": row["ds"],
-      "remapping": row["remapping"],
-      "bbox_fn": row["bbox_fn"],
-  }
-  dici["bbox"] = bbox_from_file(dici["bbox_fn"])
+    dici = {
+        "case_id": row["case_id"],
+        "image": row["image"],
+        "lm": row["lm"],
+        "ds": row["ds"],
+        "remapping": row["remapping"],
+        "bbox_fn": row["bbox_fn"],
+    }
+    dici["bbox"] = bbox_from_file(dici["bbox_fn"])
 
 # %%
-  RR = RBDSamplerWorkerLocal(
-      project=R.project,
-      plan=R.plan,
-      data_folder=R.data_folder,
-      output_folder=R.output_folder,
-  )
+    RR = RBDSamplerWorkerLocal(
+        project=R.project,
+        plan=R.plan,
+        data_folder=R.data_folder,
+        output_folder=R.output_folder,
+    )
 
-  dici = RR.transforms_dict["LoadT"](dici)
-  dici = RR.transforms_dict["Dev"](dici)
+    dici = RR.transforms_dict["LoadT"](dici)
+    dici = RR.transforms_dict["Dev"](dici)
 
-  C = CropByYolo(
-      keys=["image", "lm"],
-      lm_key="lm",
-      bbox_key="bbox",
-      margin=20,
-      sanitize=True,
-  )
+    C = CropByYolo(
+        keys=["image", "lm"],
+        lm_key="lm",
+        bbox_key="bbox",
+        margin=20,
+        sanitize=True,
+    )
 
-  dici2 = C(dici)
+    dici2 = C(dici)
 # %%
     img = dici['image']
     lm = dici['lm']
@@ -733,27 +733,27 @@ if __name__ == "__main__":
 
 # %%
 
-  dici["image"].shape, dici["lm"].shape
-  dici2["image"].shape, dici2["lm"].shape
+    dici["image"].shape, dici["lm"].shape
+    dici2["image"].shape, dici2["lm"].shape
 
-  dici["lm"].count_nonzero().item(), dici2["lm"].count_nonzero().item()
+    dici["lm"].count_nonzero().item(), dici2["lm"].count_nonzero().item()
 
-  dici2.get("_preprocess_events")
+    dici2.get("_preprocess_events")
 
-  Fallback wrapper too:
+    # Fallback wrapper too:
 
-  CF = CropByYoloWithForegroundFallbackd(
-      min_shape=R.plan["src_dims"],
-      keys=["image", "lm"],
-      lm_key="lm",
-      bbox_key="bbox",
-  )
+    CF = CropByYoloWithForegroundFallbackd(
+        min_shape=R.plan["src_dims"],
+        keys=["image", "lm"],
+        lm_key="lm",
+        bbox_key="bbox",
+    )
 
-  dici3 = CF(dici)
+    dici3 = CF(dici)
 
-  dici3["image"].shape, dici3["lm"].shape
+    dici3["image"].shape, dici3["lm"].shape
 
-  dici3["lm"].count_nonzero().item()
+    dici3["lm"].count_nonzero().item()
 
-  dici3.get("_preprocess_events")
+    dici3.get("_preprocess_events")
 # %%

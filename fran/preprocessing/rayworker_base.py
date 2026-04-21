@@ -1,5 +1,6 @@
 # ray_worker_base.py
 import traceback
+from pathlib import Path
 from typing import Any, Dict
 
 import ipdb
@@ -21,6 +22,7 @@ from monai.transforms.utility.dictionary import (
 )
 from monai.transforms.utils import is_positive
 from utilz.cprint import cprint
+from utilz.stringz import strip_extension
 
 MIN_SIZE = 32  # min size in a single dimension of any image
 
@@ -80,6 +82,10 @@ class RayWorkerBase(Preprocessor):
         )
         labels_key = f"{self.lm_key}_labels"
         labels = data.get(labels_key)
+        image_src = row.get("image")
+        fn_name = ""
+        if image_src is not None:
+            fn_name = strip_extension(Path(str(image_src)).name) + ".pt"
         image = data["image"]
         lm = data["lm"]
         lm_fg_indices = data["lm_fg_indices"]
@@ -101,6 +107,7 @@ class RayWorkerBase(Preprocessor):
         # self.extract_image_props(image)
         results = {
             "case_id": row.get("case_id"),
+            "fn_name": fn_name,
             "ok": True,
             "shape": list(image.shape),
             "n_fg": len(lm_fg_indices),
@@ -296,9 +303,11 @@ class RayWorkerBase(Preprocessor):
                     f"\n  lm_imported={row.get('lm_imported')}"
                 )
                 print(trace.rstrip())
+                fn_name = strip_extension(Path(str(row.get("image"))).name) + ".pt"
                 outs.append(
                     {
                         "case_id": row.get("case_id"),
+                        "fn_name": fn_name,
                         "ok": False,
                         "err": repr(e),
                         "labels": None,
@@ -344,4 +353,3 @@ class RayWorkerBase(Preprocessor):
 # %%
 # parse_excel_remapping
 # parse_excel_datasources(self.plan["datasources"])
-

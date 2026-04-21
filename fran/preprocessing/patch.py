@@ -7,10 +7,7 @@ import ipdb
 import pandas as pd
 import ray
 import torch
-from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import (
-    create_dataset_stats_artifacts,
-    infer_dataset_stats_window,
     sanitize_meta_for_monai,
 )
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
@@ -20,8 +17,8 @@ from monai.transforms import SqueezeDimD
 from monai.transforms.spatial.dictionary import GridPatchd
 from monai.transforms.utility.dictionary import SplitDimD
 from utilz.cprint import cprint
-from utilz.fileio import load_dict, maybe_makedirs, save_dict, sitk, tr
-from utilz.helpers import find_matching_fn, multiprocess_multiarg, pp
+from utilz.fileio import load_dict, maybe_makedirs, sitk, tr
+from utilz.helpers import find_matching_fn, pp
 from utilz.imageviewers import ImageMaskViewer, view_sitk
 from utilz.stringz import headline
 
@@ -203,25 +200,6 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
             self.output_folder = Path(output_folder)
         cprint(f"Data folder is {self.data_folder}", color="yellow")
 
-    def generate_bboxes(self, num_processes=24, debug=False):
-        lms_folder = self.output_folder / "lms"
-        lm_filenames = list(lms_folder.glob("*pt"))
-        bg_label = 0
-        arguments = [[x, bg_label] for x in lm_filenames]
-        res_cropped = multiprocess_multiarg(
-            func=bboxes_function_version,
-            arguments=arguments,
-            num_processes=num_processes,
-            debug=debug,
-        )
-
-        stats_outfilename = (lms_folder.parent) / ("bboxes_info.json")
-        print("Saving bbox stats to {}".format(stats_outfilename))
-        save_dict(res_cropped, stats_outfilename)
-
-    def process(self, derive_bboxes=False):
-        return super().process(derive_bboxes=derive_bboxes)
-
     def flatten_results(self, results):
         flat_rows = []
 
@@ -237,29 +215,7 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
         return pd.DataFrame(flat_rows)
 
     def postprocess_results(self, **process_kwargs):
-        derive_bboxes = process_kwargs["derive_bboxes"]
-        if derive_bboxes:
-            has_patch_rows = len(self.results_df) > 0
-            if has_patch_rows:
-                self.generate_bboxes(
-                    num_processes=getattr(self, "num_processes", 1),
-                    debug=self.debug,
-                )
-            else:
-                print("No patch rows produced; skipping bbox generation")
-        else:
-            print("No bboxes generated")
-
-        self.results_df.to_csv(
-            self.output_folder / "resampled_dataset_properties.csv", index=False
-        )
-        self.store_label_count()
-        create_dataset_stats_artifacts(
-            lms_folder=self.output_folder/"lms",
-            gif=self.store_gifs,
-            label_stats=self.store_label_stats,
-            gif_window=infer_dataset_stats_window(self.project),
-        )
+        return super().postprocess_results(**process_kwargs)
 
 
 # %%

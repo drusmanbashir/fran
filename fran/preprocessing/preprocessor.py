@@ -13,6 +13,7 @@ import torch
 from fastcore.foundation import GetAttr
 from tqdm.auto import tqdm
 from fran.data.dataregistry import DS
+from fran.managers.db import add_plan_to_db
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
@@ -424,7 +425,7 @@ def _build_shard_groups(case_records, cases_per_shard, max_shard_bytes):
 
 def create_hdf5_shards(
     output_folder,
-    src_dims=(192, 192, 128),
+    src_dims,
     cases_per_shard=5,
     max_shard_bytes=None,
     overwrite=False,
@@ -704,6 +705,43 @@ class Preprocessor(GetAttr):
             df = df.drop(columns=audit_cols)
         return df
 
+    @property
+    def results_csv_fn(self):
+        return self.output_folder / "resampled_dataset_properties.csv"
+
+    def _read_existing_results_df(self):
+        csv_fn = self.results_csv_fn
+        if not csv_fn.exists():
+            return pd.DataFrame()
+        try:
+            return pd.read_csv(csv_fn)
+        except pd.errors.EmptyDataError:
+            return pd.DataFrame()
+
+    def _write_results_csv(self):
+        existing_df = self._read_existing_results_df()
+        current_df = getattr(self, "results_df", pd.DataFrame())
+        if current_df is None:
+            current_df = pd.DataFrame()
+        results_df = pd.concat([existing_df, current_df], ignore_index=True, sort=False)
+        fn_series = (
+            results_df["fn_name"]
+            if "fn_name" in results_df.columns
+            else pd.Series([None] * len(results_df), index=results_df.index)
+        )
+        case_series = (
+            results_df["case_id"]
+            if "case_id" in results_df.columns
+            else pd.Series([None] * len(results_df), index=results_df.index)
+        )
+        resume_key = fn_series.where(fn_series.notna(), case_series)
+        if resume_key.notna().any():
+            results_df = results_df.assign(_resume_key=resume_key)
+            results_df = results_df.drop_duplicates(subset=["_resume_key"], keep="last")
+            results_df = results_df.drop(columns=["_resume_key"])
+        self.results_df = results_df
+        self.results_df.to_csv(self.results_csv_fn, index=False)
+
     @staticmethod
     def _coerce_log_value(value):
         if value is None:
@@ -799,20 +837,29 @@ class Preprocessor(GetAttr):
         df.to_csv(log_fn, index=False)
 
     def postprocess_results(self, **process_kwargs):
-        ts = self.results_df.shape
-        if ts[-1] == 4:
-            self._store_dataset_properties()
-            generate_bboxes_from_lms_folder(self.output_folder / ("lms"))
-        else:
-            print(
-                "self.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(
-                    ts, ts[-1]
-                )
-            )
-            print(
-                "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
-            )
-        add_plan_to_db(self.plan, self.output_folder, db_path=self.project.db)
+        self._write_results_csv()
+        self._store_dataset_properties()
+        store_label_count(
+            self.output_folder, num_processes=getattr(self, "num_processes", 1)
+        )
+        create_dataset_stats_artifacts(
+            lms_folder=self.output_folder / "lms",
+            gif=self.store_gifs,
+            label_stats=self.store_label_stats,
+            gif_window=infer_dataset_stats_window(self.project),
+        )
+        folder_key = getattr(self, "subfolder_key", "data_folder_source")
+        folder_kwargs = (
+            {folder_key: self.output_folder}
+            if folder_key in {
+                "data_folder_source",
+                "data_folder_lbd",
+                "data_folder_whole",
+                "data_folder_pbd",
+            }
+            else {"data_folder_source": self.output_folder}
+        )
+        add_plan_to_db(self.plan, db_path=self.project.db, **folder_kwargs)
 
     def initialize_process_state(self):
         self.create_output_folders()
@@ -844,24 +891,10 @@ class Preprocessor(GetAttr):
 
     def run_postprocess_only(self, **process_kwargs):
         print("Running postprocess on existing output tensors")
-        derive_bboxes = process_kwargs.get("derive_bboxes", True)
-        self._store_dataset_properties()
-        if derive_bboxes:
-            generate_bboxes_from_lms_folder(
-                self.output_folder / "lms",
-                num_processes=getattr(self, "num_processes", 1),
-            )
-        store_label_count(
-            self.output_folder, num_processes=getattr(self, "num_processes", 1)
-        )
-        create_dataset_stats_artifacts(
-            lms_folder=self.output_folder/"lms",
-            gif=self.store_gifs,
-            label_stats=self.store_label_stats,
-            gif_window=infer_dataset_stats_window(self.project),
-        )
+        self.results_df = pd.DataFrame()
+        self.postprocess_results(**process_kwargs)
         self._maybe_create_hdf5_shards(**process_kwargs)
-        return 1
+        return self.results_df
 
     def process(self, **process_kwargs):
         if not hasattr(self, "df"):
