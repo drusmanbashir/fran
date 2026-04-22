@@ -239,10 +239,14 @@ def make_patch_size(patch_dim0, patch_dim1):
 
 
 def make_src_dims_from_patch_size(patch_size):
-    def _even(x):
-        x = int(x * 1.1)
-        return x if x % 2 == 0 else x + 1
-    return [_even(dim) for dim in patch_size]
+    try:
+        def _even(x):
+            x = int(x * 1.1)
+            return x if x % 2 == 0 else x + 1
+        return [_even(dim) for dim in patch_size]
+    except:
+        print(f"No valid patch_size: {patch_size}. Making dummy src_dims.")
+        return [None, None, None]
 
 
 def get_imagelists_from_config(project, fold, patch_based, dim0, dim1):
@@ -637,8 +641,9 @@ if __name__ == "__main__":
 
     P = Project(project_title="test")
     P = Project(project_title="pancreas")
-    P = Project(project_title="totalseg")
     P = Project(project_title="kits23")
+    P = Project(project_title="totalseg")
+    P = Project(project_title="litsmc")
 
 # %%
     P.global_properties

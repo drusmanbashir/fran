@@ -343,15 +343,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_known_args()[0]
 # %%
-    # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
-    args.project_title="totalseg"
-    args.plan = 2
+    cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
+    args.project_title="litsmc"
+    args.plan = 12
     # args.project_title = "test"
     # args.plan = 1
-    args.num_processes = 6
-    args.overwrite = False
-    args.debug = False
-
+    args.num_processes = 1
+    # args.overwrite = False
+    # args.debug = False
+    #
 # %%
     cprint("Project: {0}".format(args.project_title), color="green")
 
@@ -361,23 +361,23 @@ if __name__ == "__main__":
     main(args)
 
 # %%
-    #
-    I = PreprocessingManager(args)
-    I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
-    I.plan["mode"]
-
-# %%
-    I.R = ResampleDatasetniftiToTorch(
-        project=I.project,
-        plan=I.plan,
-        data_folder=I.project.raw_data_folder,
-    )
-
-# %%
-    #
-    overwrite = False
-    num_processes = 8
-    I.R.setup(overwrite=overwrite, num_processes=num_processes)
+#     #
+#     I = PreprocessingManager(args)
+#     I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
+#     I.plan["mode"]
+#
+# # %%
+#     I.R = ResampleDatasetniftiToTorch(
+#         project=I.project,
+#         plan=I.plan,
+#         data_folder=I.project.raw_data_folder,
+#     )
+#
+# # %%
+#     #
+#     overwrite = False
+#     num_processes = 8
+#     I.R.setup(overwrite=overwrite, num_processes=num_processes)
     #     I.R.process()
     #     I.resample_output_folder = I.R.output_folder
     # resampled_data_folder = FolderNames(I.project, I.plan).folders[

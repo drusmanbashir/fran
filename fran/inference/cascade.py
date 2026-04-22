@@ -863,7 +863,7 @@ if __name__ == "__main__":
 
         imgs_sublist = nodes[:3]
         data = En.load_images(imgs_sublist)
-        En.bboxes = En.extract_fg_bboxes(data)
+        En.bboxes = En.Extract_fg_bboxes(data)
         data = apply_bboxes(data, En.bboxes)
 # %%
         # pred_patches = En.patch_prediction(data)

@@ -26,6 +26,7 @@ from monai.utils.enums import LazyAttr, Method, PytorchPadMode, TraceKeys
 from torch import cos, pi, sin
 
 # from utilz.fileio import *
+from fran.utils.affine import spacing_from_affine
 from utilz.helpers import load_dict, tr
 from utilz.stringz import int_to_str
 
@@ -348,11 +349,7 @@ class CropByYolo(MapTransform):
         return bbox_out
 
     def _spacing_from_affine(self, lm) -> np.ndarray:
-        affine = lm.meta["affine"]
-        affine = torch.as_tensor(affine).detach().cpu().numpy()
-        spacing = np.sqrt((affine[:3, :3] ** 2).sum(axis=0))
-        spacing = np.where(spacing > 0, spacing, 1.0)
-        return spacing
+        return spacing_from_affine(lm.meta["affine"])
 
     @staticmethod
     def _spatial_shape(tensor):
