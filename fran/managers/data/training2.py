@@ -23,6 +23,7 @@ from fran.preprocessing.helpers import bbox_bg_only, compute_fgbg_ratio, import_
 from fran.transforms.imageio import SimpleTorchLoader, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
+from fran.transforms.batch_affine import BatchRandAffined3D
 from fran.utils.folder_names import FolderNames
 from fran.utils.misc import convert_remapping
 from lightning import LightningDataModule
@@ -370,6 +371,7 @@ class DataManagerDual(LightningDataModule):
         self.val_sampling = float(val_sampling)
         self.debug = debug
         self.dual_ssd = dual_ssd
+        self.batch_affine = self._create_batch_affine()
 
         if save_hyperparameters:
             self.save_hyperparameters(
@@ -411,6 +413,44 @@ class DataManagerDual(LightningDataModule):
 
     def val_dataloader(self):
         return self.valid_manager.dl
+
+    def _create_batch_affine(self):
+        if not self.configs["dataset_params"].get("batch_affine", False):
+            return None
+        affine3d = self.configs["affine3d"]
+        return BatchRandAffined3D(
+            keys=["image", "lm"],
+            mode=["bilinear", "nearest"],
+            prob=affine3d["p"],
+            rotate_range=affine3d["rotate_range"],
+            scale_range=affine3d["scale_range"],
+        )
+
+    def on_after_batch_transfer(self, batch, dataloader_idx):
+        trainer = getattr(self, "trainer", None)
+        if trainer is not None and trainer.training and self.batch_affine is not None:
+            batch = self.batch_affine(batch)
+        return batch
+
+    def state_dict(self) -> dict:
+        return {
+            "batch_size": int(self._batch_size),
+            "train_indices": self.train_indices,
+            "val_indices": self.val_indices,
+            "val_sampling": float(self.val_sampling),
+        }
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        if not state_dict:
+            return
+        if "batch_size" in state_dict:
+            self._batch_size = int(state_dict["batch_size"])
+        if "train_indices" in state_dict:
+            self.train_indices = state_dict["train_indices"]
+        if "val_indices" in state_dict:
+            self.val_indices = state_dict["val_indices"]
+        if "val_sampling" in state_dict:
+            self.val_sampling = float(state_dict["val_sampling"])
 
     # ---- datasets -------------------------------------------------------
 

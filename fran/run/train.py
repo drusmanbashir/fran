@@ -233,6 +233,7 @@ if __name__ == "__main__":
         help="Stage every other data dict on rapid_access_folder2",
     )
     args = parser.parse_known_args()[0]
+
     # %%
     # args.fold = 1
     # args.project = "kits2"

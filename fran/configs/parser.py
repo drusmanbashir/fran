@@ -209,7 +209,6 @@ def parse_excel_dict(dici, keys_str_to_list) -> dict:
         dici[key] = _to_py(value)
 
     dici = maybe_add_patch_size(dici)
-    dici = maybe_add_src_dims(dici)
     return dici
 
 
@@ -219,14 +218,6 @@ def maybe_add_patch_size(plan):
     if "patch_dim0" and "patch_dim1" in plan.keys():
         plan["patch_size"] = make_patch_size(plan["patch_dim0"], plan["patch_dim1"])
     return plan
-
-
-def maybe_add_src_dims(dataset_params):
-    if "src_dim0" and "src_dim1" in dataset_params.keys():
-        dataset_params["src_dims"] = make_patch_size(
-            dataset_params["src_dim0"], dataset_params["src_dim1"]
-        )
-    return dataset_params
 
 
 BOOL_ROWS = "patch_based,one_cycles,heavy,deep_supervision,self_attention,fake_tumours,square_in_union,apply_activation"
@@ -775,7 +766,6 @@ if __name__ == "__main__":
 
     pp(C.configs[plan_key])
     C.config 
-
 
 
 
