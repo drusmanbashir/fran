@@ -6,6 +6,7 @@ import ipdb
 
 tr = ipdb.set_trace
 import os
+import re
 import secrets
 from pathlib import Path
 from typing import Any, Optional
@@ -155,6 +156,81 @@ def get_wandb_project(project, mode: str = "online"):
     api = wandb.Api()
     path = project.project_title
     return {"api": api, "path": path, "mode": mode}
+
+
+CASE_RECORDER_TABLE_PATH_RE = re.compile(
+    r"^media/table/case_recorder/"
+    r"(?P<stage>[^/]+)/"
+    r"(?P<name>[^/]+)_.*\.table\.(?P<ext>csv|json)$"
+)
+CASE_RECORDER_EPOCH_RE = re.compile(r"df_epoch_(\d+)")
+
+
+def _resolve_wandb_project_name(project_mnemonic: str) -> str:
+    return Mnemonics()[project_mnemonic].wandb.lower()
+
+
+def download_case_recorder_dataframes(
+    *,
+    entity: str,
+    project: str,
+    project_mnemonic: str,
+    run_id: str,
+    out_root: str | Path,
+    stages: tuple[str, ...] = ("train", "valid"),
+    name_regex: str = r"^df_.*",
+    epochs: set[int] | None = None,
+    prefer_ext: str = "csv",
+    overwrite: bool = False,
+    api: wandb.Api,
+) -> dict[str, list[Path]]:
+    wandb_project = _resolve_wandb_project_name(project_mnemonic=project_mnemonic)
+    run_path = f"{entity}/{wandb_project}/{run_id}"
+    run = api.run(run_path)
+    out_root = Path(out_root)
+    stages_set = set(stages)
+    name_re = re.compile(name_regex)
+    out: dict[str, list[Path]] = {stage: [] for stage in stages}
+    chosen: dict[tuple[str, str], tuple[str, object]] = {}
+
+    for remote_file in run.files():
+        match = CASE_RECORDER_TABLE_PATH_RE.match(remote_file.name)
+        if match is None:
+            continue
+        stage = match.group("stage")
+        table_name = match.group("name")
+        ext = match.group("ext")
+        if stage not in stages_set:
+            continue
+        if name_re.match(table_name) is None:
+            continue
+        if epochs is not None:
+            epoch_match = CASE_RECORDER_EPOCH_RE.search(table_name)
+            if epoch_match is None or int(epoch_match.group(1)) not in epochs:
+                continue
+
+        key = (stage, table_name)
+        prev = chosen.get(key)
+        if prev is None:
+            chosen[key] = (ext, remote_file)
+        elif prev[0] != prefer_ext and ext == prefer_ext:
+            chosen[key] = (ext, remote_file)
+
+    for (stage, table_name), (ext, remote_file) in sorted(chosen.items()):
+        dest = out_root / wandb_project / run_id / stage / f"{table_name}.{ext}"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        if dest.exists() and not overwrite:
+            out[stage].append(dest)
+            continue
+
+        downloaded_obj = remote_file.download(
+            root=str(dest.parent), replace=overwrite, exist_ok=True
+        )
+        downloaded = Path(downloaded_obj.name).resolve()
+        downloaded.replace(dest)
+        out[stage].append(dest)
+    return out
 
 
 def _normalize_run_prefix(project_title: str) -> str:

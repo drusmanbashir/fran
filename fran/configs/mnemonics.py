@@ -46,3 +46,7 @@ class Mnemonics:
         return self._index[s.strip().lower()]
 
 # %%
+if __name__ == '__main__':
+   
+    M = Mnemonics()
+    M["kidney"]

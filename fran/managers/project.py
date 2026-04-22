@@ -1221,7 +1221,7 @@ class Project(DictToAttr):
 if __name__ == "__main__":
     from fran.utils.common import *
     from fran.configs.parser import ConfigMaker
-    P = Project(project_title="pancreas")
+    P = Project(project_title="kits23")
     projs = ["test"]
     P = Project(project_title=projs[0])
 # %%

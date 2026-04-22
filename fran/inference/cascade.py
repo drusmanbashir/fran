@@ -421,7 +421,7 @@ if __name__ == "__main__":
     import SimpleITK as sitk
     from fran.inference.base import list_to_chunks
     from fran.managers import Project
-    from fran.managers.wandb import (
+    from fran.managers.wandb.wandb import (
         download_path_no_wandb,
         download_wandb_checkpoint,
         get_wandb_checkpoint,

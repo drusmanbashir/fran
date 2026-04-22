@@ -239,7 +239,10 @@ def make_patch_size(patch_dim0, patch_dim1):
 
 
 def make_src_dims_from_patch_size(patch_size):
-    return [int(dim * 1.1) for dim in patch_size]
+    def _even(x):
+        x = int(x * 1.1)
+        return x if x % 2 == 0 else x + 1
+    return [_even(dim) for dim in patch_size]
 
 
 def get_imagelists_from_config(project, fold, patch_based, dim0, dim1):
@@ -647,7 +650,7 @@ if __name__ == "__main__":
     plan = C.configs["plan_train"]
     pp(plan["src_dims"])
     mode = plan["mode"]
-    C.create_plan_postproc_artifacts()
+    # C.create_plan_postproc_artifacts()
 # %%
 
     main_plan = C.configs["plan_train"]

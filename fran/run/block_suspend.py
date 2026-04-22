@@ -23,13 +23,15 @@ def main(args):
         *target_cmd,
     ]
 
-    # GNOME's idle suspend path may bypass the expected sleep blockers.
-    # When in a graphical GNOME session, add gnome-session-inhibit too.
-    should_try_gnome_inhibit = bool(
-        os.environ.get("DISPLAY")
-        and os.environ.get("DBUS_SESSION_BUS_ADDRESS")
-        and which("gnome-session-inhibit")
-    )
+    should_try_gnome_inhibit = False
+    if not args.suspend_only:
+        # GNOME's idle suspend path may bypass the expected sleep blockers.
+        # When in a graphical GNOME session, add gnome-session-inhibit too.
+        should_try_gnome_inhibit = bool(
+            os.environ.get("DISPLAY")
+            and os.environ.get("DBUS_SESSION_BUS_ADDRESS")
+            and which("gnome-session-inhibit")
+        )
     if should_try_gnome_inhibit:
         gnome_inhibit_cmd = [
             "gnome-session-inhibit",
@@ -67,6 +69,11 @@ if __name__ == "__main__":
         "--allow-suspend",
         action="store_true",
         help="Run target script without systemd-inhibit.",
+    )
+    parser.add_argument(
+        "--suspend-only",
+        action="store_true",
+        help="Block suspend only; do not add GNOME idle inhibition.",
     )
     parser.add_argument(
         "target_script",

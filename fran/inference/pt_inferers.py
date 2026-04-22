@@ -11,7 +11,7 @@ from utilz.helpers import find_matching_fn
 
 from fran.inference.base import BaseInferer
 from fran.inference.helpers import list_to_chunks, load_images_pt
-from fran.managers.wandb import WandbManager, download_path_no_wandb, download_wandb_checkpoint
+from fran.managers.wandb.wandb import WandbManager, download_path_no_wandb, download_wandb_checkpoint
 from fran.transforms.imageio import LoadImage, TorchReader, TorchWriter
 
 

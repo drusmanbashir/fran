@@ -1,16 +1,107 @@
 import random
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import wandb
+from fran.configs.mnemonics import Mnemonics
 from fran.transforms.spatialtransforms import one_hot
 from fran.utils.colour_palette import colour_palette
 from fran.utils.string_works import info_from_filename
 from lightning.pytorch.callbacks import Callback
 from PIL import Image, ImageDraw, ImageFont
 from torchvision.utils import make_grid
+
+
+def _candidate_wandb_projects(project) -> list[str]:
+    names = []
+    direct_name = project.project_title
+    names.append(str(direct_name))
+    mnemonic = project.global_properties["mnemonic"]
+    mapped_name = Mnemonics()[mnemonic].wandb
+    if mapped_name and str(mapped_name) != str(direct_name):
+        names.append(str(mapped_name))
+    return names
+
+
+def _resolve_run_by_name(api: wandb.Api, project_name: str, run_name: str):
+    for run in api.runs(project_name):
+        if str(run.id) == str(run_name) or str(run.name) == str(run_name):
+            return run
+    raise FileNotFoundError(
+        f"Run '{run_name}' not found in wandb project '{project_name}'"
+    )
+
+
+def _artifact_basename(artifact) -> str:
+    raw = str(artifact.name)
+    base = raw.rsplit("/", 1)[-1]
+    return base.split(":", 1)[0]
+
+
+def _artifact_version_number(artifact) -> int:
+    version = str(artifact.version)
+    if version.startswith("v") and version[1:].isdigit():
+        return int(version[1:])
+    return -1
+
+
+def download_run_artifact_by_name(
+    *,
+    project,
+    run_name: str,
+    artifact_name: str,
+    destination_folder: Optional[str | Path] = None,
+    alias: str = "latest",
+    api: Optional[wandb.Api] = None,
+) -> Path:
+    """
+    Download artifact logged by a run (resolved by run id/name) into a local folder.
+    If `destination_folder` is omitted, defaults to `project.log_folder`.
+    """
+    api = api or wandb.Api()
+    for candidate in _candidate_wandb_projects(project):
+        try:
+            run = _resolve_run_by_name(api=api, project_name=candidate, run_name=run_name)
+            break
+        except FileNotFoundError:
+            continue
+    else:
+        raise FileNotFoundError(f"Unable to resolve run '{run_name}'.")
+
+    matching = [a for a in run.logged_artifacts() if _artifact_basename(a) == artifact_name]
+    if not matching:
+        raise FileNotFoundError(
+            f"No logged artifact named '{artifact_name}' in run '{run_name}'"
+        )
+
+    if alias == "latest":
+        artifact = max(matching, key=_artifact_version_number)
+    else:
+        alias_text = str(alias)
+        artifact = next(
+            (
+                a
+                for a in matching
+                if str(getattr(a, "version", "")) == alias_text
+                or str(a.name).endswith(f":{alias_text}")
+            ),
+            None,
+        )
+        if artifact is None:
+            raise FileNotFoundError(
+                f"No artifact '{artifact_name}' with alias/version '{alias_text}' in run '{run_name}'"
+            )
+
+    if destination_folder is None:
+        dest_root = Path(project.log_folder)
+    else:
+        dest_root = Path(destination_folder)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    downloaded_path = Path(artifact.download(root=str(dest_root)))
+    return downloaded_path
 
 
 class WandbImageGridCallback(Callback):
@@ -268,3 +359,26 @@ class WandbLogBestCkpt(Callback):
                 "training/best_model_path": ckpt_best,
             }
         )
+
+
+# %%
+if __name__ == "__main__":
+    from fran.managers.project import Project
+
+    project_title = "kits23"
+    run_name = "KITS23-SIRIG"
+    artifact_name = "case_recorder"
+    destination_folder = None  # None -> project.log_folder
+    alias = "latest"
+
+    project = Project(project_title)
+# %%
+    downloaded = download_run_artifact_by_name(
+        project=project,
+        run_name=run_name,
+        artifact_name=artifact_name,
+        destination_folder=destination_folder,
+        alias=alias,
+    )
+    print(f"Downloaded artifact to: {downloaded}")
+# %%
