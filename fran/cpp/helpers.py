@@ -4,7 +4,7 @@ from fran.configs.parser import ConfigMaker
 from fran.managers.project import Project
 
 
-def load_project_cfg(project_name: str, mnemonic: str | None = None):
+def load_project_cfg(project_name: str) :
     """
     High-level helper for C++:
     - builds Project
@@ -20,7 +20,7 @@ def load_project_cfg(project_name: str, mnemonic: str | None = None):
 
 # %%
 if __name__ == "__main__":
-    proj, cfg = load_project_cfg("nodes")
+    proj, cfg = load_project_cfg("kits23")
     cfg.add_preprocess_status()
     print(cfg.plans["preprocessed"])
 # %%

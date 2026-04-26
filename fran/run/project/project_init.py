@@ -21,12 +21,16 @@ def main(args):
     multiprocess = False if args.num_processes == 1 else True
 
     P = Project(project_title=args.title)
-    if args.delete:
-        P.delete()
-        return
-
     if not P.db.exists():
         P.create(mnemonic=args.mnemonic)
+    elif not P.global_properties_filename.exists():
+        if not args.mnemonic:
+            raise ValueError(
+                "Mnemonic is required when recreating missing global_properties.json "
+                "for an existing project."
+            )
+        P._init_global_properties(args.mnemonic)
+        P.save_global_properties()
     if args.datasources:
         datas = [DS[name] for name in args.datasources]
         P.add_data(datasources=datas, test=args.test, multiprocess=multiprocess)
@@ -60,7 +64,6 @@ if __name__ == "__main__":
         help="Datasources to add, i.e., {}".format(DS.__repr__()),
     )
     parser.add_argument("--test", action="store_true", help="Mark datasources as test")
-    parser.add_argument("--delete", action="store_true", help="Delete project")
     # %%
     args = parser.parse_known_args()[0]
     # args.multiprocess=False

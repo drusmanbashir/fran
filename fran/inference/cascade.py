@@ -417,7 +417,6 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 if __name__ == "__main__":
     import time
     from pathlib import Path
-
     import SimpleITK as sitk
     from fran.inference.base import list_to_chunks
     from fran.managers import Project
@@ -437,11 +436,11 @@ if __name__ == "__main__":
     best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
     run_w = best_runs["run_w"]
 
-# %%
 
 # %%
 # SECTION:-------------------- KITS--------------------------------------------------------------------------------------
     TSL = TotalSegmenterLabels()
+
 
     P = Project("kits2")
     _, val = P.get_train_val_case_ids(fold=1)
@@ -453,7 +452,6 @@ if __name__ == "__main__":
     devices = [0]
     # run_kid = best_runs["kidneys"]["run_ids"][0]
     run_kid = best_runs["kidneys"]["run_ids"][1]
-
     run_tot = best_runs["totalseg"]["run_ids"][0]
     run_kw = run_tot
 
