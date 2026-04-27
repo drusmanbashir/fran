@@ -194,6 +194,9 @@ class PatchInferer(BaseInferer):
 
 
 class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
+    keys_postproc = "MR,A,Int,W"
+    keys_postproc_safe = "MR,W"
+
     def __init__(
         self,
         run_w,
@@ -220,34 +223,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             "all",
         ], "Choose one of None , 'dataloading', 'prediction', 'all'"
 
-        self.device = parse_devices(devices)
-        self.params = load_params(run_p)
-        self.P = PatchInferer(
-            run_name=run_p,
-            project_title=project_title,
-            devices=devices,
-            patch_overlap=patch_overlap,
-            save_channels=save_channels,
-            safe_mode=safe_mode,
-            params=self.params,
-            debug=debug,
-        )
-
-        self.predictions_folder = self.P.project.predictions_folder
-        WSInf = inferer_from_params(run_w)
-        self.W = WSInf(
-            run_name=run_w,
-            save_channels=save_channels,
-            devices=devices,
-            safe_mode=True,  # no need to get single channels. Do NOT CHANGE THIS
-            save=save_localiser,
-            patch_overlap=patch_overlap,
-            debug=debug,
-        )
-
         self.run_w = run_w
-        self.keys_postproc = "MR,A,Int,W"
-        self.keys_postproc_safe = "MR,W"
         self.run_p = run_p
         self.localiser_labels = localiser_labels
         self.project_title = project_title
@@ -260,26 +236,64 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         self.save_localiser = save_localiser
         self.k_largest = k_largest
         self.debug = debug
+        self.localiser_overwrite = False
+        self.device = parse_devices(devices)
+        self.params = load_params(run_p)
+        self.P = self.setup_patch_inferer()
+        self.predictions_folder = self.P.project.predictions_folder
+        self.W = self.setup_localiser_inferer()
 
     def setup(self):
         pass
+
+    def setup_patch_inferer(self):
+        return PatchInferer(
+            run_name=self.run_p,
+            project_title=self.project_title,
+            devices=self.devices,
+            patch_overlap=self.patch_overlap,
+            save_channels=self.save_channels,
+            safe_mode=self.safe_mode,
+            params=self.params,
+            debug=self.debug,
+        )
+
+    def setup_localiser_inferer(self):
+        WSInf = inferer_from_params(self.run_w)
+        return WSInf(
+            run_name=self.run_w,
+            save_channels=self.save_channels,
+            devices=self.devices,
+            safe_mode=True,  # no need to get single channels. Do NOT CHANGE THIS
+            save=self.save_localiser,
+            patch_overlap=self.patch_overlap,
+            debug=self.debug,
+        )
+
+    def apply_bboxes(self, data, bboxes):
+        return apply_bboxes(data, bboxes)
 
     def create_and_set_postprocess_transforms(self):
         self.create_postprocess_transforms()
         self.set_postprocess_tfms_keys()
         self.set_postprocess_transforms()
 
+    def run(self, data: list, chunksize=12, overwrite=False):
+        self.localiser_overwrite = overwrite
+        return super().run(data, chunksize=chunksize, overwrite=overwrite)
+
     def process_data_sublist(self, imgs_sublist):
         self.create_and_set_postprocess_transforms()
-        data = load_images_nifti(imgs_sublist)
+        data = self.load_images(imgs_sublist)
 
-        self.bboxes = self.extract_fg_bboxes(data)
-        data = apply_bboxes(data, self.bboxes)
+        self.bboxes = self.extract_fg_bboxes(
+            data,
+            overwrite=self.localiser_overwrite,
+        )
+        data = self.apply_bboxes(data, self.bboxes)
         pred_patches = self.patch_prediction(data)
         pred_patches = self.decollate_patches(pred_patches, self.bboxes)
         output = self.postprocess(pred_patches)
-        # if self.save == True:
-        #     self.save_pred(output)
         self.cuda_clear()
         return output
 
@@ -329,7 +343,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             del p.model
         torch.cuda.empty_cache()
 
-    def extract_fg_bboxes(self, data):
+    def extract_fg_bboxes(self, data, overwrite=None):
         spacing = get_patch_spacing(self.run_w)
         Sel = SelectLabels(keys=["pred"], labels=self.localiser_labels)
         B = BBoxFromPTd(keys=["pred"], spacing=spacing, expand_by=10)
@@ -888,5 +902,3 @@ if __name__ == "__main__":
     lm = sitk.ReadImage(fn)
 
     lm.GetSize()
-
-

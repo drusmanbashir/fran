@@ -186,7 +186,6 @@ def load_images_pt(data):
     return data
 
 
-load_images = load_images_nifti
 
 
 def filter_existing_files(files, target_folder):

@@ -34,7 +34,9 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Delete FRAN project files non-interactively.")
+    parser = argparse.ArgumentParser(
+        description="Delete FRAN project files non-interactively."
+    )
     parser.add_argument(
         "titles",
         nargs="*",
