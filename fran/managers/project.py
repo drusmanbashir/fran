@@ -496,19 +496,17 @@ class Project(DictToAttr):
             Path(COMMON_PATHS["rapid_access_folder"]) / self.project_title
         )
         self.project_folder = Path(COMMON_PATHS["projects_folder"]) / self.project_title
-        self.cold_datasets_folder = (
+        cold_datasets_folder = (
             Path(COMMON_PATHS["cold_storage_folder"]) / "datasets"
         )
-        self.fixed_spacing_folder = (
-            self.cold_datasets_folder /  self.project_title/"fixed_spacing" 
-        )
+        self.fixed_spacing_folder = cold_datasets_folder /"preprocessed"/self.project_title / "fixed_spacing"
         self.fixed_size_folder =self.rapid_access_folder / ("fixed_size") 
         self.dot_folder = self.rapid_access_folder/("dot")
         
         self.predictions_folder = Path(COMMON_PATHS["cold_storage_folder"]) / (
             "predictions/" + self.project_title
         )
-        self.raw_data_folder = self.cold_datasets_folder / (
+        self.raw_data_folder = cold_datasets_folder / (
             "raw_data/" + self.project_title
         )
         self.checkpoints_parent_folder = (

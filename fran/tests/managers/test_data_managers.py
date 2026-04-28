@@ -23,8 +23,8 @@ def totalseg_project():
 
 def test_fixed_spacing_folder_is_project_scoped():
     project = Project(project_title="totalseg")
-    assert project.fixed_spacing_folder.name == "totalseg"
-    assert project.fixed_spacing_folder.parent.name == "fixed_spacing"
+    assert project.fixed_spacing_folder.name == "fixed_spacing"
+    assert project.fixed_spacing_folder.parent.name == "totalseg"
 
 
 @pytest.fixture

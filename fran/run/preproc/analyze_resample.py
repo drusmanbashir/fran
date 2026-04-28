@@ -175,7 +175,7 @@ class PreprocessingManager:
 
     def resample_dataset(self, overwrite=False, num_processes=1, debug=False):
         """
-        Resamples dataset to target spacing and stores it in the cold_storage fixed_spacing_folder.
+        Resamples dataset to target spacing and stores it in the rapid-access fixed_spacing folder.
         Typically this will be a basis for further processing e.g., pbd, lbd dataset which will then be used in training
         """
 
@@ -438,4 +438,3 @@ if __name__ == "__main__":
 # from label_analysis.dataset_stats import end2end_lms_stats_and_plots
 # from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
 # %%
-
