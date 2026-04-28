@@ -8,6 +8,7 @@
 import itertools
 import operator
 from collections.abc import Hashable, Mapping
+from copy import deepcopy
 from functools import reduce
 from random import choice
 
@@ -641,19 +642,28 @@ class Affine3D(MapTransform):
 #
 
 
-def fill_bbox(bbox, cropped_tensor):
+def tensor_order_shape_from_meta(meta):
+    spatial_shape = np.asarray(meta["spatial_shape"], dtype=int)
+    orig_aff = torch.as_tensor(meta["original_affine"]).cpu().numpy()[:3, :3]
+    aff = torch.as_tensor(meta["affine"]).cpu().numpy()[:3, :3]
+    orig_dirs = orig_aff / np.linalg.norm(orig_aff, axis=0, keepdims=True)
+    dirs = aff / np.linalg.norm(aff, axis=0, keepdims=True)
+    perm = np.abs(orig_dirs.T @ dirs).argmax(axis=0)
+    return tuple(int(spatial_shape[i]) for i in perm)
+
+
+def fill_bbox(bbox, cropped_tensor, full_meta):
     """
     bbox : 3-tuple of slices
     cropped_tensor: 4d CxWxHxD. It has metadata with spatial_shape key defining full tensor shape
     """
 
     n_ch = cropped_tensor.shape[0]
-    shape = [n_ch] + list(cropped_tensor.meta["spatial_shape"])
-    full = torch.zeros(shape)
-    full[bbox] = cropped_tensor
-    out_tensor = MetaTensor(full)
-    out_tensor.copy_meta_from(cropped_tensor)
-    return out_tensor
+    full_shape = tensor_order_shape_from_meta(full_meta)
+    shape = [n_ch] + list(full_shape)
+    full = torch.zeros(shape, dtype=cropped_tensor.dtype, device=cropped_tensor.device)
+    full[tuple(bbox)] = cropped_tensor
+    return MetaTensor(full, meta=deepcopy(full_meta))
 
 
 #
@@ -675,16 +685,22 @@ def fill_bbox(bbox, cropped_tensor):
 
 class FillBBoxPatchesd(MapTransform):
     def __init__(
-        self, keys=["pred"], bbox_key="bounding_box", allow_missing_keys=False
+        self,
+        keys=["pred"],
+        bbox_key="bounding_box",
+        full_meta_key="full_meta",
+        allow_missing_keys=False,
     ):
         self.bbox_key = bbox_key
+        self.full_meta_key = full_meta_key
         MapTransform.__init__(self, keys, allow_missing_keys)
 
     def __call__(self, d):
         for key in self.key_iterator(d):
             pred = d[key]
             bbox = d[self.bbox_key]
-            pred_out = fill_bbox(bbox, pred)
+            full_meta = d[self.full_meta_key]
+            pred_out = fill_bbox(bbox, pred, full_meta)
             d[key] = pred_out
         return d
 
@@ -790,4 +806,3 @@ if __name__ == "__main__":
 
 # SNext error/warning todo commentECTION:
 # %%
-

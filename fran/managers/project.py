@@ -500,7 +500,7 @@ class Project(DictToAttr):
         self.cold_datasets_folder = (
             Path(COMMON_PATHS["cold_storage_folder"]) / "datasets"
         )
-        self.fixed_spacing_folder = self.rapid_access_folder / ("fixed_spacing")
+        self.fixed_spacing_folder = self.cold_datasets_folder / ("fixed_spacing")
         self.fixed_size_folder =self.rapid_access_folder / ("fixed_size") 
         self.dot_folder = self.rapid_access_folder/("dot")
         

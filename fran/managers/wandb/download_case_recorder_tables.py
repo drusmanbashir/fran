@@ -31,6 +31,21 @@ def resolve_wandb_project(project_title: str) -> str:
     return str(Mnemonics()[project_title].wandb)
 
 
+def resolve_run(api: wandb.Api, project_title: str, run_name: str):
+    entity = resolve_entity()
+    wandb_project = resolve_wandb_project(project_title)
+    project_name = f"{entity}/{wandb_project}"
+    run = _resolve_run_by_name(api=api, project_name=project_name, run_name=run_name)
+    return run
+
+
+def resolve_out_root(project_title: str, run_name: str) -> Path:
+    project = Project(project_title)
+    out_root = Path(project.log_folder) / str(run_name)
+    out_root.mkdir(parents=True, exist_ok=True)
+    return out_root
+
+
 def iter_case_recorder_files(run, stages: set[str], epochs: set[int] | None):
     for remote_file in run.files():
         match = TABLE_PATTERN.match(remote_file.name)
@@ -48,6 +63,42 @@ def iter_case_recorder_files(run, stages: set[str], epochs: set[int] | None):
 
 def destination_path(out_root: Path, stage: str, epoch: int, ext: str) -> Path:
     return out_root / stage / f"df_epoch_{epoch}.{ext}"
+
+
+def expand_wandb_config(payload: dict) -> dict:
+    expanded = {}
+    for key, value in payload.items():
+        parts = str(key).split("/")
+        cursor = expanded
+        for part in parts[:-1]:
+            if part not in cursor:
+                cursor[part] = {}
+            cursor = cursor[part]
+        cursor[parts[-1]] = value
+    return expanded
+
+
+def download_run_config(
+    run,
+    out_root: str | Path,
+    filename: str = "run_config.json",
+    overwrite: bool = False,
+) -> Path:
+    out_root = Path(out_root)
+    dest = out_root / filename
+    if dest.exists() and not overwrite:
+        print(f"Skipping existing {dest}")
+        return dest
+    run.load(force=True)
+    run.load_full_data(force=True)
+    payload = dict(run.config)
+    raw_payload = dict(run.rawconfig)
+    if len(payload) == 0:
+        payload = raw_payload
+    nested_payload = expand_wandb_config(payload)
+    dest.write_text(json.dumps(nested_payload, indent=2, sort_keys=True) + "\n")
+    print(f"Run config saved: {dest}")
+    return dest
 
 
 def compile_case_recorder_tables(run_folder: str | Path) -> pd.DataFrame:
@@ -83,33 +134,20 @@ def compile_case_recorder_tables(run_folder: str | Path) -> pd.DataFrame:
     return compiled
 
 
-def main(args) -> None:
-    entity = resolve_entity()
-    api = wandb.Api()
-    wandb_project = resolve_wandb_project(args.project)
-    project_name = f"{entity}/{wandb_project}"
-    run = _resolve_run_by_name(
-        api=api, project_name=project_name, run_name=args.run_name
-    )
-    overwrite = False
-
-    project = Project(args.project)
-    out_root = Path(project.log_folder) / str(args.run_name)
-    out_root.mkdir(parents=True, exist_ok=True)
-
-    epochs = None if args.epoch is None else set(args.epoch)
-    stages = set(args.stage)
-
+def download_case_recorder_tables(
+    run,
+    out_root: str | Path,
+    stages: set[str],
+    epochs: set[int] | None = None,
+    overwrite: bool = False,
+) -> pd.DataFrame:
+    out_root = Path(out_root)
     matches = list(iter_case_recorder_files(run, stages=stages, epochs=epochs))
     if len(matches) == 0:
         raise FileNotFoundError(
             f"No case_recorder tables found for run {run.path} with the requested filters."
         )
 
-    download_root = out_root.resolve()
-    print(f"Resolved run: {run.path}")
-    print(f"Download folder name: {download_root.name}")
-    print(f"Download folder path: {download_root}")
     print(f"Downloading {len(matches)} files")
 
     sorted_matches = sorted(matches, key=lambda item: (item[1], item[2], item[3]))
@@ -130,8 +168,32 @@ def main(args) -> None:
         if downloaded != dest:
             downloaded.rename(dest)
         print(f"{stage} epoch {epoch}: {dest}")
-    compile_case_recorder_tables(out_root)
+    compiled = compile_case_recorder_tables(out_root)
+    return compiled
 
+
+def main(args) -> None:
+    api = wandb.Api()
+    run = resolve_run(api=api, project_title=args.project, run_name=args.run_name)
+    overwrite = False
+    out_root = resolve_out_root(project_title=args.project, run_name=args.run_name)
+
+    download_root = out_root.resolve()
+    print(f"Resolved run: {run.path}")
+    print(f"Download folder name: {download_root.name}")
+    print(f"Download folder path: {download_root}")
+    if args.download in ["config", "both"]:
+        download_run_config(run=run, out_root=out_root, overwrite=overwrite)
+    if args.download in ["tables", "both"]:
+        epochs = None if args.epoch is None else set(args.epoch)
+        stages = set(args.stage)
+        download_case_recorder_tables(
+            run=run,
+            out_root=out_root,
+            stages=stages,
+            epochs=epochs,
+            overwrite=overwrite,
+        )
 
 # %%
 if __name__ == "__main__":
@@ -152,20 +214,28 @@ if __name__ == "__main__":
         nargs="+",
         default=["train", "valid", "train2"],
         choices=["train", "valid", "train2"],
-        help="Stages to download.",
+        help="Stages to download for table downloads.",
     )
     parser.add_argument(
         "--epoch",
         nargs="+",
         type=int,
         default=None,
-        help="Optional list of epochs to keep. Default downloads all logged epochs.",
+        help="Optional epochs for table downloads. Default downloads all logged epochs.",
+    )
+    parser.add_argument(
+        "--download",
+        default="tables",
+        choices=["tables", "config", "both"],
+        help="What to download for the run.",
     )
 # %%
     args = parser.parse_known_args()[0]
 
+# %%
     args.project = "kits23"
     args.run_name = "KITS23-SIRIG"
+    args.download = "config"
 # %%
     main(args)
 # %%

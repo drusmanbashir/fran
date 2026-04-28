@@ -1,6 +1,7 @@
 # %%
 import itertools as il
 import sys
+from copy import deepcopy
 
 import ipdb
 import numpy as np
@@ -52,7 +53,8 @@ def inferer_from_params(run_w):
 def apply_bboxes(data, bboxes):
     data2 = []
     for i, dat in enumerate(data):
-        dat["image"] = dat["image"][bboxes[i][1:]]
+        dat["full_meta"] = deepcopy(dat["image"].meta)
+        dat["image"] = dat["image"][tuple(bboxes[i][1:])]
         dat["bounding_box"] = bboxes[i]
         data2.append(dat)
     return data2
@@ -291,8 +293,9 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             overwrite=self.localiser_overwrite,
         )
         data = self.apply_bboxes(data, self.bboxes)
+        full_metas = [dat["full_meta"] for dat in data]
         pred_patches = self.patch_prediction(data)
-        pred_patches = self.decollate_patches(pred_patches, self.bboxes)
+        pred_patches = self.decollate_patches(pred_patches, self.bboxes, full_metas)
         output = self.postprocess(pred_patches)
         self.cuda_clear()
         return output
@@ -322,7 +325,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             patch_bundle.update(pred_patch)
         return patch_bundle
 
-    def decollate_patches(self, pa, bboxes):
+    def decollate_patches(self, pa, bboxes, full_metas=None):
         num_cases = len(bboxes)
         keys = listify(self.run_p)
         output = []
@@ -331,8 +334,9 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             for i, run_name in enumerate(keys):
                 pred = pa[run_name][case_idx]["pred"]
                 img_bbox_preds[run_name] = pred
-            # img_bbox_preds.update(self.ds[case_idx])
             img_bbox_preds["bounding_box"] = bboxes[case_idx]
+            if full_metas is not None:
+                img_bbox_preds["full_meta"] = full_metas[case_idx]
             output.append(img_bbox_preds)
 
         return output

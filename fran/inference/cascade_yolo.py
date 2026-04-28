@@ -1,11 +1,12 @@
 import json
-
+from copy import deepcopy
+from fran.inference.common_vars import kits_imgs
 from localiser.transforms.transforms import MapTransform
 from monai.transforms.utility.dictionary import (
     CastToTyped,
     EnsureChannelFirstd,
     SqueezeDimd,
-    )
+)
 
 from monai.data.dataloader import DataLoader
 from monai.data.dataset import Dataset
@@ -16,15 +17,16 @@ import ipdb
 from localiser.inference.base import EnsureChannelFirstd, LocaliserInferer
 from utilz.fileio import load_json
 from utilz.imageviewers import ImageMaskViewer
+
 tr = ipdb.set_trace
 import torch
 
 from utilz.cprint import cprint
-from utilz.helpers import find_matching_fn, set_autoreload
+from utilz.helpers import MatchError, find_matching_fn, set_autoreload
 from utilz.stringz import strip_extension
 
 set_autoreload()
-from fran.inference.cascade import CascadeInferer
+from fran.inference.cascade import CascadeInferer, img_bbox_collated
 from fran.inference.helpers import list_to_chunks, parse_input
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.spatialtransforms import CropByYolo
@@ -32,31 +34,19 @@ from localiser.transforms.tsl import TSLRegions
 
 from localiser.utils.bbox_helpers import standardize_bboxes, yolo_bbox_to_slices
 
+
 def add_channel_slices(bbox):
-    return (slice(0,100),) + bbox
+    return (slice(0, 100),) + bbox
+
 
 def orig_shape_from_meta(image):
     import nibabel as nib
-    spatial_shape = image.meta['spatial_shape']
-    axcodes = nib.aff2axcodes(image.meta['affine'].cpu().numpy())
+
+    spatial_shape = image.meta["spatial_shape"]
+    axcodes = nib.aff2axcodes(image.meta["affine"].cpu().numpy())
     assert axcodes == ("R", "A", "S"), axcodes
     return spatial_shape
 
-class StoreShape(MapTransform):
-    def __init__(self, keys):
-        super().__init__(keys)
-
-    def __call__(self, data):
-        for key in self.keys:
-            data[key + "_orig_shape"] = data[key].shape[1:]
-        return data
-
-
-def collate_projections_with_shape(batch):
-    from localiser.inference.base import collate_projections
-    out = collate_projections(batch)
-    out["image_orig_shape"] = [item["image_orig_shape"] for item in batch]
-    return out
 
 def _class_to_index(names):
     if isinstance(names, dict):
@@ -96,9 +86,39 @@ def localiser_regions_to_yolo_classes(yolo_specs, localiser_regions):
 
 class LocaliserInfererPT(LocaliserInferer):
     # Oriented Loaded tensors expected
-    keys_preproc = "E,O,St,Orig,W,S,P1,P2,PF,R,Rep,E2,N"
-    def __init__(self, *args,  **kwargs):
-        super().__init__(*args,  **kwargs)
+    keys_preproc = "E,O,Orig,W,S,P1,P2,PF,R,Rep,E2,N"
+
+    def __init__(
+        self,
+        localiser_regions: list[str],
+        window="a",
+        bs=8,
+        devices=...,
+        debug=False,
+        save_jpg=True,
+        letterbox=True,
+        mem_quota=0.75,
+    ):
+        super().__init__(
+            localiser_regions,
+            window,
+            bs,
+            devices,
+            debug,
+            save_jpg,
+            letterbox,
+            mem_quota,
+        )
+
+    def delete_image_orig(self, outputs):
+        # Keep full 3D oriented source image available for downstream cascade crops.
+        return None
+
+    def postprocess(self, out):
+        out = super().postprocess(out)
+        out["image_proj"] = out["image"]
+        out["image"] = out.pop(self.image_orig_key)
+        return out
 
     def filter_done_images(self, images, overwrite=False):
         if overwrite == True or isinstance(images[0], torch.Tensor):
@@ -113,13 +133,10 @@ class LocaliserInfererPT(LocaliserInferer):
                 for image in images
                 if self.image_case_id(image) not in case_ids_done
             ]
-    def create_preprocess_transforms(self):
-        super().create_preprocess_transforms()
-        self.preprocess_transforms_dict.update({
-            "St": StoreShape(keys=[self.image_key]),
-            })
 
     def prepare_data(self, data):
+        from localiser.inference.base import collate_projections
+
         nw = int(min(len(data) / 4, 6))
         transform = self.preprocess_iterate if self.debug else self.preprocess_compose
         self.ds = Dataset(data=data, transform=transform)
@@ -127,21 +144,16 @@ class LocaliserInfererPT(LocaliserInferer):
             self.ds,
             batch_size=self.bs,
             num_workers=nw,
-            collate_fn=collate_projections_with_shape,
+            collate_fn=collate_projections,
         )
         self.pred_dl = self.fabric.setup_dataloaders(
             self.pred_dl,
             move_to_device=False,
         )
 
-    def package_preds(self, batch):
-        outputs = super().package_preds(batch)
-        for out, image_orig_shape in zip(outputs, batch["image_orig_shape"]):
-            out["image_orig_shape"] = image_orig_shape
-        return outputs
- 
     # def load_images(self, images):
     #     return images
+
 
 class CascadeInfererYOLO(CascadeInferer):
     YoloInferer = LocaliserInfererPT
@@ -154,7 +166,7 @@ class CascadeInfererYOLO(CascadeInferer):
         safe_mode=False,
         patch_overlap=0.2,
         save_channels=False,
-        save=False,
+        save=True,
         k_largest=None,
         debug=False,
     ):
@@ -183,14 +195,13 @@ class CascadeInfererYOLO(CascadeInferer):
 
     def load_images(self, image_files: list[str | Path]):
         loader = LoadSITKd(["image"])
-        E = EnsureChannelFirstd(keys=['image'])
-        Or =  Orientationd(keys=['image'], axcodes="RAS", labels=None)
+        E = EnsureChannelFirstd(keys=["image"])
+        Or = Orientationd(keys=["image"], axcodes="RAS", labels=None)
         data = parse_input(image_files)
         data = [loader(dat) for dat in data]
         data = [E(dat) for dat in data]
         data = [Or(dat) for dat in data]
         return data
-
 
     def setup_localiser_inferer(self):
         W = self.YoloInferer(
@@ -213,89 +224,112 @@ class CascadeInfererYOLO(CascadeInferer):
         self.setup()
         data = self.maybe_filter_images(data, overwrite)
         data_bboxes = self.extract_fg_bboxes(data, overwrite=overwrite)
+        self.W.clear_localiser()
         data_chunks = list_to_chunks(data_bboxes, chunksize)
         for data_sublist in data_chunks:
             output = self.process_data_sublist(data_sublist)
         return output
 
-
     def process_data_sublist(self, data_sublist):
         self.create_and_set_postprocess_transforms()
+        bboxes_sublist = [dat["bounding_box"] for dat in data_sublist]
         # data = self.load_images(imgs_sublist)
         data = self.apply_bboxes(data_sublist)
+        full_metas = [dat["full_meta"] for dat in data]
         Sq = SqueezeDimd(keys=["image"], dim=0)
         data = [Sq(dat) for dat in data]
-        pred_patches = self.patch_prediction(data)
-        pred_patches = self.decollate_patches(pred_patches, bboxes_sublist)
-        output = self.postprocess(pred_patches)
-        self.cuda_clear()
-        return output
-
+        try:
+            pred_patches = self.patch_prediction(data)
+            pred_patches = self.decollate_patches(
+                pred_patches, bboxes_sublist, full_metas
+            )
+            output = self.postprocess(pred_patches)
+            return output
+        finally:
+            super().cuda_clear()
 
     def extract_fg_bboxes(self, data, overwrite=False):
         if overwrite is False:
-            data_out = self.load_bboxes(data)
-        else:
-            outputs = self.W.run(data, overwrite=overwrite)
-            data_out = []
-            for dat, out in zip(data, outputs):
-                pred = out["pred"]
-                lat = pred[0]
-                ap = pred[1]
-                yolo_bbox = standardize_bboxes(
-                    ap.boxes,
-                    lat.boxes,
-                    out["projection_meta"][0]["letterbox_padded"],
-                    self.classes,
-                    serialised=False,
-                )
-
-                img_shape = out['image_orig_shape']
-                bounding_box = yolo_bbox_to_slices(img_shape, yolo_bbox)
-                bounding_box = add_channel_slices(bounding_box)
-                out["yolo_bbox"] = yolo_bbox
-                out["bounding_box"] = bounding_box
-                data_out.append(out)
+            cached = self.maybe_load_bboxes(data)
+            if cached is not None:
+                return cached
+        outputs = self.W.run(data, overwrite=overwrite)
+        data_out = []
+        for out in outputs:
+            pred = out["pred"]
+            lat = pred[0]
+            ap = pred[1]
+            yolo_bbox = standardize_bboxes(
+                ap.boxes,
+                lat.boxes,
+                out["projection_meta"][0]["letterbox_padded"],
+                self.classes,
+                serialised=False,
+            )
+            img_shape = out["image"].shape[1:]
+            bounding_box = yolo_bbox_to_slices(img_shape, yolo_bbox)
+            bounding_box = add_channel_slices(bounding_box)
+            out["yolo_bbox"] = yolo_bbox
+            out["bounding_box"] = bounding_box
+            data_out.append(out)
         return data_out
 
-    def apply_bboxes(self, data ):
+    def patch_prediction(self, data):
+        print("Starting patch data prep and prediction")
+        preds_all_runs = {}
+        preds_all_runs[self.P.run_name] = []
+        self.P.setup()
+        self.P.prepare_data(data=data, collate_fn=img_bbox_collated)
+        self.P.create_and_set_postprocess_transforms()
+        for batch in self.P.predict():
+            batch = self.P.postprocess(batch)
+            preds_all_runs[self.P.run_name].append(batch)
+        return preds_all_runs
+
+    def apply_bboxes(self, data):
         data2 = []
-        for i, dat in enumerate(data):
+        for dat in data:
             image = dat["image"]
             bbox = dat["bounding_box"]
-            dat["image"] = image[bbox]
+            dat["full_meta"] = deepcopy(image.meta)
+            dat["image"] = image[tuple(bbox)]
             data2.append(dat)
         return data2
 
-    def load_bboxes(self, data):
+    def maybe_load_bboxes(self, data):
+        # if even a single json is missing, return the original data to trigger bbox extraction and saving.
         json_fns = list(self.W.output_folder.glob("*.json"))
+        img_json_fn_pairs = []
+        try:
+            for dat in data:
+                fn = find_matching_fn(dat.name, json_fns)
+                dici = {"image": dat, "json_fn": fn[0]}
+                img_json_fn_pairs.append(dici)
+        except MatchError:
+            cprint(
+                "Not all bbox jsons found. Running YOLO to extract and save bboxes." ,"yellow"           )
+            return None
         data_out = []
-        for dat in data:
-            out = {"image": dat}
+        for out in img_json_fn_pairs:
             out = LoadSITKd(["image"])(out)
+            json_fn = out["json_fn"]
             out = EnsureChannelFirstd(keys=["image"])(out)
             out = Orientationd(keys=["image"], axcodes="RAS", labels=None)(out)
             img_shape = out["image"].shape[1:]
+            bbox = load_json(json_fn)
+            yolo_bbox = standardize_bboxes(
+                bbox["ap"],
+                bbox["lat"],
+                bbox["ap"]["meta"]["letterbox_padded"],
+                self.classes,
+                serialised=True,
+            )
 
-            fn  = find_matching_fn(dat.name, json_fns )
-            if len (fn) == 0:
-                continue
-                # data_out.append(dici)
-            else:
-                bbox = load_json(fn[0])
-                yolo_bbox = standardize_bboxes(
-                    bbox["ap"],
-                    bbox["lat"],
-                    bbox["ap"]["meta"]["letterbox_padded"],
-                    self.classes,
-                    serialised=True,
-                )
-
-                bounding_box = yolo_bbox_to_slices(img_shape, yolo_bbox)
-                bounding_box = add_channel_slices(bounding_box)
-                out["yolo_bbox"] = yolo_bbox
-                out["bounding_box"] = bounding_box
-                data_out.append(out)
+            bounding_box = yolo_bbox_to_slices(img_shape, yolo_bbox)
+            bounding_box = add_channel_slices(bounding_box)
+            out["yolo_bbox"] = yolo_bbox
+            out["bounding_box"] = bounding_box
+            data_out.append(out)
         return data_out
 
 
@@ -305,6 +339,7 @@ class CascadeInfererYOLO(CascadeInferer):
 if __name__ == "__main__":
     import os
     from fran.inference.common_vars import imgs_bosniak, runs_2d
+    from fran.managers import Project
     from localiser.preprocessing.data.nii2pt_tsl import tsl_folder_name_builder
     from utilz.fileio import load_yaml
 
@@ -348,6 +383,24 @@ if __name__ == "__main__":
     else:
         run_yolo_wts = runs_2d["ab_ch_ne_pe"][0]
 
+    bad_ids = [60,21,68,50,37,51,54,69,63,58]
+    bad_ids  = ['0'+str(a)+".nii" for a in bad_ids]
+# %%
+    bad_files = []
+    for id in bad_ids:
+        eligible = [img for img in kits_imgs if id in img.name]
+        bad_files.extend(eligible)
+
+    len(bad_files)
+
+    P = Project("kits23")
+    _, valid_cases = P.get_train_val_case_ids(fold=0)
+    valid_cases = set(valid_cases)
+# %%
+    kit23_val1_imgs = [
+        img for img in kits_imgs if strip_extension(img.name) in valid_cases
+    ]
+
 # %%
     # SCRATCH INPUTS
     yolo_include_neck = False
@@ -368,54 +421,119 @@ if __name__ == "__main__":
 
 # %%
     overwrite = False
-    image_files = imgs
+    image_files = imgs_bosniak
+    image_files = kit23_val1_imgs
+    outs = D.run(image_files, overwrite=overwrite)
+# %%
     data_bboxes = D.extract_fg_bboxes(image_files, overwrite=overwrite)
 # %%
+    data = imgs_bosniak
+    json_fns = list(D.W.output_folder.glob("*.json"))
+    data_out = []
+    for dat in data:
+        out = {"image": dat}
+        try:
+            fn = find_matching_fn(dat.name, json_fns)
+        except MatchError:
+            out = LoadSITKd(["image"])(out)
+            out = EnsureChannelFirstd(keys=["image"])(out)
+            out = Orientationd(keys=["image"], axcodes="RAS", labels=None)(out)
+            img_shape = out["image"].shape[1:]
+            bbox = load_json(fn[0])
+            yolo_bbox = standardize_bboxes(
+                bbox["ap"],
+                bbox["lat"],
+                bbox["ap"]["meta"]["letterbox_padded"],
+                D.classes,
+                serialised=True,
+            )
+
+            bounding_box = yolo_bbox_to_slices(img_shape, yolo_bbox)
+            bounding_box = add_channel_slices(bounding_box)
+            out["yolo_bbox"] = yolo_bbox
+            out["bounding_box"] = bounding_box
+        data_out.append(out)
+
 # %%
+    for d in data_out:
+        print(d.keys())
+# %%
+
+    data_out = D.maybe_load_bboxes(image_files)
+    data_out[0]["image"].shape
 # %%
     chunksize = 2
     data_chunks = list_to_chunks(data_bboxes, chunksize)
     sublist = data_chunks[0]
 # %%
     D.create_and_set_postprocess_transforms()
-    data_sublist= sublist
+    data_sublist = sublist
+    data=image_files
     # data = D.load_images(imgs_sublist)
+    data_bboxes = D.extract_fg_bboxes(data, overwrite=overwrite)
+
+    chunksize=12
+    data_chunks = list_to_chunks(data_bboxes, chunksize)
+    data_sublist = data_bboxes[:chunksize]
     data = D.apply_bboxes(data_sublist)
     Sq = SqueezeDimd(keys=["image"], dim=0)
     data = [Sq(dat) for dat in data]
-    data[0]['image'].shape
-    data[0]['bounding_box']
+# %%
+    bboxes_sublist = [dat["bounding_box"] for dat in data_sublist]
+    pred_patches = D.patch_prediction(data)
+    pred_patches = D.decollate_patches(pred_patches, bboxes_sublist)
+# %%
+    for patch in pred_patches:
+        print(patch['bounding_box'])
+        print(patch['KITS23-SIRIG'].shape)
+        print(patch['KITS23-SIRIG'].meta["spatial_shape"])
+# %%
+    pred_patches[0].keys()
+    bboxes_sublist = [dat["bounding_box"] for dat in data_sublist]
+    D.debug = True
+    output = D.postprocess(pred_patches)
+# %%
+    data = [Sq(dat) for dat in data]
+    data[0]["image"].shape
+    data[0]["bounding_box"]
     bboxes_sublist = [dat["bounding_box"] for dat in sublist]
+    data[0]
+
     pred_patches = D.patch_prediction(data)
     pred_patches = D.decollate_patches(pred_patches, bboxes_sublist)
     pred_patches[0].keys()
-    pred_patches[0]['KITS23-SIRIG'].shape
-    pred_patches[0]['bounding_box']
+    pred_patches[0]["KITS23-SIRIG"].shape
+    pred_patches[0]["bounding_box"]
     output = D.postprocess(pred_patches)
 
 # %%
+    D.P.debug = True
     output = D.process_data_sublist(sublist)
     data = D.apply_bboxes(sublist)
     bboxes_sublist = [dat["bounding_box"] for dat in sublist]
     pred_patches = D.patch_prediction(data)
     pred_patches = D.decollate_patches(pred_patches, bboxes_sublist)
+
     output = D.postprocess(pred_patches)
 
+    lmg = output[0]["pred"]
+    im = data_out[0]["image"]
+    ImageMaskViewer([im, lmg], "im")
 
 # %%
     sublist
     D.create_and_set_postprocess_transforms()
-    # data = D.load_images(imgs_sublist)
     data = D.apply_bboxes(data, bboxes_sublist)
-    data[0]['image'].shape
-    data[0]['bounding_box']
+    data[0]["image"].shape
+    data[0]["bounding_box"]
     pred_patches = D.patch_prediction(data)
     pred_patches = D.decollate_patches(pred_patches, bboxes_sublist)
     pred_patches[0].keys()
-    pred_patches[0]['KITS23-SIRIG'].shape
-    pred_patches[0]['bounding_box']
+    pred_patches[0]["KITS23-SIRIG"].shape
+    pred_patches[0]["bounding_box"]
     output = D.postprocess(pred_patches)
-
+    output[0].keys()
+    output[0]["pred"].shape
 
 # %%
     yb = data[0]["yolo_bbox"]
@@ -424,16 +542,16 @@ if __name__ == "__main__":
     fn = "/s/fran_storage/predictions/totalseg_localiser/train/kits21_b0330_0000.json"
     bbox = load_json(fn)
     # bbox
-    
+
 # %%
     data2 = D.apply_bboxes(outs)
     dat = data2[0]
-    n=0
+    n = 0
 # %%
     img = dat["image"]
     img = img[0]
     img = img.permute(2, 0, 1)
-    ImageMaskViewer([img, img],'ii')
+    ImageMaskViewer([img, img], "ii")
 # %%
     import matplotlib.pyplot as plt
 
@@ -441,11 +559,10 @@ if __name__ == "__main__":
     im = img.float().mean(dim=1)
     im3 = img.float().mean(dim=0)
 # %%
-    im= im.permute(1, 0)
+    im = im.permute(1, 0)
     im3 = im3.permute(1, 0)
     im = im.flip(0)
     im3 = im3.flip(0)
-
 
 # %%
     fix, axs = plt.subplots(1, 2)
@@ -527,21 +644,22 @@ if __name__ == "__main__":
     pred_patches = D.run(imgs, overwrite=False)
     list(pred_patches), len(pred_patches[D.P.run_name])
 # %%
-    dici = {"image":dat}
+    dici = {"image": dat}
     L = LoadSITKd(["image"])
     O = Orientationd(keys=["image"], axcodes="RAS", labels=None)
     E = EnsureChannelFirstd(keys=["image"])
     dici2 = L(dici)
     dici2 = E(dici2)
     dici3 = O(dici2)
-    dici3['image'].shape
+    dici3["image"].shape
 # %%
     out.keys()
-    out['image'].meta['spatial_shape']
-    out['image'].meta['affine']
+    out["image"].meta["spatial_shape"]
+    out["image"].meta["affine"]
     import nibabel as nib
-    img = out['image']
-    axcodes = nib.aff2axcodes(out['image'].meta['affine'].cpu().numpy())
+
+    img = out["image"]
+    axcodes = nib.aff2axcodes(out["image"].meta["affine"].cpu().numpy())
     assert axcodes == ("R", "A", "S"), axcodes
 
 
