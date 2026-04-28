@@ -315,7 +315,6 @@ class Project(DictToAttr):
             self.populate_tbl(ds)
         self.populate_raw_data_folder()
         self.register_datasources(datasources, multiprocess=multiprocess)
-        self.save_global_properties()
         headline("Now consider running maybe_store_projectwide_properties()")
 
     def _create_folder_tree(self):

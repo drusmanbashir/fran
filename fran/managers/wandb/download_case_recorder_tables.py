@@ -233,9 +233,9 @@ if __name__ == "__main__":
     args = parser.parse_known_args()[0]
 
 # %%
-    args.project = "kits23"
-    args.run_name = "KITS23-SIRIG"
-    args.download = "config"
+    # args.project = "kits23"
+    # args.run_name = "KITS23-SIRIG"
+    # args.download = "config"
 # %%
     main(args)
 # %%

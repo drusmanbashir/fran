@@ -417,12 +417,14 @@ if __name__ == "__main__":
     D = CascadeInfererYOLO(
         localiser_regions="abdomen,pelvis",
         run_p="KITS23-SIRIG",
+        patch_overlap=0.0,
     )
 
 # %%
-    overwrite = False
     image_files = imgs_bosniak
     image_files = kit23_val1_imgs
+    image_files = bad_files
+    overwrite = True
     outs = D.run(image_files, overwrite=overwrite)
 # %%
     data_bboxes = D.extract_fg_bboxes(image_files, overwrite=overwrite)

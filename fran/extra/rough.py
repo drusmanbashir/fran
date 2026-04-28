@@ -1,3 +1,5 @@
+from label_analysis.helpers import get_labels
+from tqdm.auto import tqdm
 import matplotlib
 matplotlib.get_backend()
 matplotlib.use("Qt5Agg")
@@ -38,6 +40,7 @@ if __name__ == "__main__":
       print(img.shape, bbox)
       img = img.permute(2,0,1)
       ImageMaskViewer([img,img])
+        
 
 # %%
       inds_fn = Path("/r/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144/indices/kits23_00004.pt")
@@ -89,7 +92,14 @@ if __name__ == "__main__":
           num_processes=nproc,
           io=True,  # better for file I/O-heavy workloads
 # %%
-
+# %%
+#SECTION:--------------------  LABELMAPS--------------------------------------------------------------------------------------
+        fldr = Path("/s/xnat_shadow/litq/lms") 
+        fns = list(fldr.glob("*"))
+        len(fns)
+        for fn in tqdm(fns):
+            im = sitk.ReadImage(fn)
+            print(get_labels(im))
 # %%
 #SECTION:-------------------- PT model dice comparson--------------------------------------------------------------------------------------
 
