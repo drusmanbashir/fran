@@ -21,6 +21,12 @@ def totalseg_project():
     return Project(project_title="totalseg")
 
 
+def test_fixed_spacing_folder_is_project_scoped():
+    project = Project(project_title="totalseg")
+    assert project.fixed_spacing_folder.name == "totalseg"
+    assert project.fixed_spacing_folder.parent.name == "fixed_spacing"
+
+
 @pytest.fixture
 def litsmc_config(litsmc_project):
     return ConfigMaker(

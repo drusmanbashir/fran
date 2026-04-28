@@ -653,17 +653,15 @@ def tensor_order_shape_from_meta(meta):
 
 
 def fill_bbox(bbox, cropped_tensor, full_meta):
-    """
-    bbox : 3-tuple of slices
-    cropped_tensor: 4d CxWxHxD. It has metadata with spatial_shape key defining full tensor shape
-    """
-
     n_ch = cropped_tensor.shape[0]
-    full_shape = tensor_order_shape_from_meta(full_meta)
-    shape = [n_ch] + list(full_shape)
-    full = torch.zeros(shape, dtype=cropped_tensor.dtype, device=cropped_tensor.device)
+    full_shape = tuple(int(v) for v in full_meta["spatial_shape"])
+    full = torch.zeros(
+        (n_ch, *full_shape),
+        dtype=cropped_tensor.dtype,
+        device=cropped_tensor.device,
+    )
     full[tuple(bbox)] = cropped_tensor
-    return MetaTensor(full, meta=deepcopy(full_meta))
+    return MetaTensor(full.contiguous(), meta=deepcopy(full_meta))
 
 
 #

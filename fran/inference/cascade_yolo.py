@@ -1,5 +1,7 @@
 import json
 from copy import deepcopy
+
+from tqdm.auto import tqdm
 from fran.inference.common_vars import kits_imgs
 from localiser.transforms.transforms import MapTransform
 from monai.transforms.utility.dictionary import (
@@ -41,7 +43,6 @@ def add_channel_slices(bbox):
 
 def orig_shape_from_meta(image):
     import nibabel as nib
-
     spatial_shape = image.meta["spatial_shape"]
     axcodes = nib.aff2axcodes(image.meta["affine"].cpu().numpy())
     assert axcodes == ("R", "A", "S"), axcodes
@@ -292,6 +293,9 @@ class CascadeInfererYOLO(CascadeInferer):
             image = dat["image"]
             bbox = dat["bounding_box"]
             dat["full_meta"] = deepcopy(image.meta)
+            dat["full_meta"]["spatial_shape"] = tuple(
+                int(v) for v in image.shape[1:]
+            )
             dat["image"] = image[tuple(bbox)]
             data2.append(dat)
         return data2
@@ -310,7 +314,8 @@ class CascadeInfererYOLO(CascadeInferer):
                 "Not all bbox jsons found. Running YOLO to extract and save bboxes." ,"yellow"           )
             return None
         data_out = []
-        for out in img_json_fn_pairs:
+        cprint("Loading bbox jsons and ITK images", "green")
+        for out in tqdm(img_json_fn_pairs):
             out = LoadSITKd(["image"])(out)
             json_fn = out["json_fn"]
             out = EnsureChannelFirstd(keys=["image"])(out)
@@ -394,7 +399,7 @@ if __name__ == "__main__":
     len(bad_files)
 
     P = Project("kits23")
-    _, valid_cases = P.get_train_val_case_ids(fold=0)
+    _, valid_cases = P.get_train_val_case_ids(fold=1)
     valid_cases = set(valid_cases)
 # %%
     kit23_val1_imgs = [
@@ -422,9 +427,9 @@ if __name__ == "__main__":
 
 # %%
     image_files = imgs_bosniak
-    image_files = kit23_val1_imgs
     image_files = bad_files
-    overwrite = True
+    image_files = kit23_val1_imgs
+    overwrite = False
     outs = D.run(image_files, overwrite=overwrite)
 # %%
     data_bboxes = D.extract_fg_bboxes(image_files, overwrite=overwrite)

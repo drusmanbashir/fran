@@ -4,10 +4,12 @@ import fcntl
 import logging
 import math
 import os
+from copy import deepcopy
 from pathlib import Path
 
 import ipdb
 import monai.transforms.spatial.functional as fm
+import nibabel as nib
 import skimage.transform as tf
 import torch.nn.functional as F
 from fran.transforms.base import ItemTransform, KeepBBoxTransform, MapTransform, MonaiDictTransform, Union, np, torch
@@ -566,6 +568,39 @@ class ResizeToMetaSpatialShaped(MonaiDictTransform):
             spatial_shape = spatial_shape.tolist()
             data[key] = _resize3d(tnsr, spatial_shape, self.mode)
         return data
+
+
+def _ornt_current_to_original(meta):
+    affine = torch.as_tensor(meta["affine"]).cpu().numpy()
+    original_affine = torch.as_tensor(meta["original_affine"]).cpu().numpy()
+    current = nib.orientations.io_orientation(affine)
+    original = nib.orientations.io_orientation(original_affine)
+    return nib.orientations.ornt_transform(current, original)
+
+
+def _apply_ornt_channel_first(x, ornt):
+    perm = [0] + [int(ax) + 1 for ax in ornt[:, 0]]
+    x = torch.as_tensor(x).permute(*perm).contiguous()
+    flip_dims = tuple(i + 1 for i, flip in enumerate(ornt[:, 1]) if int(flip) == -1)
+    if len(flip_dims):
+        x = torch.flip(x, dims=flip_dims).contiguous()
+    return x
+
+
+class RestoreOriginalOrientationd(MapTransform):
+    def __init__(self, keys=["pred"], allow_missing_keys=False):
+        MapTransform.__init__(self, keys, allow_missing_keys)
+
+    def __call__(self, d):
+        for key in self.key_iterator(d):
+            pred = d[key]
+            meta = deepcopy(pred.meta)
+            ornt = _ornt_current_to_original(meta)
+            pred = _apply_ornt_channel_first(pred, ornt)
+            meta["affine"] = torch.as_tensor(meta["original_affine"]).clone()
+            meta["spatial_shape"] = tuple(int(v) for v in pred.shape[1:])
+            d[key] = MetaTensor(pred, meta=meta)
+        return d
 
 
 class PermuteImageMask(RandomizableTransform, MapTransform):

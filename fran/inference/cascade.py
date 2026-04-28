@@ -22,6 +22,7 @@ from fran.transforms.inferencetransforms import (
     RenameDictKeys,
 )
 from fran.transforms.misc_transforms import SelectLabels
+from fran.transforms.spatialtransforms import RestoreOriginalOrientationd
 from fran.utils.misc import parse_devices
 from monai.transforms.compose import Compose
 from monai.transforms.io.dictionary import SaveImaged
@@ -54,6 +55,9 @@ def apply_bboxes(data, bboxes):
     data2 = []
     for i, dat in enumerate(data):
         dat["full_meta"] = deepcopy(dat["image"].meta)
+        dat["full_meta"]["spatial_shape"] = tuple(
+            int(v) for v in dat["image"].shape[1:]
+        )
         dat["image"] = dat["image"][tuple(bboxes[i][1:])]
         dat["bounding_box"] = bboxes[i]
         data2.append(dat)
@@ -410,6 +414,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
                 keys=["pred"], independent=False, num_components=self.k_largest
             ),
             "F": FillBBoxPatchesd(),
+            "R": RestoreOriginalOrientationd(keys=["pred"]),
             "S": SaveImaged(
                 keys=["pred"],
                 output_dir=self.output_folder,
@@ -426,7 +431,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             self.postprocess_tfms_keys = self.keys_postproc_safe
         if self.k_largest is not None:
             self.postprocess_tfms_keys += ",K"
-        self.postprocess_tfms_keys += ",F"
+        self.postprocess_tfms_keys += ",F,R"
         if self.save == True:
             self.postprocess_tfms_keys += ",S"
 
@@ -454,11 +459,9 @@ if __name__ == "__main__":
     best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
     run_w = best_runs["run_w"]
 
-
 # %%
-# SECTION:-------------------- KITS--------------------------------------------------------------------------------------
+# SECTION:-------------------- KITS-------------------------------------------------------------------------------------- <CR>
     TSL = TotalSegmenterLabels()
-
 
     P = Project("kits2")
     _, val = P.get_train_val_case_ids(fold=1)
@@ -520,7 +523,7 @@ if __name__ == "__main__":
     ImageMaskViewer([img, pred], "im")
 
 # %%
-# SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     loc_lidc = [7]  # lung in localiser_label
     devices = [0]
@@ -566,7 +569,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- NODES -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels = set(TSL.label_region)
     safe_mode = True
     patch_overlap = 0.0
@@ -593,7 +596,7 @@ if __name__ == "__main__":
     preds = En.run(imgs, chunksize=1, overwrite=overwrite)
     # preds = En.run(img_fns, chunksize=2)
 # %%
-# SECTION:-------------------- BONES--------------------------------------------------------------------------------------
+# SECTION:-------------------- BONES-------------------------------------------------------------------------------------- <CR>
 
     run = best_runs["bones"]
     localiser_labels = run["localiser_labels"]
@@ -626,7 +629,7 @@ if __name__ == "__main__":
     # preds = En.run(img_fns, chunksize=2)
 # %%
 
-# SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
     devices = [0]
     debug_ = False
@@ -662,7 +665,7 @@ if __name__ == "__main__":
     pred2 = torch.argmax(pred, dim=1)
     ImageMaskViewer([img[0, 0].detach().cpu(), pred2[0].detach().cpu()])
 # %%
-# SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TOTALSEG LBD (TOTALSEG WB followed by TOTALSEG LGD)-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
     localiser_labels = set(TSL.label_region)
 
@@ -693,7 +696,7 @@ if __name__ == "__main__":
     preds = En.run(nodes, chunksize=2)
     # preds = En.run(img_fns, chunksize=2)
 # %%
-# SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:---------------------------------------- LITSMC predictions-------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     localiser_labels_litsmc = [3]
     devices = [1]
     overwrite = True
@@ -738,8 +741,8 @@ if __name__ == "__main__":
     bboxes = []
 # %%
 
-# SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
-# SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     imgs_sublist = imgs_bosniak[:5]
 
     En.create_postprocess_transforms()
@@ -858,7 +861,7 @@ if __name__ == "__main__":
 
 # %%
 # %%
-# SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- process_imgs_sublist-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
         n = 4
         data = En.load_images(nodes[:5])
         img0 = data[n]["image"]
@@ -875,7 +878,7 @@ if __name__ == "__main__":
         img1 = img1.permute(2, 1, 0)
         ImageMaskViewer([img0, img1])
 # %%
-# SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:--------------------Patch predictor -------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
         imgs_sublist = nodes[:3]
         data = En.load_images(imgs_sublist)
