@@ -36,13 +36,17 @@ REMAPPING_DICT_OR_LIST = {
 }
 
 
-def parse_excel_remapping(remapping) -> list:
+def parse_excel_remapping(remapping, datasources=None) -> list:
     remapping = ast_literal_eval(remapping)
     if isinstance(remapping, str):
         remapping = remapping.split(",")
         remapping = [ast_literal_eval(rems) for rems in remapping]
     if not isinstance(remapping, list | tuple):
         remapping = [remapping]
+    if remapping == [None] and datasources is not None:
+        if isinstance(datasources, str):
+            datasources = parse_excel_datasources(datasources)
+        remapping = [None] * len(datasources)
     return remapping
 
 
@@ -177,12 +181,11 @@ def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
         remapping = plan[key]
     if not remapping:
         return
-    remapping = parse_excel_remapping(remapping)
-
     datasources = plan["datasources"]
     datasources = parse_excel_datasources(datasources)
+    remapping = parse_excel_remapping(remapping, datasources)
     assert len(datasources) == len(remapping), (
-        "For each datasource, a unique remapping is required, it can be None."
+        "For each datasource, a unique remapping is required, it can be None.\nFound datasources: {} and remapping: {}".format(len(datasources), len(remapping))
     )
     remappings_out = []
     for ds, remapping in zip(datasources, remapping):
@@ -492,8 +495,6 @@ class ConfigMaker:
         """Add preprocessing status column to plans dataframe"""
 
         preprocess = []
-        n_cases = len(self.project)
-
         for plan_id in self.plans.index:
             self.setup(plan_id, False)
             conf = self.configs
@@ -639,12 +640,12 @@ if __name__ == "__main__":
     # set_autoreload()
     from fran.managers import Project
 
-    P = Project(project_title="test")
     P = Project(project_title="pancreas")
     P = Project(project_title="kits23")
     P = Project(project_title="totalseg")
     P = Project(project_title="litsmc")
 
+    P = Project(project_title="test")
 # %%
     P.global_properties
     C = ConfigMaker(P)
@@ -774,6 +775,5 @@ if __name__ == "__main__":
 
     pp(C.configs[plan_key])
     C.config 
-
 
 

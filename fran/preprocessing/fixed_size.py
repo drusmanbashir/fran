@@ -19,6 +19,7 @@ from monai.transforms.utility.dictionary import (
 from utilz.fileio import maybe_makedirs, sitk, torch, tr
 from utilz.helpers import chunks, find_matching_fn, folder_name_from_list, info_from_filename, set_autoreload
 from utilz.imageviewers import ImageMaskViewer
+from utilz.rayz import shutdown_actors
 from utilz.stringz import info_from_filename
 
 tr = ipdb.set_trace
@@ -203,18 +204,21 @@ class FixedSizeDataGenerator(PatchDataGenerator):
             remapping = True
         else:
             remapping = False
-        results = ray.get(
-            [
-                c.process.remote(
-                    dicis,
-                    self.plan["patch_size"],
-                    self.output_folder / ("images"),
-                    self.output_folder / ("lms"),
-                    remapping=remapping,
-                )
-                for c, dicis in zip(actors, dicis)
-            ]
-        )
+        try:
+            ray.get(
+                [
+                    c.process.remote(
+                        dicis,
+                        self.plan["patch_size"],
+                        self.output_folder / ("images"),
+                        self.output_folder / ("lms"),
+                        remapping=remapping,
+                    )
+                    for c, dicis in zip(actors, dicis)
+                ]
+            )
+        finally:
+            shutdown_actors(actors)
 
     def set_input_output_folders(self, data_folder=None, output_folder=None):
         folders = FolderNames(self.project, self.plan).folders

@@ -64,13 +64,15 @@ if __name__ == "__main__":
         help="Datasources to add, i.e., {}".format(DS.__repr__()),
     )
     parser.add_argument("--test", action="store_true", help="Mark datasources as test")
-    # %%
+# %%
     args = parser.parse_known_args()[0]
     # args.multiprocess=False
-    # args.title = 'tmp2'
-    # args.mnemonic = 'litsmall'
+    # args.title = 'tmpa'
+    # args.mnemonic = 'test'
+    # args.datasources = ['drli_short','kits23_short']
     # args.datasources = ['litsmall']
 
-    # %%
+# %%
     main(args)
 # %%
+

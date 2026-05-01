@@ -7,6 +7,7 @@ import SimpleITK as sitk
 from fran.inference.cascade import CascadeInferer
 from fran.inference.scoring import compute_dice_fran
 from fran.managers.project import Project
+from utilz.rayz import shutdown_actors
 
 
 def chunk_list(items, n_chunks):
@@ -118,7 +119,10 @@ def run_multi_gpu_ray(images, gpus, cfg: RayConfig):
     chunks = chunk_list(images, len(gpus))
     actors = [PredictActor.remote() for _ in chunks]
     futures = [a.process.remote(asdict(cfg), chunk) for a, chunk in zip(actors, chunks)]
-    return ray.get(futures)
+    try:
+        return ray.get(futures)
+    finally:
+        shutdown_actors(actors)
 
 
 def compute_scores(images, masks_folder, output_folder, n_classes=None):

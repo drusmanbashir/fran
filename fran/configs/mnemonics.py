@@ -1,4 +1,14 @@
 # %%
+'''
+mnemonics workflow:
+    1- To retrieve config plan
+         - at project_init 
+         - config plans 
+         both above match  = ConfigMaker gets relevant row
+    2- Match with a canonical wandb name.
+    3- Aliases ensure that whatever the mnemonic is given at project init, it matches the same wandb name and same config plan row
+'''
+
 from dataclasses import dataclass
 from typing import ClassVar
 

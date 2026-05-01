@@ -15,6 +15,7 @@ n_lists = 2
 
 
 import ray
+from utilz.rayz import shutdown_actors
 
 ray.init(num_gpus=tot_gpus)
 
@@ -81,22 +82,25 @@ def main(args):
 
     chunks = list(il.starmap(slice_list, zip([fns] * n_lists, inds)))
     actors = [EnsembleActor.remote() for _ in range(n_lists)]
-    results = ray.get(
-        [
-            c.process.remote(
-                project,
-                run_name_w,
-                runs_ensemble,
-                localiser_labels,
-                safe_mode,
-                k_largest,
-                fns,
-                chunksize,
-                overwrite,
-            )
-            for c, fns in zip(actors, chunks)
-        ]
-    )
+    try:
+        results = ray.get(
+            [
+                c.process.remote(
+                    project,
+                    run_name_w,
+                    runs_ensemble,
+                    localiser_labels,
+                    safe_mode,
+                    k_largest,
+                    fns,
+                    chunksize,
+                    overwrite,
+                )
+                for c, fns in zip(actors, chunks)
+            ]
+        )
+    finally:
+        shutdown_actors(actors)
     print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
 

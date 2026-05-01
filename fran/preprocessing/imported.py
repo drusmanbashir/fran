@@ -108,7 +108,7 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         dss = self.plan["datasources"]
         dss = parse_excel_datasources(dss)
         rem = self.plan[remapping_key]
-        rem = parse_excel_remapping(rem)
+        rem = parse_excel_remapping(rem, dss)
         Remapping_tfms = {}
         for rez, ds in zip(rem, dss):
             ds_name = DS[ds].name

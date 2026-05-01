@@ -26,6 +26,7 @@ from fran.utils.dataset_properties import analyze_tensor_data_folder
 from fran.utils.string_works import is_excel_None
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
+from utilz.rayz import shutdown_actors
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
 
@@ -688,14 +689,27 @@ class Preprocessor(GetAttr):
         fn = self.output_folder / subfolder / fn_name
         torch.save(indices_dict, fn)
 
+    def shutdown_ray_workers(self):
+        actors = getattr(self, "actors", None)
+        if not actors:
+            return
+        shutdown_actors(actors)
+        self.actors = []
+        self.n_actors = 0
+
     def run_worker_jobs(self):
         if getattr(self, "use_ray", False):
-            return ray.get(
-                [
-                    actor.process.remote(mini_df)
-                    for actor, mini_df in zip(self.actors, self.mini_dfs)
-                ]
-            )
+            try:
+                return ray.get(
+                    [
+                        actor.process.remote(mini_df)
+                        for actor, mini_df in zip(self.actors, self.mini_dfs)
+                    ]
+                )
+            finally:
+                # Release actor CPU reservations before downstream Ray-based
+                # postprocessing stages create their own actor pools.
+                self.shutdown_ray_workers()
         return [self.local_worker.process(self.mini_dfs[0])]
 
     def flatten_results(self, results):
