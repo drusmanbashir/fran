@@ -143,6 +143,7 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
         keys=("image", "lm"),
         lm_key="lm",
         bbox_key="bbox",
+        margin=20,
         allow_missing_keys=False,
     ):
         super().__init__(keys=keys, allow_missing_keys=allow_missing_keys)
@@ -152,7 +153,7 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
             keys=keys,
             lm_key=lm_key,
             bbox_key=bbox_key,
-            margin=20,
+            margin=margin,
             allow_missing_keys=allow_missing_keys,
         )
         self.cropper_fg = CropForegroundMinShaped(
@@ -249,17 +250,19 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
 
     def create_transforms(self, device):
         super().create_transforms(device=device)
-        self.cropper_yolo = CropByYolo(
-            keys=["image", "lm"],
-            lm_key="lm",
-            bbox_key="bbox",
-            margin=20,
-        )
+        margin = self.plan["expand_by"] 
+        # self.cropper_yolo = CropByYolo(
+        #     keys=["image", "lm"],
+        #     lm_key="lm",
+        #     bbox_key="bbox",
+        #     margin=margin,
+        # )
         self.CropByYolo = CropByYoloWithForegroundFallbackd(
             min_shape=self.plan["src_dims"],
             keys=["image", "lm"],
             lm_key="lm",
             bbox_key="bbox",
+            margin=margin,
         )
         self.transforms_dict["CropByYolo"] = self.CropByYolo
 

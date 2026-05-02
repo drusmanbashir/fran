@@ -15,7 +15,7 @@ from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
 from fran.managers import Project
-from fran.managers.data.training2 import (
+from fran.managers.data.training import (
     DataManagerBaseline,
     DataManagerDual,
     DataManagerRBD,

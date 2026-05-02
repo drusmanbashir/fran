@@ -109,6 +109,49 @@ def test_rbd_worker_data_dict_loads_bbox(monkeypatch):
     assert data["case_id"] == "case_001"
 
 
+def test_rbd_worker_passes_plan_expand_by_to_crop_by_yolo(monkeypatch):
+    def fake_parent_create_transforms(self, device):
+        self.transforms_dict = {}
+
+    monkeypatch.setattr(
+        regionbounded.RayWorkerBase,
+        "create_transforms",
+        fake_parent_create_transforms,
+    )
+
+    worker = regionbounded._RBDSamplerWorkerBase.__new__(
+        regionbounded._RBDSamplerWorkerBase
+    )
+    worker.plan = {"expand_by": 14, "src_dims": (32, 32, 32)}
+
+    worker.create_transforms(device="cpu")
+
+    assert worker.cropper_yolo.margin == 14
+    assert worker.CropByYolo.cropper_yolo.margin == 14
+    assert worker.transforms_dict["CropByYolo"] is worker.CropByYolo
+
+
+def test_rbd_worker_uses_zero_margin_when_expand_by_is_zero(monkeypatch):
+    def fake_parent_create_transforms(self, device):
+        self.transforms_dict = {}
+
+    monkeypatch.setattr(
+        regionbounded.RayWorkerBase,
+        "create_transforms",
+        fake_parent_create_transforms,
+    )
+
+    worker = regionbounded._RBDSamplerWorkerBase.__new__(
+        regionbounded._RBDSamplerWorkerBase
+    )
+    worker.plan = {"expand_by": 0, "src_dims": (32, 32, 32)}
+
+    worker.create_transforms(device="cpu")
+
+    assert worker.cropper_yolo.margin == 0
+    assert worker.CropByYolo.cropper_yolo.margin == 0
+
+
 def test_crop_by_yolo_default_margin_recovers_cropped_label():
     image = _metatensor(torch.zeros((10, 12, 8)), "image.pt")
     lm = _metatensor(torch.zeros((10, 12, 8)), "lm.pt")
