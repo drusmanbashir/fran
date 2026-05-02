@@ -17,8 +17,7 @@ from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from pathlib import Path
 from fran.transforms.misc_transforms import DummyTransform
 import ipdb
-from localiser.inference.base import EnsureChannelFirstd
-from localiser.inference.base2 import LocaliserInferer
+from localiser.inference.localiserinferer import LocaliserInferer
 from utilz.fileio import load_json
 from utilz.imageviewers import ImageMaskViewer
 
