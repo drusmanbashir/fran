@@ -53,8 +53,8 @@ def confirm_plan_status(project, plan) -> dict[str, bool]:
     mode = plan["mode"]
     if mode == "lbd":
         final_folder = folders["data_folder_lbd"]
-    elif mode == "kbd":
-        final_folder = folders["data_folder_kbd"]
+    elif mode == "rbd":
+        final_folder = folders["data_folder_rbd"]
     elif mode in ["patch", "pbd"]:
         final_folder = folders["data_folder_pbd"]
     elif mode == "whole":

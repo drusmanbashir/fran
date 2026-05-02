@@ -25,7 +25,7 @@ import pandas as pd
 
 
 class _LBDSamplerWorkerBase(RayWorkerBase):
-    remapping_key = "remapping_lbd_kbd"
+    remapping_key = "remapping_lbd_rbd"
 
     def __init__(
         self,
@@ -86,7 +86,7 @@ class LBDSamplerWorkerLocal(_LBDSamplerWorkerBase):
 class LabelBoundedDataGenerator(Preprocessor, GetAttr):
     actor_cls = LBDSamplerWorkerImpl
     local_worker_cls = LBDSamplerWorkerLocal
-    remapping_key = "remapping_lbd_kbd"
+    remapping_key = "remapping_lbd_rbd"
     subfolder_key = "data_folder_lbd"
     # CODE: Preprocessor and downstream classes need thorough review and re-writing. E.g., where does expand_by go, in preprocessor or labelboudned?
     """

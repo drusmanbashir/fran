@@ -53,7 +53,7 @@ def resolve_relative_path(pth: str) -> str:
 
 
 class _LBDImportedSamplerWorkerBase(RayWorkerBase):
-    remapping_key = "remapping_lbd_kbd"
+    remapping_key = "remapping_lbd_rbd"
 
     def __init__(
         self,
@@ -217,7 +217,7 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
 
     actor_cls = LBDImportedSamplerWorkerImpl
     local_worker_cls = LBDImportedSamplerWorkerLocal
-    remapping_key = "remapping_lbd_kbd"
+    remapping_key = "remapping_lbd_rbd"
     subfolder_key = "data_folder_lbd"
 
     def __init__(
@@ -356,13 +356,13 @@ if __name__ == "__main__":
     from fran.utils.common import *
     from fran.utils.folder_names import FolderNames
 
-    project_title = "kits2"
+    project_title = "tmpa"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
     # spacing = [1.5, 1.5, 1.5]
 
     C = ConfigMaker(P)
-    C.setup(9)
+    C.setup(2)
 
 # %%
 
@@ -382,6 +382,7 @@ if __name__ == "__main__":
     L = LabelBoundedDataGeneratorImported(
         project=P, plan=plan, data_folder=resampled_data_folder
     )
+
 
 # %%
     num_processes = 6

@@ -23,7 +23,7 @@ def resolve_inferer_cls(run_name, mode=None):
         return BaseInferer, resolved_mode
     if resolved_mode == "whole":
         return WholeImageInferer, resolved_mode
-    if resolved_mode == "kbd":
+    if resolved_mode == "rbd":
         return CascadeInfererYOLO, resolved_mode
     if resolved_mode in ["patch", "lbd"]:
         return CascadeInferer, resolved_mode

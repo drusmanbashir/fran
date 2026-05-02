@@ -6,8 +6,8 @@ Date: 2026-04-21
 
 - Project: `kits23`
 - Config: `ConfigMaker(Project("kits23")).setup(2)`
-- Train mode: `kbd`
-- Data folder: `/r/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144`
+- Train mode: `rbd`
+- Data folder: `/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144`
 - HDF5 shard folder: `hdf5_shards/src_192_192_128`
 - Shards: 98 total, 489 cases, 5 cases/shard except final
 - Batch size: 4
@@ -22,7 +22,7 @@ Date: 2026-04-21
 
 `fran/managers/data/training2.py` is the HDF5-sharded variant.
 
-For train KBD, transform order is:
+For train RBD, transform order is:
 
 ```text
 Ld,Rtr,L2,E,F1,F2,Affine,ResizePC,N,IntensityTfms
@@ -53,7 +53,7 @@ L,Remap,Ld,E,Rtr,N,F1,F2,Affine,ResizePC,IntensityTfms
 Staged dual-SSD manifest:
 
 ```text
-/home/ub/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144/hdf5_shards/src_192_192_128/manifest.json
+/home/ub/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144/hdf5_shards/src_192_192_128/manifest.json
 ```
 
 Manifest check:
@@ -233,4 +233,3 @@ workers 4-7 read /home-backed cases
 ```
 
 3. For `compile=True`, likely helps only if model compute dominates. It does not speed HDF5 I/O or MONAI CPU transforms. Test actual train step after warmup, not loader-only.
-

@@ -517,7 +517,7 @@ class Project(DictToAttr):
         self.global_properties_filename = self.project_folder / "global_properties.json"
         self.cache_folder = self.rapid_access_folder / ("cache")
         self.lbd_folder = self.rapid_access_folder / ("lbd")
-        self.kbd_folder = self.rapid_access_folder / ("kbd")
+        self.rbd_folder = self.rapid_access_folder / ("rbd")
         self.pbd_folder = self.rapid_access_folder / ("pbd")
         self.raw_dataset_properties_filename = (
             self.project_folder / "raw_dataset_properties.pkl"

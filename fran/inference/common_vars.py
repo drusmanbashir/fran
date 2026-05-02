@@ -16,11 +16,11 @@ from utilz.helpers import pp
 conf_fldr = os.environ["FRAN_CONF"]
 
 best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
+best_runs = best_runs["runs"]
 run_w = best_runs["run_w"]
 runs_2d = best_runs["localiser"]
 totalseg_runs_all = best_runs["totalseg"]
-totalseg_run_big = totalseg_runs_all["run_ids"][0]
-
+totalseg_run_big = totalseg_runs_all["full"][0]
 totalseg_proj = Project(project_title="totalseg")
 
 # SECTION:-------------------- FILES and FOLDERS--------------------------------------------------------------------------
@@ -39,14 +39,14 @@ nodes_pending_imgs = list(nodes_pending_fldr.glob("*"))
 nodes_training_fldr = Path("/s/xnat_shadow/nodes/images")
 nodes_training_imgs = list(nodes_training_fldr.glob("*"))
 
-litsmc_fldrs = (
+liver_fldrs = (
     Path(DS["litq"].folder),
     Path(DS["drli"].folder),
     Path(DS["lits"].folder),
     Path(DS["litqsmall"].folder),
 )
-litsmc_imgs = [list((fld / "images").glob("*")) for fld in litsmc_fldrs]
-litsmc_imgs = list(il.chain.from_iterable(litsmc_imgs))
+liver_imgs = [list((fld / "images").glob("*")) for fld in liver_fldrs]
+liver_imgs = list(il.chain.from_iterable(liver_imgs))
 
 bosniak_fldr = Path("/s/datasets_bkp/bosniak/bosniak/kits/nifti")
 bosniak_imgs = list(bosniak_fldr.glob("*"))
@@ -57,6 +57,7 @@ colonmsd_imgs = list(colonmsd_fldr.glob("*"))
 litq_test_fldr = Path("/s/xnat_shadow/litq/test/images_ub/")
 litq_test_imgs = list(litq_test_fldr.glob("*"))
 drli_short_fldr = Path("/s/datasets_bkp/drli_short/images/")
+drli_fldr = Path("/s/datasets_bkp/drli/images/")
 lidc2_shadow_fldr = Path("/s/xnat_shadow/lidc2/images/")
 crc_wxh_img_fn = "/s/xnat_shadow/crc/wxh/images/crc_CRC198_20170718_CAP1p51.nii.gz"
 crc_srn_img_fn = "/s/xnat_shadow/crc/srn/images/crc_CRC002_20190415_CAP1p5.nii.gz"
@@ -100,8 +101,8 @@ fldr_nodes = nodes_pending_fldr
 fldr_nodes2 = nodes_training_fldr
 img_nodes = nodes_pending_imgs
 img_nodes2 = nodes_training_imgs
-fldr_litsmc = litsmc_fldrs
-imgs_litsmc = litsmc_imgs
+fldr_litsmc = liver_fldrs
+imgs_litsmc = liver_imgs
 fldr_bosniak = bosniak_fldr
 imgs_bosniak = bosniak_imgs
 fldr_colonmsd = colonmsd_fldr
@@ -125,4 +126,5 @@ imgs_misc = misc_imgs
 img_fns = t6_img_fns
 imgs_lidc2 = lidc2_imgs
 
+# %%
 # nodes_pending_imgs = ["/s/xnat_shadow/nodes/images_pending/nodes_24_20200813_ChestAbdoC1p5SoftTissue.nii.gz"]

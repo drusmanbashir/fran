@@ -149,12 +149,12 @@ class FolderNames:
         return self._source_plan_code
 
     @property
-    def remapping_lbd_kbd_code(self):
-        remapping_lbd = self.plan.get("remapping_lbd_kbd")
-        remapping_lbd_kbd_code = short_code(remapping_lbd)
-        if remapping_lbd_kbd_code:
-            remapping_lbd_kbd_code = "rlb" + remapping_lbd_kbd_code
-        return remapping_lbd_kbd_code
+    def remapping_lbd_rbd_code(self):
+        remapping_lbd = self.plan.get("remapping_lbd_rbd")
+        remapping_lbd_rbd_code = short_code(remapping_lbd)
+        if remapping_lbd_rbd_code:
+            remapping_lbd_rbd_code = "rlb" + remapping_lbd_rbd_code
+        return remapping_lbd_rbd_code
 
 
     @property
@@ -183,20 +183,20 @@ class FolderNames:
         return self.list_to_str(self.plan["patch_size"])
 
     @property
-    def kbd_folder(self):
+    def rbd_folder(self):
         localiser_regions_code = short_code(self.plan.get("localiser_regions"))
-        kbd_folder_suff = maybe_join(
+        rbd_folder_suff = maybe_join(
                 [
                     self.src_prefix,
-                    self.remapping_lbd_kbd_code,
+                    self.remapping_lbd_rbd_code,
                     self.remapping_imported_code,
-                    self.remapping_lbd_kbd_code,
+                    self.remapping_lbd_rbd_code,
                     localiser_regions_code,
                     self.source_plan_code,
                 ]
             )
-        kbd_folder = str(self.project.kbd_folder / kbd_folder_suff)
-        return kbd_folder
+        rbd_folder = str(self.project.rbd_folder / rbd_folder_suff)
+        return rbd_folder
 
 
 
@@ -205,9 +205,9 @@ class FolderNames:
         lbd_folder_suff = maybe_join(
                 [
                     self.src_prefix,
-                    self.remapping_lbd_kbd_code,
+                    self.remapping_lbd_rbd_code,
                     self.remapping_imported_code,
-                    self.remapping_lbd_kbd_code,
+                    self.remapping_lbd_rbd_code,
                     self.expand_by,
                     self.source_plan_code,
                 ]
@@ -251,7 +251,7 @@ class FolderNames:
             "data_folder_whole": self.whole_folder,
             "data_folder_pbd": self.patch_folder,
             "data_folder_sourcepbd": self.source_folder,
-            "data_folder_kbd": self.kbd_folder,
+            "data_folder_rbd": self.rbd_folder,
         }
         return folders
 
@@ -296,7 +296,7 @@ if __name__ == "__main__":
     if remapping_src_code:
         remapping_src_code = "rsc" + remapping_src_code
 
-    remapping_lbd = plan.get("remapping_lbd_kbd")
+    remapping_lbd = plan.get("remapping_lbd_rbd")
     remapping_lbd_code = short_code(remapping_lbd)
     if remapping_lbd_code:
         remapping_lbd_code = "rlb" + remapping_lbd_code
@@ -348,4 +348,3 @@ if __name__ == "__main__":
     project = P
 # %%
 # %%
-

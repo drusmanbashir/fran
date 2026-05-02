@@ -18,7 +18,7 @@ from fran.managers import Project
 from fran.managers.data.training_perf import (
     DataManagerBaseline,
     DataManagerDual,
-    DataManagerKBD,
+    DataManagerRBD,
     DataManagerLBD,
     DataManagerPatch,
     DataManagerSource,
@@ -500,8 +500,8 @@ class Trainer:
             DMClass = DataManagerWhole
         elif mode == "lbd":
             DMClass = DataManagerLBD
-        elif mode == "kbd":
-            DMClass = DataManagerKBD
+        elif mode == "rbd":
+            DMClass = DataManagerRBD
         elif mode == "baseline":
             DMClass = DataManagerBaseline
         else:

@@ -7,12 +7,14 @@ from fran.preprocessing.datasetanalyzers import Path, headline, multiprocess_mul
 from fran.preprocessing.fixed_spacing import (
     NiftiToTorchDataGenerator,
 )
+from fran.preprocessing.fixed_size2 import FixedSizeDataGenerator
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator
+from fran.preprocessing.regionbounded import RegionBoundedDataGenerator
 from fran.utils.folder_names import FolderNames
 from utilz.fileio import os, save_list, str_to_path
-from utilz.helpers import ask_proceed, re
+from utilz.helpers import re
 from utilz.stringz import headline
 
 common_vars_filename = os.environ["FRAN_CONF"]
@@ -93,7 +95,7 @@ def process_plan(args):
     print(f"[analyze_resample] stage=resample_dataset complete plan={args.plan}")
     # args.num_processes = 1
 
-    if I.plan["mode"] == "pbd":
+    if I.plan["mode"] in ["pbd", "patch"]:
         print(
             f"[analyze_resample] stage=generate_hires_patches_dataset plan={args.plan}"
         )
@@ -129,6 +131,26 @@ def process_plan(args):
             print(
                 f"[analyze_resample] stage=generate_TSlabelboundeddataset complete plan={args.plan}"
             )
+    elif I.plan["mode"] == "rbd":
+        print(f"[analyze_resample] stage=generate_rbd_dataset plan={args.plan}")
+        I.generate_rbd_dataset(
+            overwrite=args.overwrite,
+            num_processes=args.num_processes,
+            debug=args.debug,
+        )
+        print(
+            f"[analyze_resample] stage=generate_rbd_dataset complete plan={args.plan}"
+        )
+    elif I.plan["mode"] == "whole":
+        print(f"[analyze_resample] stage=generate_whole_images_dataset plan={args.plan}")
+        I.generate_whole_images_dataset(
+            overwrite=args.overwrite,
+            num_processes=args.num_processes,
+            debug=args.debug,
+        )
+        print(
+            f"[analyze_resample] stage=generate_whole_images_dataset complete plan={args.plan}"
+        )
     print(f"[analyze_resample] finished plan {args.plan}")
 
 
@@ -241,39 +263,55 @@ class PreprocessingManager:
         )
         self.L.process()
 
-    @ask_proceed("Generating low-res whole images to localise organ of interest")
-    def generate_whole_images_dataset(self):
+    def generate_rbd_dataset(
+        self, overwrite=False, device="cpu", num_processes=1, debug=False
+    ):
 
-        if not hasattr(self, "spacing"):
-            self.set_spacing()
-        output_shape = ast.literal_eval(
-            input(
-                "Enter whole image matrix shape as list/tuple/number(e.g., [128,128,96]): "
+        resampled_data_folder = FolderNames(self.project, self.plan).folders[
+            "data_folder_source"
+        ]
+
+        headline(
+            "RBD dataset will be based on resampled dataset output_folder {}".format(
+                resampled_data_folder
             )
         )
-        if isinstance(output_shape, (int, float)):
-            output_shape = [
-                output_shape,
-            ] * 3
-        self.WholeImageTM = WholeImageTensorMaker(
-            self.project,
-            source_spacing=self.plan["spacing"],
-            output_size=output_shape,
-            num_processes=self.num_processes,
+        self.L = RegionBoundedDataGenerator(
+            project=self.project,
+            plan=self.plan,
+            data_folder=resampled_data_folder,
         )
-        arglist_imgs, arglist_masks = self.WholeImageTM.get_args_for_resizing()
-        for arglist in [arglist_imgs, arglist_masks]:
-            res = multiprocess_multiarg(
-                func=resize_and_save_tensors,
-                arguments=arglist,
-                num_processes=self.num_processes,
-                debug=self.debug,
-                io=True,
+        self.L.setup(
+            overwrite=overwrite,
+            device=device,
+            num_processes=num_processes,
+            debug=debug,
+        )
+        self.L.process()
+
+    def generate_whole_images_dataset(
+        self, overwrite=False, device="cpu", num_processes=1, debug=False
+    ):
+        resampled_data_folder = FolderNames(self.project, self.plan).folders[
+            "data_folder_source"
+        ]
+        headline(
+            "Whole dataset will be based on resampled dataset output_folder {}".format(
+                resampled_data_folder
             )
-        print("Now call bboxes_from_masks_folder")
-        generate_bboxes_from_masks_folder(
-            self.WholeImageTM.output_folder_masks, 0, self.debug, self.num_processes
         )
+        self.W = FixedSizeDataGenerator(
+            project=self.project,
+            plan=self.plan,
+            data_folder=resampled_data_folder,
+        )
+        self.W.setup(
+            overwrite=overwrite,
+            device=device,
+            num_processes=num_processes,
+            debug=debug,
+        )
+        self.W.process()
 
     def generate_hires_patches_dataset(
         self, debug=False, overwrite=False, num_processes=1
@@ -345,11 +383,11 @@ if __name__ == "__main__":
     args = parser.parse_known_args()[0]
 # %%
     # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
-    args.project_title="tmpa"
-    args.plan = 2
-    # args.project_title = "test"
-    # args.plan = 1
-    args.num_processes = 6
+    # args.project_title="tmpts"
+    # args.plan = 3
+    # # args.project_title = "test"
+    # # args.plan = 1
+    # args.num_processes = 6
     # args.overwrite = False
     # args.debug = True
     #
@@ -438,5 +476,3 @@ if __name__ == "__main__":
 # from label_analysis.dataset_stats import end2end_lms_stats_and_plots
 # from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
 # %%
-
-

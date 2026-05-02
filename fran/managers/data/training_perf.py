@@ -356,7 +356,7 @@ class DataManagerDual(LightningDataModule):
             "pbd": DataManagerPatch,
             "sourcepbd": DataManagerPatch,
             "lbd": DataManagerLBD,
-            "kbd": DataManagerKBD,
+            "rbd": DataManagerRBD,
             "baseline": DataManagerBaseline,
         }
 
@@ -750,7 +750,7 @@ class DataManager(LightningDataModule):
             "sourcepbd",
             "pbd",
             "lbd",
-            "kbd",
+            "rbd",
             "dot",
         ], f"Set a value for mode in 'whole', 'patch' or 'source', got {dataset_mode}"
 
@@ -1093,19 +1093,19 @@ class DataManagerLBD(DataManagerSource):
         )
 
 
-class DataManagerKBD(DataManagerLBD):
+class DataManagerRBD(DataManagerLBD):
     def __repr__(self):
         return (
-            f"DataManagerKBD(plan={self.plan}, "
+            f"DataManagerRBD(plan={self.plan}, "
             f"dataset_params={self.dataset_params}, "
-            f"kbd_folder={self.project.kbd_folder})"
+            f"rbd_folder={self.project.rbd_folder})"
         )
 
     def __str__(self):
         return (
-            "KBD Data Manager with plan {} and dataset parameters: {} "
-            "(using KBD folder: {})".format(
-                self.plan, self.dataset_params, self.project.kbd_folder
+            "RBD Data Manager with plan {} and dataset parameters: {} "
+            "(using RBD folder: {})".format(
+                self.plan, self.dataset_params, self.project.rbd_folder
             )
         )
 

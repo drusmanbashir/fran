@@ -1,10 +1,18 @@
 #!/bin/bash
-# python -m ipdb project_init.py -t lits32 -i /s/datasets_bkp/lits_segs_improved/ /s/datasets_bkp/drli/ /s/datasets_bkp/litqsmall/ /s/xnat_shadow/litq/
-# python project_init.py -t short -i /s/xnat_shadow/litq/
-# python project_init.py -t litstmp2 -m litsmall --multiprocess --datasources litsmall
-# python project_init.py -t lidc -m lungs --datasources lidc
-# python -m ipdb project_init.py -t nodes --mnemonic nodes --datasources nodes nodesthick
-# python -m ipdb project_init.py -t totalseg --mnemonic totalseg --datasources totalseg
-# python -m ipdb project_init.py -t bones --mnemonic bones --datasources uls23_bone
-# python -m ipdb project_init.py -t kits2 --mnemonic kidneys --datasources kits23
-python -m ipdb project_init.py -t test2 --mnemonic test --datasources drli_short
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$script_dir"
+
+if [ "$#" -eq 0 ]; then
+  cat <<'EOF'
+Usage: ./project.sh -t <project_title> -m <mnemonic> -ds <datasource> [<datasource> ...]
+
+Examples:
+  ./project.sh -t tmpts -m test -ds totalseg_short
+  ./project.sh -t nodes -m nodes -ds nodes nodesthick
+EOF
+  exit 2
+fi
+
+python project_init.py "$@"

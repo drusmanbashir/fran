@@ -4,6 +4,7 @@ import copy
 import os
 from pathlib import Path
 
+from fran.inference.cascade_yolo2 import LocaliserInfererPT
 import numpy as np
 import ray
 import torch
@@ -11,10 +12,6 @@ from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.spatialtransforms import CropForegroundMinShaped
 from fran.utils.affine import spacing_from_affine
-from localiser.inference.base import (
-    LocaliserInfererPT,
-    load_yolo_specs,
-)
 from localiser.utils.bbox_helpers import bbox_from_file, crop_to_yolo_bbox
 from monai.transforms.transform import MapTransform
 from ultralytics import YOLO
@@ -224,7 +221,7 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
         data["_preprocess_events"] = events
 
 class _RBDSamplerWorkerBase(RayWorkerBase):
-    remapping_key = "remapping_lbd_kbd"
+    remapping_key = "remapping_lbd_rbd"
 
     def __init__(
         self,
@@ -298,8 +295,8 @@ class RBDSamplerWorkerLocal(_RBDSamplerWorkerBase):
 class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
     actor_cls = RBDSamplerWorkerImpl
     local_worker_cls = RBDSamplerWorkerLocal
-    remapping_key = "remapping_lbd_kbd"
-    subfolder_key = "data_folder_kbd"
+    remapping_key = "remapping_lbd_rbd"
+    subfolder_key = "data_folder_rbd"
 
     def _index_bbox_files_by_case_id(self, bbox_files: list[Path]) -> dict[str, list[Path]]:
         mapping: dict[str, list[Path]] = {}

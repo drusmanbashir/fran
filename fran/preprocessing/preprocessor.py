@@ -583,6 +583,48 @@ class Preprocessor(GetAttr):
         df = create_df_from_folder(self.data_folder)
         extract_ds = lambda x: x.split("_")[0]
         df["ds"] = df["case_id"].apply(extract_ds)
+        df = self._normalize_folder_df_ds_from_project_db(df)
+        return df
+
+    def _normalize_folder_df_ds_from_project_db(self, df):
+        if not Path(self.project.db).exists():
+            return df
+
+        con = sqlite3.connect(str(self.project.db))
+        query = "SELECT case_id, ds, alias FROM datasources"
+        df_db = pd.read_sql_query(query, con)
+        con.close()
+        if len(df_db) == 0:
+            return df
+
+        df_db["ds_effective"] = df_db["ds"]
+        has_alias = ~df_db["alias"].apply(is_excel_None)
+        df_db.loc[has_alias, "ds_effective"] = df_db.loc[has_alias, "alias"]
+
+        valid_ds = set(df_db["ds_effective"].dropna().tolist())
+        db_suffix_map = {}
+        for _, row in df_db.iterrows():
+            case_id = row["case_id"]
+            ds_effective = row["ds_effective"]
+            if not isinstance(case_id, str) or "_" not in case_id:
+                continue
+            suffix = case_id.split("_", 1)[1]
+            db_suffix_map.setdefault(suffix, set()).add(ds_effective)
+
+        def resolve_ds(row):
+            ds = row["ds"]
+            if ds in valid_ds:
+                return ds
+            case_id = row["case_id"]
+            if not isinstance(case_id, str) or "_" not in case_id:
+                return ds
+            suffix = case_id.split("_", 1)[1]
+            matches = db_suffix_map.get(suffix, set())
+            if len(matches) == 1:
+                return next(iter(matches))
+            return ds
+
+        df["ds"] = df.apply(resolve_ds, axis=1)
         return df
 
     def create_data_df(self):
@@ -862,18 +904,6 @@ class Preprocessor(GetAttr):
             label_stats=self.store_label_stats,
             gif_window=infer_dataset_stats_window(self.project),
         )
-        folder_key = getattr(self, "subfolder_key", "data_folder_source")
-        folder_kwargs = (
-            {folder_key: self.output_folder}
-            if folder_key in {
-                "data_folder_source",
-                "data_folder_lbd",
-                "data_folder_whole",
-                "data_folder_pbd",
-            }
-            else {"data_folder_source": self.output_folder}
-        )
-        add_plan_to_db(self.plan, db_path=self.project.db, **folder_kwargs)
 
     def initialize_process_state(self):
         self.create_output_folders()
@@ -1198,7 +1228,7 @@ if __name__ == "__main__":
     compression="gzip"
     compression_opts=1
 # %%
-    output_folder = "/r/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144"
+    output_folder = "/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144"
     output_folder = Path(output_folder)
     images_folder = output_folder / "images"
     lms_folder = output_folder / "lms"
@@ -1325,7 +1355,7 @@ if __name__ == "__main__":
 
 
 # %%
-    output_folder = "/r/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144/lms"
+    output_folder = "/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144/lms"
     create_dataset_stats_artifacts(
             lms_folder=output_folder,
             gif=True,

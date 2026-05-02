@@ -30,8 +30,8 @@ if __name__ == "__main__":
           "/r/datasets/preprocessed/kits2/lbd/spc_080_080_150_rlb00ec4022_rlb00ec4022_ex020/"
       )
       fix  = Path("/r/datasets/preprocessed/kits2/fixed_spacing/spc_080_080_150/images")
-      im_fn =  Path("/r/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144/images/kits23_00487.pt")
-      lm_fn =  Path("/r/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144/lms/kits23_00487.pt")
+      im_fn =  Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144/images/kits23_00487.pt")
+      lm_fn =  Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144/lms/kits23_00487.pt")
 
 
       d = torch.load("/tmp/localiser_totalseg_abdpelvis_crops/totalseg_s0407.pt", weights_only=False)
@@ -43,7 +43,7 @@ if __name__ == "__main__":
         
 
 # %%
-      inds_fn = Path("/r/datasets/preprocessed/kits23/kbd/spc_080_080_150_54787144/indices/kits23_00004.pt")
+      inds_fn = Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144/indices/kits23_00004.pt")
       lm=torch.load(lm_fn, weights_only=False)
       inds = torch.load(inds_fn, weights_only=False)
       im = torch.load(im_fn, weights_only=False)
@@ -173,5 +173,4 @@ if __name__ == "__main__":
 
     dsc = DiceLoss()
     print(dsc(pred, target))
-
 

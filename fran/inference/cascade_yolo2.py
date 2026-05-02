@@ -17,7 +17,8 @@ from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from pathlib import Path
 from fran.transforms.misc_transforms import DummyTransform
 import ipdb
-from localiser.inference.base import EnsureChannelFirstd, LocaliserInferer
+from localiser.inference.base import EnsureChannelFirstd
+from localiser.inference.base2 import LocaliserInferer
 from utilz.fileio import load_json
 from utilz.imageviewers import ImageMaskViewer
 
@@ -503,7 +504,7 @@ if __name__ == "__main__":
         print(patch['KITS23-SIRIG'].meta["spatial_shape"])
 # %%
     pred_patches[0].keys()
-    bboxes_sublist = [dat["bounding_box"] for dat in data_sublist]
+    bboxes_sublist = [dat["bounding_box"] for dat in data_sublist]
     D.debug = True
     output = D.postprocess(pred_patches)
 # %%

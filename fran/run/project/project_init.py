@@ -20,6 +20,15 @@ def main(args):
     print(f"args.num_processes: {args.num_processes}")
     multiprocess = False if args.num_processes == 1 else True
 
+    invalid_datasources = [name for name in args.datasources if name not in DS.names()]
+    if invalid_datasources:
+        allowed = ", ".join(DS.names())
+        raise SystemExit(
+            "Unknown datasource(s): {}. Allowed values: {}".format(
+                ", ".join(invalid_datasources), allowed
+            )
+        )
+
     P = Project(project_title=args.title)
     if not P.db.exists():
         P.create(mnemonic=args.mnemonic)
@@ -58,6 +67,7 @@ if __name__ == "__main__":
         default=1,
     )
     parser.add_argument(
+        "-ds",
         "--datasources",
         nargs="*",
         default=[],
@@ -75,4 +85,3 @@ if __name__ == "__main__":
 # %%
     main(args)
 # %%
-

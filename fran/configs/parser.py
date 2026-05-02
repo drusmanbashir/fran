@@ -29,7 +29,7 @@ KEYS_STR_TO_LIST = ("spacing", "patch_size", "expand_by", "ignore_labels")
 # HACK: this may bug out later
 REMAPPING_DICT_OR_LIST = {
     "remapping_source": "dict",
-    "remapping_lbd_kbd": "dict",
+    "remapping_lbd_rbd": "dict",
     "remapping_whole": "dict",
     "remapping_train": "dict",
     "remapping_imported": "dict",
@@ -84,6 +84,8 @@ def confirm_plan_analyzed(project, plan):
         existing_final_fldr = folders["data_folder_lbd"]
     elif mode in ["patch", "pbd"]:
         existing_final_fldr = folders["data_folder_pbd"]
+    elif mode in ["patch", "rbd"]:
+        existing_final_fldr = folders["data_folder_rbd"]
     elif mode == "whole":
         existing_final_fldr = folders["data_folder_whole"]
     elif mode == "source" or mode == "sourcepbd":
@@ -484,7 +486,7 @@ class ConfigMaker:
         )
 
     def validate_plans(self):
-        for remp_key in ["remapping_source", "remapping_lbd_kbd"]:
+        for remp_key in ["remapping_source", "remapping_lbd_rbd"]:
             for plan_name in "plan_valid", "plan_test":
                 assert (
                     self.configs[plan_name][remp_key]
@@ -645,11 +647,11 @@ if __name__ == "__main__":
     P = Project(project_title="totalseg")
     P = Project(project_title="litsmc")
 
-    P = Project(project_title="test")
+    P = Project(project_title="tmpts")
 # %%
     P.global_properties
     C = ConfigMaker(P)
-    C.setup(2)
+    C.setup(3)
     pp(C.configs["plan_train"])
     pp(C.configs["plan_valid"])
     C.configs["plan_train"].keys()
@@ -724,7 +726,7 @@ if __name__ == "__main__":
     rms = plan.get("remapping_source")
 
     rms = ast_literal_eval(rms)
-    rml = plan.get("remapping_lbd_kbd")
+    rml = plan.get("remapping_lbd_rbd")
 
     rml = ast_literal_eval(rml)
     rmi = plan.get("remapping_imported")
@@ -775,5 +777,4 @@ if __name__ == "__main__":
 
     pp(C.configs[plan_key])
     C.config 
-
 

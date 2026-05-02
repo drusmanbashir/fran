@@ -20,10 +20,10 @@ from fran.data.collate import patch_collated, source_collated, whole_collated
 from fran.data.dataset import NormaliseClipd
 from fran.managers.project import Project
 from fran.preprocessing.helpers import bbox_bg_only, compute_fgbg_ratio, import_h5py
+from fran.transforms.batch_affine import BatchRandAffined3D
 from fran.transforms.imageio import SimpleTorchLoader, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
-from fran.transforms.batch_affine import BatchRandAffined3D
 from fran.utils.folder_names import FolderNames
 from fran.utils.misc import convert_remapping
 from lightning import LightningDataModule
@@ -537,7 +537,7 @@ class DataManagerDual(LightningDataModule):
             "pbd": DataManagerPatch,
             "sourcepbd": DataManagerPatch,
             "lbd": DataManagerLBD,
-            "kbd": DataManagerKBD,
+            "rbd": DataManagerRBD,
             "baseline": DataManagerBaseline,
         }
 
@@ -640,12 +640,24 @@ class DataManager(LightningDataModule):
                 self.plan["remapping_train"]
             )
 
+    def is_train_split(self):
+        return self.split == "train"
+
+    def is_train_like_split(self):
+        return self.split in ["train", "all"]
+
+    def is_eval_split(self):
+        return self.split == "valid"
+
+    def uses_train_keys(self):
+        return self.is_train_like_split()
+
     def set_plan(self):
-        if "train" in self.split:
+        if self.is_train_like_split():
             plan_str = "plan_train"
-        elif "valid" in self.split:
+        elif self.is_eval_split():
             plan_str = "plan_valid"
-        elif "test" in self.split:
+        elif self.split == "test":
             plan_str = "plan_test"
         else:
             raise ValueError(f"Unrecognized split: {self.split}")
@@ -844,7 +856,7 @@ class DataManager(LightningDataModule):
 
     def set_effective_batch_size(self):
         if (
-            not "samples_per_file" in self.plan or not self.split == "train"
+            not "samples_per_file" in self.plan or not self.is_train_like_split()
         ):  # if split is valid, grid sampling is done and effective batch_size should be same as batch size
             self.plan["samples_per_file"] = 1
 
@@ -871,7 +883,7 @@ class DataManager(LightningDataModule):
             try:
                 if (
                     key == "Affine"
-                    and self.split == "train"
+                    and self.uses_train_keys()
                     and self.dataset_params.get("batch_affine", False)
                 ):
                     continue
@@ -900,7 +912,7 @@ class DataManager(LightningDataModule):
             "sourcepbd",
             "pbd",
             "lbd",
-            "kbd",
+            "rbd",
             "dot",
         ], f"Set a value for mode in 'whole', 'patch' or 'source', got {dataset_mode}"
 
@@ -1020,14 +1032,19 @@ class DataManager(LightningDataModule):
 
     def cases_from_project_split(self):
         nnz_allowed = self.plan.get("nnz_allowed", False)
-        train_cases, valid_cases = self.project.get_train_val_files(
-            self.dataset_params["fold"],
-            self.plan["datasources"],
-            nnz_allowed=nnz_allowed,
-        )
-
-        # Store only the cases for this split
-        self.cases = train_cases if self.split == "train" else valid_cases
+        if self.split == "all":
+            self.cases = self.project.get_train_val_files(
+                fold=None,
+                ds=self.plan["datasources"],
+                nnz_allowed=nnz_allowed,
+            )
+        else:
+            train_cases, valid_cases = self.project.get_train_val_files(
+                self.dataset_params["fold"],
+                self.plan["datasources"],
+                nnz_allowed=nnz_allowed,
+            )
+            self.cases = train_cases if self.is_train_split() else valid_cases
         assert len(self.cases) > 0, "There are no cases, aborting!"
 
     def create_data_dicts(self, fnames):
@@ -1124,7 +1141,7 @@ class DataManager(LightningDataModule):
         )
 
     def create_dataloader(self):
-        if self.split == "train":
+        if self.is_train_like_split():
             self.create_train_dataloader()
         else:
             self.create_valid_dataloader()
@@ -1218,11 +1235,17 @@ class DataManager(LightningDataModule):
         """
         data_folder2 = Path(data_folder)
         assert data_folder2.exists(), f"Folder {data_folder2} does not exist"
-        assert split in ["train", "valid"], "Split must be either 'train' or 'valid'"
+        assert split in ["train", "valid", "all"], (
+            "Split must be either 'train', 'valid' or 'all'"
+        )
 
         # Create instance
         instance = cls(
-            project=project, configs=configs, batch_size=batch_size, **kwargs
+            project=project,
+            configs=configs,
+            batch_size=batch_size,
+            split=split,
+            **kwargs,
         )
 
         # Override data folder
@@ -1247,16 +1270,16 @@ class DataManagerSource(DataManager):
         self.keys_tr = "Ld,Rtr,L2,E,F1,F2,Affine,ResizePC,N,IntensityTfms"
         self.keys_val = "L,E,N,Remap,ResizeP"
         if self.keys is None:
-            if self.split == "train":
+            if self.uses_train_keys():
                 self.keys = self.keys_tr
-            elif self.split == "valid":
+            elif self.is_eval_split():
                 self.keys = self.keys_val
         self.override_batch_size_valid_split(split=self.split)
 
     def _set_collate_fn(self):
-        if self.split == "train":
+        if self.is_train_like_split():
             self.collate_fn = source_collated
-        elif self.split == "valid":
+        elif self.is_eval_split():
             self.collate_fn = patch_collated
         else:
             raise NotImplementedError
@@ -1281,9 +1304,9 @@ class DataManagerWhole(DataManager):
         self.keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"
         self.keys_val = "L,E,ResizeW,N"
         if self.keys is None:
-            if self.split == "train":
+            if self.uses_train_keys():
                 self.keys = self.keys_tr
-            elif self.split == "valid":
+            elif self.is_eval_split():
                 self.keys = self.keys_val
 
     def _set_collate_fn(self):
@@ -1338,19 +1361,19 @@ class DataManagerLBD(DataManagerSource):
         )
 
 
-class DataManagerKBD(DataManagerLBD):
+class DataManagerRBD(DataManagerLBD):
     def __repr__(self):
         return (
-            f"DataManagerKBD(plan={self.plan}, "
+            f"DataManagerRBD(plan={self.plan}, "
             f"dataset_params={self.dataset_params}, "
-            f"kbd_folder={self.project.kbd_folder})"
+            f"rbd_folder={self.project.rbd_folder})"
         )
 
     def __str__(self):
         return (
-            "KBD Data Manager with plan {} and dataset parameters: {} "
-            "(using KBD folder: {})".format(
-                self.plan, self.dataset_params, self.project.kbd_folder
+            "RBD Data Manager with plan {} and dataset parameters: {} "
+            "(using RBD folder: {})".format(
+                self.plan, self.dataset_params, self.project.rbd_folder
             )
         )
 
@@ -1401,9 +1424,9 @@ class DataManagerPatch(DataManagerSource):
         self.keys_tr = "RP, L,Remap,E,N,F1,F2,Affine,ResizePC,IntensityTfms"
         self.keys_val = "RP,L,Remap,E,ResizePC,N "
         self.keys_test = "L,E,N,Remap,ResizeP"  # experimental
-        if self.split == "train":
+        if self.uses_train_keys():
             self.keys = self.keys_tr
-        elif self.split == "valid":
+        elif self.is_eval_split():
             self.keys = self.keys_val
         elif self.split == "test":
             self.keys = self.keys_test
@@ -1476,14 +1499,25 @@ class DataManagerPatch(DataManagerSource):
 
     def cases_from_project_split(self):
         nnz_allowed = self.plan.get("nnz_allowed", False)
-        train_cases, valid_cases = self.project.get_train_val_case_ids(
-            self.dataset_params["fold"],
-            self.plan["datasources"],
-            nnz_allowed=nnz_allowed,
-        )
-
-        # Store only the cases for this split
-        self.cases = train_cases if self.split == "train" else valid_cases
+        if self.split == "all":
+            all_files = self.project.get_train_val_files(
+                fold=None,
+                ds=self.plan["datasources"],
+                nnz_allowed=nnz_allowed,
+            )
+            self.cases = sorted(
+                {
+                    info_from_filename(fn, full_caseid=True)["case_id"]
+                    for fn in all_files
+                }
+            )
+        else:
+            train_cases, valid_cases = self.project.get_train_val_case_ids(
+                self.dataset_params["fold"],
+                self.plan["datasources"],
+                nnz_allowed=nnz_allowed,
+            )
+            self.cases = train_cases if self.is_train_split() else valid_cases
 
     def create_data_dicts(self, cids):
         # this does not use cids
@@ -1616,14 +1650,14 @@ if __name__ == "__main__":
     iteri = iter(dl)
     for x, batch in enumerate(iteri):
         batch = next(iteri)
-        print(batch['image'].shape)
+        print(batch["image"].shape)
 # %%
 
     # while iteri:
-    batch['lm'].shape
-    batch['image'].shape
+    batch["lm"].shape
+    batch["image"].shape
 # %%
-    ImageMaskViewer([batch["image"][0,0], batch["lm"][0,0]])
+    ImageMaskViewer([batch["image"][0, 0], batch["lm"][0, 0]])
 # %%
     #     print(batch['image'].shape)
     ds = D.valid_manager.ds
