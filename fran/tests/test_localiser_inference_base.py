@@ -2,6 +2,7 @@ from pathlib import Path
 
 import torch
 from localiser.inference import base as localiser_base
+from localiser.inference.localiserinferer import LocaliserInferer
 from monai.data import MetaTensor
 from fran.inference import cascade_yolo
 
@@ -84,6 +85,25 @@ def test_dataloader_num_workers_keeps_cpu_worker_heuristic_without_dev():
     inferer.keys_preproc = "E,O"
 
     assert inferer.dataloader_num_workers([1, 2, 3, 4, 5, 6, 7, 8]) == 0
+
+
+def test_maybe_filter_images_uses_cached_json_case_ids(tmp_path, monkeypatch):
+    inferer = LocaliserInferer.__new__(LocaliserInferer)
+    monkeypatch.setattr(
+        LocaliserInferer,
+        "output_folder",
+        property(lambda self: tmp_path),
+    )
+    (tmp_path / "kits23_00097.json").write_text("{}\n")
+
+    images = [
+        Path("/tmp/kits23_00097.nii.gz"),
+        Path("/tmp/kits23_00098.nii.gz"),
+    ]
+
+    filtered = inferer.maybe_filter_images(images, overwrite=False)
+
+    assert filtered == [Path("/tmp/kits23_00098.nii.gz")]
 
 
 def test_apply_bboxes_materializes_contiguous_crop():

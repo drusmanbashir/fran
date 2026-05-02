@@ -84,7 +84,9 @@ deepcore = [
   "scipy>=1.10",
 ]
 full = [
-  "fran[train,tracking,detection,tuning]",
+  "fran[train,tracking,detection,tuning,dicom]",
+  "utilz[full] @ git+https://github.com/drusmanbashir/utilz.git@main",
+  "label_analysis[full] @ git+https://github.com/drusmanbashir/label_analysis.git@main",
 ]
 
 [tool.setuptools.packages.find]

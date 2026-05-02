@@ -2,7 +2,6 @@
 import ast
 from typing import Any
 
-import ipdb
 import numpy as np
 import pandas as pd
 from fran.configs.mnemonics import Mnemonics
@@ -19,7 +18,13 @@ from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
 from utilz.stringz import ast_literal_eval
 
-tr = ipdb.set_trace
+try:
+    import ipdb
+except ModuleNotFoundError:  # pragma: no cover - debugger is optional at runtime
+    ipdb = None
+
+
+tr = ipdb.set_trace if ipdb is not None else lambda *args, **kwargs: None
 
 
 from openpyxl import load_workbook
@@ -777,4 +782,3 @@ if __name__ == "__main__":
 
     pp(C.configs[plan_key])
     C.config 
-

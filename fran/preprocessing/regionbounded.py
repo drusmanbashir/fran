@@ -13,7 +13,7 @@ from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.spatialtransforms import CropForegroundMinShaped
 from fran.utils.affine import spacing_from_affine
 from localiser.utils.bbox_helpers import (
-    bbox_from_file,
+    EmptyBBoxClassMatchError,
     crop_to_yolo_bbox,
     standardize_bboxes,
 )
@@ -121,7 +121,7 @@ class CropByYolo(MapTransform):
         self._register_warning(
             data,
             "CropByYolo fg mismatch: "
-            f"case_id={case_id} bbox_txt_path={bbox_fn} fg_before={fg_before} "
+            f"case_id={case_id} bbox_source_path={bbox_fn} fg_before={fg_before} "
             f"fg_after={fg_after}",
         )
 
@@ -180,7 +180,7 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
         bbox_fn = original.get("bbox_fn")
         message = (
             "CropByYolo fallback to CropForegroundMinShaped: "
-            f"case_id={case_id} bbox={bbox_fn} "
+            f"case_id={case_id} bbox_source_path={bbox_fn} "
             f"fg_before={fg_before} fg_after_yolo={fg_after_yolo} "
             f"fg_after_fallback={fg_after_fallback} "
             "verified_fg_preserved=False"
@@ -275,7 +275,7 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
             "ds": row["ds"],
             "remapping": row["remapping"],
             "bbox_fn": bbox_fn,
-            "bbox": bbox_from_file(bbox_fn),
+            "bbox": row["bbox"],
             "_preprocess_events": [],
         }
         return data
@@ -326,14 +326,57 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
         keys.add(str(info["case_id"]).lower())
         return keys
 
-    def attach_bbox_fns(self):
-      bbox_files = sorted(self.loc_folder.glob("*.txt"))
-      by_case = self._index_bbox_files_by_case_id(bbox_files)
-      resolved = {case_id: fns[0].resolve() for case_id, fns in by_case.items()}
-      self.df["bbox_fn"] = self.df["case_id"].astype(str).str.lower().map(resolved)
+    def _ensure_bbox_columns(self):
+      if "bbox" not in self.df.columns:
+          self.df["bbox"] = None
+      if "bbox_fn" not in self.df.columns:
+          self.df["bbox_fn"] = None
+
+    def _standardize_cached_bbox_json(
+        self, json_fn: Path, classes_in_bbox: list[int]
+    ) -> dict:
+      bbox = json.loads(json_fn.read_text())
+      pads3tup = bbox["ap"]["meta"]["letterbox_padded"]
+      try:
+          return standardize_bboxes(
+              bbox["ap"],
+              bbox["lat"],
+              pads3tup,
+              classes_in_bbox,
+              serialised=True,
+          )
+      except EmptyBBoxClassMatchError as exc:
+          raise EmptyBBoxClassMatchError(
+              "Failed to standardize cached bbox JSON for RBD preprocessing. "
+              f"case_id={json_fn.stem} bbox_json={json_fn} "
+              f"{exc}"
+          ) from exc
+
+    def attach_bboxes(self, classes_in_bbox: list[int]) -> None:
+        self._ensure_bbox_columns()
+        bbox_files = sorted(self.I.output_folder.glob("*.json"))
+        by_case = self._index_bbox_files_by_case_id(bbox_files)
+        case_ids = self.df["case_id"].astype(str)
+        by_case_found = {case_id: fns for case_id, fns in by_case.items() if case_id in case_ids}
+
+        resolved_fns = {}
+        resolved_bboxes = {}
+        for case_id, fns in by_case_found.items():
+          if len(fns) != 1:
+              raise ValueError(
+                  f"Duplicate bbox matches for case_id={case_id}: {fns}"
+              )
+          json_fn = fns[0].resolve()
+          resolved_fns[case_id] = json_fn
+          resolved_bboxes[case_id] = self._standardize_cached_bbox_json(
+              json_fn, classes_in_bbox
+          )
+        self.df["bbox_fn"] = case_ids.map(resolved_fns)
+        self.df["bbox"] = case_ids.map(resolved_bboxes)
 
     def missing_bbox_mask(self):
-      return self.df["bbox_fn"].isna()
+      self._ensure_bbox_columns()
+      return self.df["bbox"].isna()
 
     def _localiser_regions_list(self) -> list[str]:
       regions = self.plan.get("localiser_regions")
@@ -343,24 +386,6 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
           return [str(region).strip() for region in regions if str(region).strip()]
       else:
           return [r for r in str(regions).replace(" ", "").split(",") if r]
-
-    def _store_legacy_bbox_txts(self, classes_in_bbox: list[int]) -> None:
-      self.loc_folder.mkdir(parents=True, exist_ok=True)
-      for json_fn in self.I.output_folder.glob("*.json"):
-          out_fn = self.loc_folder / f"{json_fn.stem}.txt"
-          if out_fn.exists():
-              continue
-          bbox = json.loads(json_fn.read_text())
-          pads3tup = bbox["ap"]["meta"]["letterbox_padded"]
-          bbox_std = standardize_bboxes(
-              bbox["ap"],
-              bbox["lat"],
-              pads3tup,
-              classes_in_bbox,
-              serialised=True,
-          )
-          lines = [f"{key}: {value[0]} {value[1]}" for key, value in bbox_std.items()]
-          out_fn.write_text("\n".join(lines) + "\n")
 
     def _localiser_input_images(self, imgs: list[Path]) -> list[str]:
       inputs = []
@@ -375,12 +400,6 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
       return inputs
 
     def infer_yolo_bboxes(self):
-      missing = self.missing_bbox_mask()
-      imgs = self.df.loc[missing, "image"].tolist()
-      if len(imgs) == 0:
-          return
-      imgs = self._localiser_input_images(imgs)
-
       regions = self._localiser_regions_list()
       self.I = LocaliserInfererPT(
           localiser_regions=regions,
@@ -391,8 +410,15 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
       )
       self.yolo_specs = self.I.yolo_state_dict
       classes_in_bbox = self.get_region_indices()
+      self.attach_bboxes(classes_in_bbox)
+
+      missing = self.missing_bbox_mask()
+      imgs = self.df.loc[missing, "image"].tolist()
+      if len(imgs) == 0:
+          return
+      imgs = self._localiser_input_images(imgs)
       self.I.run(imgs, overwrite=False)
-      self._store_legacy_bbox_txts(classes_in_bbox)
+      self.attach_bboxes(classes_in_bbox)
 
     def process(self):
       self.maybe_infer_bboxes()
@@ -403,11 +429,10 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
 
     def create_data_df(self):
       super().create_data_df()
-      self.attach_bbox_fns()
+      self._ensure_bbox_columns()
 
     def maybe_infer_bboxes(self):
       self.infer_yolo_bboxes()
-      self.attach_bbox_fns()
 
 
     def get_region_indices(self):
@@ -473,7 +498,7 @@ if __name__ == "__main__":
     num_processes = 16
     R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr)
     R.setup(num_processes=num_processes, overwrite=overwrite)
-    # R.process()
+    R.process()
 # %%
     RR = RBDSamplerWorkerLocal(
         project=R.project,
@@ -501,7 +526,10 @@ if __name__ == "__main__":
     dici = RR.transforms_dict["Remap"][dici["ds"]](dici)
     dici = RR.transforms_dict["Labels"](dici)
     dici = RR.transforms_dict["Indx"](dici)
+# %%
 
+    classes_in_bbox = R.get_region_indices()
+# %%
 # %%
     image = dici["image"]
     lm = dici["lm"]

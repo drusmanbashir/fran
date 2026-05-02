@@ -19,74 +19,289 @@ def _metatensor(data, filename):
     )
 
 
-def test_region_generator_adds_bbox_fn_by_case_id(tmp_path, monkeypatch):
-    loc_folder = tmp_path / "localisers"
-    loc_folder.mkdir()
-    bbox_a = loc_folder / "drli_001.txt"
-    bbox_b = loc_folder / "drli_002.txt"
-    bbox_a.write_text("width: (0.1 0.5)\nap: (0.1 0.5)\nheight: (0.1 0.5)\n")
-    bbox_b.write_text("width: (0.2 0.6)\nap: (0.2 0.6)\nheight: (0.2 0.6)\n")
+def test_region_generator_attaches_cached_bbox_json_by_case_id(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cached_localiser"
+    cache_dir.mkdir()
+    bbox_a = cache_dir / "drli_001.json"
+    bbox_b = cache_dir / "drli_002.json"
+    bbox_a.write_text(
+        '{"ap": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}, '
+        '"lat": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}}\n'
+    )
+    bbox_b.write_text(
+        '{"ap": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}, '
+        '"lat": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}}\n'
+    )
 
-    def fake_parent_create_data_df(self):
-        self.df = pd.DataFrame({"case_id": ["drli_001", "drli_002"]})
+    class FakeLocaliserInferer:
+        def __init__(self, *args, **kwargs):
+            self.output_folder = cache_dir
+            self.yolo_state_dict = {"data": {"names": ["abdomen"]}}
 
+        def run(self, imgs, overwrite=False):
+            raise AssertionError("run() should not be reached when cached bbox JSON exists")
+
+    monkeypatch.setattr(regionbounded, "LocaliserInfererPT", FakeLocaliserInferer)
     monkeypatch.setattr(
-        regionbounded.LabelBoundedDataGenerator,
-        "create_data_df",
-        fake_parent_create_data_df,
+        regionbounded,
+        "standardize_bboxes",
+        lambda *args, **kwargs: {
+            "width": (0.1, 0.5),
+            "ap": (0.2, 0.6),
+            "height": (0.3, 0.7),
+        },
     )
 
     generator = regionbounded.RegionBoundedDataGenerator.__new__(
         regionbounded.RegionBoundedDataGenerator
     )
-    generator.data_folder = tmp_path
     generator.output_folder = tmp_path
+    generator.plan = {"localiser_regions": "abdomen"}
+    generator.df = pd.DataFrame(
+        {
+            "case_id": ["drli_001", "drli_002"],
+            "image": [tmp_path / "drli_001.nii.gz", tmp_path / "drli_002.nii.gz"],
+            "bbox_fn": [None, None],
+            "bbox": [None, None],
+        }
+    )
 
-    generator.create_data_df()
+    generator.maybe_infer_bboxes()
 
     assert generator.df["bbox_fn"].tolist() == [bbox_a.resolve(), bbox_b.resolve()]
+    assert generator.df["bbox"].tolist() == [
+        {"width": (0.1, 0.5), "ap": (0.2, 0.6), "height": (0.3, 0.7)},
+        {"width": (0.1, 0.5), "ap": (0.2, 0.6), "height": (0.3, 0.7)},
+    ]
 
 
 def test_region_generator_errors_on_duplicate_bbox_matches(tmp_path, monkeypatch):
-    loc_folder = tmp_path / "localisers"
-    loc_folder.mkdir()
-    (loc_folder / "a.txt").write_text("width: (0.1 0.5)\n")
-    (loc_folder / "b.txt").write_text("width: (0.1 0.5)\n")
-
-    def fake_parent_create_data_df(self):
-        self.df = pd.DataFrame({"case_id": ["case_001"]})
-
-    monkeypatch.setattr(
-        regionbounded.LabelBoundedDataGenerator,
-        "create_data_df",
-        fake_parent_create_data_df,
+    cache_dir = tmp_path / "cached_localiser"
+    cache_dir.mkdir()
+    (cache_dir / "a.json").write_text(
+        '{"ap": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}, '
+        '"lat": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}}\n'
     )
+    (cache_dir / "b.json").write_text(
+        '{"ap": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}, '
+        '"lat": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}}\n'
+    )
+
+    class FakeLocaliserInferer:
+        def __init__(self, *args, **kwargs):
+            self.output_folder = cache_dir
+            self.yolo_state_dict = {"data": {"names": ["abdomen"]}}
+
+        def run(self, imgs, overwrite=False):
+            raise AssertionError("run() should not be reached for duplicate bbox matches")
+
+    monkeypatch.setattr(regionbounded, "LocaliserInfererPT", FakeLocaliserInferer)
     monkeypatch.setattr(
         regionbounded.RegionBoundedDataGenerator,
         "_case_id_keys_from_bbox_file",
         staticmethod(lambda fn: {"case_001"}),
     )
+    monkeypatch.setattr(
+        regionbounded,
+        "standardize_bboxes",
+        lambda *args, **kwargs: {
+            "width": (0.1, 0.5),
+            "ap": (0.2, 0.6),
+            "height": (0.3, 0.7),
+        },
+    )
 
     generator = regionbounded.RegionBoundedDataGenerator.__new__(
         regionbounded.RegionBoundedDataGenerator
     )
-    generator.data_folder = tmp_path
     generator.output_folder = tmp_path
+    generator.plan = {"localiser_regions": "abdomen"}
+    generator.df = pd.DataFrame(
+        {
+            "case_id": ["case_001"],
+            "image": [tmp_path / "case_001.nii.gz"],
+            "bbox_fn": [None],
+            "bbox": [None],
+        }
+    )
 
     with pytest.raises(ValueError, match="Duplicate bbox matches"):
-        generator.create_data_df()
+        generator.maybe_infer_bboxes()
+
+
+def test_region_generator_uses_cached_bbox_json_before_inference(
+    tmp_path, monkeypatch
+):
+    cache_dir = tmp_path / "cached_localiser"
+    cache_dir.mkdir()
+    cached_json = cache_dir / "kits23_00097.json"
+    cached_json.write_text(
+        '{"ap": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}, '
+        '"lat": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}}\n'
+    )
+
+    run_calls = []
+
+    class FakeLocaliserInferer:
+        def __init__(self, *args, **kwargs):
+            self.output_folder = cache_dir
+            self.yolo_state_dict = {"data": {"names": ["abdomen"]}}
+
+        def run(self, imgs, overwrite=False):
+            run_calls.append((list(imgs), overwrite))
+            return []
+
+    monkeypatch.setattr(
+        regionbounded, "LocaliserInfererPT", FakeLocaliserInferer
+    )
+    monkeypatch.setattr(
+        regionbounded,
+        "standardize_bboxes",
+        lambda *args, **kwargs: {
+            "width": (0.1, 0.5),
+            "ap": (0.2, 0.6),
+            "height": (0.3, 0.7),
+        },
+    )
+
+    generator = regionbounded.RegionBoundedDataGenerator.__new__(
+        regionbounded.RegionBoundedDataGenerator
+    )
+    generator.output_folder = tmp_path
+    generator.plan = {"localiser_regions": "abdomen"}
+    generator.df = pd.DataFrame(
+        {
+            "case_id": ["kits23_00097"],
+            "image": [tmp_path / "kits23_00097.nii.gz"],
+            "bbox_fn": [None],
+            "bbox": [None],
+        }
+    )
+
+    generator.maybe_infer_bboxes()
+
+    assert run_calls == []
+    assert generator.df.loc[0, "bbox_fn"] == cached_json.resolve()
+    assert generator.df.loc[0, "bbox"] == {
+        "width": (0.1, 0.5),
+        "ap": (0.2, 0.6),
+        "height": (0.3, 0.7),
+    }
+
+
+def test_region_generator_ignores_unrelated_cached_bbox_jsons(
+    tmp_path, monkeypatch
+):
+    cache_dir = tmp_path / "cached_localiser"
+    cache_dir.mkdir()
+    cached_json = cache_dir / "kits23_00097.json"
+    cached_json.write_text(
+        '{"ap": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}, '
+        '"lat": {"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}}\n'
+    )
+    unrelated_json = cache_dir / "totalseg_s0003.json"
+    unrelated_json.write_text('{"broken": true}\n')
+
+    run_calls = []
+
+    class FakeLocaliserInferer:
+        def __init__(self, *args, **kwargs):
+            self.output_folder = cache_dir
+            self.yolo_state_dict = {"data": {"names": ["abdomen"]}}
+
+        def run(self, imgs, overwrite=False):
+            run_calls.append((list(imgs), overwrite))
+            return []
+
+    monkeypatch.setattr(regionbounded, "LocaliserInfererPT", FakeLocaliserInferer)
+    monkeypatch.setattr(
+        regionbounded,
+        "standardize_bboxes",
+        lambda *args, **kwargs: {
+            "width": (0.1, 0.5),
+            "ap": (0.2, 0.6),
+            "height": (0.3, 0.7),
+        },
+    )
+
+    generator = regionbounded.RegionBoundedDataGenerator.__new__(
+        regionbounded.RegionBoundedDataGenerator
+    )
+    generator.output_folder = tmp_path
+    generator.plan = {"localiser_regions": "abdomen"}
+    generator.df = pd.DataFrame(
+        {
+            "case_id": ["kits23_00097"],
+            "image": [tmp_path / "kits23_00097.nii.gz"],
+            "bbox_fn": [None],
+            "bbox": [None],
+        }
+    )
+
+    generator.maybe_infer_bboxes()
+
+    assert run_calls == []
+    assert generator.df.loc[0, "bbox_fn"] == cached_json.resolve()
+    assert generator.df.loc[0, "bbox"] == {
+        "width": (0.1, 0.5),
+        "ap": (0.2, 0.6),
+        "height": (0.3, 0.7),
+    }
+
+
+def test_region_generator_errors_when_cached_bbox_json_has_no_requested_class_match(
+    tmp_path, monkeypatch
+):
+    cache_dir = tmp_path / "cached_localiser"
+    cache_dir.mkdir()
+    cached_json = cache_dir / "kits23_00097.json"
+    cached_json.write_text(
+        '{"ap": {"cls": [0], "conf": [0.9], "xyxy": [[10, 20, 30, 40]], '
+        '"orig_shape": [100, 80], "meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}, '
+        '"lat": {"cls": [0], "conf": [0.8], "xyxy": [[15, 25, 35, 45]], '
+        '"orig_shape": [100, 80], "meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}}\n'
+    )
+
+    class FakeLocaliserInferer:
+        def __init__(self, *args, **kwargs):
+            self.output_folder = cache_dir
+            self.yolo_state_dict = {"data": {"names": ["kidney", "abdomen"]}}
+
+        def run(self, imgs, overwrite=False):
+            raise AssertionError("run() should not be reached when cached bbox JSON fails")
+
+    monkeypatch.setattr(
+        regionbounded, "LocaliserInfererPT", FakeLocaliserInferer
+    )
+
+    generator = regionbounded.RegionBoundedDataGenerator.__new__(
+        regionbounded.RegionBoundedDataGenerator
+    )
+    generator.output_folder = tmp_path
+    generator.plan = {"localiser_regions": "abdomen"}
+    generator.df = pd.DataFrame(
+        {
+            "case_id": ["kits23_00097"],
+            "image": [tmp_path / "kits23_00097.nii.gz"],
+            "bbox_fn": [None],
+            "bbox": [None],
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Failed to standardize cached bbox JSON for RBD preprocessing\\. "
+            "case_id=kits23_00097 .*requested_classes=\\[1\\] "
+            "detected_classes=\\[0\\]"
+        ),
+    ):
+        generator.maybe_infer_bboxes()
 
 
 def test_rbd_worker_data_dict_loads_bbox(monkeypatch):
     bbox = {"width": (0.1, 0.5), "ap": (0.2, 0.7), "height": (0.0, 1.0)}
-    bbox_fn = Path("/tmp/case_001.txt")
-    seen = []
-
-    def fake_bbox_from_file(fn):
-        seen.append(fn)
-        return bbox
-
-    monkeypatch.setattr(regionbounded, "bbox_from_file", fake_bbox_from_file)
+    bbox_fn = Path("/tmp/case_001.json")
     worker = regionbounded._RBDSamplerWorkerBase.__new__(
         regionbounded._RBDSamplerWorkerBase
     )
@@ -98,12 +313,12 @@ def test_rbd_worker_data_dict_loads_bbox(monkeypatch):
             "ds": "drli",
             "remapping": None,
             "bbox_fn": bbox_fn,
+            "bbox": bbox,
         }
     )
 
     data = worker._create_data_dict(row)
 
-    assert seen == [bbox_fn]
     assert data["bbox"] == bbox
     assert data["bbox_fn"] == bbox_fn
     assert data["case_id"] == "case_001"
@@ -165,7 +380,8 @@ def test_crop_by_yolo_default_margin_recovers_cropped_label():
             "image": image,
             "lm": lm,
             "bbox": bbox,
-            "bbox_fn": Path("/tmp/case_001.txt"),
+            "bbox_fn": Path("/tmp/case_001.json"),
+            "_preprocess_events": [],
         }
     )
 
@@ -174,7 +390,7 @@ def test_crop_by_yolo_default_margin_recovers_cropped_label():
     assert out["image"].shape == out["lm"].shape
     assert "_preprocess_events" in out
     assert out["_preprocess_events"][0]["error_type"] == "CropByYolo"
-    assert "bbox_txt_path=/tmp/case_001.txt" in out["_preprocess_events"][0]["error_message"]
+    assert "bbox_source_path=/tmp/case_001.json" in out["_preprocess_events"][0]["error_message"]
 
 
 def test_crop_by_yolo_with_fg_fallback_uses_fg_crop_when_yolo_loses_fg():
@@ -211,7 +427,7 @@ def test_crop_by_yolo_with_fg_fallback_uses_fg_crop_when_yolo_loses_fg():
             "image": image,
             "lm": lm,
             "bbox": bbox,
-            "bbox_fn": Path("/tmp/case_00486.txt"),
+            "bbox_fn": Path("/tmp/case_00486.json"),
         }
     )
 
@@ -262,7 +478,7 @@ def test_crop_by_yolo_with_fg_fallback_noop_when_yolo_preserves_fg():
             "image": image,
             "lm": lm,
             "bbox": bbox,
-            "bbox_fn": Path("/tmp/case_ok.txt"),
+            "bbox_fn": Path("/tmp/case_ok.json"),
         }
     )
 
