@@ -67,8 +67,8 @@ Manifest check:
 Temp duplicate staging from aborted tests may exist:
 
 ```text
-/home/ub/tmp/kits23_kbd_dualssd_spc_080_080_150_54787144
-/home/ub/tmp/kits23_kbd_dualssd_shards
+/home/ub/tmp/kits23_rbd_dualssd_spc_080_080_150_54787144
+/home/ub/tmp/kits23_rbd_dualssd_shards
 ```
 
 These are disposable.

@@ -129,10 +129,7 @@ class LocaliserInfererPT(LocaliserInferer):
                 out.pop(key, None)
 
     def postprocess(self, out):
-        out = super().postprocess(out)
-        out["image_proj"] = out["image"]
-        out["image"] = out.pop(self.image_orig_key)
-        return out
+        return super().postprocess(out)
 
     def filter_done_images(self, images, overwrite=False):
         if overwrite == True or isinstance(images[0], torch.Tensor):

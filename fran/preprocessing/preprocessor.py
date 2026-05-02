@@ -17,6 +17,7 @@ from fran.managers.db import add_plan_to_db
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
+    env_flag,
     import_h5py,
     infer_dataset_stats_window,
     postprocess_artifacts_missing,
@@ -557,8 +558,8 @@ class Preprocessor(GetAttr):
         self.project = project
         self.plan = plan
         self.data_folder = data_folder
-        self.store_gifs = False
-        self.store_label_stats = True
+        self.store_gifs = env_flag("FRAN_STORE_GIFS", False)
+        self.store_label_stats = env_flag("FRAN_STORE_LABEL_STATS", True)
         self.set_input_output_folders(data_folder, output_folder)
 
     def _df_from_db(self):

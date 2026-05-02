@@ -14,6 +14,13 @@ from utilz.helpers import find_matching_fn, info_from_filename, multiprocess_mul
 from utilz.stringz import info_from_filename
 
 
+def env_flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
 def sanitize_meta_for_monai(obj):
     """
     Recursively convert NumPy scalar values in metadata to native Python types.
@@ -325,13 +332,15 @@ def create_dataset_stats_artifacts(
 
 def postprocess_artifacts_missing(data_folder:Path) ->dict:
     data_folder = Path(data_folder)
-    missings={ "label_stats":True, "gif":True}
+    want_label_stats = env_flag("FRAN_STORE_LABEL_STATS", True)
+    want_gif = env_flag("FRAN_STORE_GIFS", False)
+    missings={ "label_stats":want_label_stats, "gif":want_gif}
     stats_folder = data_folder / "dataset_stats"
     labels_stats_fn = data_folder / "lesion_stats.csv"
     gif_fn = stats_folder / "snapshot.gif"
-    if labels_stats_fn.exists():
+    if not want_label_stats or labels_stats_fn.exists():
         missings["label_stats"] = False
-    if gif_fn.exists():
+    if not want_gif or gif_fn.exists():
         missings["gif"] = False
     return missings
 

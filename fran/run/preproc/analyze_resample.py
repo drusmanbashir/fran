@@ -7,6 +7,7 @@ from fran.preprocessing.datasetanalyzers import Path, headline, multiprocess_mul
 from fran.preprocessing.fixed_spacing import (
     NiftiToTorchDataGenerator,
 )
+from fran.preprocessing.helpers import env_flag
 from fran.preprocessing.fixed_size2 import FixedSizeDataGenerator
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
@@ -27,9 +28,11 @@ def postprocess_complete(project, plan):
     stats_folder = folder / "dataset_stats"
     required = [
         folder / "labels_all.json",
-        stats_folder / "lesion_stats.csv",
-        # stats_folder / "snapshot.gif",
     ]
+    if env_flag("FRAN_STORE_LABEL_STATS", True):
+        required.append(stats_folder / "lesion_stats.csv")
+    if env_flag("FRAN_STORE_GIFS", False):
+        required.append(stats_folder / "snapshot.gif")
     return all(pth.exists() for pth in required)
 
 
@@ -186,6 +189,7 @@ def user_input(inp: str, out=int):
 
 class PreprocessingManager:
     def __init__(self, args, conf=None):
+        self.args = args
         P = Project(project_title=args.project_title)
         self.project = P
         if conf is None:
@@ -194,6 +198,12 @@ class PreprocessingManager:
             conf = C.configs
         self.plan = conf["plan_train"]
         print("Project: {0}".format(args.project_title))
+
+    def _configure_postproc_artifacts(self, generator):
+        if not self.args.create_postproc_artifacts:
+            generator.store_gifs = False
+            generator.store_label_stats = False
+        return generator
 
     def resample_dataset(self, overwrite=False, num_processes=1, debug=False):
         """
@@ -206,6 +216,7 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=self.project.raw_data_folder,
         )
+        self._configure_postproc_artifacts(self.R)
 
         self.R.setup(overwrite=overwrite, num_processes=num_processes, debug=debug)
         self.R.process()
@@ -228,6 +239,7 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=resampled_data_folder,
         )
+        self._configure_postproc_artifacts(self.L)
         self.L.setup(
             overwrite=overwrite,
             device=device,
@@ -255,6 +267,7 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=resampled_data_folder,
         )
+        self._configure_postproc_artifacts(self.L)
         self.L.setup(
             overwrite=overwrite,
             device=device,
@@ -281,6 +294,7 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=resampled_data_folder,
         )
+        self._configure_postproc_artifacts(self.L)
         self.L.setup(
             overwrite=overwrite,
             device=device,
@@ -305,6 +319,7 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=resampled_data_folder,
         )
+        self._configure_postproc_artifacts(self.W)
         self.W.setup(
             overwrite=overwrite,
             device=device,
@@ -323,6 +338,7 @@ class PreprocessingManager:
             plan=self.plan,
             data_folder=data_folder,
         )
+        self._configure_postproc_artifacts(PG)
         PG.setup(
             overwrite=overwrite,
             num_processes=num_processes,
@@ -375,6 +391,11 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--debug", action="store_true")
 
     parser.add_argument("-o", "--overwrite", action="store_true")
+    parser.add_argument(
+        "--create-postproc-artifacts",
+        action="store_true",
+        help="Create postprocess artifacts after preprocessing. Default: off.",
+    )
     parser.add_argument(
         "--help-args",
         action="store_true",

@@ -401,34 +401,32 @@ class Project(DictToAttr):
         ds : Datasource
             Datasource object with verified file pairs.
         """
-        strs = []
-        try:
-            with h5py.File(ds.h5_fname, "r") as h5f:
-                for pair in ds.verified_pairs:
-                    fn = pair[0].name
-                    case_id = info_from_filename(fn, full_caseid=True)["case_id"]
-                    case_this = h5f[case_id]
-                    labels = case_this.attrs["labels"]
-                    nnz = 0 if len(labels) > 0 else 1
-                    labels = list(labels)
-                    labels = str(labels)
-                    stra = self.vars_to_sql(
-                        ds.name,
-                        ds.alias,
-                        case_id,
-                        pair[0],
-                        pair[1],
-                        labels,
-                        nnz,
-                        ds.test,
-                    )
-                    strs.append(stra)
-        except FileNotFoundError as e:
-            print(e)
-            cprint(
-                "You may need to initialise datasrouce by running Datasource({data_folder}).process()",
-                "red",
+        if not ds.h5_fname.exists():
+            raise FileNotFoundError(
+                f"Missing datasource voxels file: {ds.h5_fname}. "
+                "Run datasource_init first so fg_voxels.h5 exists before datasource registration."
             )
+        strs = []
+        with h5py.File(ds.h5_fname, "r") as h5f:
+            for pair in ds.verified_pairs:
+                fn = pair[0].name
+                case_id = info_from_filename(fn, full_caseid=True)["case_id"]
+                case_this = h5f[case_id]
+                labels = case_this.attrs["labels"]
+                nnz = 0 if len(labels) > 0 else 1
+                labels = list(labels)
+                labels = str(labels)
+                stra = self.vars_to_sql(
+                    ds.name,
+                    ds.alias,
+                    case_id,
+                    pair[0],
+                    pair[1],
+                    labels,
+                    nnz,
+                    ds.test,
+                )
+                strs.append(stra)
 
         with db_ops(self.db) as cur:
             cur.executemany(

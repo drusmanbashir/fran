@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-import os
+import json
 from pathlib import Path
 
 from fran.inference.cascade_yolo2 import LocaliserInfererPT
@@ -12,10 +12,12 @@ from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.spatialtransforms import CropForegroundMinShaped
 from fran.utils.affine import spacing_from_affine
-from localiser.utils.bbox_helpers import bbox_from_file, crop_to_yolo_bbox
+from localiser.utils.bbox_helpers import (
+    bbox_from_file,
+    crop_to_yolo_bbox,
+    standardize_bboxes,
+)
 from monai.transforms.transform import MapTransform
-from ultralytics import YOLO
-from utilz.fileio import load_yaml
 from utilz.stringz import info_from_filename
 
 class CropByYolo(MapTransform):
@@ -271,15 +273,21 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
             "remapping": row["remapping"],
             "bbox_fn": bbox_fn,
             "bbox": bbox_from_file(bbox_fn),
+            "_preprocess_events": [],
         }
         return data
 
     @property
     def indices_subfolder(self):
-        fg_indices_exclude = self.plan["fg_indices_exclude"]
-        indices_subfolder = "indices_fg_exclude_{}".format(
-            "".join([str(x) for x in fg_indices_exclude])
-        )
+        fg_indices_exclude = self.plan.get("fg_indices_exclude")
+        if fg_indices_exclude is None:
+            indices_subfolder = "indices"
+        elif isinstance(fg_indices_exclude, int):
+            indices_subfolder = f"indices_fg_exclude_{fg_indices_exclude}"
+        else:
+            indices_subfolder = "indices_fg_exclude_{}".format(
+                "".join([str(x) for x in fg_indices_exclude])
+            )
         return self.output_folder / indices_subfolder
 
 
@@ -324,30 +332,64 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
     def missing_bbox_mask(self):
       return self.df["bbox_fn"].isna()
 
+    def _localiser_regions_list(self) -> list[str]:
+      regions = self.plan.get("localiser_regions")
+      if regions is None:
+          return []
+      elif isinstance(regions, (list, tuple, set)):
+          return [str(region).strip() for region in regions if str(region).strip()]
+      else:
+          return [r for r in str(regions).replace(" ", "").split(",") if r]
+
+    def _store_legacy_bbox_txts(self, classes_in_bbox: list[int]) -> None:
+      self.loc_folder.mkdir(parents=True, exist_ok=True)
+      for json_fn in self.I.output_folder.glob("*.json"):
+          out_fn = self.loc_folder / f"{json_fn.stem}.txt"
+          if out_fn.exists():
+              continue
+          bbox = json.loads(json_fn.read_text())
+          pads3tup = bbox["ap"]["meta"]["letterbox_padded"]
+          bbox_std = standardize_bboxes(
+              bbox["ap"],
+              bbox["lat"],
+              pads3tup,
+              classes_in_bbox,
+              serialised=True,
+          )
+          lines = [f"{key}: {value[0]} {value[1]}" for key, value in bbox_std.items()]
+          out_fn.write_text("\n".join(lines) + "\n")
+
+    def _localiser_input_images(self, imgs: list[Path]) -> list[str]:
+      inputs = []
+      for img in imgs:
+          img = Path(img)
+          if img.suffix != ".pt":
+              inputs.append(str(img))
+              continue
+          tensor = torch.load(img, weights_only=False)
+          src = tensor.meta["filename_or_obj"]
+          inputs.append(str(src))
+      return inputs
+
     def infer_yolo_bboxes(self):
       missing = self.missing_bbox_mask()
       imgs = self.df.loc[missing, "image"].tolist()
+      if len(imgs) == 0:
+          return
+      imgs = self._localiser_input_images(imgs)
 
-      conf_fldr = os.environ["FRAN_CONF"]
-      best_runs = load_yaml(Path(conf_fldr) / "best_runs.yaml")
-      yolo_fldr = best_runs["localiser"][0]
-      self.yolo_specs = load_yolo_specs(yolo_fldr)
-
-      ckpt = self.yolo_specs["ckpt"]
-      model = YOLO(ckpt)
-      classes_in_bbox = self.get_region_indices()
-      imsize = self.yolo_specs["specs"]["imgsz"]
-
+      regions = self._localiser_regions_list()
       self.I = LocaliserInfererPT(
-          model,
-          classes_in_bbox,
-          imsize=imsize,
+          localiser_regions=regions,
           window="a",
-          projection_dim=(1, 2),
-          out_folder=self.loc_folder,
-          batch_size=64,
+          bs=64,
+          devices=[0],
+          debug=False,
       )
+      self.yolo_specs = self.I.yolo_state_dict
+      classes_in_bbox = self.get_region_indices()
       self.I.run(imgs, overwrite=False)
+      self._store_legacy_bbox_txts(classes_in_bbox)
 
     def process(self):
       self.maybe_infer_bboxes()
@@ -367,11 +409,17 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
 
     def get_region_indices(self):
         regions = self.plan["localiser_regions"]
-        regions = str(regions).replace(" ", "")
-        regions_list = [r for r in regions.split(",") if r]
-
         names = self.yolo_specs["data"]["names"]
-        class_to_ind = {str(v): int(k) for k, v in names.items()}
+        if isinstance(names, dict):
+            class_to_ind = {str(v): int(k) for k, v in names.items()}
+        else:
+            class_to_ind = {str(name): idx for idx, name in enumerate(names)}
+        if regions is None:
+            return sorted(class_to_ind.values())
+        regions = str(regions).replace(" ", "")
+        if regions.lower() == "all":
+            return sorted(class_to_ind.values())
+        regions_list = [r for r in regions.split(",") if r]
 
         classes_in_bbox = []
         for class_name, class_idx in class_to_ind.items():

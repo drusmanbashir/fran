@@ -1,6 +1,5 @@
 # %%
 from __future__ import annotations
-
 import sqlite3
 
 import ipdb
@@ -14,6 +13,7 @@ from pathlib import Path
 import ipdb
 import SimpleITK as sitk
 from fastcore.basics import GetAttr, Union
+from fran.preprocessing.helpers import env_flag
 from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, import_h5py
 from utilz.fileio import load_dict, save_dict, tr
 from utilz.helpers import find_matching_fn, multiprocess_multiarg
@@ -370,7 +370,10 @@ class Datasource(GetAttr):
         for output in self.outputs:
             self.raw_dataset_properties.append(output["case"])
         self.dump_to_h5()
-        end2end_lms_stats_and_plots(self.folder / ("lms"))
+        if env_flag("FRAN_STORE_LABEL_STATS", True):
+            end2end_lms_stats_and_plots(self.folder / ("lms"))
+        else:
+            print("Skipping label stats artifact generation because FRAN_STORE_LABEL_STATS=0")
 
     def dump_to_h5(self):
         h5py = import_h5py()

@@ -43,10 +43,13 @@ if __name__ == "__main__":
         
 
 # %%
-      inds_fn = Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144/indices/kits23_00004.pt")
-      lm=torch.load(lm_fn, weights_only=False)
-      inds = torch.load(inds_fn, weights_only=False)
-      im = torch.load(im_fn, weights_only=False)
+# %%
+#SECTION:-------------------- ImageViewer--------------------------------------------------------------------------------------
+      img_fn = Path("/r/datasets/preprocessed/tmpts/rbd/spc_080_080_150_rlb07fa8d38_rlb07fa8d38_d87c4480/images/totseg_s0009.pt")
+
+      lm_fn = Path("/r/datasets/preprocessed/tmpts/rbd/spc_080_080_150_rlb07fa8d38_rlb07fa8d38_d87c4480/lms/totseg_s0009.pt")
+      im = torch.load(img_fn, weights_only=False)
+      lm = torch.load(lm_fn, weights_only=False)
 
       im = im.permute(2,0,1)
       lm = lm.permute(2,0,1)
