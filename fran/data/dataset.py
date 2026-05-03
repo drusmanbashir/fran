@@ -7,43 +7,41 @@
 
 import itertools
 import operator
-from collections.abc import Hashable, Mapping
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from copy import deepcopy
 from functools import reduce
-from random import choice
-
-import ipdb
-import numpy as np
-from fastcore.basics import Dict
-from fran.transforms.imageio import LoadSITKd
-from fran.transforms.intensitytransforms import NormaliseClipd
-from fran.transforms.spatialtransforms import F, MapTransform, MetaTensor, get_affine_grid, pi, tr
-from monai.data.meta_tensor import MetaTensor
-from monai.transforms import Compose, MapTransform
-from monai.transforms.io.array import SaveImage
-from utilz.helpers import Path, cleanup_fname, load_dict, torch
-from utilz.stringz import strip_extension
-
-tr = ipdb.set_trace
-from collections.abc import Callable, Sequence
 from pathlib import Path
+from random import choice
+import ipdb
+tr = ipdb.set_trace
+
 
 import itk
 import numpy as np
 import SimpleITK as sitk
+from fastcore.basics import Dict
+from fran.transforms.imageio import LoadSITKd
+from fran.transforms.intensitytransforms import NormaliseClipd
+from fran.transforms.spatialtransforms import (
+    F,
+    MapTransform,
+    MetaTensor,
+    get_affine_grid,
+    pi,
+)
 from monai.data.dataset import Dataset, PersistentDataset
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
+from monai.data.meta_tensor import MetaTensor
+from monai.transforms import Compose, MapTransform
 from monai.transforms.compose import Compose
+from monai.transforms.io.array import SaveImage
 from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
-
-# path=  proj_default_folders.preprocessing_output_folder
-# imgs_folder =  proj_default_folders.preprocessing_output_folder/("images")
-# masks_folder=  proj_default_folders.preprocessing_output_folder/("masks")
-#
 from utilz.fileio import maybe_makedirs, sitk
+from utilz.helpers import Path, cleanup_fname, load_dict, torch
 from utilz.itk_sitk import ConvertSimpleItkImageToItkImage
+from utilz.stringz import strip_extension
 
 
 class InferenceDatasetNii(Dataset):
@@ -804,3 +802,5 @@ if __name__ == "__main__":
 
 # SNext error/warning todo commentECTION:
 # %%
+
+

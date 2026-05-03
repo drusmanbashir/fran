@@ -6,7 +6,7 @@ import torch
 from monai.data.meta_tensor import MetaTensor
 
 from fran.preprocessing import regionbounded
-from fran.transforms.spatialtransforms import CropForegroundMinShaped
+from fran.transforms.spatialtransforms import CropByYolo, CropByYoloWithForegroundFallbackd, CropForegroundMinShaped
 
 
 def _metatensor(data, filename):
@@ -341,8 +341,7 @@ def test_rbd_worker_passes_plan_expand_by_to_crop_by_yolo(monkeypatch):
 
     worker.create_transforms(device="cpu")
 
-    assert worker.cropper_yolo.margin == 14
-    assert worker.CropByYolo.cropper_yolo.margin == 14
+    assert worker.CropByYolo.margin == 14
     assert worker.transforms_dict["CropByYolo"] is worker.CropByYolo
 
 
@@ -363,14 +362,13 @@ def test_rbd_worker_uses_zero_margin_when_expand_by_is_zero(monkeypatch):
 
     worker.create_transforms(device="cpu")
 
-    assert worker.cropper_yolo.margin == 0
-    assert worker.CropByYolo.cropper_yolo.margin == 0
+    assert worker.CropByYolo.margin == 0
 
 
 def test_crop_by_yolo_default_margin_recovers_cropped_label():
-    image = _metatensor(torch.zeros((10, 12, 8)), "image.pt")
-    lm = _metatensor(torch.zeros((10, 12, 8)), "lm.pt")
-    lm[1:9, 2:10, 1:7] = 1
+    image = _metatensor(torch.zeros((1, 10, 12, 8)), "image.pt")
+    lm = _metatensor(torch.zeros((1, 10, 12, 8)), "lm.pt")
+    lm[:, 1:9, 2:10, 1:7] = 1
     bbox = {"width": (0.3, 0.6), "ap": (0.3, 0.6), "height": (0.3, 0.6)}
 
     transform = regionbounded.CropByYolo()
@@ -394,31 +392,17 @@ def test_crop_by_yolo_default_margin_recovers_cropped_label():
 
 
 def test_crop_by_yolo_with_fg_fallback_uses_fg_crop_when_yolo_loses_fg():
-    image = _metatensor(torch.zeros((12, 12, 12)), "image.pt")
-    lm = _metatensor(torch.zeros((12, 12, 12), dtype=torch.uint8), "lm.pt")
-    lm[4:9, 4:9, 4:9] = 1
+    image = _metatensor(torch.zeros((1, 12, 12, 12)), "image.pt")
+    lm = _metatensor(torch.zeros((1, 12, 12, 12), dtype=torch.uint8), "lm.pt")
+    lm[:, 4:9, 4:9, 4:9] = 1
     fg_before = int(torch.count_nonzero(lm).item())
     bbox = {"width": (0.0, 0.1), "ap": (0.0, 0.1), "height": (0.0, 0.1)}
-
-    cropper_yolo = regionbounded.CropByYolo(
-        keys=["image", "lm"],
-        lm_key="lm",
-        bbox_key="bbox",
-        margin=0,
-        sanitize=True,
-    )
-    cropper_fg = CropForegroundMinShaped(
-        keys=["image", "lm"],
-        source_key="lm",
+    transform = CropByYoloWithForegroundFallbackd(
         min_shape=(4, 4, 4),
-        margin=0,
-    )
-    transform = regionbounded.CropByYoloWithForegroundFallbackd(
         keys=["image", "lm"],
         lm_key="lm",
         bbox_key="bbox",
-        cropper_yolo=cropper_yolo,
-        cropper_fg=cropper_fg,
+        margin=0,
     )
 
     out = transform(
@@ -428,15 +412,15 @@ def test_crop_by_yolo_with_fg_fallback_uses_fg_crop_when_yolo_loses_fg():
             "lm": lm,
             "bbox": bbox,
             "bbox_fn": Path("/tmp/case_00486.json"),
+            "_preprocess_events": [],
         }
     )
 
-    assert out["image"].ndim == 3
-    assert out["lm"].ndim == 3
+    assert out["image"].ndim == 4
+    assert out["lm"].ndim == 4
     assert int(torch.count_nonzero(out["lm"]).item()) == fg_before
     events = out.get("_preprocess_events", [])
     event_types = [ev["error_type"] for ev in events]
-    assert "CropByYolo" in event_types
     assert "CropByYoloFallback" in event_types
     fallback_messages = [
         ev["error_message"] for ev in events if ev["error_type"] == "CropByYoloFallback"
@@ -445,43 +429,32 @@ def test_crop_by_yolo_with_fg_fallback_uses_fg_crop_when_yolo_loses_fg():
 
 
 def test_crop_by_yolo_with_fg_fallback_noop_when_yolo_preserves_fg():
-    image = _metatensor(torch.zeros((10, 10, 10)), "image.pt")
-    lm = _metatensor(torch.zeros((10, 10, 10), dtype=torch.uint8), "lm.pt")
-    lm[2:8, 2:8, 2:8] = 1
+    image = _metatensor(torch.zeros((1, 10, 10, 10)), "image.pt")
+    lm = _metatensor(torch.zeros((1, 10, 10, 10), dtype=torch.uint8), "lm.pt")
+    lm[:, 2:8, 2:8, 2:8] = 1
     bbox = {"width": (0.1, 0.9), "ap": (0.1, 0.9), "height": (0.1, 0.9)}
     fg_before = int(torch.count_nonzero(lm).item())
-
-    cropper_yolo = regionbounded.CropByYolo(
+    transform = CropByYoloWithForegroundFallbackd(
+        min_shape=(4, 4, 4),
         keys=["image", "lm"],
         lm_key="lm",
         bbox_key="bbox",
         margin=20,
-        sanitize=True,
     )
-    cropper_fg = CropForegroundMinShaped(
-        keys=["image", "lm"],
-        source_key="lm",
-        min_shape=(4, 4, 4),
-        margin=0,
-    )
-    transform = regionbounded.CropByYoloWithForegroundFallbackd(
-        keys=["image", "lm"],
-        lm_key="lm",
-        bbox_key="bbox",
-        cropper_yolo=cropper_yolo,
-        cropper_fg=cropper_fg,
-    )
+    data = {
+        "case_id": "case_ok",
+        "image": image,
+        "lm": lm,
+        "bbox": bbox,
+        "bbox_fn": Path("/tmp/case_ok.json"),
+        "_preprocess_events": [],
+    }
 
-    out = transform(
-        {
-            "case_id": "case_ok",
-            "image": image,
-            "lm": lm,
-            "bbox": bbox,
-            "bbox_fn": Path("/tmp/case_ok.json"),
-        }
-    )
+    out = transform(dict(data))
+    yolo_out = transform.cropper_yolo(dict(data))
 
     assert int(torch.count_nonzero(out["lm"]).item()) == fg_before
+    assert torch.equal(out["image"], yolo_out["image"])
+    assert torch.equal(out["lm"], yolo_out["lm"])
     events = out.get("_preprocess_events", [])
     assert all(ev["error_type"] != "CropByYoloFallback" for ev in events)

@@ -40,15 +40,13 @@ class CropByYolo(CropMaybePad):
     def __call__(self, data):
         dici = dict(data)
         fg_before = self._fg_count(dici)
-        dici_4d = self._temporarily_channel_first(dici)
         spacing = spacing_from_affine(dici[self.lm_key].meta["affine"])
         box_start, box_end = self._yolo_bbox_to_bounds(
-            tuple(int(v) for v in dici[self.lm_key].shape),
+            tuple(int(v) for v in dici[self.lm_key].shape[1:]),
             dici[self.bbox_key],
         )
-        cropped_4d = super().__call__(dici_4d, box_start, box_end, spacing)
-        cropped_4d[self.bbox_key] = dici[self.bbox_key]
-        out = self._restore_spatial_only(cropped_4d)
+        out = super().__call__(dici, box_start, box_end, spacing)
+        out[self.bbox_key] = dici[self.bbox_key]
         fg_after_expanded = self._fg_count(out)
         self._log_mismatch(
             data=dici,
@@ -76,22 +74,6 @@ class CropByYolo(CropMaybePad):
             math.ceil((1.0 - height[0]) * height3d),
         )
 
-    def _temporarily_channel_first(self, data: dict) -> dict:
-        d = dict(data)
-        added_channel_keys = []
-        for key in self.key_iterator(d):
-            d[key] = d[key].unsqueeze(0)
-            added_channel_keys.append(key)
-        d["_crop_by_yolo_added_channel_keys"] = added_channel_keys
-        return d
-
-    def _restore_spatial_only(self, data: dict) -> dict:
-        d = dict(data)
-        added_channel_keys = d.pop("_crop_by_yolo_added_channel_keys")
-        for key in added_channel_keys:
-            d[key] = d[key].squeeze(0)
-        return d
-
     def _log_mismatch(
         self,
         *,
@@ -113,98 +95,6 @@ class CropByYolo(CropMaybePad):
         data["_preprocess_events"] = events
 
 
-class CropByYoloWithForegroundFallbackd(MapTransform):
-    """
-    Run YOLO crop first, then fallback to foreground crop if FG voxels are still lost.
-    """
-
-    def __init__(
-        self,
-        min_shape,
-        keys=("image", "lm"),
-        lm_key="lm",
-        bbox_key="bbox",
-        margin=20,
-        allow_missing_keys=False,
-    ):
-        super().__init__(keys=keys, allow_missing_keys=allow_missing_keys)
-        self.lm_key = lm_key
-        self.bbox_key = bbox_key
-        self.cropper_yolo = CropByYolo(
-            keys=keys,
-            lm_key=lm_key,
-            bbox_key=bbox_key,
-            min_shape=min_shape,
-            margin=margin,
-            allow_missing_keys=allow_missing_keys,
-        )
-        self.cropper_fg = CropForegroundMinShaped(
-            keys=keys,
-            source_key=lm_key,
-            allow_missing_keys=allow_missing_keys,
-            min_shape=min_shape,
-        )
-
-    def __call__(self, data):
-        original = dict(data)
-        lm = data[self.lm_key]
-        assert lm.ndim == 3, "CropByYoloWithForegroundFallbackd expects 3D tensors"
-        fg_before = self._fg_count(original)
-        yolo_out = self.cropper_yolo(dict(original))
-        fallback_input = dict(original)
-        fg_after_yolo = self._fg_count(yolo_out)
-        fallback_input["_preprocess_events"] = list(yolo_out["_preprocess_events"])
-
-        fallback_out = self.apply_crop_fg(fallback_input)
-        fg_after_fallback = self._fg_count(fallback_out)
-
-        case_id = original.get("case_id")
-        bbox_fn = original.get("bbox_fn")
-        message = (
-            "CropByYolo fallback to CropForegroundMinShaped: "
-            f"case_id={case_id} bbox_source_path={bbox_fn} "
-            f"fg_before={fg_before} fg_after_yolo={fg_after_yolo} "
-            f"fg_after_fallback={fg_after_fallback} "
-            "verified_fg_preserved=False"
-        )
-        self._register_event(fallback_out, message)
-        return fallback_out
-
-    def apply_crop_fg(self, fallback_input):
-        fallback_input = self._temporarily_channel_first(fallback_input)
-        fallback_out = self.cropper_fg(fallback_input)
-        fallback_out = self._restore_spatial_only(fallback_out)
-        return fallback_out
-
-    def _fg_count(self, data: dict) -> int:
-        return int(torch.count_nonzero(data[self.lm_key]).item())
-
-    def _temporarily_channel_first(self, data: dict) -> dict:
-        d = dict(data)
-        added_channel_keys = []
-        for key in self.key_iterator(d):
-            x = d[key]
-            d[key] = x.unsqueeze(0)
-            added_channel_keys.append(key)
-        d["_fg_fallback_added_channel_keys"] = added_channel_keys
-        return d
-
-    def _restore_spatial_only(self, data: dict) -> dict:
-        d = dict(data)
-        added_channel_keys = d.pop("_fg_fallback_added_channel_keys")
-        for key in added_channel_keys:
-            d[key] = d[key].squeeze(0)
-        return d
-
-    @staticmethod
-    def _register_event(data: dict, message: str) -> None:
-        events = data["_preprocess_events"]
-        events.append(
-            {"error_type": "CropByYoloFallback", "error_message": str(message)}
-        )
-        data["_preprocess_events"] = events
-
-
 class _RBDSamplerWorkerBase(RayWorkerBase):
     remapping_key = "remapping_lbd_rbd"
 
@@ -217,7 +107,7 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
         crop_to_label=None,
         device="cpu",
         debug=False,
-        tfms_keys="LoadT,Dev,CropByYolo,Chan,Remap,Labels,Indx",
+        tfms_keys="LoadT,Chan,Dev,CropByYolo,Remap,Labels,Indx",
     ):
         super().__init__(
             project=project,
@@ -239,7 +129,7 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
         #     bbox_key="bbox",
         #     margin=margin,
         # )
-        self.CropByYolo = CropByYoloWithForegroundFallbackd(
+        self.CropByYolo = CropByYolo(
             min_shape=self.plan["src_dims"],
             keys=["image", "lm"],
             lm_key="lm",
@@ -378,7 +268,7 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
             localiser_regions=regions,
             window="a",
             bs=16,
-            devices=[0],
+            devices=self.devices,
             debug=False,
         )
         self.yolo_specs = self.I.yolo_state_dict
@@ -460,7 +350,7 @@ if __name__ == "__main__":
 
     overwrite = False
     num_processes = 1
-    R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr)
+    R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr,device=devices)
     R.setup(num_processes=num_processes, overwrite=overwrite)
     R.process()
 # %%
@@ -630,6 +520,8 @@ if __name__ == "__main__":
     a= R.mini_dfs[0].iloc[:3]
 # %%
 
+# %%
+
     case_id = "kits23_00486"
 
     row = R.df[R.df["case_id"].astype(str) == case_id].iloc[0]
@@ -701,12 +593,3 @@ if __name__ == "__main__":
     bbox_files = []
     # %%  # T:block_start|RegionBoundedDataGenerator._index_bbox_files_by_case_id
 #SECTION:-------------------- _index_bbox_files_by_case_id--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator._index_bbox_files_by_case_id
-    mapping: dict[str, list[Path]] = {}
-    fn = next(iter(bbox_files))  # T:loop_probe|for fn in bbox_files:
-    case_keys = R._case_id_keys_from_bbox_file(fn)  # T:self_ref|    case_keys = self._case_id_keys_from_bbox_file(fn)
-    case_id = next(iter(case_keys))  # T:loop_probe|    for case_id in case_keys:
-    mapping.setdefault(case_id, []).append(fn)  # T:indent|        mapping.setdefault(case_id, []).append(fn)
-    case_id, fns = next(iter(mapping.items()))  # T:loop_probe|for case_id, fns in mapping.items():
-    mapping[case_id] = sorted({Path(fn) for fn in fns}, key=lambda p: str(p))  # T:indent|    mapping[case_id] = sorted({Path(fn) for fn in fns}, key=lambda p: str(p))
-    _index_bbox_files_by_case_id_result = mapping  # T:return|return mapping
-    # end PythonMethodScratch  # T:block_end|RegionBoundedDataGenerator._index_bbox_files_by_case_id

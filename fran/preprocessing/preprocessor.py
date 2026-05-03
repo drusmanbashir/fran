@@ -554,6 +554,7 @@ class Preprocessor(GetAttr):
         plan,
         data_folder=None,
         output_folder=None,
+        devices=None,
     ) -> None:
         self.project = project
         self.plan = plan
@@ -561,6 +562,7 @@ class Preprocessor(GetAttr):
         self.store_gifs = env_flag("FRAN_STORE_GIFS", False)
         self.store_label_stats = env_flag("FRAN_STORE_LABEL_STATS", True)
         self.set_input_output_folders(data_folder, output_folder)
+        self.devices= devices
 
     def _df_from_db(self):
         con = sqlite3.connect(str(self.project.db))

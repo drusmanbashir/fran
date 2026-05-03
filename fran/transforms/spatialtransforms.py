@@ -6,23 +6,26 @@ import math
 import os
 from copy import deepcopy
 from pathlib import Path
-import ipdb
+
 import monai.transforms.spatial.functional as fm
 import nibabel as nib
-import skimage.transform as tf
 import torch.nn.functional as F
-from monai.config.type_definitions import KeysCollection, SequenceStr
-from monai.data.meta_obj import get_track_meta
-from monai.data.meta_tensor import MetaTensor
-from monai.transforms.croppad.array import CropForeground, SpatialPad
-from monai.transforms.inverse import InvertibleTransform
-from monai.transforms.transform import LazyTransform, MapTransform, Randomizable, RandomizableTransform
-from monai.utils.enums import LazyAttr, Method, PytorchPadMode, TraceKeys
-from torch import cos, pi, sin
-from monai.transforms.croppad.dictionary import Padd, RandSpatialCropd
-from fran.transforms.base import ItemTransform, KeepBBoxTransform, MapTransform, MonaiDictTransform, Union, np, torch
+from fran.transforms.base import (
+    ItemTransform,
+    KeepBBoxTransform,
+    MapTransform,
+    MonaiDictTransform,
+    Union,
+    np,
+    torch,
+)
 from fran.utils.affine import spacing_from_affine
-from utilz.helpers import load_dict, tr
+from monai.config.type_definitions import KeysCollection
+from monai.data.meta_tensor import MetaTensor
+from monai.transforms.croppad.array import CropForeground
+from monai.transforms.croppad.dictionary import RandSpatialCropd
+from monai.transforms.transform import MapTransform, Randomizable, RandomizableTransform
+from torch import cos, pi, sin
 from utilz.image_utils import margin_mm_to_vox
 from utilz.stringz import int_to_str
 
@@ -113,6 +116,7 @@ class CropMaybePad(MapTransform):
         return F.pad(img, pad, value=0)
 
     def apply_image(self, img, box_start, box_end, spacing):
+        assert img.ndim == 4, f"Expected CxXxYxZ tensor, got ndim={img.ndim}"
         box_start, box_end = self.add_margin_to_bbox(
             box_start,
             box_end,
@@ -200,6 +204,7 @@ class CropForegroundMinShaped(CropMaybePad):
 
         return super().__call__(d, box_start, box_end, spacing=(1.0, 1.0, 1.0))
 
+
 class CropByYolo(CropMaybePad):
     audit_columns = (
         "case_id",
@@ -219,14 +224,13 @@ class CropByYolo(CropMaybePad):
         bbox_key="bbox",
         min_shape=(0, 0, 0),
         margin=20,
-        sanitize=True,
         report_path=None,
         allow_missing_keys=False,
+        **_,
     ):
         super().__init__(keys=keys, min_shape=min_shape, margin=margin)
         self.lm_key = lm_key
         self.bbox_key = bbox_key
-        self.sanitize = bool(sanitize)
         self.report_path = report_path
         self.logger = logging.getLogger(__name__)
 
@@ -240,50 +244,36 @@ class CropByYolo(CropMaybePad):
         )
         out = super().__call__(dici, box_start, box_end, spacing)
         out[self.bbox_key] = dici[self.bbox_key]
-        fg_before = self._fg_count(dici)
-        fg_after = self._fg_count(out)
-        if not self.sanitize:
-            if self.report_path:
-                self._append_audit_row(
-                    data=dici,
-                    status="NORMAL",
-                    stage="sanitize_disabled",
-                    fg_before=fg_before,
-                    fg_after=fg_after,
-                    message="NORMAL",
-                )
-            return out
-
-        if fg_before == fg_after:
-            self._append_audit_row(
-                data=dici,
-                status="NORMAL",
-                stage="single",
-                fg_before=fg_before,
-                fg_after=fg_after,
-                message="NORMAL",
-            )
-            return out
-
-        self._log_sanitize_mismatch(
-            data=dici,
-            fg_before=fg_before,
-            fg_after=fg_after,
-        )
-        self._append_audit_row(
-            data=dici,
-            status="WARNING",
-            stage="single",
-            fg_before=fg_before,
-            fg_after=fg_after,
-            message="Foreground mismatch after single-pass YOLO crop.",
-        )
+        self._audit_fg(dici, out)
         return out
 
     def _fg_count(self, data: dict) -> int:
         if self.lm_key is None:
             return 0
         return int(torch.count_nonzero(data[self.lm_key]).item())
+
+    def _audit_fg(self, before: dict, after: dict) -> None:
+        fg_before = self._fg_count(before)
+        fg_after = self._fg_count(after)
+        if fg_before == fg_after:
+            self._append_audit_row(
+                data=before,
+                status="NORMAL",
+                stage="crop",
+                fg_before=fg_before,
+                fg_after=fg_after,
+                message="NORMAL",
+            )
+            return
+        self._log_mismatch(data=before, fg_before=fg_before, fg_after=fg_after)
+        self._append_audit_row(
+            data=before,
+            status="WARNING",
+            stage="crop",
+            fg_before=fg_before,
+            fg_after=fg_after,
+            message="Foreground mismatch after single-pass YOLO crop.",
+        )
 
     @staticmethod
     def _yolo_bbox_to_bounds(img_shape, bbox_dici):
@@ -341,7 +331,7 @@ class CropByYolo(CropMaybePad):
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
-    def _log_sanitize_mismatch(
+    def _log_mismatch(
         self,
         *,
         data: dict,
@@ -358,6 +348,78 @@ class CropByYolo(CropMaybePad):
         )
 
 
+class CropByYoloWithForegroundFallbackd(MapTransform):
+    """
+    Run YOLO crop first, then fallback to foreground crop if FG voxels are still lost.
+    """
+
+    def __init__(
+        self,
+        min_shape,
+        keys=("image", "lm"),
+        lm_key="lm",
+        bbox_key="bbox",
+        margin=20,
+        allow_missing_keys=False,
+    ):
+        super().__init__(keys=keys, allow_missing_keys=allow_missing_keys)
+        self.lm_key = lm_key
+        self.bbox_key = bbox_key
+        self.cropper_yolo = CropByYolo(
+            keys=keys,
+            lm_key=lm_key,
+            bbox_key=bbox_key,
+            min_shape=min_shape,
+            margin=margin,
+            allow_missing_keys=allow_missing_keys,
+        )
+        self.cropper_fg = CropForegroundMinShaped(
+            keys=keys,
+            source_key=lm_key,
+            allow_missing_keys=allow_missing_keys,
+            min_shape=min_shape,
+        )
+
+    def __call__(self, data):
+        original = dict(data)
+        fg_before = self._fg_count(original)
+        yolo_out = self.cropper_yolo(dict(original))
+        fg_after_yolo = self._fg_count(yolo_out)
+        if fg_after_yolo == fg_before:
+            return yolo_out
+
+        fallback_input = dict(original)
+        fallback_input["_preprocess_events"] = list(yolo_out["_preprocess_events"])
+
+        fallback_out = self.apply_crop_fg(fallback_input)
+        fg_after_fallback = self._fg_count(fallback_out)
+
+        case_id = original.get("case_id")
+        bbox_fn = original.get("bbox_fn")
+        message = (
+            "CropByYolo fallback to CropForegroundMinShaped: "
+            f"case_id={case_id} bbox_source_path={bbox_fn} "
+            f"fg_before={fg_before} fg_after_yolo={fg_after_yolo} "
+            f"fg_after_fallback={fg_after_fallback} "
+            f"verified_fg_preserved={fg_after_fallback == fg_before}"
+        )
+        self._register_event(fallback_out, message)
+        return fallback_out
+
+    def apply_crop_fg(self, fallback_input):
+        return self.cropper_fg(fallback_input)
+
+    def _fg_count(self, data: dict) -> int:
+        return int(torch.count_nonzero(data[self.lm_key]).item())
+
+    @staticmethod
+    def _register_event(data: dict, message: str) -> None:
+        events = data["_preprocess_events"]
+        events.append(
+            {"error_type": "CropByYoloFallback", "error_message": str(message)}
+        )
+        data["_preprocess_events"] = events
+
 
 class UnsqueezeDimd(MapTransform):
     def __init__(self, keys, dim=0):
@@ -369,6 +431,8 @@ class UnsqueezeDimd(MapTransform):
         for k in self.keys:
             d[k] = d[k].unsqueeze(self.dim)
         return d
+
+
 class ExtractContiguousSlicesd(RandomizableTransform, MapTransform):
     """
     Extract 3 contiguous slices (z-1, z, z+1) from image and label volumes.
@@ -425,9 +489,7 @@ class ExtractContiguousSlicesd(RandomizableTransform, MapTransform):
 
 
 class Project2D(MonaiDictTransform, Randomizable):
-    def __init__(
-        self, keys: KeysCollection, dim, operations , suffix, output_keys=None
-    ):
+    def __init__(self, keys: KeysCollection, dim, operations, suffix, output_keys=None):
         super().__init__(keys)
         assert len(keys) == len(operations), (
             "Same number of operations as keys must be given"
@@ -453,10 +515,12 @@ class Project2D(MonaiDictTransform, Randomizable):
     def func(self, data, operation):
         data = data.clone()
         data = operation(data, dim=self.dim)
-        data.meta["project2d"]= {"dim": self.dim, "operation": operation.__name__, "suffix": self.suffix}
+        data.meta["project2d"] = {
+            "dim": self.dim,
+            "operation": operation.__name__,
+            "suffix": self.suffix,
+        }
         return data
-
-
 
 
 class ResizeToTensord(MonaiDictTransform):
@@ -863,13 +927,8 @@ def slices_from_lists(slc_start, slc_stop, stride=None):
 
 
 # %%
-#SECTION:-------------------- setup--------------------------------------------------------------------------------------
+# SECTION:-------------------- setup--------------------------------------------------------------------------------------
 if __name__ == "__main__":
-    from fran.data.dataset import ImageMaskBBoxDataset
-    from fran.transforms.misc_transforms import create_augmentations
-    from fran.utils.common import *
-    from fran.data.dataset import ImageMaskBBoxDataset
-    from fran.transforms.misc_transforms import create_augmentations
     from fran.utils.common import *
 
 # %%
@@ -903,7 +962,6 @@ if __name__ == "__main__":
     print("expected:", (1, 240, 180, 106))
     print("sum:", float(out.sum()))
 
-
     print("\nCASE 2: channel-first fallback style")
     img_cf = torch.ones((1, 625, 625, 103), dtype=torch.float32)
     spacing_cf = (1.0, 1.0, 2.5)
@@ -916,7 +974,9 @@ if __name__ == "__main__":
     print("spacing mm:", spacing_cf)
     print("bbox in:", box_start, box_end)
 
-    box2 = C2.add_margin_to_bbox(box_start, box_end, C2.spatial_shape(img_cf), spacing_cf)
+    box2 = C2.add_margin_to_bbox(
+        box_start, box_end, C2.spatial_shape(img_cf), spacing_cf
+    )
     box2 = C2.maybe_expand_bbox(*box2, C2.spatial_shape(img_cf))
     print("bbox expanded:", box2)
 
@@ -932,4 +992,4 @@ if __name__ == "__main__":
 
     z_nonzero = torch.where(out[0].sum(dim=(0, 1)) > 0)[0]
     print("nonzero z idx:", z_nonzero.tolist()[:5], "...", z_nonzero.tolist()[-5:])
-    print("nonzero z count:", len(z_nonzero))# %%
+# %%
