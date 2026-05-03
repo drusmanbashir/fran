@@ -1,5 +1,6 @@
 # %%
 import ast
+import threading
 
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.managers import Project
@@ -14,9 +15,10 @@ from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.preprocessing.regionbounded import RegionBoundedDataGenerator
 from fran.utils.folder_names import FolderNames
+from tqdm.auto import tqdm
 from utilz.fileio import os, save_list, str_to_path
 from utilz.helpers import re
-from utilz.stringz import headline
+from utilz.stringz import headline, info_from_filename
 
 common_vars_filename = os.environ["FRAN_CONF"]
 
@@ -187,6 +189,84 @@ def user_input(inp: str, out=int):
     return tmp
 
 
+class StageProgressCounter:
+    def __init__(self, output_folder, total: int):
+        self.output_folder = Path(output_folder)
+        self.total = int(total)
+        self.images_folder = self.output_folder / "images"
+        self.lms_folder = self.output_folder / "lms"
+        self.baseline_images = self._names(self.images_folder)
+        self.baseline_lms = self._names(self.lms_folder)
+
+    def _names(self, folder):
+        return {pth.name for pth in folder.glob("*.pt")}
+
+    def completed_cases(self):
+        raise NotImplementedError
+
+
+class ExactCaseOutputCounter(StageProgressCounter):
+    def completed_cases(self):
+        baseline = self.baseline_images.intersection(self.baseline_lms)
+        current = self._names(self.images_folder).intersection(self._names(self.lms_folder))
+        return min(self.total, len(current - baseline))
+
+
+class CaseOutputCounter(StageProgressCounter):
+    def completed_cases(self):
+        current = self._names(self.images_folder)
+        return min(self.total, len(current - self.baseline_images))
+
+
+class PatchCaseApproxCounter(StageProgressCounter):
+    def completed_cases(self):
+        current = self._names(self.images_folder)
+        new_patch_files = len(current - self.baseline_images)
+        case_ids = {info_from_filename(name, full_caseid=True)["case_id"] for name in current}
+        estimated_patches_per_case = len(current) / max(1, len(case_ids))
+        completed = int(new_patch_files / max(1.0, estimated_patches_per_case))
+        return min(self.total, completed)
+
+
+class OutputFolderProgressMonitor:
+    def __init__(
+        self,
+        counter,
+        desc: str = "Analyze/resample",
+        unit: str = "case",
+        poll_interval: float = 0.5,
+    ):
+        self.counter = counter
+        self.poll_interval = poll_interval
+        self.completed = 0
+        self.pbar = tqdm(total=self.counter.total, desc=desc, unit=unit)
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+
+    def sync(self):
+        completed = self.counter.completed_cases()
+        delta = completed - self.completed
+        if delta > 0:
+            self.pbar.update(delta)
+            self.completed = completed
+        return self.completed
+
+    def _run(self):
+        while not self.stop_event.wait(self.poll_interval):
+            self.sync()
+
+    def start(self):
+        self.sync()
+        self.thread.start()
+        return self
+
+    def stop(self):
+        self.stop_event.set()
+        self.thread.join()
+        self.sync()
+        self.pbar.close()
+
+
 class PreprocessingManager:
     def __init__(self, args, conf=None):
         self.args = args
@@ -205,6 +285,18 @@ class PreprocessingManager:
             generator.store_label_stats = False
         return generator
 
+    def _process_with_output_progress(
+        self, generator, counter_cls, desc="Analyze/resample", **process_kwargs
+    ):
+        monitor = OutputFolderProgressMonitor(
+            counter=counter_cls(generator.output_folder, len(generator.df)),
+            desc=desc,
+        ).start()
+        try:
+            return generator.process(**process_kwargs)
+        finally:
+            monitor.stop()
+
     def resample_dataset(self, overwrite=False, num_processes=1, debug=False):
         """
         Resamples dataset to target spacing and stores it in the rapid-access fixed_spacing folder.
@@ -219,7 +311,11 @@ class PreprocessingManager:
         self._configure_postproc_artifacts(self.R)
 
         self.R.setup(overwrite=overwrite, num_processes=num_processes, debug=debug)
-        self.R.process()
+        self._process_with_output_progress(
+            self.R,
+            ExactCaseOutputCounter,
+            desc="Resample",
+        )
 
     def generate_lbd_dataset(
         self, overwrite=False, device="cpu", num_processes=1, debug=False
@@ -246,7 +342,11 @@ class PreprocessingManager:
             num_processes=num_processes,
             debug=debug,
         )
-        self.L.process()
+        self._process_with_output_progress(
+            self.L,
+            CaseOutputCounter,
+            desc="LBD",
+        )
 
     def generate_TSlabelboundeddataset(
         self,
@@ -274,7 +374,11 @@ class PreprocessingManager:
             num_processes=num_processes,
             debug=debug,
         )
-        self.L.process()
+        self._process_with_output_progress(
+            self.L,
+            CaseOutputCounter,
+            desc="LBD imported",
+        )
 
     def generate_rbd_dataset(
         self, overwrite=False, device="cpu", num_processes=1, debug=False
@@ -301,7 +405,11 @@ class PreprocessingManager:
             num_processes=num_processes,
             debug=debug,
         )
-        self.L.process()
+        self._process_with_output_progress(
+            self.L,
+            CaseOutputCounter,
+            desc="RBD",
+        )
 
     def generate_whole_images_dataset(
         self, overwrite=False, device="cpu", num_processes=1, debug=False
@@ -326,7 +434,11 @@ class PreprocessingManager:
             num_processes=num_processes,
             debug=debug,
         )
-        self.W.process()
+        self._process_with_output_progress(
+            self.W,
+            CaseOutputCounter,
+            desc="Whole",
+        )
 
     def generate_hires_patches_dataset(
         self, debug=False, overwrite=False, num_processes=1
@@ -344,7 +456,12 @@ class PreprocessingManager:
             num_processes=num_processes,
             debug=debug,
         )
-        PG.process(derive_bboxes=False)
+        self._process_with_output_progress(
+            PG,
+            PatchCaseApproxCounter,
+            desc="Patches",
+            derive_bboxes=False,
+        )
 
     def get_source_data_folder_for_patch(self):
         src_plan = self.plan["source_plan"]
