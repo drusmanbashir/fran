@@ -1,8 +1,13 @@
 from __future__ import annotations
+import gc
+from tqdm.auto import tqdm
+import ipdb
+tr = ipdb.set_trace
 
 import copy
 import json
 from pathlib import Path
+import shutil
 
 from fran.inference.cascade_yolo2 import LocaliserInfererPT
 import numpy as np
@@ -18,7 +23,49 @@ from localiser.utils.bbox_helpers import (
     standardize_bboxes,
 )
 from monai.transforms.transform import MapTransform
+from utilz.cprint import cprint
+from utilz.fileio import maybe_makedirs
 from utilz.stringz import info_from_filename
+
+class LocaliserInfererPT_RB(LocaliserInfererPT):
+    def run(self, data: list, chunksize=None, overwrite=False):
+        data = self.maybe_filter_images(data, overwrite=overwrite)
+        cprint("Images to process: " + str(len(data)), color="yellow")
+        maybe_makedirs(self.output_folder)
+        if len(data) == 0:
+            return []
+        workspace = self.create_workspace()
+        self.last_workspace = workspace
+        try:
+            case_records = self.preprocess_to_workspace(data, workspace)
+            outputs = self.predict_from_workspace(case_records)
+            return outputs
+        finally:
+            self.cleanup()
+            if self.cleanup_temp:
+                shutil.rmtree(workspace, ignore_errors=True)
+                self.last_workspace = None
+            else:
+                print(f"Stage-1 artifacts kept at: {workspace}")
+
+
+
+    def preprocess_to_workspace(self, data_sublist, workspace):
+        self.write_workspace_args(workspace, data_sublist)
+        self.prepare_data(data_sublist)
+        cprint(f"Preprocessing and exporting projections to workspace...", color="cyan")
+        case_records = []
+        for case_batch in tqdm(self.pred_dl, desc="Stage 1: nifti -> jpg", leave=False):
+            for cas in case_batch:
+                processed = self.preprocess_case(cas)
+                exported = self.export_case(processed, workspace)
+                case_records.append(exported)
+            del cas , case_batch, processed, exported
+            gc.collect()
+        self.cleanup()
+
+
+
 
 class CropByYolo(MapTransform):
     def __init__(
@@ -194,7 +241,6 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
         fallback_out = self._restore_spatial_only(fallback_out)
         return fallback_out
 
-
     def _fg_count(self, data: dict) -> int:
         return int(torch.count_nonzero(data[self.lm_key]).item())
 
@@ -223,6 +269,7 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
         )
         data["_preprocess_events"] = events
 
+
 class _RBDSamplerWorkerBase(RayWorkerBase):
     remapping_key = "remapping_lbd_rbd"
 
@@ -250,7 +297,7 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
 
     def create_transforms(self, device):
         super().create_transforms(device=device)
-        margin = self.plan["expand_by"] 
+        margin = self.plan["expand_by"]
         # self.cropper_yolo = CropByYolo(
         #     keys=["image", "lm"],
         #     lm_key="lm",
@@ -309,7 +356,9 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
     remapping_key = "remapping_lbd_rbd"
     subfolder_key = "data_folder_rbd"
 
-    def _index_bbox_files_by_case_id(self, bbox_files: list[Path]) -> dict[str, list[Path]]:
+    def _index_bbox_files_by_case_id(
+        self, bbox_files: list[Path]
+    ) -> dict[str, list[Path]]:
         mapping: dict[str, list[Path]] = {}
         for fn in bbox_files:
             case_keys = self._case_id_keys_from_bbox_file(fn)
@@ -327,113 +376,99 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
         return keys
 
     def _ensure_bbox_columns(self):
-      if "bbox" not in self.df.columns:
-          self.df["bbox"] = None
-      if "bbox_fn" not in self.df.columns:
-          self.df["bbox_fn"] = None
+        if "bbox" not in self.df.columns:
+            self.df["bbox"] = None
+        if "bbox_fn" not in self.df.columns:
+            self.df["bbox_fn"] = None
 
     def _standardize_cached_bbox_json(
         self, json_fn: Path, classes_in_bbox: list[int]
     ) -> dict:
-      bbox = json.loads(json_fn.read_text())
-      pads3tup = bbox["ap"]["meta"]["letterbox_padded"]
-      try:
-          return standardize_bboxes(
-              bbox["ap"],
-              bbox["lat"],
-              pads3tup,
-              classes_in_bbox,
-              serialised=True,
-          )
-      except EmptyBBoxClassMatchError as exc:
-          raise EmptyBBoxClassMatchError(
-              "Failed to standardize cached bbox JSON for RBD preprocessing. "
-              f"case_id={json_fn.stem} bbox_json={json_fn} "
-              f"{exc}"
-          ) from exc
+        bbox = json.loads(json_fn.read_text())
+        pads3tup = bbox["ap"]["meta"]["letterbox_padded"]
+        try:
+            return standardize_bboxes(
+                bbox["ap"],
+                bbox["lat"],
+                pads3tup,
+                classes_in_bbox,
+                serialised=True,
+            )
+        except EmptyBBoxClassMatchError as exc:
+            raise EmptyBBoxClassMatchError(
+                "Failed to standardize cached bbox JSON for RBD preprocessing. "
+                f"case_id={json_fn.stem} bbox_json={json_fn} "
+                f"{exc}"
+            ) from exc
 
     def attach_bboxes(self, classes_in_bbox: list[int]) -> None:
         self._ensure_bbox_columns()
         bbox_files = sorted(self.I.output_folder.glob("*.json"))
         by_case = self._index_bbox_files_by_case_id(bbox_files)
         case_ids = self.df["case_id"].astype(str)
-        by_case_found = {case_id: fns for case_id, fns in by_case.items() if case_id in case_ids}
+        case_id_set = set(case_ids.tolist())
+        by_case_found = {
+            case_id: fns for case_id, fns in by_case.items() if case_id in case_id_set
+        }
 
         resolved_fns = {}
         resolved_bboxes = {}
         for case_id, fns in by_case_found.items():
-          if len(fns) != 1:
-              raise ValueError(
-                  f"Duplicate bbox matches for case_id={case_id}: {fns}"
-              )
-          json_fn = fns[0].resolve()
-          resolved_fns[case_id] = json_fn
-          resolved_bboxes[case_id] = self._standardize_cached_bbox_json(
-              json_fn, classes_in_bbox
-          )
+            if len(fns) != 1:
+                raise ValueError(f"Duplicate bbox matches for case_id={case_id}: {fns}")
+            json_fn = fns[0].resolve()
+            resolved_fns[case_id] = json_fn
+            resolved_bboxes[case_id] = self._standardize_cached_bbox_json(
+                json_fn, classes_in_bbox
+            )
         self.df["bbox_fn"] = case_ids.map(resolved_fns)
         self.df["bbox"] = case_ids.map(resolved_bboxes)
 
     def missing_bbox_mask(self):
-      self._ensure_bbox_columns()
-      return self.df["bbox"].isna()
+        self._ensure_bbox_columns()
+        return self.df["bbox"].isna()
 
     def _localiser_regions_list(self) -> list[str]:
-      regions = self.plan.get("localiser_regions")
-      if regions is None:
-          return []
-      elif isinstance(regions, (list, tuple, set)):
-          return [str(region).strip() for region in regions if str(region).strip()]
-      else:
-          return [r for r in str(regions).replace(" ", "").split(",") if r]
-
-    def _localiser_input_images(self, imgs: list[Path]) -> list[str]:
-      inputs = []
-      for img in imgs:
-          img = Path(img)
-          if img.suffix != ".pt":
-              inputs.append(str(img))
-              continue
-          tensor = torch.load(img, weights_only=False)
-          src = tensor.meta["filename_or_obj"]
-          inputs.append(str(src))
-      return inputs
-
-    def infer_yolo_bboxes(self):
-      regions = self._localiser_regions_list()
-      self.I = LocaliserInfererPT(
-          localiser_regions=regions,
-          window="a",
-          bs=64,
-          devices=[0],
-          debug=False,
-      )
-      self.yolo_specs = self.I.yolo_state_dict
-      classes_in_bbox = self.get_region_indices()
-      self.attach_bboxes(classes_in_bbox)
-
-      missing = self.missing_bbox_mask()
-      imgs = self.df.loc[missing, "image"].tolist()
-      if len(imgs) == 0:
-          return
-      imgs = self._localiser_input_images(imgs)
-      self.I.run(imgs, overwrite=False)
-      self.attach_bboxes(classes_in_bbox)
-
-    def process(self):
-      self.maybe_infer_bboxes()
-      self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
-
-      return super().process()
-
-
-    def create_data_df(self):
-      super().create_data_df()
-      self._ensure_bbox_columns()
+        regions = self.plan.get("localiser_regions")
+        if regions is None:
+            return []
+        elif isinstance(regions, (list, tuple, set)):
+            return [str(region).strip() for region in regions if str(region).strip()]
+        else:
+            return [r for r in str(regions).replace(" ", "").split(",") if r]
 
     def maybe_infer_bboxes(self):
-      self.infer_yolo_bboxes()
+        regions = self._localiser_regions_list()
+        self.I = LocaliserInfererPT_RB(
+            localiser_regions=regions,
+            window="a",
+            bs=24,
+            devices=[0],
+            debug=False,
+        )
+        self.yolo_specs = self.I.yolo_state_dict
+        classes_in_bbox = self.get_region_indices()
+        self.attach_bboxes(classes_in_bbox)
 
+        missing = self.missing_bbox_mask()
+        imgs = self.df.loc[missing, "image"].tolist()
+        if len(imgs) == 0:
+            return
+        cprint(
+            f"Total case {len(self.df)}. \nBBoxes on file: {len(self.df) - len(imgs)}. \nRemaining bboxes: {len(imgs)}. \nInferring missing bboxes with localiser for regions: {regions}",
+            color="blue",
+        )
+        self.I.run(imgs, overwrite=False)
+        self.attach_bboxes(classes_in_bbox)
+
+    def process(self):
+        self.maybe_infer_bboxes()
+        self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
+        return super().process()
+
+    def create_data_df(self):
+        super().create_data_df()
+        self._ensure_bbox_columns()
 
     def get_region_indices(self):
         regions = self.plan["localiser_regions"]
@@ -459,7 +494,6 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
     @property
     def loc_folder(self):
         return Path(self.output_folder) / "localisers"
-
 
 
 # %%
@@ -494,7 +528,7 @@ if __name__ == "__main__":
     pp(existing_fldr)
 # %%
 
-    overwrite=True
+    overwrite = True
     num_processes = 16
     R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr)
     R.setup(num_processes=num_processes, overwrite=overwrite)
@@ -580,8 +614,7 @@ if __name__ == "__main__":
 
     dici = Lp(dici)
 
-
-    bbox["width"] = (0.0898,0.5)
+    bbox["width"] = (0.0898, 0.5)
 
     lm = dici["lm"]
     lm_org = lm.clone()
@@ -590,10 +623,8 @@ if __name__ == "__main__":
     img = crop_to_yolo_bbox(image, bbox)
     lm = crop_to_yolo_bbox(lm, bbox)
 
-
     counts_after = lm.count_nonzero()
     counts_after == counts_org
-
 
     bbo2 = C._expand_bbox_mm(bbox, lm, C.margin)
 
@@ -603,7 +634,7 @@ if __name__ == "__main__":
     axis_map = {"ap": 0, "width": 1, "height": 2}
 
 # %%
-    margin_mm=50
+    margin_mm = 50
     for key, axis in axis_map.items():
         start, end = bbox_out[key]
         start = float(start)
@@ -612,7 +643,6 @@ if __name__ == "__main__":
         delta = vox_margin / max(int(spatial_shape[axis]), 1)
         bbox_out[key] = (max(0.0, start - delta), min(1.0, end + delta))
 # %%
-
 
     ImageMaskViewer([img, lm])
 
@@ -650,7 +680,9 @@ if __name__ == "__main__":
     overwrite = False
     num_processes = 5
     debug_ = False
-    R.setup(overwrite=overwrite, device="cpu", num_processes=num_processes, debug=debug_)
+    R.setup(
+        overwrite=overwrite, device="cpu", num_processes=num_processes, debug=debug_
+    )
     R.process()
 # %%
     R.mini_dfs = R.split_dataframe_for_workers(R.df, num_processes)
@@ -665,7 +697,6 @@ if __name__ == "__main__":
     )
     RR.process(mini_df)
 # %%
-
 
     case_id = "kits23_00486"
 
@@ -702,8 +733,8 @@ if __name__ == "__main__":
 
     dici2 = C(dici)
 # %%
-    img = dici['image']
-    lm = dici['lm']
+    img = dici["image"]
+    lm = dici["lm"]
     ImageMaskViewer([img, lm])
 
 # %%

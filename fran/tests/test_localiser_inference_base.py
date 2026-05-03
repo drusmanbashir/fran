@@ -1,4 +1,6 @@
 from pathlib import Path
+from contextlib import nullcontext
+from types import MethodType, SimpleNamespace
 
 import torch
 from localiser.inference import base as localiser_base
@@ -104,6 +106,75 @@ def test_maybe_filter_images_uses_cached_json_case_ids(tmp_path, monkeypatch):
     filtered = inferer.maybe_filter_images(images, overwrite=False)
 
     assert filtered == [Path("/tmp/kits23_00098.nii.gz")]
+
+
+def test_predict_from_workspace_reloads_case_originals_per_chunk(monkeypatch):
+    inferer = LocaliserInferer.__new__(LocaliserInferer)
+    inferer.bs = 2
+    inferer.fabric_device = "cpu"
+    inferer.fabric = SimpleNamespace(autocast=lambda: nullcontext())
+    inferer.save_jpg = False
+    inferer.mem_quota = 0.0
+
+    loaded_sources = []
+
+    monkeypatch.setattr(
+        inferer,
+        "load_projection_jpg",
+        lambda jpg_path: torch.ones(3, 2, 2, dtype=torch.float32),
+    )
+    monkeypatch.setattr(
+        inferer,
+        "load_case_original",
+        lambda source: loaded_sources.append(Path(source).name) or f"orig:{Path(source).name}",
+    )
+    monkeypatch.setattr(
+        inferer,
+        "model",
+        lambda image_batch_device, verbose=False: [
+            torch.tensor(float(index)) for index in range(len(image_batch_device))
+        ],
+    )
+    monkeypatch.setattr(inferer, "combine_bboxes", lambda out: out)
+    monkeypatch.setattr(inferer, "postprocess", lambda out: out)
+    monkeypatch.setattr(inferer, "save_bboxes_final", lambda out: None)
+    monkeypatch.setattr(inferer, "system_mem_remaining", lambda: 1.0)
+    monkeypatch.setattr(inferer, "delete_image_orig", lambda outputs: None)
+
+    def package_preds(self, batch):
+        return [
+            {"case_index": case_index, "image_orig": image_orig}
+            for case_index, image_orig in enumerate(batch["image_orig"])
+        ]
+
+    inferer.package_preds = MethodType(package_preds, inferer)
+
+    case_records = [
+        {
+            "case_id": "case_001",
+            "source": Path("/tmp/case_001.nii.gz"),
+            "projections": [
+                {"jpg_path": Path("/tmp/case_001_lat.jpg"), "meta": {}, "projection_key": "image1", "orientation": "lat"},
+                {"jpg_path": Path("/tmp/case_001_ap.jpg"), "meta": {}, "projection_key": "image2", "orientation": "ap"},
+            ],
+        },
+        {
+            "case_id": "case_002",
+            "source": Path("/tmp/case_002.nii.gz"),
+            "projections": [
+                {"jpg_path": Path("/tmp/case_002_lat.jpg"), "meta": {}, "projection_key": "image1", "orientation": "lat"},
+                {"jpg_path": Path("/tmp/case_002_ap.jpg"), "meta": {}, "projection_key": "image2", "orientation": "ap"},
+            ],
+        },
+    ]
+
+    outputs = inferer.predict_from_workspace(case_records)
+
+    assert loaded_sources == ["case_001.nii.gz", "case_002.nii.gz"]
+    assert [out["image_orig"] for out in outputs] == [
+        "orig:case_001.nii.gz",
+        "orig:case_002.nii.gz",
+    ]
 
 
 def test_apply_bboxes_materializes_contiguous_crop():

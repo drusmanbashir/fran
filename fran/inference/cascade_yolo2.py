@@ -1,41 +1,25 @@
 import gc
-import json
 from copy import deepcopy
-
-from tqdm.auto import tqdm
-from fran.inference.common_vars import kits_imgs, liver_imgs
-from localiser.transforms.transforms import MapTransform
-from monai.transforms.utility.dictionary import (
-    CastToTyped,
-    EnsureChannelFirstd,
-    SqueezeDimd,
-)
-
-from monai.data.dataloader import DataLoader
-from monai.data.dataset import Dataset
-from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from pathlib import Path
-from fran.transforms.misc_transforms import DummyTransform
+
 import ipdb
-from localiser.inference.localiserinferer import LocaliserInferer
-from utilz.fileio import load_json
-from utilz.imageviewers import ImageMaskViewer
-
-tr = ipdb.set_trace
 import torch
-
-from utilz.cprint import cprint
+from monai.transforms.spatial.dictionary import Orientationd
+from monai.transforms.utility.dictionary import EnsureChannelFirstd, SqueezeDimd
+from tqdm.auto import tqdm
 from utilz.helpers import MatchError, find_matching_fn, set_autoreload
-from utilz.stringz import strip_extension
 
 set_autoreload()
 from fran.inference.cascade import CascadeInferer, img_bbox_collated
 from fran.inference.helpers import list_to_chunks, parse_input
-from fran.transforms.imageio import LoadSITKd
+from fran.transforms.imageio import LoadSITKd, SimpleTorchLoader
+from fran.transforms.misc_transforms import DummyTransform
 from fran.transforms.spatialtransforms import CropByYolo
+from localiser.inference.localiserinferer import LocaliserInferer
 from localiser.transforms.tsl import TSLRegions
-
 from localiser.utils.bbox_helpers import standardize_bboxes, yolo_bbox_to_slices
+from utilz.cprint import cprint
+from utilz.fileio import load_json
 
 
 def add_channel_slices(bbox):
@@ -44,6 +28,7 @@ def add_channel_slices(bbox):
 
 def orig_shape_from_meta(image):
     import nibabel as nib
+
     spatial_shape = image.meta["spatial_shape"]
     axcodes = nib.aff2axcodes(image.meta["affine"].cpu().numpy())
     assert axcodes == ("R", "A", "S"), axcodes
@@ -88,7 +73,11 @@ def localiser_regions_to_yolo_classes(yolo_specs, localiser_regions):
 
 class LocaliserInfererPT(LocaliserInferer):
     # Oriented Loaded tensors expected
-    keys_preproc = "E,O,Orig,W,S,P1,P2,PF,R,Rep,E2,N"
+
+    image_key = "image"
+    loader = SimpleTorchLoader(keys=[image_key])
+
+    keys_preproc = "E,Dev,O,Orig,W,S,P1,P2,PF,R,Rep,E2,N"
 
     def __init__(
         self,
@@ -127,8 +116,16 @@ class LocaliserInfererPT(LocaliserInferer):
             ):
                 out.pop(key, None)
 
-    def postprocess(self, out):
-        return super().postprocess(out)
+    def preprocess_to_workspace(self, data_sublist, workspace):
+        self.write_workspace_args(workspace, data_sublist)
+        self.prepare_data(data_sublist)
+        cprint(f"Preprocessing and exporting projections to workspace...", color="cyan")
+        case_records = []
+        for case_batch in tqdm(self.pred_dl, desc="Stage 1: nifti -> jpg", leave=False):
+            for case in case_batch:
+                processed = self.preprocess_case(case)
+                case_records.append(self.export_case(processed, workspace))
+        self.cleanup()
 
     def filter_done_images(self, images, overwrite=False):
         if overwrite == True or isinstance(images[0], torch.Tensor):
@@ -144,10 +141,6 @@ class LocaliserInfererPT(LocaliserInferer):
                 if self.image_case_id(image) not in case_ids_done
             ]
 
-    def prepare_data(self, data):
-        return super().prepare_data(data)
-
-    # def load_images(self, images):
     #     return images
 
 
@@ -294,9 +287,7 @@ class CascadeInfererYOLO(CascadeInferer):
             image = dat["image"]
             bbox = dat["bounding_box"]
             dat["full_meta"] = deepcopy(image.meta)
-            dat["full_meta"]["spatial_shape"] = tuple(
-                int(v) for v in image.shape[1:]
-            )
+            dat["full_meta"]["spatial_shape"] = tuple(int(v) for v in image.shape[1:])
             # Materialize the crop so the bbox view does not retain the full volume.
             dat["image"] = image[tuple(bbox)].contiguous()
             data2.append(dat)
@@ -313,7 +304,9 @@ class CascadeInfererYOLO(CascadeInferer):
                 img_json_fn_pairs.append(dici)
         except MatchError:
             cprint(
-                "Not all bbox jsons found. Running YOLO to extract and save bboxes." ,"yellow"           )
+                "Not all bbox jsons found. Running YOLO to extract and save bboxes.",
+                "yellow",
+            )
             return None
         data_out = []
         cprint("Loading bbox jsons and ITK images", "green")
@@ -345,10 +338,13 @@ class CascadeInfererYOLO(CascadeInferer):
 # SETUP
 if __name__ == "__main__":
     import os
-    from fran.inference.common_vars import imgs_bosniak, runs_2d
+
+    from fran.inference.common_vars import imgs_bosniak, kits_imgs, liver_imgs, runs_2d
     from fran.managers import Project
     from localiser.preprocessing.data.nii2pt_tsl import tsl_folder_name_builder
     from utilz.fileio import load_yaml
+    from utilz.imageviewers import ImageMaskViewer
+    from utilz.stringz import strip_extension
 
     # YOLO PATH VARS (STANDARD LOCALISER TRAIN SETUP)
     common_vars_filename = Path(os.environ["FRAN_CONF"]) / "config.yaml"
@@ -390,8 +386,8 @@ if __name__ == "__main__":
     else:
         run_yolo_wts = runs_2d["ab_ch_ne_pe"][0]
 
-    bad_ids = [60,21,68,50,37,51,54,69,63,58]
-    bad_ids  = ['0'+str(a)+".nii" for a in bad_ids]
+    bad_ids = [60, 21, 68, 50, 37, 51, 54, 69, 63, 58]
+    bad_ids = ["0" + str(a) + ".nii" for a in bad_ids]
 # %%
     bad_files = []
     for id in bad_ids:
@@ -479,11 +475,11 @@ if __name__ == "__main__":
 # %%
     D.create_and_set_postprocess_transforms()
     data_sublist = sublist
-    data=image_files
+    data = image_files
     # data = D.load_images(imgs_sublist)
     data_bboxes = D.extract_fg_bboxes(data, overwrite=overwrite)
 
-    chunksize=12
+    chunksize = 12
     data_chunks = list_to_chunks(data_bboxes, chunksize)
     data_sublist = data_bboxes[:chunksize]
     data = D.apply_bboxes(data_sublist)
@@ -495,9 +491,9 @@ if __name__ == "__main__":
     pred_patches = D.decollate_patches(pred_patches, bboxes_sublist)
 # %%
     for patch in pred_patches:
-        print(patch['bounding_box'])
-        print(patch['KITS23-SIRIG'].shape)
-        print(patch['KITS23-SIRIG'].meta["spatial_shape"])
+        print(patch["bounding_box"])
+        print(patch["KITS23-SIRIG"].shape)
+        print(patch["KITS23-SIRIG"].meta["spatial_shape"])
 # %%
     pred_patches[0].keys()
     bboxes_sublist = [dat["bounding_box"] for dat in data_sublist]
@@ -675,3 +671,5 @@ if __name__ == "__main__":
 
 
 # %%
+
+
