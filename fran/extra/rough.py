@@ -45,9 +45,8 @@ if __name__ == "__main__":
 # %%
 # %%
 #SECTION:-------------------- ImageViewer--------------------------------------------------------------------------------------
-      img_fn = Path("/r/datasets/preprocessed/tmpts/rbd/spc_080_080_150_rlb07fa8d38_rlb07fa8d38_d87c4480/images/totseg_s0009.pt")
-
-      lm_fn = Path("/r/datasets/preprocessed/tmpts/rbd/spc_080_080_150_rlb07fa8d38_rlb07fa8d38_d87c4480/lms/totseg_s0009.pt")
+      img_fn = Path("/s/fran_storage/datasets/preprocessed/kits23/fixed_spacing/spc_080_080_150/images/kits23_00525.pt")
+      lm_fn = Path("/s/fran_storage/datasets/preprocessed/kits23/fixed_spacing/spc_080_080_150/lms/kits23_00525.pt")
       im = torch.load(img_fn, weights_only=False)
       lm = torch.load(lm_fn, weights_only=False)
 

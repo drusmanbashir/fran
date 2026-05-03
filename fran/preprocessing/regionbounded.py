@@ -1,161 +1,96 @@
 from __future__ import annotations
-import gc
-from tqdm.auto import tqdm
-import ipdb
-tr = ipdb.set_trace
 
-import copy
 import json
+import math
 from pathlib import Path
-import shutil
 
-from fran.inference.cascade_yolo2 import LocaliserInfererPT
+import ipdb
+from localiser.inference.base import bbox_from_file
 import numpy as np
 import ray
 import torch
+from fran.inference.cascade_yolo2 import LocaliserInfererPT
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
-from fran.transforms.spatialtransforms import CropForegroundMinShaped
+from fran.transforms.spatialtransforms import CropForegroundMinShaped, CropMaybePad
 from fran.utils.affine import spacing_from_affine
 from localiser.utils.bbox_helpers import (
     EmptyBBoxClassMatchError,
-    crop_to_yolo_bbox,
     standardize_bboxes,
 )
 from monai.transforms.transform import MapTransform
 from utilz.cprint import cprint
-from utilz.fileio import maybe_makedirs
 from utilz.stringz import info_from_filename
 
-class LocaliserInfererPT_RB(LocaliserInfererPT):
-    def run(self, data: list, chunksize=None, overwrite=False):
-        data = self.maybe_filter_images(data, overwrite=overwrite)
-        cprint("Images to process: " + str(len(data)), color="yellow")
-        maybe_makedirs(self.output_folder)
-        if len(data) == 0:
-            return []
-        workspace = self.create_workspace()
-        self.last_workspace = workspace
-        try:
-            case_records = self.preprocess_to_workspace(data, workspace)
-            outputs = self.predict_from_workspace(case_records)
-            return outputs
-        finally:
-            self.cleanup()
-            if self.cleanup_temp:
-                shutil.rmtree(workspace, ignore_errors=True)
-                self.last_workspace = None
-            else:
-                print(f"Stage-1 artifacts kept at: {workspace}")
 
-
-
-    def preprocess_to_workspace(self, data_sublist, workspace):
-        self.write_workspace_args(workspace, data_sublist)
-        self.prepare_data(data_sublist)
-        cprint(f"Preprocessing and exporting projections to workspace...", color="cyan")
-        case_records = []
-        for case_batch in tqdm(self.pred_dl, desc="Stage 1: nifti -> jpg", leave=False):
-            for cas in case_batch:
-                processed = self.preprocess_case(cas)
-                exported = self.export_case(processed, workspace)
-                case_records.append(exported)
-            del cas , case_batch, processed, exported
-            gc.collect()
-        self.cleanup()
-
-
-
-
-class CropByYolo(MapTransform):
+class CropByYolo(CropMaybePad):
     def __init__(
         self,
         keys=("image", "lm"),
         lm_key="lm",
         bbox_key="bbox",
+        min_shape=(0, 0, 0),
         margin=20,
         allow_missing_keys=False,
     ):
-        super().__init__(keys=keys, allow_missing_keys=allow_missing_keys)
+        super().__init__(keys=keys, min_shape=min_shape, margin=margin)
         self.lm_key = lm_key
         self.bbox_key = bbox_key
-        self.margin = float(margin)
 
     def __call__(self, data):
         dici = dict(data)
-        self._assert_3d(dici)
-        first_crop = self._crop_keys(dici, dici[self.bbox_key])
         fg_before = self._fg_count(dici)
-        expanded_crop = self._try_expanded_crop(
-            data=dici,
-            bbox=dici[self.bbox_key],
-            first_crop=first_crop,
+        dici_4d = self._temporarily_channel_first(dici)
+        spacing = spacing_from_affine(dici[self.lm_key].meta["affine"])
+        box_start, box_end = self._yolo_bbox_to_bounds(
+            tuple(int(v) for v in dici[self.lm_key].shape),
+            dici[self.bbox_key],
         )
-        fg_after_expanded = self._fg_count(expanded_crop)
+        cropped_4d = super().__call__(dici_4d, box_start, box_end, spacing)
+        cropped_4d[self.bbox_key] = dici[self.bbox_key]
+        out = self._restore_spatial_only(cropped_4d)
+        fg_after_expanded = self._fg_count(out)
         self._log_mismatch(
             data=dici,
             fg_before=fg_before,
             fg_after=fg_after_expanded,
         )
-        return expanded_crop
-
-    def _crop_keys(self, data: dict, bbox: dict) -> dict:
-        out = dict(data)
-        for key in self.key_iterator(out):
-            out[key] = crop_to_yolo_bbox(out[key], bbox)
         return out
 
     def _fg_count(self, data: dict) -> int:
         return int(torch.count_nonzero(data[self.lm_key]).item())
 
-    def _try_expanded_crop(
-        self,
-        *,
-        data: dict,
-        bbox: dict,
-        first_crop: dict,
-    ) -> dict:
-        expanded_bbox = self._expand_bbox_mm(
-            bbox=bbox,
-            lm=data[self.lm_key],
-            margin_mm=self.margin,
-        )
-        expanded_crop = self._crop_keys(data, expanded_bbox)
-        expanded_crop[self.bbox_key] = expanded_bbox
-        return expanded_crop
-
-    def _assert_3d(self, data: dict):
-        for key in self.key_iterator(data):
-            assert data[key].ndim == 3, (
-                f"CropByYolo expects 3D tensors, got {key}.ndim={data[key].ndim}"
-            )
-
-    def _expand_bbox_mm(self, bbox: dict, lm, margin_mm: float) -> dict:
-        bbox_out = copy.deepcopy(bbox)
-        spacing = self._spacing_from_affine(lm)
-        spatial_shape = self._spatial_shape(lm)
-        axis_map = {"ap": 0, "width": 1, "height": 2}
-
-        for key, axis in axis_map.items():
-            start, end = bbox_out[key]
-            start = float(start)
-            end = float(end)
-            vox_margin = int(np.ceil(margin_mm / spacing[axis]))
-            delta = vox_margin / max(int(spatial_shape[axis]), 1)
-            bbox_out[key] = (max(0.0, start - delta), min(1.0, end + delta))
-        return bbox_out
-
-    def _spacing_from_affine(self, lm) -> np.ndarray:
-        return spacing_from_affine(lm.meta["affine"])
-
     @staticmethod
-    def _spatial_shape(tensor):
-        return tuple(int(v) for v in tensor.shape)
+    def _yolo_bbox_to_bounds(img_shape, bbox_dici):
+        width3d, ap3d, height3d = img_shape
+        wd = bbox_dici["width"]
+        height = bbox_dici["height"]
+        ap = bbox_dici["ap"]
+        return (
+            math.floor(wd[0] * width3d),
+            math.floor(ap[0] * ap3d),
+            math.floor((1.0 - height[1]) * height3d),
+        ), (
+            math.ceil(wd[1] * width3d),
+            math.ceil(ap[1] * ap3d),
+            math.ceil((1.0 - height[0]) * height3d),
+        )
 
-    def _log_context(self, data: dict):
-        case_id = data.get("case_id")
-        bbox_fn = data.get("bbox_fn")
-        return case_id, bbox_fn
+    def _temporarily_channel_first(self, data: dict) -> dict:
+        d = dict(data)
+        added_channel_keys = []
+        for key in self.key_iterator(d):
+            d[key] = d[key].unsqueeze(0)
+            added_channel_keys.append(key)
+        d["_crop_by_yolo_added_channel_keys"] = added_channel_keys
+        return d
+
+    def _restore_spatial_only(self, data: dict) -> dict:
+        d = dict(data)
+        added_channel_keys = d.pop("_crop_by_yolo_added_channel_keys")
+        for key in added_channel_keys:
+            d[key] = d[key].squeeze(0)
+        return d
 
     def _log_mismatch(
         self,
@@ -164,11 +99,10 @@ class CropByYolo(MapTransform):
         fg_before: int,
         fg_after: int,
     ) -> None:
-        case_id, bbox_fn = self._log_context(data)
         self._register_warning(
             data,
             "CropByYolo fg mismatch: "
-            f"case_id={case_id} bbox_source_path={bbox_fn} fg_before={fg_before} "
+            f"case_id={data.get('case_id')} bbox_source_path={data.get('bbox_fn')} fg_before={fg_before} "
             f"fg_after={fg_after}",
         )
 
@@ -200,6 +134,7 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
             keys=keys,
             lm_key=lm_key,
             bbox_key=bbox_key,
+            min_shape=min_shape,
             margin=margin,
             allow_missing_keys=allow_missing_keys,
         )
@@ -217,11 +152,11 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
         fg_before = self._fg_count(original)
         yolo_out = self.cropper_yolo(dict(original))
         fallback_input = dict(original)
+        fg_after_yolo = self._fg_count(yolo_out)
         fallback_input["_preprocess_events"] = list(yolo_out["_preprocess_events"])
 
         fallback_out = self.apply_crop_fg(fallback_input)
         fg_after_fallback = self._fg_count(fallback_out)
-        fg_after_yolo = self._fg_count(yolo_out)
 
         case_id = original.get("case_id")
         bbox_fn = original.get("bbox_fn")
@@ -439,10 +374,10 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
 
     def maybe_infer_bboxes(self):
         regions = self._localiser_regions_list()
-        self.I = LocaliserInfererPT_RB(
+        self.I = LocaliserInfererPT(
             localiser_regions=regions,
             window="a",
-            bs=24,
+            bs=16,
             devices=[0],
             debug=False,
         )
@@ -499,16 +434,11 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
 # %%
 # SECTION:-------------------- setup-------------------------------------------------------------------------------------- if __name__ == "__main__":
 if __name__ == "__main__":
-    from pathlib import Path
-
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
     from fran.utils.common import *
     from fran.utils.folder_names import FolderNames
-    from monai.transforms.io.dictionary import LoadImaged
-    from fran.transforms.imageio import TorchReader
     from utilz.helpers import pp
-
     project_title = "kits23"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
@@ -528,20 +458,31 @@ if __name__ == "__main__":
     pp(existing_fldr)
 # %%
 
-    overwrite = True
-    num_processes = 16
+    overwrite = False
+    num_processes = 1
     R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr)
     R.setup(num_processes=num_processes, overwrite=overwrite)
     R.process()
 # %%
+    
+        
+
+# %%
+
+
+
     RR = RBDSamplerWorkerLocal(
         project=R.project,
         plan=R.plan,
         data_folder=R.data_folder,
         output_folder=R.output_folder,
     )
+# %%
 
     row = R.df.iloc[0]
+    RR.debug=True
+# %%
+# %%
     dici = {
         "case_id": row["case_id"],
         "image": row["image"],
@@ -620,29 +561,12 @@ if __name__ == "__main__":
     lm_org = lm.clone()
     counts_org = lm.count_nonzero().item()
 
-    img = crop_to_yolo_bbox(image, bbox)
-    lm = crop_to_yolo_bbox(lm, bbox)
+    dici2 = C(dici)
+    img = dici2["image"]
+    lm = dici2["lm"]
 
     counts_after = lm.count_nonzero()
     counts_after == counts_org
-
-    bbo2 = C._expand_bbox_mm(bbox, lm, C.margin)
-
-    bbox_out = copy.deepcopy(bbox)
-    spacing = C._spacing_from_affine(lm)
-    spatial_shape = C._spatial_shape(lm)
-    axis_map = {"ap": 0, "width": 1, "height": 2}
-
-# %%
-    margin_mm = 50
-    for key, axis in axis_map.items():
-        start, end = bbox_out[key]
-        start = float(start)
-        end = float(end)
-        vox_margin = int(np.ceil(margin_mm / spacing[axis]))
-        delta = vox_margin / max(int(spatial_shape[axis]), 1)
-        bbox_out[key] = (max(0.0, start - delta), min(1.0, end + delta))
-# %%
 
     ImageMaskViewer([img, lm])
 
@@ -678,7 +602,7 @@ if __name__ == "__main__":
     row = R.df.iloc[0]
 # %%
     overwrite = False
-    num_processes = 5
+    num_processes = 1
     debug_ = False
     R.setup(
         overwrite=overwrite, device="cpu", num_processes=num_processes, debug=debug_
@@ -696,6 +620,14 @@ if __name__ == "__main__":
         output_folder=R.output_folder,
     )
     RR.process(mini_df)
+
+#SECTION:-------------------- process--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.process
+    # R.maybe_infer_bboxes()  # T:self_ref|self.maybe_infer_bboxes()
+    R.mini_dfs = R.split_dataframe_for_workers(R.df, R.num_processes)  # T:self_ref|self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
+    process_result = super().process()  # T:return|return super().process()
+    # end PythonMethodScratch  # T:block_end|RegionBoundedDataGenerator.process
+# %%
+    a= R.mini_dfs[0].iloc[:3]
 # %%
 
     case_id = "kits23_00486"
@@ -762,4 +694,19 @@ if __name__ == "__main__":
     dici3["lm"].count_nonzero().item()
 
     dici3.get("_preprocess_events")
-# %%
+
+    # %%  # T:block_start|RegionBoundedDataGenerator.process
+
+    # %%
+    bbox_files = []
+    # %%  # T:block_start|RegionBoundedDataGenerator._index_bbox_files_by_case_id
+#SECTION:-------------------- _index_bbox_files_by_case_id--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator._index_bbox_files_by_case_id
+    mapping: dict[str, list[Path]] = {}
+    fn = next(iter(bbox_files))  # T:loop_probe|for fn in bbox_files:
+    case_keys = R._case_id_keys_from_bbox_file(fn)  # T:self_ref|    case_keys = self._case_id_keys_from_bbox_file(fn)
+    case_id = next(iter(case_keys))  # T:loop_probe|    for case_id in case_keys:
+    mapping.setdefault(case_id, []).append(fn)  # T:indent|        mapping.setdefault(case_id, []).append(fn)
+    case_id, fns = next(iter(mapping.items()))  # T:loop_probe|for case_id, fns in mapping.items():
+    mapping[case_id] = sorted({Path(fn) for fn in fns}, key=lambda p: str(p))  # T:indent|    mapping[case_id] = sorted({Path(fn) for fn in fns}, key=lambda p: str(p))
+    _index_bbox_files_by_case_id_result = mapping  # T:return|return mapping
+    # end PythonMethodScratch  # T:block_end|RegionBoundedDataGenerator._index_bbox_files_by_case_id

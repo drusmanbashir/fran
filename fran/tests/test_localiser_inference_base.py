@@ -108,6 +108,25 @@ def test_maybe_filter_images_uses_cached_json_case_ids(tmp_path, monkeypatch):
     assert filtered == [Path("/tmp/kits23_00098.nii.gz")]
 
 
+def test_create_workspace_uses_fixed_path_and_resets_contents(tmp_path):
+    inferer = LocaliserInferer.__new__(LocaliserInferer)
+    inferer.temp_root = tmp_path / "localiser-work-root"
+
+    workspace = inferer.create_workspace()
+    stale_file = workspace / "manifests" / "stale.json"
+    stale_file.write_text("{}\n")
+
+    workspace_again = inferer.create_workspace()
+
+    assert workspace == inferer.temp_root / "workspace"
+    assert workspace_again == workspace
+    assert workspace_again.exists()
+    assert (workspace_again / "images" / "lat").is_dir()
+    assert (workspace_again / "images" / "ap").is_dir()
+    assert (workspace_again / "manifests").is_dir()
+    assert not stale_file.exists()
+
+
 def test_predict_from_workspace_reloads_case_originals_per_chunk(monkeypatch):
     inferer = LocaliserInferer.__new__(LocaliserInferer)
     inferer.bs = 2

@@ -115,18 +115,18 @@ class LocaliserInfererPT(LocaliserInferer):
                 "projection_meta_image2",
             ):
                 out.pop(key, None)
-
-    def preprocess_to_workspace(self, data_sublist, workspace):
-        self.write_workspace_args(workspace, data_sublist)
-        self.prepare_data(data_sublist)
-        cprint(f"Preprocessing and exporting projections to workspace...", color="cyan")
-        case_records = []
-        for case_batch in tqdm(self.pred_dl, desc="Stage 1: nifti -> jpg", leave=False):
-            for case in case_batch:
-                processed = self.preprocess_case(case)
-                case_records.append(self.export_case(processed, workspace))
-        self.cleanup()
-
+    #
+    # def preprocess_to_workspace(self, data_sublist, workspace):
+    #     self.write_workspace_args(workspace, data_sublist)
+    #     self.prepare_data(data_sublist)
+    #     cprint(f"Preprocessing and exporting projections to workspace...", color="cyan")
+    #     case_records = []
+    #     for case_batch in tqdm(self.pred_dl, desc="Stage 1: nifti -> jpg", leave=False):
+    #         for case in case_batch:
+    #             processed = self.preprocess_case(case)
+    #             case_records.append(self.export_case(processed, workspace))
+    #     self.cleanup()
+    #
     def filter_done_images(self, images, overwrite=False):
         if overwrite == True or isinstance(images[0], torch.Tensor):
             self.preprocess_transforms_dict["Lp"] = DummyTransform(

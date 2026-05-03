@@ -7,7 +7,7 @@ import ipdb
 import pandas as pd
 from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
 from fran.data.dataregistry import DS
-from fran.transforms.fg_indices import FgBgToIndicesSubsampled, FgBgToIndicesd2
+from fran.transforms.fg_indices import FgBgToIndicesSubsampled
 from fran.transforms.imageio import LoadTorchd
 from fran.transforms.misc_transforms import (
     DummyTransform,
@@ -136,7 +136,9 @@ class RayWorkerBase(Preprocessor):
             normalized.append(
                 {
                     "error_type": "WARNING" if error_type is None else str(error_type),
-                    "error_message": "" if error_message is None else str(error_message),
+                    "error_message": ""
+                    if error_message is None
+                    else str(error_message),
                 }
             )
         return normalized
@@ -353,3 +355,5 @@ class RayWorkerBase(Preprocessor):
 # %%
 # parse_excel_remapping
 # parse_excel_datasources(self.plan["datasources"])
+
+
