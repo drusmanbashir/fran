@@ -2,7 +2,11 @@ from pathlib import Path
 from contextlib import nullcontext
 from types import MethodType, SimpleNamespace
 
+import nibabel as nib
+import numpy as np
+import SimpleITK as sitk
 import torch
+from fran.inference.helpers import load_oriented_images
 from localiser.inference import base as localiser_base
 from localiser.inference.localiserinferer import LocaliserInferer
 from monai.data import MetaTensor
@@ -46,6 +50,57 @@ def test_collate_projections_stacks_once_and_keeps_case_metadata(monkeypatch):
     assert out["projection_meta"][0]["projection_index"] == 0
     assert out["projection_meta"][1]["projection_index"] == 1
     assert out["projection_meta"][2]["case_index"] == 1
+
+
+def test_load_oriented_images_returns_channel_first_ras_tensor(tmp_path):
+    image = sitk.GetImageFromArray(np.arange(24, dtype=np.int16).reshape(2, 3, 4))
+    image_path = tmp_path / "case_001.nii.gz"
+    sitk.WriteImage(image, str(image_path))
+
+    out = load_oriented_images(image_path)
+
+    assert len(out) == 1
+    assert set(out[0]) == {"image"}
+    assert out[0]["image"].shape == (1, 4, 3, 2)
+    assert nib.aff2axcodes(out[0]["image"].meta["affine"].cpu().numpy()) == (
+        "R",
+        "A",
+        "S",
+    )
+
+
+def test_load_oriented_images_preserves_case_record_keys(tmp_path):
+    image = sitk.GetImageFromArray(np.arange(24, dtype=np.int16).reshape(2, 3, 4))
+    image_path = tmp_path / "case_001.nii.gz"
+    sitk.WriteImage(image, str(image_path))
+
+    out = load_oriented_images(
+        [{"case_id": "case_001", "image": image_path, "bbox": {"width": (0.1, 0.9)}}]
+    )
+
+    assert out[0]["case_id"] == "case_001"
+    assert out[0]["bbox"] == {"width": (0.1, 0.9)}
+    assert out[0]["image"].shape == (1, 4, 3, 2)
+
+
+def test_load_case_original_uses_shared_loader_and_returns_contiguous_cpu(
+    monkeypatch,
+):
+    inferer = LocaliserInferer.__new__(LocaliserInferer)
+    seen = []
+    image = torch.arange(24, dtype=torch.float32).reshape(1, 4, 3, 2).transpose(1, 2)
+
+    monkeypatch.setattr(
+        "localiser.inference.localiserinferer.load_oriented_images",
+        lambda source: seen.append(source) or [{"image": image}],
+    )
+
+    out = inferer.load_case_original(Path("/tmp/case_001.nii.gz"))
+
+    assert seen == [Path("/tmp/case_001.nii.gz")]
+    assert torch.equal(out, image)
+    assert out.device.type == "cpu"
+    assert out.is_contiguous()
 
 
 def test_package_preds_rebuilds_single_projection_images_from_combined_batch():
@@ -200,22 +255,30 @@ def test_apply_bboxes_materializes_contiguous_crop():
     inferer = cascade_yolo.CascadeInfererYOLO.__new__(
         cascade_yolo.CascadeInfererYOLO
     )
+    inferer.cropper_yolo = cascade_yolo.CropByYolo(
+        keys=["image"],
+        lm_key=None,
+        bbox_key="bbox",
+        min_shape=(0, 0, 0),
+        margin=0,
+    )
     image = MetaTensor(
         torch.arange(1 * 4 * 5 * 6, dtype=torch.float32).reshape(1, 4, 5, 6),
-        meta={"spatial_shape": (4, 5, 6)},
+        meta={"spatial_shape": (4, 5, 6), "affine": torch.eye(4)},
     )
-    bbox = (
-        slice(0, 1),
-        slice(1, 4),
-        slice(1, 5),
-        slice(2, 6),
-    )
-    data = [{"image": image, "bounding_box": bbox}]
+    bbox = {"width": (0.25, 1.0), "ap": (0.2, 1.0), "height": (0.0, 2.0 / 3.0)}
+    data = [{"image": image, "bbox": bbox, "case_id": "case_001"}]
 
     out = inferer.apply_bboxes(data)
     cropped = out[0]["image"]
 
     assert cropped.shape == (1, 3, 4, 4)
     assert cropped.is_contiguous()
+    assert out[0]["bounding_box"] == (
+        slice(0, 1),
+        slice(1, 4),
+        slice(1, 5),
+        slice(2, 6),
+    )
     assert cropped.storage_offset() == 0
     assert out[0]["full_meta"]["spatial_shape"] == (4, 5, 6)

@@ -1,7 +1,10 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import torch
+from monai.data import MetaTensor
 from fran.inference import cascade_yolo
 
 
@@ -106,6 +109,56 @@ def test_resolve_yolo_class_filter_accepts_numeric_label_selectors():
     )
 
     assert classes == [1, 2]
+
+
+def test_load_images_uses_shared_oriented_loader(monkeypatch):
+    inferer = cascade_yolo.CascadeInfererYOLO.__new__(cascade_yolo.CascadeInfererYOLO)
+    image_files = [Path("/tmp/case_001.nii.gz")]
+    sentinel = [{"image": "loaded"}]
+    seen = []
+
+    monkeypatch.setattr(
+        cascade_yolo,
+        "load_oriented_images",
+        lambda files: seen.append(files) or sentinel,
+    )
+
+    out = inferer.load_images(image_files)
+
+    assert seen == [image_files]
+    assert out == sentinel
+
+
+def test_maybe_load_bboxes_uses_shared_loader_for_cached_images(
+    tmp_path, monkeypatch
+):
+    inferer = cascade_yolo.CascadeInfererYOLO.__new__(cascade_yolo.CascadeInfererYOLO)
+    inferer.W = SimpleNamespace(output_folder=tmp_path)
+    inferer.classes = [1]
+    image_path = tmp_path / "case_001.nii.gz"
+    json_path = tmp_path / "case_001.json"
+    json_path.write_text(
+        json.dumps(_serialized_bbox((0.1, 0.5), (0.2, 0.6), (0.3, 0.7)))
+    )
+    image = MetaTensor(
+        torch.zeros((1, 4, 5, 6), dtype=torch.float32),
+        meta={"spatial_shape": (4, 5, 6)},
+    )
+    seen = []
+
+    monkeypatch.setattr(cascade_yolo, "find_matching_fn", lambda name, files: [json_path])
+    monkeypatch.setattr(
+        cascade_yolo,
+        "load_oriented_images",
+        lambda source: seen.append(source) or [{"image": image}],
+    )
+
+    out = inferer.maybe_load_bboxes([image_path])
+
+    assert seen == [image_path]
+    assert out[0]["image"] is image
+    assert "bounding_box" in out[0]
+    assert "yolo_bbox" in out[0]
 
 
 def test_cached_localiser_run_uses_cached_file_when_exists_and_overwrite_false(

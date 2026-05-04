@@ -118,8 +118,7 @@ class CropMaybePad(MapTransform):
             pad.extend([left, right])
         return F.pad(img, pad, value=0)
 
-    def apply_image(self, img, box_start, box_end, spacing):
-        assert img.ndim == 4, f"Expected CxXxYxZ tensor, got ndim={img.ndim}"
+    def resolve_bounds(self, img, box_start, box_end, spacing):
         box_start, box_end = self.add_margin_to_bbox(
             box_start,
             box_end,
@@ -131,8 +130,16 @@ class CropMaybePad(MapTransform):
             box_end,
             self.spatial_shape(img),
         )
+        return box_start, box_end
+
+    def apply_image_with_bounds(self, img, box_start, box_end):
+        assert img.ndim == 4, f"Expected CxXxYxZ tensor, got ndim={img.ndim}"
         img = self.crop(img, box_start, box_end)
-        return self.maybe_pad(img)
+        return self.maybe_pad(img).contiguous()
+
+    def apply_image(self, img, box_start, box_end, spacing):
+        box_start, box_end = self.resolve_bounds(img, box_start, box_end, spacing)
+        return self.apply_image_with_bounds(img, box_start, box_end)
 
     def __call__(self, data, box_start, box_end, spacing):
         d = dict(data)
@@ -245,8 +252,17 @@ class CropByYolo(CropMaybePad):
             tuple(int(v) for v in dici["image"].shape[1:]),
             dici[self.bbox_key],
         )
-        out = super().__call__(dici, box_start, box_end, spacing)
+        box_start, box_end = self.resolve_bounds(dici[key], box_start, box_end, spacing)
+        out = dict(dici)
+        for key_out in self.key_iterator(out):
+            out[key_out] = self.apply_image_with_bounds(out[key_out], box_start, box_end)
         out[self.bbox_key] = dici[self.bbox_key]
+        out["bounding_box"] = (
+            slice(0, int(dici["image"].shape[0])),
+            slice(int(box_start[0]), int(box_end[0])),
+            slice(int(box_start[1]), int(box_end[1])),
+            slice(int(box_start[2]), int(box_end[2])),
+        )
         self._audit_fg(dici, out)
         return out
 

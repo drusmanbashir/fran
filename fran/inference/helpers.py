@@ -10,8 +10,10 @@ import torch
 from fran.managers import Project
 from fran.trainers import checkpoint_from_model_id
 from fran.transforms.imageio import LoadImage, LoadSITKd, SITKReader, TorchReader
+from monai.transforms.spatial.dictionary import Orientationd
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.io.dictionary import LoadImaged
+from monai.transforms.utility.dictionary import EnsureChannelFirstd
 from utilz.cprint import cprint
 from utilz.helpers import slice_list
 from utilz.stringz import ast_literal_eval
@@ -153,22 +155,32 @@ def parse_input(imgs_inp):
         imgs_inp = [imgs_inp]
     imgs_out = []
     for dat in imgs_inp:
-        if any([isinstance(dat, str), isinstance(dat, Path)]):
-            dat = Path(dat)
-            if dat.is_dir():
-                dat = list(dat.glob("*"))
-            else:
-                dat = [dat]
+        if isinstance(dat, dict):
+            out = dict(dat)
+            image = out["image"]
         else:
-            if isinstance(dat, sitk.Image):
-                pass
-            elif isinstance(dat, itk.Image):
-                dat = itm(dat)
+            out = {"image": dat}
+            image = dat
+
+        if any([isinstance(image, str), isinstance(image, Path)]):
+            image = Path(image)
+            if image.is_dir():
+                images = list(image.glob("*"))
             else:
-                raise TypeError(f"Unsupported input type: {type(dat)}")
-            dat = [dat]
-        imgs_out.extend(dat)
-    imgs_out = [{"image": img} for img in imgs_out]
+                images = [image]
+        else:
+            if isinstance(image, sitk.Image):
+                pass
+            elif isinstance(image, itk.Image):
+                image = itm(image)
+            else:
+                raise TypeError(f"Unsupported input type: {type(image)}")
+            images = [image]
+
+        for image in images:
+            out_image = dict(out)
+            out_image["image"] = image
+            imgs_out.append(out_image)
     return imgs_out
 
 
@@ -176,6 +188,19 @@ def load_images_nifti(data):
     loader = LoadSITKd(["image"])
     data = parse_input(data)
     data = [loader(d) for d in data]
+    return data
+
+
+def load_oriented_images(data):
+    loader = LoadSITKd(["image"])
+    ensure_channel_first = EnsureChannelFirstd(
+        keys=["image"], channel_dim="no_channel"
+    )
+    orient = Orientationd(keys=["image"], axcodes="RAS", labels=None)
+    data = parse_input(data)
+    data = [loader(d) for d in data]
+    data = [ensure_channel_first(d) for d in data]
+    data = [orient(d) for d in data]
     return data
 
 

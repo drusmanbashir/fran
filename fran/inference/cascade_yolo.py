@@ -11,7 +11,7 @@ from utilz.helpers import MatchError, find_matching_fn, set_autoreload
 
 set_autoreload()
 from fran.inference.cascade import CascadeInferer, img_bbox_collated
-from fran.inference.helpers import list_to_chunks, parse_input
+from fran.inference.helpers import list_to_chunks, load_oriented_images
 from fran.transforms.imageio import LoadSITKd, SimpleTorchLoader
 from fran.transforms.misc_transforms import DummyTransform
 from fran.transforms.spatialtransforms import CropByYolo
@@ -183,14 +183,38 @@ class CascadeInfererYOLO(CascadeInferer):
         )
 
     def load_images(self, image_files: list[str | Path]):
-        loader = LoadSITKd(["image"])
-        E = EnsureChannelFirstd(keys=["image"])
-        Or = Orientationd(keys=["image"], axcodes="RAS", labels=None)
-        data = parse_input(image_files)
-        data = [loader(dat) for dat in data]
-        data = [E(dat) for dat in data]
-        data = [Or(dat) for dat in data]
-        return data
+        return load_oriented_images(image_files)
+
+    def normalise_case_records(self, data):
+        records = []
+        for image in data:
+            if isinstance(image, dict):
+                record = dict(image)
+            else:
+                record = {"image": image}
+            if "case_id" not in record and isinstance(record["image"], (str, Path)):
+                record["case_id"] = self.W.image_case_id(record["image"])
+            records.append(record)
+        return records
+
+    def standardize_serialized_bbox(self, bbox):
+        return standardize_bboxes(
+            bbox["ap"],
+            bbox["lat"],
+            bbox["ap"]["meta"]["letterbox_padded"],
+            self.classes,
+            serialised=True,
+        )
+
+    def bbox_record(self, case_id, image, bboxes_final, bbox_fn=None):
+        record = {
+            "case_id": case_id,
+            "image": image,
+            "bbox": self.standardize_serialized_bbox(bboxes_final),
+        }
+        if bbox_fn is not None:
+            record["bbox_fn"] = bbox_fn
+        return record
 
     def setup_localiser_inferer(self):
         W = self.YoloInferer(
@@ -212,6 +236,7 @@ class CascadeInfererYOLO(CascadeInferer):
         """
         self.setup()
         data = self.maybe_filter_images(data, overwrite)
+        data = self.normalise_case_records(data)
         data_bboxes = self.extract_fg_bboxes(data, overwrite=overwrite)
         self.W.clear_localiser()
         data_chunks = list_to_chunks(data_bboxes, chunksize)
@@ -221,9 +246,9 @@ class CascadeInfererYOLO(CascadeInferer):
 
     def process_data_sublist(self, data_sublist):
         self.create_and_set_postprocess_transforms()
-        bboxes_sublist = [dat["bounding_box"] for dat in data_sublist]
-        # data = self.load_images(imgs_sublist)
-        data = self.apply_bboxes(data_sublist)
+        data = load_oriented_images(data_sublist)
+        data = self.apply_bboxes(data)
+        bboxes_sublist = [dat["bounding_box"] for dat in data]
         full_metas = [dat["full_meta"] for dat in data]
         Sq = SqueezeDimd(keys=["image"], dim=0)
         data = [Sq(dat) for dat in data]
@@ -242,29 +267,11 @@ class CascadeInfererYOLO(CascadeInferer):
             cached = self.maybe_load_bboxes(data)
             if cached is not None:
                 return cached
-        outputs = self.W.run(data, overwrite=overwrite)
-        data_out = []
-        for out in outputs:
-            pred = out["pred"]
-            lat = pred[0]
-            ap = pred[1]
-            yolo_bbox = standardize_bboxes(
-                ap.boxes,
-                lat.boxes,
-                out["projection_meta"][0]["letterbox_padded"],
-                self.classes,
-                serialised=False,
-            )
-            img_shape = out["image"].shape[1:]
-            bounding_box = yolo_bbox_to_slices(img_shape, yolo_bbox)
-            bounding_box = add_channel_slices(bounding_box)
-            data_out.append(
-                {
-                    "image": out["image"],
-                    "yolo_bbox": yolo_bbox,
-                    "bounding_box": bounding_box,
-                }
-            )
+        outputs = self.W.run_bbox_records(data, overwrite=overwrite)
+        data_out = [
+            self.bbox_record(out["case_id"], out["image"], out["bboxes_final"])
+            for out in outputs
+        ]
         del outputs
         gc.collect()
         return data_out
@@ -285,51 +292,28 @@ class CascadeInfererYOLO(CascadeInferer):
         data2 = []
         for dat in data:
             image = dat["image"]
-            bbox = dat["bounding_box"]
+            assert image.ndim == 4, f"Expected CxXxYxZ tensor, got ndim={image.ndim}"
             dat["full_meta"] = deepcopy(image.meta)
             dat["full_meta"]["spatial_shape"] = tuple(int(v) for v in image.shape[1:])
-            # Materialize the crop so the bbox view does not retain the full volume.
-            dat["image"] = image[tuple(bbox)].contiguous()
-            data2.append(dat)
+            data2.append(self.cropper_yolo(dat))
         return data2
 
     def maybe_load_bboxes(self, data):
         # if even a single json is missing, return the original data to trigger bbox extraction and saving.
         json_fns = list(self.W.output_folder.glob("*.json"))
-        img_json_fn_pairs = []
+        data_out = []
         try:
             for dat in data:
-                fn = find_matching_fn(dat.name, json_fns)
-                dici = {"image": dat, "json_fn": fn[0]}
-                img_json_fn_pairs.append(dici)
+                fn = find_matching_fn(dat["case_id"], json_fns)
+                data_out.append(
+                    self.bbox_record(dat["case_id"], dat["image"], load_json(fn[0]), fn[0])
+                )
         except MatchError:
             cprint(
                 "Not all bbox jsons found. Running YOLO to extract and save bboxes.",
                 "yellow",
             )
             return None
-        data_out = []
-        cprint("Loading bbox jsons and ITK images", "green")
-        for out in tqdm(img_json_fn_pairs):
-            out = LoadSITKd(["image"])(out)
-            json_fn = out["json_fn"]
-            out = EnsureChannelFirstd(keys=["image"])(out)
-            out = Orientationd(keys=["image"], axcodes="RAS", labels=None)(out)
-            img_shape = out["image"].shape[1:]
-            bbox = load_json(json_fn)
-            yolo_bbox = standardize_bboxes(
-                bbox["ap"],
-                bbox["lat"],
-                bbox["ap"]["meta"]["letterbox_padded"],
-                self.classes,
-                serialised=True,
-            )
-
-            bounding_box = yolo_bbox_to_slices(img_shape, yolo_bbox)
-            bounding_box = add_channel_slices(bounding_box)
-            out["yolo_bbox"] = yolo_bbox
-            out["bounding_box"] = bounding_box
-            data_out.append(out)
         return data_out
 
 
