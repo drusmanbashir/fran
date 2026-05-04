@@ -1,8 +1,8 @@
-import torch
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
+import torch
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import (
     CaseIDRecorder,
@@ -12,16 +12,7 @@ from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
-from fran.managers import Project
-from fran.managers.data.training import (
-    DataManagerBaseline,
-    DataManagerDual,
-    DataManagerRBD,
-    DataManagerLBD,
-    DataManagerPatch,
-    DataManagerSource,
-    DataManagerWhole,
-)
+from fran.managers.data.training import DataManagerDual, DataManagerPatch
 from fran.managers.wandb.wandb import WandbManager
 from fran.trainers.trainer import Trainer, _flatten_dict
 from lightning.pytorch import Trainer as TrainerL
@@ -178,8 +169,10 @@ class TrainerRT(Trainer):
 
     def init_trainer(self, epochs):
         if "scheduler_monitor" in self.configs["model_params"]:
-            self.configs["model_params"]["scheduler_monitor"] = self.monitor_metric_name(
-                self.configs["model_params"]["scheduler_monitor"]
+            self.configs["model_params"]["scheduler_monitor"] = (
+                self.monitor_metric_name(
+                    self.configs["model_params"]["scheduler_monitor"]
+                )
             )
         return super().init_trainer(epochs)
 
@@ -449,13 +442,13 @@ class TrainerRT(Trainer):
         return super().resolve_datamanager(mode)
 
 
-#SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
+# SECTION:-------------------- SETUP--------------------------------------------------------------------------------------
 # %%
 if __name__ == "__main__":
-
     from fran.configs.parser import ConfigMaker
-    from fran.utils.common import *
+    from fran.managers import Project
     from fran.managers.project import Project
+    from fran.utils.common import *
     from utilz.helpers import pp
 
     P = Project("lidc")
@@ -516,7 +509,7 @@ if __name__ == "__main__":
     Tm.fit()
 # %%
 # %%
-#SECTION:-------------------- TS--------------------------------------------------------------------------------------
+# SECTION:-------------------- TS--------------------------------------------------------------------------------------
     N = Tm.N
     D = Tm.D
     D.setup()
@@ -540,3 +533,5 @@ if __name__ == "__main__":
     bs = 1
 
 # %%
+
+

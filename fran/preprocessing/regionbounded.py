@@ -9,7 +9,7 @@ from localiser.inference.base import bbox_from_file
 import numpy as np
 import ray
 import torch
-from fran.inference.cascade_yolo2 import LocaliserInfererPT
+from fran.inference.cascade_yolo import LocaliserInfererPT
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.spatialtransforms import (
@@ -358,6 +358,31 @@ if __name__ == "__main__":
     R.process()
 # %%
     
+    # %%  # T:block_start|RegionBoundedDataGenerator.maybe_infer_bboxes
+#SECTION:-------------------- maybe_infer_bboxes--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.maybe_infer_bboxes
+    regions = R._localiser_regions_list()  # T:self_ref|regions = self._localiser_regions_list()
+    R.I = LocaliserInfererPT(  # T:self_ref|self.I = LocaliserInfererPT(
+        localiser_regions=regions,
+        window="a",
+        bs=16,
+        devices=R.devices,  # T:self_ref|    devices=self.devices,
+        debug=False,
+    )
+    R.yolo_specs = R.I.yolo_state_dict  # T:self_ref|self.yolo_specs = self.I.yolo_state_dict
+    classes_in_bbox = R.get_region_indices()  # T:self_ref|classes_in_bbox = self.get_region_indices()
+# %%
+    R.attach_bboxes(classes_in_bbox)  # T:self_ref|self.attach_bboxes(classes_in_bbox)
+    missing = R.missing_bbox_mask()  # T:self_ref|missing = self.missing_bbox_mask()
+    imgs = R.df.loc[missing, "image"].tolist()  # T:self_ref|imgs = self.df.loc[missing, "image"].tolist()
+    if len(imgs) == 0:
+        pass  # T:early_return|    return
+    cprint(
+        f"Total case {len(R.df)}. \nBBoxes on file: {len(R.df) - len(imgs)}. \nRemaining bboxes: {len(imgs)}. \nInferring missing bboxes with localiser for regions: {regions}",  # T:self_ref|    f"Total case {len(self.df)}. \\nBBoxes on file: {len(self.df) - len(imgs)}. \\nRemaining bboxes: {len(imgs)}. \\nInferring missing bboxes with localiser for regions: {regions}",
+        color="blue",
+    )
+    R.I.run(imgs, overwrite=False)  # T:self_ref|self.I.run(imgs, overwrite=False)
+    R.attach_bboxes(classes_in_bbox)  # T:self_ref|self.attach_bboxes(classes_in_bbox)
+    # end PythonMethodScratch  # T:block_end|RegionBoundedDataGenerator.maybe_infer_bboxes
         
 
 # %%

@@ -88,7 +88,7 @@ INTERNAL_MODULES = [
     "fran.callback.wandb.wandb",
     "fran.data.dataset",
     "fran.inference.base",
-    "fran.inference.cascade_yolo2",
+    "fran.inference.cascade_yolo",
     "fran.managers.unet",
     "fran.preprocessing.imported",
     "fran.preprocessing.regionbounded",
