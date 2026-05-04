@@ -1,3 +1,10 @@
 #!/bin/bash
-# python profile_live.py --project kits23 --gpu 0 --seconds 120 --interval-ms 500
-python /home/ub/code/fran/fran/run/profile_live.py --project kits23 --gpu 0 --seconds 120 --interval-ms 500
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILE_LIVE_PY="$SCRIPT_DIR/profile_live.py"
+PROJECT="kits23"
+GPU="0"
+SECONDS="120"
+INTERVAL_MS="500"
+
+# python "$PROFILE_LIVE_PY" --project "$PROJECT" --gpu "$GPU" --seconds "$SECONDS" --interval-ms "$INTERVAL_MS"
+python "$PROFILE_LIVE_PY" --project "$PROJECT" --gpu "$GPU" --seconds "$SECONDS" --interval-ms "$INTERVAL_MS"

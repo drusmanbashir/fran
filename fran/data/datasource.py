@@ -384,8 +384,9 @@ class Datasource(GetAttr):
         with h5py.File(self.h5_fname, mode) as h5f:
             for output in self.outputs:
                 try:
+                    voxels = output["voxels"].cpu().contiguous().numpy()
                     ds = h5f.create_dataset(
-                        output["case"]["case_id"], data=output["voxels"]
+                        output["case"]["case_id"], data=voxels
                     )
                     ds.attrs["spacing"] = list(output["case"]["properties"]["spacing"])
                     ds.attrs["labels"] = list(output["case"]["properties"]["labels"])

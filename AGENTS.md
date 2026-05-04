@@ -1,5 +1,5 @@
 # Repo-specific instructions
-- For new or edited `.sh` scripts, follow the style of [`fran/run/analyze.sh`](/home/ub/code/fran/fran/run/analyze.sh): keep them simple, prefer a few commented example commands with sensible defaults, and one direct active command.
+- any time a script (shell or python) in fran/run is modified, compare for downstream effect in ~/code/agent/agent/hpc/ and fix those too.
 - Avoid environment-variable wrapper boilerplate in `.sh` scripts unless the task specifically needs it.
 
 ## Common File Locations And Purposes

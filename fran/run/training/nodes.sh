@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
-# python train.py --project nodes --plan-num 7 --devices 1 --bs 1 --batch-finder true --epochs 600 --compiled false --profiler false --wandb true --cache-rate 0.0 --fold 0
-# python -m ipdb train.py --project nodes --plan-num 7 --devices 1 --bs 1 --batch-finder true --epochs 600 --compiled false --profiler false --wandb true --cache-rate 0.0 --fold 0
-# python -m ipdb train.py --project nodes --plan-num 7 --devices 1 --bs 1 --batch-finder true --epochs 600 --compiled false --profiler false --wandb true --cache-rate 0.0 --fold 0 --run-name LITS-1290
-python -m ipdb train.py --project nodes --plan-num 7 --devices 1 --bs 1 --batch-finder true --epochs 600 --compiled false --profiler false --wandb true --cache-rate 0.0 --fold 0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TRAIN_PY="$SCRIPT_DIR/train.py"
+PROJECT="nodes"
+PLAN_NUM="7"
+DEVICES="1"
+BS="1"
+BATCH_FINDER="true"
+EPOCHS="600"
+COMPILED="false"
+PROFILER="false"
+WANDB="true"
+CACHE_RATE="0.0"
+FOLD="0"
+EXAMPLE_RUN_NAME="LITS-1290"
+
+# python "$TRAIN_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --devices "$DEVICES" --bs "$BS" --batch-finder "$BATCH_FINDER" --epochs "$EPOCHS" --compiled "$COMPILED" --profiler "$PROFILER" --wandb "$WANDB" --cache-rate "$CACHE_RATE" --fold "$FOLD"
+# python -m ipdb "$TRAIN_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --devices "$DEVICES" --bs "$BS" --batch-finder "$BATCH_FINDER" --epochs "$EPOCHS" --compiled "$COMPILED" --profiler "$PROFILER" --wandb "$WANDB" --cache-rate "$CACHE_RATE" --fold "$FOLD"
+# python -m ipdb "$TRAIN_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --devices "$DEVICES" --bs "$BS" --batch-finder "$BATCH_FINDER" --epochs "$EPOCHS" --compiled "$COMPILED" --profiler "$PROFILER" --wandb "$WANDB" --cache-rate "$CACHE_RATE" --fold "$FOLD" --run-name "$EXAMPLE_RUN_NAME"
+python -m ipdb "$TRAIN_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --devices "$DEVICES" --bs "$BS" --batch-finder "$BATCH_FINDER" --epochs "$EPOCHS" --compiled "$COMPILED" --profiler "$PROFILER" --wandb "$WANDB" --cache-rate "$CACHE_RATE" --fold "$FOLD"

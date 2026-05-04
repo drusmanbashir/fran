@@ -1,4 +1,23 @@
 #!/bin/bash
-# python p_train_perf.py --project kits23 --plan-num 2 --fold 1 --devices '[0]' --bs 6 --train-indices 96 --limit-train-batches 12 --repeat 1 --num-workers 8,12,16,24 --prefetch-factor 2
-# python p_train_perf.py --project kits23 --plan-num 2 --fold 1 --devices '[0]' --bs 6 --train-indices 192 --limit-train-batches 24 --repeat 2 --num-workers 12,24 --prefetch-factor 2,4
-python /home/ub/code/fran/fran/run/p_train_perf.py --project kits23 --plan-num 2 --fold 1 --devices '[0]' --bs 6 --train-indices 192 --val-indices 1 --limit-train-batches 24 --repeat 1 --num-workers 12,24 --prefetch-factor 2
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+P_TRAIN_PERF_PY="$SCRIPT_DIR/p_train_perf.py"
+PROJECT="kits23"
+PLAN_NUM="2"
+FOLD="1"
+DEVICES='[0]'
+BS="6"
+TRAIN_INDICES="192"
+VAL_INDICES="1"
+LIMIT_TRAIN_BATCHES="24"
+REPEAT="1"
+NUM_WORKERS="12,24"
+PREFETCH_FACTOR="2"
+EXAMPLE_TRAIN_INDICES="96"
+EXAMPLE_LIMIT_TRAIN_BATCHES="12"
+EXAMPLE_NUM_WORKERS="8,12,16,24"
+EXAMPLE_REPEAT="2"
+EXAMPLE_PREFETCH_FACTOR="2,4"
+
+# python "$P_TRAIN_PERF_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --fold "$FOLD" --devices "$DEVICES" --bs "$BS" --train-indices "$EXAMPLE_TRAIN_INDICES" --limit-train-batches "$EXAMPLE_LIMIT_TRAIN_BATCHES" --repeat "$REPEAT" --num-workers "$EXAMPLE_NUM_WORKERS" --prefetch-factor "$PREFETCH_FACTOR"
+# python "$P_TRAIN_PERF_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --fold "$FOLD" --devices "$DEVICES" --bs "$BS" --train-indices "$TRAIN_INDICES" --limit-train-batches "$LIMIT_TRAIN_BATCHES" --repeat "$EXAMPLE_REPEAT" --num-workers "$NUM_WORKERS" --prefetch-factor "$EXAMPLE_PREFETCH_FACTOR"
+python "$P_TRAIN_PERF_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --fold "$FOLD" --devices "$DEVICES" --bs "$BS" --train-indices "$TRAIN_INDICES" --val-indices "$VAL_INDICES" --limit-train-batches "$LIMIT_TRAIN_BATCHES" --repeat "$REPEAT" --num-workers "$NUM_WORKERS" --prefetch-factor "$PREFETCH_FACTOR"

@@ -128,6 +128,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
         data_folder,
         output_folder=None,
         crop_to_label=None,
+        devices="cpu",
     ) -> None:
         """
         Initialize the LabelBoundedDataGenerator.
@@ -152,6 +153,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
+            devices=devices,
         )
 
     def create_data_df(self):

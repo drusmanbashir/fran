@@ -1,6 +1,7 @@
 # %%
 import csv
 import fcntl
+import ipdb
 import logging
 import math
 import os
@@ -28,6 +29,8 @@ from monai.transforms.transform import MapTransform, Randomizable, RandomizableT
 from torch import cos, pi, sin
 from utilz.image_utils import margin_mm_to_vox
 from utilz.stringz import int_to_str
+
+tr = ipdb.set_trace
 
 
 def _resize3d(data, spatial_shape, mode):
@@ -382,6 +385,10 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
 
     def __call__(self, data):
         original = dict(data)
+        if original[self.bbox_key] == {"empty_bbox": True}:
+            fallback_out = self.apply_crop_fg(original)
+            self._register_event(fallback_out, "empty bbox")
+            return fallback_out
         fg_before = self._fg_count(original)
         yolo_out = self.cropper_yolo(dict(original))
         fg_after_yolo = self._fg_count(yolo_out)
@@ -392,18 +399,7 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
         fallback_input["_preprocess_events"] = list(yolo_out["_preprocess_events"])
 
         fallback_out = self.apply_crop_fg(fallback_input)
-        fg_after_fallback = self._fg_count(fallback_out)
-
-        case_id = original.get("case_id")
-        bbox_fn = original.get("bbox_fn")
-        message = (
-            "CropByYolo fallback to CropForegroundMinShaped: "
-            f"case_id={case_id} bbox_source_path={bbox_fn} "
-            f"fg_before={fg_before} fg_after_yolo={fg_after_yolo} "
-            f"fg_after_fallback={fg_after_fallback} "
-            f"verified_fg_preserved={fg_after_fallback == fg_before}"
-        )
-        self._register_event(fallback_out, message)
+        self._register_event(fallback_out, "fg loss")
         return fallback_out
 
     def apply_crop_fg(self, fallback_input):

@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
-# python train.py --project lidc --plan-num 1 --devices 0 --bs 4 --epochs 20 --compiled false --profiler false --wandb true --cache-rate 0.0 --fold 0
-# python -m ipdb train.py --project lidc --plan-num 1 --devices 0 --bs 4 --epochs 20 --compiled false --profiler false --wandb true --cache-rate 0.0 --fold 0
-# python -m ipdb train.py --project lidc --plan-num 1 --devices 0 --bs 4 --epochs 20 --compiled false --profiler false --wandb true --cache-rate 0.0 --fold 0 --run-name LITS-1290
-python -m ipdb train.py --project lidc --plan-num 1 --devices 0 --bs 4 --epochs 20 --compiled false --profiler false --wandb true --cache-rate 0.0 --fold 0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TRAIN_PY="$SCRIPT_DIR/train.py"
+PROJECT="lidc"
+PLAN_NUM="1"
+DEVICES="0"
+BS="4"
+EPOCHS="20"
+COMPILED="false"
+PROFILER="false"
+WANDB="true"
+CACHE_RATE="0.0"
+FOLD="0"
+EXAMPLE_RUN_NAME="LITS-1290"
+
+# python "$TRAIN_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --devices "$DEVICES" --bs "$BS" --epochs "$EPOCHS" --compiled "$COMPILED" --profiler "$PROFILER" --wandb "$WANDB" --cache-rate "$CACHE_RATE" --fold "$FOLD"
+# python -m ipdb "$TRAIN_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --devices "$DEVICES" --bs "$BS" --epochs "$EPOCHS" --compiled "$COMPILED" --profiler "$PROFILER" --wandb "$WANDB" --cache-rate "$CACHE_RATE" --fold "$FOLD"
+# python -m ipdb "$TRAIN_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --devices "$DEVICES" --bs "$BS" --epochs "$EPOCHS" --compiled "$COMPILED" --profiler "$PROFILER" --wandb "$WANDB" --cache-rate "$CACHE_RATE" --fold "$FOLD" --run-name "$EXAMPLE_RUN_NAME"
+python -m ipdb "$TRAIN_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --devices "$DEVICES" --bs "$BS" --epochs "$EPOCHS" --compiled "$COMPILED" --profiler "$PROFILER" --wandb "$WANDB" --cache-rate "$CACHE_RATE" --fold "$FOLD"

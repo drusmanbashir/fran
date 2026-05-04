@@ -25,6 +25,7 @@ from fran.preprocessing.helpers import (
 )
 from fran.utils.dataset_properties import analyze_tensor_data_folder
 from fran.utils.string_works import is_excel_None
+from utilz.cprint import cprint
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
 from utilz.rayz import shutdown_actors
@@ -560,7 +561,7 @@ class Preprocessor(GetAttr):
         self.plan = plan
         self.data_folder = data_folder
         self.store_gifs = env_flag("FRAN_STORE_GIFS", False)
-        self.store_label_stats = env_flag("FRAN_STORE_LABEL_STATS", True)
+        self.store_label_stats = env_flag("FRAN_STORE_LABEL_STATS", False)
         self.set_input_output_folders(data_folder, output_folder)
         self.devices= devices
 
@@ -896,6 +897,7 @@ class Preprocessor(GetAttr):
         df.to_csv(log_fn, index=False)
 
     def postprocess_results(self, **process_kwargs):
+        cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
         self._write_results_csv()
         self._store_dataset_properties()
         store_label_count(
@@ -943,6 +945,9 @@ class Preprocessor(GetAttr):
         self._maybe_create_hdf5_shards(**process_kwargs)
         return self.results_df
 
+    def _effective_overwrite(self, **process_kwargs):
+        return process_kwargs["overwrite"] if "overwrite" in process_kwargs else self.overwrite
+
     def process(self, **process_kwargs):
         if not hasattr(self, "df"):
             print("No data frames have been created. Run setup")
@@ -956,7 +961,11 @@ class Preprocessor(GetAttr):
         self.results = self.run_worker_jobs()
         self.write_preprocessing_log(self.results)
         self.results_df = self.flatten_results(self.results)
-        self.postprocess_results(**process_kwargs)
+        overwrite = self._effective_overwrite(**process_kwargs)
+        if overwrite is False and self.postprocess_artifacts_missing() is False:
+            cprint("Postprocess: skip existing artifacts", "cyan")
+        else:
+            self.postprocess_results(**process_kwargs)
         self._maybe_create_hdf5_shards(**process_kwargs)
         return self.results_df
 
@@ -1149,6 +1158,8 @@ class Preprocessor(GetAttr):
         self, overwrite=False, num_processes=8, device="cpu", **setup_kwargs
     ):
         self.num_processes = max(1, int(num_processes))
+        self.devices = device
+        self.overwrite = overwrite
         if "debug" in setup_kwargs:
             self.debug = setup_kwargs["debug"]
         self.run_postprocess_if_empty = False

@@ -12,10 +12,15 @@ import torch
 from fran.inference.cascade_yolo2 import LocaliserInfererPT
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.rayworker_base import RayWorkerBase
-from fran.transforms.spatialtransforms import CropForegroundMinShaped, CropMaybePad
+from fran.transforms.spatialtransforms import (
+    CropByYoloWithForegroundFallbackd,
+    CropForegroundMinShaped,
+    CropMaybePad,
+)
 from fran.utils.affine import spacing_from_affine
 from localiser.utils.bbox_helpers import (
-    EmptyBBoxClassMatchError,
+    EmptyBBoxDetectionsError,
+    MissingBBoxClassMatchError,
     standardize_bboxes,
 )
 from monai.transforms.transform import MapTransform
@@ -123,13 +128,7 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
     def create_transforms(self, device):
         super().create_transforms(device=device)
         margin = self.plan["expand_by"]
-        # self.cropper_yolo = CropByYolo(
-        #     keys=["image", "lm"],
-        #     lm_key="lm",
-        #     bbox_key="bbox",
-        #     margin=margin,
-        # )
-        self.CropByYolo = CropByYolo(
+        self.CropByYolo = CropByYoloWithForegroundFallbackd(
             min_shape=self.plan["src_dims"],
             keys=["image", "lm"],
             lm_key="lm",
@@ -219,8 +218,10 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
                 classes_in_bbox,
                 serialised=True,
             )
-        except EmptyBBoxClassMatchError as exc:
-            raise EmptyBBoxClassMatchError(
+        except EmptyBBoxDetectionsError:
+            return {"empty_bbox": True}
+        except MissingBBoxClassMatchError as exc:
+            raise MissingBBoxClassMatchError(
                 "Failed to standardize cached bbox JSON for RBD preprocessing. "
                 f"case_id={json_fn.stem} bbox_json={json_fn} "
                 f"{exc}"
@@ -256,7 +257,7 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
     def _localiser_regions_list(self) -> list[str]:
         regions = self.plan.get("localiser_regions")
         if regions is None:
-            return []
+            return ["all"]
         elif isinstance(regions, (list, tuple, set)):
             return [str(region).strip() for region in regions if str(region).strip()]
         else:
@@ -347,11 +348,13 @@ if __name__ == "__main__":
     existing_fldr = FolderNames(P, plan).folders.get("data_folder_source", None)
     pp(existing_fldr)
 # %%
+    devices = [0]
 
     overwrite = False
-    num_processes = 1
-    R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr,device=devices)
+    num_processes = 8
+    R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr,devices=devices)
     R.setup(num_processes=num_processes, overwrite=overwrite)
+# %%
     R.process()
 # %%
     
@@ -519,7 +522,31 @@ if __name__ == "__main__":
 # %%
     a= R.mini_dfs[0].iloc[:3]
 # %%
-
+    # %%  # T:block_start|RegionBoundedDataGenerator.maybe_infer_bboxes
+#SECTION:-------------------- maybe_infer_bboxes--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.maybe_infer_bboxes
+    regions = R._localiser_regions_list()  # T:self_ref|regions = self._localiser_regions_list()
+    R.I = LocaliserInfererPT(  # T:self_ref|self.I = LocaliserInfererPT(
+        localiser_regions=regions,
+        window="a",
+        bs=16,
+        devices=R.devices,  # T:self_ref|    devices=self.devices,
+        debug=False,
+    )
+# %%
+    R.yolo_specs = R.I.yolo_state_dict  # T:self_ref|self.yolo_specs = self.I.yolo_state_dict
+    classes_in_bbox = R.get_region_indices()  # T:self_ref|classes_in_bbox = self.get_region_indices()
+    R.attach_bboxes(classes_in_bbox)  # T:self_ref|self.attach_bboxes(classes_in_bbox)
+    missing = R.missing_bbox_mask()  # T:self_ref|missing = self.missing_bbox_mask()
+    imgs = R.df.loc[missing, "image"].tolist()  # T:self_ref|imgs = self.df.loc[missing, "image"].tolist()
+    if len(imgs) == 0:
+        pass  # T:early_return|    return
+    cprint(
+        f"Total case {len(R.df)}. \nBBoxes on file: {len(R.df) - len(imgs)}. \nRemaining bboxes: {len(imgs)}. \nInferring missing bboxes with localiser for regions: {regions}",  # T:self_ref|    f"Total case {len(self.df)}. \\nBBoxes on file: {len(self.df) - len(imgs)}. \\nRemaining bboxes: {len(imgs)}. \\nInferring missing bboxes with localiser for regions: {regions}",
+        color="blue",
+    )
+    R.I.run(imgs, overwrite=False)  # T:self_ref|self.I.run(imgs, overwrite=False)
+    R.attach_bboxes(classes_in_bbox)  # T:self_ref|self.attach_bboxes(classes_in_bbox)
+    # end PythonMethodScratch  # T:block_end|RegionBoundedDataGenerator.maybe_infer_bboxes
 # %%
 
     case_id = "kits23_00486"

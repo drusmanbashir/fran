@@ -6,7 +6,7 @@ import torch
 from monai.data.meta_tensor import MetaTensor
 
 from fran.preprocessing import regionbounded
-from fran.transforms.spatialtransforms import CropByYolo, CropByYoloWithForegroundFallbackd, CropForegroundMinShaped
+from fran.transforms.spatialtransforms import CropByYoloWithForegroundFallbackd
 
 
 def _metatensor(data, filename):
@@ -56,6 +56,7 @@ def test_region_generator_attaches_cached_bbox_json_by_case_id(tmp_path, monkeyp
         regionbounded.RegionBoundedDataGenerator
     )
     generator.output_folder = tmp_path
+    generator.devices = ["cpu"]
     generator.plan = {"localiser_regions": "abdomen"}
     generator.df = pd.DataFrame(
         {
@@ -115,6 +116,7 @@ def test_region_generator_errors_on_duplicate_bbox_matches(tmp_path, monkeypatch
         regionbounded.RegionBoundedDataGenerator
     )
     generator.output_folder = tmp_path
+    generator.devices = ["cpu"]
     generator.plan = {"localiser_regions": "abdomen"}
     generator.df = pd.DataFrame(
         {
@@ -168,6 +170,7 @@ def test_region_generator_uses_cached_bbox_json_before_inference(
         regionbounded.RegionBoundedDataGenerator
     )
     generator.output_folder = tmp_path
+    generator.devices = ["cpu"]
     generator.plan = {"localiser_regions": "abdomen"}
     generator.df = pd.DataFrame(
         {
@@ -187,6 +190,53 @@ def test_region_generator_uses_cached_bbox_json_before_inference(
         "ap": (0.2, 0.6),
         "height": (0.3, 0.7),
     }
+
+
+def test_region_generator_attaches_empty_cached_bbox_sentinel_without_inference(
+    tmp_path, monkeypatch
+):
+    cache_dir = tmp_path / "cached_localiser"
+    cache_dir.mkdir()
+    cached_json = cache_dir / "kits23_00097.json"
+    cached_json.write_text(
+        '{"ap": {"xyxy": [], "conf": [], "cls": [], "orig_shape": [100, 80], '
+        '"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}, '
+        '"lat": {"xyxy": [], "conf": [], "cls": [], "orig_shape": [100, 80], '
+        '"meta": {"letterbox_padded": [[0, 0], [0, 0], [0, 0]]}}}\n'
+    )
+
+    run_calls = []
+
+    class FakeLocaliserInferer:
+        def __init__(self, *args, **kwargs):
+            self.output_folder = cache_dir
+            self.yolo_state_dict = {"data": {"names": ["abdomen"]}}
+
+        def run(self, imgs, overwrite=False):
+            run_calls.append((list(imgs), overwrite))
+            return []
+
+    monkeypatch.setattr(regionbounded, "LocaliserInfererPT", FakeLocaliserInferer)
+    generator = regionbounded.RegionBoundedDataGenerator.__new__(
+        regionbounded.RegionBoundedDataGenerator
+    )
+    generator.output_folder = tmp_path
+    generator.devices = ["cpu"]
+    generator.plan = {"localiser_regions": "abdomen"}
+    generator.df = pd.DataFrame(
+        {
+            "case_id": ["kits23_00097"],
+            "image": [tmp_path / "kits23_00097.nii.gz"],
+            "bbox_fn": [None],
+            "bbox": [None],
+        }
+    )
+
+    generator.maybe_infer_bboxes()
+
+    assert run_calls == []
+    assert generator.df.loc[0, "bbox_fn"] == cached_json.resolve()
+    assert generator.df.loc[0, "bbox"] == {"empty_bbox": True}
 
 
 def test_region_generator_ignores_unrelated_cached_bbox_jsons(
@@ -228,6 +278,7 @@ def test_region_generator_ignores_unrelated_cached_bbox_jsons(
         regionbounded.RegionBoundedDataGenerator
     )
     generator.output_folder = tmp_path
+    generator.devices = ["cpu"]
     generator.plan = {"localiser_regions": "abdomen"}
     generator.df = pd.DataFrame(
         {
@@ -278,6 +329,7 @@ def test_region_generator_errors_when_cached_bbox_json_has_no_requested_class_ma
         regionbounded.RegionBoundedDataGenerator
     )
     generator.output_folder = tmp_path
+    generator.devices = ["cpu"]
     generator.plan = {"localiser_regions": "abdomen"}
     generator.df = pd.DataFrame(
         {
@@ -324,7 +376,7 @@ def test_rbd_worker_data_dict_loads_bbox(monkeypatch):
     assert data["case_id"] == "case_001"
 
 
-def test_rbd_worker_passes_plan_expand_by_to_crop_by_yolo(monkeypatch):
+def test_rbd_worker_uses_fallback_crop_wrapper_in_preprocessing_path(monkeypatch):
     def fake_parent_create_transforms(self, device):
         self.transforms_dict = {}
 
@@ -341,7 +393,8 @@ def test_rbd_worker_passes_plan_expand_by_to_crop_by_yolo(monkeypatch):
 
     worker.create_transforms(device="cpu")
 
-    assert worker.CropByYolo.margin == 14
+    assert isinstance(worker.CropByYolo, CropByYoloWithForegroundFallbackd)
+    assert worker.CropByYolo.cropper_yolo.margin == 14
     assert worker.transforms_dict["CropByYolo"] is worker.CropByYolo
 
 
@@ -362,7 +415,50 @@ def test_rbd_worker_uses_zero_margin_when_expand_by_is_zero(monkeypatch):
 
     worker.create_transforms(device="cpu")
 
-    assert worker.CropByYolo.margin == 0
+    assert isinstance(worker.CropByYolo, CropByYoloWithForegroundFallbackd)
+    assert worker.CropByYolo.cropper_yolo.margin == 0
+
+
+def test_rbd_worker_crop_transform_preserves_fg_on_cpu(monkeypatch):
+    def fake_parent_create_transforms(self, device):
+        self.transforms_dict = {}
+
+    monkeypatch.setattr(
+        regionbounded.RayWorkerBase,
+        "create_transforms",
+        fake_parent_create_transforms,
+    )
+
+    worker = regionbounded._RBDSamplerWorkerBase.__new__(
+        regionbounded._RBDSamplerWorkerBase
+    )
+    worker.plan = {"expand_by": 0, "src_dims": (4, 4, 4)}
+
+    worker.create_transforms(device="cpu")
+
+    image = _metatensor(torch.zeros((1, 12, 12, 12)), "image.pt")
+    lm = _metatensor(torch.zeros((1, 12, 12, 12), dtype=torch.uint8), "lm.pt")
+    lm[:, 4:9, 4:9, 4:9] = 1
+    fg_before = int(torch.count_nonzero(lm).item())
+
+    out = worker.transforms_dict["CropByYolo"](
+        {
+            "case_id": "case_cpu",
+            "image": image,
+            "lm": lm,
+            "bbox": {"width": (0.0, 0.1), "ap": (0.0, 0.1), "height": (0.0, 0.1)},
+            "bbox_fn": Path("/tmp/case_cpu.json"),
+            "_preprocess_events": [],
+        }
+    )
+
+    assert int(torch.count_nonzero(out["lm"]).item()) == fg_before
+    assert out["image"].device.type == "cpu"
+    assert out["lm"].device.type == "cpu"
+    assert any(
+        event["error_type"] == "CropByYoloFallback"
+        for event in out["_preprocess_events"]
+    )
 
 
 def test_crop_by_yolo_default_margin_recovers_cropped_label():
@@ -425,7 +521,39 @@ def test_crop_by_yolo_with_fg_fallback_uses_fg_crop_when_yolo_loses_fg():
     fallback_messages = [
         ev["error_message"] for ev in events if ev["error_type"] == "CropByYoloFallback"
     ]
-    assert any("verified_fg_preserved=True" in msg for msg in fallback_messages)
+    assert fallback_messages == ["fg loss"]
+
+
+def test_crop_by_yolo_with_fg_fallback_bypasses_yolo_for_empty_bbox():
+    image = _metatensor(torch.zeros((1, 12, 12, 12)), "image.pt")
+    lm = _metatensor(torch.zeros((1, 12, 12, 12), dtype=torch.uint8), "lm.pt")
+    lm[:, 4:9, 4:9, 4:9] = 1
+    fg_before = int(torch.count_nonzero(lm).item())
+    transform = CropByYoloWithForegroundFallbackd(
+        min_shape=(4, 4, 4),
+        keys=["image", "lm"],
+        lm_key="lm",
+        bbox_key="bbox",
+        margin=0,
+    )
+
+    out = transform(
+        {
+            "case_id": "case_empty",
+            "image": image,
+            "lm": lm,
+            "bbox": {"empty_bbox": True},
+            "bbox_fn": Path("/tmp/case_empty.json"),
+            "_preprocess_events": [],
+        }
+    )
+
+    assert out["image"].ndim == 4
+    assert out["lm"].ndim == 4
+    assert int(torch.count_nonzero(out["lm"]).item()) == fg_before
+    events = out.get("_preprocess_events", [])
+    assert events[-1]["error_type"] == "CropByYoloFallback"
+    assert events[-1]["error_message"] == "empty bbox"
 
 
 def test_crop_by_yolo_with_fg_fallback_noop_when_yolo_preserves_fg():
