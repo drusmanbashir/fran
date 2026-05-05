@@ -109,7 +109,7 @@ class _PBDSamplerWorkerBase(RayWorkerBase):
     def save_pt_patch(
         self, tnsr, fn_name, subfolder, contiguous=True, suffix: str = None
     ):
-        if contiguous == True:
+        if contiguous:
             tnsr = tnsr.contiguous()
         if hasattr(tnsr, "meta") and isinstance(tnsr.meta, dict):
             tnsr.meta = sanitize_meta_for_monai(dict(tnsr.meta))
@@ -200,6 +200,9 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
             self.output_folder = Path(output_folder)
         cprint(f"Data folder is {self.data_folder}", color="yellow")
 
+    def register_existing_files(self):
+        return self._register_existing_pt_files()
+
     def flatten_results(self, results):
         flat_rows = []
 
@@ -213,10 +216,6 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
 
         _flatten(results)
         return pd.DataFrame(flat_rows)
-
-    def postprocess_results(self, **process_kwargs):
-        return super().postprocess_results(**process_kwargs)
-
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>

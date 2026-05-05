@@ -3,7 +3,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -15,7 +15,13 @@ from tqdm.auto import tqdm
 from fran.utils.string_works import is_excel_None
 from utilz.cprint import cprint
 from utilz.fileio import load_json, save_json
+from utilz.helpers import is_hpc
 from utilz.stringz import headline
+
+if is_hpc():
+    matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 
 try:
     from fran.callback.case_ids_json_tracker import update_case_ids_json
@@ -105,6 +111,7 @@ class CaseIDRecorder(Callback):
         self.plot_x = plot_x
         self.width = 80 * self.plot_x + 200
         self._warned_plotly_export = False
+        self._skip_plotly_export = is_hpc()
         if is_excel_None(vip_label):
             vip_label = 1
         self.vip_label = vip_label
@@ -274,7 +281,7 @@ class CaseIDRecorder(Callback):
             run = trainer.logger.experiment
             table = wandb.Table(dataframe=df_long.reset_index(drop=True))
             key = f"case_recorder/{stage}/df_epoch_{epoch}"
-            run.log({key: table}, step=trainer.global_step)
+            run.log({key: table})
         except Exception as e:
             cprint(f"W&B dataframe logging failed: {e}", color="yellow")
 
@@ -379,6 +386,8 @@ class CaseIDRecorder(Callback):
         return figs
 
     def _write_plot(self, fig, df_chunk, cases_chunk, label, fig_fname) -> bool:
+        if self._skip_plotly_export:
+            return self._write_plot_matplotlib(df_chunk, cases_chunk, label, fig_fname)
         try:
             fig.write_image(fig_fname, scale=2)
             return True
@@ -455,4 +464,3 @@ if __name__ == "__main__":
 
     key = f"case_recorder/fit/df_epoch_{epoch}"
 # _store(self,trainer, stage, loss_dict,epoch):
-

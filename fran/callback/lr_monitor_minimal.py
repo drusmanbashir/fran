@@ -59,16 +59,9 @@ class MinimalLearningRateMonitor(Callback):
         trainer.callback_metrics.update(
             {k: torch.tensor(v, device=root_device) for k, v in metrics.items()}
         )
-        step = getattr(
-            getattr(getattr(trainer, "fit_loop", None), "epoch_loop", None),
-            "_batches_that_stepped",
-            None,
-        )
-        if step is None:
-            step = getattr(trainer, "global_step", 0)
         for logger in trainer.loggers:
             if hasattr(logger, "log_metrics"):
-                logger.log_metrics(metrics, step=step)
+                logger.log_metrics(metrics)
 
     def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
         if self.logging_interval == "epoch":

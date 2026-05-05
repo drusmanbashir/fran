@@ -1,3 +1,4 @@
+from fran.run.misc import view_image
 from label_analysis.helpers import get_labels
 from tqdm.auto import tqdm
 import matplotlib
@@ -39,7 +40,15 @@ if __name__ == "__main__":
       bbox = d["bbox"]
       print(img.shape, bbox)
       img = img.permute(2,0,1)
-      ImageMaskViewer([img,img])
+# %%
+        img_fldr = Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_75d46294/images")
+        lm_fldr = Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_75d46294/lms")
+
+        img_fn = img_fldr/"kits23_00576.pt"
+        lm_fn = lm_fldr/"kits23_00576.pt"
+
+        ImageMaskViewer([img_fn,lm_fn])
+# %%
         
 
 # %%

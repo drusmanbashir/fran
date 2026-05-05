@@ -12,6 +12,7 @@ from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
+from fran.managers.data.dualssd import dual_ssd_manager_class
 from fran.managers.data.training import DataManagerDual, DataManagerPatch
 from fran.managers.wandb.wandb import WandbManager
 from fran.trainers.trainer import Trainer, _flatten_dict
@@ -73,7 +74,6 @@ class DataManagerRT(DataManagerDual):
         data_folder: Optional[str | Path] = None,
         train_indices=None,
         debug=False,
-        dual_ssd=True,
     ):
         self.manager_class = manager_class
         super().__init__(
@@ -91,7 +91,6 @@ class DataManagerRT(DataManagerDual):
             None,
             1.0,
             debug,
-            dual_ssd,
         )
 
     def _build_managers(self):
@@ -105,7 +104,6 @@ class DataManagerRT(DataManagerDual):
             ds_type=self.ds_type,
             data_folder=self.data_folder,
             debug=self.debug,
-            dual_ssd=self.dual_ssd,
         )
 
     def _iter_managers(self):
@@ -287,17 +285,19 @@ class TrainerRT(Trainer):
     def init_dm(self):
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
+        manager_class = self.resolve_datamanager(self.configs["plan_train"]["mode"])
+        if self.dual_ssd:
+            manager_class = dual_ssd_manager_class(manager_class)
         dm = DataManagerRT(
             project_title=self.project.project_title,
             configs=self.configs,
             batch_size=self.configs["dataset_params"]["batch_size"],
-            manager_class=self.resolve_datamanager(self.configs["plan_train"]["mode"]),
+            manager_class=manager_class,
             cache_rate=cache_rate,
             device=self.configs["dataset_params"].get("device", "cuda"),
             ds_type=ds_type,
             train_indices=self.train_indices,
             debug=self.debug,
-            dual_ssd=self.dual_ssd,
         )
         labels_all = self.configs["plan_train"].get("labels_all")
         if not labels_all:
@@ -533,5 +533,4 @@ if __name__ == "__main__":
     bs = 1
 
 # %%
-
 

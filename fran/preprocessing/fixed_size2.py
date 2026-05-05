@@ -147,6 +147,9 @@ class FixedSizeDataGenerator(Preprocessor):
         remapping = self.plan.get(self.remapping_key)
         self.df = self.df.assign(remapping=[remapping] * len(self.df))
 
+    def register_existing_files(self):
+        return self._register_existing_pt_files()
+
     def setup(self, overwrite=False, num_processes=8, device="cpu", debug=False):
         self.create_output_folders()
         super().setup(
@@ -156,7 +159,7 @@ class FixedSizeDataGenerator(Preprocessor):
             debug=debug,
         )
 
-    def postprocess_results(self, **process_kwargs):
+    def postprocess_results(self):
         if len(self.results_df) == 0:
             print("No results generated")
             return

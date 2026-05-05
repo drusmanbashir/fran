@@ -7,6 +7,7 @@ import time
 import torch
 from fastcore.basics import warnings
 from fran.configs.parser import ConfigMaker
+from fran.managers.data.dualssd import DataManagerDualSSD
 from fran.managers.data.training import DataManagerDual
 from fran.managers.project import Project
 from fran.transforms.imageio import LoadTorchd
@@ -32,12 +33,12 @@ def build_datamodule(dual_ssd: bool):
     proj_tit = proj.project_title
     conf["dataset_params"]["cache_rate"] = 0.0
 
-    D = DataManagerDual(
+    dm_class = DataManagerDualSSD if dual_ssd else DataManagerDual
+    D = dm_class(
         project_title=proj_tit,
         configs=conf,
         batch_size=batch_size,
         ds_type=ds_type,
-        dual_ssd=dual_ssd,
     )
 
     D.prepare_data()

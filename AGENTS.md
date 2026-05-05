@@ -9,3 +9,4 @@
 - `/home/ub/code/fran/fran/inference/base.py`: Base inferer (`source` mode, sliding-window).
 - `/home/ub/code/fran/fran/inference/cascade.py`: Whole and Cascade inferers (`whole`, `lbd` flows).
 - `/home/ub/code/fran/fran/inference/ensemble.py`: multi-run inference orchestration.
+- `/home/ub/code/fran/fran/tests/`: ALL test scripts

@@ -24,6 +24,7 @@ from fran.preprocessing.helpers import (
     sanitize_meta_for_monai,
 )
 from fran.utils.dataset_properties import analyze_tensor_data_folder
+from fran.utils.jsonl import write_jsonl_rows
 from fran.utils.string_works import is_excel_None
 from utilz.cprint import cprint
 from utilz.fileio import maybe_makedirs, save_dict, save_json
@@ -538,6 +539,7 @@ def create_hdf5_shards(
 
 
 class Preprocessor(GetAttr):
+    hdf5_shards=True
     _default = "project"
     PREPROCESS_LOG_COLUMNS = [
         "case_id",
@@ -564,6 +566,12 @@ class Preprocessor(GetAttr):
         self.store_label_stats = env_flag("FRAN_STORE_LABEL_STATS", False)
         self.set_input_output_folders(data_folder, output_folder)
         self.devices= devices
+
+    @property
+    def hdf5_manifest_fn(self):
+        src_dims = self.plan["src_dims"]
+        src_tag = "_".join(str(int(v)) for v in src_dims)
+        return self.output_folder / "hdf5_shards" / f"src_{src_tag}" / "manifest.json"
 
     def _df_from_db(self):
         con = sqlite3.connect(str(self.project.db))
@@ -649,6 +657,9 @@ class Preprocessor(GetAttr):
             self.case_ids = self.project.case_ids
 
         self.df = self.df.map(lambda x: x.lower() if isinstance(x, str) else x)
+        self.df["pt_processed"] = None
+        self.df["hdf5_processed"] = None
+
         print("Total number of cases: ", len(self.df))
 
     def set_remapping_per_ds(self):
@@ -675,7 +686,7 @@ class Preprocessor(GetAttr):
         raise NotImplementedError
 
     def save_pt(self, tnsr, subfolder, contiguous=True, suffix: str = None):
-        if contiguous == True:
+        if contiguous:
             tnsr = tnsr.contiguous()
         if hasattr(tnsr, "meta") and isinstance(tnsr.meta, dict):
             tnsr.meta = sanitize_meta_for_monai(dict(tnsr.meta))
@@ -702,25 +713,60 @@ class Preprocessor(GetAttr):
 
             raise RuntimeError(f"Quota exceeded at path: {fn}") from e
 
-    def register_existing_files(self):
-        existing_img = {p.name for p in (self.output_folder / "images").glob("*.pt")}
-        existing_lm = {p.name for p in (self.output_folder / "lms").glob("*.pt")}
-        self.existing_output_fnames = existing_img.intersection(existing_lm)
+    def register_existing_cases(self):
+        self._register_existing_pt_files()
+        self._register_existing_hdf5_shards()
+
+    def _register_existing_hdf5_shards(self) ->None:
+        manifest_fn = self.hdf5_manifest_fn
+        self.existing_hdf5_fnames = set()
+        if manifest_fn.exists():
+            manifest = json.loads(manifest_fn.read_text())
+            h5py = import_h5py()
+            shards_folder = manifest_fn.parent
+            for shard_meta in manifest["shards"]:
+                shard_fn = shards_folder / shard_meta["shard"]
+                with h5py.File(shard_fn, "r") as h5f:
+                    cases_grp = h5f["cases"]
+                    for case_id in shard_meta["case_ids"]:
+                        if case_id not in cases_grp:
+                            continue
+                        case_grp = cases_grp[case_id]
+                        required_keys = ("image", "lm", "lm_fg_indices", "lm_bg_indices")
+                        if all(key in case_grp for key in required_keys):
+                            self.existing_hdf5_fnames.add(f"{case_id}.pt")
         print("Output folder: ", self.output_folder)
         print(
-            "Image files fully processed in a previous session: ",
-            len(self.existing_output_fnames),
+            "HDf5 files fully processed in a previous session: ",
+            len(self.existing_hdf5_fnames),
         )
+        case_ids_done = [
+            info_from_filename(fn, full_caseid=True)["case_id"]
+            for fn in self.existing_hdf5_fnames
+        ]
+        self.df.loc[self.df["case_id"].isin(case_ids_done), "hdf5_processed"] = True
+
+    def _register_existing_pt_files(self) -> None:
+        existing_img = {p.name for p in (self.output_folder / "images").glob("*.pt")}
+        existing_lm = {p.name for p in (self.output_folder / "lms").glob("*.pt")}
+        self.existing_pt_fnames = existing_img.intersection(existing_lm)
+        print("Output folder: ", self.output_folder)
+        print(
+            "PT files fully processed in a previous session: ",
+            len(self.existing_pt_fnames),
+        )
+        case_ids_done  = [info_from_filename(fn, full_caseid=True)["case_id"] for fn in self.existing_pt_fnames]
+        self.df.loc[self.df["case_id"].isin(case_ids_done), "pt_processed"] = True
+        
 
     def remove_completed_cases(self):
-        if not getattr(self, "existing_output_fnames", None):
-            return
         n_before = len(self.df)
-        keep_mask = self.df["image"].apply(
-            lambda x: (
-                strip_extension(Path(x).name) + ".pt" not in self.existing_output_fnames
-            )
-        )
+        pt_done = self.df["pt_processed"].eq(True)
+        if self.hdf5_shards:
+          hdf5_done = self.df["hdf5_processed"].eq(True)
+          keep_mask = ~(pt_done & hdf5_done)
+        else:
+          keep_mask = ~pt_done
         self.df = self.df[keep_mask]
         print("Image files remaining to process:", len(self.df), "/", n_before)
 
@@ -890,13 +936,7 @@ class Preprocessor(GetAttr):
                 )
         return rows
 
-    def write_preprocessing_log(self, results):
-        rows = self.build_preprocessing_log_rows(results)
-        df = pd.DataFrame(rows, columns=self.PREPROCESS_LOG_COLUMNS)
-        log_fn = self.output_folder / "preprocessing_log.csv"
-        df.to_csv(log_fn, index=False)
-
-    def postprocess_results(self, **process_kwargs):
+    def postprocess_results(self):
         cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
         self._write_results_csv()
         self._store_dataset_properties()
@@ -938,51 +978,98 @@ class Preprocessor(GetAttr):
                 print(" ", pth)
         return len(missing) > 0
 
-    def run_postprocess_only(self, **process_kwargs):
+    def run_postprocess_only(
+        self,
+        src_dims=None,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
+    ):
         print("Running postprocess on existing output tensors")
         self.results_df = pd.DataFrame()
-        self.postprocess_results(**process_kwargs)
-        self._maybe_create_hdf5_shards(**process_kwargs)
-        return self.results_df
-
-    def _effective_overwrite(self, **process_kwargs):
-        return process_kwargs["overwrite"] if "overwrite" in process_kwargs else self.overwrite
-
-    def process(self, **process_kwargs):
-        if not hasattr(self, "df"):
-            print("No data frames have been created. Run setup")
-            return 0
-        if len(self.df) == 0:
-            if getattr(self, "run_postprocess_if_empty", False):
-                return self.run_postprocess_only(**process_kwargs)
-            print("No data frames have been created. Run setup")
-            return 0
-        self.initialize_process_state()
-        self.results = self.run_worker_jobs()
-        self.write_preprocessing_log(self.results)
-        self.results_df = self.flatten_results(self.results)
-        overwrite = self._effective_overwrite(**process_kwargs)
-        if overwrite is False and self.postprocess_artifacts_missing() is False:
-            cprint("Postprocess: skip existing artifacts", "cyan")
-        else:
-            self.postprocess_results(**process_kwargs)
-        self._maybe_create_hdf5_shards(**process_kwargs)
-        return self.results_df
-
-    def create_hdf5_shards(self, **kwargs):
-        return create_hdf5_shards(output_folder=self.output_folder, **kwargs)
-
-    def _maybe_create_hdf5_shards(self, **process_kwargs):
-        if not process_kwargs.get("create_hdf5_shards", False):
-            return []
-        return self.create_hdf5_shards(
-            src_dims=process_kwargs.get("src_dims", (192, 192, 128)),
-            cases_per_shard=process_kwargs.get("cases_per_shard", 5),
-            max_shard_bytes=process_kwargs.get("max_shard_bytes"),
-            overwrite=process_kwargs.get("overwrite_hdf5_shards", False),
-            compression=process_kwargs.get("hdf5_compression", "gzip"),
-            compression_opts=process_kwargs.get("hdf5_compression_opts", 1),
+        self.postprocess_results()
+        self._maybe_create_hdf5_shards(
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
         )
+        return self.results_df
+
+    def _effective_overwrite(self, overwrite=None):
+        if overwrite is None:
+            return self.overwrite
+        return overwrite
+
+    # def process(
+    #     self,
+    #     overwrite=None,
+    #     derive_bboxes=True,
+    #     src_dims=None,
+    #     cases_per_shard=5,
+    #     max_shard_bytes=None,
+    #     overwrite_hdf5_shards=False,
+    #     hdf5_compression="gzip",
+    #     hdf5_compression_opts=1,
+    # ):
+    #     if not hasattr(self, "df"):
+    #         print("No data frames have been created. Run setup")
+    #         return 0
+    #     if len(self.df) == 0:
+    #         if getattr(self, "run_postprocess_if_empty", False):
+    #             return self.run_postprocess_only(
+    #                 src_dims=src_dims,
+    #                 cases_per_shard=cases_per_shard,
+    #                 max_shard_bytes=max_shard_bytes,
+    #                 overwrite_hdf5_shards=overwrite_hdf5_shards,
+    #                 hdf5_compression=hdf5_compression,
+    #                 hdf5_compression_opts=hdf5_compression_opts,
+    #             )
+    #         print("No data frames have been created. Run setup")
+    #         return 0
+    #     self.initialize_process_state()
+    #     self.results = self.run_worker_jobs()
+    #     log_rows = self.build_preprocessing_log_rows(self.results)
+    #     write_jsonl_rows(self.output_folder / "log.jsonl", log_rows)
+    #     self.results_df = self.flatten_results(self.results)
+    #     overwrite = self._effective_overwrite(overwrite=overwrite)
+    #     if overwrite is False and self.postprocess_artifacts_missing() is False:
+    #         cprint("Postprocess: skip existing artifacts", "cyan")
+    #     else:
+    #         self.postprocess_results()
+    #     self._maybe_create_hdf5_shards(
+    #         src_dims=src_dims,
+    #         cases_per_shard=cases_per_shard,
+    #         max_shard_bytes=max_shard_bytes,
+    #         overwrite_hdf5_shards=overwrite_hdf5_shards,
+    #         hdf5_compression=hdf5_compression,
+    #         hdf5_compression_opts=hdf5_compression_opts,
+    #     )
+        # return self.results_df
+
+    def _maybe_create_hdf5_shards(
+        self,
+        src_dims=None,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
+    ):
+        if self.hdf5_shards and len(self.existing_hdf5_fnames) >0:
+            return create_hdf5_shards(
+                output_folder=self.output_folder,
+                src_dims=self.plan["src_dims"] if src_dims is None else src_dims,
+                cases_per_shard=cases_per_shard,
+                max_shard_bytes=max_shard_bytes,
+                overwrite=overwrite_hdf5_shards,
+                compression=hdf5_compression,
+                compression_opts=hdf5_compression_opts,
+            )
 
     def process_batch(self, batch):
         images, lms, fg_inds, bg_inds = (
@@ -1117,58 +1204,51 @@ class Preprocessor(GetAttr):
 
     def split_dataframe_for_workers(self, df, num_processes: int):
         if len(df) == 0:
-            return []
-        n = max(1, min(len(df), int(num_processes)))
-        return [
-            df.iloc[idx].reset_index(drop=True)
-            for idx in np.array_split(np.arange(len(df)), n)
-            if len(idx) > 0
-        ]
+            return []  # no rows, return empty list
 
-    def ray_prepare(self, actor_kwargs: dict, num_processes: int):
+        n = max(1, min(len(df), int(num_processes)))  # number of chunks
+
+        mini_dfs = []  # output list
+
+        for idx in np.array_split(np.arange(len(df)), n):
+            # idx is an array of row positions for this chunk
+            df_chunk = df.iloc[idx].reset_index(drop=True)
+            mini_dfs.append(df_chunk)
+
+        return mini_dfs
+
+    def ray_prepare(self, num_processes: int, **actor_kwargs):
         self.ray_init()
+
         n = max(1, min(len(self.df), int(num_processes))) if len(self.df) else 0
+
         self.n_actors = n
         self.mini_dfs = self.split_dataframe_for_workers(self.df, n)
-        self.actors = (
-            [self.actor_cls.remote(**actor_kwargs) for _ in range(n)] if n else []
-        )
-
-    def extra_worker_kwargs(self, **setup_kwargs):
-        return {}
-
-    def build_worker_kwargs(self, device="cpu", **setup_kwargs):
-        worker_kwargs = dict(
-            project=self.project,
-            plan=self.plan,
-            data_folder=self.data_folder,
-            output_folder=self.output_folder,
-            device=device,
-        )
-        if hasattr(self, "debug"):
-            worker_kwargs["debug"] = self.debug
-        worker_kwargs.update(self.extra_worker_kwargs(**setup_kwargs))
-        return worker_kwargs
+        self.actors = [self.actor_cls.remote(**actor_kwargs) for _ in range(n)]
 
     def should_use_ray(self):
         debug = getattr(self, "debug", False)
         return (self.num_processes > 1) and (not debug)
 
     def setup(
-        self, overwrite=False, num_processes=8, device="cpu", **setup_kwargs
+        self,
+        overwrite=False,
+        num_processes=8,
+        device="cpu",
+        debug=False,
+        mean_std_mode="dataset",
     ):
         self.num_processes = max(1, int(num_processes))
         self.devices = device
         self.overwrite = overwrite
-        if "debug" in setup_kwargs:
-            self.debug = setup_kwargs["debug"]
+        self.debug = debug
         self.run_postprocess_if_empty = False
         self.create_data_df()
         if getattr(self, "remapping_key", None) is not None:
             self.set_remapping_per_ds()
-        self.register_existing_files()
+        self.register_existing_cases()
         print("Overwrite:", overwrite)
-        if overwrite == False:
+        if not overwrite:
             self.remove_completed_cases()
         if len(self.df) == 0:
             missing_arts = postprocess_artifacts_missing(self.output_folder)
@@ -1176,22 +1256,35 @@ class Preprocessor(GetAttr):
             self.run_postprocess_if_empty = missing_all
             return
 
-        worker_kwargs = self.build_worker_kwargs(device=device, **setup_kwargs)
         self.use_ray = self.should_use_ray()
-        if hasattr(self, "debug"):
-            print(
-                f"use_ray={self.use_ray} (num_processes={self.num_processes}, debug={self.debug})"
-            )
         if self.use_ray:
-            self.ray_prepare(worker_kwargs, self.num_processes)
+            self.ray_prepare(
+                num_processes=self.num_processes,
+                project=self.project,
+                plan=self.plan,
+                data_folder=self.data_folder,
+                output_folder=self.output_folder,
+                device=device,
+                debug=debug,
+                mean_std_mode=mean_std_mode,
+                overwrite=overwrite,
+            )
         else:
+            self.n_actors = 0
+            self.actors = []
             self.mini_dfs = [self.df]
-            self.local_worker = self.local_worker_cls(**worker_kwargs)
 
-    # @property
-    # def indices_subfolder(self):
-    #     indices_subfolder = self.output_folder / ("indices")
-    #     return indices_subfolder
+            self.local_worker = self.local_worker_cls(
+                project=self.project,
+                plan=self.plan,
+                data_folder=self.data_folder,
+                output_folder=self.output_folder,
+                device=device,
+                debug=debug,
+                mean_std_mode=mean_std_mode,
+                overwrite=overwrite,
+                num_processes=self.num_processes,
+            )
 
 
 # %%
@@ -1199,7 +1292,6 @@ class Preprocessor(GetAttr):
 #SECTION:-------------------- --------------------------------------------------------------------------------------
 if __name__ == "__main__":
 # %%
-#SECTION:-------------------- setup--------------------------------------------------------------------------------------
     from pathlib import Path
 
     from fran.configs.parser import ConfigMaker

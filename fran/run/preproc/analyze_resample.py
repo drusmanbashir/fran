@@ -13,6 +13,7 @@ from fran.preprocessing.fixed_size2 import FixedSizeDataGenerator
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator
+from fran.preprocessing.preprocessor import DEFAULT_HDF5_SRC_DIMS
 from fran.preprocessing.regionbounded import RegionBoundedDataGenerator
 from fran.utils.folder_names import FolderNames
 from tqdm.auto import tqdm
@@ -286,18 +287,49 @@ class PreprocessingManager:
         return generator
 
     def _process_with_output_progress(
-        self, generator, counter_cls, desc="Analyze/resample", **process_kwargs
+        self,
+        generator,
+        counter_cls,
+        desc="Analyze/resample",
+        overwrite=None,
+        derive_bboxes=True,
+        src_dims=DEFAULT_HDF5_SRC_DIMS,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
     ):
         monitor = OutputFolderProgressMonitor(
             counter=counter_cls(generator.output_folder, len(generator.df)),
             desc=desc,
         ).start()
         try:
-            return generator.process(**process_kwargs)
+            return generator.process(
+                overwrite=overwrite,
+                derive_bboxes=derive_bboxes,
+                src_dims=src_dims,
+                cases_per_shard=cases_per_shard,
+                max_shard_bytes=max_shard_bytes,
+                overwrite_hdf5_shards=overwrite_hdf5_shards,
+                hdf5_compression=hdf5_compression,
+                hdf5_compression_opts=hdf5_compression_opts,
+            )
         finally:
             monitor.stop()
 
-    def resample_dataset(self, overwrite=False, num_processes=1, debug=False):
+    def resample_dataset(
+        self,
+        overwrite=False,
+        num_processes=1,
+        debug=False,
+        src_dims=DEFAULT_HDF5_SRC_DIMS,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
+    ):
         """
         Resamples dataset to target spacing and stores it in the rapid-access fixed_spacing folder.
         Typically this will be a basis for further processing e.g., pbd, lbd dataset which will then be used in training
@@ -315,10 +347,27 @@ class PreprocessingManager:
             self.R,
             ExactCaseOutputCounter,
             desc="Resample",
+            overwrite=overwrite,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
         )
 
     def generate_lbd_dataset(
-        self, overwrite=False, device="cpu", num_processes=1, debug=False
+        self,
+        overwrite=False,
+        device="cpu",
+        num_processes=1,
+        debug=False,
+        src_dims=DEFAULT_HDF5_SRC_DIMS,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
     ):
 
         resampled_data_folder = FolderNames(self.project, self.plan).folders[
@@ -346,6 +395,13 @@ class PreprocessingManager:
             self.L,
             CaseOutputCounter,
             desc="LBD",
+            overwrite=overwrite,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
         )
 
     def generate_TSlabelboundeddataset(
@@ -354,6 +410,12 @@ class PreprocessingManager:
         overwrite=False,
         num_processes=1,
         debug=False,
+        src_dims=DEFAULT_HDF5_SRC_DIMS,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
     ):
         """
         requires resampled folder to exist. Crops within this folder
@@ -378,10 +440,27 @@ class PreprocessingManager:
             self.L,
             CaseOutputCounter,
             desc="LBD imported",
+            overwrite=overwrite,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
         )
 
     def generate_rbd_dataset(
-        self, overwrite=False, device="cpu", num_processes=1, debug=False
+        self,
+        overwrite=False,
+        device="cpu",
+        num_processes=1,
+        debug=False,
+        src_dims=DEFAULT_HDF5_SRC_DIMS,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
     ):
 
         resampled_data_folder = FolderNames(self.project, self.plan).folders[
@@ -409,10 +488,27 @@ class PreprocessingManager:
             self.L,
             CaseOutputCounter,
             desc="RBD",
+            overwrite=overwrite,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
         )
 
     def generate_whole_images_dataset(
-        self, overwrite=False, device="cpu", num_processes=1, debug=False
+        self,
+        overwrite=False,
+        device="cpu",
+        num_processes=1,
+        debug=False,
+        src_dims=DEFAULT_HDF5_SRC_DIMS,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
     ):
         resampled_data_folder = FolderNames(self.project, self.plan).folders[
             "data_folder_source"
@@ -438,10 +534,26 @@ class PreprocessingManager:
             self.W,
             CaseOutputCounter,
             desc="Whole",
+            overwrite=overwrite,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
         )
 
     def generate_hires_patches_dataset(
-        self, debug=False, overwrite=False, num_processes=1
+        self,
+        debug=False,
+        overwrite=False,
+        num_processes=1,
+        src_dims=DEFAULT_HDF5_SRC_DIMS,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
     ):
 
         data_folder = self.get_source_data_folder_for_patch()
@@ -460,7 +572,14 @@ class PreprocessingManager:
             PG,
             PatchCaseApproxCounter,
             desc="Patches",
+            overwrite=overwrite,
             derive_bboxes=False,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
         )
 
     def get_source_data_folder_for_patch(self):

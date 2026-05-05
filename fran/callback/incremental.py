@@ -29,7 +29,7 @@ def _flatten_wandb_metrics(metrics: dict, prefix: str = "") -> dict:
     return flat
 
 
-def _log_wandb_metrics(trainer, metrics: dict, step: int | None = None):
+def _log_wandb_metrics(trainer, metrics: dict):
     if not getattr(trainer, "is_global_zero", True):
         return
     metrics = _flatten_wandb_metrics(metrics)
@@ -50,7 +50,7 @@ def _log_wandb_metrics(trainer, metrics: dict, step: int | None = None):
         if exp is None or not hasattr(exp, "log"):
             continue
         try:
-            exp.log(metrics, step=step)
+            exp.log(metrics)
         except TypeError:
             exp.log(metrics)
 
@@ -252,7 +252,6 @@ class UpdateDatasetOnEMAMomentum(Callback):
                         f"{prefix}/min_mom": float(self.min_mom),
                         f"{prefix}/did_add_samples": 0,
                     },
-                    step=int(step),
                 )
             return
 
@@ -291,7 +290,6 @@ class UpdateDatasetOnEMAMomentum(Callback):
                     f"{prefix}/min_mom": float(self.min_mom),
                     f"{prefix}/did_add_samples": int(did_add_samples),
                 },
-                step=int(step),
             )
 
 

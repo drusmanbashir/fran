@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 
+from fran.preprocessing.helpers import import_h5py
 import ipdb
 from localiser.inference.base import bbox_from_file
 import numpy as np
@@ -11,6 +12,7 @@ import ray
 import torch
 from fran.inference.cascade_yolo import LocaliserInfererPT
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from fran.preprocessing.preprocessor import DEFAULT_HDF5_SRC_DIMS
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.spatialtransforms import (
     CropByYoloWithForegroundFallbackd,
@@ -135,6 +137,7 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
             bbox_key="bbox",
             margin=margin,
         )
+
         self.transforms_dict["CropByYolo"] = self.CropByYolo
 
     def _create_data_dict(self, row):
@@ -287,10 +290,29 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
         self.I.run(imgs, overwrite=False)
         self.attach_bboxes(classes_in_bbox)
 
-    def process(self):
+    def process(
+        self,
+        overwrite=None,
+        derive_bboxes=True,
+        src_dims=DEFAULT_HDF5_SRC_DIMS,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
+    ):
         self.maybe_infer_bboxes()
         self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
-        return super().process()
+        return super().process(
+            overwrite=overwrite,
+            derive_bboxes=derive_bboxes,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
+        )
 
     def create_data_df(self):
         super().create_data_df()
@@ -354,6 +376,41 @@ if __name__ == "__main__":
     num_processes = 8
     R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr,devices=devices)
     R.setup(num_processes=num_processes, overwrite=overwrite)
+# %%
+
+        manifest_fn = R.hdf5_manifest_fn
+        R.existing_output_fnames = set()
+# %%
+        if manifest_fn.exists():
+            manifest = json.loads(manifest_fn.read_text())
+            h5py = import_h5py()
+            shards_folder = manifest_fn.parent
+            for shard_meta in manifest["shards"]:
+                shard_fn = shards_folder / shard_meta["shard"]
+                with h5py.File(shard_fn, "r") as h5f:
+                    cases_grp = h5f["cases"]
+                    for case_id in shard_meta["case_ids"]:
+                        if case_id not in cases_grp:
+                            continue
+                        case_grp = cases_grp[case_id]
+                        required_keys = ("image", "lm", "lm_fg_indices", "lm_bg_indices")
+                        if all(key in case_grp for key in required_keys):
+                            R.existing_output_fnames.add(f"{case_id}.pt")
+        print("Output folder: ", R.output_folder)
+        print(
+            "Image files fully processed in a previous session: ",
+            len(R.existing_output_fnames),
+        )
+        R._register_existing_pt_files()
+
+
+    R._register_existing_hdf5_shards()
+
+# %%
+
+
+
+
 # %%
     R.process()
 # %%
@@ -644,4 +701,29 @@ if __name__ == "__main__":
     # %%
     bbox_files = []
     # %%  # T:block_start|RegionBoundedDataGenerator._index_bbox_files_by_case_id
+
+    # %%
+    overwrite = None
+    derive_bboxes = True
+    src_dims = DEFAULT_HDF5_SRC_DIMS
+    cases_per_shard = 5
+    max_shard_bytes = None
+    overwrite_hdf5_shards = False
+    hdf5_compression = "gzip"
+    hdf5_compression_opts = 1
+    # %%  # T:block_start|RegionBoundedDataGenerator.process
+#SECTION:-------------------- process--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.process
+    R.maybe_infer_bboxes()  # T:self_ref|self.maybe_infer_bboxes()
+    R.mini_dfs = R.split_dataframe_for_workers(R.df, R.num_processes)  # T:self_ref|self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
+    pass  # T:early_return|return super().process(
+        overwrite=overwrite,
+        derive_bboxes=derive_bboxes,
+        src_dims=src_dims,
+        cases_per_shard=cases_per_shard,
+        max_shard_bytes=max_shard_bytes,
+        overwrite_hdf5_shards=overwrite_hdf5_shards,
+        hdf5_compression=hdf5_compression,
+        hdf5_compression_opts=hdf5_compression_opts,
+    )
+    # end PythonMethodScratch  # T:block_end|RegionBoundedDataGenerator.process
 #SECTION:-------------------- _index_bbox_files_by_case_id--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator._index_bbox_files_by_case_id

@@ -1,12 +1,7 @@
 # %%
-import csv
-import fcntl
 import ipdb
-import logging
 import math
-import os
 from copy import deepcopy
-from pathlib import Path
 
 import monai.transforms.spatial.functional as fm
 import nibabel as nib
@@ -49,6 +44,60 @@ def _resize3d(data, spatial_shape, mode):
     return data_out
 
 
+def expand_bbox_bounds_mm(
+    box_start,
+    box_end,
+    image_shape,
+    spacing,
+    margin_mm,
+):
+    box_start = np.asarray(box_start)
+    box_end = np.asarray(box_end)
+    image_shape = np.asarray(image_shape, dtype=int)
+    spatial_dims = image_shape.shape[0]
+    margin = np.asarray(margin_mm_to_vox(margin_mm, spacing), dtype=int).reshape(-1)[
+        :spatial_dims
+    ]
+    box_start = np.maximum(box_start - margin, 0)
+    box_end = np.minimum(box_end + margin, image_shape)
+    return box_start, box_end
+
+
+VALID_EXPAND_AXES = ("ap", "lat", "cc")
+
+
+def normalize_axes(axes):
+    if not isinstance(axes, str):
+        raise TypeError(
+            "axes must be a comma-separated string of physical axis names."
+        )
+    tokens = [tok.strip() for tok in axes.split(",")]
+    tokens = [tok for tok in tokens if tok]
+    invalid = [tok for tok in tokens if tok not in VALID_EXPAND_AXES]
+    if invalid:
+        raise ValueError(
+            f"Invalid axes {invalid}. Valid physical axes are {VALID_EXPAND_AXES}."
+        )
+    return tuple(axis for axis in VALID_EXPAND_AXES if axis in tokens)
+
+
+def projected_bbox_spacing_and_margin_mm(suffix, spacing, expand_by, axes):
+    spacing = np.asarray(spacing, dtype=float).reshape(-1)
+    if suffix == "lat":
+        active_axes = ("ap", "cc")
+        return spacing[[1, 2]], np.asarray(
+            [expand_by if axis in axes else 0.0 for axis in active_axes],
+            dtype=float,
+        )
+    if suffix == "ap":
+        active_axes = ("lat", "cc")
+        return spacing[[0, 2]], np.asarray(
+            [expand_by if axis in axes else 0.0 for axis in active_axes],
+            dtype=float,
+        )
+    raise ValueError(f"Unsupported projection suffix for ExpandBBox: {suffix}")
+
+
 class CropMaybePad(MapTransform):
     """
     Crop a channel-first 4D tensor by voxel bbox after optional mm-margin expansion,
@@ -66,12 +115,13 @@ class CropMaybePad(MapTransform):
         return tuple(int(v) for v in img.shape[1:])
 
     def add_margin_to_bbox(self, box_start, box_end, image_shape, spacing):
-        box_start = np.asarray(box_start, dtype=int)
-        box_end = np.asarray(box_end, dtype=int)
-        image_shape = np.asarray(image_shape, dtype=int)
-        margin = margin_mm_to_vox(self.margin, spacing)
-        box_start = np.maximum(box_start - margin, 0)
-        box_end = np.minimum(box_end + margin, image_shape)
+        box_start, box_end = expand_bbox_bounds_mm(
+            box_start=box_start,
+            box_end=box_end,
+            image_shape=image_shape,
+            spacing=spacing,
+            margin_mm=self.margin,
+        )
         return tuple(int(v) for v in box_start), tuple(int(v) for v in box_end)
 
     def maybe_expand_bbox(self, box_start, box_end, image_shape):
@@ -215,18 +265,82 @@ class CropForegroundMinShaped(CropMaybePad):
         return super().__call__(d, box_start, box_end, spacing=(1.0, 1.0, 1.0))
 
 
-class CropByYolo(CropMaybePad):
-    audit_columns = (
-        "case_id",
-        "bbox_fn",
-        "status",
-        "stage",
-        "fg_before",
-        "fg_after",
-        "margin",
-        "message",
-    )
+class ExpandBBox(MapTransform):
+    """
+    Expand xxyy bounding boxes in millimetres on selected physical axes.
 
+    `axes` is a comma-separated string of physical axis names.
+    Valid physical axis names are `ap`, `lat`, and `cc`.
+    """
+
+    def __init__(
+        self,
+        bbox_key,
+        axes,
+        expand_by,
+        template_tensor_key,
+        allow_missing_keys=False,
+    ):
+        super().__init__(keys=[bbox_key], allow_missing_keys=allow_missing_keys)
+        self.bbox_key = bbox_key
+        self.expand_by = expand_by
+        self.axes = normalize_axes(axes)
+        self.template_tensor_key = template_tensor_key
+
+    @staticmethod
+    def normalize_axes(axes):
+        return normalize_axes(axes)
+
+    def __call__(self, data):
+        d = dict(data)
+        if self.expand_by == 0 or len(self.axes) == 0:
+            return d
+
+        bbox = d[self.bbox_key]
+        template_tensor = d[self.template_tensor_key]
+        meta = template_tensor.meta
+        suffix = meta["project2d"]["suffix"]
+        spacing, margin_mm = projected_bbox_spacing_and_margin_mm(
+            suffix=suffix,
+            spacing=spacing_from_affine(meta["affine"]),
+            expand_by=self.expand_by,
+            axes=self.axes,
+        )
+        if np.all(margin_mm == 0):
+            return d
+        image_shape = tuple(int(v) for v in template_tensor.shape[-2:])
+        d[self.bbox_key] = self.expand_box(bbox, image_shape, spacing, margin_mm)
+        return d
+
+    def expand_box(self, box, image_shape, spacing, margin_mm):
+        if isinstance(box, torch.Tensor):
+            box_np = box.detach().cpu().numpy()
+        else:
+            box_np = np.asarray(box)
+
+        original_shape = box_np.shape
+        box_expanded = box_np.reshape(-1, 4).copy()
+        box_start, box_end = expand_bbox_bounds_mm(
+            box_start=box_expanded[:, :2],
+            box_end=box_expanded[:, 2:],
+            image_shape=image_shape,
+            spacing=spacing,
+            margin_mm=margin_mm,
+        )
+        box_expanded[:, :2] = box_start
+        box_expanded[:, 2:] = box_end
+        box_expanded = box_expanded.reshape(original_shape)
+
+        if isinstance(box, torch.Tensor):
+            return torch.as_tensor(box_expanded, dtype=box.dtype, device=box.device)
+        if isinstance(box, np.ndarray):
+            return box_expanded.astype(box.dtype, copy=False)
+        if isinstance(box, tuple):
+            return tuple(box_expanded.tolist())
+        return box_expanded.tolist()
+
+
+class CropByYolo(CropMaybePad):
     def __init__(
         self,
         keys=("image", "lm"),
@@ -242,7 +356,6 @@ class CropByYolo(CropMaybePad):
         self.lm_key = lm_key
         self.bbox_key = bbox_key
         self.report_path = report_path
-        self.logger = logging.getLogger(__name__)
 
     def __call__(self, data):
         dici = dict(data)
@@ -275,23 +388,14 @@ class CropByYolo(CropMaybePad):
         fg_before = self._fg_count(before)
         fg_after = self._fg_count(after)
         if fg_before == fg_after:
-            self._append_audit_row(
-                data=before,
-                status="NORMAL",
-                stage="crop",
-                fg_before=fg_before,
-                fg_after=fg_after,
-                message="NORMAL",
-            )
             return
-        self._log_mismatch(data=before, fg_before=fg_before, fg_after=fg_after)
-        self._append_audit_row(
-            data=before,
-            status="WARNING",
-            stage="crop",
-            fg_before=fg_before,
-            fg_after=fg_after,
-            message="Foreground mismatch after single-pass YOLO crop.",
+        self._append_event(
+            after,
+            error_type="CropByYoloForegroundMismatch",
+            error_message=(
+                "Foreground mismatch after single-pass YOLO crop. "
+                f"fg_before={fg_before} fg_after={fg_after} margin_mm={self.margin}"
+            ),
         )
 
     @staticmethod
@@ -310,61 +414,16 @@ class CropByYolo(CropMaybePad):
             math.ceil((1.0 - height[0]) * height3d),
         )
 
-    def _append_audit_row(
-        self,
-        *,
-        data: dict,
-        status: str,
-        stage: str,
-        fg_before,
-        fg_after,
-        message: str,
-    ) -> None:
-        if not self.report_path:
-            return
-
-        row = {
-            "case_id": "" if data.get("case_id") is None else str(data["case_id"]),
-            "bbox_fn": "" if data.get("bbox_fn") is None else str(data["bbox_fn"]),
-            "status": status,
-            "stage": stage,
-            "fg_before": "" if fg_before is None else int(fg_before),
-            "fg_after": "" if fg_after is None else int(fg_after),
-            "margin": float(self.margin),
-            "message": message,
-        }
-        self._append_csv_row(row)
-
-    def _append_csv_row(self, row: dict) -> None:
-        report_path = Path(self.report_path)
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        with report_path.open("a+", newline="") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            try:
-                handle.seek(0, os.SEEK_END)
-                write_header = handle.tell() == 0
-                writer = csv.DictWriter(handle, fieldnames=self.audit_columns)
-                if write_header:
-                    writer.writeheader()
-                writer.writerow(row)
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
-    def _log_mismatch(
-        self,
-        *,
-        data: dict,
-        fg_before: int,
-        fg_after: int,
-    ) -> None:
-        self.logger.warning(
-            "CropByYolo fg mismatch: case_id=%s bbox=%s fg_before=%d fg_after=%d margin=%.1fmm",
-            data.get("case_id"),
-            data.get("bbox_fn"),
-            fg_before,
-            fg_after,
-            self.margin,
+    @staticmethod
+    def _append_event(data: dict, error_type: str, error_message: str) -> None:
+        events = list(data["_preprocess_events"]) if "_preprocess_events" in data else []
+        events.append(
+            {
+                "error_type": str(error_type),
+                "error_message": str(error_message),
+            }
         )
+        data["_preprocess_events"] = events
 
 
 class CropByYoloWithForegroundFallbackd(MapTransform):
@@ -412,7 +471,11 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
             return yolo_out
 
         fallback_input = dict(original)
-        fallback_input["_preprocess_events"] = list(yolo_out["_preprocess_events"])
+        fallback_input["_preprocess_events"] = (
+            list(yolo_out["_preprocess_events"])
+            if "_preprocess_events" in yolo_out
+            else []
+        )
 
         fallback_out = self.apply_crop_fg(fallback_input)
         self._register_event(fallback_out, "fg loss")
@@ -426,7 +489,7 @@ class CropByYoloWithForegroundFallbackd(MapTransform):
 
     @staticmethod
     def _register_event(data: dict, message: str) -> None:
-        events = data["_preprocess_events"]
+        events = list(data["_preprocess_events"]) if "_preprocess_events" in data else []
         events.append(
             {"error_type": "CropByYoloFallback", "error_message": str(message)}
         )

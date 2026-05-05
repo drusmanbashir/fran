@@ -4,7 +4,6 @@ from __future__ import annotations
 import ast
 import json
 import os
-import shutil
 from functools import reduce
 from operator import add
 from pathlib import Path
@@ -352,7 +351,6 @@ class DataManagerDual(LightningDataModule):
         val_indices=None,
         val_sampling=1.0,
         debug=False,
-        dual_ssd=True,
     ):
         super().__init__()
         self.project = Project(project_title)
@@ -370,7 +368,6 @@ class DataManagerDual(LightningDataModule):
         self.val_indices = val_indices
         self.val_sampling = float(val_sampling)
         self.debug = debug
-        self.dual_ssd = dual_ssd
         self.batch_affine = self._create_batch_affine()
 
         if save_hyperparameters:
@@ -380,7 +377,6 @@ class DataManagerDual(LightningDataModule):
                 "train_indices",
                 "val_indices",
                 "val_sampling",
-                "dual_ssd",
                 logger=False,
             )
 
@@ -501,7 +497,6 @@ class DataManagerDual(LightningDataModule):
             keys=self.keys_tr,
             data_folder=self.data_folder,
             debug=self.debug,
-            dual_ssd=self.dual_ssd,
         )
         self.valid_manager = cls_val(
             project=self.project,
@@ -515,7 +510,6 @@ class DataManagerDual(LightningDataModule):
             data_folder=self.data_folder,
             val_sampling=self.val_sampling,
             debug=self.debug,
-            dual_ssd=self.dual_ssd,
         )
 
     def _call_prepare_data(self):
@@ -566,14 +560,11 @@ class DataManager(LightningDataModule):
         data_folder: Optional[str | Path] = None,
         val_sampling=1.0,
         debug=False,
-        dual_ssd=True,
     ):
 
         super().__init__()
         if save_hyperparameters:
-            self.save_hyperparameters(
-                "project", "configs", "split", "dual_ssd", logger=False
-            )
+            self.save_hyperparameters("project", "configs", "split", logger=False)
         device = resolve_device(device)
 
         self.project = project
@@ -585,7 +576,6 @@ class DataManager(LightningDataModule):
         self.split = split
         self.keys = keys
         self.val_sampling = float(val_sampling)
-        self.dual_ssd = dual_ssd
         self.set_plan()
 
         self.maybe_fix_remapping_dtype()
@@ -643,17 +633,17 @@ class DataManager(LightningDataModule):
     def is_train_split(self):
         return self.split == "train"
 
-    def is_train_like_split(self):
+    def is_train_all_split(self):
         return self.split in ["train", "all"]
 
     def is_eval_split(self):
         return self.split == "valid"
 
     def uses_train_keys(self):
-        return self.is_train_like_split()
+        return self.is_train_all_split()
 
     def set_plan(self):
-        if self.is_train_like_split():
+        if self.is_train_all_split():
             plan_str = "plan_train"
         elif self.is_eval_split():
             plan_str = "plan_valid"
@@ -856,7 +846,7 @@ class DataManager(LightningDataModule):
 
     def set_effective_batch_size(self):
         if (
-            not "samples_per_file" in self.plan or not self.is_train_like_split()
+            not "samples_per_file" in self.plan or not self.is_train_all_split()
         ):  # if split is valid, grid sampling is done and effective batch_size should be same as batch size
             self.plan["samples_per_file"] = 1
 
@@ -924,18 +914,6 @@ class DataManager(LightningDataModule):
 
     def create_staged_data_dicts(self, cases):
         data = self.create_data_dicts(cases)
-        if self.dual_ssd and len(data) > 0:
-            if self.has_hdf5_shard_manifest():
-                data = self.copy_hdf5_shards_to_rapid_access_folder2(data)
-                return data
-            required_keys = {"image", "lm", "indices"}
-            if required_keys.issubset(data[0].keys()):
-                data = self.copy_data_dicts_to_rapid_access_folder2(data)
-            else:
-                cprint(
-                    "Skipping dual_ssd staging; data dicts do not contain image/lm/indices paths.",
-                    color="yellow",
-                )
         return data
 
     @property
@@ -952,83 +930,6 @@ class DataManager(LightningDataModule):
             return self.hdf5_shard_manifest_path.exists()
         except (KeyError, TypeError):
             return False
-
-    def _rapid_access_folder2_data_folder(self):
-        src_root = Path(COMMON_PATHS["rapid_access_folder"])
-        dst_root = Path(COMMON_PATHS["rapid_access_folder2"])
-        try:
-            data_rel = self.data_folder.relative_to(src_root)
-        except ValueError:
-            data_rel = Path(self.data_folder.name)
-        return dst_root / data_rel
-
-    def copy_hdf5_shards_to_rapid_access_folder2(self, data):
-        cprint(
-            "Copying half of the HDF5 shards to rapid_access_folder2",
-            color="green",
-        )
-        src_root = Path(COMMON_PATHS["rapid_access_folder"])
-        dst_root = Path(COMMON_PATHS["rapid_access_folder2"])
-        staged_data_folder = self._rapid_access_folder2_data_folder()
-        staged_manifest_fn = staged_data_folder / self.hdf5_shard_manifest_rel_path
-
-        manifest = json.loads(self.hdf5_shard_manifest_path.read_text())
-        manifest_parent = self.hdf5_shard_manifest_path.parent
-        for i, shard_info in enumerate(pbar(manifest["shards"])):
-            shard_path = Path(shard_info["shard"])
-            if not shard_path.is_absolute():
-                shard_path = manifest_parent / shard_path
-            if i % 2 == 1:
-                try:
-                    shard_rel = shard_path.relative_to(src_root)
-                except ValueError:
-                    shard_rel = Path(shard_path.name)
-                src_shard_path = shard_path
-                shard_path = dst_root / shard_rel
-                if (
-                    not shard_path.exists()
-                    or shard_path.stat().st_size != src_shard_path.stat().st_size
-                ):
-                    shard_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src_shard_path, shard_path)
-            shard_info["shard"] = str(shard_path)
-
-        staged_manifest_fn.parent.mkdir(parents=True, exist_ok=True)
-        staged_manifest_fn.write_text(json.dumps(manifest, indent=2))
-
-        staged = []
-        for dici in data:
-            out = dict(dici)
-            out["data_folder"] = str(staged_data_folder)
-            staged.append(out)
-        return staged
-
-    def copy_data_dicts_to_rapid_access_folder2(self, data):
-        cprint("Copying half of the data to rapid_access_folder2", color="green")
-        src_root = Path(COMMON_PATHS["rapid_access_folder"])
-        dst_root = Path(COMMON_PATHS["rapid_access_folder2"])
-        keys = ("image", "lm", "indices")
-        copied = list(data)
-        for i, dici in enumerate(pbar(data)):
-            if i % 2 == 0:
-                continue
-            out = dict(dici)
-            for key in keys:
-                out[key] = self._copy_value_to_rapid_access_folder2(
-                    out[key], src_root, dst_root
-                )
-            copied[i] = out
-        return copied
-
-    def _copy_value_to_rapid_access_folder2(self, value, src_root, dst_root):
-        src = Path(value)
-        dst = dst_root / src.relative_to(src_root)
-        if dst.exists():
-            return str(dst)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        cprint(f"Copying {src} to {dst}", color="green")
-        shutil.copy2(src, dst)
-        return str(dst)
 
     def cases_from_project_split(self):
         nnz_allowed = self.plan.get("nnz_allowed", False)
@@ -1141,7 +1042,7 @@ class DataManager(LightningDataModule):
         )
 
     def create_dataloader(self):
-        if self.is_train_like_split():
+        if self.is_train_all_split():
             self.create_train_dataloader()
         else:
             self.create_valid_dataloader()
@@ -1277,7 +1178,7 @@ class DataManagerSource(DataManager):
         self.override_batch_size_valid_split(split=self.split)
 
     def _set_collate_fn(self):
-        if self.is_train_like_split():
+        if self.is_train_all_split():
             self.collate_fn = source_collated
         elif self.is_eval_split():
             self.collate_fn = patch_collated
@@ -1636,7 +1537,6 @@ if __name__ == "__main__":
         configs=conf,
         batch_size=batch_size,
         ds_type=ds_type,
-        dual_ssd=False,
     )
 
 # %%
@@ -1645,6 +1545,7 @@ if __name__ == "__main__":
     tmv = D.valid_manager
     tmt = D.train_manager
     tmv.transforms_dict
+# %%
 # %%
     dl = tmt.dl
     iteri = iter(dl)

@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 from fran.preprocessing.helpers import import_h5py
-from fran.preprocessing.preprocessor import create_hdf5_shards
+from fran.preprocessing.preprocessor import Preprocessor, create_hdf5_shards
 
 
 def _write_case(output_folder, case_id: str, shape, fg_len: int, bg_len: int):
@@ -132,3 +132,37 @@ def test_create_hdf5_shards_handles_empty_index_arrays(tmp_path):
         assert bg_ds[:].size == 0
         assert bg_ds.compression == "gzip"
         assert bg_ds.compression_opts == 1
+
+
+def _make_preprocessor(output_folder, src_dims):
+    pre = Preprocessor.__new__(Preprocessor)
+    pre.output_folder = output_folder
+    pre.plan = {"src_dims": src_dims}
+    return pre
+
+
+def test_preprocessor_creates_hdf5_shards_by_default_using_plan_src_dims(tmp_path):
+    output_folder = tmp_path / "preprocessed"
+    _prepare_three_cases(output_folder)
+    pre = _make_preprocessor(output_folder, (24, 24, 12))
+
+    shards = pre._maybe_create_hdf5_shards()
+
+    assert [pth.name for pth in shards] == ["shard_0000.h5"]
+    manifest_fn = output_folder / "hdf5_shards" / "src_24_24_12" / "manifest.json"
+    with open(manifest_fn, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+    assert manifest["src_dims"] == [24, 24, 12]
+    assert manifest["num_cases"] == 3
+
+
+def test_preprocessor_can_explicitly_opt_out_of_hdf5_shard_creation(tmp_path):
+    output_folder = tmp_path / "preprocessed"
+    _prepare_three_cases(output_folder)
+    pre = _make_preprocessor(output_folder, (24, 24, 12))
+
+    shards = pre._maybe_create_hdf5_shards(create_hdf5_shards=False)
+
+    assert shards == []
+    manifest_fn = output_folder / "hdf5_shards" / "src_24_24_12" / "manifest.json"
+    assert manifest_fn.exists() is False

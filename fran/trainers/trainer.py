@@ -15,6 +15,7 @@ from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
 from fran.managers import Project
+from fran.managers.data.dualssd import DataManagerDualSSD
 from fran.managers.data.training import (
     DataManagerBaseline,
     DataManagerDual,
@@ -224,17 +225,25 @@ class Trainer:
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
         self.configs["plan_train"]["val_every_n_epochs"] = self.val_every_n_epochs
-        dm = DataManagerDual(
+        manager_class_train = self.resolve_datamanager(
+            self.configs["plan_train"]["mode"]
+        )
+        manager_class_valid = self.resolve_datamanager(
+            self.configs["plan_valid"]["mode"]
+        )
+        dm_class = DataManagerDualSSD if self.dual_ssd else DataManagerDual
+        dm = dm_class(
             project_title=self.project.project_title,
             configs=self.configs,
             batch_size=self.configs["dataset_params"]["batch_size"],
             cache_rate=cache_rate,
             device=self.configs["dataset_params"].get("device", "cuda"),
             ds_type=ds_type,
+            manager_class_train=manager_class_train,
+            manager_class_valid=manager_class_valid,
             train_indices=self.train_indices,
             val_indices=self.val_indices,
             val_sampling=self.val_sampling,
-            dual_ssd=self.dual_ssd,
         )
 
         labels_all = self.configs["plan_train"].get("labels_all")
@@ -255,12 +264,12 @@ class Trainer:
             shutil.copy(self.ckpt, bckup_ckpt)
             torch.save(sd, self.ckpt)
 
-        D = DataManagerDual.load_from_checkpoint(
+        dm_class = DataManagerDualSSD if self.dual_ssd else DataManagerDual
+        D = dm_class.load_from_checkpoint(
             self.ckpt,
             project_title=self.project.project_title,
             batch_size=batch_size,
             val_sampling=self.val_sampling,
-            dual_ssd=self.dual_ssd,
             map_location="cpu",
             weights_only=False,
         )
