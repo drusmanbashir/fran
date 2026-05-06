@@ -124,6 +124,7 @@ class FixedSizeDataGenerator(Preprocessor):
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
+            hdf5_shards=False,
         )
 
     def set_input_output_folders(self, data_folder, output_folder):

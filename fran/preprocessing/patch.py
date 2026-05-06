@@ -153,7 +153,6 @@ class PBDSamplerWorkerLocal(_PBDSamplerWorkerBase):
 
 
 class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
-    hdf5_shards = False
     actor_cls = PBDSamplerWorkerImpl
     local_worker_cls = PBDSamplerWorkerLocal
     remapping_key = None
@@ -181,6 +180,7 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
+            hdf5_shards=False,
         )
 
     def create_data_df(self):
@@ -604,4 +604,3 @@ if __name__ == "__main__":
 
 
 # %%
-

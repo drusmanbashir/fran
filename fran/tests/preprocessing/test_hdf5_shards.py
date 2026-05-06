@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import torch
 
+from fran.preprocessing.fixed_size2 import FixedSizeDataGenerator
 from fran.preprocessing.helpers import import_h5py
+from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from fran.preprocessing.patch import PatchDataGenerator
 from fran.preprocessing.preprocessor import Preprocessor, create_hdf5_shards
 
 
@@ -138,13 +143,72 @@ def test_create_hdf5_shards_handles_empty_index_arrays(tmp_path):
 def _make_preprocessor(output_folder, src_dims):
     pre = Preprocessor.__new__(Preprocessor)
     pre.output_folder = output_folder
-    pre.plan = {"src_dims": src_dims}
+    pre.plan = {"mode": "lbd", "src_dims": src_dims}
     pre.hdf5_shards = True
     pre.df_hdf5 = pd.DataFrame({"case_id": ["case_000", "case_001", "case_002"]})
     return pre
 
 
-def test_preprocessor_creates_hdf5_shards_by_default_using_plan_src_dims(tmp_path):
+class _DummyPreprocessor(Preprocessor):
+    def set_input_output_folders(self, data_folder, output_folder):
+        self.data_folder = Path(data_folder) if data_folder is not None else None
+        self.output_folder = Path(output_folder)
+
+
+class _DummyRBDPreprocessor(_DummyPreprocessor):
+    subfolder_key = "data_folder_rbd"
+
+
+def test_preprocessor_init_defaults_hdf5_shards_off(tmp_path):
+    pre = _DummyPreprocessor(
+        project=SimpleNamespace(),
+        plan={"mode": "lbd", "src_dims": (24, 24, 12)},
+        data_folder=tmp_path / "input",
+        output_folder=tmp_path / "output",
+    )
+
+    assert pre.hdf5_shards is False
+
+
+def test_preprocessor_only_enables_hdf5_shards_for_matching_plan_mode(tmp_path):
+    pre_enabled = _DummyRBDPreprocessor(
+        project=SimpleNamespace(),
+        plan={"mode": "rbd", "src_dims": (24, 24, 12)},
+        data_folder=tmp_path / "input_rbd",
+        output_folder=tmp_path / "output_rbd",
+        hdf5_shards=True,
+    )
+    pre_disabled = _DummyRBDPreprocessor(
+        project=SimpleNamespace(),
+        plan={"mode": "lbd", "src_dims": (24, 24, 12)},
+        data_folder=tmp_path / "input_lbd",
+        output_folder=tmp_path / "output_lbd",
+        hdf5_shards=True,
+    )
+
+    assert pre_enabled.hdf5_shards is True
+    assert pre_disabled.hdf5_shards is False
+
+
+def test_labelbounded_init_only_enables_hdf5_shards_for_lbd_mode(tmp_path):
+    pre_enabled = LabelBoundedDataGenerator(
+        project=SimpleNamespace(),
+        plan={"mode": "lbd", "src_dims": (24, 24, 12)},
+        data_folder=tmp_path / "input_lbd",
+        output_folder=tmp_path / "output_lbd",
+    )
+    pre_disabled = LabelBoundedDataGenerator(
+        project=SimpleNamespace(),
+        plan={"mode": "rbd", "src_dims": (24, 24, 12)},
+        data_folder=tmp_path / "input_rbd",
+        output_folder=tmp_path / "output_rbd",
+    )
+
+    assert pre_enabled.hdf5_shards is True
+    assert pre_disabled.hdf5_shards is False
+
+
+def test_preprocessor_uses_plan_src_dims_when_hdf5_shards_enabled(tmp_path):
     output_folder = tmp_path / "preprocessed"
     _prepare_three_cases(output_folder)
     pre = _make_preprocessor(output_folder, (24, 24, 12))
@@ -170,3 +234,32 @@ def test_preprocessor_can_explicitly_opt_out_of_hdf5_shard_creation(tmp_path):
     assert shards == []
     manifest_fn = output_folder / "hdf5_shards" / "src_24_24_12" / "manifest.json"
     assert manifest_fn.exists() is False
+
+
+def test_patch_and_whole_generators_force_hdf5_shards_off(tmp_path, monkeypatch):
+    class _FolderNamesStub:
+        def __init__(self, project, plan):
+            root = project.test_root
+            self.folders = {
+                "data_folder_whole": str(root / "whole"),
+                "data_folder_pbd": str(root / "pbd"),
+                "data_folder_lbd": str(root / "lbd"),
+            }
+
+    monkeypatch.setattr("fran.preprocessing.fixed_size2.FolderNames", _FolderNamesStub)
+    monkeypatch.setattr("fran.preprocessing.patch.FolderNames", _FolderNamesStub)
+
+    project = SimpleNamespace(test_root=tmp_path)
+    whole = FixedSizeDataGenerator(
+        project=project,
+        plan={"mode": "whole", "src_dims": (24, 24, 12)},
+        data_folder=tmp_path / "input_whole",
+    )
+    patch = PatchDataGenerator(
+        project=project,
+        plan={"mode": "patch", "src_dims": (24, 24, 12)},
+        data_folder=tmp_path / "input_patch",
+    )
+
+    assert whole.hdf5_shards is False
+    assert patch.hdf5_shards is False

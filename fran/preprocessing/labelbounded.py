@@ -154,6 +154,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             data_folder=data_folder,
             output_folder=output_folder,
             devices=devices,
+            hdf5_shards=True,
         )
 
     def create_data_df(self):
