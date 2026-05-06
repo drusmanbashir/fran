@@ -32,6 +32,7 @@ from utilz.helpers import create_df_from_folder, multiprocess_multiarg
 from utilz.rayz import shutdown_actors
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
+DEFAULT_HDF5_SRC_DIMS = (192, 192, 128)
 
 def bboxes_to_df(bboxes):
     rows = []
@@ -275,7 +276,7 @@ def _normalize_src_dims(src_dims):
     return dims
 
 
-def _hdf5_chunks_for(shape, key, src_dims: tuple=(192, 192, 128)):
+def _hdf5_chunks_for(shape, key, src_dims: tuple = (192, 192, 128)):
     shape = tuple(int(v) for v in shape)
     # src_dims = _normalize_src_dims(src_dims)
     conf = HDF5_SHARD_CHUNKS.get(
@@ -287,7 +288,9 @@ def _hdf5_chunks_for(shape, key, src_dims: tuple=(192, 192, 128)):
         if len(shape) != 3:
             raise ValueError(f"{key} expected 3D shape, got {shape}")
         base = conf[key]
-        return tuple(min(int(dim), int(chunk_dim)) for dim, chunk_dim in zip(shape, base))
+        return tuple(
+            min(int(dim), int(chunk_dim)) for dim, chunk_dim in zip(shape, base)
+        )
 
     if key in ("indices", "lm_fg_indices", "lm_bg_indices"):
         if len(shape) != 1:
@@ -337,7 +340,9 @@ def _write_case_to_hdf5_shard(
     if not isinstance(indices, dict):
         raise ValueError(f"indices file must be a dict: {indices_pt}")
     if "lm_fg_indices" not in indices or "lm_bg_indices" not in indices:
-        raise KeyError(f"indices dict missing lm_fg_indices/lm_bg_indices: {indices_pt}")
+        raise KeyError(
+            f"indices dict missing lm_fg_indices/lm_bg_indices: {indices_pt}"
+        )
 
     fg = _to_numpy_cpu(indices["lm_fg_indices"]).reshape(-1)
     bg = _to_numpy_cpu(indices["lm_bg_indices"]).reshape(-1)
@@ -430,6 +435,7 @@ def _build_shard_groups(case_records, cases_per_shard, max_shard_bytes):
 def create_hdf5_shards(
     output_folder,
     src_dims,
+    case_ids=None,
     cases_per_shard=5,
     max_shard_bytes=None,
     overwrite=False,
@@ -452,34 +458,53 @@ def create_hdf5_shards(
     maybe_makedirs([shards_folder])
 
     existing_shards = sorted(shards_folder.glob("shard_*.h5"))
-    if manifest_fn.exists() and not overwrite:
-        print(f"HDF5 shards already present, skipping: {manifest_fn}")
-        return existing_shards
-    if existing_shards and not overwrite:
-        raise FileExistsError(
-            f"Existing shard files found in {shards_folder}. Set overwrite=True to regenerate."
-        )
+    shard_manifest = []
+    existing_case_ids = set()
     if overwrite:
         for pth in existing_shards:
             pth.unlink()
         if manifest_fn.exists():
             manifest_fn.unlink()
+    elif manifest_fn.exists():
+        manifest = json.loads(manifest_fn.read_text())
+        shard_manifest = manifest["shards"]
+        existing_case_ids = {
+            case_id for shard_meta in shard_manifest for case_id in shard_meta["case_ids"]
+        }
+    elif existing_shards:
+        raise FileExistsError(
+            f"Existing shard files found in {shards_folder}. Set overwrite=True to regenerate."
+        )
 
     image_case_ids = {pth.stem for pth in images_folder.glob("*.pt")}
     lm_case_ids = {pth.stem for pth in lms_folder.glob("*.pt")}
     indices_case_ids = {pth.stem for pth in indices_folder.glob("*.pt")}
-    case_ids = sorted(image_case_ids & lm_case_ids & indices_case_ids)
-    if len(case_ids) == 0:
+    available_case_ids = image_case_ids & lm_case_ids & indices_case_ids
+    requested_case_ids = (
+        sorted(available_case_ids)
+        if case_ids is None
+        else sorted(set(case_ids) & available_case_ids)
+    )
+    if not overwrite:
+        requested_case_ids = [
+            case_id for case_id in requested_case_ids if case_id not in existing_case_ids
+        ]
+        if len(requested_case_ids) == 0:
+            print(f"No missing HDF5 shard cases requested for {shards_folder}")
+            return existing_shards
+    if len(requested_case_ids) == 0:
         raise ValueError(
-            f"No shared case IDs found across images/lms/indices in {output_folder}"
+            f"No shared requested case IDs found across images/lms/indices in {output_folder}"
         )
 
     case_records = []
-    for case_id in case_ids:
+    for case_id in requested_case_ids:
         image_pt = images_folder / f"{case_id}.pt"
         lm_pt = lms_folder / f"{case_id}.pt"
         indices_pt = indices_folder / f"{case_id}.pt"
-        total_bytes = image_pt.stat().st_size + lm_pt.stat().st_size + indices_pt.stat().st_size
+        total_bytes = (
+            image_pt.stat().st_size + lm_pt.stat().st_size + indices_pt.stat().st_size
+        )
         case_records.append(
             {
                 "case_id": case_id,
@@ -493,8 +518,7 @@ def create_hdf5_shards(
     shard_groups = _build_shard_groups(case_records, cases_per_shard, max_shard_bytes)
     h5py = import_h5py()
     shard_paths = []
-    shard_manifest = []
-    for shard_idx, shard_cases in enumerate(shard_groups):
+    for shard_idx, shard_cases in enumerate(shard_groups, start=len(shard_manifest)):
         shard_fn = shards_folder / f"shard_{shard_idx:04d}.h5"
         with h5py.File(shard_fn, "w") as h5f:
             case_ids_shard = [rec["case_id"] for rec in shard_cases]
@@ -503,8 +527,8 @@ def create_hdf5_shards(
             h5f.attrs["cases_per_shard"] = int(cases_per_shard)
             h5f.attrs["case_ids_json"] = json.dumps(case_ids_shard)
             h5f.attrs["compression"] = "" if compression is None else str(compression)
-            h5f.attrs["compression_opts"] = -1 if compression_opts is None else int(
-                compression_opts
+            h5f.attrs["compression_opts"] = (
+                -1 if compression_opts is None else int(compression_opts)
             )
 
             for rec in shard_cases:
@@ -529,17 +553,17 @@ def create_hdf5_shards(
         "compression_opts": compression_opts,
         "cases_per_shard": int(cases_per_shard),
         "max_shard_bytes": max_shard_bytes,
-        "num_cases": len(case_records),
-        "num_shards": len(shard_paths),
+        "num_cases": sum(len(shard["case_ids"]) for shard in shard_manifest),
+        "num_shards": len(shard_manifest),
         "shards": shard_manifest,
     }
     save_json(manifest, manifest_fn)
     print(f"Wrote {len(shard_paths)} HDF5 shards in {shards_folder}")
-    return shard_paths
+    return sorted(shards_folder.glob("shard_*.h5"))
 
 
 class Preprocessor(GetAttr):
-    hdf5_shards=True
+    hdf5_shards = True
     _default = "project"
     PREPROCESS_LOG_COLUMNS = [
         "case_id",
@@ -565,7 +589,7 @@ class Preprocessor(GetAttr):
         self.store_gifs = env_flag("FRAN_STORE_GIFS", False)
         self.store_label_stats = env_flag("FRAN_STORE_LABEL_STATS", False)
         self.set_input_output_folders(data_folder, output_folder)
-        self.devices= devices
+        self.devices = devices
 
     @property
     def hdf5_manifest_fn(self):
@@ -717,7 +741,7 @@ class Preprocessor(GetAttr):
         self._register_existing_pt_files()
         self._register_existing_hdf5_shards()
 
-    def _register_existing_hdf5_shards(self) ->None:
+    def _register_existing_hdf5_shards(self) -> None:
         manifest_fn = self.hdf5_manifest_fn
         self.existing_hdf5_fnames = set()
         if manifest_fn.exists():
@@ -732,7 +756,12 @@ class Preprocessor(GetAttr):
                         if case_id not in cases_grp:
                             continue
                         case_grp = cases_grp[case_id]
-                        required_keys = ("image", "lm", "lm_fg_indices", "lm_bg_indices")
+                        required_keys = (
+                            "image",
+                            "lm",
+                            "lm_fg_indices",
+                            "lm_bg_indices",
+                        )
                         if all(key in case_grp for key in required_keys):
                             self.existing_hdf5_fnames.add(f"{case_id}.pt")
         print("Output folder: ", self.output_folder)
@@ -755,20 +784,28 @@ class Preprocessor(GetAttr):
             "PT files fully processed in a previous session: ",
             len(self.existing_pt_fnames),
         )
-        case_ids_done  = [info_from_filename(fn, full_caseid=True)["case_id"] for fn in self.existing_pt_fnames]
+        case_ids_done = [
+            info_from_filename(fn, full_caseid=True)["case_id"]
+            for fn in self.existing_pt_fnames
+        ]
         self.df.loc[self.df["case_id"].isin(case_ids_done), "pt_processed"] = True
-        
 
     def remove_completed_cases(self):
-        n_before = len(self.df)
         pt_done = self.df["pt_processed"].eq(True)
+        self.df_pt = self.df[~pt_done].copy()
         if self.hdf5_shards:
-          hdf5_done = self.df["hdf5_processed"].eq(True)
-          keep_mask = ~(pt_done & hdf5_done)
+            hdf5_done = self.df["hdf5_processed"].eq(True)
+            self.df_hdf5 = self.df[~hdf5_done].copy()
         else:
-          keep_mask = ~pt_done
-        self.df = self.df[keep_mask]
-        print("Image files remaining to process:", len(self.df), "/", n_before)
+            self.df_hdf5 = self.df.copy()
+        print("PT files remaining to process:", len(self.df_pt), "/", len(self.df))
+        if self.hdf5_shards:
+            print(
+                "HDF5 cases remaining to process:",
+                len(self.df_hdf5),
+                "/",
+                len(self.df),
+            )
 
     def save_indices(self, indices_dict, subfolder, suffix: str = None):
         fn = Path(indices_dict["meta"]["filename_or_obj"])
@@ -873,7 +910,9 @@ class Preprocessor(GetAttr):
             normalized.append(
                 {
                     "error_type": "WARNING" if error_type is None else str(error_type),
-                    "error_message": "" if error_message is None else str(error_message),
+                    "error_message": ""
+                    if error_message is None
+                    else str(error_message),
                 }
             )
         return normalized
@@ -991,6 +1030,7 @@ class Preprocessor(GetAttr):
         self.results_df = pd.DataFrame()
         self.postprocess_results()
         self._maybe_create_hdf5_shards(
+            df_hdf5_run=self.df if overwrite_hdf5_shards else self.df_hdf5,
             src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
@@ -1005,54 +1045,50 @@ class Preprocessor(GetAttr):
             return self.overwrite
         return overwrite
 
-    # def process(
-    #     self,
-    #     overwrite=None,
-    #     derive_bboxes=True,
-    #     src_dims=None,
-    #     cases_per_shard=5,
-    #     max_shard_bytes=None,
-    #     overwrite_hdf5_shards=False,
-    #     hdf5_compression="gzip",
-    #     hdf5_compression_opts=1,
-    # ):
-    #     if not hasattr(self, "df"):
-    #         print("No data frames have been created. Run setup")
-    #         return 0
-    #     if len(self.df) == 0:
-    #         if getattr(self, "run_postprocess_if_empty", False):
-    #             return self.run_postprocess_only(
-    #                 src_dims=src_dims,
-    #                 cases_per_shard=cases_per_shard,
-    #                 max_shard_bytes=max_shard_bytes,
-    #                 overwrite_hdf5_shards=overwrite_hdf5_shards,
-    #                 hdf5_compression=hdf5_compression,
-    #                 hdf5_compression_opts=hdf5_compression_opts,
-    #             )
-    #         print("No data frames have been created. Run setup")
-    #         return 0
-    #     self.initialize_process_state()
-    #     self.results = self.run_worker_jobs()
-    #     log_rows = self.build_preprocessing_log_rows(self.results)
-    #     write_jsonl_rows(self.output_folder / "log.jsonl", log_rows)
-    #     self.results_df = self.flatten_results(self.results)
-    #     overwrite = self._effective_overwrite(overwrite=overwrite)
-    #     if overwrite is False and self.postprocess_artifacts_missing() is False:
-    #         cprint("Postprocess: skip existing artifacts", "cyan")
-    #     else:
-    #         self.postprocess_results()
-    #     self._maybe_create_hdf5_shards(
-    #         src_dims=src_dims,
-    #         cases_per_shard=cases_per_shard,
-    #         max_shard_bytes=max_shard_bytes,
-    #         overwrite_hdf5_shards=overwrite_hdf5_shards,
-    #         hdf5_compression=hdf5_compression,
-    #         hdf5_compression_opts=hdf5_compression_opts,
-    #     )
-        # return self.results_df
+    def extra_worker_kwargs(self, mean_std_mode="dataset"):
+        return {}
 
-    def _maybe_create_hdf5_shards(
+    def process_pt(self, df_pt_run):
+        self.initialize_process_state()
+        if len(df_pt_run) == 0:
+            self.results_df = pd.DataFrame()
+            return self.results_df
+        self.use_ray = self.should_use_ray()
+        worker_kwargs = self.extra_worker_kwargs(mean_std_mode=self.mean_std_mode)
+        if self.use_ray:
+            self.ray_prepare(
+                df=df_pt_run,
+                num_processes=self.num_processes,
+                project=self.project,
+                plan=self.plan,
+                data_folder=self.data_folder,
+                output_folder=self.output_folder,
+                device=self.devices,
+                debug=self.debug,
+                **worker_kwargs,
+            )
+        else:
+            self.n_actors = 0
+            self.actors = []
+            self.mini_dfs = [df_pt_run]
+            self.local_worker = self.local_worker_cls(
+                project=self.project,
+                plan=self.plan,
+                data_folder=self.data_folder,
+                output_folder=self.output_folder,
+                device=self.devices,
+                debug=self.debug,
+                **worker_kwargs,
+            )
+        self.results = self.run_worker_jobs()
+        log_rows = self.build_preprocessing_log_rows(self.results)
+        write_jsonl_rows(self.output_folder / "log.jsonl", log_rows)
+        self.results_df = self.flatten_results(self.results)
+        return self.results_df
+
+    def process_hdf5(
         self,
+        df_hdf5_run,
         src_dims=None,
         cases_per_shard=5,
         max_shard_bytes=None,
@@ -1060,16 +1096,87 @@ class Preprocessor(GetAttr):
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
     ):
-        if self.hdf5_shards and len(self.existing_hdf5_fnames) >0:
-            return create_hdf5_shards(
-                output_folder=self.output_folder,
-                src_dims=self.plan["src_dims"] if src_dims is None else src_dims,
-                cases_per_shard=cases_per_shard,
-                max_shard_bytes=max_shard_bytes,
-                overwrite=overwrite_hdf5_shards,
-                compression=hdf5_compression,
-                compression_opts=hdf5_compression_opts,
-            )
+        return self._maybe_create_hdf5_shards(
+            df_hdf5_run=df_hdf5_run,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
+        )
+
+    def postprocess(self, overwrite=None):
+        overwrite = self._effective_overwrite(overwrite=overwrite)
+        if overwrite is False and self.postprocess_artifacts_missing() is False:
+            cprint("Postprocess: skip existing artifacts", "cyan")
+        else:
+            self.postprocess_results()
+        return self.results_df
+
+    def process(
+        self,
+        overwrite=None,
+        derive_bboxes=True,
+        src_dims=None,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
+    ):
+        if not hasattr(self, "df"):
+            print("No data frames have been created. Run setup")
+            return 0
+        overwrite = self._effective_overwrite(overwrite=overwrite)
+        if len(self.df) == 0:
+            if getattr(self, "run_postprocess_if_empty", False):
+                return self.run_postprocess_only(
+                    src_dims=src_dims,
+                    cases_per_shard=cases_per_shard,
+                    max_shard_bytes=max_shard_bytes,
+                    overwrite_hdf5_shards=overwrite_hdf5_shards,
+                    hdf5_compression=hdf5_compression,
+                    hdf5_compression_opts=hdf5_compression_opts,
+                )
+            print("No data frames have been created. Run setup")
+            return 0
+        df_pt_run = self.df if overwrite else self.df_pt
+        df_hdf5_run = self.df if overwrite else self.df_hdf5
+        self.process_pt(df_pt_run=df_pt_run)
+        self.process_hdf5(
+            df_hdf5_run=df_hdf5_run,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
+        )
+        return self.postprocess(overwrite=overwrite)
+
+    def _maybe_create_hdf5_shards(
+        self,
+        df_hdf5_run,
+        src_dims=None,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
+    ):
+        if self.hdf5_shards is False or len(df_hdf5_run) == 0:
+            return []
+        return create_hdf5_shards(
+            output_folder=self.output_folder,
+            src_dims=self.plan["src_dims"] if src_dims is None else src_dims,
+            case_ids=df_hdf5_run["case_id"].tolist(),
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite=overwrite_hdf5_shards,
+            compression=hdf5_compression,
+            compression_opts=hdf5_compression_opts,
+        )
 
     def process_batch(self, batch):
         images, lms, fg_inds, bg_inds = (
@@ -1217,79 +1324,65 @@ class Preprocessor(GetAttr):
 
         return mini_dfs
 
-    def ray_prepare(self, num_processes: int, **actor_kwargs):
+    def ray_prepare(
+        self,
+        df,
+        num_processes: int,
+        project,
+        plan,
+        data_folder,
+        output_folder,
+        device="cpu",
+        debug=False,
+        **worker_kwargs,
+    ):
         self.ray_init()
-
-        n = max(1, min(len(self.df), int(num_processes))) if len(self.df) else 0
-
+        n = max(1, min(len(df), int(num_processes))) if len(df) else 0
         self.n_actors = n
-        self.mini_dfs = self.split_dataframe_for_workers(self.df, n)
-        self.actors = [self.actor_cls.remote(**actor_kwargs) for _ in range(n)]
+        self.mini_dfs = self.split_dataframe_for_workers(df, n)
+        self.actors = [
+            self.actor_cls.remote(
+                project=project,
+                plan=plan,
+                data_folder=data_folder,
+                output_folder=output_folder,
+                device=device,
+                debug=debug,
+                **worker_kwargs,
+            )
+            for _ in range(n)
+        ]
 
     def should_use_ray(self):
         debug = getattr(self, "debug", False)
         return (self.num_processes > 1) and (not debug)
 
     def setup(
-        self,
-        overwrite=False,
-        num_processes=8,
-        device="cpu",
-        debug=False,
-        mean_std_mode="dataset",
-    ):
-        self.num_processes = max(1, int(num_processes))
-        self.devices = device
-        self.overwrite = overwrite
-        self.debug = debug
-        self.run_postprocess_if_empty = False
-        self.create_data_df()
-        if getattr(self, "remapping_key", None) is not None:
-            self.set_remapping_per_ds()
-        self.register_existing_cases()
-        print("Overwrite:", overwrite)
-        if not overwrite:
-            self.remove_completed_cases()
-        if len(self.df) == 0:
-            missing_arts = postprocess_artifacts_missing(self.output_folder)
-            missing_all = all(missing_arts.values())
-            self.run_postprocess_if_empty = missing_all
-            return
-
-        self.use_ray = self.should_use_ray()
-        if self.use_ray:
-            self.ray_prepare(
-                num_processes=self.num_processes,
-                project=self.project,
-                plan=self.plan,
-                data_folder=self.data_folder,
-                output_folder=self.output_folder,
-                device=device,
-                debug=debug,
-                mean_std_mode=mean_std_mode,
-                overwrite=overwrite,
-            )
-        else:
-            self.n_actors = 0
-            self.actors = []
-            self.mini_dfs = [self.df]
-
-            self.local_worker = self.local_worker_cls(
-                project=self.project,
-                plan=self.plan,
-                data_folder=self.data_folder,
-                output_folder=self.output_folder,
-                device=device,
-                debug=debug,
-                mean_std_mode=mean_std_mode,
-                overwrite=overwrite,
-                num_processes=self.num_processes,
-            )
-
-
+          self,
+          overwrite=False,
+          num_processes=8,
+          device="cpu",
+          debug=False,
+          mean_std_mode="dataset",
+      ):
+          self.num_processes = max(1, int(num_processes))
+          self.devices = device
+          self.overwrite = overwrite
+          self.debug = debug
+          self.mean_std_mode = mean_std_mode
+          self.run_postprocess_if_empty = False
+          self.create_data_df()
+          if getattr(self, "remapping_key", None) is not None:
+              self.set_remapping_per_ds()
+          self.register_existing_cases()
+          self.remove_completed_cases()
+          print("Overwrite:", overwrite)
+          if len(self.df) == 0:
+              missing_arts = postprocess_artifacts_missing(self.output_folder)
+              self.run_postprocess_if_empty = all(missing_arts.values())
 # %%
 # %%
-#SECTION:-------------------- --------------------------------------------------------------------------------------
+# SECTION:-------------------- --------------------------------------------------------------------------------------
 if __name__ == "__main__":
 # %%
     from pathlib import Path
@@ -1313,7 +1406,7 @@ if __name__ == "__main__":
     conf = C.configs
     plan = conf["plan_train"]
 # %%
-#
+    #
     bboxes_fldr = Path(
         "/r/datasets/preprocessed/nodes/lbd/spc_080_080_150_ric03e8a587_ex000"
     )
@@ -1325,14 +1418,14 @@ if __name__ == "__main__":
 
 # %%
 
-    src_dims = conf["dataset_params"]["src_dims"] 
+    src_dims = conf["dataset_params"]["src_dims"]
     src_dims = tuple(src_dims)
-    cases_per_shard=4
+    cases_per_shard = 4
     # max_shard_bytes=2_000_000_000
-    max_shard_bytes=None
-    overwrite=False
-    compression="gzip"
-    compression_opts=1
+    max_shard_bytes = None
+    overwrite = False
+    compression = "gzip"
+    compression_opts = 1
 # %%
     output_folder = "/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144"
     output_folder = Path(output_folder)
@@ -1342,26 +1435,26 @@ if __name__ == "__main__":
 
     shards_folder = R.output_folder / "hdf5_shards"
 # %%
-#     src_tag = "_".join(str(v) for v in src_dims)
-#     shards_folder = output_folder / "hdf5_shards" / f"src_{src_tag}"
-#     manifest_fn = shards_folder / "manifest.json"
-#     maybe_makedirs([shards_folder])
-#
-#     existing_shards = sorted(shards_folder.glob("shard_*.h5"))
-#     if manifest_fn.exists() and not overwrite:
-#         print(f"HDF5 shards already present, skipping: {manifest_fn}")
-#         return existing_shards
-#     if existing_shards and not overwrite:
-#         raise FileExistsError(
-#             f"Existing shard files found in {shards_folder}. Set overwrite=True to regenerate."
-#         )
-#     if overwrite:
-#         for pth in existing_shards:
-#             pth.unlink()
-#         if manifest_fn.exists():
-#             manifest_fn.unlink()
-#
-# # %%
+    #     src_tag = "_".join(str(v) for v in src_dims)
+    #     shards_folder = output_folder / "hdf5_shards" / f"src_{src_tag}"
+    #     manifest_fn = shards_folder / "manifest.json"
+    #     maybe_makedirs([shards_folder])
+    #
+    #     existing_shards = sorted(shards_folder.glob("shard_*.h5"))
+    #     if manifest_fn.exists() and not overwrite:
+    #         print(f"HDF5 shards already present, skipping: {manifest_fn}")
+    #         return existing_shards
+    #     if existing_shards and not overwrite:
+    #         raise FileExistsError(
+    #             f"Existing shard files found in {shards_folder}. Set overwrite=True to regenerate."
+    #         )
+    #     if overwrite:
+    #         for pth in existing_shards:
+    #             pth.unlink()
+    #         if manifest_fn.exists():
+    #             manifest_fn.unlink()
+    #
+# %%
     image_case_ids = {pth.stem for pth in images_folder.glob("*.pt")}
     lm_case_ids = {pth.stem for pth in lms_folder.glob("*.pt")}
     indices_case_ids = {pth.stem for pth in indices_folder.glob("*.pt")}
@@ -1376,7 +1469,9 @@ if __name__ == "__main__":
         image_pt = images_folder / f"{case_id}.pt"
         lm_pt = lms_folder / f"{case_id}.pt"
         indices_pt = indices_folder / f"{case_id}.pt"
-        total_bytes = image_pt.stat().st_size + lm_pt.stat().st_size + indices_pt.stat().st_size
+        total_bytes = (
+            image_pt.stat().st_size + lm_pt.stat().st_size + indices_pt.stat().st_size
+        )
         case_records.append(
             {
                 "case_id": case_id,
@@ -1395,15 +1490,14 @@ if __name__ == "__main__":
     for shard_idx, shard_cases in tqdm(enumerate(shard_groups)):
         shard_fn = shards_folder / f"shard_{shard_idx:04d}.h5"
         with h5py.File(shard_fn, "w") as h5f:
-
             case_ids_shard = [rec["case_id"] for rec in shard_cases]
             h5f.attrs["format"] = "fran_hdf5_shards_v1"
             h5f.attrs["src_dims"] = list(src_dims)
             h5f.attrs["cases_per_shard"] = int(cases_per_shard)
             h5f.attrs["case_ids_json"] = json.dumps(case_ids_shard)
             h5f.attrs["compression"] = "" if compression is None else str(compression)
-            h5f.attrs["compression_opts"] = -1 if compression_opts is None else int(
-                compression_opts
+            h5f.attrs["compression_opts"] = (
+                -1 if compression_opts is None else int(compression_opts)
             )
             for rec in shard_cases:
                 _write_case_to_hdf5_shard(
@@ -1437,8 +1531,6 @@ if __name__ == "__main__":
     print(f"Wrote {len(shard_paths)} HDF5 shards in {shards_folder}")
     # return shard_paths
 
-
-
     masks_folder = bboxes_fldr
     label_files = list(masks_folder.glob("*pt"))
 # %%
@@ -1459,14 +1551,13 @@ if __name__ == "__main__":
     df = pd.DataFrame(bboxes)
     df = df.explode("bbox_stats").reset_index(drop=True)
 
-
 # %%
     output_folder = "/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144/lms"
     create_dataset_stats_artifacts(
-            lms_folder=output_folder,
-            gif=True,
-            label_stats=True,
-            gif_window="abdomen",
-        )
+        lms_folder=output_folder,
+        gif=True,
+        label_stats=True,
+        gif_window="abdomen",
+    )
 
 # %

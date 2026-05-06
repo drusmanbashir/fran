@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pandas as pd
 import torch
 
 from fran.preprocessing.helpers import import_h5py
@@ -138,6 +139,8 @@ def _make_preprocessor(output_folder, src_dims):
     pre = Preprocessor.__new__(Preprocessor)
     pre.output_folder = output_folder
     pre.plan = {"src_dims": src_dims}
+    pre.hdf5_shards = True
+    pre.df_hdf5 = pd.DataFrame({"case_id": ["case_000", "case_001", "case_002"]})
     return pre
 
 
@@ -146,7 +149,7 @@ def test_preprocessor_creates_hdf5_shards_by_default_using_plan_src_dims(tmp_pat
     _prepare_three_cases(output_folder)
     pre = _make_preprocessor(output_folder, (24, 24, 12))
 
-    shards = pre._maybe_create_hdf5_shards()
+    shards = pre._maybe_create_hdf5_shards(df_hdf5_run=pre.df_hdf5)
 
     assert [pth.name for pth in shards] == ["shard_0000.h5"]
     manifest_fn = output_folder / "hdf5_shards" / "src_24_24_12" / "manifest.json"
@@ -161,7 +164,8 @@ def test_preprocessor_can_explicitly_opt_out_of_hdf5_shard_creation(tmp_path):
     _prepare_three_cases(output_folder)
     pre = _make_preprocessor(output_folder, (24, 24, 12))
 
-    shards = pre._maybe_create_hdf5_shards(create_hdf5_shards=False)
+    pre.hdf5_shards = False
+    shards = pre._maybe_create_hdf5_shards(df_hdf5_run=pre.df_hdf5)
 
     assert shards == []
     manifest_fn = output_folder / "hdf5_shards" / "src_24_24_12" / "manifest.json"

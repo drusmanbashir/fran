@@ -128,7 +128,7 @@ class Trainer:
         epochs=600,
         batchsize_finder=False,
         override_dm_checkpoint=False,
-        early_stopping=False,
+        early_stopping=True,
         early_stopping_monitor="val0_loss_dice",
         early_stopping_mode="min",
         early_stopping_patience=30,
