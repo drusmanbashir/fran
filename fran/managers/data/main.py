@@ -351,6 +351,7 @@ class DataManagerDual(LightningDataModule):
         val_indices=None,
         val_sampling=1.0,
         debug=False,
+        batch_tfms: bool = False,
     ):
         super().__init__()
         self.project = Project(project_title)
@@ -368,6 +369,7 @@ class DataManagerDual(LightningDataModule):
         self.val_indices = val_indices
         self.val_sampling = float(val_sampling)
         self.debug = debug
+        self.batch_tfms = bool(batch_tfms)
         self.batch_affine = self._create_batch_affine()
 
         if save_hyperparameters:
@@ -377,6 +379,7 @@ class DataManagerDual(LightningDataModule):
                 "train_indices",
                 "val_indices",
                 "val_sampling",
+                "batch_tfms",
                 logger=False,
             )
 
@@ -411,16 +414,7 @@ class DataManagerDual(LightningDataModule):
         return self.valid_manager.dl
 
     def _create_batch_affine(self):
-        if not self.configs["dataset_params"].get("batch_affine", False):
-            return None
-        affine3d = self.configs["affine3d"]
-        return BatchRandAffined3D(
-            keys=["image", "lm"],
-            mode=["bilinear", "nearest"],
-            prob=affine3d["p"],
-            rotate_range=affine3d["rotate_range"],
-            scale_range=affine3d["scale_range"],
-        )
+        return None
 
     def on_after_batch_transfer(self, batch, dataloader_idx):
         trainer = getattr(self, "trainer", None)
@@ -542,6 +536,86 @@ class DataManagerDual(LightningDataModule):
                 )
 
         return mode_to_class[train_mode], mode_to_class[valid_mode]
+
+
+class DataManagerMulti(DataManagerDual):
+    def __init__(
+        self,
+        project_title,
+        configs: dict,
+        batch_size: int,
+        cache_rate=0.0,
+        device="cuda",
+        ds_type=None,
+        save_hyperparameters=True,
+        data_folder: Optional[str | Path] = None,
+        manager_class_train: Optional[type] = None,
+        manager_class_valid: Optional[type] = None,
+        manager_class_test: Optional[type] = None,
+        train_indices=None,
+        val_indices=None,
+        val_sampling=1.0,
+        debug=False,
+        batch_tfms: bool = False,
+    ):
+        self.keys_test = None
+        self.manager_class_test = manager_class_test
+        super().__init__(
+            project_title=project_title,
+            configs=configs,
+            batch_size=batch_size,
+            cache_rate=cache_rate,
+            device=device,
+            ds_type=ds_type,
+            save_hyperparameters=save_hyperparameters,
+            data_folder=data_folder,
+            manager_class_train=manager_class_train,
+            manager_class_valid=manager_class_valid,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            val_sampling=val_sampling,
+            debug=debug,
+            batch_tfms=batch_tfms,
+        )
+
+    def test_dataloader(self):
+        return self.test_manager.dl
+
+    def _iter_managers(self):
+        return (self.train_manager, self.valid_manager, self.test_manager)
+
+    def _build_managers(self):
+        super()._build_managers()
+        cls_test = self.manager_class_test or self.infer_test_manager_class(self.configs)
+        self.test_manager = cls_test(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="test",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_test,
+            data_folder=self.data_folder,
+            debug=self.debug,
+        )
+
+    def infer_test_manager_class(self, configs) -> type:
+        test_mode = configs["plan_test"]["mode"]
+        mode_to_class = {
+            "source": DataManagerSource,
+            "whole": DataManagerWhole,
+            "pbd": DataManagerPatch,
+            "sourcepbd": DataManagerPatch,
+            "lbd": DataManagerLBD,
+            "rbd": DataManagerRBD,
+            "baseline": DataManagerBaseline,
+        }
+        if test_mode not in mode_to_class:
+            raise ValueError(
+                f"Unrecognized mode: {test_mode}. Must be one of {list(mode_to_class.keys())}"
+            )
+        return mode_to_class[test_mode]
 
 
 class DataManager(LightningDataModule):
@@ -871,12 +945,6 @@ class DataManager(LightningDataModule):
         tfms = []
         for key in keys_list:
             try:
-                if (
-                    key == "Affine"
-                    and self.uses_train_keys()
-                    and self.dataset_params.get("batch_affine", False)
-                ):
-                    continue
                 tfm = self.transforms_dict[key]
                 if key == "IntensityTfms":
                     tfms.extend(tfm)
@@ -1277,6 +1345,10 @@ class DataManagerRBD(DataManagerLBD):
                 self.plan, self.dataset_params, self.project.rbd_folder
             )
         )
+
+
+class DataManagerWID(DataManagerRBD):
+    pass
 
 
 class DataManagerShort(DataManager):

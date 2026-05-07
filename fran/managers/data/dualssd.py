@@ -7,7 +7,16 @@ from pathlib import Path
 from tqdm.auto import tqdm as pbar
 from utilz.cprint import cprint
 
-from .training import (
+from .batch_tfms import (
+    DataManagerBaselineBTfms,
+    DataManagerDualBTfms,
+    DataManagerLBDBTfms,
+    DataManagerPatchBTfms,
+    DataManagerRBDBTfms,
+    DataManagerSourceBTfms,
+    DataManagerWholeBTfms,
+)
+from .main import (
     COMMON_PATHS,
     DataManagerBaseline,
     DataManagerDual,
@@ -139,6 +148,30 @@ class DataManagerBaselineDualSSD(DualSSDStagingMixin, DataManagerBaseline):
     pass
 
 
+class DataManagerSourceDualSSDBTfms(DualSSDStagingMixin, DataManagerSourceBTfms):
+    pass
+
+
+class DataManagerWholeDualSSDBTfms(DualSSDStagingMixin, DataManagerWholeBTfms):
+    pass
+
+
+class DataManagerPatchDualSSDBTfms(DualSSDStagingMixin, DataManagerPatchBTfms):
+    pass
+
+
+class DataManagerLBDDualSSDBTfms(DualSSDStagingMixin, DataManagerLBDBTfms):
+    pass
+
+
+class DataManagerRBDDualSSDBTfms(DualSSDStagingMixin, DataManagerRBDBTfms):
+    pass
+
+
+class DataManagerBaselineDualSSDBTfms(DualSSDStagingMixin, DataManagerBaselineBTfms):
+    pass
+
+
 DUAL_SSD_MANAGER_CLASSES = {
     DataManagerSource: DataManagerSourceDualSSD,
     DataManagerWhole: DataManagerWholeDualSSD,
@@ -146,6 +179,12 @@ DUAL_SSD_MANAGER_CLASSES = {
     DataManagerLBD: DataManagerLBDDualSSD,
     DataManagerRBD: DataManagerRBDDualSSD,
     DataManagerBaseline: DataManagerBaselineDualSSD,
+    DataManagerSourceBTfms: DataManagerSourceDualSSDBTfms,
+    DataManagerWholeBTfms: DataManagerWholeDualSSDBTfms,
+    DataManagerPatchBTfms: DataManagerPatchDualSSDBTfms,
+    DataManagerLBDBTfms: DataManagerLBDDualSSDBTfms,
+    DataManagerRBDBTfms: DataManagerRBDDualSSDBTfms,
+    DataManagerBaselineBTfms: DataManagerBaselineDualSSDBTfms,
 }
 
 
@@ -188,14 +227,54 @@ class DataManagerDualSSD(DataManagerDual):
         )
 
 
+class DataManagerDualSSDBTfms(DataManagerDualBTfms):
+    def _build_managers(self):
+        inf_tr, inf_val = self.infer_manager_classes(self.configs)
+        cls_tr = dual_ssd_manager_class(self.manager_class_train or inf_tr)
+        cls_val = dual_ssd_manager_class(self.manager_class_valid or inf_val)
+
+        self.train_manager = cls_tr(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="train",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_tr,
+            data_folder=self.data_folder,
+            debug=self.debug,
+        )
+        self.valid_manager = cls_val(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="valid",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_val,
+            data_folder=self.data_folder,
+            val_sampling=self.val_sampling,
+            debug=self.debug,
+        )
+
+
 __all__ = [
     "DataManagerBaselineDualSSD",
+    "DataManagerBaselineDualSSDBTfms",
     "DataManagerDualSSD",
+    "DataManagerDualSSDBTfms",
     "DataManagerLBDDualSSD",
+    "DataManagerLBDDualSSDBTfms",
     "DataManagerPatchDualSSD",
+    "DataManagerPatchDualSSDBTfms",
     "DataManagerRBDDualSSD",
+    "DataManagerRBDDualSSDBTfms",
     "DataManagerSourceDualSSD",
+    "DataManagerSourceDualSSDBTfms",
     "DataManagerWholeDualSSD",
+    "DataManagerWholeDualSSDBTfms",
     "DualSSDStagingMixin",
     "dual_ssd_manager_class",
 ]

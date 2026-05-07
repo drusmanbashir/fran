@@ -9,10 +9,13 @@ import torch
 import fran.managers.data.main as training_module
 import fran.trainers.trainer as trainer_module
 import fran.trainers.trainer_runthrough as trainer_runthrough_module
+from fran.managers.data.batch_tfms import DataManagerDualBTfms, DataManagerMultiBTfms
 from fran.managers.data.dualssd import DataManagerSourceDualSSD
-from fran.managers.data.main import DataManagerSource, DataManagerWhole
+from fran.managers.data.dualssd import DataManagerDualSSDBTfms
+from fran.managers.data.main import DataManagerDual, DataManagerMulti, DataManagerSource, DataManagerWhole
 from fran.preprocessing.preprocessor import create_hdf5_shards
 from fran.trainers.trainer import Trainer
+from fran.trainers.trainer_core import _dm_class_for_test_every_n_epochs
 from fran.trainers.trainer_runthrough import TrainerRT
 
 
@@ -127,6 +130,7 @@ def test_trainer_init_dm_uses_standard_datamodule_without_dualssd(monkeypatch):
     trainer.val_sampling = 1.0
     trainer.val_every_n_epochs = 5
     trainer.dual_ssd = False
+    trainer.batch_tfms = False
 
     dm = Trainer.init_dm(trainer)
 
@@ -163,8 +167,39 @@ def test_trainer_rt_init_dm_wraps_manager_class_for_dualssd(monkeypatch):
     trainer.train_indices = None
     trainer.debug = False
     trainer.dual_ssd = True
+    trainer.batch_tfms = False
 
     dm = TrainerRT.init_dm(trainer)
 
     assert isinstance(dm, FakeDataManagerRT)
     assert captured["kwargs"]["manager_class"] is WrappedManager
+
+
+def test_trainer_resolve_orchestrator_class_uses_btfms_dualssd():
+    trainer = Trainer.__new__(Trainer)
+    trainer.dual_ssd = True
+    trainer.batch_tfms = True
+
+    dm_class = Trainer.resolve_orchestrator_class(trainer)
+
+    assert dm_class is DataManagerDualSSDBTfms
+
+
+def test_trainer_core_dm_selector_uses_btfms_multi():
+    dm_class = _dm_class_for_test_every_n_epochs(5, batch_tfms=True)
+    assert dm_class is DataManagerMultiBTfms
+
+
+def test_trainer_core_dm_selector_uses_default_dual():
+    dm_class = _dm_class_for_test_every_n_epochs(0, batch_tfms=False)
+    assert dm_class is DataManagerDual
+
+
+def test_trainer_core_dm_selector_uses_default_multi():
+    dm_class = _dm_class_for_test_every_n_epochs(2, batch_tfms=False)
+    assert dm_class is DataManagerMulti
+
+
+def test_trainer_core_dm_selector_uses_btfms_dual():
+    dm_class = _dm_class_for_test_every_n_epochs(0, batch_tfms=True)
+    assert dm_class is DataManagerDualBTfms

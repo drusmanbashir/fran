@@ -61,7 +61,7 @@ from utilz.stringz import (
     info_from_filename,
     strip_extension,
 )
-from fran.managers.data.main import DataManager
+from fran.managers.data.main import DataManager, DataManagerMulti
 common_vars_filename = os.environ["FRAN_CONF"] + "/config.yaml"
 COMMON_PATHS = load_yaml(common_vars_filename)
 
@@ -330,7 +330,7 @@ class LoadHDF5Cropd(MapTransform):
         return d
 
 
-class DataManagerDual(LightningDataModule):
+class DataManagerDualBTfms(LightningDataModule):
     """
     Train + valid only.
     """
@@ -351,6 +351,7 @@ class DataManagerDual(LightningDataModule):
         val_indices=None,
         val_sampling=1.0,
         debug=False,
+        batch_tfms: bool = True,
     ):
         super().__init__()
         self.project = Project(project_title)
@@ -368,6 +369,7 @@ class DataManagerDual(LightningDataModule):
         self.val_indices = val_indices
         self.val_sampling = float(val_sampling)
         self.debug = debug
+        self.batch_tfms = bool(batch_tfms)
         self.batch_affine = self._create_batch_affine()
 
         if save_hyperparameters:
@@ -377,6 +379,7 @@ class DataManagerDual(LightningDataModule):
                 "train_indices",
                 "val_indices",
                 "val_sampling",
+                "batch_tfms",
                 logger=False,
             )
 
@@ -524,13 +527,13 @@ class DataManagerDual(LightningDataModule):
         valid_mode = configs["plan_valid"]["mode"]
 
         mode_to_class = {
-            "source": DataManagerSource,
-            "whole": DataManagerWhole,
-            "pbd": DataManagerPatch,
-            "sourcepbd": DataManagerPatch,
-            "lbd": DataManagerLBD,
-            "rbd": DataManagerRBD,
-            "baseline": DataManagerBaseline,
+            "source": DataManagerSourceBTfms,
+            "whole": DataManagerWholeBTfms,
+            "pbd": DataManagerPatchBTfms,
+            "sourcepbd": DataManagerPatchBTfms,
+            "lbd": DataManagerLBDBTfms,
+            "rbd": DataManagerRBDBTfms,
+            "baseline": DataManagerBaselineBTfms,
         }
 
         for mode in (train_mode, valid_mode):
@@ -542,7 +545,87 @@ class DataManagerDual(LightningDataModule):
         return mode_to_class[train_mode], mode_to_class[valid_mode]
 
 
-class DataManagerBTFMS(DataManager):
+class DataManagerMultiBTfms(DataManagerDualBTfms):
+    def __init__(
+        self,
+        project_title,
+        configs: dict,
+        batch_size: int,
+        cache_rate=0.0,
+        device="cuda",
+        ds_type=None,
+        save_hyperparameters=True,
+        data_folder: Optional[str | Path] = None,
+        manager_class_train: Optional[type] = None,
+        manager_class_valid: Optional[type] = None,
+        manager_class_test: Optional[type] = None,
+        train_indices=None,
+        val_indices=None,
+        val_sampling=1.0,
+        debug=False,
+        batch_tfms: bool = True,
+    ):
+        self.keys_test = None
+        self.manager_class_test = manager_class_test
+        super().__init__(
+            project_title=project_title,
+            configs=configs,
+            batch_size=batch_size,
+            cache_rate=cache_rate,
+            device=device,
+            ds_type=ds_type,
+            save_hyperparameters=save_hyperparameters,
+            data_folder=data_folder,
+            manager_class_train=manager_class_train,
+            manager_class_valid=manager_class_valid,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            val_sampling=val_sampling,
+            debug=debug,
+            batch_tfms=batch_tfms,
+        )
+
+    def test_dataloader(self):
+        return self.test_manager.dl
+
+    def _iter_managers(self):
+        return (self.train_manager, self.valid_manager, self.test_manager)
+
+    def _build_managers(self):
+        super()._build_managers()
+        cls_test = self.manager_class_test or self.infer_test_manager_class(self.configs)
+        self.test_manager = cls_test(
+            project=self.project,
+            configs=self.configs,
+            batch_size=self.batch_size,
+            cache_rate=self.cache_rate,
+            split="test",
+            device=self.device,
+            ds_type=self.ds_type,
+            keys=self.keys_test,
+            data_folder=self.data_folder,
+            debug=self.debug,
+        )
+
+    def infer_test_manager_class(self, configs) -> type:
+        test_mode = configs["plan_test"]["mode"]
+        mode_to_class = {
+            "source": DataManagerSourceBTfms,
+            "whole": DataManagerWholeBTfms,
+            "pbd": DataManagerPatchBTfms,
+            "sourcepbd": DataManagerPatchBTfms,
+            "lbd": DataManagerLBDBTfms,
+            "rbd": DataManagerRBDBTfms,
+            "baseline": DataManagerBaselineBTfms,
+        }
+        if test_mode not in mode_to_class:
+            raise ValueError(
+                f"Unrecognized mode: {test_mode}. Must be one of {list(mode_to_class.keys())}"
+            )
+        return mode_to_class[test_mode]
+
+
+class DataManagerBTfms(DataManager):
     def __init__(
         self,
         project,
@@ -869,12 +952,6 @@ class DataManagerBTFMS(DataManager):
         tfms = []
         for key in keys_list:
             try:
-                if (
-                    key == "Affine"
-                    and self.uses_train_keys()
-                    and self.dataset_params.get("batch_affine", False)
-                ):
-                    continue
                 tfm = self.transforms_dict[key]
                 if key == "IntensityTfms":
                     tfms.extend(tfm)
@@ -1163,10 +1240,10 @@ class DataManagerBTFMS(DataManager):
         return instance
 
 
-class DataManagerSource(DataManager):
+class DataManagerSourceBTfms(DataManagerBTfms):
     def __init__(self, project, configs: dict, batch_size=8, cache_rate=0.0, **kwargs):
         super().__init__(project, configs, batch_size, cache_rate, **kwargs)
-        self.keys_tr = "Ld,Rtr,L2,E,F1,F2,Affine,ResizePC,N,IntensityTfms"
+        self.keys_tr = "Ld,Rtr,L2,E,F1,F2,ResizePC,N,IntensityTfms"
         self.keys_val = "L,E,N,Remap,ResizeP"
         if self.keys is None:
             if self.uses_train_keys():
@@ -1184,12 +1261,12 @@ class DataManagerSource(DataManager):
             raise NotImplementedError
 
     def __str__(self):
-        return "DataManagerSource instance with parameters: " + ", ".join(
+        return "DataManagerSourceBTfms instance with parameters: " + ", ".join(
             [f"{k}={v}" for k, v in vars(self).items()]
         )
 
     def __repr__(self):
-        return f"DataManagerSource"
+        return "DataManagerSourceBTfms"
 
     def override_batch_size_valid_split(self, split="valid"):
         if split == "valid":
@@ -1197,10 +1274,10 @@ class DataManagerSource(DataManager):
             self.collate_fn = None
 
 
-class DataManagerWhole(DataManager):
+class DataManagerWholeBTfms(DataManagerBTfms):
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
-        self.keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"
+        self.keys_tr = "L,E,F1,F2,ResizeW,N,IntensityTfms"
         self.keys_val = "L,E,ResizeW,N"
         if self.keys is None:
             if self.uses_train_keys():
@@ -1212,13 +1289,13 @@ class DataManagerWhole(DataManager):
         self.collate_fn = whole_collated
 
     def __str__(self):
-        return "DataManagerWhole instance with parameters: " + ", ".join(
+        return "DataManagerWholeBTfms instance with parameters: " + ", ".join(
             [f"{k}={v}" for k, v in vars(self).items()]
         )
 
     def __repr__(self):
         return (
-            f"DataManagerWhole("
+            f"DataManagerWholeBTfms("
             + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
             + ")"
         )
@@ -1243,10 +1320,10 @@ class DataManagerWhole(DataManager):
         return data
 
 
-class DataManagerLBD(DataManagerSource):
+class DataManagerLBDBTfms(DataManagerSourceBTfms):
     def __repr__(self):
         return (
-            f"DataManagerLBD(plan={self.plan}, "
+            f"DataManagerLBDBTfms(plan={self.plan}, "
             f"dataset_params={self.dataset_params}, "
             f"lbd_folder={self.project.lbd_folder})"
         )
@@ -1260,10 +1337,10 @@ class DataManagerLBD(DataManagerSource):
         )
 
 
-class DataManagerRBD(DataManagerLBD):
+class DataManagerRBDBTfms(DataManagerLBDBTfms):
     def __repr__(self):
         return (
-            f"DataManagerRBD(plan={self.plan}, "
+            f"DataManagerRBDBTfms(plan={self.plan}, "
             f"dataset_params={self.dataset_params}, "
             f"rbd_folder={self.project.rbd_folder})"
         )
@@ -1289,7 +1366,7 @@ class DataManagerShort(DataManager):
 # CODE: in the below class move Rtr after Affine and get rid of Re to see if it affects training speed / model accuracy
 
 
-class DataManagerPatch(DataManagerSource):
+class DataManagerPatchBTfms(DataManagerSourceBTfms):
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
         if self.keys is None:
@@ -1308,7 +1385,7 @@ class DataManagerPatch(DataManagerSource):
         super().prepare_data()
 
     def __str__(self):
-        return "DataManagerPatch instance with parameters: " + ", ".join(
+        return "DataManagerPatchBTfms instance with parameters: " + ", ".join(
             [
                 f"{k}={v}"
                 for k, v in vars(self).items()
@@ -1317,10 +1394,10 @@ class DataManagerPatch(DataManagerSource):
         )
 
     def __repr__(self):
-        return f"DataManagerPatch(project={self.project}, configs={self.configs}, batch_size={self.batch_size})"
+        return f"DataManagerPatchBTfms(project={self.project}, configs={self.configs}, batch_size={self.batch_size})"
 
     def set_tfm_keys(self):  # sets own tfm_keys because RP is an addition in this class
-        self.keys_tr = "RP, L,Remap,E,N,F1,F2,Affine,ResizePC,IntensityTfms"
+        self.keys_tr = "RP, L,Remap,E,N,F1,F2,ResizePC,IntensityTfms"
         self.keys_val = "RP,L,Remap,E,ResizePC,N "
         self.keys_test = "L,E,N,Remap,ResizeP"  # experimental
         if self.uses_train_keys():
@@ -1455,7 +1532,7 @@ class DataManagerPatch(DataManagerSource):
         return self.plan["patch_size"]
 
 
-class DataManagerBaseline(DataManagerLBD):
+class DataManagerBaselineBTfms(DataManagerLBDBTfms):
     """
     Small dataset of size =batchsize comprising a single batch. No augmentations. Used to get a baseline
     It has no training augmentations. Whether the flag is True or False doesnt matter.
@@ -1470,13 +1547,13 @@ class DataManagerBaseline(DataManagerLBD):
         self.collate_fn = whole_collated
 
     def __str__(self):
-        return "DataManagerBaseline instance with parameters: " + ", ".join(
+        return "DataManagerBaselineBTfms instance with parameters: " + ", ".join(
             [f"{k}={v}" for k, v in vars(self).items()]
         )
 
     def __repr__(self):
         return (
-            f"DataManagerBaseline("
+            f"DataManagerBaselineBTfms("
             + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
             + ")"
         )

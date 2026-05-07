@@ -15,7 +15,8 @@ from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
 from fran.managers import Project
-from fran.managers.data.dualssd import DataManagerDualSSD
+from fran.managers.data.batch_tfms import DataManagerDualBTfms
+from fran.managers.data.dualssd import DataManagerDualSSD, DataManagerDualSSDBTfms
 from fran.managers.data.main import (
     DataManagerBaseline,
     DataManagerDual,
@@ -70,6 +71,7 @@ class Trainer:
         else:
             self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
+        self.batch_tfms = False
 
     def _ensure_local_ckpt_on_wandb_resume(self, logger: WandbManager | None) -> None:
         """
@@ -137,6 +139,7 @@ class Trainer:
         wandb_grid_epoch_freq: int = 5,
         permanent_checkpoint_every_n_epochs: int = 100,
         dual_ssd: bool = False,
+        batch_tfms: bool = False,
     ):
         if isinstance(train_indices, str):
             train_indices = train_indices.strip()
@@ -149,6 +152,7 @@ class Trainer:
         self.val_sampling = float(val_sampling)
         self.debug = bool(debug)
         self.dual_ssd = bool(dual_ssd)
+        self.batch_tfms = bool(batch_tfms)
         self.maybe_alter_configs(batch_size, compiled)
         self.set_lr(lr)
 
@@ -231,7 +235,7 @@ class Trainer:
         manager_class_valid = self.resolve_datamanager(
             self.configs["plan_valid"]["mode"]
         )
-        dm_class = DataManagerDualSSD if self.dual_ssd else DataManagerDual
+        dm_class = self.resolve_orchestrator_class()
         dm = dm_class(
             project_title=self.project.project_title,
             configs=self.configs,
@@ -244,6 +248,7 @@ class Trainer:
             train_indices=self.train_indices,
             val_indices=self.val_indices,
             val_sampling=self.val_sampling,
+            batch_tfms=self.batch_tfms,
         )
 
         labels_all = self.configs["plan_train"].get("labels_all")
@@ -252,8 +257,8 @@ class Trainer:
         return dm
 
     def load_dm(self, batch_size=None, override_dm_checkpoint=False):
+        sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
         if override_dm_checkpoint:
-            sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
             backup_ckpt(self.ckpt)
             sd["datamodule_hyper_parameters"]["configs"] = self.configs
             headline(
@@ -264,7 +269,9 @@ class Trainer:
             shutil.copy(self.ckpt, bckup_ckpt)
             torch.save(sd, self.ckpt)
 
-        dm_class = DataManagerDualSSD if self.dual_ssd else DataManagerDual
+        hp = sd["datamodule_hyper_parameters"]
+        batch_tfms = bool(hp["batch_tfms"]) if "batch_tfms" in hp else self.batch_tfms
+        dm_class = self.resolve_orchestrator_class(batch_tfms=batch_tfms)
         D = dm_class.load_from_checkpoint(
             self.ckpt,
             project_title=self.project.project_title,
@@ -306,6 +313,13 @@ class Trainer:
             self.D = self.init_dm()
             self.N = self.init_trainer(epochs)
         print("Data Manager initialized.\n {}".format(self.D))
+
+    def resolve_orchestrator_class(self, batch_tfms: Optional[bool] = None):
+        if batch_tfms is None:
+            batch_tfms = self.batch_tfms
+        if self.dual_ssd:
+            return DataManagerDualSSDBTfms if batch_tfms else DataManagerDualSSD
+        return DataManagerDualBTfms if batch_tfms else DataManagerDual
 
     def set_lr(self, lr):
         if lr and not self.ckpt:

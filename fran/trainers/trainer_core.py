@@ -9,6 +9,7 @@ from fran.callback.case_recorder import infer_labels_and_update_out_channels
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.test import PeriodicTest
+from fran.managers.data.batch_tfms import DataManagerDualBTfms, DataManagerMultiBTfms
 from fran.managers.data.main import DataManagerDual, DataManagerMulti
 
 # from fran.callback.modelcheckpoint import ModelCheckpointUB
@@ -71,8 +72,12 @@ def safe_log_dict(exp, base_path: str, d: dict):
             print(f"[Neptune logging skipped] {path}: {e}")
 
 
-def _dm_class_for_test_every_n_epochs(test_every_n_epochs: int):
-    return DataManagerMulti if int(test_every_n_epochs) > 0 else DataManagerDual
+def _dm_class_for_test_every_n_epochs(
+    test_every_n_epochs: int, batch_tfms: bool = False
+):
+    if int(test_every_n_epochs) > 0:
+        return DataManagerMultiBTfms if batch_tfms else DataManagerMulti
+    return DataManagerDualBTfms if batch_tfms else DataManagerDual
 
 
 def _dm_class_from_ckpt(ckpt_path: str | Path):
@@ -82,8 +87,11 @@ def _dm_class_from_ckpt(ckpt_path: str | Path):
     """
     sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
-    # your DMs store keys_test only on Multi
-    return DataManagerMulti if "keys_test" in hp else DataManagerDual
+    batch_tfms = bool(hp["batch_tfms"]) if "batch_tfms" in hp else False
+    return _dm_class_for_test_every_n_epochs(
+        test_every_n_epochs=1 if "plan_test" in hp["configs"] else 0,
+        batch_tfms=batch_tfms,
+    )
 
 
 class Trainer:
@@ -104,6 +112,7 @@ class Trainer:
         self.qc_configs(configs, self.project)
 
         self.test_every_n_epochs = 0  # default
+        self.batch_tfms = False
 
     def setup(
         self,
@@ -128,9 +137,11 @@ class Trainer:
         early_stopping_patience=30,
         early_stopping_min_delta=0.0,
         lr_floor=None,
+        batch_tfms: bool = False,
     ):
         self.test_every_n_epochs = int(test_every_n_epochs)
         self.debug = bool(debug)
+        self.batch_tfms = bool(batch_tfms)
 
         self.maybe_alter_configs(batch_size, compiled)
         self.set_lr(lr)
@@ -173,7 +184,9 @@ class Trainer:
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
 
-        DM = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
+        DM = _dm_class_for_test_every_n_epochs(
+            self.test_every_n_epochs, batch_tfms=self.batch_tfms
+        )
         dm = DM(
             self.project.project_title,
             configs=self.configs,
@@ -181,6 +194,7 @@ class Trainer:
             cache_rate=cache_rate,
             device=self.configs["dataset_params"].get("device", "cuda"),
             ds_type=ds_type,
+            batch_tfms=self.batch_tfms,
         )
 
         labels_all = self.configs["plan_train"].get("labels_all")
@@ -206,7 +220,9 @@ class Trainer:
 
         # Prefer the class the checkpoint was created with.
         DM_from_ckpt = _dm_class_from_ckpt(self.ckpt)
-        DM_wanted = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
+        DM_wanted = _dm_class_for_test_every_n_epochs(
+            self.test_every_n_epochs, batch_tfms=self.batch_tfms
+        )
 
         # If they disagree, do NOT force DM_wanted; load what the ckpt expects.
         # That avoids crashes from missing stored hyperparams / attributes.
