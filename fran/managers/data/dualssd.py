@@ -194,7 +194,7 @@ def dual_ssd_manager_class(manager_class: type) -> type:
     return DUAL_SSD_MANAGER_CLASSES[manager_class]
 
 
-class DataManagerDualSSD(DataManagerDual):
+class _DualSSDBuilderMixin:
     def _build_managers(self):
         inf_tr, inf_val = self.infer_manager_classes(self.configs)
         cls_tr = dual_ssd_manager_class(self.manager_class_train or inf_tr)
@@ -227,37 +227,12 @@ class DataManagerDualSSD(DataManagerDual):
         )
 
 
-class DataManagerDualSSDBTfms(DataManagerDualBTfms):
-    def _build_managers(self):
-        inf_tr, inf_val = self.infer_manager_classes(self.configs)
-        cls_tr = dual_ssd_manager_class(self.manager_class_train or inf_tr)
-        cls_val = dual_ssd_manager_class(self.manager_class_valid or inf_val)
+class DataManagerDualSSD(_DualSSDBuilderMixin, DataManagerDual):
+    pass
 
-        self.train_manager = cls_tr(
-            project=self.project,
-            configs=self.configs,
-            batch_size=self.batch_size,
-            cache_rate=self.cache_rate,
-            split="train",
-            device=self.device,
-            ds_type=self.ds_type,
-            keys=self.keys_tr,
-            data_folder=self.data_folder,
-            debug=self.debug,
-        )
-        self.valid_manager = cls_val(
-            project=self.project,
-            configs=self.configs,
-            batch_size=self.batch_size,
-            cache_rate=self.cache_rate,
-            split="valid",
-            device=self.device,
-            ds_type=self.ds_type,
-            keys=self.keys_val,
-            data_folder=self.data_folder,
-            val_sampling=self.val_sampling,
-            debug=self.debug,
-        )
+
+class DataManagerDualSSDBTfms(_DualSSDBuilderMixin, DataManagerDualBTfms):
+    pass
 
 
 __all__ = [
