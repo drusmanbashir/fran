@@ -1,14 +1,16 @@
 import json
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import torch
 
 from fran.preprocessing.helpers import import_h5py, sanitize_meta_for_monai
-from utilz.fileio import maybe_makedirs, save_json
+from utilz.fileio import maybe_makedirs
 
 
-class HDF5ShardWriter:
+class HDF5ShardWorker:
     HDF5_SHARD_CHUNKS = {
         (192, 192, 128): {
             "image": (192, 192, 128),
@@ -17,24 +19,6 @@ class HDF5ShardWriter:
         }
     }
 
-    def __init__(
-        self,
-        output_folder,
-        src_dims,
-        cases_per_shard=5,
-        max_shard_bytes=None,
-        overwrite=False,
-        compression="gzip",
-        compression_opts=1,
-    ):
-        self.output_folder = Path(output_folder)
-        self.src_dims = self._normalize_src_dims(src_dims)
-        self.cases_per_shard = cases_per_shard
-        self.max_shard_bytes = max_shard_bytes
-        self.overwrite = overwrite
-        self.compression = compression
-        self.compression_opts = compression_opts
-
     @staticmethod
     def _normalize_src_dims(src_dims):
         dims = tuple(int(v) for v in src_dims)
@@ -42,14 +26,14 @@ class HDF5ShardWriter:
             raise ValueError(f"src_dims must be 3 positive ints, got {src_dims}")
         return dims
 
-    def _hdf5_chunks_for(self, shape, key):
+    def _hdf5_chunks_for(self, shape, key, src_dims):
         shape = tuple(int(v) for v in shape)
-        if self.src_dims in self.HDF5_SHARD_CHUNKS:
-            conf = self.HDF5_SHARD_CHUNKS[self.src_dims]
+        if src_dims in self.HDF5_SHARD_CHUNKS:
+            conf = self.HDF5_SHARD_CHUNKS[src_dims]
         else:
             conf = {
-                "image": self.src_dims,
-                "lm": self.src_dims,
+                "image": src_dims,
+                "lm": src_dims,
                 "indices": (262144,),
             }
 
@@ -76,18 +60,28 @@ class HDF5ShardWriter:
             return value.detach().cpu().numpy()
         return np.asarray(value)
 
-    def _create_index_dataset(self, case_grp, name, data, ds_kwargs):
+    def _create_index_dataset(self, case_grp, name, data, ds_kwargs, src_dims):
         if int(data.shape[0]) > 0:
             case_grp.create_dataset(
                 name,
                 data=data,
-                chunks=self._hdf5_chunks_for(data.shape, name),
+                chunks=self._hdf5_chunks_for(data.shape, name, src_dims),
                 **ds_kwargs,
             )
             return
         case_grp.create_dataset(name, data=data, **ds_kwargs)
 
-    def _write_case(self, h5f, case_id, image_pt, lm_pt, indices_pt):
+    def _write_case(
+        self,
+        h5f,
+        case_id,
+        image_pt,
+        lm_pt,
+        indices_pt,
+        src_dims,
+        compression,
+        compression_opts,
+    ):
         image = self._to_numpy_cpu(self._load_torch(image_pt))
         lm = self._to_numpy_cpu(self._load_torch(lm_pt))
         indices = self._load_torch(indices_pt)
@@ -101,10 +95,10 @@ class HDF5ShardWriter:
         bg = self._to_numpy_cpu(indices["lm_bg_indices"]).reshape(-1)
 
         ds_kwargs = {}
-        if self.compression is not None:
-            ds_kwargs["compression"] = self.compression
-            if self.compression_opts is not None:
-                ds_kwargs["compression_opts"] = self.compression_opts
+        if compression is not None:
+            ds_kwargs["compression"] = compression
+            if compression_opts is not None:
+                ds_kwargs["compression_opts"] = compression_opts
             ds_kwargs["shuffle"] = True
 
         cases_grp = h5f.require_group("cases")
@@ -112,17 +106,17 @@ class HDF5ShardWriter:
         case_grp.create_dataset(
             "image",
             data=image,
-            chunks=self._hdf5_chunks_for(image.shape, "image"),
+            chunks=self._hdf5_chunks_for(image.shape, "image", src_dims),
             **ds_kwargs,
         )
         case_grp.create_dataset(
             "lm",
             data=lm,
-            chunks=self._hdf5_chunks_for(lm.shape, "lm"),
+            chunks=self._hdf5_chunks_for(lm.shape, "lm", src_dims),
             **ds_kwargs,
         )
-        self._create_index_dataset(case_grp, "lm_fg_indices", fg, ds_kwargs)
-        self._create_index_dataset(case_grp, "lm_bg_indices", bg, ds_kwargs)
+        self._create_index_dataset(case_grp, "lm_fg_indices", fg, ds_kwargs, src_dims)
+        self._create_index_dataset(case_grp, "lm_bg_indices", bg, ds_kwargs, src_dims)
 
         case_grp.attrs["image_pt"] = str(image_pt)
         case_grp.attrs["lm_pt"] = str(lm_pt)
@@ -141,6 +135,71 @@ class HDF5ShardWriter:
             return
         if meta is not None:
             case_grp.attrs["meta_json"] = json.dumps(meta, default=str)
+
+    def process_shard(
+        self,
+        shard_fn,
+        shard_idx,
+        shard_cases,
+        src_dims,
+        cases_per_shard,
+        compression,
+        compression_opts,
+    ):
+        shard_fn = Path(shard_fn)
+        src_dims = self._normalize_src_dims(src_dims)
+        h5py = import_h5py()
+        case_ids_shard = [rec["case_id"] for rec in shard_cases]
+        with h5py.File(shard_fn, "w") as h5f:
+            h5f.attrs["format"] = "fran_hdf5_shards_v1"
+            h5f.attrs["src_dims"] = list(src_dims)
+            h5f.attrs["cases_per_shard"] = int(cases_per_shard)
+            h5f.attrs["case_ids_json"] = json.dumps(case_ids_shard)
+            h5f.attrs["compression"] = "" if compression is None else str(compression)
+            h5f.attrs["compression_opts"] = (
+                -1 if compression_opts is None else int(compression_opts)
+            )
+            for rec in shard_cases:
+                self._write_case(
+                    h5f=h5f,
+                    case_id=rec["case_id"],
+                    image_pt=rec["image_pt"],
+                    lm_pt=rec["lm_pt"],
+                    indices_pt=rec["indices_pt"],
+                    src_dims=src_dims,
+                    compression=compression,
+                    compression_opts=compression_opts,
+                )
+        return {
+            "shard_idx": int(shard_idx),
+            "shard": shard_fn.name,
+            "case_ids": case_ids_shard,
+        }
+
+
+def _process_hdf5_shard_worker(kwargs):
+    worker = HDF5ShardWorker()
+    return worker.process_shard(**kwargs)
+
+
+class HDF5ShardGenerator:
+    def __init__(
+        self,
+        output_folder,
+        src_dims,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite=False,
+        compression="gzip",
+        compression_opts=1,
+    ):
+        self.output_folder = Path(output_folder)
+        self.src_dims = HDF5ShardWorker._normalize_src_dims(src_dims)
+        self.cases_per_shard = cases_per_shard
+        self.max_shard_bytes = max_shard_bytes
+        self.overwrite = overwrite
+        self.compression = compression
+        self.compression_opts = compression_opts
 
     def _build_shard_groups(self, case_records):
         assert self.cases_per_shard is None or self.max_shard_bytes is None
@@ -173,10 +232,35 @@ class HDF5ShardWriter:
             for idx in range(0, len(case_records), cases_per_shard)
         ]
 
-    def create_from_df(self, df):
-        return self.create(case_ids=df["case_id"].tolist())
+    def _manifest_payload(self, shard_manifest):
+        return {
+            "format": "fran_hdf5_shards_v1",
+            "src_dims": list(self.src_dims),
+            "compression": self.compression,
+            "compression_opts": self.compression_opts,
+            "cases_per_shard": int(self.cases_per_shard),
+            "max_shard_bytes": self.max_shard_bytes,
+            "num_cases": sum(len(shard["case_ids"]) for shard in shard_manifest),
+            "num_shards": len(shard_manifest),
+            "shards": shard_manifest,
+        }
 
-    def create(self, case_ids=None):
+    @staticmethod
+    def _write_manifest_atomic(manifest_fn, manifest):
+        manifest_tmp = manifest_fn.with_suffix(".json.tmp")
+        manifest_tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        manifest_tmp.replace(manifest_fn)
+
+    def create_from_df(self, df, num_processes=8):
+        return self.create(case_ids=df["case_id"].tolist(), num_processes=num_processes)
+
+    def _cleanup_uncommitted_shards(self, existing_shards, shard_manifest):
+        committed_shards = {shard_meta["shard"] for shard_meta in shard_manifest}
+        for shard_fn in existing_shards:
+            if shard_fn.name not in committed_shards:
+                shard_fn.unlink()
+
+    def create(self, case_ids=None, num_processes=8):
         images_folder = self.output_folder / "images"
         lms_folder = self.output_folder / "lms"
         indices_folder = self.output_folder / "indices"
@@ -201,6 +285,7 @@ class HDF5ShardWriter:
         elif manifest_fn.exists():
             manifest = json.loads(manifest_fn.read_text())
             shard_manifest = manifest["shards"]
+            self._cleanup_uncommitted_shards(existing_shards, shard_manifest)
             existing_case_ids = {
                 case_id for shard_meta in shard_manifest for case_id in shard_meta["case_ids"]
             }
@@ -247,44 +332,52 @@ class HDF5ShardWriter:
             )
 
         shard_groups = self._build_shard_groups(case_records)
-        h5py = import_h5py()
+        shard_jobs = []
         shard_paths = []
-        for shard_idx, shard_cases in enumerate(shard_groups, start=len(shard_manifest)):
+        shard_offset = len(shard_manifest)
+        for shard_rel_idx, shard_cases in enumerate(shard_groups):
+            shard_idx = shard_offset + shard_rel_idx
             shard_fn = shards_folder / f"shard_{shard_idx:04d}.h5"
-            with h5py.File(shard_fn, "w") as h5f:
-                case_ids_shard = [rec["case_id"] for rec in shard_cases]
-                h5f.attrs["format"] = "fran_hdf5_shards_v1"
-                h5f.attrs["src_dims"] = list(self.src_dims)
-                h5f.attrs["cases_per_shard"] = int(self.cases_per_shard)
-                h5f.attrs["case_ids_json"] = json.dumps(case_ids_shard)
-                h5f.attrs["compression"] = "" if self.compression is None else str(self.compression)
-                h5f.attrs["compression_opts"] = (
-                    -1 if self.compression_opts is None else int(self.compression_opts)
-                )
-
-                for rec in shard_cases:
-                    self._write_case(
-                        h5f=h5f,
-                        case_id=rec["case_id"],
-                        image_pt=rec["image_pt"],
-                        lm_pt=rec["lm_pt"],
-                        indices_pt=rec["indices_pt"],
-                    )
-
             shard_paths.append(shard_fn)
-            shard_manifest.append({"shard": shard_fn.name, "case_ids": case_ids_shard})
+            shard_jobs.append(
+                {
+                    "shard_fn": shard_fn,
+                    "shard_idx": shard_idx,
+                    "shard_cases": shard_cases,
+                    "src_dims": self.src_dims,
+                    "cases_per_shard": self.cases_per_shard,
+                    "compression": self.compression,
+                    "compression_opts": self.compression_opts,
+                }
+            )
 
-        manifest = {
-            "format": "fran_hdf5_shards_v1",
-            "src_dims": list(self.src_dims),
-            "compression": self.compression,
-            "compression_opts": self.compression_opts,
-            "cases_per_shard": int(self.cases_per_shard),
-            "max_shard_bytes": self.max_shard_bytes,
-            "num_cases": sum(len(shard["case_ids"]) for shard in shard_manifest),
-            "num_shards": len(shard_manifest),
-            "shards": shard_manifest,
-        }
-        save_json(manifest, manifest_fn)
+        completed_shards = {}
+        max_workers = max(1, min(int(num_processes), len(shard_jobs))) if shard_jobs else 0
+        if max_workers == 0:
+            return sorted(shards_folder.glob("shard_*.h5"))
+        if max_workers == 1:
+            for job in shard_jobs:
+                shard_info = _process_hdf5_shard_worker(job)
+                completed_shards[shard_info["shard_idx"]] = shard_info
+                combined_manifest = list(shard_manifest) + [
+                    completed_shards[idx] for idx in sorted(completed_shards)
+                ]
+                manifest = self._manifest_payload(combined_manifest)
+                self._write_manifest_atomic(manifest_fn, manifest)
+        else:
+            ctx = mp.get_context("spawn")
+            with ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx) as ex:
+                futures = [ex.submit(_process_hdf5_shard_worker, job) for job in shard_jobs]
+                for fut in as_completed(futures):
+                    shard_info = fut.result()
+                    completed_shards[shard_info["shard_idx"]] = shard_info
+                    combined_manifest = list(shard_manifest) + [
+                        completed_shards[idx] for idx in sorted(completed_shards)
+                    ]
+                    manifest = self._manifest_payload(combined_manifest)
+                    self._write_manifest_atomic(manifest_fn, manifest)
         print(f"Wrote {len(shard_paths)} HDF5 shards in {shards_folder}")
         return sorted(shards_folder.glob("shard_*.h5"))
+
+
+HDF5ShardWriter = HDF5ShardGenerator

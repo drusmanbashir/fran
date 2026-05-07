@@ -133,7 +133,21 @@ def rewrite_location(location: str) -> str:
     return location
 
 
-def rewrite_html(body: str) -> str:
+def top_nav_html(scope: str) -> str:
+    jobs_href = f"{FRAN_JOBS_PREFIX}?scope={scope}"
+    return (
+        '<nav style="margin:0 0 24px;padding:16px 20px;border:1px solid #d7e3d9;'
+        'border-radius:16px;background:#f6faf6">'
+        '<strong style="margin-right:18px">FRAN</strong>'
+        f'<a href="/" style="margin-right:14px">Home</a>'
+        f'<a href="{jobs_href}" style="margin-right:14px">Jobs</a>'
+        '<a href="/docs" style="margin-right:14px">Docs</a>'
+        '<a href="/openapi.json">API</a>'
+        "</nav>"
+    )
+
+
+def rewrite_html(body: str, scope: str) -> str:
     replacements = {
         'href="/?': f'href="{FRAN_JOBS_PREFIX}?',
         'action="/"': f'action="{FRAN_JOBS_PREFIX}"',
@@ -148,6 +162,11 @@ def rewrite_html(body: str) -> str:
     }
     for old, new in replacements.items():
         body = body.replace(old, new)
+    nav = top_nav_html(scope)
+    if "<body>" in body:
+        body = body.replace("<body>", f"<body>{nav}", 1)
+    else:
+        body = nav + body
     return body
 
 
@@ -164,7 +183,7 @@ def proxy_response(method: str, scope: str, path: str, query: str, body: bytes |
             payload = resp.read()
             ctype = resp.headers.get("Content-Type", "text/plain; charset=utf-8")
             if ctype.startswith("text/html"):
-                return HTMLResponse(rewrite_html(payload.decode("utf-8", errors="replace")), status_code=resp.status)
+                return HTMLResponse(rewrite_html(payload.decode("utf-8", errors="replace"), scope), status_code=resp.status)
             if ctype.startswith("text/plain"):
                 return PlainTextResponse(payload.decode("utf-8", errors="replace"), status_code=resp.status)
             return Response(content=payload, media_type=ctype, status_code=resp.status)
@@ -174,7 +193,7 @@ def proxy_response(method: str, scope: str, path: str, query: str, body: bytes |
         payload = err.read()
         ctype = err.headers.get("Content-Type", "text/plain; charset=utf-8")
         if ctype.startswith("text/html"):
-            return HTMLResponse(rewrite_html(payload.decode("utf-8", errors="replace")), status_code=err.code)
+            return HTMLResponse(rewrite_html(payload.decode("utf-8", errors="replace"), scope), status_code=err.code)
         if ctype.startswith("text/plain"):
             return PlainTextResponse(payload.decode("utf-8", errors="replace"), status_code=err.code)
         return Response(content=payload, media_type=ctype, status_code=err.code)

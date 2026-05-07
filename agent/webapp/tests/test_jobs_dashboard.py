@@ -30,11 +30,14 @@ def _write_registry_row(root: Path, job_id: str, state: str, input_method: str) 
         )
 
 
-def test_root_redirects_to_jobs() -> None:
+def test_root_lands_on_home_page() -> None:
     client = TestClient(main.app)
-    response = client.get("/", follow_redirects=False)
-    assert response.status_code == 307
-    assert response.headers["location"] == "/hpc/jobs"
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "FRAN" in response.text
+    assert 'href="/hpc/jobs?scope=hpc"' in response.text
+    assert 'href="/docs"' in response.text
+    assert 'href="/openapi.json"' in response.text
 
 
 def test_jobs_page_proxies_hpc_and_local_scopes(tmp_path: Path, monkeypatch) -> None:
@@ -51,11 +54,15 @@ def test_jobs_page_proxies_hpc_and_local_scopes(tmp_path: Path, monkeypatch) -> 
     hpc_response = client.get("/hpc/jobs?scope=hpc")
     assert hpc_response.status_code == 200
     assert "HPC Jobs Dashboard" in hpc_response.text
+    assert 'href="/"' in hpc_response.text
+    assert 'href="/docs"' in hpc_response.text
+    assert 'href="/openapi.json"' in hpc_response.text
     assert "12345" in hpc_response.text
     assert "local-abc" not in hpc_response.text
 
     local_response = client.get("/hpc/jobs?scope=local")
     assert local_response.status_code == 200
+    assert 'href="/hpc/jobs?scope=local"' in local_response.text
     assert "local-abc" in local_response.text
     assert "12345" not in local_response.text
 

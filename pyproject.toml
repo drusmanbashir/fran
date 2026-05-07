@@ -12,6 +12,9 @@ dynamic = ["version"]
 authors = [{ name = "Usman Bashir" }]
 license = { text = "MIT" }
 
+[project.scripts]
+fran-webapp = "agent.webapp.cli:main"
+
 dependencies = [
   "batchgenerators>=0.25",
   "connected-components-3d>=3.17",
@@ -90,7 +93,7 @@ full = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["fran*"]
+include = ["fran*", "agent*"]
 
 [tool.setuptools]
 include-package-data = true

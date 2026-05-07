@@ -270,6 +270,7 @@ def create_hdf5_shards(
     overwrite=False,
     compression="gzip",
     compression_opts=1,
+    num_processes=8,
 ):
     return HDF5ShardWriter(
         output_folder=output_folder,
@@ -279,7 +280,7 @@ def create_hdf5_shards(
         overwrite=overwrite,
         compression=compression,
         compression_opts=compression_opts,
-    ).create(case_ids=case_ids)
+    ).create(case_ids=case_ids, num_processes=num_processes)
 
 
 class Preprocessor(GetAttr):
