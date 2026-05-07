@@ -41,7 +41,7 @@ from typing import Optional
 import ipdb
 import pandas as pd
 from fran.data.collate import grid_collated
-from fran.managers.data.training import (
+from fran.managers.data.main import (
     DataManager,
     DataManagerBaseline,
     DataManagerDual,

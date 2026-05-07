@@ -13,7 +13,7 @@ from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
 from fran.managers.data.dualssd import dual_ssd_manager_class
-from fran.managers.data.training import DataManagerDual, DataManagerPatch
+from fran.managers.data.main import DataManagerDual, DataManagerPatch
 from fran.managers.wandb.wandb import WandbManager
 from fran.trainers.trainer import Trainer, _flatten_dict
 from lightning.pytorch import Trainer as TrainerL

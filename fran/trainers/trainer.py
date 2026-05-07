@@ -16,7 +16,7 @@ from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.parser import normalize_logging_payload
 from fran.managers import Project
 from fran.managers.data.dualssd import DataManagerDualSSD
-from fran.managers.data.training import (
+from fran.managers.data.main import (
     DataManagerBaseline,
     DataManagerDual,
     DataManagerRBD,

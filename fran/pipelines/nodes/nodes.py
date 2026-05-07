@@ -119,7 +119,7 @@ if __name__ == "__main__":
     N = Tm.N
     D = Tm.D
     # %%
-    from fran.managers.data.training import DataManagerMulti
+    from fran.managers.data.main import DataManagerMulti
     from utilz.imageviewers import ImageMaskViewer
 
     D = Tm.D

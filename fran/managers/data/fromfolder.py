@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from fran.data.dataset import NormaliseClipd
-from fran.managers.data.training import DataManager
+from fran.managers.data.main import DataManager
 from fran.transforms.imageio import LoadSITKd
 from monai.transforms.spatial.dictionary import (
     Orientationd,

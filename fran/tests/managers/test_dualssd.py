@@ -6,11 +6,11 @@ from types import SimpleNamespace
 
 import torch
 
-import fran.managers.data.training as training_module
+import fran.managers.data.main as training_module
 import fran.trainers.trainer as trainer_module
 import fran.trainers.trainer_runthrough as trainer_runthrough_module
 from fran.managers.data.dualssd import DataManagerSourceDualSSD
-from fran.managers.data.training import DataManagerSource, DataManagerWhole
+from fran.managers.data.main import DataManagerSource, DataManagerWhole
 from fran.preprocessing.preprocessor import create_hdf5_shards
 from fran.trainers.trainer import Trainer
 from fran.trainers.trainer_runthrough import TrainerRT

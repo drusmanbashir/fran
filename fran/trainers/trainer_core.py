@@ -9,7 +9,7 @@ from fran.callback.case_recorder import infer_labels_and_update_out_channels
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.test import PeriodicTest
-from fran.managers.data.training import DataManagerDual, DataManagerMulti
+from fran.managers.data.main import DataManagerDual, DataManagerMulti
 
 # from fran.callback.modelcheckpoint import ModelCheckpointUB
 from fran.managers.project import Project
@@ -26,7 +26,7 @@ import os
 from pathlib import Path
 
 import torch._dynamo
-from fran.managers.data.training import (
+from fran.managers.data.main import (
     DataManagerBaseline,
     DataManagerLBD,
     DataManagerPatch,

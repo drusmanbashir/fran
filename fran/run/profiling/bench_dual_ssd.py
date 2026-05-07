@@ -8,7 +8,7 @@ import torch
 from fastcore.basics import warnings
 from fran.configs.parser import ConfigMaker
 from fran.managers.data.dualssd import DataManagerDualSSD
-from fran.managers.data.training import DataManagerDual
+from fran.managers.data.main import DataManagerDual
 from fran.managers.project import Project
 from fran.transforms.imageio import LoadTorchd
 from utilz.imageviewers import ImageMaskViewer

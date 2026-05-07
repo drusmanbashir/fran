@@ -155,6 +155,16 @@ This file is the runnable-entrypoint inventory for `fran/fran/run/`.
 - `profiling/*.sh`
   - Thin convenience launchers for the profiling CLIs above.
 
+## Folder: `debugging/`
+
+- `debugging/import_sanity.py`
+  - Runnable crash-debugging scaffold for Python import and environment validation.
+  - Canonical FRAN path for future import-related debug tools.
+
+- `debugging/cuda_oom.py`
+  - Runnable crash-debugging scaffold for CUDA memory triage.
+  - Canonical FRAN path for future GPU-memory debug tools.
+
 ## Folder: `misc/`
 
 - `misc/block_suspend.py`

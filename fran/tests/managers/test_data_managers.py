@@ -1,6 +1,6 @@
 import pytest
 from fran.configs.parser import ConfigMaker
-from fran.managers.data.training import (
+from fran.managers.data.main import (
     DataManagerBaseline,
     DataManagerDual,
     DataManagerLBD,

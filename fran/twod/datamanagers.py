@@ -4,7 +4,7 @@ from typing import Optional
 
 from monai.transforms.transform import MapTransform, Randomizable
 
-from fran.managers.data.training import DataManagerMulti, DataManagerLBD
+from fran.managers.data.main import DataManagerMulti, DataManagerLBD
 SEQ_LEN = 16
 
 
