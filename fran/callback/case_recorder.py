@@ -369,7 +369,7 @@ class CaseIDRecorder(Callback):
 
     def _ensure_plot_export_executor(self) -> ProcessPoolExecutor:
         if self._plot_export_executor is None:
-            self._plot_export_executor = ProcessPoolExecutor(max_workers=1)
+            self._plot_export_executor = ProcessPoolExecutor(max_workers=2)
         return self._plot_export_executor
 
     def _build_async_export_job(

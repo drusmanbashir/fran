@@ -1,5 +1,5 @@
 # Repo-specific instructions
-- any time a script (shell or python) in fran/run is modified, compare for downstream effect in ~/code/agent/agent/hpc/ and fix those too.
+- any time a script (shell or python) in fran/run is modified, compare for downstream effect in ~/code/agent/agent/hpc/ and build a compatible adapter in  ~/code/agent/agent/control_plane/ if needed.
 - Avoid environment-variable wrapper boilerplate in `.sh` scripts unless the task specifically needs it.
 - changes under /home/ub/code/fran outside /home/ub/code/fran/fran/run/ require explicit user approval first.
 

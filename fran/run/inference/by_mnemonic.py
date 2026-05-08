@@ -2,6 +2,8 @@ import argparse
 import os
 from dataclasses import dataclass
 from pathlib import Path
+import ipdb
+tr = ipdb.set_trace
 
 import pandas as pd
 from label_analysis.totalseg import TotalSegmenterLabels
@@ -268,7 +270,7 @@ def resolve_spec(mnemonic_raw: str, localiser_type: str | None) -> InferenceSpec
         return InferenceSpec(
             inferer_cls=CascadeInferer,
             run_name=run_name,
-            run_w=best_runs["run_w"],
+            run_w=best_runs["whole"],
             localiser_labels=resolve_tsl_localiser_labels(mnemonic, run_name),
             k_largest=entry["k_largest"] if "k_largest" in entry else None,
         )

@@ -546,7 +546,6 @@ class DataManagerDual(LightningDataModule):
             "sourcepbd": DataManagerPatch,
             "lbd": DataManagerLBD,
             "rbd": DataManagerRBD,
-            "baseline": DataManagerBaseline,
         }
 
         for mode in (train_mode, valid_mode):
@@ -630,7 +629,6 @@ class DataManagerMulti(DataManagerDual):
             "sourcepbd": DataManagerPatch,
             "lbd": DataManagerLBD,
             "rbd": DataManagerRBD,
-            "baseline": DataManagerBaseline,
         }
         if test_mode not in mode_to_class:
             raise ValueError(
@@ -1157,6 +1155,11 @@ class DataManager(LightningDataModule):
             self.create_train_dataloader()
         else:
             self.create_valid_dataloader()
+    def print_transform_summary(self):
+        item_keys = self.keys 
+        cprint("Transforms are set up", color="green")
+        cprint(f"Item Transforms: {item_keys}", color="yellow")
+
 
     def setup(self, stage: str = None) -> None:
         # Create transforms for this split
@@ -1164,11 +1167,11 @@ class DataManager(LightningDataModule):
         headline(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
         print("Src Dims: ", self.plan["src_dims"])
         print("Patch Size: ", self.plan["patch_size"])
-        print("Using fg indices: ", self.plan["use_fg_indices"])
+        # print("Using fg indices: ", self.plan["use_fg_indices"])
 
         self.create_transforms()
         self.set_transforms(self.keys)
-        print("Transforms are set up: ", self.keys)
+        self.print_transform_summary()
 
         self.create_dataset()
         self.create_dataloader()
@@ -1324,6 +1327,11 @@ class DataManagerWhole(DataManager):
                 assert "F1" not in self.keys and "F2" not in self.keys
             elif self.is_eval_split():
                 self.keys = self.keys_val
+
+    def set_effective_batch_size(self):
+        self.effective_batch_size = (
+            self.batch_size
+        )  # never sample a file more than once ofc
 
     def _set_collate_fn(self):
         self.collate_fn = whole_collated
@@ -1619,7 +1627,6 @@ class DataManagerBaseline(DataManagerLBD):
             self.project.project_title
         )
         return parent_folder / (self.data_folder.name + "_baseline")
-
 
 
 

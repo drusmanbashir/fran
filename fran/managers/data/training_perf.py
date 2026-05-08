@@ -358,7 +358,6 @@ class DataManagerDual(LightningDataModule):
             "sourcepbd": DataManagerPatch,
             "lbd": DataManagerLBD,
             "rbd": DataManagerRBD,
-            "baseline": DataManagerBaseline,
         }
 
         for mode in (train_mode, valid_mode):
@@ -1031,17 +1030,23 @@ class DataManagerSource(DataManager):
             self.collate_fn = None
 
 class DataManagerWhole(DataManager):
+    keys_tr = "L,E,Affine,ResizeW,N,IntensityTfms"
+    keys_val = "L,E,ResizeW,N"
+
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
-        self.keys_tr = "L,E,Affine,ResizeW,N,IntensityTfms"
-        self.keys_val = "L,E,ResizeW,N"
         assert "F1" not in self.keys_tr and "F2" not in self.keys_tr
         if self.keys is None:
-            if self.split == "train":
+            if self.uses_train_keys():
                 self.keys = self.keys_tr
                 assert "F1" not in self.keys and "F2" not in self.keys
-            elif self.split == "valid":
+            elif self.is_eval_split():
                 self.keys = self.keys_val
+
+    def set_effective_batch_size(self):
+        self.effective_batch_size = (
+            self.batch_size
+        )  # never sample a file more than once ofc
 
     def _set_collate_fn(self):
         self.collate_fn = whole_collated

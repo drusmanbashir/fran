@@ -14,6 +14,33 @@ import shutil
 from fran.utils.common import COMMON_PATHS
 
 
+def normalize_checkpoint_path(ckpt: Union[str, Path]) -> Path:
+    ckpt = Path(ckpt)
+    sd = torch.load(ckpt, map_location="cpu", weights_only=False)
+    compiled = bool(sd["hyper_parameters"]["configs"]["model_params"]["compiled"])
+    if compiled and str(ckpt).endswith(".norm.ckpt"):
+        ckpt_unnorm = Path(str(ckpt).replace(".norm.ckpt", ".ckpt"))
+        if ckpt_unnorm.exists():
+            return ckpt_unnorm
+    elif not compiled:
+        return write_normalized_ckpt(ckpt)
+    return ckpt
+
+
+def checkpoint_epoch(ckpt: Union[str, Path]) -> int | None:
+    ckpt = Path(ckpt)
+    matched = re.search(r"epoch(?:=)?(\d+)", ckpt.name)
+    if matched is not None:
+        return int(matched.group(1))
+
+    sd = torch.load(ckpt, map_location="cpu", weights_only=False)
+    if "epoch" in sd:
+        return int(sd["epoch"])
+    if "current_epoch" in sd:
+        return int(sd["current_epoch"])
+    return None
+
+
 def checkpoint_from_model_id(
     model_id, sort_method="last", normalize_keys=True
 ):
@@ -60,14 +87,7 @@ def checkpoint_from_model_id(
     elif sort_method == "best":
         tr()
     if normalize_keys:
-        sd = torch.load(ckpt, map_location="cpu", weights_only=False)
-        compiled = bool(sd["hyper_parameters"]["configs"]["model_params"]["compiled"])
-        if compiled and str(ckpt).endswith(".norm.ckpt"):
-            ckpt_unnorm = Path(str(ckpt).replace(".norm.ckpt", ".ckpt"))
-            if ckpt_unnorm.exists():
-                ckpt = ckpt_unnorm
-        elif not compiled:
-            ckpt = write_normalized_ckpt(ckpt)
+        ckpt = normalize_checkpoint_path(ckpt)
     return ckpt
 
 
@@ -115,14 +135,7 @@ def select_source_ckpt(model_id, selection_mode="interactive"):
             ckpt = ckpts[index - 1]
             break
 
-    sd = torch.load(ckpt, map_location="cpu", weights_only=False)
-    compiled = bool(sd["hyper_parameters"]["configs"]["model_params"]["compiled"])
-    if compiled and str(ckpt).endswith(".norm.ckpt"):
-        ckpt_unnorm = Path(str(ckpt).replace(".norm.ckpt", ".ckpt"))
-        if ckpt_unnorm.exists():
-            ckpt = ckpt_unnorm
-    elif compiled is False:
-        ckpt = write_normalized_ckpt(ckpt)
+    ckpt = normalize_checkpoint_path(ckpt)
     headline("Selected source checkpoint: {}".format(ckpt))
     return ckpt
 

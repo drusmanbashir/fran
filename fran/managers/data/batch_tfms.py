@@ -20,9 +20,18 @@ from fran.transforms.batch_spatial import (
     BatchResized,
     BatchSpatialPadd,
 )
+from utilz.cprint import cprint
+from utilz.stringz import headline
 
 
 class DataManagerBTfms(DataManager):
+    def print_transform_summary(self):
+        item_keys = self.keys or ""
+        batch_keys = self.active_batch_keys() or ""
+        cprint("Transforms are set up", color="green")
+        cprint(f"Item Transforms: {item_keys}", color="yellow")
+        cprint(f"Batch Transforms: {batch_keys}", color="yellow")
+
     def create_transforms(self):
         super().create_transforms()
         affine3d = self.configs["affine3d"]
@@ -57,6 +66,18 @@ class DataManagerBTfms(DataManager):
             spatial_size=patch_size,
             mode=["linear", "nearest"],
         )
+
+    def setup(self, stage: str = None) -> None:
+        headline(f"Setting up {self.split} dataset. DS type is: {self.ds_type}")
+        print("Src Dims: ", self.plan["src_dims"])
+        print("Patch Size: ", self.plan["patch_size"])
+
+        self.create_transforms()
+        self.set_transforms(self.keys)
+        self.print_transform_summary()
+
+        self.create_dataset()
+        self.create_dataloader()
 
 
 class DataManagerSourceBTfms(DataManagerBTfms, DataManagerSource):
@@ -335,5 +356,4 @@ if __name__ == '__main__':
         batch = next(iteri)
         print(batch["image"].shape)
 #
-
 

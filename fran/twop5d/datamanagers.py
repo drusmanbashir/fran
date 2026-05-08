@@ -235,7 +235,6 @@ class DataManagerMulti(LightningDataModule):
             "whole": DataManagerWhole,
             "patch": DataManagerPatch,
             "lbd": DataManagerLBD,
-            "baseline": DataManagerBaseline,
             "pbd": DataManagerWID,
         }
 

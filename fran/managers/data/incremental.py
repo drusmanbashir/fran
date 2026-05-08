@@ -43,7 +43,6 @@ import pandas as pd
 from fran.data.collate import grid_collated
 from fran.managers.data.main import (
     DataManager,
-    DataManagerBaseline,
     DataManagerDual,
     DataManagerLBD,
     DataManagerPatch,
@@ -520,10 +519,6 @@ class DataManagerPatchI(DataManagerPatch, DataManagerI):
     pass
 
 
-class DataManagerBaselineI(DataManagerBaseline, DataManagerI):
-    pass
-
-
 @dataclass(frozen=True)
 class DataManagerModeSpec:
     mode: str
@@ -557,11 +552,6 @@ class DataManagerModes:
         manager_cls=DataManagerLBDI,
         collate_fn=source_collated,
     )
-    BASELINE = DataManagerModeSpec(
-        mode="baseline",
-        manager_cls=DataManagerBaselineI,
-        collate_fn=whole_collated,
-    )
     # PBD = DataManagerModeSpec(
     #     mode="pbd",
     #     manager_cls=DataManagerWIDI,
@@ -574,7 +564,6 @@ class DataManagerModes:
         WHOLE.mode: WHOLE,
         PATCH.mode: PATCH,
         LBD.mode: LBD,
-        BASELINE.mode: BASELINE,
         # PBD.mode: PBD,
     }
 

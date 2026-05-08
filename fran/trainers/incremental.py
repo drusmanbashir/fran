@@ -23,7 +23,6 @@ from pathlib import Path
 
 import torch._dynamo
 from fran.managers.data.incremental import (
-    DataManagerBaselineI,
     DataManagerDualI,
     DataManagerLBDI,
     DataManagerPatchI,
@@ -391,8 +390,6 @@ class IncrementalTrainer(Trainer):
             DMClass = DataManagerLBDI
         elif mode == "pbd":
             DMClass = DataManagerWIDI
-        elif mode == "baseline":
-            DMClass = DataManagerBaselineI
         else:
             raise NotImplementedError(
                 "Mode {} is not supported for datamanager".format(mode)

@@ -28,7 +28,6 @@ from pathlib import Path
 
 import torch._dynamo
 from fran.managers.data.main import (
-    DataManagerBaseline,
     DataManagerLBD,
     DataManagerPatch,
     DataManagerSource,
@@ -495,8 +494,6 @@ class Trainer:
             DMClass = DataManagerLBD
         elif mode == "pbd":
             DMClass = DataManagerPatch
-        elif mode == "baseline":
-            DMClass = DataManagerBaseline
         else:
             raise NotImplementedError(
                 "Mode {} is not supported for datamanager".format(mode)

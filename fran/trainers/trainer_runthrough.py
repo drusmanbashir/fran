@@ -340,7 +340,7 @@ class TrainerRT(Trainer):
 
         cbs = [
             CaseIDRecorderRT(
-                vip_label=self.configs["plan_train"].get("vip_label", 1), freq=2
+                vip_label=self.configs["plan_train"].get("vip_label", 1), freq=20
             )
         ]
         if batchsize_finder == True:
@@ -452,10 +452,10 @@ if __name__ == "__main__":
     from utilz.helpers import pp
 
     P = Project("lidc")
-    P = Project("totalseg")
     P = Project("kits23")
+    P = Project("totalseg")
     C = ConfigMaker(P)
-    C.setup(2)
+    C.setup(3)
 
     conf = C.configs
     print(conf["model_params"])
@@ -465,7 +465,7 @@ if __name__ == "__main__":
 
     planT["mode"]
 
-    bs = 6
+    bs =8
     device_id = 0
     batchsize_finder = True
     batchsize_finder = False
@@ -474,8 +474,8 @@ if __name__ == "__main__":
     override_dm = True
     override_dm = False
 
-    run_name = "KITS23-SIRIG"
     run_name = None
+    run_name = "TOTALSEG-NJUGU"
     tags = []
     description = f""
     conf["dataset_params"]["fold"] = 0
@@ -485,7 +485,7 @@ if __name__ == "__main__":
     compiled = False
     cbs = []
     wandb_grid_epoch_freq = 20
-    train_indices = 40
+    train_indices = None
 
 # %%
     Tm = TrainerRT(P.project_title, conf, run_name)
@@ -508,7 +508,6 @@ if __name__ == "__main__":
 # %%
     Tm.fit()
 # %%
-# %%
 # SECTION:-------------------- TS--------------------------------------------------------------------------------------
     N = Tm.N
     D = Tm.D
@@ -516,10 +515,12 @@ if __name__ == "__main__":
     D.prepare_data()
     tmt = D.train_manager
 
+# %%
     tmt.collate_fn
     tmt.batch_size
     tmt.prepare_data()
     tmt.setup()
+# %%
     dl2 = tmt.dl
     iteri2 = iter(dl2)
 

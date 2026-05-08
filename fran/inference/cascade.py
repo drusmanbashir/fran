@@ -457,7 +457,7 @@ if __name__ == "__main__":
     from utilz.fileio import load_yaml
 
     best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
-    run_w = best_runs["run_w"]
+    run_w = best_runs["whole"]
 
 # %%
 # SECTION:-------------------- KITS-------------------------------------------------------------------------------------- <CR>
