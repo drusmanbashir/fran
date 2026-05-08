@@ -2,8 +2,14 @@
 import ast
 from typing import Any
 
-import numpy as np
 import pandas as pd
+from fran.configs.helpers import (
+    is_excel_None,
+    make_patch_size,
+    make_src_dims_from_patch_size,
+    normalize_tree,
+    parse_excel_cell,
+)
 from fran.configs.mnemonics import Mnemonics
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
@@ -13,7 +19,6 @@ from fran.preprocessing.helpers import (
 from fran.utils.folder_names import (
     FolderNames,
 )
-from fran.utils.string_works import is_excel_None
 from label_analysis.totalseg import TotalSegmenterLabels
 from utilz.fileio import load_yaml
 from utilz.stringz import ast_literal_eval
@@ -103,27 +108,6 @@ def confirm_plan_analyzed(project, plan):
     return {"src_fldr_full": src_fldr_full, "final_fldr_full": final_fldr_full}
 
 
-def _to_py(obj) -> Any:
-    """Recursively convert numpy scalars to Python scalars and cast 1.0 -> 1."""
-    # numpy scalar -> Python scalar
-    if isinstance(obj, np.generic):
-        obj = obj.item()
-
-    # containers
-    if isinstance(obj, list):
-        return [_to_py(x) for x in obj]
-    if isinstance(obj, tuple):
-        return tuple(_to_py(x) for x in obj)
-    if isinstance(obj, dict):
-        return {_to_py(k): _to_py(v) for k, v in obj.items()}
-
-    # floats that are integer-valued -> int
-    if isinstance(obj, float) and obj.is_integer():
-        return int(obj)
-
-    return obj
-
-
 def labels_from_remapping(remapping_in):
     def _inner(remapping):
         if is_excel_None(remapping) or remapping == "":
@@ -203,7 +187,9 @@ def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
 
 def parse_excel_dict(dici, keys_str_to_list) -> dict:
     if not isinstance(dici, dict):
-        return _to_py(dici)
+        return normalize_tree(dici)
+
+    dici = normalize_tree(dici)
     for key, value in list(dici.items()):
         if isinstance(value, dict):
             dici[key] = parse_excel_dict(value, keys_str_to_list)
@@ -211,12 +197,11 @@ def parse_excel_dict(dici, keys_str_to_list) -> dict:
         if is_excel_None(value):
             dici[key] = None
             continue
-        if key in keys_str_to_list and value is not None:
+        if key in keys_str_to_list and isinstance(value, str):
             try:
-                value = ast_literal_eval(value)
+                dici[key] = normalize_tree(ast_literal_eval(value))
             except Exception:
                 pass
-        dici[key] = _to_py(value)
 
     dici = maybe_add_patch_size(dici)
     return dici
@@ -237,26 +222,6 @@ def check_bool(row):
     if row["var_name"] in BOOL_ROWS.split(","):
         row["manual_value"] = bool(row["manual_value"])
     return row
-
-
-def make_patch_size(patch_dim0, patch_dim1):
-    patch_size = [
-        patch_dim0,
-    ] * 2 + [
-        patch_dim1,
-    ]
-    return patch_size
-
-
-def make_src_dims_from_patch_size(patch_size):
-    try:
-        def _even(x):
-            x = int(x * 1.1)
-            return x if x % 2 == 0 else x + 1
-        return [_even(dim) for dim in patch_size]
-    except:
-        print(f"No valid patch_size: {patch_size}. Making dummy src_dims.")
-        return [None, None, None]
 
 
 def get_imagelists_from_config(project, fold, patch_based, dim0, dim1):
@@ -331,6 +296,7 @@ class ConfigMaker:
             keep_default_na=False,
             na_values=["TRUE", "FALSE", ""],
         )
+        plans = normalize_tree(plans)
         configuration_mnemonic_standardized = Mnemonics.match(configuration_mnemonic)
         self.plans = plans.loc[plans["mnemonic"] == configuration_mnemonic_standardized]
         self.plans = self.plans.drop(columns=["mnemonic"])
@@ -338,12 +304,12 @@ class ConfigMaker:
         self.plans = self.plans.set_index("plan_id", drop=False)
         configs = load_config_from_workbook(configuration_filename)
         self.configs = parse_excel_dict(configs, KEYS_STR_TO_LIST)
-        self.plans["src_dims"] = self.plans.apply(
-            lambda row: make_src_dims_from_patch_size(
+        self.plans["src_dims"] = [
+            make_src_dims_from_patch_size(
                 make_patch_size(row["patch_dim0"], row["patch_dim1"])
-            ),
-            axis=1,
-        )
+            )
+            for _, row in self.plans.iterrows()
+        ]
 
 
     def setup(
@@ -414,7 +380,7 @@ class ConfigMaker:
             src_plan_k, src_plan_mode = src_plan_key.split(",")
             src_plan_k = ast_literal_eval(src_plan_k)
             source_plan = self.plans.loc[src_plan_k]
-            source_plan = dict(source_plan)
+            source_plan = normalize_tree(dict(source_plan))
             self.configs["plan_source"] = source_plan
             # source_plan = config.get(src_plan_key, {})
 
@@ -437,7 +403,7 @@ class ConfigMaker:
         """
         plan_id = plan_id
         plan_selected = self.plans.loc[plan_id]
-        plan_selected = dict(plan_selected)
+        plan_selected = normalize_tree(dict(plan_selected))
         samples_per_file = plan_selected["samples_per_file"]
         plan_selected["samples_per_file"] = (
             int(samples_per_file) if not is_excel_None(samples_per_file) else 1
@@ -607,37 +573,6 @@ def load_config_from_workbook(settingsfilename) -> dict:
 def load_metadata(settingsfilename):
     df = pd.read_excel(settingsfilename, sheet_name="metadata", index_col=None)
     return df
-
-
-def parse_excel_cell(cell_val):
-    if isinstance(cell_val, (int, float)):
-        return _to_py(cell_val)
-    if isinstance(cell_val, str):
-        if any(p in cell_val for p in ("[", "{", "(")):
-            try:
-                return _to_py(ast.literal_eval(cell_val))
-            except:
-                return cell_val
-        else:
-            try:
-                return _to_py(ast.literal_eval(cell_val))
-            except:
-                return cell_val
-    return _to_py(cell_val)
-
-
-def normalize_logging_payload(value):
-    if isinstance(value, dict):
-        return {kk: normalize_logging_payload(vv) for kk, vv in value.items()}
-    if isinstance(value, list):
-        return [normalize_logging_payload(vv) for vv in value]
-    if isinstance(value, tuple):
-        return [normalize_logging_payload(vv) for vv in value]
-    return parse_excel_cell(value)
-
-
-def parse_neptune_dict(dic: dict):
-    return normalize_logging_payload(dic)
 
 
 # %%

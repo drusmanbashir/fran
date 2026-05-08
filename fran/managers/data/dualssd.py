@@ -8,7 +8,6 @@ from tqdm.auto import tqdm as pbar
 from utilz.cprint import cprint
 
 from .batch_tfms import (
-    DataManagerBaselineBTfms,
     DataManagerDualBTfms,
     DataManagerLBDBTfms,
     DataManagerPatchBTfms,
@@ -18,7 +17,6 @@ from .batch_tfms import (
 )
 from .main import (
     COMMON_PATHS,
-    DataManagerBaseline,
     DataManagerDual,
     DataManagerLBD,
     DataManagerPatch,
@@ -144,10 +142,6 @@ class DataManagerRBDDualSSD(DualSSDStagingMixin, DataManagerRBD):
     pass
 
 
-class DataManagerBaselineDualSSD(DualSSDStagingMixin, DataManagerBaseline):
-    pass
-
-
 class DataManagerSourceDualSSDBTfms(DualSSDStagingMixin, DataManagerSourceBTfms):
     pass
 
@@ -168,23 +162,17 @@ class DataManagerRBDDualSSDBTfms(DualSSDStagingMixin, DataManagerRBDBTfms):
     pass
 
 
-class DataManagerBaselineDualSSDBTfms(DualSSDStagingMixin, DataManagerBaselineBTfms):
-    pass
-
-
 DUAL_SSD_MANAGER_CLASSES = {
     DataManagerSource: DataManagerSourceDualSSD,
     DataManagerWhole: DataManagerWholeDualSSD,
     DataManagerPatch: DataManagerPatchDualSSD,
     DataManagerLBD: DataManagerLBDDualSSD,
     DataManagerRBD: DataManagerRBDDualSSD,
-    DataManagerBaseline: DataManagerBaselineDualSSD,
     DataManagerSourceBTfms: DataManagerSourceDualSSDBTfms,
     DataManagerWholeBTfms: DataManagerWholeDualSSDBTfms,
     DataManagerPatchBTfms: DataManagerPatchDualSSDBTfms,
     DataManagerLBDBTfms: DataManagerLBDDualSSDBTfms,
     DataManagerRBDBTfms: DataManagerRBDDualSSDBTfms,
-    DataManagerBaselineBTfms: DataManagerBaselineDualSSDBTfms,
 }
 
 
@@ -236,8 +224,6 @@ class DataManagerDualSSDBTfms(_DualSSDBuilderMixin, DataManagerDualBTfms):
 
 
 __all__ = [
-    "DataManagerBaselineDualSSD",
-    "DataManagerBaselineDualSSDBTfms",
     "DataManagerDualSSD",
     "DataManagerDualSSDBTfms",
     "DataManagerLBDDualSSD",

@@ -10,7 +10,6 @@ try:
         dual_ssd_manager_class,
     )
     from .main import (
-        DataManagerBaseline,
         DataManagerDual,
         DataManagerRBD,
         DataManagerLBD,
@@ -18,10 +17,8 @@ try:
         DataManagerPatch,
         DataManagerSource,
         DataManagerWhole,
-        DataManagerWID,
     )
     from .batch_tfms import (
-        DataManagerBaselineBTfms,
         DataManagerDualBTfms,
         DataManagerLBDBTfms,
         DataManagerMultiBTfms,

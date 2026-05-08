@@ -43,7 +43,6 @@ if __name__ == "__main__":
     bs = 8  # is good if LBD with 2 samples per case
     compiled = True
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
     wandb = True
     tags = []
@@ -234,4 +233,3 @@ if __name__ == "__main__":
 
     add_plan_to_db(I.L.plan, data_folder_lbd=I.L.output_folder, db_path=I.L.project.db)
 # %%
-

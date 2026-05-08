@@ -40,7 +40,6 @@ if __name__ == "__main__":
     headline(conf["plan_train"]["patch_size"])
 
     compiled = False
-    neptune = False
     tags = None
     description = ""
     override_dm = False
@@ -53,7 +52,6 @@ if __name__ == "__main__":
         epochs=num_epochs,
         batchsize_finder=False,
         profiler=False,
-        neptune=neptune,
         tags=tags,
         description=description,
         lr=lr,

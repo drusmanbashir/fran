@@ -182,7 +182,6 @@ if __name__ == "__main__":
     bs = 10  # is good if LBD with 2 samples per case
     compiled = False
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
     wandb = True
     tags = []

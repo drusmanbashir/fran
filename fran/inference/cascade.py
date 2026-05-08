@@ -6,7 +6,7 @@ from copy import deepcopy
 import ipdb
 import numpy as np
 import torch
-from fastcore.foundation import listify
+from utilz.listify import listify
 from fran.data.dataset import FillBBoxPatchesd
 from fran.inference.base import (
     BaseInferer,

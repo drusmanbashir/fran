@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import torch
-from fran.configs.parser import is_excel_None
+from fran.configs.helpers import is_excel_None
 from fran.managers.project import Project
 from fran.transforms.imageio import TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised

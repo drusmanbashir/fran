@@ -52,7 +52,6 @@ if __name__ == "__main__":
     batchsize_finder = False
     compiled = False
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     wandb = True
     override_dm = False
     tags = []

@@ -5,9 +5,9 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-from fastcore.basics import listify
 from fran.configs.mnemonics import Mnemonics
 from fran.transforms.imageio import ToTensorT
+from utilz.listify import listify
 from label_analysis.utils import SITKImageMaskFixer
 from utilz.fileio import Union, maybe_makedirs, os, pd, save_dict, save_list, sitk, str_to_path, torch, tr
 from utilz.helpers import find_matching_fn, info_from_filename, multiprocess_multiarg, re

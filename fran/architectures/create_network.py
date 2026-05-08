@@ -17,7 +17,7 @@ from torch import nn
 
 tr = ipdb.set_trace
 
-from fran.configs.parser import make_patch_size
+from fran.configs.helpers import make_patch_size
 
 
 def get_batch_size(

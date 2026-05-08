@@ -3,7 +3,7 @@ import shutil
 from typing import Optional
 
 import ipdb
-from fastcore.all import in_ipython
+from utilz.helpers import in_ipython
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import infer_labels_and_update_out_channels
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
@@ -33,7 +33,6 @@ from fran.managers.data.main import (
     DataManagerPatch,
     DataManagerSource,
     DataManagerWhole,
-    DataManagerWID,
 )
 
 torch._dynamo.config.suppress_errors = True
@@ -57,7 +56,7 @@ import torch
 
 def safe_log_dict(exp, base_path: str, d: dict):
     """
-    Recursively log a nested dict into Neptune experiment,
+    Recursively log a nested dict into an experiment logger,
     key by key with try/except so one bad key doesn't stop the rest.
     """
     for k, v in d.items():
@@ -69,7 +68,7 @@ def safe_log_dict(exp, base_path: str, d: dict):
             else:
                 exp[path].assign(v)
         except Exception as e:
-            print(f"[Neptune logging skipped] {path}: {e}")
+            print(f"[Logger skipped] {path}: {e}")
 
 
 def _dm_class_for_test_every_n_epochs(
@@ -121,7 +120,6 @@ class Trainer:
         lr=None,
         devices=1,
         compiled=None,
-        neptune=True,
         profiler=False,
         debug: bool = False,
         test_every_n_epochs: int = 0,
@@ -150,7 +148,6 @@ class Trainer:
 
         cbs, logger, profiler = self.init_cbs(
             cbs=cbs,
-            neptune=neptune,
             batchsize_finder=batchsize_finder,
             test_every_n_epochs=self.test_every_n_epochs,
             profiler=profiler,
@@ -316,7 +313,6 @@ class Trainer:
     def init_cbs(
         self,
         cbs,
-        neptune,
         batchsize_finder,
         test_every_n_epochs,
         profiler,
@@ -364,11 +360,6 @@ class Trainer:
             ]
         if lr_floor is not None:
             cbs += [LRFloorStop(min_lr=lr_floor)]
-        if neptune:
-            headline(
-                "Neptune is sunset: trainer_core no longer initializes Neptune logger/callbacks. "
-                "Use fran.trainers.trainer.Trainer (W&B path)."
-            )
         logger = None
 
         if profiler == True:
@@ -503,7 +494,7 @@ class Trainer:
         elif mode == "lbd":
             DMClass = DataManagerLBD
         elif mode == "pbd":
-            DMClass = DataManagerWID
+            DMClass = DataManagerPatch
         elif mode == "baseline":
             DMClass = DataManagerBaseline
         else:
@@ -586,9 +577,7 @@ if __name__ == "__main__":
     # run_name ='LITS-1003'
     compiled = False
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     batchsize_finder = False
-    neptune = True
     tags = []
     description = f"Partially trained up to 100 epochs"
     # %%
@@ -608,7 +597,6 @@ if __name__ == "__main__":
         epochs=600 if profiler == False else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
-        neptune=neptune,
         tags=tags,
         description=description,
     )
@@ -640,7 +628,6 @@ if __name__ == "__main__":
         epochs=600 if profiler == False else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
-        neptune=neptune,
         tags=tags,
         description=description,
     )
@@ -667,7 +654,6 @@ if __name__ == "__main__":
         epochs=600 if profiler == False else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
-        neptune=neptune,
         tags=tags,
         description=description,
     )

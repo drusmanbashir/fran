@@ -18,7 +18,6 @@ fran-webapp = "agent.webapp.cli:main"
 dependencies = [
   "batchgenerators>=0.25",
   "connected-components-3d>=3.17",
-  "fastcore>=1.7.29",
   "h5py>=3.8",
   "itk>=5.4",
   "numpy>=1.23",
@@ -117,5 +116,5 @@ check_untyped_defs = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
-module = ["monai.*", "lightning.*", "fastcore.*", "plotly.*", "utilz.*"]
+module = ["monai.*", "lightning.*", "plotly.*", "utilz.*"]
 ignore_missing_imports = true

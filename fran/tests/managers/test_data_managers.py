@@ -1,7 +1,7 @@
 import pytest
 from fran.configs.parser import ConfigMaker
+from fran.managers.data.batch_tfms import DataManagerWholeBTfms
 from fran.managers.data.main import (
-    DataManagerBaseline,
     DataManagerDual,
     DataManagerLBD,
     DataManagerPatch,
@@ -42,6 +42,12 @@ def totalseg_config(totalseg_project):
 
 
 class TestDataManagerWhole:
+    def test_whole_keys_exclude_flip_transforms(self):
+        assert "F1" not in DataManagerWhole.keys_tr
+        assert "F2" not in DataManagerWhole.keys_tr
+        assert "F1" not in DataManagerWholeBTfms.keys_tr_batch
+        assert "F2" not in DataManagerWholeBTfms.keys_tr_batch
+
     def test_initialization(self, totalseg_project, totalseg_config):
         dm = DataManagerWhole(
             project=totalseg_project,
@@ -65,30 +71,6 @@ class TestDataManagerWhole:
         assert dl is not None
 
         # Test dataset access
-        batch = dm.train_ds[0]
-        assert "image" in batch
-        assert "lm" in batch
-
-
-class TestDataManagerBaseline:
-    def test_initialization(self, totalseg_project, totalseg_config):
-        dm = DataManagerBaseline(
-            project=totalseg_project, config=totalseg_config, batch_size=2
-        )
-        assert dm is not None
-        assert dm.batch_size == 2
-
-    def test_data_preparation(self, totalseg_project, totalseg_config):
-        dm = DataManagerBaseline(
-            project=totalseg_project, config=totalseg_config, batch_size=2
-        )
-        dm.prepare_data()
-        dm.setup()
-
-        # Verify batch size limitation
-        assert len(dm.data_train) == dm.batch_size
-
-        # Test dataset sample
         batch = dm.train_ds[0]
         assert "image" in batch
         assert "lm" in batch

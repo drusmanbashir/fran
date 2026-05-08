@@ -5,7 +5,7 @@ import copy
 import time
 
 import torch
-from fastcore.basics import warnings
+import warnings
 from fran.configs.parser import ConfigMaker
 from fran.managers.data.dualssd import DataManagerDualSSD
 from fran.managers.data.main import DataManagerDual

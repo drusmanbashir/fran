@@ -9,10 +9,10 @@ tr = ipdb.set_trace
 
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Union
 
 import ipdb
 import SimpleITK as sitk
-from fastcore.basics import GetAttr, Union
 from fran.preprocessing.helpers import env_flag
 from fran.preprocessing.datasetanalyzers import case_analyzer_wrapper, import_h5py
 from utilz.fileio import load_dict, save_dict, tr
@@ -22,7 +22,7 @@ from utilz.stringz import info_from_filename
 
 # from fran.utils.common import COMMON_PATHS
 #
-class Datasource(GetAttr):
+class Datasource:
     """
 
     This class manages a dataset folder containing 'images' and 'lms' (label maps) subfolders,

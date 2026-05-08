@@ -7,7 +7,6 @@ from pathlib import Path
 import ipdb
 import numpy as np
 import torch
-from fastcore.basics import GetAttr
 from fran.data.dataregistry import DS
 from tqdm.auto import tqdm as pbar
 from utilz.stringz import info_from_filename

@@ -10,7 +10,6 @@ import pandas as pd
 import ray
 import SimpleITK as sitk
 import torch
-from fastcore.foundation import GetAttr
 from tqdm.auto import tqdm
 from fran.data.dataregistry import DS
 from fran.managers.db import add_plan_to_db
@@ -26,7 +25,7 @@ from fran.preprocessing.helpers import (
 )
 from fran.utils.dataset_properties import analyze_tensor_data_folder
 from fran.utils.jsonl import write_jsonl_rows
-from fran.utils.string_works import is_excel_None
+from fran.configs.helpers import is_excel_None
 from utilz.cprint import cprint
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
@@ -272,7 +271,7 @@ def create_hdf5_shards(
     compression_opts=1,
     num_processes=8,
 ):
-    return HDF5ShardWriter(
+    writer = HDF5ShardWriter(
         output_folder=output_folder,
         src_dims=src_dims,
         cases_per_shard=cases_per_shard,
@@ -280,11 +279,12 @@ def create_hdf5_shards(
         overwrite=overwrite,
         compression=compression,
         compression_opts=compression_opts,
-    ).create(case_ids=case_ids, num_processes=num_processes)
+    )
+    writer.setup(case_ids=case_ids, num_processes=num_processes)
+    return writer.run()
 
 
-class Preprocessor(GetAttr):
-    _default = "project"
+class Preprocessor:
     subfolder_key = None
     PREPROCESS_LOG_COLUMNS = [
         "case_id",
@@ -897,7 +897,8 @@ class Preprocessor(GetAttr):
     ):
         if self.hdf5_shards is False or len(df_hdf5_run) == 0:
             return []
-        return HDF5ShardWriter(
+        num_processes = getattr(self, "num_processes", 8)
+        writer = HDF5ShardWriter(
             output_folder=self.output_folder,
             src_dims=self.plan["src_dims"] if src_dims is None else src_dims,
             cases_per_shard=cases_per_shard,
@@ -905,7 +906,12 @@ class Preprocessor(GetAttr):
             overwrite=overwrite_hdf5_shards,
             compression=hdf5_compression,
             compression_opts=hdf5_compression_opts,
-        ).create_from_df(df_hdf5_run)
+        )
+        writer.setup(
+            case_ids=df_hdf5_run["case_id"].tolist(),
+            num_processes=num_processes,
+        )
+        return writer.run()
 
     def process_batch(self, batch):
         images, lms, fg_inds, bg_inds = (

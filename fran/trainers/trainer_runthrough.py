@@ -11,7 +11,7 @@ from fran.callback.case_recorder import (
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
-from fran.configs.parser import normalize_logging_payload
+from fran.configs.helpers import normalize_logging_payload
 from fran.managers.data.dualssd import dual_ssd_manager_class
 from fran.managers.data.main import DataManagerDual, DataManagerPatch
 from fran.managers.wandb.wandb import WandbManager
@@ -533,4 +533,3 @@ if __name__ == "__main__":
     bs = 1
 
 # %%
-

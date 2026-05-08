@@ -3,7 +3,7 @@ import shutil
 from typing import Optional
 
 import ipdb
-from fastcore.all import in_ipython
+from utilz.helpers import in_ipython
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import CaseIDRecorder
 from fran.callback.incremental import UpdateDatasetOnPlateau

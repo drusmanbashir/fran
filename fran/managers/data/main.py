@@ -1,5 +1,6 @@
 # %%
 from __future__ import annotations
+import warnings
 
 import ast
 import json
@@ -8,13 +9,14 @@ from functools import reduce
 from operator import add
 from pathlib import Path
 from typing import Optional, Tuple
+import warnings
 
 import ipdb
 import numpy as np
 import pandas as pd
 import torch
-from fastcore.basics import listify, operator
-from fran.configs.parser import is_excel_None
+import operator
+from fran.configs.helpers import is_excel_None
 from fran.data.collate import patch_collated, source_collated, whole_collated
 from fran.data.dataset import NormaliseClipd
 from fran.managers.project import Project
@@ -23,6 +25,7 @@ from fran.transforms.batch_affine import BatchRandAffined3D
 from fran.transforms.imageio import SimpleTorchLoader, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
+from utilz.listify import listify
 from fran.utils.folder_names import FolderNames
 from fran.utils.misc import convert_remapping
 from lightning import LightningDataModule
@@ -335,6 +338,13 @@ class DataManagerDual(LightningDataModule):
     Train + valid only.
     """
 
+    keys_tr = None
+    keys_val = None
+    keys_test = None
+    keys_tr_batch = None
+    keys_val_batch = None
+    keys_test_batch = None
+
     def __init__(
         self,
         project_title,
@@ -360,8 +370,6 @@ class DataManagerDual(LightningDataModule):
         self.cache_rate = cache_rate
         self.device = device
         self.ds_type = ds_type
-        self.keys_tr = None
-        self.keys_val = None
         self.data_folder = data_folder if data_folder is not None else None
         self.manager_class_train = manager_class_train
         self.manager_class_valid = manager_class_valid
@@ -418,7 +426,19 @@ class DataManagerDual(LightningDataModule):
 
     def on_after_batch_transfer(self, batch, dataloader_idx):
         trainer = getattr(self, "trainer", None)
-        if trainer is not None and trainer.training and self.batch_affine is not None:
+        manager = None
+        if trainer is not None:
+            if trainer.training:
+                manager = self.train_manager
+            elif trainer.testing:
+                manager = getattr(self, "test_manager", None)
+            elif trainer.validating or trainer.sanity_checking:
+                manager = self.valid_manager
+
+        transforms_batch = getattr(manager, "transforms_batch", None)
+        if transforms_batch is not None:
+            batch = transforms_batch(batch)
+        elif trainer is not None and trainer.training and self.batch_affine is not None:
             batch = self.batch_affine(batch)
         return batch
 
@@ -539,6 +559,8 @@ class DataManagerDual(LightningDataModule):
 
 
 class DataManagerMulti(DataManagerDual):
+    keys_test = None
+
     def __init__(
         self,
         project_title,
@@ -558,7 +580,6 @@ class DataManagerMulti(DataManagerDual):
         debug=False,
         batch_tfms: bool = False,
     ):
-        self.keys_test = None
         self.manager_class_test = manager_class_test
         super().__init__(
             project_title=project_title,
@@ -619,6 +640,13 @@ class DataManagerMulti(DataManagerDual):
 
 
 class DataManager(LightningDataModule):
+    keys_tr = None
+    keys_val = None
+    keys_test = None
+    keys_tr_batch = None
+    keys_val_batch = None
+    keys_test_batch = None
+
     def __init__(
         self,
         project,
@@ -658,6 +686,7 @@ class DataManager(LightningDataModule):
         self.set_data_folder(data_folder)
         self.set_collate_fn(collate_fn)
         self.debug = debug
+        self.transforms_batch = None
 
     def set_data_folder(self, data_folder):
         if data_folder is None:
@@ -938,6 +967,20 @@ class DataManager(LightningDataModule):
 
     def set_transforms(self, keys):
         self.transforms = self.tfms_from_dict(keys)
+        keys_batch = self.active_batch_keys()
+        if keys_batch is None:
+            self.transforms_batch = None
+        else:
+            self.transforms_batch = self.tfms_from_dict(keys_batch)
+
+    def active_batch_keys(self):
+        if self.uses_train_keys():
+            return self.keys_tr_batch
+        if self.is_eval_split():
+            return self.keys_val_batch
+        if self.split == "test":
+            return self.keys_test_batch
+        raise ValueError(f"Unrecognized split: {self.split}")
 
     def tfms_from_dict(self, keys: str):
         keys2 = keys.replace(" ", "")
@@ -1234,10 +1277,11 @@ class DataManager(LightningDataModule):
 
 
 class DataManagerSource(DataManager):
+    keys_tr = "Ld,Rtr,L2,E,F1,F2,Affine,ResizePC,N,IntensityTfms"
+    keys_val = "L,E,N,Remap,ResizeP"
+
     def __init__(self, project, configs: dict, batch_size=8, cache_rate=0.0, **kwargs):
         super().__init__(project, configs, batch_size, cache_rate, **kwargs)
-        self.keys_tr = "Ld,Rtr,L2,E,F1,F2,Affine,ResizePC,N,IntensityTfms"
-        self.keys_val = "L,E,N,Remap,ResizeP"
         if self.keys is None:
             if self.uses_train_keys():
                 self.keys = self.keys_tr
@@ -1268,13 +1312,16 @@ class DataManagerSource(DataManager):
 
 
 class DataManagerWhole(DataManager):
+    keys_tr = "L,E,Affine,ResizeW,N,IntensityTfms"
+    keys_val = "L,E,ResizeW,N"
+
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
-        self.keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"
-        self.keys_val = "L,E,ResizeW,N"
+        assert "F1" not in self.keys_tr and "F2" not in self.keys_tr
         if self.keys is None:
             if self.uses_train_keys():
                 self.keys = self.keys_tr
+                assert "F1" not in self.keys and "F2" not in self.keys
             elif self.is_eval_split():
                 self.keys = self.keys_val
 
@@ -1347,10 +1394,6 @@ class DataManagerRBD(DataManagerLBD):
         )
 
 
-class DataManagerWID(DataManagerRBD):
-    pass
-
-
 class DataManagerShort(DataManager):
     def prepare_data(self):
         super().prepare_data()
@@ -1364,6 +1407,10 @@ class DataManagerShort(DataManager):
 
 
 class DataManagerPatch(DataManagerSource):
+    keys_tr = "RP, L,Remap,E,N,F1,F2,Affine,ResizePC,IntensityTfms"
+    keys_val = "RP,L,Remap,E,ResizePC,N "
+    keys_test = "L,E,N,Remap,ResizeP"
+
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
         if self.keys is None:
@@ -1394,9 +1441,6 @@ class DataManagerPatch(DataManagerSource):
         return f"DataManagerPatch(project={self.project}, configs={self.configs}, batch_size={self.batch_size})"
 
     def set_tfm_keys(self):  # sets own tfm_keys because RP is an addition in this class
-        self.keys_tr = "RP, L,Remap,E,N,F1,F2,Affine,ResizePC,IntensityTfms"
-        self.keys_val = "RP,L,Remap,E,ResizePC,N "
-        self.keys_test = "L,E,N,Remap,ResizeP"  # experimental
         if self.uses_train_keys():
             self.keys = self.keys_tr
         elif self.is_eval_split():
@@ -1536,6 +1580,9 @@ class DataManagerBaseline(DataManagerLBD):
     Note: It inherits from LBD dataset.
     """
 
+    keys_val = "L,Ld,E,ResizePC,N"
+    keys_tr = keys_val
+
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
         if self.keys is None:
@@ -1559,8 +1606,7 @@ class DataManagerBaseline(DataManagerLBD):
         self.effective_batch_size = self.batch_size
 
     def set_tfm_keys(self):
-        self.keys_val = "L,Ld,E,ResizePC,N"
-        self.keys_tr = self.keys_val
+        return None
 
     def prepare_data(self):
         super().prepare_data()
@@ -1575,12 +1621,13 @@ class DataManagerBaseline(DataManagerLBD):
         return parent_folder / (self.data_folder.name + "_baseline")
 
 
+
+
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     from pprint import pp
 
-    from fastcore.basics import warnings
     from fran.configs.parser import ConfigMaker
     from fran.transforms.imageio import LoadTorchd
     from utilz.imageviewers import ImageMaskViewer
@@ -1967,6 +2014,62 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
+    tmt = D.train_manager
+    td = tmt.transforms_dict
+
+    dici = tmt.data[0]
+    dici = td["L"](dici)
+    keys  = 'Ld,Rtr,L2,E,F1,F2,Affine,ResizePC,N,IntensityTfms'
+    tmv.keys
+    
+    tfms = tmv.transforms_dict
+    'L,E,N,Remap,ResizeP' 
+#%%
+    dl = tmv.dl
+    batch = next(iter(dl))
+    batch['image'].shape
+
+#%%
+#%%
+
+    dici = tfms["Ld"](dici)
+    print(dici['image'].shape)
+
+    dici = tfms["Rtr"](dici)
+    dici = dici[0]
+    print(dici['image'].shape)
+
+    dici = tfms["L2"](dici)
+    print(dici['image'].shape)
+
+    dici = tfms["E"](dici)
+    print(dici['image'].shape)
+
+    dici = tfms["F1"](dici)
+    print(dici['image'].shape)
+
+    dici = tfms["F2"](dici)
+    print(dici['image'].shape)
+
+    dici = tfms["Affine"](dici)
+    print(dici['image'].shape)
+
+    dici = tfms["ResizePC"](dici)
+    print(dici['image'].shape)
+
+    dici = tfms["N"](dici)
+    print(dici['image'].shape)
+
+    dici = tfms["IntensityTfms"](dici)
+    print(dici['image'].shape)
+
+#%%
+          
+    dici  = td["Ld"](dici)
+    dici['image'].shape
+    dici = td["Rtr"](dici)
+    dici2 = dici[0]
+    dici2['image'].shape
 # %%
 
     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")

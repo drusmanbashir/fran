@@ -14,8 +14,7 @@ set_autoreload()
 
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
-from fran.callback.nep import NeptuneImageGridCallback
-from fran.configs.parser import ast_literal_eval, load_metadata, make_patch_size
+from fran.configs.parser import ast_literal_eval, load_metadata
 from fran.managers.base import load_checkpoint
 from ray import tune
 from ray.air import session
@@ -141,7 +140,7 @@ def store_experiment_name_in_config(proj_defaults, config, experiment_name):
         # Not implemented yet
 
 
-def train_with_tune(multi_gpu, neptune, max_num_epochs, proj_defaults, config):
+def train_with_tune(multi_gpu, max_num_epochs, proj_defaults, config):
     store_experiment_name_in_config(
         proj_defaults, config, session.get_experiment_name()
     )
@@ -152,25 +151,6 @@ def train_with_tune(multi_gpu, neptune, max_num_epochs, proj_defaults, config):
     )
     lr = config["model_params"]["lr"]
     cbs = [TuneTrackerCallback(freq=6), TuneCheckpointCallback(freq=6)]
-    if neptune == True:
-        cbs += [
-            NeptuneCallback(
-                proj_defaults, config, run_name=tune.get_trial_name(), freq=6
-            ),
-            NeptuneCheckpointCallback(
-                resume=False,
-                checkpoints_parent_folder=proj_defaults.checkpoints_parent_folder,
-            ),
-            NeptuneImageGridCallback(
-                classes=out_channels_from_dict_or_cell(
-                    config["metadata"]["remapping_train"]
-                ),
-                patch_size=make_patch_size(
-                    config["dataset_params"]["patch_dim0"],
-                    config["dataset_params"]["patch_dim1"],
-                ),
-            ),
-        ]  # resume = False because TuneCheckpointCallback handles all resumptions
 
     learn = La.create_learner(cbs=cbs, device=None)
 

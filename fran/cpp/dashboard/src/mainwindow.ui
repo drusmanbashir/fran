@@ -245,7 +245,7 @@
          <string>Resume</string>
         </property>
        </widget>
-       <widget class="QTableView" name="neptuneRunsTable">
+       <widget class="QTableView" name="experimentRunsTable">
         <property name="geometry">
          <rect>
           <x>30</x>

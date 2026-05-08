@@ -15,14 +15,12 @@ from typing import Any, Union
 import numpy as np
 import psutil
 import torch._dynamo
-from fran.callback.nep import NeptuneImageGridCallback
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
 from fran.managers.data import (
     DataManagerLBD,
     DataManagerPatch,
     DataManagerSource,
     DataManagerWhole,
-    DataManagerWID,
 )
 
 torch._dynamo.config.suppress_errors = True
@@ -34,7 +32,6 @@ from fran.architectures.create_network import (
     create_model_from_conf,
     pool_op_kernels_nnunet,
 )
-from fran.managers.nep import NeptuneManager
 from lightning.pytorch import LightningModule
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import (
@@ -71,7 +68,7 @@ def resolve_datamanager(mode: str):
     elif mode == "lbd":
         DMClass = DataManagerLBD
     elif mode == "pbd":
-        DMClass = DataManagerWID
+        DMClass = DataManagerPatch
     else:
         raise NotImplementedError(
             "Mode {} is not supported for datamanager".format(mode)
@@ -139,7 +136,7 @@ class StoreInfo(Callback):
 # from fran.managers.base import *
 
 
-# class NeptuneCallback(Callback):
+# class EpochCallback(Callback):
 # def on_train_epoch_start(self, trainer, pl_module):
 #     trainer.logger.experiment["training/epoch"] = trainer.current_epoch
 
@@ -171,9 +168,7 @@ class UNetTrainer2(LightningModule):
         if not hasattr(self, "batch_size"):
             self.batch_size = batch["image"].shape[0]
         inputs, target = batch["image"], batch["lm"]
-        pred = self.forward(
-            inputs
-        )  # self.pred so that NeptuneImageGridCallback can use it
+        pred = self.forward(inputs)  # self.pred so callbacks can use it
 
         loss_dict = self.loss_fnc(pred, target)
         # loss = loss_dict['loss_mean']
@@ -326,12 +321,6 @@ class UNetTrainer2(LightningModule):
             return loss_func
 
 
-def update_nep_run_from_config(nep_run, config):
-    for key, value in config.items():
-        nep_run[key] = value
-    return nep_run
-
-
 def maybe_ddp(devices):
     if devices == 1 or isinstance(devices, Union[list, str, tuple]):
         return "auto"
@@ -360,7 +349,6 @@ class Trainer:
         devices=1,
         compiled=None,
         cbs=[],
-        neptune=True,
         profiler=False,
         tags=[],
         description="",
@@ -371,7 +359,7 @@ class Trainer:
         self.set_lr(lr)
         self.set_strategy(devices)
         self.init_dm_unet(epochs)
-        cbs, logger, profiler = self.init_cbs(neptune, profiler, cbs, tags, description)
+        cbs, logger, profiler = self.init_cbs(profiler, cbs, tags, description)
         self.D.prepare_data()
 
         if self.config["model_params"]["compiled"] == True:
@@ -418,7 +406,7 @@ class Trainer:
         else:
             self.lr = self.config["model_params"]["lr"]
 
-    def init_cbs(self, neptune, profiler, cbs, tags, description):
+    def init_cbs(self, profiler, cbs, tags, description):
         cbs += [
             ModelCheckpoint(
                 save_last=True,
@@ -432,26 +420,7 @@ class Trainer:
             LearningRateMonitor(logging_interval="epoch"),
             TQDMProgressBar(refresh_rate=3),
         ]
-        if neptune == True:
-            logger = NeptuneManager(
-                project=self.project,
-                run_id=self.run_name,
-                log_model_checkpoints=False,  # Update to True to log model checkpoints
-                tags=tags,
-                description=description,
-                capture_stdout=True,
-                capture_stderr=True,
-                capture_traceback=True,
-                capture_hardware_metrics=True,
-            )
-            N = NeptuneImageGridCallback(
-                classes=self.config["model_params"]["out_channels"],
-                patch_size=self.config["dataset_params"]["patch_size"],
-            )
-
-            cbs += [N]
-        else:
-            logger = None
+        logger = None
 
         if profiler == True:
             profiler = AdvancedProfiler(
@@ -589,7 +558,7 @@ class Trainer:
         elif mode == "lbd":
             DMClass = DataManagerLBD
         elif mode == "pbd":
-            DMClass = DataManagerWID
+            DMClass = DataManagerPatch
         else:
             raise NotImplementedError(
                 "Mode {} is not supported for datamanager".format(mode)
@@ -626,7 +595,7 @@ if __name__ == "__main__":
     # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
     # from fran.utils.common import *
     import torch
-    from fastcore.net import contextlib
+    import contextlib
     from fran.transforms.imageio import TorchReader
     from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
     from monai.transforms.croppad.dictionary import (
@@ -672,9 +641,7 @@ if __name__ == "__main__":
     # run_name ='LITS-1003'
     compiled = False
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
-    neptune = False
     tags = []
     cbs = [StoreInfo()]
     cbs = []
@@ -692,7 +659,6 @@ if __name__ == "__main__":
         batchsize_finder=batch_finder,
         profiler=profiler,
         cbs=cbs,
-        neptune=neptune,
         tags=tags,
         description=description,
     )

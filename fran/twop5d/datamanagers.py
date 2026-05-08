@@ -9,8 +9,8 @@ from pathlib import Path
 import ipdb
 import numpy as np
 import torch
-from fastcore.basics import listify, operator
-from fran.configs.parser import is_excel_None
+import operator
+from fran.configs.helpers import is_excel_None
 from fran.data.collate import whole_collated
 from fran.data.dataset import NormaliseClipd, fg_in_bboxes
 from fran.managers import Project
@@ -18,6 +18,7 @@ from fran.preprocessing.helpers import bbox_bg_only
 from fran.transforms.imageio import TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import LoadTorchDict, MetaToDict
+from utilz.listify import listify
 from fran.transforms.spatialtransforms import ExtractContiguousSlicesd
 from lightning import LightningDataModule
 from monai.data import DataLoader, Dataset
@@ -783,8 +784,9 @@ class DataManagerSource(DataManager):
 class DataManagerWhole(DataManagerSource):
     def __init__(self, project, config: dict, batch_size=8, **kwargs):
         super().__init__(project, config, batch_size, **kwargs)
-        self.keys_tr = "L,E,F1,F2,Affine,Resize,N,IntensityTfms"
+        self.keys_tr = "L,E,Affine,Resize,N,IntensityTfms"
         self.keys_val = "L,E,Resize,N"
+        assert "F1" not in self.keys_tr and "F2" not in self.keys_tr
 
     def set_collate_fn(self):
         self.collate_fn = whole_collated
@@ -1087,7 +1089,6 @@ class DataManagerBaseline(DataManagerLBD):
         assert self.plan_train["mode"] == "baseline", (
             f"Dataset mode must be 'baseline' for DataManagerBaseline, got '{self.plan_train['mode']}'"
         )
-        # return data_folder
         source_plan_name = self.plan_train["source_plan"]
         source_plan = self.config[source_plan_name]
 
@@ -1153,7 +1154,7 @@ class DataManagerMulti2(DataManagerMulti):
 if __name__ == "__main__":
     # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     import torch
-    from fastcore.basics import warnings
+    import warnings
     from fran.configs.parser import ConfigMaker
     from utilz.stringz import cleanup_fname
 

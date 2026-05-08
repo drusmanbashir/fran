@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 import torch
-from fastcore.all import in_ipython
+from utilz.helpers import in_ipython
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import (
     CaseIDRecorder,
@@ -13,7 +13,7 @@ from fran.callback.case_recorder import (
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
-from fran.configs.parser import normalize_logging_payload
+from fran.configs.helpers import normalize_logging_payload
 from fran.managers import Project
 from fran.managers.data.batch_tfms import DataManagerDualBTfms
 from fran.managers.data.dualssd import DataManagerDualSSD, DataManagerDualSSDBTfms
@@ -51,6 +51,26 @@ def _flatten_dict(d: dict, base: str = "") -> dict:
         else:
             out[key] = v
     return out
+
+
+class FranBatchSizeFinder(BatchSizeFinder):
+    """
+    Use Lightning's stock batch-size finder, but restore the temporary
+    probe checkpoint with weights_only=False so PyTorch 2.6+ can unpickle
+    the trusted local temp checkpoint it just wrote.
+    """
+
+    def scale_batch_size(self, trainer, pl_module) -> None:
+        restore = trainer._checkpoint_connector.restore
+
+        def restore_trusted_temp_checkpoint(checkpoint_path=None, weights_only=None):
+            return restore(checkpoint_path, weights_only=False)
+
+        trainer._checkpoint_connector.restore = restore_trusted_temp_checkpoint
+        try:
+            super().scale_batch_size(trainer, pl_module)
+        finally:
+            trainer._checkpoint_connector.restore = restore
 
 
 class Trainer:
@@ -123,7 +143,7 @@ class Trainer:
         wandb=True,
         profiler=False,
         debug: bool = False,
-        val_every_n_epochs: int = 5,
+        val_every_n_epochs: int = 2,
         cbs=[],
         tags=[],
         description="",
@@ -141,10 +161,12 @@ class Trainer:
         dual_ssd: bool = False,
         batch_tfms: bool = False,
     ):
+        assert(val_every_n_epochs % 2 ==0),"val_every_n_epochs must be an even integer"
         if isinstance(train_indices, str):
             train_indices = train_indices.strip()
             if train_indices == "" or train_indices.lower() in {"none", "null"}:
                 train_indices = None
+        early_stopping_patience_epochs = int(early_stopping_patience/self.val_every_n_epochs)
 
         self.val_every_n_epochs = int(val_every_n_epochs)
         self.train_indices = train_indices
@@ -185,7 +207,10 @@ class Trainer:
         # which resets progress counters (e.g., epoch shown as 1).
         if self.ckpt is not None and batchsize_finder:
             headline(
-                "Resumed run detected: disabling BatchSizeFinder to preserve checkpoint epoch/step state."
+                "BatchSizeFinder was requested, but this run is resuming from an existing checkpoint "
+                f"({self.ckpt}). To preserve resumed epoch/global_step continuity and avoid mixing "
+                "BatchSizeFinder probe steps into the same W&B run history, batchsize_finder is being "
+                "force-disabled for this run."
             )
             batchsize_finder = False
 
@@ -199,7 +224,7 @@ class Trainer:
             early_stopping=early_stopping,
             early_stopping_monitor=early_stopping_monitor,
             early_stopping_mode=early_stopping_mode,
-            early_stopping_patience=early_stopping_patience,
+            early_stopping_patience=early_stopping_patience_epochs,
             early_stopping_min_delta=early_stopping_min_delta,
             lr_floor=lr_floor,
             wandb_grid_epoch_freq=int(wandb_grid_epoch_freq),
@@ -364,12 +389,12 @@ class Trainer:
 
         cbs = [
             CaseIDRecorder(
-                vip_label=self.configs["plan_train"].get("vip_label", 1), freq=2
+                vip_label=self.configs["plan_train"].get("vip_label", 1), freq=20
             )
         ]
         if batchsize_finder == True:
             cbs += [
-                BatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
+                FranBatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
                 BatchSizeSafetyMargin(),
             ]
 
@@ -597,10 +622,10 @@ if __name__ == "__main__":
     from utilz.helpers import pp
 
     P = Project("lidc")
-    P = Project("totalseg")
     P = Project("kits23")
+    P = Project("totalseg")
     C = ConfigMaker(P)
-    C.setup(2)
+    C.setup(3)
 
     conf = C.configs
     print(conf["model_params"])
@@ -626,18 +651,19 @@ if __name__ == "__main__":
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
-    bs = 6
+    bs = 16
     device_id = 0
     batchsize_finder = True
     batchsize_finder = False
-    # run_name ='LITS-1285'
+    batch_tfms=True
     wandb = False
     wandb = True
-    override_dm = True
     override_dm = False
+    override_dm = True
 
-    run_name = "KITS23-SIRIG"
+    # run_name = "KITS23-SIRIG"
     run_name = None
+    run_name = "TOTALSEG-NJUGU"
     tags = []
     description = f""
     conf["dataset_params"]["fold"] = 0
@@ -658,6 +684,7 @@ if __name__ == "__main__":
         train_indices=train_indices,
         val_every_n_epochs=val_every_n_epochs,
         val_sampling=1.0,
+        batch_tfms=batch_tfms,
         cbs=cbs,
         debug=debug_,
         batch_size=bs,

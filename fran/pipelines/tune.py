@@ -39,7 +39,6 @@ if __name__ == "__main__":
     run_name = None
     compiled = True
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
     wandb = True
     override_dm = False

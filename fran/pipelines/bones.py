@@ -44,7 +44,6 @@ if __name__ == "__main__":
     # run_name ='LITS-1285'
     compiled = False
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
     wandb = True
     override_dm = False

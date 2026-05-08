@@ -232,7 +232,17 @@ class HDF5ShardGenerator:
             for idx in range(0, len(case_records), cases_per_shard)
         ]
 
-    def _manifest_payload(self, shard_manifest):
+    @staticmethod
+    def _manifest_entry(shard_idx, shard_fn, shard_cases):
+        return {
+            "shard_idx": int(shard_idx),
+            "shard": Path(shard_fn).name,
+            "case_ids": [rec["case_id"] for rec in shard_cases],
+        }
+
+    def _manifest_payload(self, shard_manifest, pending_shards=None):
+        if pending_shards is None:
+            pending_shards = []
         return {
             "format": "fran_hdf5_shards_v1",
             "src_dims": list(self.src_dims),
@@ -242,7 +252,12 @@ class HDF5ShardGenerator:
             "max_shard_bytes": self.max_shard_bytes,
             "num_cases": sum(len(shard["case_ids"]) for shard in shard_manifest),
             "num_shards": len(shard_manifest),
+            "num_pending_cases": sum(
+                len(shard["case_ids"]) for shard in pending_shards
+            ),
+            "num_pending_shards": len(pending_shards),
             "shards": shard_manifest,
+            "pending_shards": pending_shards,
         }
 
     @staticmethod
@@ -251,8 +266,18 @@ class HDF5ShardGenerator:
         manifest_tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         manifest_tmp.replace(manifest_fn)
 
+    def _persist_manifest(self, shard_manifest, pending_shards):
+        manifest = self._manifest_payload(
+            shard_manifest=shard_manifest,
+            pending_shards=pending_shards,
+        )
+        self._write_manifest_atomic(self.manifest_fn, manifest)
+
     def create_from_df(self, df, num_processes=8):
-        return self.create(case_ids=df["case_id"].tolist(), num_processes=num_processes)
+        return self.create(
+            case_ids=df["case_id"].tolist(),
+            num_processes=num_processes,
+        )
 
     def _cleanup_uncommitted_shards(self, existing_shards, shard_manifest):
         committed_shards = {shard_meta["shard"] for shard_meta in shard_manifest}
@@ -260,7 +285,7 @@ class HDF5ShardGenerator:
             if shard_fn.name not in committed_shards:
                 shard_fn.unlink()
 
-    def create(self, case_ids=None, num_processes=8):
+    def setup(self, case_ids=None, num_processes=8):
         images_folder = self.output_folder / "images"
         lms_folder = self.output_folder / "lms"
         indices_folder = self.output_folder / "indices"
@@ -273,6 +298,13 @@ class HDF5ShardGenerator:
         shards_folder = self.output_folder / "hdf5_shards" / f"src_{src_tag}"
         manifest_fn = shards_folder / "manifest.json"
         maybe_makedirs([shards_folder])
+        self.num_processes = max(1, int(num_processes))
+        self.shards_folder = shards_folder
+        self.manifest_fn = manifest_fn
+        self.completed_shards = []
+        self.pending_shards = []
+        self.shard_jobs = []
+        self.shard_paths = []
 
         existing_shards = sorted(shards_folder.glob("shard_*.h5"))
         shard_manifest = []
@@ -286,6 +318,7 @@ class HDF5ShardGenerator:
             manifest = json.loads(manifest_fn.read_text())
             shard_manifest = manifest["shards"]
             self._cleanup_uncommitted_shards(existing_shards, shard_manifest)
+            existing_shards = sorted(shards_folder.glob("shard_*.h5"))
             existing_case_ids = {
                 case_id for shard_meta in shard_manifest for case_id in shard_meta["case_ids"]
             }
@@ -309,7 +342,9 @@ class HDF5ShardGenerator:
             ]
             if len(requested_case_ids) == 0:
                 print(f"No missing HDF5 shard cases requested for {shards_folder}")
-                return existing_shards
+                self.completed_shards = list(shard_manifest)
+                self.shard_paths = sorted(shards_folder.glob("shard_*.h5"))
+                return self
         if len(requested_case_ids) == 0:
             raise ValueError(
                 f"No shared requested case IDs found across images/lms/indices in {self.output_folder}"
@@ -332,14 +367,12 @@ class HDF5ShardGenerator:
             )
 
         shard_groups = self._build_shard_groups(case_records)
-        shard_jobs = []
-        shard_paths = []
         shard_offset = len(shard_manifest)
         for shard_rel_idx, shard_cases in enumerate(shard_groups):
             shard_idx = shard_offset + shard_rel_idx
             shard_fn = shards_folder / f"shard_{shard_idx:04d}.h5"
-            shard_paths.append(shard_fn)
-            shard_jobs.append(
+            self.shard_paths.append(shard_fn)
+            self.shard_jobs.append(
                 {
                     "shard_fn": shard_fn,
                     "shard_idx": shard_idx,
@@ -350,34 +383,73 @@ class HDF5ShardGenerator:
                     "compression_opts": self.compression_opts,
                 }
             )
+            self.pending_shards.append(
+                self._manifest_entry(
+                    shard_idx=shard_idx,
+                    shard_fn=shard_fn,
+                    shard_cases=shard_cases,
+                )
+            )
+        self.completed_shards = list(shard_manifest)
+        self._persist_manifest(
+            shard_manifest=self.completed_shards,
+            pending_shards=self.pending_shards,
+        )
+        return self
+
+    def _persist_run_progress(self, completed_by_idx):
+        completed_manifest = list(self.completed_shards) + [
+            completed_by_idx[idx] for idx in sorted(completed_by_idx)
+        ]
+        pending_manifest = [
+            shard_meta
+            for shard_meta in self.pending_shards
+            if shard_meta["shard_idx"] not in completed_by_idx
+        ]
+        self._persist_manifest(
+            shard_manifest=completed_manifest,
+            pending_shards=pending_manifest,
+        )
+
+    def run(self):
+        if not hasattr(self, "manifest_fn"):
+            raise RuntimeError("Call setup() before run().")
 
         completed_shards = {}
-        max_workers = max(1, min(int(num_processes), len(shard_jobs))) if shard_jobs else 0
+        max_workers = (
+            max(1, min(int(self.num_processes), len(self.shard_jobs)))
+            if self.shard_jobs
+            else 0
+        )
         if max_workers == 0:
-            return sorted(shards_folder.glob("shard_*.h5"))
+            return sorted(self.shards_folder.glob("shard_*.h5"))
         if max_workers == 1:
-            for job in shard_jobs:
+            for job in self.shard_jobs:
                 shard_info = _process_hdf5_shard_worker(job)
                 completed_shards[shard_info["shard_idx"]] = shard_info
-                combined_manifest = list(shard_manifest) + [
-                    completed_shards[idx] for idx in sorted(completed_shards)
-                ]
-                manifest = self._manifest_payload(combined_manifest)
-                self._write_manifest_atomic(manifest_fn, manifest)
+                self._persist_run_progress(completed_shards)
         else:
             ctx = mp.get_context("spawn")
             with ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx) as ex:
-                futures = [ex.submit(_process_hdf5_shard_worker, job) for job in shard_jobs]
+                futures = [
+                    ex.submit(_process_hdf5_shard_worker, job)
+                    for job in self.shard_jobs
+                ]
                 for fut in as_completed(futures):
                     shard_info = fut.result()
                     completed_shards[shard_info["shard_idx"]] = shard_info
-                    combined_manifest = list(shard_manifest) + [
-                        completed_shards[idx] for idx in sorted(completed_shards)
-                    ]
-                    manifest = self._manifest_payload(combined_manifest)
-                    self._write_manifest_atomic(manifest_fn, manifest)
-        print(f"Wrote {len(shard_paths)} HDF5 shards in {shards_folder}")
-        return sorted(shards_folder.glob("shard_*.h5"))
+                    self._persist_run_progress(completed_shards)
+        self.completed_shards = list(self.completed_shards) + [
+            completed_shards[idx] for idx in sorted(completed_shards)
+        ]
+        self.pending_shards = []
+        self.shard_jobs = []
+        print(f"Wrote {len(self.shard_paths)} HDF5 shards in {self.shards_folder}")
+        return sorted(self.shards_folder.glob("shard_*.h5"))
+
+    def create(self, case_ids=None, num_processes=8):
+        self.setup(case_ids=case_ids, num_processes=num_processes)
+        return self.run()
 
 
 HDF5ShardWriter = HDF5ShardGenerator

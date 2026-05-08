@@ -11,6 +11,7 @@ import secrets
 from pathlib import Path
 from typing import Any, Optional
 
+import pandas as pd
 import torch._dynamo
 import wandb
 from fran.utils.common import common_vars_filename
@@ -405,6 +406,10 @@ class WandbManager(WandbLogger):
         except Exception:
             return None
 
+    def _remote_run_for(self, run_id: Optional[str] = None):
+        api = wandb.Api()
+        return api.run(self._run_path(run_id=run_id))
+
     def _checkpoint_summary(self) -> dict[str, Any]:
         best_key = self._path("best_model_path")
         last_key = self._path("last_model_path")
@@ -463,6 +468,23 @@ class WandbManager(WandbLogger):
             return pd.DataFrame(rows)
         except Exception:
             return rows
+
+    def df_columns(
+        self,
+        columns: list[str],
+        run_id: Optional[str] = None,
+        drop_all_nan: bool = True,
+    ) -> pd.DataFrame:
+        if len(columns) == 0:
+            return pd.DataFrame()
+        remote_run = self._remote_run_for(run_id=run_id)
+        rows = []
+        for row in remote_run.scan_history(keys=list(columns)):
+            rows.append({col: row.get(col) for col in columns})
+        df = pd.DataFrame(rows, columns=columns)
+        if drop_all_nan:
+            df = df.dropna(how="all", subset=columns)
+        return df.reset_index(drop=True)
 
     def _empty_df(self, columns=None):
         cols = columns or ["sys/id", "sys/name", "sys/creation_time", "sys/url"]

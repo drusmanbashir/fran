@@ -1,11 +1,13 @@
 # %%
 import h5py
 import ipdb
-from fastcore.basics import listify
+from typing import Union
+
 from fran.configs.mnemonics import Mnemonics
 from fran.data.dataregistry import DS
 from fran.data.datasource import Datasource, db_ops, val_indices
 from fran.data.patch_datasource import PatchDatasource
+from utilz.listify import listify
 from send2trash import send2trash
 from utilz.cprint import cprint
 from utilz.stringz import headline, info_from_filename
@@ -20,7 +22,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from utilz.helpers import DictToAttr, Union, ask_proceed, find_matching_fn, load_dict, np, pd, set_autoreload, str_to_path, tr
+from utilz.helpers import DictToAttr, ask_proceed, find_matching_fn, load_dict, np, pd, set_autoreload, str_to_path, tr
 
 set_autoreload()
 
@@ -35,7 +37,6 @@ import shutil
 import string
 
 import ipdb
-from fastcore.basics import Union
 from fran.utils.misc import is_hpc
 from utilz.fileio import load_dict, save_dict
 from utilz.helpers import find_matching_fn

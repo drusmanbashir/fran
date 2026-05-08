@@ -24,7 +24,7 @@ def checkpoint_from_model_id(
             project_fldrs.append(fl)
     if len(project_fldrs) > 1:
         raise Exception(
-            "No local files. Model may be on remote path. use download_neptune_checkpoint() \n{}".format(
+            "No local files. Model may be on remote path.\n{}".format(
                 project_fldrs
             )
         )
@@ -80,7 +80,7 @@ def select_source_ckpt(model_id, selection_mode="interactive"):
             project_fldrs.append(fl)
     if len(project_fldrs) > 1:
         raise Exception(
-            "No local files. Model may be on remote path. use download_neptune_checkpoint() \n{}".format(
+            "No local files. Model may be on remote path.\n{}".format(
                 project_fldrs
             )
         )
