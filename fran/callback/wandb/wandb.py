@@ -272,7 +272,7 @@ class WandbImageGridCallback(Callback):
             self.validation_grid_created = True
 
     def on_train_epoch_end(self, trainer, pl_module):
-        """Ensure due grids are rendered and logged by the epoch boundary."""
+        """Submit due grid renders without blocking epoch progress."""
         self._drain_completed_grid_renders(trainer)
         epoch = trainer.current_epoch + 1
         if epoch % self.epoch_freq != 0 or len(self.grid_imgs) == 0:
@@ -283,7 +283,6 @@ class WandbImageGridCallback(Callback):
             self._render_and_log_grid_sync(trainer)
             return
         self._submit_async_grid_render(trainer)
-        self._drain_completed_grid_renders(trainer, wait=True)
 
     def on_fit_end(self, trainer, pl_module):
         self._drain_completed_grid_renders(trainer, wait=True)
@@ -326,7 +325,35 @@ class WandbImageGridCallback(Callback):
         future = self._ensure_grid_render_executor().submit(
             render_wandb_grid_worker, self._build_async_grid_job(trainer)
         )
+        future._fran_grid_logged = False
+        run = trainer.logger.experiment
+        future.add_done_callback(
+            lambda done_future, run=run: self._finalize_async_grid_render(
+                run, done_future
+            )
+        )
         self._pending_grid_renders.append(future)
+
+    def _finalize_async_grid_render(self, run, future) -> None:
+        """Log a completed grid render from the main process."""
+        if future._fran_grid_logged:
+            return
+        future._fran_grid_logged = True
+        try:
+            result = future.result()
+        except Exception as e:
+            print(f"WandbImageGridCallback async render failed: {e}")
+            return
+
+        image_path = Path(result["image_path"])
+        try:
+            with Image.open(image_path) as rendered_image:
+                run.log({result["key"]: wandb.Image(rendered_image.copy())})
+        except Exception as e:
+            print(e)
+        finally:
+            if image_path.exists():
+                image_path.unlink()
 
     def _drain_completed_grid_renders(self, trainer, wait: bool = False) -> None:
         if len(self._pending_grid_renders) == 0:
@@ -334,26 +361,12 @@ class WandbImageGridCallback(Callback):
 
         pending_futures = []
         for future in self._pending_grid_renders:
-            if not wait and not future.done():
-                pending_futures.append(future)
+            if future._fran_grid_logged:
                 continue
-
-            try:
-                result = future.result()
-            except Exception as e:
-                print(f"WandbImageGridCallback async render failed: {e}")
+            if wait:
+                self._finalize_async_grid_render(trainer.logger.experiment, future)
                 continue
-
-            image_path = Path(result["image_path"])
-            try:
-                run = trainer.logger.experiment
-                with Image.open(image_path) as rendered_image:
-                    run.log({result["key"]: wandb.Image(rendered_image.copy())})
-            except Exception as e:
-                print(e)
-            finally:
-                if image_path.exists():
-                    image_path.unlink()
+            pending_futures.append(future)
 
         self._pending_grid_renders = pending_futures
         if len(self._pending_grid_renders) < self._max_pending_grid_renders:
