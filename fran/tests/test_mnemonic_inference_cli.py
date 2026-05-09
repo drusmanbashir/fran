@@ -12,8 +12,11 @@ def test_resolve_spec_tsl_uses_region_family_from_remapping(monkeypatch):
         mnemonic,
         "load_best_runs",
         lambda path=mnemonic.BEST_RUNS_PATH: {
-            "run_w": "TOTALSEG-FREHA",
-            "kidneys": {"TSL": ["KITS2-bk"], "yolo": ["KITS23-SIRIG"], "k_largest": 2},
+            "whole": {"runs": ["TOTALSEG-FREHA"]},
+            "kidneys": {
+                "runs": {"TSL": ["KITS2-bk"], "yolo": ["KITS23-SIRIG"]},
+                "k_largest": 2,
+            },
         },
     )
     monkeypatch.setattr(
@@ -36,8 +39,8 @@ def test_resolve_spec_auto_prefers_yolo_when_tsl_missing(monkeypatch):
         mnemonic,
         "load_best_runs",
         lambda path=mnemonic.BEST_RUNS_PATH: {
-            "run_w": "TOTALSEG-FREHA",
-            "kidneys": {"TSL": None, "yolo": ["KITS23-SIRIG"]},
+            "whole": {"runs": ["TOTALSEG-FREHA"]},
+            "kidneys": {"runs": {"TSL": None, "yolo": ["KITS23-SIRIG"]}},
         },
     )
     monkeypatch.setattr(
@@ -53,12 +56,42 @@ def test_resolve_spec_auto_prefers_yolo_when_tsl_missing(monkeypatch):
     assert spec.localiser_regions == ["abdomen", "pelvis"]
 
 
-def test_resolve_input_folder_requires_exactly_one_source():
+def test_resolve_input_folders_requires_exactly_one_source():
     with pytest.raises(ValueError, match="exactly one"):
-        mnemonic.resolve_input_folder(None, None)
+        mnemonic.resolve_input_folders(None, None)
 
     with pytest.raises(ValueError, match="exactly one"):
-        mnemonic.resolve_input_folder("/tmp/images", "kits23")
+        mnemonic.resolve_input_folders("/tmp/images", ["kits23"])
+
+
+def test_resolve_spec_raises_when_localiser_is_ambiguous(monkeypatch):
+    monkeypatch.setattr(
+        mnemonic,
+        "load_best_runs",
+        lambda path=mnemonic.BEST_RUNS_PATH: {
+            "whole": {"runs": ["TOTALSEG-FREHA"]},
+            "kidneys": {"runs": {"TSL": ["KITS2-bk"], "yolo": ["KITS23-SIRIG"]}},
+        },
+    )
+
+    with pytest.raises(ValueError, match="--localiser-type"):
+        mnemonic.resolve_spec("kidneys", None)
+
+
+def test_resolve_spec_prefers_minimal_for_nested_standalone_runs(monkeypatch):
+    monkeypatch.setattr(
+        mnemonic,
+        "load_best_runs",
+        lambda path=mnemonic.BEST_RUNS_PATH: {
+            "totalseg": {"runs": {"full": ["FULL-RUN"], "minimal": ["MIN-RUN"]}},
+        },
+    )
+    monkeypatch.setattr(mnemonic, "resolve_standalone_inferer_cls", lambda run_name: mnemonic.WholeImageInferer)
+
+    spec = mnemonic.resolve_spec("totalseg", None)
+
+    assert spec.run_name == "MIN-RUN"
+    assert spec.inferer_cls is mnemonic.WholeImageInferer
 
 
 def test_main_uses_dataset_images_folder_for_yolo(monkeypatch, tmp_path):
@@ -79,8 +112,11 @@ def test_main_uses_dataset_images_folder_for_yolo(monkeypatch, tmp_path):
         mnemonic,
         "load_best_runs",
         lambda path=mnemonic.BEST_RUNS_PATH: {
-            "run_w": "TOTALSEG-FREHA",
-            "kidneys": {"TSL": None, "yolo": ["KITS23-SIRIG"], "k_largest": 2},
+            "whole": {"runs": ["TOTALSEG-FREHA"]},
+            "kidneys": {
+                "runs": {"TSL": None, "yolo": ["KITS23-SIRIG"]},
+                "k_largest": 2,
+            },
         },
     )
     monkeypatch.setattr(
@@ -99,7 +135,7 @@ def test_main_uses_dataset_images_folder_for_yolo(monkeypatch, tmp_path):
         mnemonic="kidneys",
         localiser_type="yolo",
         folder=None,
-        dataset="kits23",
+        dataset=["kits23"],
         gpus=[1],
         chunksize=3,
         patch_overlap=0.1,

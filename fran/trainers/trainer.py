@@ -16,7 +16,14 @@ from fran.callback.incremental import LRFloorStop
 from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.helpers import normalize_logging_payload
 from fran.managers import Project
-from fran.managers.data.batch_tfms import DataManagerDualBTfms
+from fran.managers.data.batch_tfms import (
+    DataManagerDualBTfms,
+    DataManagerLBDBTfms,
+    DataManagerPatchBTfms,
+    DataManagerRBDBTfms,
+    DataManagerSourceBTfms,
+    DataManagerWholeBTfms,
+)
 from fran.managers.data.dualssd import (
     DataManagerDualSSD,
     DataManagerDualSSDBTfms,
@@ -215,6 +222,11 @@ class Trainer:
         dual_ssd: bool = False,
         batch_tfms: bool = False,
     ):
+        batch_size_for_setup = batch_size
+        if batchsize_finder:
+            # Build dataloaders at the finder start size so a larger user-requested
+            # batch does not pre-allocate GPU state before the probe downshifts it.
+            batch_size_for_setup = 2 if batch_size is None else min(int(batch_size), 2)
         effective_val_every_n_epochs = 1 if self.run_through else int(val_every_n_epochs)
         if self.run_through is False:
             assert (
@@ -237,7 +249,7 @@ class Trainer:
         self.debug = bool(debug)
         self.dual_ssd = bool(dual_ssd)
         self.batch_tfms = bool(batch_tfms)
-        self.maybe_alter_configs(batch_size, compiled)
+        self.maybe_alter_configs(batch_size_for_setup, compiled)
         self.set_lr(lr)
 
         has_cuda = torch.cuda.is_available()
@@ -254,7 +266,7 @@ class Trainer:
             accelerator = "cpu"
             strategy = "auto"
 
-        self.init_dm_unet(epochs, batch_size, override_dm_checkpoint)
+        self.init_dm_unet(epochs, batch_size_for_setup, override_dm_checkpoint)
         self.D.prepare_data()
         self.D.setup(stage="fit")
         # infer_labels_and_update_out_channels(
@@ -323,7 +335,10 @@ class Trainer:
         self.configs["plan_train"]["val_every_n_epochs"] = self.val_every_n_epochs
         if self.run_through:
             rt = self.run_through_helpers()
-            manager_class = self.resolve_datamanager(self.configs["plan_train"]["mode"])
+            manager_class = self.resolve_datamanager(
+                self.configs["plan_train"]["mode"],
+                batch_tfms=self.batch_tfms,
+            )
             if self.dual_ssd:
                 manager_class = dual_ssd_manager_class(manager_class)
             dm = rt.DataManagerRT(
@@ -336,6 +351,7 @@ class Trainer:
                 ds_type=ds_type,
                 train_indices=self.train_indices,
                 debug=self.debug,
+                batch_tfms=self.batch_tfms,
             )
         else:
             manager_class_train = self.resolve_datamanager(
@@ -686,20 +702,22 @@ class Trainer:
         self.apply_monitor_metric_name(N)
         return N
 
-    def resolve_datamanager(self, mode: str):
+    def resolve_datamanager(self, mode: str, batch_tfms: Optional[bool] = None):
         """Resolve the manager class for the configured training mode."""
+        if batch_tfms is None:
+            batch_tfms = self.batch_tfms
         if mode == "pbd":
-            DMClass = DataManagerPatch
+            DMClass = DataManagerPatchBTfms if batch_tfms else DataManagerPatch
         elif mode == "source":
-            DMClass = DataManagerSource
+            DMClass = DataManagerSourceBTfms if batch_tfms else DataManagerSource
         elif mode == "sourcepbd" and self.run_through:
-            DMClass = DataManagerPatch
+            DMClass = DataManagerPatchBTfms if batch_tfms else DataManagerPatch
         elif mode == "whole":
-            DMClass = DataManagerWhole
+            DMClass = DataManagerWholeBTfms if batch_tfms else DataManagerWhole
         elif mode == "lbd":
-            DMClass = DataManagerLBD
+            DMClass = DataManagerLBDBTfms if batch_tfms else DataManagerLBD
         elif mode == "rbd":
-            DMClass = DataManagerRBD
+            DMClass = DataManagerRBDBTfms if batch_tfms else DataManagerRBD
         else:
             raise NotImplementedError(
                 "Mode {} is not supported for datamanager".format(mode)

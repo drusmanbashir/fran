@@ -66,23 +66,18 @@ async def predict(model_name: str, files: List[UploadFile] = File(...)):
         try:
             # Setup and run inference
             inferer = setup_inferer(model_name)
-            predictions = inferer.run(input_files, chunksize=1)
+            prediction = inferer.run(input_files, chunksize=1)
 
             # Process results
-            output_files = []
-            for pred in predictions:
-                # Save prediction to temp file
-                output_path = (
-                    temp_dir
-                    / f"pred_{Path(pred['image'].meta['filename_or_obj']).name}"
-                )
-                sitk.WriteImage(pred["pred"], str(output_path))
-                output_files.append(output_path)
+            output_path = (
+                temp_dir
+                / f"pred_{Path(prediction['image'].meta['filename_or_obj']).name}"
+            )
+            sitk.WriteImage(prediction["pred"], str(output_path))
 
-            # Return first prediction file (modify as needed for multiple files)
             return FileResponse(
-                path=str(output_files[0]),
-                filename=output_files[0].name,
+                path=str(output_path),
+                filename=output_path.name,
                 media_type="application/octet-stream",
             )
 

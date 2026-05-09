@@ -234,9 +234,13 @@ class WandbImageGridCallback(Callback):
         self._reset_async_grid_render_state()
 
     def on_train_epoch_start(self, trainer, pl_module):
+        """Reset grid state on scheduled epochs and mark RT no-val mode."""
         epoch = trainer.current_epoch + 1
         if epoch % self.epoch_freq == 0:
             self.reset_grid()
+            if trainer.limit_val_batches == 0:
+                self.validation_grid_created = True
+                self.val_start_idx = None
 
     def on_validation_epoch_start(self, trainer, pl_module):
         self.validation_grid_created = False
@@ -268,14 +272,18 @@ class WandbImageGridCallback(Callback):
             self.validation_grid_created = True
 
     def on_train_epoch_end(self, trainer, pl_module):
+        """Ensure due grids are rendered and logged by the epoch boundary."""
         self._drain_completed_grid_renders(trainer)
         epoch = trainer.current_epoch + 1
         if epoch % self.epoch_freq != 0 or len(self.grid_imgs) == 0:
             return
+        if trainer.limit_val_batches == 0:
+            self.val_start_idx = None
         if self._skip_async_grid_render:
             self._render_and_log_grid_sync(trainer)
-        else:
-            self._submit_async_grid_render(trainer)
+            return
+        self._submit_async_grid_render(trainer)
+        self._drain_completed_grid_renders(trainer, wait=True)
 
     def on_fit_end(self, trainer, pl_module):
         self._drain_completed_grid_renders(trainer, wait=True)

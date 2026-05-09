@@ -320,17 +320,16 @@ class BaseInferer(DictToAttr):
         self.prepare_data(data, collate_fn=None)
         self.create_and_set_postprocess_transforms()
 
-        outputs = []
+        output = None
         for batch in self.predict():
             batch = self.postprocess(batch)
-            outputs.append(batch)
+            output = batch
             self.compute_loss(batch)
 
         if self.safe_mode:
             self.reset()
-            outputs.append(None)
 
-        return outputs
+        return output
 
     def reset(self):
         torch.cuda.empty_cache()

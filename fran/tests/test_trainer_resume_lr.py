@@ -6,6 +6,7 @@ import pytest
 import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 
+from fran.managers.data.batch_tfms import DataManagerPatchBTfms, DataManagerRBDBTfms
 from fran.managers.data.main import DataManagerPatch
 from fran.trainers.trainer import Trainer
 from fran.trainers.trainer_rt import BatchSizeFinderRT, CaseIDRecorderRT, TrainerRT
@@ -81,10 +82,26 @@ def test_trainer_monitor_metric_name_remaps_for_run_through():
 def test_trainer_resolve_datamanager_accepts_sourcepbd_in_run_through():
     trainer = object.__new__(Trainer)
     trainer.run_through = True
+    trainer.batch_tfms = False
 
     dm_class = Trainer.resolve_datamanager(trainer, "sourcepbd")
 
     assert dm_class is DataManagerPatch
+
+
+def test_trainer_resolve_datamanager_uses_batch_tfms_variants_in_run_through():
+    trainer = object.__new__(Trainer)
+    trainer.run_through = True
+    trainer.batch_tfms = False
+
+    assert (
+        Trainer.resolve_datamanager(trainer, "sourcepbd", batch_tfms=True)
+        is DataManagerPatchBTfms
+    )
+    assert (
+        Trainer.resolve_datamanager(trainer, "rbd", batch_tfms=True)
+        is DataManagerRBDBTfms
+    )
 
 
 def test_trainer_init_cbs_uses_run_through_callback_semantics():
@@ -170,21 +187,79 @@ def test_batch_size_finder_rt_restores_checkpoint_with_weights_only_false(monkey
         return 6
 
     trainer = SimpleNamespace(
+        datamodule=SimpleNamespace(batch_size=16),
         _checkpoint_connector=SimpleNamespace(
             restore=lambda checkpoint_path=None, weights_only=None: calls.update(
                 checkpoint_path=checkpoint_path, weights_only=weights_only
             )
         )
     )
+    pl_module = SimpleNamespace(batch_size=16)
 
     monkeypatch.setattr(
         "fran.trainers.trainer_rt._scale_batch_size_rt", fake_scale_batch_size_rt
     )
 
-    finder.scale_batch_size(trainer, pl_module=object())
+    finder.scale_batch_size(trainer, pl_module=pl_module)
 
     assert calls["checkpoint_path"] == "probe.ckpt"
     assert calls["weights_only"] is False
     assert calls["mode"] == "power"
     assert calls["batch_arg_name"] == "batch_size"
     assert finder.optimal_batch_size == 6
+    assert trainer.datamodule.batch_size == 6
+    assert pl_module.batch_size == 6
+
+
+def test_batch_size_finder_rt_persists_found_batch_size(monkeypatch):
+    finder = BatchSizeFinderRT()
+    trainer = SimpleNamespace(
+        datamodule=SimpleNamespace(batch_size=16),
+        _checkpoint_connector=SimpleNamespace(restore=lambda *args, **kwargs: None),
+    )
+    pl_module = SimpleNamespace(batch_size=16)
+
+    monkeypatch.setattr(
+        "fran.trainers.trainer_rt._scale_batch_size_rt",
+        lambda **kwargs: 8,
+    )
+
+    finder.scale_batch_size(trainer, pl_module)
+
+    assert finder.optimal_batch_size == 8
+    assert trainer.datamodule.batch_size == 8
+    assert pl_module.batch_size == 8
+
+
+def test_trainer_setup_builds_finder_probe_at_small_batch(monkeypatch, tmp_path):
+    captured = {}
+    trainer = object.__new__(Trainer)
+    trainer.run_through = False
+    trainer.run_name = None
+    trainer.ckpt = None
+    trainer.project = SimpleNamespace(
+        project_title="proj", checkpoints_parent_folder=tmp_path
+    )
+    trainer.configs = {"dataset_params": {"fgbg_ratio": 1}, "model_params": {"lr": 1e-3}}
+
+    monkeypatch.setattr("torch.cuda.is_available", lambda: False)
+    monkeypatch.setattr(Trainer, "maybe_alter_configs", lambda self, batch_size, compiled: captured.setdefault("maybe", batch_size))
+    monkeypatch.setattr(Trainer, "set_lr", lambda self, lr: None)
+    monkeypatch.setattr(Trainer, "_ensure_local_ckpt_on_wandb_resume", lambda self, logger: None)
+    monkeypatch.setattr(Trainer, "init_cbs", lambda self, **kwargs: ([], None, None))
+
+    def fake_init_dm_unet(self, epochs, batch_size, override_dm_checkpoint=False):
+        captured["init_dm_unet"] = batch_size
+        self.D = SimpleNamespace(
+            prepare_data=lambda: None,
+            setup=lambda stage=None: None,
+            configs={"dataset_params": {}, "plan_train": {}},
+        )
+        self.N = object()
+
+    monkeypatch.setattr(Trainer, "init_dm_unet", fake_init_dm_unet)
+
+    Trainer.setup(trainer, batch_size=16, batchsize_finder=True)
+
+    assert captured["maybe"] == 2
+    assert captured["init_dm_unet"] == 2

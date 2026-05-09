@@ -200,15 +200,21 @@ def resolve_tsl_localiser_labels(mnemonic: str, run_name: str) -> list[int]:
     return tsl_region_labels(TSL_FAMILY_BY_MNEMONIC[mnemonic])
 
 
-def choose_localiser_type(entry: dict, explicit: str | None, mnemonic: str) -> str | None:
-    if not isinstance(entry, dict):
+def choose_localiser_type(runs, explicit: str | None, mnemonic: str) -> str | None:
+    if not isinstance(runs, dict):
         if explicit is not None:
             raise ValueError(
                 f"Mnemonic={mnemonic} has no localiser runs configured; omit --localiser-type"
             )
         return None
-    yolo_runs = nonempty_runs(entry["yolo"] if "yolo" in entry else None)
-    tsl_runs = nonempty_runs(entry["TSL"] if "TSL" in entry else None)
+    if "yolo" not in runs and "TSL" not in runs:
+        if explicit is not None:
+            raise ValueError(
+                f"Mnemonic={mnemonic} has no localiser runs configured; omit --localiser-type"
+            )
+        return None
+    yolo_runs = nonempty_runs(runs["yolo"]) if "yolo" in runs else []
+    tsl_runs = nonempty_runs(runs["TSL"]) if "TSL" in runs else []
     if explicit is not None:
         runs = yolo_runs if explicit == "yolo" else tsl_runs
         if not runs:
@@ -217,8 +223,6 @@ def choose_localiser_type(entry: dict, explicit: str | None, mnemonic: str) -> s
                 "pass a configured --localiser-type or omit it"
             )
         return explicit
-    if mnemonic == "totalseg":
-        return None
     if yolo_runs and tsl_runs:
         raise ValueError(
             f"Mnemonic={mnemonic} has both yolo and TSL localiser runs configured; "
@@ -252,15 +256,13 @@ def resolve_yolo_regions(run_name: str) -> list[str]:
     return parse_regions(metadata["localiser_regions"])
 
 
-def resolve_standalone_run(entry: dict) -> str:
-    if isinstance(entry, str):
-        return entry
-    if isinstance(entry, list):
-        return nonempty_runs(entry)[0]
-    if "minimal" in entry and entry["minimal"]:
-        return entry["minimal"][0]
-    if "full" in entry and entry["full"]:
-        return entry["full"][0]
+def resolve_standalone_run(runs) -> str:
+    if isinstance(runs, list):
+        return nonempty_runs(runs)[0]
+    if "minimal" in runs and runs["minimal"]:
+        return runs["minimal"][0]
+    if "full" in runs and runs["full"]:
+        return runs["full"][0]
     raise ValueError("No standalone run configured")
 
 
@@ -279,10 +281,11 @@ def resolve_spec(mnemonic_raw: str, localiser_type: str | None) -> InferenceSpec
     best_runs = load_best_runs()
     mnemonic = canonical_mnemonic(mnemonic_raw, best_runs)
     entry = best_runs[mnemonic]
-    localiser_type = choose_localiser_type(entry, localiser_type, mnemonic)
+    runs = entry["runs"]
+    localiser_type = choose_localiser_type(runs, localiser_type, mnemonic)
 
     if localiser_type == "yolo":
-        run_name = nonempty_runs(entry["yolo"])[0]
+        run_name = nonempty_runs(runs["yolo"])[0]
         return InferenceSpec(
             inferer_cls=CascadeInfererYOLO,
             run_name=run_name,
@@ -291,16 +294,16 @@ def resolve_spec(mnemonic_raw: str, localiser_type: str | None) -> InferenceSpec
         )
 
     if localiser_type == "TSL":
-        run_name = nonempty_runs(entry["TSL"])[0]
+        run_name = nonempty_runs(runs["TSL"])[0]
         return InferenceSpec(
             inferer_cls=CascadeInferer,
             run_name=run_name,
-            run_w=best_runs["whole"],
+            run_w=best_runs["whole"]["runs"][0],
             localiser_labels=resolve_tsl_localiser_labels(mnemonic, run_name),
             k_largest=entry["k_largest"] if "k_largest" in entry else None,
         )
 
-    run_name = resolve_standalone_run(entry)
+    run_name = resolve_standalone_run(runs)
     inferer_cls = resolve_standalone_inferer_cls(run_name)
     return InferenceSpec(inferer_cls=inferer_cls, run_name=run_name)
 

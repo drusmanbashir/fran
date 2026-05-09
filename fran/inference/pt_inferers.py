@@ -66,12 +66,9 @@ class BaseInfererPT(BaseInferer):
         self.losses=[]
         self.setup()
         imgs = self.maybe_filter_images(imgs, overwrite)
-        imgs = list_to_chunks(imgs, chunksize)
-        losses_all = []
-        for imgs_sublist in imgs:
+        for imgs_sublist in list_to_chunks(imgs, chunksize):
             output = self.process_imgs_sublist(imgs_sublist, gt_fldr)
-            losses_all.append(output)
-        return output, losses_all
+        return output, self.losses
 
     def append_loss(self,batch):
         case_id = batch["case_id"][0]
@@ -85,28 +82,25 @@ class BaseInfererPT(BaseInferer):
         self.losses.append(loss_dici)
 
     def process_imgs_sublist(self, imgs_sublist, gt_fldr=None):
-        imgs_gt_sublist=[]
         if gt_fldr is not None:
-            for img_fn in imgs_sublist:
-                gt_fn = find_matching_fn(img_fn, gt_fldr, ["all"])[0]
-                imgs_gt_sublist.append((img_fn,gt_fn))
+            imgs_gt_sublist = [
+                (img_fn, find_matching_fn(img_fn, gt_fldr, ["all"])[0])
+                for img_fn in imgs_sublist
+            ]
         else:
             imgs_gt_sublist = [(img_fn,None) for img_fn in imgs_sublist]
         data = self.load_images_and_gts(imgs_gt_sublist)
         self.prepare_data(data)
         self.create_and_set_postprocess_transforms()
 
-        outputs = []
         for batch in self.predict():
             batch = self.compute_loss(batch)
-            batch = self.postprocess(batch)
-            outputs.append(batch)
+            output = self.postprocess(batch)
 
         if self.safe_mode:
             self.reset()
-            outputs.append(None)
 
-        return outputs
+        return output
 
     def compute_loss(self, batch):
             targ = batch.get("lm")
@@ -257,7 +251,7 @@ if __name__ == '__main__':
     print(batch_fn)
     batch.keys()
     batch2 = T.postprocess(batch)
-        outputs.append(batch)
+    outputs.append(batch)
     n_classes = batch["pred"].shape[1]
 
 

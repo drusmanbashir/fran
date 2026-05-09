@@ -222,7 +222,9 @@ class BatchSizeFinderRT(Callback):
             )
         finally:
             trainer._checkpoint_connector.restore = restore
-        self.optimal_batch_size = new_size
+        self.optimal_batch_size = int(new_size)
+        trainer.datamodule.batch_size = int(new_size)
+        pl_module.batch_size = int(new_size)
 
     def on_fit_start(self, trainer, pl_module) -> None:
         self.scale_batch_size(trainer, pl_module)
