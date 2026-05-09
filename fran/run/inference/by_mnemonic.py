@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 import ipdb
@@ -29,6 +30,7 @@ TSL_FAMILY_BY_MNEMONIC = {
     "pancreas": "pancreas",
     "colon": "colon",
 }
+RUN_NAME_PATTERN = re.compile(r"^[A-Z0-9]+-[A-Z0-9]+$")
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,10 @@ class InferenceSpec:
 
 def load_best_runs(path: Path = BEST_RUNS_PATH) -> dict:
     return load_yaml(path)
+
+
+def looks_like_run_name(value: str) -> bool:
+    return bool(RUN_NAME_PATTERN.fullmatch(value.strip()))
 
 
 def runs_registry_path() -> Path | None:
@@ -134,6 +140,21 @@ def nonempty_runs(value) -> list[str]:
     if isinstance(value, str):
         return [value] if value else []
     return [item for item in value if item]
+
+
+def best_runs_entry_for_run_name(run_name: str, best_runs: dict) -> tuple[str | None, dict | None]:
+    for name, entry in best_runs.items():
+        if not isinstance(entry, dict) or "runs" not in entry:
+            continue
+        runs = entry["runs"]
+        if run_name in nonempty_runs(runs):
+            return name, entry
+        if not isinstance(runs, dict):
+            continue
+        for value in runs.values():
+            if run_name in nonempty_runs(value):
+                return name, entry
+    return None, None
 
 
 def normalize_mode(mode: str | None) -> str | None:
@@ -277,8 +298,22 @@ def resolve_standalone_inferer_cls(run_name: str):
     return inferer_cls
 
 
+def resolve_direct_run_name_spec(run_name: str, best_runs: dict) -> InferenceSpec:
+    _, entry = best_runs_entry_for_run_name(run_name, best_runs)
+    k_largest = entry["k_largest"] if entry is not None and "k_largest" in entry else None
+    inferer_cls = resolve_standalone_inferer_cls(run_name)
+    if inferer_cls not in (BaseInferer, WholeImageInferer):
+        raise ValueError(
+            f"Direct run_name '{run_name}' resolves to {inferer_cls.__name__}; "
+            "only standalone whole/source runs are supported here"
+        )
+    return InferenceSpec(inferer_cls=inferer_cls, run_name=run_name, k_largest=k_largest)
+
+
 def resolve_spec(mnemonic_raw: str, localiser_type: str | None) -> InferenceSpec:
     best_runs = load_best_runs()
+    if looks_like_run_name(mnemonic_raw):
+        return resolve_direct_run_name_spec(mnemonic_raw.strip(), best_runs)
     mnemonic = canonical_mnemonic(mnemonic_raw, best_runs)
     entry = best_runs[mnemonic]
     runs = entry["runs"]
