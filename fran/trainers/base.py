@@ -41,6 +41,18 @@ def checkpoint_epoch(ckpt: Union[str, Path]) -> int | None:
     return None
 
 
+def available_checkpoint_epochs_for_run(run_name) -> list[tuple[int, Path]]:
+    """List local checkpoints for a run, sorted by parsed epoch then filename."""
+    checkpoints_dir = Path(
+        checkpoint_from_model_id(run_name, normalize_keys=False)
+    ).parent
+    ckpts = []
+    for ckpt in checkpoints_dir.glob("*.ckpt"):
+        epoch = checkpoint_epoch(ckpt)
+        ckpts.append((int(epoch), ckpt))
+    return sorted(ckpts, key=lambda item: (item[0], item[1].name))
+
+
 def checkpoint_from_model_id(
     model_id, sort_method="last", normalize_keys=True
 ):

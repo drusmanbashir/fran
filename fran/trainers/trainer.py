@@ -31,13 +31,11 @@ from fran.trainers.base import (
     backup_ckpt,
     checkpoint_epoch,
     checkpoint_from_model_id,
-    normalize_checkpoint_path,
     switch_ckpt_keys,
 )
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import (
     BatchSizeFinder,
-    Callback,
     DeviceStatsMonitor,
     EarlyStopping,
     LearningRateMonitor,
@@ -79,51 +77,26 @@ class FranBatchSizeFinder(BatchSizeFinder):
             trainer._checkpoint_connector.restore = restore
 
 
-class ResumeLROverride(Callback):
-    def __init__(self, lr: float):
-        self.lr = float(lr)
-
-    def on_fit_start(self, trainer, pl_module) -> None:
-        for optimizer in trainer.optimizers:
-            for group in optimizer.param_groups:
-                group["lr"] = self.lr
-            optimizer.defaults["lr"] = self.lr
-
-        for cfg in trainer.lr_scheduler_configs:
-            scheduler = cfg.scheduler
-            for group in scheduler.optimizer.param_groups:
-                group["lr"] = self.lr
-            n_lrs = len(scheduler._last_lr)
-            scheduler._last_lr = [self.lr] * n_lrs
-            scheduler.base_lrs = [self.lr] * len(scheduler.base_lrs)
-
-        pl_module.lr = self.lr
-
-
 class Trainer:
     """Trainer variant with W&B logging/callback plumbing."""
-    # See resume_lr_flow.md in this folder for ckpt-vs-lr resolution semantics.
 
     def __init__(
         self,
         project_title,
         configs,
         run_name=None,
-        resume_lr=None,
-        ckpt_path: Optional[str | Path] = None,
+        ckpt: Optional[str | Path] = None,
     ):
         self.project = Project(project_title=project_title)
         self.configs = configs
         self.run_name = run_name
-        self.resume_lr = float(resume_lr) if resume_lr is not None else None
-        assert not (resume_lr and ckpt_path), "Cannot specify both resume_lr and ckpt_path"
-        if ckpt_path is not None:
-            self.ckpt = Path(ckpt_path)
-        else:
-            self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
-        if self.resume_lr is not None:
-            self.resolve_resume_lr_ckpt(self.resume_lr)
-        self.lr_override = None
+        assert not (run_name and ckpt), "Cannot specify both run_name and ckpt"
+        if ckpt is not None:
+            # Future work: infer run_name from the ckpt folder layout plus project_title.
+            raise NotImplementedError(
+                "Explicit ckpt resume for Trainer is not implemented yet."
+            )
+        self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
         self.batch_tfms = False
 
@@ -141,34 +114,6 @@ class Trainer:
             ckpts.append((int(epoch), ckpt))
         ckpts = sorted(ckpts, key=lambda item: (item[0], item[1].name))
         return ckpts
-
-    def resolve_resume_lr_ckpt(self, resume_lr: float) -> Path:
-        ckpts = self.available_checkpoint_epochs()
-
-        logger = WandbManager(
-            project=self.project,
-            run_id=self.run_name,
-            wb_mode="online",
-            log_model_checkpoints=False,
-        )
-        shifts = logger.lr_shift_epoch_map(run_id=self.run_name)
-
-        deltas = (shifts["lr-Adam"].astype(float) - float(resume_lr)).abs()
-        row = shifts.iloc[deltas.argsort()[:1]].iloc[0]
-        shift_epoch = int(row["epoch"])
-        after = [(epoch, ckpt) for epoch, ckpt in ckpts if epoch >= shift_epoch]
-        chosen = after[0][1]
-        self.ckpt = normalize_checkpoint_path(chosen)
-        headline(
-            "resume_lr={} matched logged lr {} (prev_lr {}) at epoch {}; selected {}".format(
-                resume_lr,
-                row["lr-Adam"],
-                row["prev_lr"],
-                shift_epoch,
-                self.ckpt,
-            )
-        )
-        return self.ckpt
 
     def _ensure_local_ckpt_on_wandb_resume(self, logger: WandbManager | None) -> None:
         """
@@ -424,34 +369,20 @@ class Trainer:
         return DataManagerDualBTfms if batch_tfms else DataManagerDual
 
     def set_lr(self, lr):
-        self.lr_override = None
-        if lr and not self.ckpt:
-            self.lr = lr
-        elif lr and self.ckpt:
-            self.lr = float(lr)
-            if self.resume_lr is not None:
-                self.lr_override = float(lr)
-                headline(
-                    "Will override resumed optimizer LR in memory at fit start: {}".format(
-                        self.lr
-                    )
+        if self.ckpt:
+            if lr is not None:
+                cprint(
+                    "Trainer resume ignores explicit lr={} and keeps checkpoint LR.".format(
+                        lr
+                    ),
+                    color="yellow",
                 )
-            else:
-                sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
-                for g in sd["optimizer_states"][0]["param_groups"]:
-                    g["lr"] = float(self.lr)
-                sd["lr_schedulers"][0]["_last_lr"] = [float(self.lr)]
-                headline(
-                    "Warning: Overriding CKPT learning rate with Trainer configs: {}".format(
-                        self.lr
-                    )
-                )
-                torch.save(sd, self.ckpt)
-        elif lr is None and self.ckpt:
             self.state_dict = torch.load(
                 self.ckpt, weights_only=False, map_location="cpu"
             )
             self.lr = self.state_dict["lr_schedulers"][0]["_last_lr"][0]
+        elif lr is not None:
+            self.lr = float(lr)
         else:
             self.lr = self.configs["model_params"]["lr"]
 
@@ -483,8 +414,6 @@ class Trainer:
                 FranBatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
                 BatchSizeSafetyMargin(),
             ]
-        if self.lr_override is not None:
-            cbs += [ResumeLROverride(self.lr_override)]
 
         if self.debug == True:
             cbs += [DebugEpochBatchLimit(n=10)]
