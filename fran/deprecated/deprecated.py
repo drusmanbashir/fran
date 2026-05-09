@@ -201,7 +201,7 @@ if __name__ == "__main__":
     value = 2
 
 # %%
-    run_src = "KITS-SIRIG"
+    run_src = "TOTALSEG-MALUU"
     project_title = "totalseg"
     value = 2
 # %%
@@ -214,6 +214,7 @@ if __name__ == "__main__":
     ckpt_src = (
         "/s/fran_storage/checkpoints/nodes/nodes/NODES-0093/checkpoints/last.ckpt"
     )
+# %%
     ckpt_src = checkpoint_from_model_id(run_src)
     dict_src = torch.load(ckpt_src, map_location="cpu", weights_only=False)
 # %%
@@ -222,10 +223,12 @@ if __name__ == "__main__":
     dici = dict_src.copy()
     dici["datamodule_hyper_parameters"].keys()
     print(dici["datamodule_hyper_parameters"]["train1_indices"])
+
+    batch_tfms = dici["datamodule_hyper_parameters"]["configs"]['dataset_params']['src_dims']
 # %%
-    src_dims = dici["datamodule_hyper_parameters"]["configs"]['dataset_params']['src_dims']
-    dici["datamodule_hyper_parameters"]["configs"]['plan_train']['src_dims']= src_dims
-    dici["datamodule_hyper_parameters"]["configs"]['plan_valid']['src_dims']= src_dims
+    batch_tfms = dici["datamodule_hyper_parameters"]["configs"]['dataset_params']['src_dims']
+    dici["datamodule_hyper_parameters"]["configs"]['plan_train']['src_dims']= batch_tfms
+    dici["datamodule_hyper_parameters"]["configs"]['plan_valid']['src_dims']= batch_tfms
 
     torch.save(dici, ckpt_src)
 # %%

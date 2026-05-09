@@ -79,23 +79,11 @@ class NiftiToTorchSubsampledBgDataGenerator(NiftiToTorchDataGenerator):
         return self.output_folder / f"indices_bg_subsample_{subsample_bg}"
 
     def postprocess_results(self, **process_kwargs):
-        ts = self.results_df.shape
-        if ts[-1] == 4:
-            self._store_dataset_properties()
-            generate_bboxes_from_lms_folder(
-                self.output_folder / "lms",
-                num_processes=getattr(self, "num_processes", 1),
-            )
-        else:
-            print(
-                "self.results shape is {0}. Last element should be 4, is {1}.".format(
-                    ts, ts[-1]
-                )
-            )
-            print(
-                "since some files skipped, dataset stats are not being stored. "
-                "run get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
-            )
+        self._store_dataset_properties()
+        generate_bboxes_from_lms_folder(
+            self.output_folder / "lms",
+            num_processes=getattr(self, "num_processes", 1),
+        )
         store_label_count(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
@@ -105,5 +93,4 @@ class NiftiToTorchSubsampledBgDataGenerator(NiftiToTorchDataGenerator):
             label_stats=self.store_label_stats,
             gif_window=infer_dataset_stats_window(self.project),
         )
-
 

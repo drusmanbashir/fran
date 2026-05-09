@@ -11,6 +11,7 @@ import secrets
 from pathlib import Path
 from typing import Any, Optional
 
+import pandas as pd
 import torch._dynamo
 import wandb
 from fran.utils.common import common_vars_filename
@@ -405,6 +406,10 @@ class WandbManager(WandbLogger):
         except Exception:
             return None
 
+    def _remote_run_for(self, run_id: Optional[str] = None):
+        api = wandb.Api()
+        return api.run(self._run_path(run_id=run_id))
+
     def _checkpoint_summary(self) -> dict[str, Any]:
         best_key = self._path("best_model_path")
         last_key = self._path("last_model_path")
@@ -463,6 +468,102 @@ class WandbManager(WandbLogger):
             return pd.DataFrame(rows)
         except Exception:
             return rows
+
+    def df_columns(
+        self,
+        columns: list[str],
+        run_id: Optional[str] = None,
+        drop_all_nan: bool = True,
+    ) -> pd.DataFrame:
+        if len(columns) == 0:
+            return pd.DataFrame()
+        remote_run = self._remote_run_for(run_id=run_id)
+        rows = []
+        for row in remote_run.scan_history(keys=list(columns)):
+            rows.append({col: row.get(col) for col in columns})
+        df = pd.DataFrame(rows, columns=columns)
+        if drop_all_nan:
+            df = df.dropna(how="all", subset=columns)
+        return df.reset_index(drop=True)
+
+    def lr_shift_epoch_map(
+        self,
+        *,
+        lr_column: str = "lr-Adam",
+        global_step_column: str = "trainer/global_step",
+        epoch_column: str = "epoch",
+        run_id: Optional[str] = None,
+    ) -> pd.DataFrame:
+        out_columns = [global_step_column, lr_column, epoch_column, "prev_lr"]
+
+        lr_df = self.df_columns(
+            [global_step_column, lr_column],
+            run_id=run_id,
+            drop_all_nan=True,
+        )
+        epoch_df = self.df_columns(
+            [global_step_column, epoch_column],
+            run_id=run_id,
+            drop_all_nan=True,
+        )
+
+        def _collapse_last_value(
+            df: pd.DataFrame,
+            value_column: str,
+        ) -> pd.DataFrame:
+            if len(df) == 0:
+                return pd.DataFrame(columns=[global_step_column, value_column])
+
+            df = df[[global_step_column, value_column]].copy()
+            df[global_step_column] = pd.to_numeric(
+                df[global_step_column], errors="coerce"
+            )
+            df = df.dropna(subset=[global_step_column])
+            if len(df) == 0:
+                return pd.DataFrame(columns=[global_step_column, value_column])
+
+            return (
+                df.groupby(global_step_column, as_index=False)
+                .agg(
+                    {
+                        value_column: lambda s: (
+                            s.dropna().iloc[-1] if s.notna().any() else pd.NA
+                        )
+                    }
+                )
+                .sort_values(global_step_column)
+                .reset_index(drop=True)
+            )
+
+        lr_history = _collapse_last_value(lr_df, lr_column)
+        lr_history = lr_history.dropna(subset=[lr_column]).reset_index(drop=True)
+        if len(lr_history) == 0:
+            return pd.DataFrame(columns=out_columns)
+
+        epoch_history = _collapse_last_value(epoch_df, epoch_column)
+        epoch_history = epoch_history.dropna(subset=[epoch_column]).reset_index(
+            drop=True
+        )
+
+        if len(epoch_history) == 0:
+            merged = lr_history.copy()
+            merged[epoch_column] = pd.NA
+        else:
+            merged = pd.merge_asof(
+                lr_history.sort_values(global_step_column),
+                epoch_history.sort_values(global_step_column),
+                on=global_step_column,
+                direction="backward",
+            )
+
+        merged["prev_lr"] = merged[lr_column].shift(1)
+        shifts = merged[
+            merged["prev_lr"].notna() & merged[lr_column].ne(merged["prev_lr"])
+        ].copy()
+        if len(shifts) == 0:
+            return pd.DataFrame(columns=out_columns)
+
+        return shifts[out_columns].reset_index(drop=True)
 
     def _empty_df(self, columns=None):
         cols = columns or ["sys/id", "sys/name", "sys/creation_time", "sys/url"]
@@ -612,6 +713,44 @@ if __name__ == "__main__":
     aa = list(runs)
     print(_new_run_id("drubashir", "kits2"))
     df = W.fetch_project_df()
+# %%
+
+
+# %%  # T:block_start|WandbManager.fetch_project_df
+#SECTION:-------------------- fetch_project_df--------------------------------------------------------------------------------------  # T:block_meta|WandbManager.fetch_project_df
+# Scratch probe kept commented so the module remains importable.
+#     api = wandb.Api()
+#     path = W.wandb_project_name  # T:self_ref|    path = self.wandb_project_name
+#     runs = list(api.runs(path))
+# %%
+# rows = []
+# run = next(iter(runs))  # T:loop_probe|for run in runs:
+# row = {  # T:indent|    row = {
+#     "sys/id": run.id,  # T:indent|        "sys/id": run.id,
+#     "sys/name": run.name,  # T:indent|        "sys/name": run.name,
+#     "sys/creation_time": run.created_at,  # T:indent|        "sys/creation_time": run.created_at,
+#     "sys/url": run.url,  # T:indent|        "sys/url": run.url,
+# }  # T:indent|    }
+# %%
+    run = runs[-3]
+# %%
+    row[W._path("best_model_path")] = run.summary.get(  # T:self_ref|    row[self._path("best_model_path")] = run.summary.get(
+        W._path("best_model_path")  # T:self_ref|        self._path("best_model_path")
+    )  # T:indent|    )
+    row[W._path("last_model_path")] = run.summary.get(  # T:self_ref|    row[self._path("last_model_path")] = run.summary.get(
+        W._path("last_model_path")  # T:self_ref|        self._path("last_model_path")
+    )  # T:indent|    )
+    if columns is None:  # T:indent|    if columns is None:
+        rows.append(row)  # T:indent|        rows.append(row)
+    else:  # T:indent|    else:
+        rows.append({k: row.get(k) for k in columns})  # T:indent|        rows.append({k: row.get(k) for k in columns})
+    try:
+        import pandas as pd
+
+        pass  # T:early_return|    return pd.DataFrame(rows)
+    except Exception:
+        pass  # T:early_return|    return rows
+    # end PythonMethodScratch  # T:block_end|WandbManager.fetch_project_df
     width = 4
     prefix = "kits2"
     aa = df["sys/name"].sort_values().iloc[-1]

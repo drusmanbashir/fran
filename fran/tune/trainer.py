@@ -9,7 +9,6 @@ class RayTrainer(Trainer):
     def init_cbs(
         self,
         cbs,
-        neptune,
         batchsize_finder=True,
         test_every_n_epochs=True,
         profiler=False,
@@ -18,7 +17,6 @@ class RayTrainer(Trainer):
     ):
         cbs, logger, profiler = super().init_cbs(
             cbs=cbs,
-            neptune=neptune,
             batchsize_finder=batchsize_finder,
             test_every_n_epochs=test_every_n_epochs,
             profiler=profiler,

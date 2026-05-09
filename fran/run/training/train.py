@@ -15,6 +15,7 @@ import argparse
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
 from fran.trainers.trainer import Trainer
+from fran.trainers.trainer_runthrough import TrainerRT
 
 
 def print_device_info():
@@ -108,10 +109,11 @@ def main(args):
         # --- Trainer --------------------------------------------------------------
         print_device_info()
 
-        Tm = Trainer(
+        trainer_cls = TrainerRT if args.all else Trainer
+        Tm = trainer_cls(
             project_title=P.project_title, configs=conf, run_name=args.run_name
         )
-        Tm.setup(
+        setup_kwargs = dict(
             compiled=args.compiled,
             batch_size=args.batch_size,
             cbs=cbs,
@@ -123,9 +125,11 @@ def main(args):
             description=args.description,
             batchsize_finder=args.batchsize_finder,
             train_indices=train_indices,
-            val_every_n_epochs=args.val_every_n_epochs,
             dual_ssd=args.dual_ssd,
         )
+        if not args.all:
+            setup_kwargs["val_every_n_epochs"] = args.val_every_n_epochs
+        Tm.setup(**setup_kwargs)
         Tm.N.compiled = args.compiled
         Tm.fit()
 
@@ -204,6 +208,12 @@ if __name__ == "__main__":
         default=None,
         choices=[None, "lmdb", "memmap", "zarr"],
         help="Dataset backend if supported",
+    )
+    parser.add_argument(
+        "--all",
+        type=str2bool,
+        default=False,
+        help="Use run-through trainer instead of standard Trainer",
     )
     parser.add_argument(
         "--val-every-n-epochs",

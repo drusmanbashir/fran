@@ -73,9 +73,9 @@ class _NiftiResamplerBase(RayWorkerBase):
         self.device = device
         self.set_normalization_values(mean_std_mode)
         tfms_keys = "LoadS,Chan,Orient,Remap,Dev,Cast,SpImg,SpLm,Rsz,LmDType,Indx"
-        if self.clip_center == True:
+        if self.clip_center:
             tfms_keys += ",Norm"
-        if self.half_precision == True:
+        if self.half_precision:
             tfms_keys += ",Half"
         super().__init__(
             project=project,
@@ -253,11 +253,11 @@ class NiftiToTorchDataGenerator(Preprocessor):
             project, plan, output_folder=output_folder, data_folder=data_folder
         )
 
-    def extra_worker_kwargs(self, **setup_kwargs):
+    def extra_worker_kwargs(self, mean_std_mode="dataset"):
         return {
             "clip_center": self.clip_center,
             "half_precision": self.half_precision,
-            "mean_std_mode": setup_kwargs["mean_std_mode"],
+            "mean_std_mode": mean_std_mode,
         }
 
     def should_use_ray(self):
@@ -284,23 +284,12 @@ class NiftiToTorchDataGenerator(Preprocessor):
         remapping = self.plan.get(self.remapping_key)
         self.df = self.df.assign(remapping=[remapping] * len(self.df))
 
-    def postprocess_results(self, **process_kwargs):
-        ts = self.results_df.shape
-        if ts[-1] == 4:  # only store if entire dset is processed
-            self._store_dataset_properties()
-            generate_bboxes_from_lms_folder(
-                self.output_folder / ("lms"),
-                num_processes=getattr(self, "num_processes", 1),
-            )
-        else:
-            print(
-                "self.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(
-                    ts, ts[-1]
-                )
-            )
-            print(
-                "since some files skipped, dataset stats are not being stored. run self.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
-            )
+    def postprocess_results(self):
+        self._store_dataset_properties()
+        generate_bboxes_from_lms_folder(
+            self.output_folder / "lms",
+            num_processes=getattr(self, "num_processes", 1),
+        )
         store_label_count(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
@@ -483,22 +472,6 @@ if __name__ == "__main__":
         mean_std_mode=mean_std_mode,
     )
 
-# %%
-
-    ts = Rs.results_df.shape
-    if ts[-1] == 4:  # only store if entire dset is processed
-        Rs._store_dataset_properties()
-        generate_bboxes_from_lms_folder(Rs.output_folder / ("lms"))
-    else:
-        print(
-            "Rs.results  shape is {0}. Last element should be 4 , is {1}. therefore".format(
-                ts, ts[-1]
-            )
-        )
-        print(
-            "since some files skipped, dataset stats are not being stored. run Rs.get_tensor_folder_stats and generate_bboxes_from_lms_folder separately"
-        )
-    add_plan_to_db(Rs.plan, db_path=Rs.project.db, data_folder_source=Rs.output_folder)
 # %%
     N = NiftiResampler(**actor_kwargs)
     # for mini_df in dds:
@@ -745,4 +718,3 @@ if __name__ == "__main__":
 
 
 # %%
-

@@ -3,13 +3,14 @@ import shutil
 from typing import Optional
 
 import ipdb
-from fastcore.all import in_ipython
+from utilz.helpers import in_ipython
 from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import infer_labels_and_update_out_channels
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
 from fran.callback.test import PeriodicTest
-from fran.managers.data.training import DataManagerDual, DataManagerMulti
+from fran.managers.data.batch_tfms import DataManagerDualBTfms, DataManagerMultiBTfms
+from fran.managers.data.main import DataManagerDual, DataManagerMulti
 
 # from fran.callback.modelcheckpoint import ModelCheckpointUB
 from fran.managers.project import Project
@@ -26,13 +27,11 @@ import os
 from pathlib import Path
 
 import torch._dynamo
-from fran.managers.data.training import (
-    DataManagerBaseline,
+from fran.managers.data.main import (
     DataManagerLBD,
     DataManagerPatch,
     DataManagerSource,
     DataManagerWhole,
-    DataManagerWID,
 )
 
 torch._dynamo.config.suppress_errors = True
@@ -56,7 +55,7 @@ import torch
 
 def safe_log_dict(exp, base_path: str, d: dict):
     """
-    Recursively log a nested dict into Neptune experiment,
+    Recursively log a nested dict into an experiment logger,
     key by key with try/except so one bad key doesn't stop the rest.
     """
     for k, v in d.items():
@@ -68,11 +67,15 @@ def safe_log_dict(exp, base_path: str, d: dict):
             else:
                 exp[path].assign(v)
         except Exception as e:
-            print(f"[Neptune logging skipped] {path}: {e}")
+            print(f"[Logger skipped] {path}: {e}")
 
 
-def _dm_class_for_test_every_n_epochs(test_every_n_epochs: int):
-    return DataManagerMulti if int(test_every_n_epochs) > 0 else DataManagerDual
+def _dm_class_for_test_every_n_epochs(
+    test_every_n_epochs: int, batch_tfms: bool = False
+):
+    if int(test_every_n_epochs) > 0:
+        return DataManagerMultiBTfms if batch_tfms else DataManagerMulti
+    return DataManagerDualBTfms if batch_tfms else DataManagerDual
 
 
 def _dm_class_from_ckpt(ckpt_path: str | Path):
@@ -82,8 +85,11 @@ def _dm_class_from_ckpt(ckpt_path: str | Path):
     """
     sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     hp = sd.get("datamodule_hyper_parameters", {}) or sd.get("hyper_parameters", {})
-    # your DMs store keys_test only on Multi
-    return DataManagerMulti if "keys_test" in hp else DataManagerDual
+    batch_tfms = bool(hp["batch_tfms"]) if "batch_tfms" in hp else False
+    return _dm_class_for_test_every_n_epochs(
+        test_every_n_epochs=1 if "plan_test" in hp["configs"] else 0,
+        batch_tfms=batch_tfms,
+    )
 
 
 class Trainer:
@@ -104,6 +110,7 @@ class Trainer:
         self.qc_configs(configs, self.project)
 
         self.test_every_n_epochs = 0  # default
+        self.batch_tfms = False
 
     def setup(
         self,
@@ -112,7 +119,6 @@ class Trainer:
         lr=None,
         devices=1,
         compiled=None,
-        neptune=True,
         profiler=False,
         debug: bool = False,
         test_every_n_epochs: int = 0,
@@ -122,15 +128,17 @@ class Trainer:
         epochs=600,
         batchsize_finder=False,
         override_dm_checkpoint=False,
-        early_stopping=False,
+        early_stopping=True,
         early_stopping_monitor="val0_loss_dice",
         early_stopping_mode="min",
         early_stopping_patience=30,
         early_stopping_min_delta=0.0,
         lr_floor=None,
+        batch_tfms: bool = False,
     ):
         self.test_every_n_epochs = int(test_every_n_epochs)
         self.debug = bool(debug)
+        self.batch_tfms = bool(batch_tfms)
 
         self.maybe_alter_configs(batch_size, compiled)
         self.set_lr(lr)
@@ -139,7 +147,6 @@ class Trainer:
 
         cbs, logger, profiler = self.init_cbs(
             cbs=cbs,
-            neptune=neptune,
             batchsize_finder=batchsize_finder,
             test_every_n_epochs=self.test_every_n_epochs,
             profiler=profiler,
@@ -173,7 +180,9 @@ class Trainer:
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
 
-        DM = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
+        DM = _dm_class_for_test_every_n_epochs(
+            self.test_every_n_epochs, batch_tfms=self.batch_tfms
+        )
         dm = DM(
             self.project.project_title,
             configs=self.configs,
@@ -181,6 +190,7 @@ class Trainer:
             cache_rate=cache_rate,
             device=self.configs["dataset_params"].get("device", "cuda"),
             ds_type=ds_type,
+            batch_tfms=self.batch_tfms,
         )
 
         labels_all = self.configs["plan_train"].get("labels_all")
@@ -206,7 +216,9 @@ class Trainer:
 
         # Prefer the class the checkpoint was created with.
         DM_from_ckpt = _dm_class_from_ckpt(self.ckpt)
-        DM_wanted = _dm_class_for_test_every_n_epochs(self.test_every_n_epochs)
+        DM_wanted = _dm_class_for_test_every_n_epochs(
+            self.test_every_n_epochs, batch_tfms=self.batch_tfms
+        )
 
         # If they disagree, do NOT force DM_wanted; load what the ckpt expects.
         # That avoids crashes from missing stored hyperparams / attributes.
@@ -300,13 +312,12 @@ class Trainer:
     def init_cbs(
         self,
         cbs,
-        neptune,
         batchsize_finder,
         test_every_n_epochs,
         profiler,
         tags,
         description="",
-        early_stopping=False,
+        early_stopping=True,
         early_stopping_monitor="val0_loss_dice",
         early_stopping_mode="min",
         early_stopping_patience=30,
@@ -348,11 +359,6 @@ class Trainer:
             ]
         if lr_floor is not None:
             cbs += [LRFloorStop(min_lr=lr_floor)]
-        if neptune:
-            headline(
-                "Neptune is sunset: trainer_core no longer initializes Neptune logger/callbacks. "
-                "Use fran.trainers.trainer.Trainer (W&B path)."
-            )
         logger = None
 
         if profiler == True:
@@ -487,9 +493,7 @@ class Trainer:
         elif mode == "lbd":
             DMClass = DataManagerLBD
         elif mode == "pbd":
-            DMClass = DataManagerWID
-        elif mode == "baseline":
-            DMClass = DataManagerBaseline
+            DMClass = DataManagerPatch
         else:
             raise NotImplementedError(
                 "Mode {} is not supported for datamanager".format(mode)
@@ -570,9 +574,7 @@ if __name__ == "__main__":
     # run_name ='LITS-1003'
     compiled = False
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     batchsize_finder = False
-    neptune = True
     tags = []
     description = f"Partially trained up to 100 epochs"
     # %%
@@ -592,7 +594,6 @@ if __name__ == "__main__":
         epochs=600 if profiler == False else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
-        neptune=neptune,
         tags=tags,
         description=description,
     )
@@ -624,7 +625,6 @@ if __name__ == "__main__":
         epochs=600 if profiler == False else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
-        neptune=neptune,
         tags=tags,
         description=description,
     )
@@ -651,7 +651,6 @@ if __name__ == "__main__":
         epochs=600 if profiler == False else 1,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
-        neptune=neptune,
         tags=tags,
         description=description,
     )

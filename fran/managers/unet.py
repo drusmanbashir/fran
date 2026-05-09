@@ -114,9 +114,7 @@ class UNetManager(LightningModule):
         if not hasattr(self, "batch_size"):
             self.batch_size = batch["image"].shape[0]
         inputs, target = batch["image"], batch["lm"]
-        pred = self.forward(
-            inputs
-        )  # self.pred so that NeptuneImageGridCallback can use it
+        pred = self.forward(inputs)  # self.pred so callbacks can use it
         batch["pred"] = pred
 
         loss = self.loss_fnc(pred, target, use_mask=use_mask)
@@ -398,9 +396,7 @@ class UNetManagerMulti(UNetManager):
         if not hasattr(self, "batch_size"):
             self.batch_size = batch["image"].shape[0]
         inputs, target = batch["image"], batch["lm"]
-        pred = self.forward(
-            inputs
-        )  # self.pred so that NeptuneImageGridCallback can use it
+        pred = self.forward(inputs)  # self.pred so callbacks can use it
         if dataloader_idx == 1:
             pred = pred[0]
             pred = self.Discretize(pred)
@@ -493,7 +489,7 @@ if __name__ == "__main__":
     if not hasattr(N, "batch_size"):
         N.batch_size = batch["image"].shape[0]
     inputs, target = batch["image"], batch["lm"]
-    pred = N.forward(inputs)  # N.pred so that NeptuneImageGridCallback can use it
+    pred = N.forward(inputs)  # N.pred so callbacks can use it
 
 # %%
     loss = N.loss_fnc(pred, target, use_mask=use_mask)

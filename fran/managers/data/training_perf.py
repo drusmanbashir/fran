@@ -12,8 +12,8 @@ import ipdb
 import numpy as np
 import pandas as pd
 import torch
-from fastcore.basics import listify, operator
-from fran.configs.parser import is_excel_None
+import operator
+from fran.configs.helpers import is_excel_None
 from fran.data.collate import patch_collated, source_collated, whole_collated
 from fran.data.dataset import NormaliseClipd
 from fran.managers.project import Project
@@ -21,6 +21,7 @@ from fran.preprocessing.helpers import bbox_bg_only, compute_fgbg_ratio
 from fran.transforms.imageio import TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
+from utilz.listify import listify
 from fran.transforms.batch_affine import BatchRandAffined3D
 from fran.utils.folder_names import FolderNames
 from fran.utils.misc import convert_remapping
@@ -357,7 +358,6 @@ class DataManagerDual(LightningDataModule):
             "sourcepbd": DataManagerPatch,
             "lbd": DataManagerLBD,
             "rbd": DataManagerRBD,
-            "baseline": DataManagerBaseline,
         }
 
         for mode in (train_mode, valid_mode):
@@ -1030,15 +1030,23 @@ class DataManagerSource(DataManager):
             self.collate_fn = None
 
 class DataManagerWhole(DataManager):
+    keys_tr = "L,E,Affine,ResizeW,N,IntensityTfms"
+    keys_val = "L,E,ResizeW,N"
+
     def __init__(self, project, configs: dict, batch_size=8, **kwargs):
         super().__init__(project, configs, batch_size, **kwargs)
-        self.keys_tr = "L,E,F1,F2,Affine,ResizeW,N,IntensityTfms"
-        self.keys_val = "L,E,ResizeW,N"
+        assert "F1" not in self.keys_tr and "F2" not in self.keys_tr
         if self.keys is None:
-            if self.split == "train":
+            if self.uses_train_keys():
                 self.keys = self.keys_tr
-            elif self.split == "valid":
+                assert "F1" not in self.keys and "F2" not in self.keys
+            elif self.is_eval_split():
                 self.keys = self.keys_val
+
+    def set_effective_batch_size(self):
+        self.effective_batch_size = (
+            self.batch_size
+        )  # never sample a file more than once ofc
 
     def _set_collate_fn(self):
         self.collate_fn = whole_collated
@@ -1326,7 +1334,7 @@ class DataManagerBaseline(DataManagerLBD):
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
-    from fastcore.basics import warnings
+    import warnings
     from fran.configs.parser import ConfigMaker
     from fran.transforms.imageio import LoadTorchd
     from utilz.imageviewers import ImageMaskViewer

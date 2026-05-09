@@ -6,7 +6,7 @@ from copy import deepcopy
 import ipdb
 import numpy as np
 import torch
-from fastcore.foundation import listify
+from utilz.listify import listify
 from fran.data.dataset import FillBBoxPatchesd
 from fran.inference.base import (
     BaseInferer,
@@ -457,7 +457,7 @@ if __name__ == "__main__":
     from utilz.fileio import load_yaml
 
     best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
-    run_w = best_runs["run_w"]
+    run_w = best_runs["whole"]
 
 # %%
 # SECTION:-------------------- KITS-------------------------------------------------------------------------------------- <CR>

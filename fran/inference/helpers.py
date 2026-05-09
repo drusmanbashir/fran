@@ -9,7 +9,14 @@ import SimpleITK as sitk
 import torch
 from fran.managers import Project
 from fran.trainers import checkpoint_from_model_id
-from fran.transforms.imageio import LoadImage, LoadSITKd, SITKReader, TorchReader
+from fran.transforms.imageio import (
+    LoadImage,
+    LoadSITKd,
+    SITKReader,
+    SimpleTorchLoader,
+    TorchReader,
+)
+from monai.data.meta_tensor import MetaTensor
 from monai.transforms.spatial.dictionary import Orientationd
 from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.io.dictionary import LoadImaged
@@ -209,6 +216,30 @@ def load_images_pt(data):
     data = parse_input(data)
     data = [loader(d) for d in data]
     return data
+
+
+class SmartImageLoader:
+    def __init__(self, keys):
+        self.keys = tuple(keys)
+        self.torch_loader = SimpleTorchLoader(keys=self.keys)
+        self.image_loader = LoadSITKd(
+            keys=self.keys,
+            image_only=True,
+            ensure_channel_first=False,
+            simple_keys=True,
+        )
+
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.keys:
+            image = d[key]
+            if isinstance(image, (torch.Tensor, MetaTensor)):
+                continue
+            if isinstance(image, (str, Path)) and str(image).endswith(".pt"):
+                d = self.torch_loader(d)
+                continue
+            d = self.image_loader(d)
+        return d
 
 
 

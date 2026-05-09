@@ -869,9 +869,7 @@ if __name__ == "__main__":
     cbs = [StoreInfo(run_name="neo" if run_name is None else run_name, freq=5)]
     compiled = False
     profiler = False
-    # NOTE: if Neptune = False, should store checkpoint locally
     batch_finder = False
-    neptune = False
     tags = []
     description = f""
     config["dataset_params"]["batch_size"] = bs
@@ -926,7 +924,7 @@ if __name__ == "__main__":
         batch["lm"] = batch["lm"].to("cuda")
 
         inputs, target = batch["image"], batch["lm"]
-        pred = N.forward(inputs)  # N.pred so that NeptuneImageGridCallback can use it
+        pred = N.forward(inputs)  # N.pred so callbacks can use it
 
         pred, target = N.maybe_apply_ds_scales(pred, target)
         loss = N.loss_fnc(pred, target)

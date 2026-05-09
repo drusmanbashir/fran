@@ -17,16 +17,11 @@ conf_fldr = os.environ["FRAN_CONF"]
 
 def load_best_runs_yaml(conf_fldr):
     best_runs = load_yaml(Path(conf_fldr) / "best_runs.yaml")
-    localiser_runs = best_runs["runs"]["localiser"]
-    best_runs["runs"]["localiser"] = {
-        key: os.path.expandvars(value) for key, value in localiser_runs.items()
-    }
     return best_runs
 
 
 best_runs = load_best_runs_yaml(conf_fldr)
-best_runs = best_runs["runs"]
-run_w = best_runs["run_w"]
+run_w = best_runs["whole"]
 runs_2d = best_runs["localiser"]
 totalseg_runs_all = best_runs["totalseg"]
 totalseg_run_big = totalseg_runs_all["full"][0]

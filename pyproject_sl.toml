@@ -35,7 +35,6 @@ slicer = [
 
 # Heavy stacks (install in your normal conda env, NOT in Slicer)
 full = [
-  "fastcore",
   "torchinfo",
   "torchio==0.20.22",
   "dynamic-network-architectures>=0.4",
@@ -46,7 +45,6 @@ full = [
   "lightning>=2.5.0.post0",
   "lightning_utilities>=0.11.9",
   "monai>=1.4.0",
-  "neptune>=1.13.0",
   "opencv_python>=4.10.0.84",
   "paramiko>=3.5.0",
   "plotly>=6.0.0",
@@ -102,5 +100,5 @@ check_untyped_defs = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
-module = ["monai.*", "lightning.*", "fastcore.*", "plotly.*", "utilz.*"]
+module = ["monai.*", "lightning.*", "plotly.*", "utilz.*"]
 ignore_missing_imports = true

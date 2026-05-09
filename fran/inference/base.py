@@ -27,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from fastcore.all import listify
+from utilz.listify import listify
 from fran.data.dataset import NormaliseClipd
 from fran.managers.unet import UNetManager
 from fran.trainers import checkpoint_from_model_id, write_normalized_ckpt

@@ -62,7 +62,9 @@ class SimpleTorchLoader(MapTransform):
 
         for key in self.key_iterator(data):
             data_ = data[key]
-            data_out = torch.load(data_, weights_only=False)
+            data_out = torch.load(
+                data_, map_location="cpu", weights_only=False
+            )
             data[key] = data_out
         return data
 
@@ -511,7 +513,12 @@ class TorchReader(ImageReader):
         filenames: Sequence[PathLike] = ensure_tuple(data)
         for name in filenames:
             try:
-                img = torch.load(name, weights_only=False, **kwargs)
+                img = torch.load(
+                    name,
+                    map_location="cpu",
+                    weights_only=False,
+                    **kwargs,
+                )
                 img_.append(img)
             except Exception as e:
                 raise RuntimeError(f"Failed to load {name}: {e}")
@@ -537,7 +544,7 @@ class LoadTorchd(MapTransform):
 
     def func(self, fn):
         with safe_globals([MetaTensor]):
-            img = torch.load(fn, weights_only=False)
+            img = torch.load(fn, map_location="cpu", weights_only=False)
         meta = img.meta
         meta["src_filename"] = meta["filename_or_obj"]
         meta["filename_or_obj"] = str(fn)

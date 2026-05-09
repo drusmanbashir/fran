@@ -11,8 +11,8 @@ from utilz.helpers import MatchError, find_matching_fn, set_autoreload
 
 set_autoreload()
 from fran.inference.cascade import CascadeInferer, img_bbox_collated
-from fran.inference.helpers import list_to_chunks, load_oriented_images
-from fran.transforms.imageio import LoadSITKd, SimpleTorchLoader
+from fran.inference.helpers import SmartImageLoader, list_to_chunks, load_oriented_images
+from fran.transforms.imageio import LoadSITKd
 from fran.transforms.misc_transforms import DummyTransform
 from fran.transforms.spatialtransforms import CropByYolo
 from localiser.inference.localiserinferer import LocaliserInferer
@@ -75,7 +75,7 @@ class LocaliserInfererPT(LocaliserInferer):
     # Oriented Loaded tensors expected
 
     image_key = "image"
-    loader = SimpleTorchLoader(keys=[image_key])
+    loader = SmartImageLoader(keys=[image_key])
 
     keys_preproc = "E,Dev,O,Orig,W,S,P1,P2,PF,R,Rep,E2,N"
 

@@ -4,8 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 import ray
-from fastcore.basics import GetAttr
-from fran.configs.parser import is_excel_None
+from fran.configs.helpers import is_excel_None
 from fran.preprocessing.preprocessor import (
     Preprocessor,
     store_label_count,
@@ -83,7 +82,7 @@ class LBDSamplerWorkerLocal(_LBDSamplerWorkerBase):
     pass
 
 
-class LabelBoundedDataGenerator(Preprocessor, GetAttr):
+class LabelBoundedDataGenerator(Preprocessor):
     actor_cls = LBDSamplerWorkerImpl
     local_worker_cls = LBDSamplerWorkerLocal
     remapping_key = "remapping_lbd_rbd"
@@ -154,6 +153,7 @@ class LabelBoundedDataGenerator(Preprocessor, GetAttr):
             data_folder=data_folder,
             output_folder=output_folder,
             devices=devices,
+            hdf5_shards=True,
         )
 
     def create_data_df(self):

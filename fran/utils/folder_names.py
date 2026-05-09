@@ -3,7 +3,7 @@ import hashlib
 from typing import Union
 
 import ipdb
-from fran.utils.string_works import is_excel_None
+from fran.configs.helpers import is_excel_None
 
 tr = ipdb.set_trace
 

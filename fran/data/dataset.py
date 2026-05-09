@@ -19,7 +19,7 @@ tr = ipdb.set_trace
 import itk
 import numpy as np
 import SimpleITK as sitk
-from fastcore.basics import Dict
+from typing import Dict
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.intensitytransforms import NormaliseClipd
 from fran.transforms.spatialtransforms import (
@@ -802,5 +802,4 @@ if __name__ == "__main__":
 
 # SNext error/warning todo commentECTION:
 # %%
-
 

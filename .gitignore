@@ -9,42 +9,40 @@ AGENT.md
 *jpeg
 *nii
 *nii.gz
-
-
-
 *np
 *npy
 *~lock*
 **/.cache/*
-.idea/
-.ipynb_checkpoints/
 .neptune/
 .*rope*
-.pyc
-__pycache__/
 archived/
 hidden/
 pyrightconfig.json
-tmp*
 vim-debug-configuration.json
 experiments/.neptune/config.json
 *lightning_logs*
 .Rproj.user
 *.zip
-*.egg-info/
-build/
 .mypy*
 cufil*
 
-# Standard ignore block
+# Shared block synced from agent/templates/shared_gitignore_common.txt
+# Shared gitignore template for fran, localiser, utilz, and label_analysis.
+
 .DS_Store
 Thumbs.db
 .vscode/
+.idea/
 *.code-workspace
 *~
+.~lock*
+__pycache__/
 *.py[cod]
 *.so
+.py_import_completer.db
 .eggs/
+*.egg-info/
+build/
 dist/
 pip-wheel-metadata/
 .venv/
@@ -61,6 +59,7 @@ ENV/
 .coverage
 .coverage.*
 htmlcov/
+.ipynb_checkpoints/
 profile_default/
 ipython_config.py
 .env

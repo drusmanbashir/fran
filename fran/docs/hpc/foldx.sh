@@ -21,6 +21,6 @@ python /data/EECS-LITQ/fran_storage/code/fran/fran/run/train.py \
   --epochs 600 \
   --compiled false\
   --profiler false \
-  --neptune true \
+  --wandb false \
   --cache-rate 0.0
                        

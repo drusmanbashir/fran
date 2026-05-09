@@ -144,7 +144,7 @@ class RayWorkerBase(Preprocessor):
         return normalized
 
     def apply_transforms(self, data: dict):
-        if self.debug == False:
+        if not self.debug:
             return self.apply_transforms_compose(data)
         else:
             return self.apply_transforms_debug(data)
@@ -355,5 +355,4 @@ class RayWorkerBase(Preprocessor):
 # %%
 # parse_excel_remapping
 # parse_excel_datasources(self.plan["datasources"])
-
 

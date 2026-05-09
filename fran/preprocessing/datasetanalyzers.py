@@ -1,10 +1,9 @@
 # %%
 
 import numpy as np
-from fastcore.all import is_close, test_eq
-from fastcore.basics import GetAttr
 from fran.preprocessing.helpers import import_h5py, percentile_range_to_str
 from fran.transforms.imageio import LoadSITKd
+from utilz.helpers import is_close, test_eq
 from utilz.fileio import Path, collections, get_extension, load_dict, load_image, save_dict, torch
 
 # sys.path += ["/home/ub/Dropbox/code/fran"]
@@ -85,9 +84,7 @@ class SingleCaseAnalyzer:
         self._case_id = value
 
 
-class MultiCaseAnalyzer(GetAttr):
-    _default = "project"
-
+class MultiCaseAnalyzer:
     def __init__(self, project, bg_label=0) -> None:
         self.project = project
         self.bg_label = bg_label
@@ -103,7 +100,7 @@ class MultiCaseAnalyzer(GetAttr):
 
         try:
             self.raw_dataset_properties = load_dict(
-                self.raw_dataset_properties_filename
+                self.project.raw_dataset_properties_filename
             )
             prev_processed_cases = set(
                 [b["case_id"] for b in self.raw_dataset_properties]
@@ -111,7 +108,7 @@ class MultiCaseAnalyzer(GetAttr):
         except FileNotFoundError:
             print(
                 "First time preprocessing dataset. Will create new file: {}".format(
-                    self.raw_dataset_properties_filename
+                    self.project.raw_dataset_properties_filename
                 )
             )
             self.raw_dataset_properties = []
@@ -186,8 +183,8 @@ class MultiCaseAnalyzer(GetAttr):
 
     def store_raw_dataset_properties(self):
         processed_props = [output["case"] for output in self.outputs]
-        if self.raw_dataset_properties_filename.exists():
-            existing_props = load_dict(self.raw_dataset_properties_filename)
+        if self.project.raw_dataset_properties_filename.exists():
+            existing_props = load_dict(self.project.raw_dataset_properties_filename)
             existing_total = len(existing_props)
             assert existing_total + len(processed_props) == len(self.project), (
                 "There is an existing raw_dataset_properties file. New cases are processed also, but their sum does not match the size of this project"
@@ -195,7 +192,7 @@ class MultiCaseAnalyzer(GetAttr):
             raw_dataset_props = existing_props + processed_props
         else:
             raw_dataset_props = processed_props
-        save_dict(raw_dataset_props, self.raw_dataset_properties_filename)
+        save_dict(raw_dataset_props, self.project.raw_dataset_properties_filename)
 
 
 def case_analyzer_wrapper(

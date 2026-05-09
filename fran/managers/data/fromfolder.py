@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from fran.data.dataset import NormaliseClipd
-from fran.managers.data.training import DataManager
+from fran.managers.data.main import DataManager
 from fran.transforms.imageio import LoadSITKd
 from monai.transforms.spatial.dictionary import (
     Orientationd,
@@ -15,9 +15,10 @@ from monai.transforms.utility.dictionary import (
     EnsureChannelFirstd,
 )
 from torchvision.datasets.folder import is_image_file
-from utilz.fileio import is_sitk_file, load_yaml
+from utilz.fileio import load_yaml
 from utilz.helpers import (
     find_matching_fn,
+    is_sitk_file,
 )
 from utilz.stringz import (
     headline,

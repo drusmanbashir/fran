@@ -1,7 +1,7 @@
 mamba install -c conda-forge ipython ipywidgets pandas matplotlib medpy numpy openpyxl pillow pygments jupyterlab pyyaml scikit-image scipy SimpleITK timm torchio tqdm einops monai ipdb gputil ray-tune ipympl lxml seaborn tensorboard lightning black
 mamba install -c pytorch ignite
-pip install batchgenerators nnunet neptune pipe connected-components-3d h5py torchinfo lmdb itk
-mamba install -c fastchan fastcore torchinfo
+pip install batchgenerators nnunet pipe connected-components-3d h5py torchinfo lmdb itk
+mamba install -c fastchan torchinfo
 
 # -----------others --------------------
 pip install ipympl ipdb pyradiomics paramiko
@@ -16,7 +16,7 @@ pip install ipympl ipdb pyradiomics paramiko
 FRAN_COMMON_PATH and PYTHON_PATH variables should be stored in ~/.profile so that slicer can access them
 Inside slicer:
 import pip
-nonai ="pydicom-seg", "pyradiomics", "connected-components-3d",  "fastcore", "ipython","ipywidgets","pandas","matplotlib","openpyxl","pillow","pygments","jupyterlab","pyyaml","scikit-image","scipy","timm","einops","ipdb","gputil","ipympl","lxml","seaborn","pyxnat", "paramiko","itk", "neptune"
+nonai ="pydicom-seg", "pyradiomics", "connected-components-3d", "ipython","ipywidgets","pandas","matplotlib","openpyxl","pillow","pygments","jupyterlab","pyyaml","scikit-image","scipy","timm","einops","ipdb","gputil","ipympl","lxml","seaborn","pyxnat", "paramiko","itk"
 mods="lightning","monai", "lxml","seaborn","nnunet","bs4", "ipywidgets", "ray[tune]"
 modules= "torch", "torchvision","lightning","monai", "torchio","tensorboard","nnunet",
 def install(modules): # it freezes but is working. print statements dont work

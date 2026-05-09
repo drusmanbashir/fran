@@ -1,3 +1,5 @@
+
+from utilz.fileio import save_np
 #
 # # %%
 #     with profile(activities=[ProfilerActivity.CPU], record_shapes=True) as prof:

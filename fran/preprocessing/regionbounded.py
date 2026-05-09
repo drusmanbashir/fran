@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 
+from fran.preprocessing.helpers import import_h5py
 import ipdb
 from localiser.inference.base import bbox_from_file
 import numpy as np
@@ -11,6 +12,7 @@ import ray
 import torch
 from fran.inference.cascade_yolo import LocaliserInfererPT
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
+from fran.preprocessing.preprocessor import DEFAULT_HDF5_SRC_DIMS
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.spatialtransforms import (
     CropByYoloWithForegroundFallbackd,
@@ -135,6 +137,7 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
             bbox_key="bbox",
             margin=margin,
         )
+
         self.transforms_dict["CropByYolo"] = self.CropByYolo
 
     def _create_data_dict(self, row):
@@ -287,10 +290,28 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
         self.I.run(imgs, overwrite=False)
         self.attach_bboxes(classes_in_bbox)
 
-    def process(self):
+    def process(
+        self,
+        overwrite=None,
+        derive_bboxes=True,
+        src_dims=DEFAULT_HDF5_SRC_DIMS,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
+    ):
         self.maybe_infer_bboxes()
-        self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
-        return super().process()
+        return super().process(
+            overwrite=overwrite,
+            derive_bboxes=derive_bboxes,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
+        )
 
     def create_data_df(self):
         super().create_data_df()
@@ -323,13 +344,14 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
 
 
 # %%
-# SECTION:-------------------- setup-------------------------------------------------------------------------------------- if __name__ == "__main__":
+# SECTION:-------------------- setup-------------------------------------------------------------------------------------- if __name__ == "__main__": <CR>
 if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
     from fran.utils.common import *
     from fran.utils.folder_names import FolderNames
     from utilz.helpers import pp
+
     project_title = "kits23"
     P = Project(project_title=project_title)
     # P.maybe_store_projectwide_properties()
@@ -352,15 +374,21 @@ if __name__ == "__main__":
 
     overwrite = False
     num_processes = 8
-    R = RegionBoundedDataGenerator(project=P, plan=plan, data_folder=existing_fldr,devices=devices)
+    R = RegionBoundedDataGenerator(
+        project=P, plan=plan, data_folder=existing_fldr, devices=devices
+    )
     R.setup(num_processes=num_processes, overwrite=overwrite)
+# %%
+
 # %%
     R.process()
 # %%
-    
-    # %%  # T:block_start|RegionBoundedDataGenerator.maybe_infer_bboxes
-#SECTION:-------------------- maybe_infer_bboxes--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.maybe_infer_bboxes
-    regions = R._localiser_regions_list()  # T:self_ref|regions = self._localiser_regions_list()
+
+# %%  # T:block_start|RegionBoundedDataGenerator.maybe_infer_bboxes
+# SECTION:-------------------- maybe_infer_bboxes--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.maybe_infer_bboxes <CR>
+    regions = (
+        R._localiser_regions_list()
+    )  # T:self_ref|regions = self._localiser_regions_list()
     R.I = LocaliserInfererPT(  # T:self_ref|self.I = LocaliserInfererPT(
         localiser_regions=regions,
         window="a",
@@ -368,12 +396,18 @@ if __name__ == "__main__":
         devices=R.devices,  # T:self_ref|    devices=self.devices,
         debug=False,
     )
-    R.yolo_specs = R.I.yolo_state_dict  # T:self_ref|self.yolo_specs = self.I.yolo_state_dict
-    classes_in_bbox = R.get_region_indices()  # T:self_ref|classes_in_bbox = self.get_region_indices()
+    R.yolo_specs = (
+        R.I.yolo_state_dict
+    )  # T:self_ref|self.yolo_specs = self.I.yolo_state_dict
+    classes_in_bbox = (
+        R.get_region_indices()
+    )  # T:self_ref|classes_in_bbox = self.get_region_indices()
 # %%
     R.attach_bboxes(classes_in_bbox)  # T:self_ref|self.attach_bboxes(classes_in_bbox)
     missing = R.missing_bbox_mask()  # T:self_ref|missing = self.missing_bbox_mask()
-    imgs = R.df.loc[missing, "image"].tolist()  # T:self_ref|imgs = self.df.loc[missing, "image"].tolist()
+    imgs = R.df.loc[
+        missing, "image"
+    ].tolist()  # T:self_ref|imgs = self.df.loc[missing, "image"].tolist()
     if len(imgs) == 0:
         pass  # T:early_return|    return
     cprint(
@@ -383,11 +417,8 @@ if __name__ == "__main__":
     R.I.run(imgs, overwrite=False)  # T:self_ref|self.I.run(imgs, overwrite=False)
     R.attach_bboxes(classes_in_bbox)  # T:self_ref|self.attach_bboxes(classes_in_bbox)
     # end PythonMethodScratch  # T:block_end|RegionBoundedDataGenerator.maybe_infer_bboxes
-        
 
 # %%
-
-
 
     RR = RBDSamplerWorkerLocal(
         project=R.project,
@@ -398,7 +429,7 @@ if __name__ == "__main__":
 # %%
 
     row = R.df.iloc[0]
-    RR.debug=True
+    RR.debug = True
 # %%
 # %%
     dici = {
@@ -539,17 +570,21 @@ if __name__ == "__main__":
     )
     RR.process(mini_df)
 
-#SECTION:-------------------- process--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.process
+# SECTION:-------------------- process--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.process <CR>
     # R.maybe_infer_bboxes()  # T:self_ref|self.maybe_infer_bboxes()
-    R.mini_dfs = R.split_dataframe_for_workers(R.df, R.num_processes)  # T:self_ref|self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
+    R.mini_dfs = R.split_dataframe_for_workers(
+        R.df, R.num_processes
+    )  # T:self_ref|self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
     process_result = super().process()  # T:return|return super().process()
     # end PythonMethodScratch  # T:block_end|RegionBoundedDataGenerator.process
 # %%
-    a= R.mini_dfs[0].iloc[:3]
+    a = R.mini_dfs[0].iloc[:3]
 # %%
-    # %%  # T:block_start|RegionBoundedDataGenerator.maybe_infer_bboxes
-#SECTION:-------------------- maybe_infer_bboxes--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.maybe_infer_bboxes
-    regions = R._localiser_regions_list()  # T:self_ref|regions = self._localiser_regions_list()
+# %%  # T:block_start|RegionBoundedDataGenerator.maybe_infer_bboxes
+# SECTION:-------------------- maybe_infer_bboxes--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator.maybe_infer_bboxes <CR>
+    regions = (
+        R._localiser_regions_list()
+    )  # T:self_ref|regions = self._localiser_regions_list()
     R.I = LocaliserInfererPT(  # T:self_ref|self.I = LocaliserInfererPT(
         localiser_regions=regions,
         window="a",
@@ -558,11 +593,17 @@ if __name__ == "__main__":
         debug=False,
     )
 # %%
-    R.yolo_specs = R.I.yolo_state_dict  # T:self_ref|self.yolo_specs = self.I.yolo_state_dict
-    classes_in_bbox = R.get_region_indices()  # T:self_ref|classes_in_bbox = self.get_region_indices()
+    R.yolo_specs = (
+        R.I.yolo_state_dict
+    )  # T:self_ref|self.yolo_specs = self.I.yolo_state_dict
+    classes_in_bbox = (
+        R.get_region_indices()
+    )  # T:self_ref|classes_in_bbox = self.get_region_indices()
     R.attach_bboxes(classes_in_bbox)  # T:self_ref|self.attach_bboxes(classes_in_bbox)
     missing = R.missing_bbox_mask()  # T:self_ref|missing = self.missing_bbox_mask()
-    imgs = R.df.loc[missing, "image"].tolist()  # T:self_ref|imgs = self.df.loc[missing, "image"].tolist()
+    imgs = R.df.loc[
+        missing, "image"
+    ].tolist()  # T:self_ref|imgs = self.df.loc[missing, "image"].tolist()
     if len(imgs) == 0:
         pass  # T:early_return|    return
     cprint(
@@ -639,9 +680,10 @@ if __name__ == "__main__":
 
     dici3.get("_preprocess_events")
 
-    # %%  # T:block_start|RegionBoundedDataGenerator.process
+# %%  # T:block_start|RegionBoundedDataGenerator.process
 
-    # %%
+# %%
     bbox_files = []
-    # %%  # T:block_start|RegionBoundedDataGenerator._index_bbox_files_by_case_id
-#SECTION:-------------------- _index_bbox_files_by_case_id--------------------------------------------------------------------------------------  # T:block_meta|RegionBoundedDataGenerator._index_bbox_files_by_case_id
+# %%  # T:block_start|RegionBoundedDataGenerator._index_bbox_files_by_case_id
+
+# %%

@@ -18,10 +18,9 @@ from utilz.stringz import headline
 tr = ipdb.set_trace
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D
+from fran.configs.helpers import make_patch_size, make_src_dims_from_patch_size
 from fran.configs.parser import (
     load_metadata,
-    make_patch_size,
-    make_src_dims_from_patch_size,
 )
 from fran.managers.base import load_checkpoint
 
@@ -208,8 +207,6 @@ def setup_tune_params(configs):
 
 def train_with_tune(config, project_title, num_epochs=10):
     compiled = False
-    # NOTE: if Neptune = False, should store checkpoint locally
-    neptune = False
     override_dm = False
     tags = []
     description = f"Ray tune"
@@ -240,7 +237,6 @@ def train_with_tune(config, project_title, num_epochs=10):
         epochs=num_epochs,
         batchsize_finder=True,
         profiler=False,
-        neptune=neptune,
         tags=tags,
         description=description,
         lr=lr,
@@ -257,7 +253,6 @@ def train_with_tune(config, project_title, num_epochs=10):
     #             epochs=num_epochs,
     #             batchsize_finder=True,
     #             profiler=False,
-    #             neptune=neptune,
     #             tags=tags,
     #             description=description,
     #             lr=lr,

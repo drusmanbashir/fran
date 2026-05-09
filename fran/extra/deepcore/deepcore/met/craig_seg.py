@@ -66,9 +66,7 @@ class CraigSeg(EarlyTrain):
         if not hasattr(self, "batch_size"):
             self.batch_size = batch["image"].shape[0]
         inputs, target = batch["image"], batch["lm"]
-        pred = self.model.forward(
-            inputs.to("cuda")
-        )  # self.pred so that NeptuneImageGridCallback can use it
+        pred = self.model.forward(inputs.to("cuda"))  # self.pred so callbacks can use it
 
         loss = self.loss_fnc(pred, target.to("cuda"))
         loss_dict = self.loss_fnc.loss_dict
@@ -263,7 +261,6 @@ if __name__ == "__main__":
     compiled = False
     profiler = False
     batch_finder = False
-    neptune = False
     tags = []
     cbs = []
     description = f""
@@ -279,7 +276,6 @@ if __name__ == "__main__":
         batchsize_finder=batch_finder,
         profiler=profiler,
         cbs=cbs,
-        neptune=neptune,
         tags=tags,
         description=description,
     )

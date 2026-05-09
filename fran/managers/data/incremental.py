@@ -11,8 +11,8 @@ from typing import Optional
 
 import ipdb
 import pandas as pd
-from fastcore.basics import listify
-from fran.configs.parser import is_excel_None
+from utilz.listify import listify
+from fran.configs.helpers import is_excel_None
 from fran.data.collate import (
     grid_collated,
     patch_collated,
@@ -41,9 +41,8 @@ from typing import Optional
 import ipdb
 import pandas as pd
 from fran.data.collate import grid_collated
-from fran.managers.data.training import (
+from fran.managers.data.main import (
     DataManager,
-    DataManagerBaseline,
     DataManagerDual,
     DataManagerLBD,
     DataManagerPatch,
@@ -520,10 +519,6 @@ class DataManagerPatchI(DataManagerPatch, DataManagerI):
     pass
 
 
-class DataManagerBaselineI(DataManagerBaseline, DataManagerI):
-    pass
-
-
 @dataclass(frozen=True)
 class DataManagerModeSpec:
     mode: str
@@ -557,11 +552,6 @@ class DataManagerModes:
         manager_cls=DataManagerLBDI,
         collate_fn=source_collated,
     )
-    BASELINE = DataManagerModeSpec(
-        mode="baseline",
-        manager_cls=DataManagerBaselineI,
-        collate_fn=whole_collated,
-    )
     # PBD = DataManagerModeSpec(
     #     mode="pbd",
     #     manager_cls=DataManagerWIDI,
@@ -574,7 +564,6 @@ class DataManagerModes:
         WHOLE.mode: WHOLE,
         PATCH.mode: PATCH,
         LBD.mode: LBD,
-        BASELINE.mode: BASELINE,
         # PBD.mode: PBD,
     }
 
@@ -608,7 +597,7 @@ def case_id_from_col(filename):
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     import torch
-    from fastcore.basics import warnings
+    import warnings
     from fran.configs.parser import ConfigMaker
     from fran.managers.project import Project
 
