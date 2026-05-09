@@ -4,7 +4,7 @@ import itertools as il
 
 import numpy as np
 import torch
-from fran.trainers.base import checkpoint_from_model_id
+from fran.trainers.helpers import checkpoint_from_model_id
 from utilz.helpers import pp, slice_list
 
 

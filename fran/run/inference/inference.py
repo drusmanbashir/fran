@@ -3,7 +3,7 @@ import torch
 from fran.inference.base import BaseInferer
 from fran.inference.cascade import CascadeInferer, WholeImageInferer
 from fran.inference.cascade_yolo import CascadeInfererYOLO
-from fran.trainers.base import checkpoint_from_model_id
+from fran.trainers.helpers import checkpoint_from_model_id
 
 
 def load_ckpt_payload(run_name):

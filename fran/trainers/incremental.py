@@ -11,7 +11,7 @@ from fran.callback.incremental import UpdateDatasetOnPlateau
 # from fran.callback.modelcheckpoint import ModelCheckpointUB
 from fran.managers.project import Project
 from fran.managers.unet import UNetManager
-from fran.trainers.base import backup_ckpt, checkpoint_from_model_id, switch_ckpt_keys
+from fran.trainers.helpers import backup_ckpt, checkpoint_from_model_id, switch_ckpt_keys
 from fran.trainers.trainer import Trainer
 from utilz.cprint import cprint
 from utilz.stringz import headline
@@ -43,7 +43,7 @@ except:
 import torch
 
 
-class IncrementalTrainer(Trainer):
+class TrainerIncremental(Trainer):
     def __init__(
         self,
         project_title,
@@ -551,7 +551,7 @@ if __name__ == "__main__":
     train_init_indices = 150
     # %%
     # SECTION:-------------------- TRAIN--------------------------------------------------------------------------------------
-    Tm = IncrementalTrainer(P.project_title, conf, run_name, debug=debug)
+    Tm = TrainerIncremental(P.project_title, conf, run_name, debug=debug)
     epochs = 400
     # %%
     Tm.setup(

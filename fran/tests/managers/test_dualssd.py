@@ -8,15 +8,15 @@ import torch
 
 import fran.managers.data.main as training_module
 import fran.trainers.trainer as trainer_module
-import fran.trainers.trainer_runthrough as trainer_runthrough_module
+import fran.trainers.trainer_rt as trainer_rt_module
 from fran.managers.data.batch_tfms import DataManagerDualBTfms, DataManagerMultiBTfms
 from fran.managers.data.dualssd import DataManagerSourceDualSSD
 from fran.managers.data.dualssd import DataManagerDualSSDBTfms
 from fran.managers.data.main import DataManagerDual, DataManagerMulti, DataManagerSource, DataManagerWhole
 from fran.preprocessing.preprocessor import create_hdf5_shards
 from fran.trainers.trainer import Trainer
-from fran.trainers.trainer_core import _dm_class_for_test_every_n_epochs
-from fran.trainers.trainer_runthrough import TrainerRT
+from fran.trainers.helpers import _dm_class_for_test_every_n_epochs
+from fran.trainers.trainer_rt import TrainerRT
 
 
 def _write_case(output_folder: Path, case_id: str, shape=(32, 24, 16)):
@@ -170,8 +170,8 @@ def test_trainer_rt_init_dm_wraps_manager_class_for_dualssd(monkeypatch):
     trainer.val_every_n_epochs = 1
     trainer.run_through_helpers = lambda: SimpleNamespace(
         DataManagerRT=FakeDataManagerRT,
-        CaseIDRecorderRT=trainer_runthrough_module.CaseIDRecorderRT,
-        WandbLogBestCkptRT=trainer_runthrough_module.WandbLogBestCkptRT,
+        CaseIDRecorderRT=trainer_rt_module.CaseIDRecorderRT,
+        WandbLogBestCkptRT=trainer_rt_module.WandbLogBestCkptRT,
     )
 
     dm = TrainerRT.init_dm(trainer)

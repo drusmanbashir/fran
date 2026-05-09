@@ -14,7 +14,7 @@ from fran.inference.base import (
     load_images_nifti,
     load_params,
 )
-from fran.trainers.base import checkpoint_from_model_id
+from fran.trainers.helpers import checkpoint_from_model_id
 from fran.transforms.inferencetransforms import (
     BBoxFromPTd,
     KeepLargestConnectedComponentWithMetad,

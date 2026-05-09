@@ -201,23 +201,44 @@ def resolve_tsl_localiser_labels(mnemonic: str, run_name: str) -> list[int]:
 
 
 def choose_localiser_type(entry: dict, explicit: str | None, mnemonic: str) -> str | None:
+    if not isinstance(entry, dict):
+        if explicit is not None:
+            raise ValueError(
+                f"Mnemonic={mnemonic} has no localiser runs configured; omit --localiser-type"
+            )
+        return None
+    yolo_runs = nonempty_runs(entry["yolo"] if "yolo" in entry else None)
+    tsl_runs = nonempty_runs(entry["TSL"] if "TSL" in entry else None)
     if explicit is not None:
+        runs = yolo_runs if explicit == "yolo" else tsl_runs
+        if not runs:
+            raise ValueError(
+                f"Mnemonic={mnemonic} has no {explicit} localiser runs configured in best_runs; "
+                "pass a configured --localiser-type or omit it"
+            )
         return explicit
     if mnemonic == "totalseg":
         return None
-    if nonempty_runs(entry["TSL"] if "TSL" in entry else None):
-        return "TSL"
-    if nonempty_runs(entry["yolo"] if "yolo" in entry else None):
+    if yolo_runs and tsl_runs:
+        raise ValueError(
+            f"Mnemonic={mnemonic} has both yolo and TSL localiser runs configured; "
+            "pass --localiser-type"
+        )
+    if yolo_runs:
         return "yolo"
+    if tsl_runs:
+        return "TSL"
     return None
 
 
-def resolve_input_folder(folder: str | None, dataset: str | None) -> Path:
-    if (folder is None) == (dataset is None):
+def resolve_input_folders(folder: str | None, datasets: list[str] | None) -> list[Path]:
+    if (folder is None) == (datasets is None):
         raise ValueError("Pass exactly one of --folder or --dataset")
     if folder is not None:
-        return Path(folder)
-    return DS[dataset].folder / "images"
+        return [Path(folder)]
+    return [
+        Path(item) if "/" in item else DS[item].folder / "images" for item in datasets
+    ]
 
 
 def resolve_yolo_regions(run_name: str) -> list[str]:
@@ -232,6 +253,10 @@ def resolve_yolo_regions(run_name: str) -> list[str]:
 
 
 def resolve_standalone_run(entry: dict) -> str:
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, list):
+        return nonempty_runs(entry)[0]
     if "minimal" in entry and entry["minimal"]:
         return entry["minimal"][0]
     if "full" in entry and entry["full"]:
@@ -319,7 +344,7 @@ def parse_args(argv=None):
     parser.add_argument("--localiser-type", choices=["yolo", "TSL"], default=None)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--folder")
-    source.add_argument("--dataset", choices=sorted(DS.names()))
+    source.add_argument("--dataset", nargs="+")
     parser.add_argument("--gpus", nargs="+", type=int, default=[0])
     parser.add_argument("--chunksize", type=int, default=4)
     parser.add_argument("--patch-overlap", type=float, default=0.2)
@@ -329,7 +354,7 @@ def parse_args(argv=None):
 
 def main(args=None):
     args = parse_args(args) if isinstance(args, list) or args is None else args
-    input_folder = resolve_input_folder(args.folder, args.dataset)
+    input_folders = resolve_input_folders(args.folder, args.dataset)
     spec = resolve_spec(args.mnemonic, args.localiser_type)
     inferer = build_inferer(spec, args.gpus, args.patch_overlap)
     print(
@@ -338,10 +363,10 @@ def main(args=None):
             "run_name": spec.run_name,
             "run_w": spec.run_w,
             "inferer": spec.inferer_cls.__name__,
-            "input_folder": str(input_folder),
+            "input_folders": [str(folder) for folder in input_folders],
         }
     )
-    inferer.run([input_folder], chunksize=args.chunksize, overwrite=args.overwrite)
+    inferer.run(input_folders, chunksize=args.chunksize, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":

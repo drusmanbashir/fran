@@ -1,14 +1,14 @@
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import torch
-from lightning.pytorch.callbacks import BatchSizeFinder, EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 
 from fran.managers.data.main import DataManagerPatch
 from fran.trainers.trainer import Trainer
-from fran.trainers.trainer import FranBatchSizeFinder
-from fran.trainers.trainer_runthrough import CaseIDRecorderRT
+from fran.trainers.trainer_rt import BatchSizeFinderRT, CaseIDRecorderRT, TrainerRT
 
 
 def _write_resume_ckpt(path: Path, epoch: int, lr: float, compiled: bool = True) -> None:
@@ -88,7 +88,7 @@ def test_trainer_resolve_datamanager_accepts_sourcepbd_in_run_through():
 
 
 def test_trainer_init_cbs_uses_run_through_callback_semantics():
-    trainer = object.__new__(Trainer)
+    trainer = object.__new__(TrainerRT)
     trainer.run_through = True
     trainer.debug = False
     trainer.project = SimpleNamespace(project_title="proj")
@@ -97,7 +97,7 @@ def test_trainer_init_cbs_uses_run_through_callback_semantics():
         "model_params": {"out_channels": 2},
     }
 
-    cbs, logger, profiler = Trainer.init_cbs(
+    cbs, logger, profiler = TrainerRT.init_cbs(
         trainer,
         cbs=[],
         wandb=False,
@@ -117,14 +117,74 @@ def test_trainer_init_cbs_uses_run_through_callback_semantics():
 
     checkpoint_callbacks = [cb for cb in cbs if isinstance(cb, ModelCheckpoint)]
     early_stopping = [cb for cb in cbs if isinstance(cb, EarlyStopping)]
-    batch_finders = [cb for cb in cbs if isinstance(cb, BatchSizeFinder)]
+    batch_finders = [cb for cb in cbs if isinstance(cb, BatchSizeFinderRT)]
 
     assert logger is None
     assert profiler is None
     assert isinstance(cbs[0], CaseIDRecorderRT)
-    assert type(batch_finders[0]) is BatchSizeFinder
-    assert all(type(cb) is not FranBatchSizeFinder for cb in batch_finders)
+    assert type(batch_finders[0]) is BatchSizeFinderRT
     assert checkpoint_callbacks[0].monitor == "train0_loss"
     assert checkpoint_callbacks[0]._save_on_train_epoch_end is True
     assert early_stopping[0].monitor == "train0_loss_dice"
     assert early_stopping[0]._check_on_train_epoch_end is True
+
+
+def test_trainer_rt_setup_omits_validation_and_early_stopping_kwargs():
+    params = inspect.signature(TrainerRT.setup).parameters
+
+    assert "val_indices" not in params
+    assert "val_sampling" not in params
+    assert "val_every_n_epochs" not in params
+    assert "early_stopping" not in params
+    assert "early_stopping_monitor" not in params
+    assert "early_stopping_mode" not in params
+    assert "early_stopping_patience" not in params
+    assert "early_stopping_min_delta" not in params
+
+
+def test_trainer_rt_setup_rejects_validation_and_early_stopping_kwargs():
+    trainer = TrainerRT.__new__(TrainerRT)
+
+    with pytest.raises(TypeError):
+        TrainerRT.setup(trainer, val_every_n_epochs=2)
+
+    with pytest.raises(TypeError):
+        TrainerRT.setup(trainer, early_stopping=True)
+
+
+def test_batch_size_finder_rt_restores_checkpoint_with_weights_only_false(monkeypatch):
+    finder = BatchSizeFinderRT()
+    calls = {}
+
+    def fake_scale_batch_size_rt(
+        trainer,
+        mode,
+        steps_per_trial,
+        init_val,
+        max_trials,
+        batch_arg_name,
+    ):
+        trainer._checkpoint_connector.restore("probe.ckpt")
+        calls["mode"] = mode
+        calls["batch_arg_name"] = batch_arg_name
+        return 6
+
+    trainer = SimpleNamespace(
+        _checkpoint_connector=SimpleNamespace(
+            restore=lambda checkpoint_path=None, weights_only=None: calls.update(
+                checkpoint_path=checkpoint_path, weights_only=weights_only
+            )
+        )
+    )
+
+    monkeypatch.setattr(
+        "fran.trainers.trainer_rt._scale_batch_size_rt", fake_scale_batch_size_rt
+    )
+
+    finder.scale_batch_size(trainer, pl_module=object())
+
+    assert calls["checkpoint_path"] == "probe.ckpt"
+    assert calls["weights_only"] is False
+    assert calls["mode"] == "power"
+    assert calls["batch_arg_name"] == "batch_size"
+    assert finder.optimal_batch_size == 6

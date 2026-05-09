@@ -32,7 +32,7 @@ from fran.managers.data.main import (
 )
 from fran.managers.unet import UNetManager
 from fran.managers.wandb.wandb import WandbManager
-from fran.trainers.base import (
+from fran.trainers.helpers import (
     backup_ckpt,
     checkpoint_epoch,
     checkpoint_from_model_id,
@@ -492,7 +492,6 @@ class Trainer:
             rt = self.run_through_helpers()
             case_id_recorder_cls = rt.CaseIDRecorderRT
             wandb_best_ckpt_cls = rt.WandbLogBestCkptRT
-            batch_size_finder_cls = BatchSizeFinder
             checkpoint_kwargs["save_on_train_epoch_end"] = True
             early_stopping_kwargs["check_on_train_epoch_end"] = True
 

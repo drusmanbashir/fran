@@ -820,7 +820,7 @@ if __name__ == "__main__":
 
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
-    from fran.trainers.base import checkpoint_from_model_id
+    from fran.trainers.helpers import checkpoint_from_model_id
     from fran.trainers.impsamp import resolve_datamanager
     from pytorch_grad_cam import GradCAM
     from tqdm.auto import tqdm as pbar

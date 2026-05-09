@@ -10,7 +10,7 @@ import torch
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
 from fran.profilers.paths import profiler_folder
-from fran.trainers.trainer_perf import Trainer
+from fran.profilers.trainer_perf import Trainer
 from fran.utils.misc import parse_devices
 from torch.profiler import ProfilerActivity, profile
 

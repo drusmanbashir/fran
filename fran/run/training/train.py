@@ -15,7 +15,7 @@ import argparse
 from fran.configs.parser import ConfigMaker
 from fran.managers import Project
 from fran.trainers.trainer import Trainer
-from fran.trainers.trainer_runthrough import TrainerRT
+from fran.trainers.trainer_rt import TrainerRT
 
 
 def print_device_info():
