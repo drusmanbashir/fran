@@ -654,7 +654,7 @@ if __name__ == "__main__":
     dici = load_dict()
     save_json(
         resampled_dataset_properties,
-        "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/resampled_dataset_properties.json",
+        "/r/datasets/preprocessed/litsmc/lbd/spc_080_080_150_plan3/dataset_summary.json",
     )
 # %%
     dl = I.R.dl

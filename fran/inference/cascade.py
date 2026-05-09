@@ -31,7 +31,6 @@ from monai.transforms.spatial.dictionary import Resized
 from monai.transforms.utility.dictionary import CastToTyped
 from utilz.cprint import cprint
 
-sys.path += ["/home/ub/Dropbox/code/fran/"]
 
 
 def inferer_from_params(run_w):
@@ -139,6 +138,16 @@ class WholeImageInferer(BaseInferer):
 
     def set_postprocess_tfms_keys(self):
         self.postprocess_tfms_keys = self.keys_postproc
+        if self.save_channels is False and self.safe_mode is False:
+            keys = [key for key in self.keys_postproc.split(",") if key]
+            if "Sq" in keys and "A" not in keys:
+                sq_ind = keys.index("Sq")
+                keys.insert(sq_ind + 1, "A")
+            elif "A" not in keys:
+                keys.append("A")
+            if "Int" not in keys:
+                keys.append("Int")
+            self.postprocess_tfms_keys = ",".join(keys)
         if self.save == True:
             self.postprocess_tfms_keys += ",Sav"
 
@@ -437,6 +446,7 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
 
 # %%
+#SECTION:-------------------- setup--------------------------------------------------------------------------------------
 if __name__ == "__main__":
     import time
     from pathlib import Path
@@ -455,9 +465,12 @@ if __name__ == "__main__":
 
     conf_fldr = os.environ["FRAN_CONF"]
     from utilz.fileio import load_yaml
+    from fran.inference.common_vars import *
 
     best_runs = load_yaml(conf_fldr + "/best_runs.yaml")
-    run_w = best_runs["whole"]
+    run_w = best_runs["whole"]["runs"]
+    run_w1 = run_w[0]
+    run_w2 = run_w[1]
 
 # %%
 # SECTION:-------------------- KITS-------------------------------------------------------------------------------------- <CR>
@@ -631,12 +644,12 @@ if __name__ == "__main__":
 
 # SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
-    devices = [0]
+    devices = [1]
     debug_ = False
-    safe_mode = True
+    safe_mode = False
 
     W = WholeImageInferer(
-        run_w,
+        run_w1,
         project_title="totalseg",
         safe_mode=safe_mode,
         k_largest=None,
@@ -647,11 +660,12 @@ if __name__ == "__main__":
 # %%
 
     imgs = nodes_imgs[:2]
-    imgs = imgs_lidc
     imgs = imgs_colonmsd
     imgs = kits_imgs
     # preds = W.run(imgs_crc, chunksize=6)
-    preds = W.run(imgs, chunksize=2, overwrite=False)
+    imgs = imgs_lidc[:10]
+    overwrite = True
+    preds = W.run(imgs, chunksize=2, overwrite=overwrite)
 # %%
 
     dl = W.pred_dl

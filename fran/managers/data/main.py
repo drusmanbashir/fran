@@ -714,6 +714,24 @@ class DataManager(LightningDataModule):
             else:
                 raise NotImplementedError
 
+    def _fg_case_ids_from_stats(self):
+        df = pd.read_csv(self.data_folder / "resampled_dataset_properties.csv")
+        fg = df.groupby("case_id")["n_fg"].max()
+        return set(fg[fg > 0].index)
+
+    def _filter_cases_by_stats_nnz(self, cases, nnz_allowed):
+        if nnz_allowed:
+            return cases
+        fg_case_ids = self._fg_case_ids_from_stats()
+        return [
+            case_
+            for case_ in cases
+            if info_from_filename(
+                strip_extension(Path(str(case_)).name), full_caseid=True
+            )["case_id"]
+            in fg_case_ids
+        ]
+
     def set_preprocessing_params(self):
         global_properties = load_dict(self.project.global_properties_filename)
         self.dataset_params = self.configs["dataset_params"]
@@ -1055,6 +1073,7 @@ class DataManager(LightningDataModule):
                 nnz_allowed=nnz_allowed,
             )
             self.cases = train_cases if self.is_train_split() else valid_cases
+        self.cases = self._filter_cases_by_stats_nnz(self.cases, nnz_allowed)
         assert len(self.cases) > 0, "There are no cases, aborting!"
 
     def create_data_dicts(self, fnames):
@@ -1543,6 +1562,7 @@ class DataManagerPatch(DataManagerSource):
                 nnz_allowed=nnz_allowed,
             )
             self.cases = train_cases if self.is_train_split() else valid_cases
+        self.cases = self._filter_cases_by_stats_nnz(self.cases, nnz_allowed)
 
     def create_data_dicts(self, cids):
         # this does not use cids

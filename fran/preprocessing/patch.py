@@ -566,7 +566,7 @@ if __name__ == "__main__":
     fixed_files = list(fixed_folder.glob("*.pt"))
     dataset_properties = load_dict(
         Path(
-            "/s/fran_storage/datasets/preprocessed/fixed_spacings/lits/spc_080_080_150/resampled_dataset_properties.json"
+            "/s/fran_storage/datasets/preprocessed/fixed_spacings/lits/spc_080_080_150/dataset_summary.json"
         )
     )
     output_patch_size = [192, 192, 196]

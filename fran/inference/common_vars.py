@@ -21,9 +21,10 @@ def load_best_runs_yaml(conf_fldr):
 
 
 best_runs = load_best_runs_yaml(conf_fldr)
+# %%
 run_w = best_runs["whole"]
 runs_2d = best_runs["localiser"]
-totalseg_runs_all = best_runs["totalseg"]
+totalseg_runs_all = best_runs["totalseg"]['runs']
 totalseg_run_big = totalseg_runs_all["full"][0]
 totalseg_proj = Project(project_title="totalseg")
 

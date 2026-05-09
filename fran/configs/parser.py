@@ -535,7 +535,7 @@ class ConfigMaker:
         # missing_gif = not (stats_folder / "snapshot.gif").exists()
         # missing_label_stats = not (stats_folder / "lesion_stats.csv").exists()
         # missing_labels = not (output_folder / "labels_all.json").exists()
-        # missing_props = not (output_folder / "resampled_dataset_properties.json").exists()
+        # missing_props = not (output_folder / "dataset_summary.json").exists()
         #
         # generator.store_gifs = missing_gif
         # generator.store_label_stats = missing_label_stats

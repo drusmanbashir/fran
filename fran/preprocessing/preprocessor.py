@@ -728,7 +728,7 @@ class Preprocessor:
         stats_folder = self.output_folder / "dataset_stats"
         required = [
             self.output_folder / "labels_all.json",
-            self.output_folder / "resampled_dataset_properties.json",
+            self.output_folder / "dataset_summary.json",
         ]
         if self.store_gifs:
             required.append(stats_folder / "snapshot.gif")
@@ -986,9 +986,7 @@ class Preprocessor:
         )
         print("Caculating data shape and intensity profile.")
         resampled_dataset_properties = self.create_properties_dict()
-        resampled_dataset_properties_fname = (
-            self.output_folder / "resampled_dataset_properties.json"
-        )
+        resampled_dataset_properties_fname = self.output_folder / "dataset_summary.json"
         print(
             "Writing preprocessing output properties to {}".format(
                 resampled_dataset_properties_fname
