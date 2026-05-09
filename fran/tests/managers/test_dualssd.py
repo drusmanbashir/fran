@@ -131,6 +131,7 @@ def test_trainer_init_dm_uses_standard_datamodule_without_dualssd(monkeypatch):
     trainer.val_every_n_epochs = 5
     trainer.dual_ssd = False
     trainer.batch_tfms = False
+    trainer.run_through = False
 
     dm = Trainer.init_dm(trainer)
 
@@ -149,14 +150,11 @@ def test_trainer_rt_init_dm_wraps_manager_class_for_dualssd(monkeypatch):
     class WrappedManager:
         pass
 
-    monkeypatch.setattr(trainer_runthrough_module, "DataManagerRT", FakeDataManagerRT)
     monkeypatch.setattr(
-        trainer_runthrough_module,
-        "dual_ssd_manager_class",
-        lambda manager_class: WrappedManager,
+        trainer_module, "dual_ssd_manager_class", lambda manager_class: WrappedManager
     )
     monkeypatch.setattr(
-        trainer_runthrough_module,
+        trainer_module,
         "infer_labels_and_update_out_channels",
         lambda dm, configs: None,
     )
@@ -168,6 +166,13 @@ def test_trainer_rt_init_dm_wraps_manager_class_for_dualssd(monkeypatch):
     trainer.debug = False
     trainer.dual_ssd = True
     trainer.batch_tfms = False
+    trainer.run_through = True
+    trainer.val_every_n_epochs = 1
+    trainer.run_through_helpers = lambda: SimpleNamespace(
+        DataManagerRT=FakeDataManagerRT,
+        CaseIDRecorderRT=trainer_runthrough_module.CaseIDRecorderRT,
+        WandbLogBestCkptRT=trainer_runthrough_module.WandbLogBestCkptRT,
+    )
 
     dm = TrainerRT.init_dm(trainer)
 

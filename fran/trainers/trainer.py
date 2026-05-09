@@ -1,6 +1,7 @@
 import shutil
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 import torch
@@ -16,7 +17,11 @@ from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.helpers import normalize_logging_payload
 from fran.managers import Project
 from fran.managers.data.batch_tfms import DataManagerDualBTfms
-from fran.managers.data.dualssd import DataManagerDualSSD, DataManagerDualSSDBTfms
+from fran.managers.data.dualssd import (
+    DataManagerDualSSD,
+    DataManagerDualSSDBTfms,
+    dual_ssd_manager_class,
+)
 from fran.managers.data.main import (
     DataManagerDual,
     DataManagerRBD,
@@ -86,10 +91,12 @@ class Trainer:
         configs,
         run_name=None,
         ckpt: Optional[str | Path] = None,
+        run_through: bool = False,
     ):
         self.project = Project(project_title=project_title)
         self.configs = configs
         self.run_name = run_name
+        self.run_through = bool(run_through)
         assert not (run_name and ckpt), "Cannot specify both run_name and ckpt"
         if ckpt is not None:
             # Future work: infer run_name from the ckpt folder layout plus project_title.
@@ -99,6 +106,31 @@ class Trainer:
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
         self.batch_tfms = False
+
+    def monitor_metric_name(self, metric: str) -> str:
+        """Map validation monitors onto training metrics for run-through fits."""
+        if self.run_through and isinstance(metric, str) and metric.startswith("val"):
+            return "train" + metric[3:]
+        return metric
+
+    def run_through_helpers(self):
+        """Lazy imports for run-through support."""
+        from fran.managers.data.run_through import DataManagerRT
+        from fran.trainers.trainer_rt import CaseIDRecorderRT, WandbLogBestCkptRT
+
+        return SimpleNamespace(
+            DataManagerRT=DataManagerRT,
+            CaseIDRecorderRT=CaseIDRecorderRT,
+            WandbLogBestCkptRT=WandbLogBestCkptRT,
+        )
+
+    def apply_monitor_metric_name(self, model: UNetManager) -> None:
+        """Align model and scheduler monitors with the configured training mode."""
+        model.monitor = self.monitor_metric_name(model.monitor)
+        if "scheduler_monitor" in model.model_params:
+            model.model_params["scheduler_monitor"] = self.monitor_metric_name(
+                model.model_params["scheduler_monitor"]
+            )
 
     def available_checkpoint_epochs(self) -> list[tuple[int, Path]]:
         if self.ckpt is not None:
@@ -183,14 +215,22 @@ class Trainer:
         dual_ssd: bool = False,
         batch_tfms: bool = False,
     ):
-        assert(val_every_n_epochs % 2 ==0),"val_every_n_epochs must be an even integer"
+        effective_val_every_n_epochs = 1 if self.run_through else int(val_every_n_epochs)
+        if self.run_through is False:
+            assert (
+                effective_val_every_n_epochs % 2 == 0
+            ), "val_every_n_epochs must be an even integer"
         if isinstance(train_indices, str):
             train_indices = train_indices.strip()
             if train_indices == "" or train_indices.lower() in {"none", "null"}:
                 train_indices = None
-        early_stopping_patience_epochs = int(early_stopping_patience/self.val_every_n_epochs)
-
-        self.val_every_n_epochs = int(val_every_n_epochs)
+        self.val_every_n_epochs = effective_val_every_n_epochs
+        if self.run_through:
+            early_stopping_patience_epochs = int(early_stopping_patience)
+        else:
+            early_stopping_patience_epochs = int(
+                early_stopping_patience / self.val_every_n_epochs
+            )
         self.train_indices = train_indices
         self.val_indices = val_indices
         self.val_sampling = float(val_sampling)
@@ -256,7 +296,7 @@ class Trainer:
         )
         self._ensure_local_ckpt_on_wandb_resume(logger)
 
-        self.trainer = TrainerL(
+        trainer_kwargs = dict(
             callbacks=cbs,
             accelerator=accelerator,
             devices=trainer_devices,
@@ -271,32 +311,54 @@ class Trainer:
             default_root_dir=self.project.checkpoints_parent_folder,
             strategy=strategy,
         )
+        if self.run_through:
+            trainer_kwargs["limit_val_batches"] = 0
+            trainer_kwargs["check_val_every_n_epoch"] = 1
+        self.trainer = TrainerL(**trainer_kwargs)
 
     def init_dm(self):
+        """Build the training datamodule for standard or run-through training."""
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
         self.configs["plan_train"]["val_every_n_epochs"] = self.val_every_n_epochs
-        manager_class_train = self.resolve_datamanager(
-            self.configs["plan_train"]["mode"]
-        )
-        manager_class_valid = self.resolve_datamanager(
-            self.configs["plan_valid"]["mode"]
-        )
-        dm_class = self.resolve_orchestrator_class()
-        dm = dm_class(
-            project_title=self.project.project_title,
-            configs=self.configs,
-            batch_size=self.configs["dataset_params"]["batch_size"],
-            cache_rate=cache_rate,
-            device=self.configs["dataset_params"].get("device", "cuda"),
-            ds_type=ds_type,
-            manager_class_train=manager_class_train,
-            manager_class_valid=manager_class_valid,
-            train_indices=self.train_indices,
-            val_indices=self.val_indices,
-            val_sampling=self.val_sampling,
-            batch_tfms=self.batch_tfms,
-        )
+        if self.run_through:
+            rt = self.run_through_helpers()
+            manager_class = self.resolve_datamanager(self.configs["plan_train"]["mode"])
+            if self.dual_ssd:
+                manager_class = dual_ssd_manager_class(manager_class)
+            dm = rt.DataManagerRT(
+                project_title=self.project.project_title,
+                configs=self.configs,
+                batch_size=self.configs["dataset_params"]["batch_size"],
+                manager_class=manager_class,
+                cache_rate=cache_rate,
+                device=self.configs["dataset_params"].get("device", "cuda"),
+                ds_type=ds_type,
+                train_indices=self.train_indices,
+                debug=self.debug,
+            )
+        else:
+            manager_class_train = self.resolve_datamanager(
+                self.configs["plan_train"]["mode"]
+            )
+            manager_class_valid = self.resolve_datamanager(
+                self.configs["plan_valid"]["mode"]
+            )
+            dm_class = self.resolve_orchestrator_class()
+            dm = dm_class(
+                project_title=self.project.project_title,
+                configs=self.configs,
+                batch_size=self.configs["dataset_params"]["batch_size"],
+                cache_rate=cache_rate,
+                device=self.configs["dataset_params"].get("device", "cuda"),
+                ds_type=ds_type,
+                manager_class_train=manager_class_train,
+                manager_class_valid=manager_class_valid,
+                train_indices=self.train_indices,
+                val_indices=self.val_indices,
+                val_sampling=self.val_sampling,
+                batch_tfms=self.batch_tfms,
+            )
 
         labels_all = self.configs["plan_train"].get("labels_all")
         if not labels_all:
@@ -332,30 +394,44 @@ class Trainer:
         return D
 
     def init_dm_unet(self, epochs, batch_size, override_dm_checkpoint=False):
+        """Initialize the datamodule/model pair for fresh or resumed training."""
         if self.ckpt:
-            self.D = self.load_dm(
-                batch_size=batch_size, override_dm_checkpoint=override_dm_checkpoint
-            )
-            headline(
-                "Loading configs from checkpoints. If you want to override them with Trainer configs, set override_dm_checkpoint=True.\nRegardless, train and val indices are fixed for this run in the ckpt."
-            )
-            self.configs["dataset_params"] = self.D.configs["dataset_params"]
-            self.train_indices, self.val_indices = (
-                self.D.train_indices,
-                self.D.val_indices,
-            )
-            missing_keys = []
-            for key in self.configs.keys():
-                try:
-                    self.configs[key] = self.D.configs[key]
-                except KeyError:
-                    missing_keys.append(key)
-            if len(missing_keys) > 0:
+            if self.run_through:
+                if override_dm_checkpoint:
+                    headline(
+                        "Run-through resume ignores override_dm_checkpoint because the datamodule is rebuilt from current Trainer configs."
+                    )
                 headline(
-                    f"Missing keys: {missing_keys}.. If any are critical, please check the datamodule checkpoint."
+                    "Run-through resume: loading model checkpoint and rebuilding datamodule from current config."
                 )
-            self.N = self.load_trainer()
-            self.configs["model_params"] = self.N.model_params
+                self.D = self.init_dm()
+                self.N = self.load_trainer()
+                self.configs["model_params"] = self.N.model_params
+            else:
+                self.D = self.load_dm(
+                    batch_size=batch_size,
+                    override_dm_checkpoint=override_dm_checkpoint,
+                )
+                headline(
+                    "Loading configs from checkpoints. If you want to override them with Trainer configs, set override_dm_checkpoint=True.\nRegardless, train and val indices are fixed for this run in the ckpt."
+                )
+                self.configs["dataset_params"] = self.D.configs["dataset_params"]
+                self.train_indices, self.val_indices = (
+                    self.D.train_indices,
+                    self.D.val_indices,
+                )
+                missing_keys = []
+                for key in self.configs.keys():
+                    try:
+                        self.configs[key] = self.D.configs[key]
+                    except KeyError:
+                        missing_keys.append(key)
+                if len(missing_keys) > 0:
+                    headline(
+                        f"Missing keys: {missing_keys}.. If any are critical, please check the datamodule checkpoint."
+                    )
+                self.N = self.load_trainer()
+                self.configs["model_params"] = self.N.model_params
         else:
             self.D = self.init_dm()
             self.N = self.init_trainer(epochs)
@@ -403,15 +479,31 @@ class Trainer:
         wandb_grid_epoch_freq: int = 5,
         permanent_checkpoint_every_n_epochs: int = 100,
     ):
+        """Build callbacks, logger, and profiler for the current training mode."""
+        checkpoint_monitor = self.monitor_metric_name("val0_loss")
+        early_stopping_monitor = self.monitor_metric_name(early_stopping_monitor)
+        checkpoint_filename = f"{{epoch}}-{{{checkpoint_monitor}:.2f}}"
+        case_id_recorder_cls = CaseIDRecorder
+        wandb_best_ckpt_cls = WandbLogBestCkpt
+        batch_size_finder_cls = FranBatchSizeFinder
+        checkpoint_kwargs = {}
+        early_stopping_kwargs = {}
+        if self.run_through:
+            rt = self.run_through_helpers()
+            case_id_recorder_cls = rt.CaseIDRecorderRT
+            wandb_best_ckpt_cls = rt.WandbLogBestCkptRT
+            batch_size_finder_cls = BatchSizeFinder
+            checkpoint_kwargs["save_on_train_epoch_end"] = True
+            early_stopping_kwargs["check_on_train_epoch_end"] = True
 
         cbs = [
-            CaseIDRecorder(
+            case_id_recorder_cls(
                 vip_label=self.configs["plan_train"].get("vip_label", 1), freq=20
             )
         ]
         if batchsize_finder == True:
             cbs += [
-                FranBatchSizeFinder(batch_arg_name="batch_size", mode="binsearch"),
+                batch_size_finder_cls(batch_arg_name="batch_size", mode="binsearch"),
                 BatchSizeSafetyMargin(),
             ]
 
@@ -422,11 +514,12 @@ class Trainer:
             ModelCheckpoint(
                 save_top_k=2,
                 save_last=True,
-                monitor="val0_loss",
+                monitor=checkpoint_monitor,
                 every_n_epochs=10,
-                filename="{epoch}-{val0_loss:.2f}",
+                filename=checkpoint_filename,
                 enable_version_counter=True,
                 auto_insert_metric_name=True,
+                **checkpoint_kwargs,
             ),
             ModelCheckpoint(  # 2nd checkpointer
                 save_top_k=-1,
@@ -435,6 +528,7 @@ class Trainer:
                 filename="epoch{epoch:04d}-snapshot",
                 enable_version_counter=False,
                 auto_insert_metric_name=False,
+                **checkpoint_kwargs,
             ),
             LearningRateMonitor(logging_interval="epoch"),
         ]
@@ -446,6 +540,7 @@ class Trainer:
                     mode=early_stopping_mode,
                     patience=int(early_stopping_patience),
                     min_delta=float(early_stopping_min_delta),
+                    **early_stopping_kwargs,
                 )
             ]
 
@@ -468,10 +563,11 @@ class Trainer:
                 "plan_train": normalize_logging_payload(
                     deepcopy(self.D.configs["plan_train"])
                 ),
-                "plan_valid": normalize_logging_payload(
-                    deepcopy(self.D.configs["plan_valid"])
-                ),
             }
+            if "plan_valid" in self.D.configs:
+                dm_cfg["plan_valid"] = normalize_logging_payload(
+                    deepcopy(self.D.configs["plan_valid"])
+                )
             flat_cfg = _flatten_dict(dm_cfg, base="configs/datamodule")
             logger.experiment.config.update(flat_cfg, allow_val_change=True)
             if getattr(self.D, "train1_indices", None) is not None:
@@ -485,7 +581,7 @@ class Trainer:
                     patch_size=self.configs["plan_train"]["patch_size"],
                     epoch_freq=max(1, int(wandb_grid_epoch_freq)),
                 ),
-                WandbLogBestCkpt(),
+                wandb_best_ckpt_cls(),
             ]
 
         if profiler:
@@ -550,6 +646,13 @@ class Trainer:
         raise NotImplementedError
 
     def init_trainer(self, epochs):
+        """Create a fresh UNetManager with monitor names normalized for this mode."""
+        if "scheduler_monitor" in self.configs["model_params"]:
+            self.configs["model_params"]["scheduler_monitor"] = (
+                self.monitor_metric_name(
+                    self.configs["model_params"]["scheduler_monitor"]
+                )
+            )
 
         N = UNetManager(
             project_title=self.project.project_title,
@@ -557,9 +660,11 @@ class Trainer:
             lr=self.lr,
             sync_dist=self.sync_dist,
         )
+        self.apply_monitor_metric_name(N)
         return N
 
     def load_trainer(self, map_location="cpu", **kwargs):
+        """Load a UNetManager checkpoint and normalize its monitor names."""
         weights_only = False
         try:
             N = UNetManager.load_from_checkpoint(
@@ -579,13 +684,17 @@ class Trainer:
                 **kwargs,
             )
         print("Model loaded from checkpoint: ", self.ckpt)
+        self.apply_monitor_metric_name(N)
         return N
 
     def resolve_datamanager(self, mode: str):
+        """Resolve the manager class for the configured training mode."""
         if mode == "pbd":
             DMClass = DataManagerPatch
         elif mode == "source":
             DMClass = DataManagerSource
+        elif mode == "sourcepbd" and self.run_through:
+            DMClass = DataManagerPatch
         elif mode == "whole":
             DMClass = DataManagerWhole
         elif mode == "lbd":
