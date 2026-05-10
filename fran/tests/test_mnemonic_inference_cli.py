@@ -22,7 +22,7 @@ def test_resolve_spec_tsl_uses_region_family_from_remapping(monkeypatch):
     monkeypatch.setattr(
         mnemonic,
         "load_run_metadata",
-        lambda run_name: {"remapping_lbd_kbd": "TSL.full:TSL.kidney"},
+        lambda run_name: {"mode": "lbd", "remapping_lbd_kbd": "TSL.full:TSL.kidney"},
     )
 
     spec = mnemonic.resolve_spec("kits23", "TSL")
@@ -64,7 +64,7 @@ def test_resolve_input_folders_requires_exactly_one_source():
         mnemonic.resolve_input_folders("/tmp/images", ["kits23"])
 
 
-def test_resolve_spec_raises_when_localiser_is_ambiguous(monkeypatch):
+def test_resolve_spec_auto_selects_first_ordered_run(monkeypatch, capsys):
     monkeypatch.setattr(
         mnemonic,
         "load_best_runs",
@@ -73,9 +73,48 @@ def test_resolve_spec_raises_when_localiser_is_ambiguous(monkeypatch):
             "kidneys": {"runs": {"TSL": ["KITS2-bk"], "yolo": ["KITS23-SIRIG"]}},
         },
     )
+    monkeypatch.setattr(
+        mnemonic,
+        "load_run_metadata",
+        lambda run_name: {
+            "KITS2-bk": {"mode": "lbd", "remapping_lbd": "TSL.full:TSL.kidney"},
+            "KITS23-SIRIG": {"mode": "rbd", "localiser_regions": "abdomen, pelvis"},
+        }[run_name],
+    )
 
-    with pytest.raises(ValueError, match="--localiser-type"):
-        mnemonic.resolve_spec("kidneys", None)
+    spec = mnemonic.resolve_spec("kidneys", None)
+
+    assert spec.inferer_cls is mnemonic.CascadeInferer
+    assert spec.run_name == "KITS2-bk"
+    assert capsys.readouterr().out.strip().endswith(
+        "{'run_names': ['KITS2-bk', 'KITS23-SIRIG'], 'selected_run': 'KITS2-bk'}"
+    )
+
+
+def test_resolve_spec_explicit_localiser_type_uses_registry_mode_bucket(monkeypatch):
+    monkeypatch.setattr(
+        mnemonic,
+        "load_best_runs",
+        lambda path=mnemonic.BEST_RUNS_PATH: {
+            "whole": {"runs": ["TOTALSEG-FREHA"]},
+            "kidneys": {"runs": {"TSL": ["KITS23-SIRIG"], "yolo": ["KITS2-bk"]}},
+        },
+    )
+
+    monkeypatch.setattr(
+        mnemonic,
+        "load_run_metadata",
+        lambda run_name: {
+            "KITS23-SIRIG": {"mode": "kbd", "localiser_regions": "abdomen, pelvis"},
+            "KITS2-bk": {"mode": "lbd", "remapping_lbd": "TSL.full:TSL.kidney"},
+        }[run_name],
+    )
+
+    spec = mnemonic.resolve_spec("kidneys", "yolo")
+
+    assert spec.inferer_cls is mnemonic.CascadeInfererYOLO
+    assert spec.run_name == "KITS23-SIRIG"
+    assert spec.localiser_regions == ["abdomen", "pelvis"]
 
 
 def test_resolve_spec_prefers_minimal_for_nested_standalone_runs(monkeypatch):
@@ -86,11 +125,12 @@ def test_resolve_spec_prefers_minimal_for_nested_standalone_runs(monkeypatch):
             "totalseg": {"runs": {"full": ["FULL-RUN"], "minimal": ["MIN-RUN"]}},
         },
     )
+    monkeypatch.setattr(mnemonic, "load_run_metadata", lambda run_name: {})
     monkeypatch.setattr(mnemonic, "resolve_standalone_inferer_cls", lambda run_name: mnemonic.WholeImageInferer)
 
     spec = mnemonic.resolve_spec("totalseg", None)
 
-    assert spec.run_name == "MIN-RUN"
+    assert spec.run_name == "FULL-RUN"
     assert spec.inferer_cls is mnemonic.WholeImageInferer
 
 

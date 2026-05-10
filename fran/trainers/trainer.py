@@ -763,8 +763,8 @@ if __name__ == "__main__":
     from utilz.helpers import pp
 
     P = Project("lidc")
-    P = Project("kits23")
     P = Project("totalseg")
+    P = Project("kits23")
     C = ConfigMaker(P)
     C.setup(3)
 
@@ -803,8 +803,8 @@ if __name__ == "__main__":
     override_dm = True
 
     # run_name = "KITS23-SIRIG"
-    run_name = None
     run_name = "TOTALSEG-NJUGU"
+    run_name = None
     tags = []
     description = f""
     conf["dataset_params"]["fold"] = 0
@@ -815,7 +815,7 @@ if __name__ == "__main__":
     cbs = []
     wandb_grid_epoch_freq = 20
     val_every_n_epochs = 2
-    train_indices = None
+    train_indices = 20
 # %%
 # SECTION:--------------------  TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     Tm = Trainer(P.project_title, conf, run_name)

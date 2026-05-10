@@ -63,6 +63,13 @@ This file is the runnable-entrypoint inventory for `fran/fran/run/`.
     - `pbd` / `patch`
     - `whole`
 
+- `preproc/archive_preprocessed.py <archive|unarchive> (--folder <folder> | --project-title <project_title> [--plan-num <plan_num> --key <folder_key>]) [--remove-archive]`
+  - Archives or restores rapid-access preprocessed folders between `$rapid_access_folder` and `$cold_storage_folder/archived`.
+  - Archive paths mirror the rapid-access relative path:
+    - `<rapid_access>/<project>/<kind>/<leaf>` -> `<cold_storage>/archived/<project>/<kind>/<leaf>`
+  - With `--project-title` only, operates on every immediate child leaf under the project's `lbd/`, `rbd/`, `pbd/`, and `whole_images/` roots.
+  - `unarchive` keeps the archive copy by default.
+
 - `preproc/preproc.sh`
   - Local FRAN convenience launcher for `analyze_resample.py` through `block_suspend.py`.
   - Current file is a user-specific example invocation, not a general-purpose wrapper.

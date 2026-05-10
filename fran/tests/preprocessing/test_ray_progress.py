@@ -1,8 +1,6 @@
 from pathlib import Path
-from types import SimpleNamespace
 
 import pandas as pd
-import pytest
 
 from fran.run.preproc import analyze_resample as analyze_resample_module
 from fran.run.preproc.analyze_resample import (
@@ -30,6 +28,27 @@ class FakeProgress:
 
     def close(self):
         self.closed = True
+
+
+class FakeGenerator:
+    def __init__(self, output_folder, total_cases, remaining_cases, overwrite, result=True):
+        self.output_folder = output_folder
+        self.df = pd.DataFrame([{"case_id": f"all_{i}"} for i in range(total_cases)])
+        self.df_pt = pd.DataFrame(
+            [{"case_id": f"remaining_{i}"} for i in range(remaining_cases)]
+        )
+        self.overwrite = overwrite
+        self.process_calls = []
+        self.result = result
+
+    def _effective_overwrite(self, overwrite=None):
+        if overwrite is None:
+            return self.overwrite
+        return overwrite
+
+    def process(self, **kwargs):
+        self.process_calls.append(kwargs)
+        return self.result
 
 
 def test_exact_case_output_counter_counts_only_new_complete_cases(tmp_path):
@@ -129,10 +148,12 @@ def test_process_with_output_progress_stops_monitor_on_success(monkeypatch):
         def stop(self):
             events.append("stop")
 
-    generator = SimpleNamespace(
+    generator = FakeGenerator(
         output_folder="/tmp/out",
-        df=pd.DataFrame([{"case_id": "a"}, {"case_id": "b"}]),
-        process=lambda **kwargs: kwargs["derive_bboxes"],
+        total_cases=5,
+        remaining_cases=2,
+        overwrite=False,
+        result=False,
     )
     manager = PreprocessingManager.__new__(PreprocessingManager)
     monkeypatch.setattr(
@@ -149,10 +170,22 @@ def test_process_with_output_progress_stops_monitor_on_success(monkeypatch):
     )
 
     assert result is False
+    assert generator.process_calls == [
+        {
+            "overwrite": False,
+            "derive_bboxes": False,
+            "src_dims": analyze_resample_module.DEFAULT_HDF5_SRC_DIMS,
+            "cases_per_shard": 5,
+            "max_shard_bytes": None,
+            "overwrite_hdf5_shards": False,
+            "hdf5_compression": "gzip",
+            "hdf5_compression_opts": 1,
+        }
+    ]
     assert events == [("init", Path("/tmp/out"), 2, "Patches"), "start", "stop"]
 
 
-def test_process_with_output_progress_stops_monitor_on_failure(monkeypatch):
+def test_process_with_output_progress_uses_full_df_total_when_overwriting(monkeypatch):
     events = []
 
     class FakeMonitor:
@@ -166,13 +199,11 @@ def test_process_with_output_progress_stops_monitor_on_failure(monkeypatch):
         def stop(self):
             events.append("stop")
 
-    def fail():
-        raise RuntimeError("boom")
-
-    generator = SimpleNamespace(
+    generator = FakeGenerator(
         output_folder="/tmp/out",
-        df=pd.DataFrame([{"case_id": "a"}]),
-        process=lambda **kwargs: fail(),
+        total_cases=5,
+        remaining_cases=2,
+        overwrite=False,
     )
     manager = PreprocessingManager.__new__(PreprocessingManager)
     monkeypatch.setattr(
@@ -181,11 +212,71 @@ def test_process_with_output_progress_stops_monitor_on_failure(monkeypatch):
         FakeMonitor,
     )
 
-    with pytest.raises(RuntimeError, match="boom"):
-        manager._process_with_output_progress(
-            generator,
-            CaseOutputCounter,
-            desc="LBD",
-        )
+    manager._process_with_output_progress(
+        generator,
+        CaseOutputCounter,
+        desc="LBD",
+        overwrite=True,
+    )
 
-    assert events == [("init", Path("/tmp/out"), 1, "LBD"), "start", "stop"]
+    assert generator.process_calls == [
+        {
+            "overwrite": True,
+            "derive_bboxes": True,
+            "src_dims": analyze_resample_module.DEFAULT_HDF5_SRC_DIMS,
+            "cases_per_shard": 5,
+            "max_shard_bytes": None,
+            "overwrite_hdf5_shards": False,
+            "hdf5_compression": "gzip",
+            "hdf5_compression_opts": 1,
+        }
+    ]
+    assert events == [("init", Path("/tmp/out"), 5, "LBD"), "start", "stop"]
+
+
+def test_process_with_output_progress_uses_generator_overwrite_when_omitted(monkeypatch):
+    events = []
+
+    class FakeMonitor:
+        def __init__(self, counter, desc):
+            events.append(("init", counter.output_folder, counter.total, desc))
+
+        def start(self):
+            events.append("start")
+            return self
+
+        def stop(self):
+            events.append("stop")
+
+    generator = FakeGenerator(
+        output_folder="/tmp/out",
+        total_cases=7,
+        remaining_cases=3,
+        overwrite=False,
+    )
+    manager = PreprocessingManager.__new__(PreprocessingManager)
+    monkeypatch.setattr(
+        analyze_resample_module,
+        "OutputFolderProgressMonitor",
+        FakeMonitor,
+    )
+
+    manager._process_with_output_progress(
+        generator,
+        CaseOutputCounter,
+        desc="Whole",
+    )
+
+    assert generator.process_calls == [
+        {
+            "overwrite": False,
+            "derive_bboxes": True,
+            "src_dims": analyze_resample_module.DEFAULT_HDF5_SRC_DIMS,
+            "cases_per_shard": 5,
+            "max_shard_bytes": None,
+            "overwrite_hdf5_shards": False,
+            "hdf5_compression": "gzip",
+            "hdf5_compression_opts": 1,
+        }
+    ]
+    assert events == [("init", Path("/tmp/out"), 3, "Whole"), "start", "stop"]

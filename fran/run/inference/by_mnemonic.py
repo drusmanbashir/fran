@@ -142,6 +142,15 @@ def nonempty_runs(value) -> list[str]:
     return [item for item in value if item]
 
 
+def ordered_runs(runs) -> list[str]:
+    if isinstance(runs, dict):
+        ordered = []
+        for value in runs.values():
+            ordered.extend(nonempty_runs(value))
+        return ordered
+    return nonempty_runs(runs)
+
+
 def best_runs_entry_for_run_name(run_name: str, best_runs: dict) -> tuple[str | None, dict | None]:
     for name, entry in best_runs.items():
         if not isinstance(entry, dict) or "runs" not in entry:
@@ -256,6 +265,18 @@ def choose_localiser_type(runs, explicit: str | None, mnemonic: str) -> str | No
     return None
 
 
+def split_runs_by_localiser_type(run_names: list[str]) -> dict[str, list[str]]:
+    buckets = {"yolo": [], "TSL": []}
+    for run_name in run_names:
+        metadata = load_run_metadata(run_name)
+        mode = normalize_mode(metadata["mode"]) if "mode" in metadata else None
+        if mode == "rbd":
+            buckets["yolo"].append(run_name)
+        elif mode in ("lbd", "pbd"):
+            buckets["TSL"].append(run_name)
+    return buckets
+
+
 def resolve_input_folders(folder: str | None, datasets: list[str] | None) -> list[Path]:
     if (folder is None) == (datasets is None):
         raise ValueError("Pass exactly one of --folder or --dataset")
@@ -298,6 +319,30 @@ def resolve_standalone_inferer_cls(run_name: str):
     return inferer_cls
 
 
+def resolve_run_spec(
+    mnemonic: str, entry: dict, best_runs: dict, run_name: str
+) -> InferenceSpec:
+    metadata = load_run_metadata(run_name)
+    mode = normalize_mode(metadata["mode"]) if "mode" in metadata else None
+    if mode == "rbd":
+        return InferenceSpec(
+            inferer_cls=CascadeInfererYOLO,
+            run_name=run_name,
+            localiser_regions=resolve_yolo_regions(run_name),
+            k_largest=entry["k_largest"] if "k_largest" in entry else None,
+        )
+    if mode in ("lbd", "pbd"):
+        return InferenceSpec(
+            inferer_cls=CascadeInferer,
+            run_name=run_name,
+            run_w=best_runs["whole"]["runs"][0],
+            localiser_labels=resolve_tsl_localiser_labels(mnemonic, run_name),
+            k_largest=entry["k_largest"] if "k_largest" in entry else None,
+        )
+    inferer_cls = resolve_standalone_inferer_cls(run_name)
+    return InferenceSpec(inferer_cls=inferer_cls, run_name=run_name)
+
+
 def resolve_direct_run_name_spec(run_name: str, best_runs: dict) -> InferenceSpec:
     _, entry = best_runs_entry_for_run_name(run_name, best_runs)
     k_largest = entry["k_largest"] if entry is not None and "k_largest" in entry else None
@@ -317,30 +362,18 @@ def resolve_spec(mnemonic_raw: str, localiser_type: str | None) -> InferenceSpec
     mnemonic = canonical_mnemonic(mnemonic_raw, best_runs)
     entry = best_runs[mnemonic]
     runs = entry["runs"]
-    localiser_type = choose_localiser_type(runs, localiser_type, mnemonic)
-
-    if localiser_type == "yolo":
-        run_name = nonempty_runs(runs["yolo"])[0]
-        return InferenceSpec(
-            inferer_cls=CascadeInfererYOLO,
-            run_name=run_name,
-            localiser_regions=resolve_yolo_regions(run_name),
-            k_largest=entry["k_largest"] if "k_largest" in entry else None,
-        )
-
-    if localiser_type == "TSL":
-        run_name = nonempty_runs(runs["TSL"])[0]
-        return InferenceSpec(
-            inferer_cls=CascadeInferer,
-            run_name=run_name,
-            run_w=best_runs["whole"]["runs"][0],
-            localiser_labels=resolve_tsl_localiser_labels(mnemonic, run_name),
-            k_largest=entry["k_largest"] if "k_largest" in entry else None,
-        )
-
-    run_name = resolve_standalone_run(runs)
-    inferer_cls = resolve_standalone_inferer_cls(run_name)
-    return InferenceSpec(inferer_cls=inferer_cls, run_name=run_name)
+    run_names = ordered_runs(runs)
+    if localiser_type is not None:
+        typed_runs = split_runs_by_localiser_type(run_names)[localiser_type]
+        if not typed_runs:
+            raise ValueError(
+                f"Mnemonic={mnemonic} has no {localiser_type} localiser runs configured in best_runs"
+            )
+        run_name = typed_runs[0]
+    else:
+        run_name = run_names[0]
+    print({"run_names": run_names, "selected_run": run_name})
+    return resolve_run_spec(mnemonic, entry, best_runs, run_name)
 
 
 def build_inferer(spec: InferenceSpec, gpus: list[int], patch_overlap: float):

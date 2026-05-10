@@ -300,8 +300,10 @@ class PreprocessingManager:
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
     ):
+        overwrite = generator._effective_overwrite(overwrite=overwrite)
+        total = len(generator.df) if overwrite else len(generator.df_pt)
         monitor = OutputFolderProgressMonitor(
-            counter=counter_cls(generator.output_folder, len(generator.df)),
+            counter=counter_cls(generator.output_folder, total),
             desc=desc,
         ).start()
         try:

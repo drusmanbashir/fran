@@ -21,6 +21,7 @@ from fran.data.collate import patch_collated, source_collated, whole_collated
 from fran.data.dataset import NormaliseClipd
 from fran.managers.project import Project
 from fran.preprocessing.helpers import bbox_bg_only, compute_fgbg_ratio, import_h5py
+from fran.run.preproc.archive_preprocessed import ensure_rapid_data_folder
 from fran.transforms.batch_affine import BatchRandAffined3D
 from fran.transforms.imageio import SimpleTorchLoader, TorchReader
 from fran.transforms.intensitytransforms import RandRandGaussianNoised
@@ -1123,6 +1124,7 @@ class DataManager(LightningDataModule):
         folders = FolderNames(self.project, plan).folders
         data_folder = folders[key]
         data_folder = Path(data_folder)
+        data_folder = ensure_rapid_data_folder(data_folder)
         if not data_folder.exists() or len(list(data_folder.rglob("*.pt"))) == 0:
             raise Exception(f"Data folder {data_folder} does not exist")
         return data_folder

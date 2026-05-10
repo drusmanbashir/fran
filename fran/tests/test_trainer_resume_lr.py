@@ -2,6 +2,7 @@ import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
+import fran.trainers.trainer_rt as trainer_rt_module
 import pytest
 import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -229,6 +230,59 @@ def test_batch_size_finder_rt_persists_found_batch_size(monkeypatch):
     assert finder.optimal_batch_size == 8
     assert trainer.datamodule.batch_size == 8
     assert pl_module.batch_size == 8
+
+
+def test_scale_batch_size_rt_removes_temp_checkpoint_on_failure(monkeypatch, tmp_path):
+    progress_events = []
+    restore_calls = []
+    removed_paths = []
+    restored_params = []
+    params = {"sentinel": "params"}
+
+    def save_checkpoint(ckpt_path):
+        Path(ckpt_path).write_text("temp")
+
+    def remove_checkpoint(ckpt_path):
+        removed_paths.append(ckpt_path)
+        Path(ckpt_path).unlink()
+
+    trainer = SimpleNamespace(
+        fast_dev_run=False,
+        default_root_dir=str(tmp_path),
+        save_checkpoint=save_checkpoint,
+        progress_bar_callback=SimpleNamespace(
+            disable=lambda: progress_events.append("disable"),
+            enable=lambda: progress_events.append("enable"),
+        ),
+        _checkpoint_connector=SimpleNamespace(
+            restore=lambda checkpoint_path=None, weights_only=None: restore_calls.append(
+                (checkpoint_path, weights_only)
+            )
+        ),
+        strategy=SimpleNamespace(remove_checkpoint=remove_checkpoint),
+    )
+
+    monkeypatch.setattr(trainer_rt_module.uuid, "uuid4", lambda: "rt-cleanup")
+    monkeypatch.setattr(trainer_rt_module, "_rt_scale_batch_dump_params", lambda trainer: params)
+    monkeypatch.setattr(
+        trainer_rt_module, "_rt_scale_batch_reset_params", lambda trainer, steps_per_trial: None
+    )
+    monkeypatch.setattr(
+        trainer_rt_module,
+        "_rt_scale_batch_restore_params",
+        lambda trainer, dumped: restored_params.append(dumped),
+    )
+    monkeypatch.setattr(trainer_rt_module, "_adjust_batch_size", lambda *args, **kwargs: (2, True))
+    monkeypatch.setattr(trainer_rt_module, "_run_power_scaling_rt", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("probe failed")))
+
+    with pytest.raises(RuntimeError, match="probe failed"):
+        trainer_rt_module._scale_batch_size_rt(trainer, "power", 3, 2, 25, "batch_size")
+
+    assert restored_params == [params]
+    assert progress_events == ["disable", "enable"]
+    assert restore_calls == [(str(tmp_path / ".scale_batch_size_rt-cleanup.ckpt"), None)]
+    assert removed_paths == [str(tmp_path / ".scale_batch_size_rt-cleanup.ckpt")]
+    assert not (tmp_path / ".scale_batch_size_rt-cleanup.ckpt").exists()
 
 
 def test_trainer_setup_builds_finder_probe_at_small_batch(monkeypatch, tmp_path):

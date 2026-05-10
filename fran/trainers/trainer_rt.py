@@ -155,30 +155,32 @@ def _scale_batch_size_rt(
     )
     trainer.save_checkpoint(ckpt_path)
     params = _rt_scale_batch_dump_params(trainer)
-    _rt_scale_batch_reset_params(trainer, steps_per_trial)
+    try:
+        _rt_scale_batch_reset_params(trainer, steps_per_trial)
 
-    if trainer.progress_bar_callback:
-        trainer.progress_bar_callback.disable()
+        if trainer.progress_bar_callback:
+            trainer.progress_bar_callback.disable()
 
-    new_size, _ = _adjust_batch_size(trainer, batch_arg_name, value=init_val)
-    if mode == "power":
-        new_size = _run_power_scaling_rt(
-            trainer, new_size, batch_arg_name, max_trials, params
-        )
-    else:
-        new_size = _run_binary_scaling_rt(
-            trainer, new_size, batch_arg_name, max_trials, params
-        )
+        new_size, _ = _adjust_batch_size(trainer, batch_arg_name, value=init_val)
+        if mode == "power":
+            new_size = _run_power_scaling_rt(
+                trainer, new_size, batch_arg_name, max_trials, params
+            )
+        else:
+            new_size = _run_binary_scaling_rt(
+                trainer, new_size, batch_arg_name, max_trials, params
+            )
 
-    garbage_collection_cuda()
-    _rt_scale_batch_restore_params(trainer, params)
+        garbage_collection_cuda()
+        return new_size
+    finally:
+        _rt_scale_batch_restore_params(trainer, params)
 
-    if trainer.progress_bar_callback:
-        trainer.progress_bar_callback.enable()
+        if trainer.progress_bar_callback:
+            trainer.progress_bar_callback.enable()
 
-    trainer._checkpoint_connector.restore(ckpt_path)
-    trainer.strategy.remove_checkpoint(ckpt_path)
-    return new_size
+        trainer._checkpoint_connector.restore(ckpt_path)
+        trainer.strategy.remove_checkpoint(ckpt_path)
 
 
 class BatchSizeFinderRT(Callback):

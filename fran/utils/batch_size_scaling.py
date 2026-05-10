@@ -73,37 +73,37 @@ def _scale_batch_size2(
     params = __scale_batch_dump_params(trainer)
 
     # Set to values that are required by the algorithm
-    __scale_batch_reset_params(trainer, steps_per_trial)
+    try:
+        __scale_batch_reset_params(trainer, steps_per_trial)
 
-    if trainer.progress_bar_callback:
-        trainer.progress_bar_callback.disable()
+        if trainer.progress_bar_callback:
+            trainer.progress_bar_callback.disable()
 
-    new_size, _ = _adjust_batch_size(trainer, batch_arg_name, value=init_val)
+        new_size, _ = _adjust_batch_size(trainer, batch_arg_name, value=init_val)
 
-    if mode == "power":
-        new_size = _run_power_scaling(
-            trainer, new_size, batch_arg_name, max_trials, params
+        if mode == "power":
+            new_size = _run_power_scaling(
+                trainer, new_size, batch_arg_name, max_trials, params
+            )
+        elif mode == "binsearch":
+            new_size = _run_binary_scaling(
+                trainer, new_size, batch_arg_name, max_trials, params
+            )
+
+        garbage_collection_cuda()
+
+        log.info(
+            f"Finished batch size finder, will continue with full run using batch size {new_size}"
         )
-    elif mode == "binsearch":
-        new_size = _run_binary_scaling(
-            trainer, new_size, batch_arg_name, max_trials, params
-        )
+        return new_size
+    finally:
+        __scale_batch_restore_params(trainer, params)
 
-    garbage_collection_cuda()
+        if trainer.progress_bar_callback:
+            trainer.progress_bar_callback.enable()
 
-    log.info(
-        f"Finished batch size finder, will continue with full run using batch size {new_size}"
-    )
-
-    __scale_batch_restore_params(trainer, params)
-
-    if trainer.progress_bar_callback:
-        trainer.progress_bar_callback.enable()
-
-    trainer._checkpoint_connector.restore(ckpt_path)
-    trainer.strategy.remove_checkpoint(ckpt_path)
-
-    return new_size
+        trainer._checkpoint_connector.restore(ckpt_path)
+        trainer.strategy.remove_checkpoint(ckpt_path)
 
 
 def __scale_batch_dump_params(trainer: "pl.Trainer") -> Dict[str, Any]:
