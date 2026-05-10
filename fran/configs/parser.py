@@ -1,4 +1,5 @@
 # %%
+import json
 import ast
 from typing import Any
 
@@ -73,12 +74,17 @@ def cases_in_folder(fldr) -> int:
     cases = list(img_fldr.glob("*"))
     n_cases = len(cases)
 
-
-
-
-
-
     return n_cases
+
+
+def plan_requires_hdf5_shards(subfolder_key, mode) -> bool:
+    if subfolder_key == "data_folder_source" and mode == "source":
+        return True
+    if (subfolder_key == "data_folder_lbd" and mode == "lbd") or (
+        subfolder_key == "data_folder_rbd" and mode == "rbd"
+    ):
+        return True
+    return False
 
 
 def confirm_plan_analyzed(project, plan):
@@ -86,10 +92,9 @@ def confirm_plan_analyzed(project, plan):
     n_cases = len(project)
     folders = FolderNames(project, plan).folders
     existing_src_fldr = folders["data_folder_source"]
-    cases_in_src_folder = cases_in_folder(existing_src_fldr)
-    src_fldr_full = n_cases == cases_in_src_folder
+    src_fldr_full = n_cases == cases_in_folder(existing_src_fldr)
 
-    mode = plan.get("mode")
+    mode = plan["mode"]
     if mode == "lbd":
         existing_final_fldr = folders["data_folder_lbd"]
     elif mode in ["patch", "pbd"]:
@@ -103,8 +108,21 @@ def confirm_plan_analyzed(project, plan):
     else:
         raise NotImplementedError(f"Unknown mode: {mode}")
 
-    cases_in_final_folder = cases_in_folder(existing_final_fldr)
-    final_fldr_full = n_cases == cases_in_final_folder
+    subfolder_key = f"data_folder_{mode}"
+    if plan_requires_hdf5_shards(subfolder_key, mode):
+        existing_final_fldr = Path(existing_final_fldr)
+        project_idx = existing_final_fldr.parts.index(project.project_title)
+        relative_suffix = Path(*existing_final_fldr.parts[project_idx + 1 :])
+        rapid_final_folder = project.rapid_access_folder / relative_suffix
+        src_tag = "_".join(str(int(v)) for v in plan["src_dims"])
+        manifest_fn = (
+            rapid_final_folder / "hdf5_shards" / f"src_{src_tag}" / "manifest.json"
+        )
+        final_fldr_full = manifest_fn.exists() and json.load(open(manifest_fn))[
+            "num_pending_shards"
+        ] == 0
+    else:
+        final_fldr_full = n_cases == cases_in_folder(existing_final_fldr)
     return {"src_fldr_full": src_fldr_full, "final_fldr_full": final_fldr_full}
 
 
@@ -141,7 +159,6 @@ def labels_from_remapping(remapping_in):
     return labels_all
 
 
-
 def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
     def _parse_single_remapping(remapping):
         if isinstance(remapping, str) and "TSL" in remapping:
@@ -176,7 +193,9 @@ def parse_nested_remapping(plan, key, as_list=False, as_dict=False):
     datasources = parse_excel_datasources(datasources)
     remapping = parse_excel_remapping(remapping, datasources)
     assert len(datasources) == len(remapping), (
-        "For each datasource, a unique remapping is required, it can be None.\nFound datasources: {} and remapping: {}".format(len(datasources), len(remapping))
+        "For each datasource, a unique remapping is required, it can be None.\nFound datasources: {} and remapping: {}".format(
+            len(datasources), len(remapping)
+        )
     )
     remappings_out = []
     for ds, remapping in zip(datasources, remapping):
@@ -310,7 +329,6 @@ class ConfigMaker:
             )
             for _, row in self.plans.iterrows()
         ]
-
 
     def setup(
         self,
@@ -503,7 +521,7 @@ class ConfigMaker:
             print("No artifacts to create")
             return missing
         create_dataset_stats_artifacts(
-            lms_folder=data_folder/"lms",
+            lms_folder=data_folder / "lms",
             gif=create_gif,
             label_stats=create_label_stats,
             gif_window=gif_window,
@@ -716,4 +734,4 @@ if __name__ == "__main__":
     C.configs[plan_key] = parse_excel_dict(plan_selected)
 
     pp(C.configs[plan_key])
-    C.config 
+    C.config

@@ -317,15 +317,16 @@ class Preprocessor:
         self.devices = devices
 
     def _plan_allows_hdf5_shards(self) -> bool:
-        if self.subfolder_key == "data_folder_source" and self.plan["mode"] == "source":
-            self.delete_pt_after_shard_creation = False
+        from fran.configs.parser import plan_requires_hdf5_shards
+
+        requires_hdf5_shards = plan_requires_hdf5_shards(
+            self.subfolder_key, self.plan["mode"]
+        )
+        self.delete_pt_after_shard_creation = (
+            requires_hdf5_shards and self.subfolder_key != "data_folder_source"
+        )
+        if requires_hdf5_shards:
             return True
-        if (
-            self.subfolder_key == "data_folder_lbd" and self.plan["mode"] == "lbd"
-        ) or (self.subfolder_key == "data_folder_rbd" and self.plan["mode"] == "rbd"):
-            self.delete_pt_after_shard_creation = True
-            return True
-        self.delete_pt_after_shard_creation = False
         return False
 
     @property
@@ -1371,4 +1372,3 @@ if __name__ == "__main__":
     )
 
 # %
-
