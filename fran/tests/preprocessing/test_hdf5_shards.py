@@ -6,10 +6,12 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 
 from fran.preprocessing.fixed_size2 import FixedSizeDataGenerator
 from fran.preprocessing.helpers import import_h5py
+from fran.preprocessing.hdf5_shards import copy_folder_to_rapid_access
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator
 from fran.preprocessing.preprocessor import Preprocessor, create_hdf5_shards
@@ -263,3 +265,82 @@ def test_patch_and_whole_generators_force_hdf5_shards_off(tmp_path, monkeypatch)
 
     assert whole.hdf5_shards is False
     assert patch.hdf5_shards is False
+
+
+def test_copy_folder_to_rapid_access_resumable_and_overwrite(tmp_path):
+    src = tmp_path / "cold" / "images"
+    dst = tmp_path / "rapid" / "images"
+    src.mkdir(parents=True, exist_ok=True)
+
+    (src / "a.pt").write_bytes(b"aaa")
+    (src / "b.pt").write_bytes(b"bbb")
+    (src / "note.txt").write_text("ignore", encoding="utf-8")
+
+    out = copy_folder_to_rapid_access(src, dst, glob="*.pt", overwrite=False)
+    assert out == dst
+    assert (dst / "a.pt").read_bytes() == b"aaa"
+    assert (dst / "b.pt").read_bytes() == b"bbb"
+    assert (dst / "note.txt").exists() is False
+
+    (src / "a.pt").write_bytes(b"changed")
+    copy_folder_to_rapid_access(src, dst, glob="*.pt", overwrite=False)
+    assert (dst / "a.pt").read_bytes() == b"aaa"
+
+    copy_folder_to_rapid_access(src, dst, glob="*.pt", overwrite=True)
+    assert (dst / "a.pt").read_bytes() == b"changed"
+
+
+def test_copy_folder_to_rapid_access_cleans_partial_on_size_mismatch(tmp_path, monkeypatch):
+    src = tmp_path / "cold" / "images"
+    dst = tmp_path / "rapid" / "images"
+    src.mkdir(parents=True, exist_ok=True)
+    src_file = src / "case_001.pt"
+    src_file.write_bytes(b"0123456789")
+
+    def _partial_copy(_src, _dst):
+        _dst.parent.mkdir(parents=True, exist_ok=True)
+        _dst.write_bytes(b"short")
+
+    monkeypatch.setattr("fran.preprocessing.hdf5_shards._sendfile_copy", _partial_copy)
+
+    with pytest.raises(RuntimeError, match="Size mismatch after copy"):
+        copy_folder_to_rapid_access(src, dst, glob="*.pt", overwrite=True)
+
+    assert (dst / "case_001.pt").exists() is False
+
+
+def test_preprocessor_copy_to_rapid_access_copies_pt_and_shards(tmp_path):
+    cold_root = tmp_path / "cold_storage" / "datasets" / "preprocessed"
+    output_folder = cold_root / "projA" / "fixed_spacing" / "spc_100"
+    rapid_base = tmp_path / "rapid_access"
+
+    for sub in ("images", "lms", "indices"):
+        folder = output_folder / sub
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "case_001.pt").write_bytes(f"{sub}".encode("utf-8"))
+
+    shard_folder = output_folder / "hdf5_shards" / "src_192_192_128"
+    shard_folder.mkdir(parents=True, exist_ok=True)
+    (shard_folder / "shard_0000.h5").write_bytes(b"h5-data")
+    (shard_folder / "manifest.json").write_text('{"ok": true}', encoding="utf-8")
+
+    pre = Preprocessor.__new__(Preprocessor)
+    pre.output_folder = output_folder
+    pre.plan = {"src_dims": (192, 192, 128)}
+    pre.project = SimpleNamespace(
+        rapid_access_folder=rapid_base,
+        fixed_spacing_folder=cold_root / "projA" / "fixed_spacing",
+    )
+
+    pre.copy_to_rapid_access(pt=True, shards=True, overwrite=False)
+
+    rapid_output = rapid_base / Path("projA/fixed_spacing/spc_100")
+    assert (rapid_output / "images" / "case_001.pt").read_bytes() == b"images"
+    assert (rapid_output / "lms" / "case_001.pt").read_bytes() == b"lms"
+    assert (rapid_output / "indices" / "case_001.pt").read_bytes() == b"indices"
+    assert (
+        rapid_output / "hdf5_shards" / "src_192_192_128" / "shard_0000.h5"
+    ).read_bytes() == b"h5-data"
+    assert (
+        rapid_output / "hdf5_shards" / "src_192_192_128" / "manifest.json"
+    ).read_text(encoding="utf-8") == '{"ok": true}'

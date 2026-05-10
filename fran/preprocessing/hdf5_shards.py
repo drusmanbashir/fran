@@ -1,5 +1,8 @@
 import json
 import multiprocessing as mp
+import os
+import errno
+import shutil
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -8,6 +11,78 @@ import torch
 
 from fran.preprocessing.helpers import import_h5py, sanitize_meta_for_monai
 from utilz.fileio import maybe_makedirs
+
+
+def _sendfile_copy(src: "Path", dst: "Path") -> None:
+    """
+    Kernel zero-copy via os.sendfile() (Linux). Falls back to 256 MB buffer on non-Linux.
+    """
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if hasattr(os, "sendfile"):
+        with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+            size = src.stat().st_size
+            offset = 0
+            while offset < size:
+                try:
+                    sent = os.sendfile(
+                        fdst.fileno(), fsrc.fileno(), offset, size - offset
+                    )
+                except OSError as e:
+                    if e.errno == errno.EINTR:
+                        continue
+                    raise
+                if sent == 0:
+                    break
+                offset += sent
+    else:
+        with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+            shutil.copyfileobj(fsrc, fdst, length=256 * 1024 * 1024)
+
+
+def copy_folder_to_rapid_access(
+    src_folder: "Path",
+    dst_folder: "Path",
+    glob: str = "*",
+    overwrite: bool = False,
+) -> "Path":
+    """
+    Copy files matching `glob` from src_folder to dst_folder using os.sendfile()
+    zero-copy. Works for .pt files (images/, lms/, indices/) or .h5 shards.
+
+    Cold storage originals are never touched.
+    Per-file size verification — partial writes are detected and cleaned up.
+    Resumable: skips already-copied files when overwrite=False.
+
+    Returns dst_folder.
+    """
+    src_folder = Path(src_folder)
+    dst_folder = Path(dst_folder)
+
+    if not src_folder.exists():
+        raise FileNotFoundError(f"Source folder not found: {src_folder}")
+
+    files = sorted(f for f in src_folder.glob(glob) if f.is_file())
+    if not files:
+        print(f"No files matching '{glob}' in {src_folder}, nothing to copy.")
+        return dst_folder
+
+    dst_folder.mkdir(parents=True, exist_ok=True)
+    print(f"Copying {len(files)} files [{glob}]: {src_folder} → {dst_folder}")
+
+    for i, src_file in enumerate(files, 1):
+        dst_file = dst_folder / src_file.name
+        if dst_file.exists() and not overwrite:
+            print(f"  [{i}/{len(files)}] skip existing: {src_file.name}")
+            continue
+        size_mb = src_file.stat().st_size / 1e6
+        print(f"  [{i}/{len(files)}] {src_file.name} ({size_mb:.1f} MB)")
+        _sendfile_copy(src_file, dst_file)
+        if dst_file.stat().st_size != src_file.stat().st_size:
+            dst_file.unlink()
+            raise RuntimeError(f"Size mismatch after copy: {src_file} → {dst_file}")
+
+    print(f"Done: {dst_folder}")
+    return dst_folder
 
 
 class HDF5ShardWorker:
