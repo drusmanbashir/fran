@@ -791,26 +791,9 @@ class Preprocessor:
 
     def run_postprocess_only(
         self,
-        src_dims=None,
-        cases_per_shard=5,
-        max_shard_bytes=None,
-        overwrite_hdf5_shards=False,
-        hdf5_compression="gzip",
-        hdf5_compression_opts=1,
     ):
         print("Running postprocess on existing output tensors")
-        self.results_df = pd.DataFrame()
         self.postprocess_results()
-        self._maybe_create_hdf5_shards(
-            df_hdf5_run=self.df if overwrite_hdf5_shards else self.df_hdf5,
-            src_dims=src_dims,
-            cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
-            overwrite_hdf5_shards=overwrite_hdf5_shards,
-            hdf5_compression=hdf5_compression,
-            hdf5_compression_opts=hdf5_compression_opts,
-        )
-        return self.results_df
 
     def extra_worker_kwargs(self, mean_std_mode="dataset"):
         return {}
@@ -818,8 +801,7 @@ class Preprocessor:
     def process_pt(self, df_pt_run):
         self.initialize_process_state()
         if len(df_pt_run) == 0:
-            self.results_df = pd.DataFrame()
-            return self.results_df
+            return
         self.use_ray = self.should_use_ray()
         worker_kwargs = self.extra_worker_kwargs(mean_std_mode=self.mean_std_mode)
         if self.use_ray:
@@ -847,8 +829,8 @@ class Preprocessor:
                 debug=self.debug,
                 **worker_kwargs,
             )
-        self.results = self.run_worker_jobs()
-        log_rows = self.build_preprocessing_log_rows(self.results)
+        results = self.run_worker_jobs()
+        log_rows = self.build_preprocessing_log_rows(results)
         self.write_preprocessing_log(log_rows=log_rows)
 
     def write_preprocessing_log(self, results=None, log_rows=None):
@@ -1065,8 +1047,7 @@ class Preprocessor:
         )
         results = analysis["per_file_stats"]
         self.shapes = [a["shape"] for a in results]
-        self.results_df = pd.DataFrame(results)  # .values
-        self.results = self.results_df[["max", "min", "median"]]
+        self.results = pd.DataFrame(results)[["max", "min", "median"]]
         self._store_dataset_summary(num_processes=num_processes, debug=debug)
 
     def _store_dataset_summary(self, num_processes=8, debug=False):

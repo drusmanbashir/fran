@@ -161,13 +161,7 @@ class FixedSizeDataGenerator(Preprocessor):
         )
 
     def postprocess_results(self):
-        if len(self.results_df) == 0:
-            print("No results generated")
-            return
-        if self.results_df["ok"].all():
-            self._store_dataset_properties()
-        else:
-            print("Some files failed; dataset properties not stored from process results")
+        self._store_dataset_summary()
         store_label_count(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
