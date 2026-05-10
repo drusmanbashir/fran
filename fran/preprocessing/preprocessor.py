@@ -226,6 +226,32 @@ def get_tensorfile_stats(filename):
     return get_tensor_stats(tnsr)
 
 
+def dataset_details_from_lm_file(lm_fn):
+    lm = torch.load(lm_fn, weights_only=False)
+    if isinstance(lm, dict):
+        lm = lm["lm"]
+    lm = torch.as_tensor(lm)
+    n_fg = int(torch.count_nonzero(lm).item())
+    return {
+        "case_id": info_from_filename(lm_fn.name, full_caseid=True)["case_id"],
+        "fn_name": lm_fn.name,
+        "shape": tuple(int(v) for v in lm.shape),
+        "n_fg": n_fg,
+        "n_bg": int(lm.numel() - n_fg),
+        "has_fg": bool(n_fg > 0),
+    }
+
+
+def create_results_df_from_lms_folder(lms_folder: Path, num_processes=8):
+    lm_files = sorted(Path(lms_folder).glob("*.pt"))
+    rows = multiprocess_multiarg(
+        dataset_details_from_lm_file,
+        lm_files,
+        num_processes=num_processes,
+    )
+    return pd.DataFrame(rows)
+
+
 def _labels_from_lm_file(filename):
     lm = torch.load(filename, weights_only=False)
     labels = torch.unique(lm).detach().cpu().tolist()
@@ -334,15 +360,13 @@ class Preprocessor:
 
     @cached_property
     def logger(self):
-        return PreprocessingLogger(
-            output_folder=self.output_folder, columns=self.PREPROCESS_LOG_COLUMNS
-        )
+        return PreprocessingLogger(output_folder=self.output_folder)
 
     @property
     def hdf5_output_folder(self):
         name = self.output_folder.name
-        mode_fldr = self.output_folder.parent.name
-        final_folder = self.project.rapid_access_folder / mode_fldr / name / "hdf5_shards"
+        mode_folder = self.output_folder.parent.name
+        final_folder = self.project.rapid_access_folder / mode_folder / name / "hdf5_shards"
         return final_folder
 
     @property
@@ -597,7 +621,7 @@ class Preprocessor:
 
     @property
     def results_csv_fn(self):
-        return self.output_folder / "resampled_dataset_properties.csv"
+        return self.output_folder / "dataset_details.csv"
 
     def _read_existing_results_df(self):
         csv_fn = self.results_csv_fn
@@ -610,9 +634,10 @@ class Preprocessor:
 
     def _write_results_csv(self):
         existing_df = self._read_existing_results_df()
-        current_df = getattr(self, "results_df", pd.DataFrame())
-        if current_df is None:
-            current_df = pd.DataFrame()
+        current_df = create_results_df_from_lms_folder(
+            self.output_folder / "lms",
+            num_processes=self.num_processes,
+        )
         results_df = pd.concat([existing_df, current_df], ignore_index=True, sort=False)
         fn_series = (
             results_df["fn_name"]
@@ -629,8 +654,7 @@ class Preprocessor:
             results_df = results_df.assign(_resume_key=resume_key)
             results_df = results_df.drop_duplicates(subset=["_resume_key"], keep="last")
             results_df = results_df.drop(columns=["_resume_key"])
-        self.results_df = results_df
-        self.results_df.to_csv(self.results_csv_fn, index=False)
+        results_df.to_csv(self.results_csv_fn, index=False)
 
     @staticmethod
     def _coerce_log_value(value):
@@ -725,7 +749,7 @@ class Preprocessor:
     def postprocess_results(self):
         cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
         self._write_results_csv()
-        self._store_dataset_properties()
+        self._store_dataset_summary()
         store_label_count(
             self.output_folder, num_processes=getattr(self, "num_processes", 1)
         )
@@ -744,6 +768,7 @@ class Preprocessor:
     def postprocess_artifacts_missing(self):
         stats_folder = self.output_folder / "dataset_stats"
         required = [
+            self.output_folder/ "dataset_details.csv",
             self.output_folder / "labels_all.json",
             self.output_folder / "dataset_summary.json",
         ]
@@ -787,11 +812,6 @@ class Preprocessor:
         )
         return self.results_df
 
-    def _effective_overwrite(self, overwrite=None):
-        if overwrite is None:
-            return self.overwrite
-        return overwrite
-
     def extra_worker_kwargs(self, mean_std_mode="dataset"):
         return {}
 
@@ -830,8 +850,6 @@ class Preprocessor:
         self.results = self.run_worker_jobs()
         log_rows = self.build_preprocessing_log_rows(self.results)
         self.write_preprocessing_log(log_rows=log_rows)
-        self.results_df = self.flatten_results(self.results)
-        return self.results_df
 
     def write_preprocessing_log(self, results=None, log_rows=None):
         if log_rows is None:
@@ -859,17 +877,15 @@ class Preprocessor:
             hdf5_compression_opts=hdf5_compression_opts,
         )
 
-    def postprocess(self, overwrite=None):
-        overwrite = self._effective_overwrite(overwrite=overwrite)
+    def postprocess(self, overwrite=False):
         if overwrite is False and self.postprocess_artifacts_missing() is False:
             cprint("Postprocess: skip existing artifacts", "cyan")
         else:
             self.postprocess_results()
-        return self.results_df
 
     def process(
         self,
-        overwrite=None,
+        overwrite=False,
         derive_bboxes=True,
         src_dims=None,
         cases_per_shard=5,
@@ -881,7 +897,6 @@ class Preprocessor:
         if not hasattr(self, "df"):
             print("No data frames have been created. Run setup")
             return 0
-        overwrite = self._effective_overwrite(overwrite=overwrite)
         if len(self.df) == 0:
             if getattr(self, "run_postprocess_if_empty", False):
                 return self.run_postprocess_only(
@@ -906,7 +921,6 @@ class Preprocessor:
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
         )
-        return self.postprocess(overwrite=overwrite)
 
     def _maybe_create_hdf5_shards(
         self,
@@ -1040,22 +1054,36 @@ class Preprocessor:
             self.save_pt(lm[0], "lms")
             self.results.append(get_tensor_stats(image))
 
-    def get_tensor_folder_stats(self, debug=True):
+    def get_tensor_folder_stats(self,num_processes=8, debug=True):
         analysis = analyze_tensor_data_folder(
             self.output_folder / ("images"),
             glob_pattern="*",
             debug=debug,
             recursive=False,
             include_per_file_stats=True,
+            num_processes=num_processes,
         )
         results = analysis["per_file_stats"]
         self.shapes = [a["shape"] for a in results]
         self.results_df = pd.DataFrame(results)  # .values
         self.results = self.results_df[["max", "min", "median"]]
-        self._store_dataset_properties()
+        self._store_dataset_summary(num_processes=num_processes, debug=debug)
 
-    def _collect_output_folder_stats(self, debug=False):
-        num_processes = getattr(self, "num_processes", 1)
+    def _store_dataset_summary(self, num_processes=8, debug=False):
+        self.image_folder_stats, self.lm_folder_stats = (
+            self._collect_output_folder_stats(num_processes=num_processes, debug=debug)
+        )
+        print("Caculating data shape and intensity profile.")
+        dataset_summary= self.create_dataset_stats()
+        dataset_summary_fn = self.output_folder / "dataset_summary.json"
+        print(
+            "Writing preprocessing output properties to {}".format(
+                dataset_summary_fn
+            )
+        )
+        save_json(dataset_summary, dataset_summary_fn)
+
+    def _collect_output_folder_stats(self,num_processes=8, debug=False):
         image_stats = analyze_tensor_data_folder(
             self.output_folder / "images",
             glob_pattern="*",
@@ -1074,43 +1102,30 @@ class Preprocessor:
         )
         return image_stats, lm_stats
 
-    def _store_dataset_properties(self):
-        self.image_folder_stats, self.lm_folder_stats = (
-            self._collect_output_folder_stats()
-        )
-        print("Caculating data shape and intensity profile.")
-        resampled_dataset_properties = self.create_properties_dict()
-        resampled_dataset_properties_fname = self.output_folder / "dataset_summary.json"
-        print(
-            "Writing preprocessing output properties to {}".format(
-                resampled_dataset_properties_fname
-            )
-        )
-        save_json(resampled_dataset_properties, resampled_dataset_properties_fname)
 
-    def create_properties_dict(self):
-        resampled_dataset_properties = dict()
+    def create_dataset_stats(self):
+        dataset_summary = dict()
         lm_stats = getattr(self, "lm_folder_stats", {})
         image_stats = getattr(self, "image_folder_stats", {})
         intensity_profile = image_stats.get("intensity_profile", {})
 
-        resampled_dataset_properties["min_shape"] = lm_stats.get("min_shape", np.nan)
-        resampled_dataset_properties["median_shape"] = lm_stats.get(
+        dataset_summary["min_shape"] = lm_stats.get("min_shape", np.nan)
+        dataset_summary["median_shape"] = lm_stats.get(
             "median_shape", np.nan
         )
-        resampled_dataset_properties["max_shape"] = lm_stats.get("max_shape", np.nan)
+        dataset_summary["max_shape"] = lm_stats.get("max_shape", np.nan)
 
-        resampled_dataset_properties["dataset_spacing"] = self.plan.get("spacing")
-        resampled_dataset_properties["dataset_max"] = intensity_profile.get(
+        dataset_summary["dataset_spacing"] = self.plan.get("spacing")
+        dataset_summary["dataset_max"] = intensity_profile.get(
             "dataset_max", np.nan
         )
-        resampled_dataset_properties["dataset_min"] = intensity_profile.get(
+        dataset_summary["dataset_min"] = intensity_profile.get(
             "dataset_min", np.nan
         )
-        resampled_dataset_properties["dataset_median"] = intensity_profile.get(
+        dataset_summary["dataset_median"] = intensity_profile.get(
             "dataset_median", np.nan
         )
-        return resampled_dataset_properties
+        return dataset_summary
 
     def create_output_folders(self):
         maybe_makedirs(
@@ -1402,4 +1417,3 @@ if __name__ == "__main__":
     ss = Path(ss)
 
 # %
-
