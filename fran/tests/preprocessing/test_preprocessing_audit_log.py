@@ -57,6 +57,7 @@ def test_preprocessing_audit_log_status_normalization(tmp_path):
     pre.write_preprocessing_log(results)
     df = pd.read_csv(tmp_path / "preprocessing_log.csv")
     assert list(df.columns) == Preprocessor.PREPROCESS_LOG_COLUMNS
+    assert df["timestamp"].notna().all()
     assert df["status"].tolist() == ["OK", "WARNING", "ERROR"]
 
 
@@ -77,3 +78,25 @@ def test_flatten_results_strips_preprocess_audit_columns(tmp_path):
     assert "_preprocess_events" not in df.columns
     assert "_preprocess_error" not in df.columns
     assert "case_id" in df.columns
+
+
+def test_preprocessing_audit_log_appends_on_resume(tmp_path):
+    pre = _make_preprocessor(tmp_path)
+    rows = [
+        {
+            "case_id": "case_ok",
+            "status": "OK",
+            "image": "/tmp/case_ok_img.pt",
+            "lm": "/tmp/case_ok_lm.pt",
+            "error_type": "",
+            "error_message": "",
+            "traceback": "",
+        }
+    ]
+
+    pre.write_preprocessing_log(log_rows=rows)
+    pre.write_preprocessing_log(log_rows=rows)
+
+    df = pd.read_csv(tmp_path / "preprocessing_log.csv")
+    assert len(df) == 2
+    assert df["case_id"].tolist() == ["case_ok", "case_ok"]

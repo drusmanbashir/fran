@@ -3,8 +3,10 @@ import itertools as il
 import json
 import sqlite3
 import shutil
+from functools import cached_property
 from pathlib import Path
 
+from fran.utils.folder_names import FolderNames
 import numpy as np
 import pandas as pd
 import ray
@@ -12,6 +14,7 @@ import SimpleITK as sitk
 import torch
 from fran.configs.helpers import is_excel_None
 from fran.data.dataregistry import DS
+from fran.loggers.preprocessing import PreprocessingLogger
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.hdf5_shards import HDF5ShardWriter
 from fran.preprocessing.helpers import (
@@ -23,7 +26,6 @@ from fran.preprocessing.helpers import (
     sanitize_meta_for_monai,
 )
 from fran.utils.dataset_properties import analyze_tensor_data_folder
-from fran.utils.jsonl import write_jsonl_rows
 from utilz.cprint import cprint
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
@@ -289,6 +291,7 @@ def create_hdf5_shards(
 class Preprocessor:
     subfolder_key = None
     PREPROCESS_LOG_COLUMNS = [
+        "timestamp",
         "case_id",
         "status",
         "image",
@@ -329,19 +332,25 @@ class Preprocessor:
             return True
         return False
 
+    @cached_property
+    def logger(self):
+        return PreprocessingLogger(
+            output_folder=self.output_folder, columns=self.PREPROCESS_LOG_COLUMNS
+        )
+
     @property
     def hdf5_output_folder(self):
-        parts = Path(self.output_folder).parts
-        project_idx = parts.index(self.project.project_title)
-        project_relative = Path(*parts[project_idx + 1 :])
-        return self.project.rapid_access_folder / project_relative
+        name = self.output_folder.name
+        mode_fldr = self.output_folder.parent.name
+        final_folder = self.project.rapid_access_folder / mode_fldr / name / "hdf5_shards"
+        return final_folder
 
     @property
     def hdf5_manifest_fn(self):
         src_dims = self.plan["src_dims"]
         src_tag = "_".join(str(int(v)) for v in src_dims)
         return (
-            self.hdf5_output_folder / "hdf5_shards" / f"src_{src_tag}" / "manifest.json"
+            self.hdf5_output_folder/  f"src_{src_tag}" / "manifest.json"
         )
 
     def _df_from_db(self):
@@ -491,29 +500,20 @@ class Preprocessor:
     def _register_existing_hdf5_shards(self) -> None:
         manifest_fn = self.hdf5_manifest_fn
         self.existing_hdf5_fnames = set()
+        committed_shards = 0
         if manifest_fn.exists():
             manifest = json.loads(manifest_fn.read_text())
-            h5py = import_h5py()
-            shards_folder = manifest_fn.parent
-            for shard_meta in manifest["shards"]:
-                shard_fn = shards_folder / shard_meta["shard"]
-                with h5py.File(shard_fn, "r") as h5f:
-                    cases_grp = h5f["cases"]
-                    for case_id in shard_meta["case_ids"]:
-                        if case_id not in cases_grp:
-                            continue
-                        case_grp = cases_grp[case_id]
-                        required_keys = (
-                            "image",
-                            "lm",
-                            "lm_fg_indices",
-                            "lm_bg_indices",
-                        )
-                        if all(key in case_grp for key in required_keys):
-                            self.existing_hdf5_fnames.add(f"{case_id}.pt")
+            committed_shards = int(manifest.get("num_shards", len(manifest["shards"])))
+            case_ids_done = [
+                case_id
+                for shard_meta in manifest["shards"]
+                for case_id in shard_meta["case_ids"]
+            ]
+            self.existing_hdf5_fnames = {f"{case_id}.pt" for case_id in case_ids_done}
         print("Output folder: ", self.output_folder)
+        print("HDF5 shards fully processed in a previous session: ", committed_shards)
         print(
-            "HDf5 files fully processed in a previous session: ",
+            "HDF5 cases fully processed in a previous session: ",
             len(self.existing_hdf5_fnames),
         )
         case_ids_done = [
@@ -829,9 +829,15 @@ class Preprocessor:
             )
         self.results = self.run_worker_jobs()
         log_rows = self.build_preprocessing_log_rows(self.results)
-        write_jsonl_rows(self.output_folder / "log.jsonl", log_rows)
+        self.write_preprocessing_log(log_rows=log_rows)
         self.results_df = self.flatten_results(self.results)
         return self.results_df
+
+    def write_preprocessing_log(self, results=None, log_rows=None):
+        if log_rows is None:
+            log_rows = self.build_preprocessing_log_rows(results)
+        self.logger.append_rows(log_rows)
+        return log_rows
 
     def process_hdf5(
         self,
@@ -929,7 +935,16 @@ class Preprocessor:
             case_ids=df_hdf5_run["case_id"].tolist(),
             num_processes=num_processes,
         )
-        shard_paths = writer.run()
+        try:
+            shard_paths = writer.run()
+        except Exception as e:
+            self.logger.exception(
+                e,
+                error_type="HDF5ShardWrite",
+                image=str(self.output_folder / "images"),
+                lm=str(self.output_folder / "lms"),
+            )
+            raise
         if self.delete_pt_after_shard_creation:
             for subfolder in ("images", "lms", "indices"):
                 pth = self.output_folder / subfolder
@@ -1371,4 +1386,20 @@ if __name__ == "__main__":
         gif_window="abdomen",
     )
 
+    parts = Path(R.output_folder).parts
+    project_idx = parts.index(R.project.project_title)
+    project_relative = Path(*parts[project_idx + 1 :])
+    R.project.rapid_access_folder / project_relative
+    R.project.rapid_access_folder
+    shards_subfolder = R.output_folder.name
+    final_name = ss.parent / shards_subfolder
+# %%
+
+    src_subfolder = FolderNames(self.project, self.plan).folders
+    ss = src_subfolder["data_folder_source"]
+    ss = src_subfolder["data_folder_rbd"]
+
+    ss = Path(ss)
+
 # %
+

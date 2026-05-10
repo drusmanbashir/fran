@@ -407,12 +407,12 @@ if __name__ == "__main__":
     # aa = chunkify(Rs.df,16)
 
     # P = Project("test")
-    P = Project("kits23")
+    P = Project("totalseg")
 
     # P._create_plans_table()
     # P.add_data([DS.totalseg])
     C = ConfigMaker(P)
-    C.setup(2)
+    C.setup(8)
     C.plans
     plan = C.configs["plan_train"]
     conf = C.configs
@@ -426,7 +426,7 @@ if __name__ == "__main__":
     print(P.global_properties)
 # %%
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
-    Rs = ResampleDatasetniftiToTorch(P, plan, P.raw_data_folder)
+    Rs = NiftiToTorchDataGenerator(P, plan, P.raw_data_folder)
 # %%
 
     Rs.output_folder.exists()

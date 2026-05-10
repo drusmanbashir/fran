@@ -235,16 +235,21 @@ class HDF5ShardWorker:
                 -1 if compression_opts is None else int(compression_opts)
             )
             for rec in shard_cases:
-                self._write_case(
-                    h5f=h5f,
-                    case_id=rec["case_id"],
-                    image_pt=rec["image_pt"],
-                    lm_pt=rec["lm_pt"],
-                    indices_pt=rec["indices_pt"],
-                    src_dims=src_dims,
-                    compression=compression,
-                    compression_opts=compression_opts,
-                )
+                try:
+                    self._write_case(
+                        h5f=h5f,
+                        case_id=rec["case_id"],
+                        image_pt=rec["image_pt"],
+                        lm_pt=rec["lm_pt"],
+                        indices_pt=rec["indices_pt"],
+                        src_dims=src_dims,
+                        compression=compression,
+                        compression_opts=compression_opts,
+                    )
+                except Exception as e:
+                    raise RuntimeError(
+                        f"bad file case_id={rec['case_id']} shard_fn={shard_fn} image_pt={rec['image_pt']} lm_pt={rec['lm_pt']} indices_pt={rec['indices_pt']}"
+                    ) from e
         return {
             "shard_idx": int(shard_idx),
             "shard": shard_fn.name,
@@ -493,6 +498,7 @@ class HDF5ShardGenerator:
             raise RuntimeError("Call setup() before run().")
 
         completed_shards = {}
+        failed_shards = []
         max_workers = (
             max(1, min(int(self.num_processes), len(self.shard_jobs)))
             if self.shard_jobs
@@ -502,8 +508,12 @@ class HDF5ShardGenerator:
             return sorted(self.shards_folder.glob("shard_*.h5"))
         if max_workers == 1:
             for job in self.shard_jobs:
-                shard_info = _process_hdf5_shard_worker(job)
-                completed_shards[shard_info["shard_idx"]] = shard_info
+                try:
+                    shard_info = _process_hdf5_shard_worker(job)
+                    completed_shards[shard_info["shard_idx"]] = shard_info
+                except Exception as e:
+                    failed_shards.append(str(e))
+                    continue
                 self._persist_run_progress(completed_shards)
         else:
             ctx = mp.get_context("spawn")
@@ -513,7 +523,11 @@ class HDF5ShardGenerator:
                     for job in self.shard_jobs
                 ]
                 for fut in as_completed(futures):
-                    shard_info = fut.result()
+                    try:
+                        shard_info = fut.result()
+                    except Exception as e:
+                        failed_shards.append(str(e))
+                        continue
                     completed_shards[shard_info["shard_idx"]] = shard_info
                     self._persist_run_progress(completed_shards)
         self.completed_shards = list(self.completed_shards) + [
@@ -521,6 +535,8 @@ class HDF5ShardGenerator:
         ]
         self.pending_shards = []
         self.shard_jobs = []
+        if failed_shards:
+            raise RuntimeError("HDF5 shard failures:\n" + "\n".join(failed_shards))
         print(f"Wrote {len(self.shard_paths)} HDF5 shards in {self.shards_folder}")
         return sorted(self.shards_folder.glob("shard_*.h5"))
 
