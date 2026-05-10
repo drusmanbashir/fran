@@ -345,6 +345,31 @@ class Preprocessor:
         self.set_input_output_folders(data_folder, output_folder)
         self.devices = devices
 
+
+    def setup(
+        self,
+        overwrite=False,
+        num_processes=8,
+        device="cpu",
+        debug=False,
+        mean_std_mode="dataset",
+    ):
+        self.devices = device
+        self.overwrite = overwrite
+        self.debug = debug
+        self.mean_std_mode = mean_std_mode
+        self.run_postprocess_if_empty = False
+        self.create_data_df()
+        if getattr(self, "remapping_key", None) is not None:
+            self.set_remapping_per_ds()
+        self.register_existing_cases()
+        self.remove_completed_cases()
+        print("Overwrite:", overwrite)
+        if len(self.df) == 0:
+            missing_arts = postprocess_artifacts_missing(self.output_folder)
+            self.run_postprocess_if_empty = all(missing_arts.values())
+
+
     def _plan_allows_hdf5_shards(self) -> bool:
         from fran.configs.parser import plan_requires_hdf5_shards
 
@@ -632,11 +657,11 @@ class Preprocessor:
         except pd.errors.EmptyDataError:
             return pd.DataFrame()
 
-    def _write_results_csv(self):
+    def _write_results_csv(self, num_processes=8):
         existing_df = self._read_existing_results_df()
         current_df = create_results_df_from_lms_folder(
             self.output_folder / "lms",
-            num_processes=self.num_processes,
+            num_processes=num_processes,
         )
         results_df = pd.concat([existing_df, current_df], ignore_index=True, sort=False)
         fn_series = (
@@ -746,13 +771,11 @@ class Preprocessor:
                 )
         return rows
 
-    def postprocess_results(self):
+    def postprocess_results(self, num_processes=8):
         cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
-        self._write_results_csv()
-        self._store_dataset_summary()
-        store_label_count(
-            self.output_folder, num_processes=getattr(self, "num_processes", 1)
-        )
+        self._write_results_csv(num_processes=num_processes)
+        self._store_dataset_summary(num_processes=num_processes)
+        store_label_count(self.output_folder, num_processes=num_processes)
         create_dataset_stats_artifacts(
             lms_folder=self.output_folder / "lms",
             gif=self.store_gifs,
@@ -791,23 +814,40 @@ class Preprocessor:
 
     def run_postprocess_only(
         self,
+        src_dims=None,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
+        num_processes=8,
     ):
         print("Running postprocess on existing output tensors")
-        self.postprocess_results()
+        self.postprocess_results(num_processes=num_processes)
+        self._maybe_create_hdf5_shards(
+            df_hdf5_run=self.df if overwrite_hdf5_shards else self.df_hdf5,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
+            num_processes=num_processes,
+        )
 
     def extra_worker_kwargs(self, mean_std_mode="dataset"):
         return {}
 
-    def process_pt(self, df_pt_run):
+    def process_pt(self, df_pt_run, num_processes=8):
         self.initialize_process_state()
         if len(df_pt_run) == 0:
             return
-        self.use_ray = self.should_use_ray()
+        self.use_ray = self.should_use_ray(num_processes=num_processes)
         worker_kwargs = self.extra_worker_kwargs(mean_std_mode=self.mean_std_mode)
         if self.use_ray:
             self.ray_prepare(
                 df=df_pt_run,
-                num_processes=self.num_processes,
+                num_processes=num_processes,
                 project=self.project,
                 plan=self.plan,
                 data_folder=self.data_folder,
@@ -848,6 +888,7 @@ class Preprocessor:
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
+        num_processes=8,
     ):
         return self._maybe_create_hdf5_shards(
             df_hdf5_run=df_hdf5_run,
@@ -857,24 +898,25 @@ class Preprocessor:
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
+            num_processes=num_processes,
         )
 
-    def postprocess(self, overwrite=False):
+    def postprocess(self, overwrite=False, num_processes=8):
         if overwrite is False and self.postprocess_artifacts_missing() is False:
             cprint("Postprocess: skip existing artifacts", "cyan")
         else:
-            self.postprocess_results()
+            self.postprocess_results(num_processes=num_processes)
 
     def process(
         self,
         overwrite=False,
-        derive_bboxes=True,
         src_dims=None,
         cases_per_shard=5,
         max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
+        num_processes=8,
     ):
         if not hasattr(self, "df"):
             print("No data frames have been created. Run setup")
@@ -888,12 +930,13 @@ class Preprocessor:
                     overwrite_hdf5_shards=overwrite_hdf5_shards,
                     hdf5_compression=hdf5_compression,
                     hdf5_compression_opts=hdf5_compression_opts,
+                    num_processes=num_processes,
                 )
             print("No data frames have been created. Run setup")
             return 0
         df_pt_run = self.df if overwrite else self.df_pt
         df_hdf5_run = self.df if overwrite else self.df_hdf5
-        self.process_pt(df_pt_run=df_pt_run)
+        self.process_pt(df_pt_run=df_pt_run, num_processes=num_processes)
         self.process_hdf5(
             df_hdf5_run=df_hdf5_run,
             src_dims=src_dims,
@@ -902,6 +945,7 @@ class Preprocessor:
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
+            num_processes=num_processes,
         )
 
     def _maybe_create_hdf5_shards(
@@ -913,10 +957,10 @@ class Preprocessor:
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
+        num_processes=8,
     ):
         if self.hdf5_shards is False or len(df_hdf5_run) == 0:
             return []
-        num_processes = getattr(self, "num_processes", 8)
         writer = HDF5ShardWriter(
             pt_folder=self.output_folder,
             shard_folder=self.hdf5_output_folder,
@@ -1176,33 +1220,9 @@ class Preprocessor:
             for _ in range(n)
         ]
 
-    def should_use_ray(self):
+    def should_use_ray(self, num_processes=8):
         debug = getattr(self, "debug", False)
-        return (self.num_processes > 1) and (not debug)
-
-    def setup(
-        self,
-        overwrite=False,
-        num_processes=8,
-        device="cpu",
-        debug=False,
-        mean_std_mode="dataset",
-    ):
-        self.num_processes = max(1, int(num_processes))
-        self.devices = device
-        self.overwrite = overwrite
-        self.debug = debug
-        self.mean_std_mode = mean_std_mode
-        self.run_postprocess_if_empty = False
-        self.create_data_df()
-        if getattr(self, "remapping_key", None) is not None:
-            self.set_remapping_per_ds()
-        self.register_existing_cases()
-        self.remove_completed_cases()
-        print("Overwrite:", overwrite)
-        if len(self.df) == 0:
-            missing_arts = postprocess_artifacts_missing(self.output_folder)
-            self.run_postprocess_if_empty = all(missing_arts.values())
+        return (num_processes > 1) and (not debug)
 
 
 # %%

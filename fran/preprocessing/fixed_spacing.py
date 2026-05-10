@@ -1,7 +1,6 @@
 # %%
 from pathlib import Path
 
-import ipdb
 import pandas as pd
 import ray
 import torch
@@ -251,7 +250,11 @@ class NiftiToTorchDataGenerator(Preprocessor):
         self.clip_center = clip_center
         self.half_precision = half_precision
         super().__init__(
-            project, plan, output_folder=output_folder, data_folder=data_folder, hdf5_shards=True
+            project,
+            plan,
+            output_folder=output_folder,
+            data_folder=data_folder,
+            hdf5_shards=True,
         )
 
     def extra_worker_kwargs(self, mean_std_mode="dataset"):
@@ -261,8 +264,8 @@ class NiftiToTorchDataGenerator(Preprocessor):
             "mean_std_mode": mean_std_mode,
         }
 
-    def should_use_ray(self):
-        return (self.num_processes > 1) and (not getattr(self, "debug", False))
+    def should_use_ray(self, num_processes=8):
+        return (num_processes > 1) and (not getattr(self, "debug", False))
 
     def setup(
         self,
@@ -285,15 +288,13 @@ class NiftiToTorchDataGenerator(Preprocessor):
         remapping = self.plan.get(self.remapping_key)
         self.df = self.df.assign(remapping=[remapping] * len(self.df))
 
-    def postprocess_results(self):
-        self._store_dataset_properties()
+    def postprocess_results(self, num_processes=8):
+        self._store_dataset_summary(num_processes=num_processes)
         generate_bboxes_from_lms_folder(
             self.output_folder / "lms",
-            num_processes=getattr(self, "num_processes", 1),
+            num_processes=num_processes,
         )
-        store_label_count(
-            self.output_folder, num_processes=getattr(self, "num_processes", 1)
-        )
+        store_label_count(self.output_folder, num_processes=num_processes)
         create_dataset_stats_artifacts(
             lms_folder=self.output_folder / "lms",
             gif=self.store_gifs,
@@ -392,8 +393,8 @@ if __name__ == "__main__":
     set_autoreload()
 
     from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
+    from fran.transforms.fg_indices import FgBgToIndicesd2
     from fran.transforms.inferencetransforms import ToCPUd
-    from fran.transforms.fg_indices import FgBgToIndicesd2, LabelRemapd
     from fran.utils.common import *
     from monai.transforms.utility.dictionary import (
         EnsureChannelFirstd,
@@ -403,10 +404,6 @@ if __name__ == "__main__":
     from utilz.fileio import maybe_makedirs, save_json
     from utilz.stringz import strip_extension
 # %%
-    # chunkify = lambda l, n: [l[i : i + n] for i in range(0, len(l), n)]
-    # aa = chunkify(Rs.df,16)
-
-    # P = Project("test")
     P = Project("totalseg")
 
     # P._create_plans_table()
@@ -427,7 +424,34 @@ if __name__ == "__main__":
 # %%
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     Rs = NiftiToTorchDataGenerator(P, plan, P.raw_data_folder)
+    Rs.process(overwrite=False, num_processes=16)
 # %%
+    F = Rs
+# %%
+# SECTION:-------------------- postprocess_results--------------------------------------------------------------------------------------  # T:block_meta|FGBGIndicesResampleDataset.postprocess_results
+    F._store_dataset_summary()  # T:self_ref|self._store_dataset_properties()
+    generate_bboxes_from_lms_folder(
+        F.output_folder / "lms",  # T:self_ref|    self.output_folder / "lms",
+        num_processes=getattr(
+            F, "num_processes", 1
+        ),  # T:self_ref|    num_processes=getattr(self, "num_processes", 1),
+    )
+    store_label_count(
+        F.output_folder,
+        num_processes=getattr(
+            F, "num_processes", 1
+        ),  # T:self_ref|    self.output_folder, num_processes=getattr(self, "num_processes", 1)
+    )
+    create_dataset_stats_artifacts(
+        lms_folder=F.output_folder
+        / "lms",  # T:self_ref|    lms_folder=self.output_folder / "lms",
+        gif=F.store_gifs,  # T:self_ref|    gif=self.store_gifs,
+        label_stats=F.store_label_stats,  # T:self_ref|    label_stats=self.store_label_stats,
+        gif_window=infer_dataset_stats_window(
+            F.project
+        ),  # T:self_ref|    gif_window=infer_dataset_stats_window(self.project),
+    )
+    # end PythonMethodScratch  # T:block_end|FGBGIndicesResampleDataset.postprocess_results
 
     Rs.output_folder.exists()
 
@@ -719,3 +743,4 @@ if __name__ == "__main__":
 
 
 # %%
+
