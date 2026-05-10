@@ -9,7 +9,7 @@ from fran.preprocessing.fixed_spacing import (
     NiftiToTorchDataGenerator,
 )
 from fran.preprocessing.helpers import env_flag
-from fran.preprocessing.fixed_size2 import FixedSizeDataGenerator
+from fran.preprocessing.fixed_size import FixedSizeDataGenerator
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator

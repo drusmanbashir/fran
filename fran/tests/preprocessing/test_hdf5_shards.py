@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 import torch
 
-from fran.preprocessing.fixed_size2 import FixedSizeDataGenerator
+from fran.preprocessing.fixed_size import FixedSizeDataGenerator
 from fran.preprocessing.helpers import import_h5py
 from fran.preprocessing.hdf5_shards import copy_folder_to_rapid_access
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
@@ -336,7 +336,7 @@ def test_patch_and_whole_generators_force_hdf5_shards_off(tmp_path, monkeypatch)
                 "data_folder_lbd": str(root / "lbd"),
             }
 
-    monkeypatch.setattr("fran.preprocessing.fixed_size2.FolderNames", _FolderNamesStub)
+    monkeypatch.setattr("fran.preprocessing.fixed_size.FolderNames", _FolderNamesStub)
     monkeypatch.setattr("fran.preprocessing.patch.FolderNames", _FolderNamesStub)
 
     project = SimpleNamespace(test_root=tmp_path)

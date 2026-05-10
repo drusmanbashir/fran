@@ -380,7 +380,6 @@ class HDF5ShardGenerator:
         shards_folder = self.shard_folder / f"src_{src_tag}"
         manifest_fn = shards_folder / "manifest.json"
         maybe_makedirs([self.shard_folder, shards_folder])
-        self.num_processes = max(1, int(num_processes))
         self.shards_folder = shards_folder
         self.manifest_fn = manifest_fn
         self.completed_shards = []
@@ -493,14 +492,14 @@ class HDF5ShardGenerator:
             pending_shards=pending_manifest,
         )
 
-    def run(self):
+    def run(self, num_processes=8):
         if not hasattr(self, "manifest_fn"):
             raise RuntimeError("Call setup() before run().")
 
         completed_shards = {}
         failed_shards = []
         max_workers = (
-            max(1, min(int(self.num_processes), len(self.shard_jobs)))
+            max(1, min(int(num_processes), len(self.shard_jobs)))
             if self.shard_jobs
             else 0
         )
@@ -542,7 +541,7 @@ class HDF5ShardGenerator:
 
     def create(self, case_ids=None, num_processes=8):
         self.setup(case_ids=case_ids, num_processes=num_processes)
-        return self.run()
+        return self.run(num_processes=num_processes)
 
 
 HDF5ShardWriter = HDF5ShardGenerator

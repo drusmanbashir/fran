@@ -1,265 +1,176 @@
-# %%
 from pathlib import Path
 
-import ipdb
-from fran.preprocessing.patch import PatchDataGenerator
-from fran.transforms.imageio import LoadTorchd, TorchWriter
-from fran.transforms.misc_transforms import LabelRemapd
-from fran.utils.folder_names import FolderNames
-from label_analysis.geometry_pt import BBoxInfoFromPT
-from monai.transforms import Compose, MaskIntensity
-from monai.transforms.io.dictionary import SaveImaged
-from monai.transforms.spatial.dictionary import Resized
-from monai.transforms.transform import MapTransform
-from monai.transforms.utility.dictionary import (
-    DeleteItemsd,
-    EnsureChannelFirstd,
-    SqueezeDimd,
-)
-from utilz.fileio import maybe_makedirs, sitk, torch, tr
-from utilz.helpers import chunks, find_matching_fn, folder_name_from_list, info_from_filename, set_autoreload
-from utilz.imageviewers import ImageMaskViewer
-from utilz.rayz import shutdown_actors
-from utilz.stringz import info_from_filename
-
-tr = ipdb.set_trace
-
+import pandas as pd
 import ray
+import torch
+from fran.preprocessing.helpers import (
+    create_dataset_stats_artifacts,
+    infer_dataset_stats_window,
+)
+from fran.preprocessing.preprocessor import Preprocessor, get_tensor_stats, store_label_count
+from fran.preprocessing.rayworker_base import RayWorkerBase
+from fran.transforms.imageio import LoadTorchd
+from fran.transforms.misc_transforms import ChangeDtyped, DummyTransform, GetLabelsd
+from fran.utils.folder_names import FolderNames
+from monai.transforms.spatial.dictionary import Resized
+from monai.transforms.utility.dictionary import EnsureChannelFirstd
+
+from utilz.fileio import maybe_makedirs
 
 
-class BBoxInfoStatsd(MapTransform):
+class _FixedSizeWorkerBase(RayWorkerBase):
+    remapping_key = "remapping_whole"
+
     def __init__(
         self,
-        keys=("image", "lm"),
-        ignore_labels=[1],
-        apply_mask=True,
-        additional_keys=None,
-        allow_missing_keys=False,
+        project,
+        plan,
+        data_folder,
+        output_folder,
+        device="cpu",
+        debug=False,
     ):
-        super().__init__(keys, allow_missing_keys)
-        self.ignore_labels = ignore_labels
-        self.apply_mask = apply_mask
-        self.additional_keys = additional_keys
+        super().__init__(
+            project=project,
+            plan=plan,
+            data_folder=data_folder,
+            output_folder=output_folder,
+            device=device,
+            debug=debug,
+            tfms_keys="LoadT,Chan,Remap,Resize,LmDType,Labels",
+        )
 
-    def __call__(self, data):
-        d = dict(data)
-        img = d["image"]
-        lm = d["lm"]
-        B = BBoxInfoFromPT(li=lm, ignore_labels=self.ignore_labels)
-        filename = lm.meta["filename_or_obj"]
-        dicis_out = []
-        for _, row in B.nbrhoods.iterrows():
-            bbox = row["bbox"]
-            label = row["label_org"]
-            bbox2 = (
-                slice(bbox[0], bbox[0] + bbox[3]),
-                slice(bbox[1], bbox[1] + bbox[4]),
-                slice(bbox[2], bbox[2] + bbox[5]),
-            )
-            img2 = img[bbox2]
-            lm2 = lm[bbox2]
-            img_out = img2
-            if self.apply_mask:
-                mask = lm2 == label
-                img_out = MaskIntensity(mask_data=mask)(img2)
+    def _create_data_dict(self, row: pd.Series):
+        return {
+            "image": row["image"],
+            "lm": row["lm"],
+            "ds": row["ds"],
+            "remapping": row["remapping"],
+        }
 
-            dici_out = {
-                "image": img_out,
-                "label": lm2,
-                "filename": filename,
-                "label_org": label,
-                "mean": img_out.mean(),
-                "min": img_out.min(),
-                "max": img_out.max(),
-            }
-            if self.additional_keys is not None:
-                for key in self.additional_keys:
-                    dici_out[key] = row[key]
-            dicis_out.append(dici_out)
-        return dicis_out
+    def create_transforms(self, device="cpu"):
+        self.image_key = "image"
+        self.lm_key = "lm"
+        self.LoadT = LoadTorchd(keys=[self.image_key, self.lm_key])
+        self.Chan = EnsureChannelFirstd(
+            keys=[self.image_key, self.lm_key], channel_dim="no_channel"
+        )
+        self.Remap = self.create_monai_remapping_per_ds(
+            self.remapping_key, self.lm_key
+        )
+        self.Resize = Resized(
+            keys=[self.image_key, self.lm_key],
+            spatial_size=self.plan["patch_size"],
+            mode=["linear", "nearest"],
+        )
+        self.LmDType = ChangeDtyped(keys=[self.lm_key], target_dtype=torch.uint8)
+        self.Labels = GetLabelsd(lm_key=self.lm_key)
+        self.transforms_dict = {
+            "LoadT": self.LoadT,
+            "Chan": self.Chan,
+            "Remap": self.Remap,
+            "Resize": self.Resize,
+            "LmDType": self.LmDType,
+            "Labels": self.Labels,
+        }
+        self.transforms = self.tfms_from_dict(self.tfms_keys)
+
+    def _process_row(self, row: pd.Series):
+        data = self._create_data_dict(row)
+        data = self.apply_transforms(data)
+        image = data["image"]
+        lm = data["lm"]
+        labels = data["lm_labels"]
+        assert image.shape == lm.shape, "mismatch in shape"
+        assert image.dim() == 4, "images should be cxhxwxd"
+        self.save_pt(image[0], "images")
+        self.save_pt(lm[0], "lms")
+        stats = get_tensor_stats(image[0])
+        stats["case_id"] = row["case_id"]
+        stats["ok"] = True
+        stats["labels"] = labels
+        return stats
 
 
 @ray.remote(num_cpus=1)
-class FixedSizeMaker(object):
-    """
-    Used by 'whole' DataManager in training.
-    """
-
-    def __init__(self):
-        pass
-
-    def process(
-        self,
-        dicis,
-        spatial_size,
-        output_folder_im,
-        output_folder_lm,
-        remapping=None,
-    ):
-
-        L = LoadTorchd(keys=["lm", "image"])
-        M = LabelRemapd(keys=["lm"], remapping_key="remapping")
-        E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-        Rz = Resized(
-            keys=["image", "lm"], spatial_size=spatial_size, mode=["linear", "nearest"]
-        )
-        S = SqueezeDimd(keys=["image", "lm"])
-
-        Si = SaveImaged(
-            keys=["image"],
-            output_ext="pt",
-            writer=TorchWriter,
-            output_dir=output_folder_im,
-            output_postfix="",
-            output_dtype="float32",
-            separate_folder=False,
-        )
-        Sl = SaveImaged(
-            output_ext="pt",
-            keys=["lm"],
-            writer=TorchWriter,
-            output_dtype="uint8",
-            output_dir=output_folder_lm,
-            output_postfix="",
-            separate_folder=False,
-        )
-        Del = DeleteItemsd(keys=["image", "lm"])
-
-        # S1 = SaveImage(output_ext='pt',  output_dir=self.output_fldr_imgs, output_postfix=str(1), output_dtype='float32', writer=TorchWriter,separate_folder=False)
-        if remapping:
-            tfms = Compose([L, M, E, Rz, S, Si, Sl, Del])
-        else:
-            tfms = Compose([L, E, Rz, S, Si, Sl, Del])
-        for dici in dicis:
-            try:
-                dici = tfms(dici)
-            except Exception as e:
-                print("Exception")
-                print(e)
-
-        return 1
+class FixedSizeWorkerImpl(_FixedSizeWorkerBase):
+    pass
 
 
-class FixedSizeDataGenerator(PatchDataGenerator):
+class FixedSizeWorkerLocal(_FixedSizeWorkerBase):
+    pass
+
+
+class FixedSizeDataGenerator(Preprocessor):
     _default = "project"
-    actor_cls = FixedSizeMaker
+    actor_cls = FixedSizeWorkerImpl
+    local_worker_cls = FixedSizeWorkerLocal
     remapping_key = "remapping_whole"
     input_subfolder_key = "data_folder_source"
     subfolder_key = "data_folder_whole"
 
-    def __init__(self, project, plan, data_folder=None, output_folder=None) -> None:
-        # HACK: below is same as preprocessor init. Come back to this while u update PatchDataGenerator
-        self.project = project
-        self.plan = plan
-        self.data_folder = data_folder
-        self.data_folder = data_folder
-        self.set_input_output_folders(data_folder, output_folder)
-
-    def setup(self, overwrite=False):
-        self.prepare_dicts()
-        super().setup(overwrite=overwrite)
-
-    def prepare_dicts(self):
-        images_fldr = self.data_folder / ("images")
-        lms_fldr = self.data_folder / ("lms")
-        lms = list(lms_fldr.glob("*"))
-        imgs = list(images_fldr.glob("*"))
-        if len(imgs) == 0:
-            raise Exception(
-                "No images found in data folder {0}".format(self.data_folder)
+    def __init__(self, project, plan, data_folder=None, output_folder=None):
+        existing_fldr = FolderNames(project, plan).folders[self.subfolder_key]
+        existing_fldr = Path(existing_fldr)
+        if existing_fldr.exists():
+            print(
+                "Plan folder already exists:  {}.\nWill use existing folder to add data".format(
+                    existing_fldr
+                )
             )
-        print("{0} images in data folder {1}".format(len(imgs), self.data_folder))
-        self.dicis = []
-        for img in imgs:
-            case_id_info = info_from_filename(img.name, full_caseid=True)
-            case_id = case_id_info["case_id"]
-            lm_value = find_matching_fn(img, lms, ["case_id"])[0]
-            # Create the dictionary for the current image
-            dic = {
-                "case_id": case_id,
-                "image": img,
-                "lm": lm_value,
-                "remapping": self.plan[self.remapping_key],
-            }
-            # Append the dictionary to the dicis list
-            self.dicis.append(dic)
+            output_folder = existing_fldr
+        super().__init__(
+            project=project,
+            plan=plan,
+            data_folder=data_folder,
+            output_folder=output_folder,
+            hdf5_shards=False,
+        )
 
-    def remove_completed_cases(self):
-        dicis_out = []
-        for dici in self.dicis:
-            if dici["case_id"] not in self.existing_case_ids:
-                dicis_out.append(dici)
-        self.dicis = dicis_out
-        print("Remaining cases: ", len(self.dicis))
-
-    def process(self, num_processes=16):
-        self.create_output_folders()
-        self.create_tensors(num_processes=num_processes)
-        # self.create_dataset_stats_artifacts()
-
-    def create_tensors(self, num_processes):
-        dicis = list(chunks(self.dicis, num_processes))
-        actors = [self.actor_cls.remote() for _ in range(num_processes)]
-        if self.plan[self.remapping_key] is not None:
-            remapping = True
-        else:
-            remapping = False
-        try:
-            ray.get(
-                [
-                    c.process.remote(
-                        dicis,
-                        self.plan["patch_size"],
-                        self.output_folder / ("images"),
-                        self.output_folder / ("lms"),
-                        remapping=remapping,
-                    )
-                    for c, dicis in zip(actors, dicis)
-                ]
-            )
-        finally:
-            shutdown_actors(actors)
-
-    def set_input_output_folders(self, data_folder=None, output_folder=None):
+    def set_input_output_folders(self, data_folder, output_folder):
         folders = FolderNames(self.project, self.plan).folders
         if data_folder is None:
             data_folder = folders[self.input_subfolder_key]
         self.data_folder = Path(data_folder)
         if output_folder is None:
-            whole_subfolder = folders[self.subfolder_key]
-            self.output_folder = Path(whole_subfolder)
-        else:
-            self.output_folder = Path(output_folder)
+            output_folder = folders[self.subfolder_key]
+        self.output_folder = Path(output_folder)
 
     def create_output_folders(self):
         maybe_makedirs(
             [
                 self.output_folder / ("lms"),
                 self.output_folder / ("images"),
-                # self.indices_subfolder,
-            ]
+            ])
+
+    def create_data_df(self):
+        Preprocessor.create_data_df(self)
+        remapping = self.plan.get(self.remapping_key)
+        self.df = self.df.assign(remapping=[remapping] * len(self.df))
+
+    def register_existing_files(self):
+        return self._register_existing_pt_files()
+
+    def setup(self, overwrite=False, num_processes=8, device="cpu", debug=False):
+        self.create_output_folders()
+        super().setup(
+            overwrite=overwrite,
+            num_processes=num_processes,
+            device=device,
+            debug=debug,
         )
 
-    #
-    # def set_output_folder(self, parent_folder):
-    #     output_folder = folder_name_from_list(
-    #         prefix="sze",
-    #         parent_folder=self.fixed_size_folder,
-    #         values_list=self.spatial_size,
-    #     )
-    #
-    #     self.output_folder = folder_name_from_list(
-    #         prefix="spc",
-    #         parent_folder=parent_folder,
-    #         values_list=self.spacing,
-    #     )
-    #     if self.plan_name is not None:
-    #         output_name = "_".join([self.output_folder.name, self.plan_name])
-    #         self.output_folder = Path(self.output_folder.parent / output_name)
-    #
+    def postprocess_results(self, num_processes=8):
+        self._store_dataset_summary(num_processes=num_processes)
+        store_label_count(self.output_folder, num_processes=num_processes)
+        create_dataset_stats_artifacts(
+            lms_folder=self.output_folder/"lms",
+            gif=self.store_gifs,
+            label_stats=self.store_label_stats,
+            gif_window=infer_dataset_stats_window(self.project),
+        )
 
 
-# %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     import torch
@@ -288,214 +199,13 @@ if __name__ == "__main__":
 
     )
 # %%
-    F.setup(overwrite=True)
+    debug_ = False
+    overwrite_ = False
+    F.setup(overwrite=overwrite_, debug=debug_)
 
 # %%
     F.process()
-# %%
-    img_fn = "/r/datasets/preprocessed/test/fixed_spacing/spc_080_080_150_rsc5609df8a/images/kits23_00002.pt"
-    lm_fn = "/r/datasets/preprocessed/test/fixed_spacing/spc_080_080_150_rsc5609df8a/lms/kits23_00002.pt"
-    img = torch.load(img_fn, weights_only=False)
-    lm = torch.load(lm_fn, weights_only=False)
+    F.run_postprocess_only()
 
-    from label_analysis.geometry_pt import BBoxInfoFromPT
-    B = BBoxInfoFromPT(li=lm, ignore_labels=[1])
-    n = 2
-# %%
-    row = B.nbrhoods.iloc[n]
-    bbox = row["bbox"]
-    label = row["label_org"]
-    filename = lm.meta["filename_or_obj"]
-    length = row["major_axis"]
-    volume = row["volume"]
-
-    bbox2 = (
-        slice(bbox[0], bbox[0] + bbox[3]),
-        slice(bbox[1], bbox[1] + bbox[4]),
-        slice(bbox[2], bbox[2] + bbox[5]),
-    )
-    img2 = img[bbox2]
-    lm2 = lm[bbox2]
-
-    mask = lm2 == label  # binary mask
-    img_masked = MaskIntensity(mask_data=mask)(img2)
-    mean = img_masked.mean()
-    min = img_masked.min()
-    max = img_masked.max()
-
-    dici_out = {
-        "image": img_masked,
-        "label": lm2,
-        "filename": filename,
-        "label_org": label,
-        "major_axis": length,
-        "volume": volume,
-        "mean": mean,
-        "min": min,
-        "max": max,
-    }
-
-    print(row)
-    print(lm2.shape)
-# %%
-    ImageMaskViewer([img_masked, lm2])
-
-    B.nbrhoods
-    F.setup(overwrite=True)
-
-# %%
-    F.process()
-# %%
-
-    img_fn = "/r/datasets/preprocessed/totalseg/whole_images/096096096/images/totalseg_s0889.pt"
-    lm_fn = (
-        "/r/datasets/preprocessed/totalseg/whole_images/096096096/lms/totalseg_s0889.pt"
-    )
-    img = torch.load(img_fn, weights_only=False)
-    lm = torch.load(lm_fn, weights_only=False)
-    ImageMaskViewer([img, lm])
-# %%
-
-    output_folder = folder_name_from_list(
-        prefix="sze", parent_folder=P.fixed_size_folder, values_list=[64, 64, 64]
-    )
-    output_folder_im = output_folder / "images"
-    output_folder_lm = output_folder / "lms"
-    maybe_makedirs([output_folder_im, output_folder_lm])
-
-    images_fldr = self.data_folder / ("images")
-    lms_fldr = self.data_folder / ("lms")
-
-    lms = list(lms_fldr.glob("*"))
-    imgs = list(images_fldr.glob("*"))
-    pairs = [
-        {"image": img, "lm": find_matching_fn(img, lms, "case_id")[0]} for img in imgs
-    ]
-# %%
-    tots = len(pairs)
-    n_proc = 32
-
-# %%
-    dicis = list(chunks(pairs, n_proc))
-    actors = [FixedSizeMaker.remote() for _ in range(n_proc)]
-# %%
-    results = ray.get(
-        [
-            c.process.remote(
-                dicis,
-                spatial_size,
-                output_folder_im,
-                output_folder_lm,
-                remapping_train=remapping_train,
-            )
-            for c, dicis in zip(actors, dicis)
-        ]
-    )
-    # dici = L(dici)
-# %%
-    dici = tfms(dici)
-# %%
-    dici = L(dici)
-    dici = M(dici)
-# %%
-    dici = E(dici)
-
-    dici = Rz(dici)
-
-    im, lm = dici["image"], dici["lm"]
-
-# %%
-    fn = "/s/fran_storage/datasets/preprocessed/fixed_size/litsmc/sze_64_64_64/images/totalseg_s0784.pt"
-    fn2 = "/s/fran_storage/datasets/preprocessed/fixed_size/litsmc/sze_64_64_64/lms/totalseg_s0784.pt"
-    trn = torch.load(fn, weights_only=False)
-    t2 = torch.load(fn2, weights_only=False)
-    ImageMaskViewer([trn, t2], dtypes="im")
-# %%
-# %%
-# SECTION:-------------------- TROUBLE <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-# %%
-    output_folder_lm = F.output_folder / "lms"
-    output_folder_im = F.output_folder / "images"
-
-# %%
-    remapping_train = plan["remapping_train"]
-    L = LoadTorchd(keys=["lm", "image"])
-    M = LabelRemapd(keys=["lm"], remapping=remapping_train)
-    E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
-    Rz = Resized(
-        keys=["image", "lm"], spatial_size=spatial_size, mode=["linear", "nearest"]
-    )
-    S = SqueezeDimd(keys=["image", "lm"])
-
-    Si = SaveImaged(
-        keys=["image"],
-        output_ext="pt",
-        writer=TorchWriter,
-        output_dir=output_folder_im,
-        output_postfix="",
-        output_dtype="float32",
-        separate_folder=False,
-    )
-    Sl = SaveImaged(
-        output_ext="pt",
-        keys=["lm"],
-        writer=TorchWriter,
-        output_dtype="uint8",
-        output_dir=output_folder_lm,
-        output_postfix="",
-        separate_folder=False,
-    )
-    Del = DeleteItemsd(keys=["image", "lm"])
-
-# %%
-    dici = F.dicis[0]
-    dici = L(dici)
-    dici = M(dici)
-    dici = E(dici)
-    dici = Rz(dici)
-    dici = S(dici)
-    dici = Si(dici)
-    dici = Sl(dici)
-    dici = Del(dici)
-# %%
-    image = dici["image"]
-    lm = dici["lm"]
-# %%
-    ImageMaskViewer([image, lm])
-# %%
-    # S1 = SaveImage(output_ext='pt',  output_dir=self.output_fldr_imgs, output_postfix=str(1), output_dtype='float32', writer=TorchWriter,separate_folder=False)
-    if remapping_train:
-        tfms = Compose([L, M, E, Rz, S, Si, Sl, Del])
-    else:
-        tfms = Compose([L, E, Rz, S, Si, Sl, Del])
-    for dici in dicis:
-        try:
-            dici = tfms(dici)
-            print("Saved {0}".format(dici["image"].meta["filename_or_obj"]))
-        except Exception as e:
-            print("Exception")
-            print(e)
-
-# %%
-    fn = "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0726.pt"
-    fn = "/s/fran_storage/datasets/preprocessed/fixed_spacing/totalseg/spc_080_080_150/lms/totalseg_s0928.pt"
-    fn = "/s/xnat_shadow/totalseg/lms/totalseg_s0928.nii.gz"
-    fn = "/s/fran_storage/datasets/preprocessed/fixed_size/totalseg/sze_96_96_96/lms/totalseg_s0928.pt"
-    import torch
-
-    lm = torch.load(fn)
-    lm.unique()
-    lm[lm == 118] = 0
-    torch.save(lm, fn)
-    import SimpleITK as sitk
-
-    lm = sitk.ReadImage(fn)
-    from label_analysis.helpers import get_labels, relabel
-
-    sitk.WriteImage(lm, fn)
-    labs = get_labels(lm)
-    118 in labs
-    remapping = {118: 0}
-    lm = relabel(lm, remapping)
-
-# %%
+    # pd.set_option("display.width", 200)  # total line width before
+#

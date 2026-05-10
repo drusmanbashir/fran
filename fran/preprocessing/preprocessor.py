@@ -6,6 +6,7 @@ import shutil
 from functools import cached_property
 from pathlib import Path
 
+from fran.configs.parser import plan_requires_hdf5_shards
 from fran.utils.folder_names import FolderNames
 import numpy as np
 import pandas as pd
@@ -243,10 +244,12 @@ def dataset_details_from_lm_file(lm_fn):
 
 
 def create_results_df_from_lms_folder(lms_folder: Path, num_processes=8):
+    cprint("Creating dataset details dataframe from lms folder: {}".format(lms_folder), "cyan")
     lm_files = sorted(Path(lms_folder).glob("*.pt"))
+    args  =[[lm_fn] for lm_fn in lm_files]
     rows = multiprocess_multiarg(
         dataset_details_from_lm_file,
-        lm_files,
+        arguments=args,
         num_processes=num_processes,
     )
     return pd.DataFrame(rows)
@@ -334,12 +337,11 @@ class Preprocessor:
         data_folder=None,
         output_folder=None,
         devices=None,
-        hdf5_shards=False,
     ) -> None:
         self.project = project
         self.plan = plan
         self.data_folder = data_folder
-        self.hdf5_shards = hdf5_shards and self._plan_allows_hdf5_shards()
+        self.hdf5_shards = plan_requires_hdf5_shards(subfolder_key=self.subfolder_key, mode=plan["mode"])
         self.store_gifs = env_flag("FRAN_STORE_GIFS", False)
         self.store_label_stats = env_flag("FRAN_STORE_LABEL_STATS", False)
         self.set_input_output_folders(data_folder, output_folder)
@@ -348,59 +350,19 @@ class Preprocessor:
 
     def setup(
         self,
-        overwrite=False,
-        num_processes=8,
         device="cpu",
         debug=False,
         mean_std_mode="dataset",
     ):
         self.devices = device
-        self.overwrite = overwrite
         self.debug = debug
         self.mean_std_mode = mean_std_mode
-        self.run_postprocess_if_empty = False
         self.create_data_df()
         if getattr(self, "remapping_key", None) is not None:
             self.set_remapping_per_ds()
         self.register_existing_cases()
         self.remove_completed_cases()
         print("Overwrite:", overwrite)
-        if len(self.df) == 0:
-            missing_arts = postprocess_artifacts_missing(self.output_folder)
-            self.run_postprocess_if_empty = all(missing_arts.values())
-
-
-    def _plan_allows_hdf5_shards(self) -> bool:
-        from fran.configs.parser import plan_requires_hdf5_shards
-
-        requires_hdf5_shards = plan_requires_hdf5_shards(
-            self.subfolder_key, self.plan["mode"]
-        )
-        self.delete_pt_after_shard_creation = (
-            requires_hdf5_shards and self.subfolder_key != "data_folder_source"
-        )
-        if requires_hdf5_shards:
-            return True
-        return False
-
-    @cached_property
-    def logger(self):
-        return PreprocessingLogger(output_folder=self.output_folder)
-
-    @property
-    def hdf5_output_folder(self):
-        name = self.output_folder.name
-        mode_folder = self.output_folder.parent.name
-        final_folder = self.project.rapid_access_folder / mode_folder / name / "hdf5_shards"
-        return final_folder
-
-    @property
-    def hdf5_manifest_fn(self):
-        src_dims = self.plan["src_dims"]
-        src_tag = "_".join(str(int(v)) for v in src_dims)
-        return (
-            self.hdf5_output_folder/  f"src_{src_tag}" / "manifest.json"
-        )
 
     def _df_from_db(self):
         con = sqlite3.connect(str(self.project.db))
@@ -657,29 +619,16 @@ class Preprocessor:
         except pd.errors.EmptyDataError:
             return pd.DataFrame()
 
-    def _write_results_csv(self, num_processes=8):
-        existing_df = self._read_existing_results_df()
-        current_df = create_results_df_from_lms_folder(
-            self.output_folder / "lms",
-            num_processes=num_processes,
-        )
-        results_df = pd.concat([existing_df, current_df], ignore_index=True, sort=False)
-        fn_series = (
-            results_df["fn_name"]
-            if "fn_name" in results_df.columns
-            else pd.Series([None] * len(results_df), index=results_df.index)
-        )
-        case_series = (
-            results_df["case_id"]
-            if "case_id" in results_df.columns
-            else pd.Series([None] * len(results_df), index=results_df.index)
-        )
-        resume_key = fn_series.where(fn_series.notna(), case_series)
-        if resume_key.notna().any():
-            results_df = results_df.assign(_resume_key=resume_key)
-            results_df = results_df.drop_duplicates(subset=["_resume_key"], keep="last")
-            results_df = results_df.drop(columns=["_resume_key"])
-        results_df.to_csv(self.results_csv_fn, index=False)
+    def _write_results_csv(self, num_processes=8, overwrite=False):
+        if not overwrite and self.results_csv_fn.exists():
+            cprint(
+                f"Results CSV already exists at {self.results_csv_fn}. Overwrite is False, so skipping writing results CSV.", )
+        else:
+            results_df = create_results_df_from_lms_folder(
+                self.output_folder / "lms",
+                num_processes=num_processes,
+            )
+            results_df.to_csv(self.results_csv_fn, index=False)
 
     @staticmethod
     def _coerce_log_value(value):
@@ -771,17 +720,6 @@ class Preprocessor:
                 )
         return rows
 
-    def postprocess_results(self, num_processes=8):
-        cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
-        self._write_results_csv(num_processes=num_processes)
-        self._store_dataset_summary(num_processes=num_processes)
-        store_label_count(self.output_folder, num_processes=num_processes)
-        create_dataset_stats_artifacts(
-            lms_folder=self.output_folder / "lms",
-            gif=self.store_gifs,
-            label_stats=self.store_label_stats,
-            gif_window=infer_dataset_stats_window(self.project),
-        )
 
     def initialize_process_state(self):
         self.create_output_folders()
@@ -812,12 +750,6 @@ class Preprocessor:
                 print(" ", pth)
         return len(missing) > 0
 
-    def run_postprocess_only(
-        self,
-        num_processes=8,
-    ):
-        print("Running postprocess on existing output tensors")
-        self.postprocess_results(num_processes=num_processes)
     def extra_worker_kwargs(self, mean_std_mode="dataset"):
         return {}
 
@@ -913,7 +845,17 @@ class Preprocessor:
         if overwrite is False and self.postprocess_artifacts_missing() is False:
             cprint("Postprocess: skip existing artifacts", "cyan")
         else:
-            self.postprocess_results(num_processes=num_processes)
+            cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
+            self._write_results_csv(num_processes=num_processes)
+            self._store_dataset_summary(num_processes=num_processes)
+            store_label_count(self.output_folder, num_processes=num_processes)
+            create_dataset_stats_artifacts(
+                lms_folder=self.output_folder / "lms",
+                gif=self.store_gifs,
+                label_stats=self.store_label_stats,
+                gif_window=infer_dataset_stats_window(self.project),
+            )
+
 
     def process(
         self,
@@ -949,19 +891,6 @@ class Preprocessor:
             hdf5_compression_opts=hdf5_compression_opts,
             num_processes=num_processes,
         )
-
-    # def _maybe_create_hdf5_shards(
-    #     self,
-    #     df_hdf5_run,
-    #     src_dims=None,
-    #     cases_per_shard=5,
-    #     max_shard_bytes=None,
-    #     overwrite_hdf5_shards=False,
-    #     hdf5_compression="gzip",
-    #     hdf5_compression_opts=1,
-    #     num_processes=8,
-    # ):
-    #
 
     def copy_to_rapid_access(
         self,
@@ -1017,54 +946,21 @@ class Preprocessor:
                     glob="*",
                     overwrite=overwrite,
                 )
-
-    def process_batch(self, batch):
-        images, lms, fg_inds, bg_inds = (
-            batch["image"],
-            batch["lm"],
-            batch["lm_fg_indices"],
-            batch["lm_bg_indices"],
-        )
-        for (
-            image,
-            lm,
-            fg_ind,
-            bg_ind,
-        ) in zip(
-            images,
-            lms,
-            fg_inds,
-            bg_inds,
-        ):
-            assert image.shape == lm.shape, "mismatch in shape".format(
-                image.shape, lm.shape
-            )
-            assert image.dim() == 4, "images should be cxhxwxd"
-
-            inds = {
-                "lm_fg_indices": fg_ind,
-                "lm_bg_indices": bg_ind,
-                "meta": image.meta,
-            }
-            self.save_indices(inds, self.indices_subfolder)
-            self.save_pt(image[0], "images")
-            self.save_pt(lm[0], "lms")
-            self.results.append(get_tensor_stats(image))
-
-    def get_tensor_folder_stats(self,num_processes=8, debug=True):
-        analysis = analyze_tensor_data_folder(
-            self.output_folder / ("images"),
-            glob_pattern="*",
-            debug=debug,
-            recursive=False,
-            include_per_file_stats=True,
-            num_processes=num_processes,
-        )
-        results = analysis["per_file_stats"]
-        self.shapes = [a["shape"] for a in results]
-        self.results = pd.DataFrame(results)[["max", "min", "median"]]
-        self._store_dataset_summary(num_processes=num_processes, debug=debug)
-
+    #
+    # def get_tensor_folder_stats(self,num_processes=8, debug=True):
+    #     analysis = analyze_tensor_data_folder(
+    #         self.output_folder / ("images"),
+    #         glob_pattern="*",
+    #         debug=debug,
+    #         recursive=False,
+    #         include_per_file_stats=True,
+    #         num_processes=num_processes,
+    #     )
+    #     results = analysis["per_file_stats"]
+    #     self.shapes = [a["shape"] for a in results]
+    #     self.results = pd.DataFrame(results)[["max", "min", "median"]]
+    #     self._store_dataset_summary(num_processes=num_processes, debug=debug)
+    #
     def _store_dataset_summary(self, num_processes=8, debug=False):
         self.image_folder_stats, self.lm_folder_stats = (
             self._collect_output_folder_stats(num_processes=num_processes, debug=debug)
@@ -1194,6 +1090,25 @@ class Preprocessor:
     def should_use_ray(self, num_processes=8):
         debug = getattr(self, "debug", False)
         return (num_processes > 1) and (not debug)
+
+    @cached_property
+    def logger(self):
+        return PreprocessingLogger(output_folder=self.output_folder)
+
+    @property
+    def hdf5_output_folder(self):
+        name = self.output_folder.name
+        mode_folder = self.output_folder.parent.name
+        final_folder = self.project.rapid_access_folder / mode_folder / name / "hdf5_shards"
+        return final_folder
+
+    @property
+    def hdf5_manifest_fn(self):
+        src_dims = self.plan["src_dims"]
+        src_tag = "_".join(str(int(v)) for v in src_dims)
+        return (
+            self.hdf5_output_folder/  f"src_{src_tag}" / "manifest.json"
+        )
 
 
 # %%

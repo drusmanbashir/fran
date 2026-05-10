@@ -12,6 +12,8 @@ from fran.preprocessing.helpers import (
 from fran.preprocessing.preprocessor import (
     CPUS_PER_ACTOR,
     Preprocessor,
+    create_results_df_from_lms_folder,
+    dataset_details_from_lm_file,
     get_tensor_stats,
     store_label_count,
 )
@@ -28,6 +30,7 @@ from fran.transforms.spatialtransforms import ResizeToTensord
 from fran.utils.folder_names import FolderNames
 from monai.transforms.spatial.dictionary import Orientationd, Spacingd
 from tqdm.auto import tqdm as pbar
+from utilz.cprint import cprint
 from utilz.fileio import save_dict
 from utilz.helpers import find_matching_fn, multiprocess_multiarg
 
@@ -254,7 +257,6 @@ class NiftiToTorchDataGenerator(Preprocessor):
             plan,
             output_folder=output_folder,
             data_folder=data_folder,
-            hdf5_shards=True,
         )
 
     def extra_worker_kwargs(self, mean_std_mode="dataset"):
@@ -269,15 +271,11 @@ class NiftiToTorchDataGenerator(Preprocessor):
 
     def setup(
         self,
-        overwrite=False,
         mean_std_mode="dataset",
-        num_processes=8,
         device="cpu",
         debug=False,
     ):
         super().setup(
-            overwrite=overwrite,
-            num_processes=num_processes,
             device=device,
             debug=debug,
             mean_std_mode=mean_std_mode,
@@ -287,30 +285,6 @@ class NiftiToTorchDataGenerator(Preprocessor):
         Preprocessor.create_data_df(self)
         remapping = self.plan.get(self.remapping_key)
         self.df = self.df.assign(remapping=[remapping] * len(self.df))
-
-    def postprocess_results(self, num_processes=8):
-        self._store_dataset_summary(num_processes=num_processes)
-        generate_bboxes_from_lms_folder(
-            self.output_folder / "lms",
-            num_processes=num_processes,
-        )
-        store_label_count(self.output_folder, num_processes=num_processes)
-        create_dataset_stats_artifacts(
-            lms_folder=self.output_folder / "lms",
-            gif=self.store_gifs,
-            label_stats=self.store_label_stats,
-            gif_window=infer_dataset_stats_window(self.project),
-        )
-
-    def generate_bboxes_from_lms_folder(self, bg_label=0, debug=False, num_processes=8):
-        masks_folder = self.output_folder / ("lms")
-        print("Generating bbox info from {}".format(masks_folder))
-        generate_bboxes_from_lms_folder(
-            masks_folder,
-            bg_label,
-            debug,
-            num_processes,
-        )
 
     def set_input_output_folders(self, data_folder, output_folder):
         self.data_folder = Path(data_folder)
@@ -326,6 +300,30 @@ class NiftiToTorchDataGenerator(Preprocessor):
     def indices_subfolder(self):
         indices_subfolder = self.output_folder / "indices"
         return indices_subfolder
+
+    # def postprocess_results(self, num_processes=8):
+    #     self._store_dataset_summary(num_processes=num_processes)
+    #     generate_bboxes_from_lms_folder(
+    #         self.output_folder / "lms",
+    #         num_processes=num_processes,
+    #     )
+    #     store_label_count(self.output_folder, num_processes=num_processes)
+    #     create_dataset_stats_artifacts(
+    #         lms_folder=self.output_folder / "lms",
+    #         gif=self.store_gifs,
+    #         label_stats=self.store_label_stats,
+    #         gif_window=infer_dataset_stats_window(self.project),
+    #     )
+    #
+    # def generate_bboxes_from_lms_folder(self, bg_label=0, debug=False, num_processes=8):
+    #     masks_folder = self.output_folder / ("lms")
+    #     print("Generating bbox info from {}".format(masks_folder))
+    #     generate_bboxes_from_lms_folder(
+    #         masks_folder,
+    #         bg_label,
+    #         debug,
+    #         num_processes,
+    #     )
 
 
 class FGBGIndicesResampleDataset(NiftiToTorchDataGenerator):
@@ -376,6 +374,7 @@ class FGBGIndicesResampleDataset(NiftiToTorchDataGenerator):
             self.save_indices(inds, self.indices_subfolder)
 
 
+
 ResampleDatasetniftiToTorch = NiftiToTorchDataGenerator
 
 
@@ -388,14 +387,11 @@ if __name__ == "__main__":
     from fran.inference.base import list_to_chunks
     from fran.managers import Project
     from utilz.fileio import load_dict
-    from utilz.helpers import set_autoreload
 
-    set_autoreload()
 
     from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
     from fran.transforms.fg_indices import FgBgToIndicesd2
     from fran.transforms.inferencetransforms import ToCPUd
-    from fran.utils.common import *
     from monai.transforms.utility.dictionary import (
         EnsureChannelFirstd,
         FgBgToIndicesd,
@@ -425,51 +421,81 @@ if __name__ == "__main__":
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     Rs = NiftiToTorchDataGenerator(P, plan, P.raw_data_folder)
     Rs.process(overwrite=False, num_processes=16)
+    Rs.postprocess(num_processes=16)
 # %%
+    src_dims = None
+    cases_per_shard = 5
+    max_shard_bytes = None
+    overwrite_hdf5_shards = False
+    hdf5_compression = "gzip"
+    hdf5_compression_opts = 1
+    num_processes = 8
+    overwrite = False
+# %%  # T:block_start|FGBGIndicesResampleDataset.process
+
+
+# %%
+    overwrite = False
+    num_processes = 8
     F = Rs
+    F.postprocess()
+# %%  # T:block_start|FGBGIndicesResampleDataset.postprocess
+#SECTION:-------------------- postprocess--------------------------------------------------------------------------------------  # T:block_meta|FGBGIndicesResampleDataset.postprocess
+    if overwrite is False and F.postprocess_artifacts_missing() is False:  # T:self_ref|if overwrite is False and self.postprocess_artifacts_missing() is False:
+        cprint("Postprocess: skip existing artifacts", "cyan")
+    else:
+        cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
+        F._write_results_csv(num_processes=num_processes)  # T:self_ref|    self._write_results_csv(num_processes=num_processes)
+        F._store_dataset_summary(num_processes=num_processes)  # T:self_ref|    self._store_dataset_summary(num_processes=num_processes)
+        store_label_count(F.output_folder, num_processes=num_processes)  # T:self_ref|    store_label_count(self.output_folder, num_processes=num_processes)
+        create_dataset_stats_artifacts(
+            lms_folder=F.output_folder / "lms",  # T:self_ref|        lms_folder=self.output_folder / "lms",
+            gif=F.store_gifs,  # T:self_ref|        gif=self.store_gifs,
+            label_stats=F.store_label_stats,  # T:self_ref|        label_stats=self.store_label_stats,
+            gif_window=infer_dataset_stats_window(F.project),  # T:self_ref|        gif_window=infer_dataset_stats_window(self.project),
+        )
+    # end PythonMethodScratch  # T:block_end|FGBGIndicesResampleDataset.postprocess
 # %%
-# SECTION:-------------------- postprocess_results--------------------------------------------------------------------------------------  # T:block_meta|FGBGIndicesResampleDataset.postprocess_results
-    F._store_dataset_summary()  # T:self_ref|self._store_dataset_properties()
-    generate_bboxes_from_lms_folder(
+    num_processes = num_processes
+# %%  # T:block_start|FGBGIndicesResampleDataset._write_results_csv
+#SECTION:-------------------- _write_results_csv--------------------------------------------------------------------------------------  # T:block_meta|FGBGIndicesResampleDataset._write_results_csv
+    existing_df = F._read_existing_results_df()  # T:self_ref|existing_df = self._read_existing_results_df()
+    current_df = create_results_df_from_lms_folder(
         F.output_folder / "lms",  # T:self_ref|    self.output_folder / "lms",
-        num_processes=getattr(
-            F, "num_processes", 1
-        ),  # T:self_ref|    num_processes=getattr(self, "num_processes", 1),
+        num_processes=num_processes,
     )
-    store_label_count(
-        F.output_folder,
-        num_processes=getattr(
-            F, "num_processes", 1
-        ),  # T:self_ref|    self.output_folder, num_processes=getattr(self, "num_processes", 1)
+# %%
+    lms_folder = F.output_folder / "lms"
+    lm_files = sorted(Path(lms_folder).glob("*.pt"))
+    args  =[[lm_fn] for lm_fn in lm_files]
+# %%
+    rows = multiprocess_multiarg(
+        dataset_details_from_lm_file,
+        arguments=args,
+        num_processes=num_processes,
     )
-    create_dataset_stats_artifacts(
-        lms_folder=F.output_folder
-        / "lms",  # T:self_ref|    lms_folder=self.output_folder / "lms",
-        gif=F.store_gifs,  # T:self_ref|    gif=self.store_gifs,
-        label_stats=F.store_label_stats,  # T:self_ref|    label_stats=self.store_label_stats,
-        gif_window=infer_dataset_stats_window(
-            F.project
-        ),  # T:self_ref|    gif_window=infer_dataset_stats_window(self.project),
-    )
-    # end PythonMethodScratch  # T:block_end|FGBGIndicesResampleDataset.postprocess_results
 
-    Rs.output_folder.exists()
-
-    debug_ = False
-    overwrite = True
-    n_processes = 2
-    Rs.setup(num_processes=n_processes, overwrite=overwrite, debug=debug_)
-    Rs.process()
 
 # %%
-    create_dataset_stats_artifacts(
-        lms_folder=Rs.output_folder,
-        gif=True,
-        label_stats=True,
-        gif_window=infer_dataset_stats_window(Rs.project),
+    results_df = pd.concat([existing_df, current_df], ignore_index=True, sort=False)
+    fn_series = (
+        results_df["fn_name"]
+        if "fn_name" in results_df.columns
+        else pd.Series([None] * len(results_df), index=results_df.index)
     )
-    # Rs.process()
-# %%
+    case_series = (
+        results_df["case_id"]
+        if "case_id" in results_df.columns
+        else pd.Series([None] * len(results_df), index=results_df.index)
+    )
+    resume_key = fn_series.where(fn_series.notna(), case_series)
+    if resume_key.notna().any():
+        results_df = results_df.assign(_resume_key=resume_key)
+        results_df = results_df.drop_duplicates(subset=["_resume_key"], keep="last")
+        results_df = results_df.drop(columns=["_resume_key"])
+    results_df.to_csv(F.results_csv_fn, index=False)  # T:self_ref|results_df.to_csv(self.results_csv_fn, index=False)
+    # end PythonMethodScratch  # T:block_end|FGBGIndicesResampleDataset._write_results_csv
+
 # SECTION:-------------------- TS--------------------------------------------------------------------------------------# %%
 
     num_processes = 1
