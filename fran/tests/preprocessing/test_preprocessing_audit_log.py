@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -55,10 +56,11 @@ def test_preprocessing_audit_log_status_normalization(tmp_path):
     assert rows[2]["traceback"] == "traceback lines"
 
     pre.write_preprocessing_log(results)
-    df = pd.read_csv(tmp_path / "preprocessing_log.csv")
-    assert list(df.columns) == Preprocessor.PREPROCESS_LOG_COLUMNS
-    assert df["timestamp"].notna().all()
-    assert df["status"].tolist() == ["OK", "WARNING", "ERROR"]
+    log_rows = [
+        json.loads(line) for line in (tmp_path / "log.jsonl").read_text().splitlines()
+    ]
+    assert all("timestamp" in row for row in log_rows)
+    assert [row["status"] for row in log_rows] == ["OK", "WARNING", "ERROR"]
 
 
 def test_flatten_results_strips_preprocess_audit_columns(tmp_path):
@@ -97,6 +99,8 @@ def test_preprocessing_audit_log_appends_on_resume(tmp_path):
     pre.write_preprocessing_log(log_rows=rows)
     pre.write_preprocessing_log(log_rows=rows)
 
-    df = pd.read_csv(tmp_path / "preprocessing_log.csv")
-    assert len(df) == 2
-    assert df["case_id"].tolist() == ["case_ok", "case_ok"]
+    log_rows = [
+        json.loads(line) for line in (tmp_path / "log.jsonl").read_text().splitlines()
+    ]
+    assert len(log_rows) == 2
+    assert [row["case_id"] for row in log_rows] == ["case_ok", "case_ok"]

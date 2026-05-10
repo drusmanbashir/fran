@@ -173,15 +173,8 @@ class LabelBoundedDataGenerator(Preprocessor):
 
         cprint(f"Data folder is {self.data_folder}", color="yellow")
 
-    def store_label_count(self):
-        try:
-            labels_all = self.results_df["labels"].sum()
-            labels_all = set(labels_all)
-            labels_all = list(labels_all)
-            out_fn = self.output_folder / "labels_all.json"
-            save_json(labels_all, out_fn)
-        except:
-            store_label_count(self.output_folder, num_processes=6)
+    def store_label_count(self, num_processes=6):
+            store_label_count(self.output_folder, num_processes=num_processes)
 
     def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
         super().setup(
@@ -192,7 +185,7 @@ class LabelBoundedDataGenerator(Preprocessor):
         )
 
     def create_properties_dict(self):
-        resampled_dataset_properties = Preprocessor.create_properties_dict(self)
+        resampled_dataset_properties = Preprocessor.create_dataset_stats(self)
         ignore_keys = [
             "remapping_train",
             "mode",

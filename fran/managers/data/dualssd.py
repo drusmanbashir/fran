@@ -121,6 +121,15 @@ class DualSSDStagingMixin:
         shutil.copy2(src, dst)
         return str(dst)
 
+    @property
+    def hdf5_shard_manifest_path(self):
+        return self.data_folder / self.hdf5_shard_manifest_rel_path
+
+    def has_hdf5_shard_manifest(self):
+        try:
+            return self.hdf5_shard_manifest_path.exists()
+        except (KeyError, TypeError):
+            return False
 
 class DataManagerSourceDualSSD(DualSSDStagingMixin, DataManagerSource):
     pass

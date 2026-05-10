@@ -814,27 +814,10 @@ class Preprocessor:
 
     def run_postprocess_only(
         self,
-        src_dims=None,
-        cases_per_shard=5,
-        max_shard_bytes=None,
-        overwrite_hdf5_shards=False,
-        hdf5_compression="gzip",
-        hdf5_compression_opts=1,
         num_processes=8,
     ):
         print("Running postprocess on existing output tensors")
         self.postprocess_results(num_processes=num_processes)
-        self._maybe_create_hdf5_shards(
-            df_hdf5_run=self.df if overwrite_hdf5_shards else self.df_hdf5,
-            src_dims=src_dims,
-            cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
-            overwrite_hdf5_shards=overwrite_hdf5_shards,
-            hdf5_compression=hdf5_compression,
-            hdf5_compression_opts=hdf5_compression_opts,
-            num_processes=num_processes,
-        )
-
     def extra_worker_kwargs(self, mean_std_mode="dataset"):
         return {}
 
@@ -890,75 +873,7 @@ class Preprocessor:
         hdf5_compression_opts=1,
         num_processes=8,
     ):
-        return self._maybe_create_hdf5_shards(
-            df_hdf5_run=df_hdf5_run,
-            src_dims=src_dims,
-            cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
-            overwrite_hdf5_shards=overwrite_hdf5_shards,
-            hdf5_compression=hdf5_compression,
-            hdf5_compression_opts=hdf5_compression_opts,
-            num_processes=num_processes,
-        )
 
-    def postprocess(self, overwrite=False, num_processes=8):
-        if overwrite is False and self.postprocess_artifacts_missing() is False:
-            cprint("Postprocess: skip existing artifacts", "cyan")
-        else:
-            self.postprocess_results(num_processes=num_processes)
-
-    def process(
-        self,
-        overwrite=False,
-        src_dims=None,
-        cases_per_shard=5,
-        max_shard_bytes=None,
-        overwrite_hdf5_shards=False,
-        hdf5_compression="gzip",
-        hdf5_compression_opts=1,
-        num_processes=8,
-    ):
-        if not hasattr(self, "df"):
-            print("No data frames have been created. Run setup")
-            return 0
-        if len(self.df) == 0:
-            if getattr(self, "run_postprocess_if_empty", False):
-                return self.run_postprocess_only(
-                    src_dims=src_dims,
-                    cases_per_shard=cases_per_shard,
-                    max_shard_bytes=max_shard_bytes,
-                    overwrite_hdf5_shards=overwrite_hdf5_shards,
-                    hdf5_compression=hdf5_compression,
-                    hdf5_compression_opts=hdf5_compression_opts,
-                    num_processes=num_processes,
-                )
-            print("No data frames have been created. Run setup")
-            return 0
-        df_pt_run = self.df if overwrite else self.df_pt
-        df_hdf5_run = self.df if overwrite else self.df_hdf5
-        self.process_pt(df_pt_run=df_pt_run, num_processes=num_processes)
-        self.process_hdf5(
-            df_hdf5_run=df_hdf5_run,
-            src_dims=src_dims,
-            cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
-            overwrite_hdf5_shards=overwrite_hdf5_shards,
-            hdf5_compression=hdf5_compression,
-            hdf5_compression_opts=hdf5_compression_opts,
-            num_processes=num_processes,
-        )
-
-    def _maybe_create_hdf5_shards(
-        self,
-        df_hdf5_run,
-        src_dims=None,
-        cases_per_shard=5,
-        max_shard_bytes=None,
-        overwrite_hdf5_shards=False,
-        hdf5_compression="gzip",
-        hdf5_compression_opts=1,
-        num_processes=8,
-    ):
         if self.hdf5_shards is False or len(df_hdf5_run) == 0:
             return []
         writer = HDF5ShardWriter(
@@ -991,6 +906,62 @@ class Preprocessor:
                 if pth.exists():
                     shutil.rmtree(pth)
         return shard_paths
+
+
+
+    def postprocess(self, overwrite=False, num_processes=8):
+        if overwrite is False and self.postprocess_artifacts_missing() is False:
+            cprint("Postprocess: skip existing artifacts", "cyan")
+        else:
+            self.postprocess_results(num_processes=num_processes)
+
+    def process(
+        self,
+        overwrite=False,
+        src_dims=None,
+        cases_per_shard=5,
+        max_shard_bytes=None,
+        overwrite_hdf5_shards=False,
+        hdf5_compression="gzip",
+        hdf5_compression_opts=1,
+        num_processes=8,
+    ):
+        if not hasattr(self, "df"):
+            print("No data frames have been created. Run setup")
+            return 0
+        if len(self.df) == 0:
+            if getattr(self, "run_postprocess_if_empty", False):
+                return self.run_postprocess_only(
+                    num_processes=num_processes,
+                )
+            print("No data frames have been created. Run setup")
+            return 0
+        df_pt_run = self.df if overwrite else self.df_pt
+        df_hdf5_run = self.df if overwrite else self.df_hdf5
+        self.process_pt(df_pt_run=df_pt_run, num_processes=num_processes)
+        self.process_hdf5(
+            df_hdf5_run=df_hdf5_run,
+            src_dims=src_dims,
+            cases_per_shard=cases_per_shard,
+            max_shard_bytes=max_shard_bytes,
+            overwrite_hdf5_shards=overwrite_hdf5_shards,
+            hdf5_compression=hdf5_compression,
+            hdf5_compression_opts=hdf5_compression_opts,
+            num_processes=num_processes,
+        )
+
+    # def _maybe_create_hdf5_shards(
+    #     self,
+    #     df_hdf5_run,
+    #     src_dims=None,
+    #     cases_per_shard=5,
+    #     max_shard_bytes=None,
+    #     overwrite_hdf5_shards=False,
+    #     hdf5_compression="gzip",
+    #     hdf5_compression_opts=1,
+    #     num_processes=8,
+    # ):
+    #
 
     def copy_to_rapid_access(
         self,

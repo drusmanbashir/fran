@@ -155,21 +155,20 @@ class LoadHDF5ShardIndexd(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
-        manifest_rel_path: str = "hdf5_shards/src_192_192_128/manifest.json",
+        manifest_fn: str,
         allow_missing_keys: bool = False,
     ) -> None:
         super().__init__(keys, allow_missing_keys)
-        self.manifest_rel_path = Path(manifest_rel_path)
+        self.manifest_fn = Path(manifest_fn)
         self._manifest_cache = {}
 
-    def _cached_manifest(self, data_folder: Path):
-        folder_key = str(data_folder)
-        cached = self._manifest_cache.get(folder_key)
+    def _cached_manifest(self):
+        manifest_key = str(self.manifest_fn)
+        cached = self._manifest_cache.get(manifest_key)
         if cached is not None:
             return cached
 
-        manifest_fn = data_folder / self.manifest_rel_path
-        with open(manifest_fn, "r", encoding="utf-8") as f:
+        with open(self.manifest_fn, "r", encoding="utf-8") as f:
             manifest = json.load(f)
 
         case_to_shard: dict[str, str] = {}
@@ -177,7 +176,7 @@ class LoadHDF5ShardIndexd(MapTransform):
             shard_name = shard_info["shard"]
             shard_path = Path(shard_name)
             if not shard_path.is_absolute():
-                shard_path = manifest_fn.parent / shard_path
+                shard_path = self.manifest_fn.parent / shard_path
             for case_id in shard_info["case_ids"]:
                 case_to_shard[str(case_id)] = str(shard_path)
 
@@ -186,14 +185,13 @@ class LoadHDF5ShardIndexd(MapTransform):
             "case_to_shard": case_to_shard,
             "src_dims": src_dims,
         }
-        self._manifest_cache[folder_key] = cached
+        self._manifest_cache[manifest_key] = cached
         return cached
 
     def __call__(self, data):
         d = dict(data)
         case_id = str(d["case_id"])
-        data_folder = Path(d["data_folder"])
-        manifest = self._cached_manifest(data_folder)
+        manifest = self._cached_manifest()
         shard_path = manifest["case_to_shard"][case_id]
 
         h5py = import_h5py()
@@ -607,7 +605,9 @@ class DataManagerMulti(DataManagerDual):
 
     def _build_managers(self):
         super()._build_managers()
-        cls_test = self.manager_class_test or self.infer_test_manager_class(self.configs)
+        cls_test = self.manager_class_test or self.infer_test_manager_class(
+            self.configs
+        )
         self.test_manager = cls_test(
             project=self.project,
             configs=self.configs,
@@ -716,7 +716,7 @@ class DataManager(LightningDataModule):
                 raise NotImplementedError
 
     def _fg_case_ids_from_stats(self):
-        df = pd.read_csv(self.data_folder / "resampled_dataset_properties.csv")
+        df = pd.read_csv(self.data_folder / "dataset_details.csv")
         fg = df.groupby("case_id")["n_fg"].max()
         return set(fg[fg > 0].index)
 
@@ -926,11 +926,6 @@ class DataManager(LightningDataModule):
         Ind = MetaToDict(keys=["lm"], meta_keys=["lm_fg_indices", "lm_bg_indices"])
         # self.transforms_dict["Ind"] = Ind
 
-        src_tag = "_".join(str(int(v)) for v in self.src_dims)
-        Ld = LoadHDF5ShardIndexd(
-            keys=["case_id", "data_folder"],
-            manifest_rel_path=f"hdf5_shards/src_{src_tag}/manifest.json",
-        )
         Rtr = RandCropByFlatIndicesd(
             keys=["lm_fg_indices", "lm_bg_indices", "src_dims"],
             roi_size=self.src_dims,
@@ -954,7 +949,6 @@ class DataManager(LightningDataModule):
             "ResizeP": ResizeP,
             "ResizeW": ResizeW,
             "L": L,
-            "Ld": Ld,
             "L2": L2,
             "Ind": Ind,
             "Remap": Remap,
@@ -1039,21 +1033,6 @@ class DataManager(LightningDataModule):
             self.cases_from_project_split()
         # Create data dictionaries for this split
         self.data = self.create_data_dicts(self.cases)
-
-    @property
-    def hdf5_shard_manifest_rel_path(self):
-        src_tag = "_".join(str(int(v)) for v in self.src_dims)
-        return Path("hdf5_shards") / f"src_{src_tag}" / "manifest.json"
-
-    @property
-    def hdf5_shard_manifest_path(self):
-        return self.data_folder / self.hdf5_shard_manifest_rel_path
-
-    def has_hdf5_shard_manifest(self):
-        try:
-            return self.hdf5_shard_manifest_path.exists()
-        except (KeyError, TypeError):
-            return False
 
     def cases_from_project_split(self):
         nnz_allowed = self.plan.get("nnz_allowed", False)
@@ -1172,11 +1151,11 @@ class DataManager(LightningDataModule):
             self.create_train_dataloader()
         else:
             self.create_valid_dataloader()
+
     def print_transform_summary(self):
-        item_keys = self.keys 
+        item_keys = self.keys
         cprint("Transforms are set up", color="green")
         cprint(f"Item Transforms: {item_keys}", color="yellow")
-
 
     def setup(self, stage: str = None) -> None:
         # Create transforms for this split
@@ -1330,6 +1309,27 @@ class DataManagerSource(DataManager):
             self.batch_size = self.effective_batch_size = 1
             self.collate_fn = None
 
+    def create_transforms(self):
+        super().create_transforms()
+        hdf5_manifest_fn = self.hdf5_folder / "manifest.json"
+
+        Ld = LoadHDF5ShardIndexd(
+            keys=["case_id"],
+            manifest_fn=hdf5_manifest_fn,
+        )
+        self.transforms_dict["Ld"] = Ld
+
+    @property
+    def hdf5_folder(self):
+        name = tmt.data_folder.name
+        mode_folder = tmt.data_folder.parent.name
+        shards_parent_folder = (
+            tmt.project.rapid_access_folder / mode_folder / name / "hdf5_shards"
+        )
+        src_tag = "_".join(str(int(v)) for v in tmt.src_dims)
+        shards_final_folder = shards_parent_folder / f"src_{src_tag}"
+        return shards_final_folder
+
 
 class DataManagerWhole(DataManager):
     keys_tr = "L,E,Affine,ResizeW,N,IntensityTfms"
@@ -1476,7 +1476,7 @@ class DataManagerPatch(DataManagerSource):
             raise ValueError
 
     def load_indices_info(self):
-        bbox_fn = self.data_folder / "resampled_dataset_properties.csv"
+        bbox_fn = self.data_folder / "dataset_details.csv"
         try:
             self.dff = pd.read_csv(bbox_fn)
         except FileNotFoundError as f:
@@ -1599,55 +1599,6 @@ class DataManagerPatch(DataManagerSource):
         return self.plan["patch_size"]
 
 
-class DataManagerBaseline(DataManagerLBD):
-    """
-    Small dataset of size =batchsize comprising a single batch. No augmentations. Used to get a baseline
-    It has no training augmentations. Whether the flag is True or False doesnt matter.
-    Note: It inherits from LBD dataset.
-    """
-
-    keys_val = "L,Ld,E,ResizePC,N"
-    keys_tr = keys_val
-
-    def __init__(self, project, configs: dict, batch_size=8, **kwargs):
-        super().__init__(project, configs, batch_size, **kwargs)
-        if self.keys is None:
-            self.set_tfm_keys()
-            self.keys = self.keys_tr
-        self.collate_fn = whole_collated
-
-    def __str__(self):
-        return "DataManagerBaseline instance with parameters: " + ", ".join(
-            [f"{k}={v}" for k, v in vars(self).items()]
-        )
-
-    def __repr__(self):
-        return (
-            f"DataManagerBaseline("
-            + ", ".join([f"{k}={v}" for k, v in vars(self).items()])
-            + ")"
-        )
-
-    def set_effective_batch_size(self):
-        self.effective_batch_size = self.batch_size
-
-    def set_tfm_keys(self):
-        return None
-
-    def prepare_data(self):
-        super().prepare_data()
-        self.data_train = self.data_train[: self.batch_size]
-        self.data_valid = self.data_valid[: self.batch_size]
-
-    @property
-    def cache_folder(self):
-        parent_folder = Path(COMMON_PATHS["cache_folder"]) / (
-            self.project.project_title
-        )
-        return parent_folder / (self.data_folder.name + "_baseline")
-
-
-
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
@@ -1662,11 +1613,11 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     from fran.utils.common import *
 
-    project_title = "kits23"
+    project_title = "totalseg"
     proj = Project(project_title=project_title)
 
     CL = ConfigMaker(proj)
-    CL.setup(2)
+    CL.setup(8)
     conf = CL.configs
 # %%
 # SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR>
@@ -1676,7 +1627,7 @@ if __name__ == "__main__":
     proj_tit = proj.project_title
     conf["dataset_params"]["cache_rate"] = 0.0
 
-    D = DataManagerDual(
+    M = DataManagerDual(
         project_title=proj_tit,
         configs=conf,
         batch_size=batch_size,
@@ -1684,10 +1635,11 @@ if __name__ == "__main__":
     )
 
 # %%
-    D.prepare_data()
-    D.setup("fit")
-    tmv = D.valid_manager
-    tmt = D.train_manager
+    M.prepare_data()
+    M.setup("fit")
+    tmv = M.valid_manager
+    tmt = M.train_manager
+    tmt.hdf5_folder.exists()
     tmv.transforms_dict
 # %%
 # %%
@@ -1705,16 +1657,16 @@ if __name__ == "__main__":
     ImageMaskViewer([batch["image"][0, 0], batch["lm"][0, 0]])
 # %%
     #     print(batch['image'].shape)
-    ds = D.valid_manager.ds
+    ds = M.valid_manager.ds
     for n in range(len(ds)):
         dat = ds[n]
 
 # %%
-    P = D.valid_manager
+    P = M.valid_manager
     td = P.transforms_dict
 # %%
     n = 2
-    data = D.valid_manager.data[n]
+    data = M.valid_manager.data[n]
     dici = P.transforms_dict["RP"](data)
     dici = P.transforms_dict["L"](dici)
     pp(dici["image"].meta)
@@ -1739,7 +1691,7 @@ if __name__ == "__main__":
 
     batch_size = 3
     ds_type = None
-    D = DataManagerMulti(
+    M = DataManagerMulti(
         project_title=proj_bones.project_title,
         configs=config_bones,
         batch_size=batch_size,
@@ -1749,11 +1701,11 @@ if __name__ == "__main__":
     )
 
 # %%
-    D.prepare_data()
-    D.setup()
-    tmv = D.valid_manager
-    tmt = D.train_manager
-    tme = D.test_manager
+    M.prepare_data()
+    M.setup()
+    tmv = M.valid_manager
+    tmt = M.train_manager
+    tme = M.test_manager
     tmv.transforms_dict
 
     # %dat%
@@ -1774,7 +1726,7 @@ if __name__ == "__main__":
     dat3 = S(dat2)
 # %%
 
-    dl2 = D.train_dataloader()
+    dl2 = M.train_dataloader()
     iteri2 = iter(dl2)
     batch = next(iteri2)
     batch["image"].shape
@@ -1828,7 +1780,7 @@ if __name__ == "__main__":
     lm = lm.permute(2, 0, 1)
     ImageMaskViewer([im, lm])
 # %%
-    dl2 = D.train_dataloader()
+    dl2 = M.train_dataloader()
     iteri2 = iter(dl2)
     # while iteri:
     #     print(batch['image'].shape)
@@ -1856,12 +1808,12 @@ if __name__ == "__main__":
 # %%
 
 # %%
-    D.train_ds[0]
+    M.train_ds[0]
 # %%
     ds1 = PersistentDataset(
-        data=D.valid_manager.data,
-        transform=D.valid_manager.transforms,
-        cache_dir=D.valid_manager.cache_folder,
+        data=M.valid_manager.data,
+        transform=M.valid_manager.transforms,
+        cache_dir=M.valid_manager.cache_folder,
     )
     dici = ds1[0]
 # %%
@@ -1869,7 +1821,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- LIVER-------------------------------------------------------------------------------------- <CR> <CR>
 
 # %%
-    D = DataManagerMulti(
+    M = DataManagerMulti(
         project_title=proj_litsmc.project_title,
         configs=config_litsmc,
         batch_size=batch_size,
@@ -1887,7 +1839,7 @@ if __name__ == "__main__":
 
     config_litsmc["plan_train"]
 # %%
-    D = DataManagerMulti(
+    M = DataManagerMulti(
         project_title=proj_litsmc.project_title,
         configs=config_litsmc,
         batch_size=batch_size,
@@ -1903,21 +1855,21 @@ if __name__ == "__main__":
 # SECTION:-------------------- DataManagerWhole-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
     # Test DataManagerWhole with DataManagerMulti
-    D = DataManagerMulti(
+    M = DataManagerMulti(
         project=proj_tot, configs=config_tot, batch_size=4, ds_type=None
     )
-    D.prepare_data()
-    D.setup()
-    tmv = D.train_manager
+    M.prepare_data()
+    M.setup()
+    tmv = M.train_manager
 # %%
 
     # Now use train_manager or valid_manager to access the data
-    dl = D.train_dataloader()
-    bb = D.train_ds[0]
+    dl = M.train_dataloader()
+    bb = M.train_ds[0]
 
     iteri = iter(dl)
     b = next(iteri)
-    b = D.train_ds[0]
+    b = M.train_ds[0]
     im = b["image"]
     lm = b["lm"]
     ImageMaskViewer([im[0], lm[0]])
@@ -1940,19 +1892,19 @@ if __name__ == "__main__":
 # SECTION:-------------------- DataManagerPlain-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 # %%
     batch_size = 2
-    D = DataManagerMulti(
+    M = DataManagerMulti(
         project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None
     )
     # D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
 # %%
-    D.prepare_data()
-    D.setup()
-    b = D.train_ds[0]
+    M.prepare_data()
+    M.setup()
+    b = M.train_ds[0]
     b["image"].shape
 
-    D = tmv.transforms_dict["Dev"]
+    M = tmv.transforms_dict["Dev"]
 
-    b2 = D(b[0])
+    b2 = M(b[0])
 # %%
     lm = b["lm"]
     # %
@@ -1960,19 +1912,19 @@ if __name__ == "__main__":
 
 # %%
     batch_size = 2
-    D = DataManagerMulti(
+    M = DataManagerMulti(
         project=proj_tot, configs=config_tot, batch_size=batch_size, ds_type=None
     )
-    D.effective_batch_size = int(D.batch_size / D.plan["samples_per_file"])
+    M.effective_batch_size = int(M.batch_size / M.plan["samples_per_file"])
 # %%
 # %%
-    D.prepare_data()
+    M.prepare_data()
 
-    D.setup()
-    D.data_folder
-    b = D.train_ds[0]
+    M.setup()
+    M.data_folder
+    b = M.train_ds[0]
 
-    dl = D.train_dataloader()
+    dl = M.train_dataloader()
     iteri = iter(dl)
     b = next(iteri)
     im = b["image"]
@@ -1994,28 +1946,28 @@ if __name__ == "__main__":
     P.prepare_data()
 # %%
 # %%
-    dl = D.train_dataloader()
+    dl = M.train_dataloader()
     iteri = iter(dl)
     b = next(iteri)
     im = b["image"]
     lm = b["lm"]
     ImageMaskViewer([im[0, 0], lm[0, 0]])
 # %%
-    for i, dd in enumerate(D.train_ds):
+    for i, dd in enumerate(M.train_ds):
         print(i)
 
 # %%
-    cids = D.train_cids
+    cids = M.train_cids
     patches_per_id = []
 
 # %%
-    dici = D.data_train[0]
-    dici = D.data[0]
-    D.transforms_dict.keys()
-    D.transforms_dict[""](dici)
+    dici = M.data_train[0]
+    dici = M.data[0]
+    M.transforms_dict.keys()
+    M.transforms_dict[""](dici)
 # %%
     RD = RandomPatch(keys=["image", "lm"])
-    L = D.transforms_dict["L"]
+    L = M.transforms_dict["L"]
 
     dici2 = RD(dici)
     L(dici2)
@@ -2023,9 +1975,9 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- TROUBLESHOOTING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR>
 
-    D.prepare_data()
-    D.setup()
-    tmv = D.train_manager
+    M.prepare_data()
+    M.setup()
+    tmv = M.train_manager
     tmv.transforms_dict
 # %%
     ds = tmv.ds
@@ -2039,62 +1991,62 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- ROUGH-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
-    tmt = D.train_manager
+    tmt = M.train_manager
     td = tmt.transforms_dict
 
     dici = tmt.data[0]
     dici = td["L"](dici)
-    keys  = 'Ld,Rtr,L2,E,F1,F2,Affine,ResizePC,N,IntensityTfms'
+    keys = "Ld,Rtr,L2,E,F1,F2,Affine,ResizePC,N,IntensityTfms"
     tmv.keys
-    
+
     tfms = tmv.transforms_dict
-    'L,E,N,Remap,ResizeP' 
-#%%
+    "L,E,N,Remap,ResizeP"
+# %%
     dl = tmv.dl
     batch = next(iter(dl))
-    batch['image'].shape
+    batch["image"].shape
 
-#%%
-#%%
+# %%
+# %%
 
     dici = tfms["Ld"](dici)
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
     dici = tfms["Rtr"](dici)
     dici = dici[0]
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
     dici = tfms["L2"](dici)
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
     dici = tfms["E"](dici)
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
     dici = tfms["F1"](dici)
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
     dici = tfms["F2"](dici)
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
     dici = tfms["Affine"](dici)
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
     dici = tfms["ResizePC"](dici)
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
     dici = tfms["N"](dici)
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
     dici = tfms["IntensityTfms"](dici)
-    print(dici['image'].shape)
+    print(dici["image"].shape)
 
-#%%
-          
-    dici  = td["Ld"](dici)
-    dici['image'].shape
+# %%
+
+    dici = td["Ld"](dici)
+    dici["image"].shape
     dici = td["Rtr"](dici)
     dici2 = dici[0]
-    dici2['image'].shape
+    dici2["image"].shape
 # %%
 
     E = EnsureChannelFirstd(keys=["image", "lm"], channel_dim="no_channel")
@@ -2105,10 +2057,10 @@ if __name__ == "__main__":
         fg_indices_key="lm_fg_indices",
         bg_indices_key="lm_bg_indices",
         image_threshold=-2600,
-        spatial_size=D.src_dims,
+        spatial_size=M.src_dims,
         pos=1,
         neg=1,
-        num_samples=D.plan["samples_per_file"],
+        num_samples=M.plan["samples_per_file"],
         lazy=True,
         allow_smaller=False,
     )
@@ -2121,33 +2073,35 @@ if __name__ == "__main__":
         image_threshold=-2600,
         fg_indices_key="lm_fg_indices",
         bg_indices_key="lm_bg_indices",
-        spatial_size=D.dataset_params["patch_size"],
+        spatial_size=M.dataset_params["patch_size"],
         pos=1,
         neg=1,
-        num_samples=D.plan["samples_per_file"],
+        num_samples=M.plan["samples_per_file"],
         lazy=True,
         allow_smaller=True,
     )
     Re = ResizeWithPadOrCropd(
         keys=["image", "lm"],
-        spatial_size=D.dataset_params["patch_size"],
+        spatial_size=M.dataset_params["patch_size"],
         lazy=False,
     )
 
     L = LoadTorchd(keys=["image", "lm"])
 # %%
-    D.prepare_data()
-    D.setup(None)
+    M.prepare_data()
+    M.setup(None)
 # %%
-    D.valid_ds[7]
+    M.valid_ds[7]
 
     keys_val = "L,Ld,E,Rva,Re,N"
-    dici = D.valid_ds.data[7]
+    dici = M.valid_ds.data[7]
     dici = L(dici)
     dici = Ld(dici)
     dici = E(dici)
     dici = Rva(dici)
     dici = Re(dici)
+# %%
 
 # %%
-    D.val_indices = int(len(D.train_manager.cases) * 0.2)
+    M.val_indices = int(len(M.train_manager.cases) * 0.2)
+

@@ -441,7 +441,7 @@ class DataManager(LightningDataModule):
                 raise NotImplementedError
 
     def _fg_case_ids_from_stats(self):
-        df = pd.read_csv(self.data_folder / "resampled_dataset_properties.csv")
+        df = pd.read_csv(self.data_folder / "dataset_details.csv")
         fg = df.groupby("case_id")["n_fg"].max()
         return set(fg[fg > 0].index)
 
@@ -1195,7 +1195,7 @@ class DataManagerPatch(DataManagerSource):
             raise ValueError
 
     def load_indices_info(self):
-        bbox_fn = self.data_folder / "resampled_dataset_properties.csv"
+        bbox_fn = self.data_folder / "dataset_details.csv"
         try:
             self.dff = pd.read_csv(bbox_fn)
         except FileNotFoundError as f:

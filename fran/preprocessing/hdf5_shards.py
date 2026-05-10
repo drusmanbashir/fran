@@ -377,7 +377,7 @@ class HDF5ShardGenerator:
                 raise FileNotFoundError(f"Required folder missing: {folder}")
 
         src_tag = "_".join(str(v) for v in self.src_dims)
-        shards_folder = self.shard_folder / "hdf5_shards" / f"src_{src_tag}"
+        shards_folder = self.shard_folder / f"src_{src_tag}"
         manifest_fn = shards_folder / "manifest.json"
         maybe_makedirs([self.shard_folder, shards_folder])
         self.num_processes = max(1, int(num_processes))

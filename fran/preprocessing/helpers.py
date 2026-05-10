@@ -427,20 +427,20 @@ def summarize_indices_folder(
         )
 
     results_df = pd.DataFrame(rows, index=None)
-    output_csv_name = "resampled_dataset_properties.csv"
+    output_csv_name = "dataset_details.csv"
     save_dict(results_df, base_folder / output_csv_name)
     return results_df
 
 
-def compute_fgbg_ratio(resampled_dataset_properties_df, nnz_allowed):
-    n_fg_total = resampled_dataset_properties_df["n_fg"].sum()
+def compute_fgbg_ratio(dataset_details_df, nnz_allowed):
+    n_fg_total = dataset_details_df["n_fg"].sum()
     if nnz_allowed:
-        inds = resampled_dataset_properties_df.index
+        inds = dataset_details_df.index
     else:
-        inds = resampled_dataset_properties_df.index[
-            resampled_dataset_properties_df["has_fg"]
+        inds = dataset_details_df.index[
+            dataset_details_df["has_fg"]
         ]
-    n_bg_total = resampled_dataset_properties_df.loc[inds, "n_bg"].sum()
+    n_bg_total = dataset_details_df.loc[inds, "n_bg"].sum()
     fgbg_ratio = n_fg_total / n_bg_total
     return fgbg_ratio
 
