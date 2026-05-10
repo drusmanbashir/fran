@@ -5,6 +5,7 @@ MIN_SIZE = 32  # min size in a single dimension of any image
 import ipdb
 import ray
 from fran.data.dataregistry import DS, DatasetRegistry
+from fran.preprocessing.preprocessor import CPUS_PER_ACTOR
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.inferencetransforms import BBoxFromPTd
@@ -177,7 +178,7 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         return indices_subfolder
 
 
-@ray.remote(num_cpus=4)
+@ray.remote(num_cpus=CPUS_PER_ACTOR)
 class LBDImportedSamplerWorkerImpl(_LBDImportedSamplerWorkerBase):
     pass
 

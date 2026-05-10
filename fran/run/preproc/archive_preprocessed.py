@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from fran.managers.project import Project
 from fran.run.misc.resolve_plan_folder import resolve_plan_folders
 from fran.utils.common import COMMON_PATHS
+from tqdm.auto import tqdm
 
 RAPID_ACCESS_ROOT = Path(COMMON_PATHS["rapid_access_folder"])
 ARCHIVE_ROOT = Path(COMMON_PATHS["cold_storage_folder"]) / "archived"
@@ -17,6 +20,7 @@ ARCHIVABLE_PLAN_KEYS = (
     "data_folder_pbd",
     "data_folder_rbd",
 )
+DEFAULT_COPY_WORKERS = min(32, max(1, os.cpu_count() or 1))
 
 
 def _relative_from_root(folder: str | Path, root: Path) -> Path:
@@ -61,6 +65,12 @@ def rapid_folder_missing_or_empty(folder: str | Path) -> bool:
     return next(folder_path.iterdir(), None) is None
 
 
+def _copy_one_file(job: tuple[str, str]) -> int:
+    source_name, destination_name = job
+    shutil.copy2(source_name, destination_name)
+    return 1
+
+
 def _copytree_via_temp(source: Path, destination: Path) -> Path:
     if destination.exists():
         raise FileExistsError(f"Destination already exists: {destination}")
@@ -68,11 +78,30 @@ def _copytree_via_temp(source: Path, destination: Path) -> Path:
     temp_destination = destination.parent / (
         f"{destination.name}.tmp-{uuid.uuid4().hex[:8]}"
     )
-    print(f"copying={source} -> {temp_destination}")
     try:
-        shutil.copytree(source, temp_destination, copy_function=shutil.copy2)
+        temp_destination.mkdir()
+        copy_jobs = []
+        for path in source.rglob("*"):
+            destination_path = temp_destination / path.relative_to(source)
+            if path.is_dir():
+                destination_path.mkdir(parents=True, exist_ok=True)
+            elif path.is_file():
+                copy_jobs.append((str(path), str(destination_path)))
+
+        workers = min(DEFAULT_COPY_WORKERS, max(1, len(copy_jobs)))
+        print(f"copying={source} -> {temp_destination}")
+        print(f"files={len(copy_jobs)} workers={workers}")
+
+        if copy_jobs:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = [executor.submit(_copy_one_file, job) for job in copy_jobs]
+                with tqdm(total=len(futures), desc=source.name, unit="file") as progress:
+                    for future in as_completed(futures):
+                        future.result()
+                        progress.update(1)
         temp_destination.rename(destination)
     except Exception:
+        print(f"copy_failed={source}")
         if temp_destination.exists():
             shutil.rmtree(temp_destination)
         raise

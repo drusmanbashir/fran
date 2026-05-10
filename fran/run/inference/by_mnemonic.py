@@ -277,14 +277,19 @@ def split_runs_by_localiser_type(run_names: list[str]) -> dict[str, list[str]]:
     return buckets
 
 
-def resolve_input_folders(folder: str | None, datasets: list[str] | None) -> list[Path]:
+def resolve_input_images(folder: str | None, datasets: list[str] | None) -> list[Path]:
     if (folder is None) == (datasets is None):
         raise ValueError("Pass exactly one of --folder or --dataset")
-    if folder is not None:
-        return [Path(folder)]
-    return [
+    roots = [Path(folder)] if folder is not None else [
         Path(item) if "/" in item else DS[item].folder / "images" for item in datasets
     ]
+    images = []
+    for root in roots:
+        if root.is_dir():
+            images.extend(sorted(p for p in root.glob("*") if p.is_file()))
+        else:
+            images.append(root)
+    return images
 
 
 def resolve_yolo_regions(run_name: str) -> list[str]:
@@ -425,7 +430,7 @@ def parse_args(argv=None):
 
 def main(args=None):
     args = parse_args(args) if isinstance(args, list) or args is None else args
-    input_folders = resolve_input_folders(args.folder, args.dataset)
+    input_images = resolve_input_images(args.folder, args.dataset)
     spec = resolve_spec(args.mnemonic, args.localiser_type)
     inferer = build_inferer(spec, args.gpus, args.patch_overlap)
     print(
@@ -434,10 +439,10 @@ def main(args=None):
             "run_name": spec.run_name,
             "run_w": spec.run_w,
             "inferer": spec.inferer_cls.__name__,
-            "input_folders": [str(folder) for folder in input_folders],
+            "input_images_count": len(input_images),
         }
     )
-    inferer.run(input_folders, chunksize=args.chunksize, overwrite=args.overwrite)
+    inferer.run(input_images, chunksize=args.chunksize, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":

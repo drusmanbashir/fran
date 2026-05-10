@@ -1,20 +1,18 @@
 # %%
-import json
 import itertools as il
+import json
 import sqlite3
 from pathlib import Path
 
-import ipdb
 import numpy as np
 import pandas as pd
 import ray
 import SimpleITK as sitk
 import torch
-from tqdm.auto import tqdm
+from fran.configs.helpers import is_excel_None
 from fran.data.dataregistry import DS
-from fran.managers.db import add_plan_to_db
-from fran.preprocessing.hdf5_shards import HDF5ShardWriter
 from fran.preprocessing import bboxes_function_version
+from fran.preprocessing.hdf5_shards import HDF5ShardWriter
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
     env_flag,
@@ -25,7 +23,6 @@ from fran.preprocessing.helpers import (
 )
 from fran.utils.dataset_properties import analyze_tensor_data_folder
 from fran.utils.jsonl import write_jsonl_rows
-from fran.configs.helpers import is_excel_None
 from utilz.cprint import cprint
 from utilz.fileio import maybe_makedirs, save_dict, save_json
 from utilz.helpers import create_df_from_folder, multiprocess_multiarg
@@ -33,6 +30,8 @@ from utilz.rayz import shutdown_actors
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
 DEFAULT_HDF5_SRC_DIMS = (192, 192, 128)
+CPUS_PER_ACTOR = 1
+
 
 def bboxes_to_df(bboxes):
     rows = []
@@ -317,9 +316,7 @@ class Preprocessor:
     def _plan_allows_hdf5_shards(self) -> bool:
         return (
             self.subfolder_key == "data_folder_lbd" and self.plan["mode"] == "lbd"
-        ) or (
-            self.subfolder_key == "data_folder_rbd" and self.plan["mode"] == "rbd"
-        )
+        ) or (self.subfolder_key == "data_folder_rbd" and self.plan["mode"] == "rbd")
 
     @property
     def hdf5_manifest_fn(self):
@@ -1125,7 +1122,7 @@ class Preprocessor:
         **worker_kwargs,
     ):
         self.ray_init()
-        n = max(1, min(len(df), int(num_processes))) if len(df) else 0
+        n = max(1, min(len(df), int(num_processes / CPUS_PER_ACTOR))) if len(df) else 0
         self.n_actors = n
         self.mini_dfs = self.split_dataframe_for_workers(df, n)
         self.actors = [
@@ -1146,28 +1143,30 @@ class Preprocessor:
         return (self.num_processes > 1) and (not debug)
 
     def setup(
-          self,
-          overwrite=False,
-          num_processes=8,
-          device="cpu",
-          debug=False,
-          mean_std_mode="dataset",
-      ):
-          self.num_processes = max(1, int(num_processes))
-          self.devices = device
-          self.overwrite = overwrite
-          self.debug = debug
-          self.mean_std_mode = mean_std_mode
-          self.run_postprocess_if_empty = False
-          self.create_data_df()
-          if getattr(self, "remapping_key", None) is not None:
-              self.set_remapping_per_ds()
-          self.register_existing_cases()
-          self.remove_completed_cases()
-          print("Overwrite:", overwrite)
-          if len(self.df) == 0:
-              missing_arts = postprocess_artifacts_missing(self.output_folder)
-              self.run_postprocess_if_empty = all(missing_arts.values())
+        self,
+        overwrite=False,
+        num_processes=8,
+        device="cpu",
+        debug=False,
+        mean_std_mode="dataset",
+    ):
+        self.num_processes = max(1, int(num_processes))
+        self.devices = device
+        self.overwrite = overwrite
+        self.debug = debug
+        self.mean_std_mode = mean_std_mode
+        self.run_postprocess_if_empty = False
+        self.create_data_df()
+        if getattr(self, "remapping_key", None) is not None:
+            self.set_remapping_per_ds()
+        self.register_existing_cases()
+        self.remove_completed_cases()
+        print("Overwrite:", overwrite)
+        if len(self.df) == 0:
+            missing_arts = postprocess_artifacts_missing(self.output_folder)
+            self.run_postprocess_if_empty = all(missing_arts.values())
+
+
 # %%
 # %%
 # SECTION:-------------------- --------------------------------------------------------------------------------------
@@ -1178,10 +1177,7 @@ if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
     from fran.utils.common import *
-    from fran.utils.folder_names import FolderNames
-    from monai.transforms.io.dictionary import LoadImaged
-    from fran.transforms.imageio import TorchReader
-    from utilz.helpers import pp
+    from tqdm.auto import tqdm
 
     project_title = "kits23"
     P = Project(project_title=project_title)
@@ -1349,3 +1345,5 @@ if __name__ == "__main__":
     )
 
 # %
+
+

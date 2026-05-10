@@ -402,14 +402,14 @@ class DataManagerDual(LightningDataModule):
                 f"Limiting training dataset size to{self.train_indices}", color="yellow"
             )
             self.train_manager.select_cases_from_inds(self.train_indices)
-            self.train_manager.data = self.train_manager.create_staged_data_dicts(
+            self.train_manager.data = self.train_manager.create_data_dicts(
                 self.train_manager.cases
             )
             if self.val_indices is None:
                 self.val_indices = max(1, int(len(self.train_manager.cases) * 0.2))
         if self.val_indices is not None:
             self.valid_manager.select_cases_from_inds(self.val_indices)
-            self.valid_manager.data = self.valid_manager.create_staged_data_dicts(
+            self.valid_manager.data = self.valid_manager.create_data_dicts(
                 self.valid_manager.cases
             )
 
@@ -1038,11 +1038,7 @@ class DataManager(LightningDataModule):
         if not hasattr(self, "cases"):
             self.cases_from_project_split()
         # Create data dictionaries for this split
-        self.data = self.create_staged_data_dicts(self.cases)
-
-    def create_staged_data_dicts(self, cases):
-        data = self.create_data_dicts(cases)
-        return data
+        self.data = self.create_data_dicts(self.cases)
 
     @property
     def hdf5_shard_manifest_rel_path(self):

@@ -11,6 +11,7 @@ from fran.preprocessing.helpers import (
     infer_dataset_stats_window,
 )
 from fran.preprocessing.preprocessor import (
+    CPUS_PER_ACTOR,
     Preprocessor,
     get_tensor_stats,
     store_label_count,
@@ -213,7 +214,7 @@ class _NiftiResamplerBase(RayWorkerBase):
         return self.output_folder / "indices"
 
 
-@ray.remote(num_cpus=4)
+@ray.remote(num_cpus=CPUS_PER_ACTOR)
 class NiftiResampler(_NiftiResamplerBase):
     pass
 

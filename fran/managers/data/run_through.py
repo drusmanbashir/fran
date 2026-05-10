@@ -63,7 +63,7 @@ class DataManagerRT(DataManagerDual):
                 f"Limiting training dataset size to{self.train_indices}", color="yellow"
             )
             self.train_manager.select_cases_from_inds(self.train_indices)
-            self.train_manager.data = self.train_manager.create_staged_data_dicts(
+            self.train_manager.data = self.train_manager.create_data_dicts(
                 self.train_manager.cases
             )
 

@@ -27,8 +27,8 @@ from .main import (
 
 
 class DualSSDStagingMixin:
-    def create_staged_data_dicts(self, cases):
-        data = super().create_staged_data_dicts(cases)
+    def create_data_dicts(self, cases):
+        data = super().create_data_dicts(cases)
         if len(data) == 0:
             return data
         if self.has_hdf5_shard_manifest():

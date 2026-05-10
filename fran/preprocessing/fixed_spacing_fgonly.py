@@ -11,7 +11,7 @@ from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
     infer_dataset_stats_window,
 )
-from fran.preprocessing.preprocessor import get_tensor_stats, store_label_count
+from fran.preprocessing.preprocessor import CPUS_PER_ACTOR, get_tensor_stats, store_label_count
 from fran.transforms.fg_indices import FgBgToIndicesSubsampled
 
 
@@ -58,7 +58,7 @@ class _NiftiSubsampledBgResamplerBase(_NiftiResamplerBase):
         return self.output_folder / f"indices_bg_subsample_{subsample_bg}"
 
 
-@ray.remote(num_cpus=4)
+@ray.remote(num_cpus=CPUS_PER_ACTOR)
 class NiftiSubsampledBgResampler(_NiftiSubsampledBgResamplerBase):
     pass
 
