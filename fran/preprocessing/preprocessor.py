@@ -913,6 +913,56 @@ class Preprocessor:
         )
         return writer.run()
 
+    def copy_to_rapid_access(
+        self,
+        pt: bool = True,
+        shards: bool = True,
+        overwrite: bool = False,
+    ) -> None:
+        """
+        Copy preprocessed files from cold storage to project rapid_access SSD.
+        Cold storage originals are never touched.
+
+        Args:
+            pt:       Copy .pt tensor folders (images/, lms/, indices/)
+            shards:   Copy HDF5 shard folder (hdf5_shards/src_<dims>/)
+            overwrite: Re-copy even if destination files already exist
+        """
+        from fran.preprocessing.hdf5_shards import copy_folder_to_rapid_access
+
+        rapid_base = Path(self.project.rapid_access_folder)
+
+        try:
+            rel_output = self.output_folder.relative_to(
+                Path(self.project.fixed_spacing_folder).parent.parent
+            )
+        except ValueError:
+            rel_output = Path(self.output_folder.name)
+        rapid_output = rapid_base / rel_output
+
+        if pt:
+            for subfolder in ("images", "lms", "indices"):
+                src = self.output_folder / subfolder
+                if src.exists():
+                    copy_folder_to_rapid_access(
+                        src,
+                        rapid_output / subfolder,
+                        glob="*.pt",
+                        overwrite=overwrite,
+                    )
+
+        if shards and getattr(self, "plan", None) and "src_dims" in self.plan:
+            src_dims = self.plan["src_dims"]
+            src_tag = "_".join(str(int(v)) for v in src_dims)
+            src = self.output_folder / "hdf5_shards" / f"src_{src_tag}"
+            if src.exists():
+                copy_folder_to_rapid_access(
+                    src,
+                    rapid_output / "hdf5_shards" / f"src_{src_tag}",
+                    glob="*",
+                    overwrite=overwrite,
+                )
+
     def process_batch(self, batch):
         images, lms, fg_inds, bg_inds = (
             batch["image"],
