@@ -47,7 +47,6 @@ class RayWorkerBase(Preprocessor):
         data_folder,
         output_folder,
         crop_to_label=None,
-        device="cpu",
         debug=False,
         tfms_keys="LoadT,Chan,Dev,Crop,Remap,Labels,Indx",
         remapping_key=None,
@@ -65,7 +64,7 @@ class RayWorkerBase(Preprocessor):
         self.lm_key = "lm"
         self.tnsr_keys = [self.image_key, self.lm_key]
         self.tfms_keys = tfms_keys
-        self.create_transforms(device=device)
+        self.create_transforms()
         self.set_transforms(tfms_keys)
 
     def _create_data_dict(self, row):
@@ -224,7 +223,7 @@ class RayWorkerBase(Preprocessor):
             data.append(dici)
         return data
 
-    def create_transforms(self, device):
+    def create_transforms(self):
 
         if self.plan["expand_by"]:
             margin = [int(self.plan["expand_by"] / sp) for sp in self.plan["spacing"]]
@@ -243,7 +242,7 @@ class RayWorkerBase(Preprocessor):
             min_shape=self.plan["patch_size"],
         )
 
-        self.Dev = ToDeviced(device=device, keys=self.tnsr_keys)
+        self.Dev = ToDeviced(device="cpu", keys=self.tnsr_keys)
         self.Chan = EnsureChannelFirstd(keys=self.tnsr_keys, channel_dim="no_channel")
         self.Indx = FgBgToIndicesSubsampled(
             keys=[self.lm_key],
@@ -355,4 +354,3 @@ class RayWorkerBase(Preprocessor):
 # %%
 # parse_excel_remapping
 # parse_excel_datasources(self.plan["datasources"])
-

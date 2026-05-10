@@ -56,7 +56,6 @@ def test_region_generator_attaches_cached_bbox_json_by_case_id(tmp_path, monkeyp
         regionbounded.RegionBoundedDataGenerator
     )
     generator.output_folder = tmp_path
-    generator.devices = ["cpu"]
     generator.plan = {"localiser_regions": "abdomen"}
     generator.df = pd.DataFrame(
         {
@@ -116,7 +115,6 @@ def test_region_generator_errors_on_duplicate_bbox_matches(tmp_path, monkeypatch
         regionbounded.RegionBoundedDataGenerator
     )
     generator.output_folder = tmp_path
-    generator.devices = ["cpu"]
     generator.plan = {"localiser_regions": "abdomen"}
     generator.df = pd.DataFrame(
         {
@@ -170,7 +168,6 @@ def test_region_generator_uses_cached_bbox_json_before_inference(
         regionbounded.RegionBoundedDataGenerator
     )
     generator.output_folder = tmp_path
-    generator.devices = ["cpu"]
     generator.plan = {"localiser_regions": "abdomen"}
     generator.df = pd.DataFrame(
         {
@@ -377,7 +374,7 @@ def test_rbd_worker_data_dict_loads_bbox(monkeypatch):
 
 
 def test_rbd_worker_uses_fallback_crop_wrapper_in_preprocessing_path(monkeypatch):
-    def fake_parent_create_transforms(self, device):
+    def fake_parent_create_transforms(self):
         self.transforms_dict = {}
 
     monkeypatch.setattr(
@@ -391,7 +388,7 @@ def test_rbd_worker_uses_fallback_crop_wrapper_in_preprocessing_path(monkeypatch
     )
     worker.plan = {"expand_by": 14, "src_dims": (32, 32, 32)}
 
-    worker.create_transforms(device="cpu")
+    worker.create_transforms()
 
     assert isinstance(worker.CropByYolo, CropByYoloWithForegroundFallbackd)
     assert worker.CropByYolo.cropper_yolo.margin == 14
@@ -399,7 +396,7 @@ def test_rbd_worker_uses_fallback_crop_wrapper_in_preprocessing_path(monkeypatch
 
 
 def test_rbd_worker_uses_zero_margin_when_expand_by_is_zero(monkeypatch):
-    def fake_parent_create_transforms(self, device):
+    def fake_parent_create_transforms(self):
         self.transforms_dict = {}
 
     monkeypatch.setattr(
@@ -413,14 +410,14 @@ def test_rbd_worker_uses_zero_margin_when_expand_by_is_zero(monkeypatch):
     )
     worker.plan = {"expand_by": 0, "src_dims": (32, 32, 32)}
 
-    worker.create_transforms(device="cpu")
+    worker.create_transforms()
 
     assert isinstance(worker.CropByYolo, CropByYoloWithForegroundFallbackd)
     assert worker.CropByYolo.cropper_yolo.margin == 0
 
 
 def test_rbd_worker_crop_transform_preserves_fg_on_cpu(monkeypatch):
-    def fake_parent_create_transforms(self, device):
+    def fake_parent_create_transforms(self):
         self.transforms_dict = {}
 
     monkeypatch.setattr(
@@ -434,7 +431,7 @@ def test_rbd_worker_crop_transform_preserves_fg_on_cpu(monkeypatch):
     )
     worker.plan = {"expand_by": 0, "src_dims": (4, 4, 4)}
 
-    worker.create_transforms(device="cpu")
+    worker.create_transforms()
 
     image = _metatensor(torch.zeros((1, 12, 12, 12)), "image.pt")
     lm = _metatensor(torch.zeros((1, 12, 12, 12), dtype=torch.uint8), "lm.pt")

@@ -76,7 +76,7 @@ def test_create_hdf5_shards_schema_chunks_and_manifest(tmp_path):
         assert case0["lm_bg_indices"].chunks == (262144,)
         assert case0.attrs["source_meta_filename_or_obj"] == "/tmp/case_000.nii.gz"
 
-    manifest_fn = output_folder / "hdf5_shards" / "src_192_192_128" / "manifest.json"
+    manifest_fn = output_folder / "src_192_192_128" / "manifest.json"
     with open(manifest_fn, "r", encoding="utf-8") as f:
         manifest = json.load(f)
     assert manifest["format"] == "fran_hdf5_shards_v1"
@@ -107,7 +107,7 @@ def test_create_hdf5_shards_can_split_pt_and_shard_roots(tmp_path):
         cases_per_shard=2,
     )
 
-    manifest_fn = shard_folder / "hdf5_shards" / "src_192_192_128" / "manifest.json"
+    manifest_fn = shard_folder / "src_192_192_128" / "manifest.json"
     assert manifest_fn.exists() is True
     assert (pt_folder / "hdf5_shards").exists() is False
 
@@ -128,7 +128,7 @@ def test_create_hdf5_shards_skip_if_manifest_exists(tmp_path):
         src_dims=(192, 192, 128),
         cases_per_shard=2,
     )
-    manifest_fn = output_folder / "hdf5_shards" / "src_192_192_128" / "manifest.json"
+    manifest_fn = output_folder / "src_192_192_128" / "manifest.json"
     before_mtime = manifest_fn.stat().st_mtime_ns
 
     second = create_hdf5_shards(
@@ -225,14 +225,12 @@ def test_preprocessor_only_enables_hdf5_shards_for_matching_plan_mode(tmp_path):
         plan={"mode": "rbd", "src_dims": (24, 24, 12)},
         data_folder=tmp_path / "input_rbd",
         output_folder=tmp_path / "output_rbd",
-        hdf5_shards=True,
     )
     pre_disabled = _DummyRBDPreprocessor(
         project=SimpleNamespace(),
         plan={"mode": "lbd", "src_dims": (24, 24, 12)},
         data_folder=tmp_path / "input_lbd",
         output_folder=tmp_path / "output_lbd",
-        hdf5_shards=True,
     )
 
     assert pre_enabled.hdf5_shards is True
@@ -245,11 +243,8 @@ def test_preprocessor_enables_hdf5_shards_for_source_mode(tmp_path):
         plan={"mode": "source", "src_dims": (24, 24, 12)},
         data_folder=tmp_path / "input_source",
         output_folder=tmp_path / "output_source",
-        hdf5_shards=True,
     )
-
     assert pre.hdf5_shards is True
-    assert pre.delete_pt_after_shard_creation is False
 
 
 def test_labelbounded_init_only_enables_hdf5_shards_for_lbd_mode(tmp_path):
@@ -276,7 +271,7 @@ def test_preprocessor_uses_plan_src_dims_when_hdf5_shards_enabled(tmp_path):
     _prepare_three_cases(output_folder)
     pre = _make_preprocessor(project, output_folder, (24, 24, 12))
 
-    shards = pre._maybe_create_hdf5_shards(df_hdf5_run=pre.df_hdf5)
+    shards = pre.process_hdf5(df_hdf5_run=pre.df_hdf5, src_dims=(24, 24, 12))
 
     assert [pth.name for pth in shards] == ["shard_0000.h5"]
     manifest_fn = output_folder / "hdf5_shards" / "src_24_24_12" / "manifest.json"
@@ -295,16 +290,16 @@ def test_source_preprocessor_writes_hdf5_shards_to_rapid_access(tmp_path):
         plan={"mode": "source", "src_dims": (24, 24, 12)},
         data_folder=tmp_path / "input_source",
         output_folder=output_folder,
-        hdf5_shards=True,
     )
+    pre.delete_pt_after_shard_creation = False
     pre.df_hdf5 = pd.DataFrame({"case_id": ["case_000", "case_001", "case_002"]})
 
-    shards = pre._maybe_create_hdf5_shards(df_hdf5_run=pre.df_hdf5)
+    shards = pre.process_hdf5(df_hdf5_run=pre.df_hdf5, src_dims=(24, 24, 12))
 
     rapid_output = project.rapid_access_folder / "fixed_spacing" / "spc_100"
     manifest_fn = rapid_output / "hdf5_shards" / "src_24_24_12" / "manifest.json"
 
-    assert pre.hdf5_output_folder == rapid_output
+    assert pre.hdf5_output_folder == rapid_output / "hdf5_shards"
     assert pre.hdf5_manifest_fn == manifest_fn
     assert [pth.name for pth in shards] == ["shard_0000.h5"]
     assert manifest_fn.exists() is True
@@ -319,7 +314,7 @@ def test_preprocessor_can_explicitly_opt_out_of_hdf5_shard_creation(tmp_path):
     pre = _make_preprocessor(project, output_folder, (24, 24, 12))
 
     pre.hdf5_shards = False
-    shards = pre._maybe_create_hdf5_shards(df_hdf5_run=pre.df_hdf5)
+    shards = pre.process_hdf5(df_hdf5_run=pre.df_hdf5, src_dims=(24, 24, 12))
 
     assert shards == []
     manifest_fn = output_folder / "hdf5_shards" / "src_24_24_12" / "manifest.json"

@@ -30,21 +30,20 @@ from fran.preprocessing.preprocessor import Preprocessor
 
 class _PBDSamplerWorkerBase(RayWorkerBase):
     def __init__(
-        self, project, plan, data_folder, output_folder, device="cpu", debug=False
+        self, project, plan, data_folder, output_folder, debug=False
     ):
         super().__init__(
             project=project,
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
-            device=device,
             debug=debug,
             tfms_keys="LoadT,Chan,Dev,Grid,Split,Labels, Indx, Sq",
         )
         self.output_folder = Path(self.output_folder)
 
-    def create_transforms(self, device="cpu"):
-        super().create_transforms(device=device)
+    def create_transforms(self):
+        super().create_transforms()
 
         patch_overlap = self.plan.get("patch_overlap", 0.20)
         patch_size = self.plan["patch_size"]
@@ -180,7 +179,6 @@ class PatchDataGenerator(LabelBoundedDataGenerator, Preprocessor):
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
-            hdf5_shards=False,
         )
 
     def create_data_df(self):

@@ -65,7 +65,6 @@ class _NiftiResamplerBase(RayWorkerBase):
         half_precision=False,
         clip_center=False,
         mean_std_mode="dataset",
-        device="cuda",
         debug=False,
     ):
 
@@ -73,7 +72,6 @@ class _NiftiResamplerBase(RayWorkerBase):
         self.global_properties = self.project.global_properties
         self.half_precision = half_precision
         self.clip_center = clip_center
-        self.device = device
         self.set_normalization_values(mean_std_mode)
         tfms_keys = "LoadS,Chan,Orient,Remap,Dev,Cast,SpImg,SpLm,Rsz,LmDType,Indx"
         if self.clip_center:
@@ -85,7 +83,6 @@ class _NiftiResamplerBase(RayWorkerBase):
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
-            device=device,
             debug=debug,
             tfms_keys=tfms_keys,
         )
@@ -126,8 +123,8 @@ class _NiftiResamplerBase(RayWorkerBase):
         assert len(data) > 0, "No data found in data folder"
         return data
 
-    def create_transforms(self, device="cpu"):
-        super().create_transforms(device=device)
+    def create_transforms(self):
+        super().create_transforms()
         self.LS = LoadSITKd(keys=["image", "lm"], image_only=True)
         self.Or = Orientationd(keys=["image", "lm"], axcodes="RAS")
         self.Re = RecastToFloatd(keys=["image", "lm"])
@@ -226,6 +223,7 @@ class NiftiResamplerLocal(_NiftiResamplerBase):
 
 
 class NiftiToTorchDataGenerator(Preprocessor):
+    delete_pt_after_shard_creation=False
     actor_cls = NiftiResampler
     local_worker_cls = NiftiResamplerLocal
     remapping_key = "remapping_source"
@@ -272,11 +270,9 @@ class NiftiToTorchDataGenerator(Preprocessor):
     def setup(
         self,
         mean_std_mode="dataset",
-        device="cpu",
         debug=False,
     ):
         super().setup(
-            device=device,
             debug=debug,
             mean_std_mode=mean_std_mode,
         )
@@ -769,4 +765,3 @@ if __name__ == "__main__":
 
 
 # %%
-

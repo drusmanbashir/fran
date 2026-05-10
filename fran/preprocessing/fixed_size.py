@@ -27,7 +27,6 @@ class _FixedSizeWorkerBase(RayWorkerBase):
         plan,
         data_folder,
         output_folder,
-        device="cpu",
         debug=False,
     ):
         super().__init__(
@@ -35,7 +34,6 @@ class _FixedSizeWorkerBase(RayWorkerBase):
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
-            device=device,
             debug=debug,
             tfms_keys="LoadT,Chan,Remap,Resize,LmDType,Labels",
         )
@@ -48,7 +46,7 @@ class _FixedSizeWorkerBase(RayWorkerBase):
             "remapping": row["remapping"],
         }
 
-    def create_transforms(self, device="cpu"):
+    def create_transforms(self):
         self.image_key = "image"
         self.lm_key = "lm"
         self.LoadT = LoadTorchd(keys=[self.image_key, self.lm_key])
@@ -124,7 +122,6 @@ class FixedSizeDataGenerator(Preprocessor):
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
-            hdf5_shards=False,
         )
 
     def set_input_output_folders(self, data_folder, output_folder):
@@ -151,14 +148,9 @@ class FixedSizeDataGenerator(Preprocessor):
     def register_existing_files(self):
         return self._register_existing_pt_files()
 
-    def setup(self, overwrite=False, num_processes=8, device="cpu", debug=False):
+    def setup(self, debug=False):
         self.create_output_folders()
-        super().setup(
-            overwrite=overwrite,
-            num_processes=num_processes,
-            device=device,
-            debug=debug,
-        )
+        super().setup(debug=debug)
 
     def postprocess_results(self, num_processes=8):
         self._store_dataset_summary(num_processes=num_processes)

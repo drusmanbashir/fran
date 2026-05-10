@@ -1,5 +1,4 @@
 # %%
-import itertools as il
 import json
 import sqlite3
 import shutil
@@ -314,10 +313,11 @@ def create_hdf5_shards(
         compression_opts=compression_opts,
     )
     writer.setup(case_ids=case_ids, num_processes=num_processes)
-    return writer.run()
+    return writer.run(num_processes=num_processes)
 
 
 class Preprocessor:
+    delete_pt_after_shard_creation=True
     subfolder_key = None
     PREPROCESS_LOG_COLUMNS = [
         "timestamp",
@@ -336,7 +336,6 @@ class Preprocessor:
         plan,
         data_folder=None,
         output_folder=None,
-        devices=None,
     ) -> None:
         self.project = project
         self.plan = plan
@@ -345,16 +344,13 @@ class Preprocessor:
         self.store_gifs = env_flag("FRAN_STORE_GIFS", False)
         self.store_label_stats = env_flag("FRAN_STORE_LABEL_STATS", False)
         self.set_input_output_folders(data_folder, output_folder)
-        self.devices = devices
 
 
     def setup(
         self,
-        device="cpu",
         debug=False,
         mean_std_mode="dataset",
     ):
-        self.devices = device
         self.debug = debug
         self.mean_std_mode = mean_std_mode
         self.create_data_df()
@@ -362,7 +358,6 @@ class Preprocessor:
             self.set_remapping_per_ds()
         self.register_existing_cases()
         self.remove_completed_cases()
-        print("Overwrite:", overwrite)
 
     def _df_from_db(self):
         con = sqlite3.connect(str(self.project.db))
@@ -599,25 +594,9 @@ class Preprocessor:
                 self.shutdown_ray_workers()
         return [self.local_worker.process(self.mini_dfs[0])]
 
-    def flatten_results(self, results):
-        df = pd.DataFrame(il.chain.from_iterable(results))
-        audit_cols = [col for col in df.columns if str(col).startswith("_preprocess_")]
-        if audit_cols:
-            df = df.drop(columns=audit_cols)
-        return df
-
     @property
     def results_csv_fn(self):
         return self.output_folder / "dataset_details.csv"
-
-    def _read_existing_results_df(self):
-        csv_fn = self.results_csv_fn
-        if not csv_fn.exists():
-            return pd.DataFrame()
-        try:
-            return pd.read_csv(csv_fn)
-        except pd.errors.EmptyDataError:
-            return pd.DataFrame()
 
     def _write_results_csv(self, num_processes=8, overwrite=False):
         if not overwrite and self.results_csv_fn.exists():
@@ -767,7 +746,6 @@ class Preprocessor:
                 plan=self.plan,
                 data_folder=self.data_folder,
                 output_folder=self.output_folder,
-                device=self.devices,
                 debug=self.debug,
                 **worker_kwargs,
             )
@@ -780,19 +758,12 @@ class Preprocessor:
                 plan=self.plan,
                 data_folder=self.data_folder,
                 output_folder=self.output_folder,
-                device=self.devices,
                 debug=self.debug,
                 **worker_kwargs,
             )
         results = self.run_worker_jobs()
         log_rows = self.build_preprocessing_log_rows(results)
-        self.write_preprocessing_log(log_rows=log_rows)
-
-    def write_preprocessing_log(self, results=None, log_rows=None):
-        if log_rows is None:
-            log_rows = self.build_preprocessing_log_rows(results)
         self.logger.append_rows(log_rows)
-        return log_rows
 
     def process_hdf5(
         self,
@@ -823,7 +794,7 @@ class Preprocessor:
             num_processes=num_processes,
         )
         try:
-            shard_paths = writer.run()
+            shard_paths = writer.run(num_processes=num_processes)
         except Exception as e:
             self.logger.exception(
                 e,
@@ -839,22 +810,23 @@ class Preprocessor:
                     shutil.rmtree(pth)
         return shard_paths
 
-
+    def postprocess_results(self, num_processes=8, overwrite=False):
+        self._write_results_csv(num_processes=num_processes, overwrite=overwrite)
+        self._store_dataset_summary(num_processes=num_processes)
+        store_label_count(self.output_folder, num_processes=num_processes)
+        create_dataset_stats_artifacts(
+            lms_folder=self.output_folder / "lms",
+            gif=self.store_gifs,
+            label_stats=self.store_label_stats,
+            gif_window=infer_dataset_stats_window(self.project),
+        )
 
     def postprocess(self, overwrite=False, num_processes=8):
         if overwrite is False and self.postprocess_artifacts_missing() is False:
             cprint("Postprocess: skip existing artifacts", "cyan")
         else:
             cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
-            self._write_results_csv(num_processes=num_processes)
-            self._store_dataset_summary(num_processes=num_processes)
-            store_label_count(self.output_folder, num_processes=num_processes)
-            create_dataset_stats_artifacts(
-                lms_folder=self.output_folder / "lms",
-                gif=self.store_gifs,
-                label_stats=self.store_label_stats,
-                gif_window=infer_dataset_stats_window(self.project),
-            )
+            self.postprocess_results(num_processes=num_processes, overwrite=overwrite)
 
 
     def process(
@@ -873,9 +845,8 @@ class Preprocessor:
             return 0
         if len(self.df) == 0:
             if getattr(self, "run_postprocess_if_empty", False):
-                return self.run_postprocess_only(
-                    num_processes=num_processes,
-                )
+                self.postprocess(overwrite=overwrite, num_processes=num_processes)
+                return 0
             print("No data frames have been created. Run setup")
             return 0
         df_pt_run = self.df if overwrite else self.df_pt
@@ -891,6 +862,7 @@ class Preprocessor:
             hdf5_compression_opts=hdf5_compression_opts,
             num_processes=num_processes,
         )
+        self.postprocess(overwrite=overwrite, num_processes=num_processes)
 
     def copy_to_rapid_access(
         self,
@@ -1066,7 +1038,6 @@ class Preprocessor:
         plan,
         data_folder,
         output_folder,
-        device="cpu",
         debug=False,
         **worker_kwargs,
     ):
@@ -1080,7 +1051,6 @@ class Preprocessor:
                 plan=plan,
                 data_folder=data_folder,
                 output_folder=output_folder,
-                device=device,
                 debug=debug,
                 **worker_kwargs,
             )

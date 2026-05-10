@@ -18,8 +18,8 @@ from fran.transforms.fg_indices import FgBgToIndicesSubsampled
 class _NiftiSubsampledBgResamplerBase(_NiftiResamplerBase):
     """Nifti resampler variant that writes fg and optionally subsampled bg indices."""
 
-    def create_transforms(self, device="cpu"):
-        super().create_transforms(device=device)
+    def create_transforms(self):
+        super().create_transforms()
         self.Indx = FgBgToIndicesSubsampled(
             keys=["lm"],
             ignore_labels=self.plan.get("fg_indices_exclude", []),
@@ -79,7 +79,7 @@ class NiftiToTorchSubsampledBgDataGenerator(NiftiToTorchDataGenerator):
         return self.output_folder / f"indices_bg_subsample_{subsample_bg}"
 
     def postprocess_results(self, num_processes=8, **process_kwargs):
-        self._store_dataset_properties(num_processes=num_processes)
+        self._store_dataset_summary(num_processes=num_processes)
         generate_bboxes_from_lms_folder(
             self.output_folder / "lms",
             num_processes=num_processes,

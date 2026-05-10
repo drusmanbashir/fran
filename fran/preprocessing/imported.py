@@ -63,7 +63,6 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
         data_folder,
         output_folder,
         crop_to_label=None,
-        device="cpu",
         debug=False,
     ):
         """
@@ -89,7 +88,6 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
             data_folder=data_folder,
             output_folder=output_folder,
             crop_to_label=crop_to_label,
-            device=device,
             debug=debug,
             tfms_keys=tfms_keys,
         )
@@ -120,8 +118,8 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
             Remapping_tfms[ds_name] = R
         return Remapping_tfms
 
-    def create_transforms(self, device):
-        super().create_transforms(device=device)
+    def create_transforms(self):
+        super().create_transforms()
         self.A = ApplyBBoxd(keys=[self.lm_key, self.image_key], bbox_key="bounding_box")
         self.B = BBoxFromPTd(
             keys=[self.lm_imported_key],
@@ -228,7 +226,6 @@ class LabelBoundedDataGeneratorImported(LabelBoundedDataGenerator):
         data_folder: Optional[Union[str, Path]] = None,
         output_folder: Optional[Union[str, Path]] = None,
         mask_label: Optional[Any] = None,
-        device="cpu",
     ) -> None:
 
         super().__init__(

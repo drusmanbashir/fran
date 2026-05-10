@@ -55,31 +55,12 @@ def test_preprocessing_audit_log_status_normalization(tmp_path):
     assert rows[2]["error_type"] == "RuntimeError"
     assert rows[2]["traceback"] == "traceback lines"
 
-    pre.write_preprocessing_log(results)
+    pre.logger.append_rows(rows)
     log_rows = [
         json.loads(line) for line in (tmp_path / "log.jsonl").read_text().splitlines()
     ]
     assert all("timestamp" in row for row in log_rows)
     assert [row["status"] for row in log_rows] == ["OK", "WARNING", "ERROR"]
-
-
-def test_flatten_results_strips_preprocess_audit_columns(tmp_path):
-    pre = _make_preprocessor(tmp_path)
-    df = pre.flatten_results(
-        [
-            [
-                {"case_id": "case_ok", "ok": True, "_preprocess_events": []},
-                {
-                    "case_id": "case_err",
-                    "ok": False,
-                    "_preprocess_error": {"error_type": "RuntimeError"},
-                },
-            ]
-        ]
-    )
-    assert "_preprocess_events" not in df.columns
-    assert "_preprocess_error" not in df.columns
-    assert "case_id" in df.columns
 
 
 def test_preprocessing_audit_log_appends_on_resume(tmp_path):
@@ -96,8 +77,8 @@ def test_preprocessing_audit_log_appends_on_resume(tmp_path):
         }
     ]
 
-    pre.write_preprocessing_log(log_rows=rows)
-    pre.write_preprocessing_log(log_rows=rows)
+    pre.logger.append_rows(rows)
+    pre.logger.append_rows(rows)
 
     log_rows = [
         json.loads(line) for line in (tmp_path / "log.jsonl").read_text().splitlines()

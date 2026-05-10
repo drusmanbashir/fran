@@ -41,11 +41,6 @@ class FakeGenerator:
         self.process_calls = []
         self.result = result
 
-    def _effective_overwrite(self, overwrite=None):
-        if overwrite is None:
-            return self.overwrite
-        return overwrite
-
     def process(self, **kwargs):
         self.process_calls.append(kwargs)
         return self.result
@@ -166,14 +161,14 @@ def test_process_with_output_progress_stops_monitor_on_success(monkeypatch):
         generator,
         PatchCaseApproxCounter,
         desc="Patches",
-        derive_bboxes=False,
+        num_processes=1,
     )
 
     assert result is False
     assert generator.process_calls == [
         {
             "overwrite": False,
-            "derive_bboxes": False,
+            "num_processes": 1,
             "src_dims": analyze_resample_module.DEFAULT_HDF5_SRC_DIMS,
             "cases_per_shard": 5,
             "max_shard_bytes": None,
@@ -217,12 +212,13 @@ def test_process_with_output_progress_uses_full_df_total_when_overwriting(monkey
         CaseOutputCounter,
         desc="LBD",
         overwrite=True,
+        num_processes=1,
     )
 
     assert generator.process_calls == [
         {
             "overwrite": True,
-            "derive_bboxes": True,
+            "num_processes": 1,
             "src_dims": analyze_resample_module.DEFAULT_HDF5_SRC_DIMS,
             "cases_per_shard": 5,
             "max_shard_bytes": None,
@@ -265,12 +261,13 @@ def test_process_with_output_progress_uses_generator_overwrite_when_omitted(monk
         generator,
         CaseOutputCounter,
         desc="Whole",
+        num_processes=1,
     )
 
     assert generator.process_calls == [
         {
             "overwrite": False,
-            "derive_bboxes": True,
+            "num_processes": 1,
             "src_dims": analyze_resample_module.DEFAULT_HDF5_SRC_DIMS,
             "cases_per_shard": 5,
             "max_shard_bytes": None,

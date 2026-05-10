@@ -64,7 +64,15 @@ def test_fixed_spacing_fg_only_nifti_sampler_smoke_four_files(tmp_path):
         pytest.skip(f"Need four short dataset cases in: {src_folder}")
 
     project = Project("test")
+    project.global_properties = {
+        "intensity_clip_range": [-1000, 1000],
+        "mean_dataset_clipped": 0.0,
+        "std_dataset_clipped": 1.0,
+        "mean_fg": 0.0,
+        "std_fg": 1.0,
+    }
     plan = {
+        "mode": "source",
         "spacing": [0.8, 0.8, 1.5],
         "patch_size": [32, 32, 32],
         "expand_by": 0,
@@ -78,7 +86,6 @@ def test_fixed_spacing_fg_only_nifti_sampler_smoke_four_files(tmp_path):
         plan=plan,
         data_folder=src_folder,
         output_folder=tmp_path,
-        device="cpu",
         debug=False,
     )
     worker.create_output_folders()

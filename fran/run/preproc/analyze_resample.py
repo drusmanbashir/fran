@@ -292,7 +292,7 @@ class PreprocessingManager:
         counter_cls,
         desc="Analyze/resample",
         overwrite=None,
-        derive_bboxes=True,
+        num_processes=1,
         src_dims=DEFAULT_HDF5_SRC_DIMS,
         cases_per_shard=5,
         max_shard_bytes=None,
@@ -300,7 +300,7 @@ class PreprocessingManager:
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
     ):
-        overwrite = generator._effective_overwrite(overwrite=overwrite)
+        overwrite = bool(overwrite)
         total = len(generator.df) if overwrite else len(generator.df_pt)
         monitor = OutputFolderProgressMonitor(
             counter=counter_cls(generator.output_folder, total),
@@ -309,7 +309,7 @@ class PreprocessingManager:
         try:
             return generator.process(
                 overwrite=overwrite,
-                derive_bboxes=derive_bboxes,
+                num_processes=num_processes,
                 src_dims=src_dims,
                 cases_per_shard=cases_per_shard,
                 max_shard_bytes=max_shard_bytes,
@@ -344,12 +344,13 @@ class PreprocessingManager:
         )
         self._configure_postproc_artifacts(self.R)
 
-        self.R.setup(overwrite=overwrite, num_processes=num_processes, debug=debug)
+        self.R.setup(debug=debug)
         self._process_with_output_progress(
             self.R,
             ExactCaseOutputCounter,
             desc="Resample",
             overwrite=overwrite,
+            num_processes=num_processes,
             src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
@@ -361,7 +362,6 @@ class PreprocessingManager:
     def generate_lbd_dataset(
         self,
         overwrite=False,
-        device="cpu",
         num_processes=1,
         debug=False,
         src_dims=DEFAULT_HDF5_SRC_DIMS,
@@ -387,17 +387,13 @@ class PreprocessingManager:
             data_folder=resampled_data_folder,
         )
         self._configure_postproc_artifacts(self.L)
-        self.L.setup(
-            overwrite=overwrite,
-            device=device,
-            num_processes=num_processes,
-            debug=debug,
-        )
+        self.L.setup(debug=debug)
         self._process_with_output_progress(
             self.L,
             CaseOutputCounter,
             desc="LBD",
             overwrite=overwrite,
+            num_processes=num_processes,
             src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
@@ -408,7 +404,6 @@ class PreprocessingManager:
 
     def generate_TSlabelboundeddataset(
         self,
-        device="cpu",
         overwrite=False,
         num_processes=1,
         debug=False,
@@ -432,17 +427,13 @@ class PreprocessingManager:
             data_folder=resampled_data_folder,
         )
         self._configure_postproc_artifacts(self.L)
-        self.L.setup(
-            overwrite=overwrite,
-            device=device,
-            num_processes=num_processes,
-            debug=debug,
-        )
+        self.L.setup(debug=debug)
         self._process_with_output_progress(
             self.L,
             CaseOutputCounter,
             desc="LBD imported",
             overwrite=overwrite,
+            num_processes=num_processes,
             src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
@@ -454,7 +445,6 @@ class PreprocessingManager:
     def generate_rbd_dataset(
         self,
         overwrite=False,
-        device="cpu",
         num_processes=1,
         debug=False,
         src_dims=DEFAULT_HDF5_SRC_DIMS,
@@ -480,17 +470,13 @@ class PreprocessingManager:
             data_folder=resampled_data_folder,
         )
         self._configure_postproc_artifacts(self.L)
-        self.L.setup(
-            overwrite=overwrite,
-            device=device,
-            num_processes=num_processes,
-            debug=debug,
-        )
+        self.L.setup(debug=debug)
         self._process_with_output_progress(
             self.L,
             CaseOutputCounter,
             desc="RBD",
             overwrite=overwrite,
+            num_processes=num_processes,
             src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
@@ -502,7 +488,6 @@ class PreprocessingManager:
     def generate_whole_images_dataset(
         self,
         overwrite=False,
-        device="cpu",
         num_processes=1,
         debug=False,
         src_dims=DEFAULT_HDF5_SRC_DIMS,
@@ -526,17 +511,13 @@ class PreprocessingManager:
             data_folder=resampled_data_folder,
         )
         self._configure_postproc_artifacts(self.W)
-        self.W.setup(
-            overwrite=overwrite,
-            device=device,
-            num_processes=num_processes,
-            debug=debug,
-        )
+        self.W.setup(debug=debug)
         self._process_with_output_progress(
             self.W,
             CaseOutputCounter,
             desc="Whole",
             overwrite=overwrite,
+            num_processes=num_processes,
             src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
@@ -566,8 +547,6 @@ class PreprocessingManager:
         )
         self._configure_postproc_artifacts(PG)
         PG.setup(
-            overwrite=overwrite,
-            num_processes=num_processes,
             debug=debug,
         )
         self._process_with_output_progress(
@@ -575,7 +554,7 @@ class PreprocessingManager:
             PatchCaseApproxCounter,
             desc="Patches",
             overwrite=overwrite,
-            derive_bboxes=False,
+            num_processes=num_processes,
             src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,

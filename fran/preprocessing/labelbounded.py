@@ -33,7 +33,6 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
         data_folder,
         output_folder,
         crop_to_label=None,
-        device="cpu",
         debug=False,
         tfms_keys="LoadT,Chan,Dev,Crop,Remap,Labels,Indx",
     ):
@@ -43,7 +42,6 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
             data_folder=data_folder,
             output_folder=output_folder,
             crop_to_label=crop_to_label,
-            device=device,
             debug=debug,
             tfms_keys=tfms_keys,
         )
@@ -83,6 +81,7 @@ class LBDSamplerWorkerLocal(_LBDSamplerWorkerBase):
 
 
 class LabelBoundedDataGenerator(Preprocessor):
+    delete_pt_after_shard_creation=True
     actor_cls = LBDSamplerWorkerImpl
     local_worker_cls = LBDSamplerWorkerLocal
     remapping_key = "remapping_lbd_rbd"
@@ -127,7 +126,6 @@ class LabelBoundedDataGenerator(Preprocessor):
         data_folder,
         output_folder=None,
         crop_to_label=None,
-        devices="cpu",
     ) -> None:
         """
         Initialize the LabelBoundedDataGenerator.
@@ -152,8 +150,6 @@ class LabelBoundedDataGenerator(Preprocessor):
             plan=plan,
             data_folder=data_folder,
             output_folder=output_folder,
-            devices=devices,
-            hdf5_shards=True,
         )
 
     def create_data_df(self):
@@ -172,17 +168,6 @@ class LabelBoundedDataGenerator(Preprocessor):
             self.output_folder = Path(output_folder)
 
         cprint(f"Data folder is {self.data_folder}", color="yellow")
-
-    def store_label_count(self, num_processes=6):
-            store_label_count(self.output_folder, num_processes=num_processes)
-
-    def setup(self, num_processes=8, device="cpu", overwrite=True, debug=False):
-        super().setup(
-            overwrite=overwrite,
-            num_processes=num_processes,
-            device=device,
-            debug=debug,
-        )
 
     def create_properties_dict(self):
         resampled_dataset_properties = Preprocessor.create_dataset_stats(self)
@@ -216,6 +201,7 @@ class LabelBoundedDataGenerator(Preprocessor):
 
 
 class FGBGIndicesLBD(LabelBoundedDataGenerator):
+    delete_pt_after_shard_creation=False
     """
     Outputs FGBGIndices only. No images of lms are created.
     Use this generator when LBD images and lms are already created, but a new set of FG indices is required.
@@ -236,8 +222,8 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
             len(self.existing_output_fnames),
         )
 
-    def setup(self, device="cpu", batch_size=4, overwrite=False):
-        device = resolve_device(device)
+    def setup(self, batch_size=4, overwrite=False):
+        device = resolve_device("cpu")
         print("Processing on ", device)
         self.register_existing_files()
         print("Overwrite:", overwrite)
@@ -250,7 +236,7 @@ class FGBGIndicesLBD(LabelBoundedDataGenerator):
         if len(self.df) > 0:
             self.image_files = sorted(self.data_folder.glob("images/*.pt"))
             self.lm_files = sorted(self.data_folder.glob("lms/*.pt"))
-            self.transforms = self.create_transforms(device)
+            self.transforms = self.create_transforms()
         else:
             print("No cases to process.")
 

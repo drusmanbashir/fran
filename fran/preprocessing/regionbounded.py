@@ -112,7 +112,6 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
         data_folder,
         output_folder,
         crop_to_label=None,
-        device="cpu",
         debug=False,
         tfms_keys="LoadT,Chan,Dev,CropByYolo,Remap,Labels,Indx",
     ):
@@ -122,13 +121,12 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
             data_folder=data_folder,
             output_folder=output_folder,
             crop_to_label=crop_to_label,
-            device=device,
             debug=debug,
             tfms_keys=tfms_keys,
         )
 
-    def create_transforms(self, device):
-        super().create_transforms(device=device)
+    def create_transforms(self):
+        super().create_transforms()
         margin = self.plan["expand_by"]
         self.CropByYolo = CropByYoloWithForegroundFallbackd(
             min_shape=self.plan["src_dims"],
@@ -272,7 +270,7 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
             localiser_regions=regions,
             window="a",
             bs=16,
-            devices=self.devices,
+            devices="cpu",
             debug=False,
         )
         self.yolo_specs = self.I.yolo_state_dict
@@ -293,24 +291,24 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
     def process(
         self,
         overwrite=None,
-        derive_bboxes=True,
         src_dims=DEFAULT_HDF5_SRC_DIMS,
         cases_per_shard=5,
         max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
+        num_processes=8,
     ):
         self.maybe_infer_bboxes()
         return super().process(
             overwrite=overwrite,
-            derive_bboxes=derive_bboxes,
             src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
+            num_processes=num_processes,
         )
 
     def create_data_df(self):
