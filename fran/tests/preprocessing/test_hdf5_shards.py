@@ -87,6 +87,38 @@ def test_create_hdf5_shards_schema_chunks_and_manifest(tmp_path):
     assert manifest["shards"][1]["case_ids"] == ["case_002"]
 
 
+def test_create_hdf5_shards_can_split_pt_and_shard_roots(tmp_path):
+    pt_folder = (
+        tmp_path
+        / "cold_storage"
+        / "datasets"
+        / "preprocessed"
+        / "projA"
+        / "fixed_spacing"
+        / "spc_100"
+    )
+    shard_folder = tmp_path / "rapid_access" / "projA" / "fixed_spacing" / "spc_100"
+    _prepare_three_cases(pt_folder)
+
+    shards = create_hdf5_shards(
+        output_folder=pt_folder,
+        shard_folder=shard_folder,
+        src_dims=(192, 192, 128),
+        cases_per_shard=2,
+    )
+
+    manifest_fn = shard_folder / "hdf5_shards" / "src_192_192_128" / "manifest.json"
+    assert manifest_fn.exists() is True
+    assert (pt_folder / "hdf5_shards").exists() is False
+
+    h5py = import_h5py()
+    with h5py.File(shards[0], "r") as h5f:
+        case0 = h5f["cases"]["case_000"]
+        assert Path(case0.attrs["image_pt"]) == pt_folder / "images" / "case_000.pt"
+        assert Path(case0.attrs["lm_pt"]) == pt_folder / "lms" / "case_000.pt"
+        assert Path(case0.attrs["indices_pt"]) == pt_folder / "indices" / "case_000.pt"
+
+
 def test_create_hdf5_shards_skip_if_manifest_exists(tmp_path):
     output_folder = tmp_path / "preprocessed"
     _prepare_three_cases(output_folder)
@@ -142,11 +174,22 @@ def test_create_hdf5_shards_handles_empty_index_arrays(tmp_path):
         assert bg_ds.compression_opts == 1
 
 
-def _make_preprocessor(output_folder, src_dims):
+def _make_project(tmp_path):
+    cold_root = tmp_path / "cold_storage" / "datasets" / "preprocessed"
+    return SimpleNamespace(
+        project_title="projA",
+        rapid_access_folder=tmp_path / "rapid_access" / "projA",
+        fixed_spacing_folder=cold_root / "projA" / "fixed_spacing",
+    )
+
+
+def _make_preprocessor(project, output_folder, src_dims, mode="lbd"):
     pre = Preprocessor.__new__(Preprocessor)
+    pre.project = project
     pre.output_folder = output_folder
-    pre.plan = {"mode": "lbd", "src_dims": src_dims}
+    pre.plan = {"mode": mode, "src_dims": src_dims}
     pre.hdf5_shards = True
+    pre.delete_pt_after_shard_creation = mode != "source"
     pre.df_hdf5 = pd.DataFrame({"case_id": ["case_000", "case_001", "case_002"]})
     return pre
 
@@ -159,6 +202,10 @@ class _DummyPreprocessor(Preprocessor):
 
 class _DummyRBDPreprocessor(_DummyPreprocessor):
     subfolder_key = "data_folder_rbd"
+
+
+class _DummySourcePreprocessor(_DummyPreprocessor):
+    subfolder_key = "data_folder_source"
 
 
 def test_preprocessor_init_defaults_hdf5_shards_off(tmp_path):
@@ -192,6 +239,19 @@ def test_preprocessor_only_enables_hdf5_shards_for_matching_plan_mode(tmp_path):
     assert pre_disabled.hdf5_shards is False
 
 
+def test_preprocessor_enables_hdf5_shards_for_source_mode(tmp_path):
+    pre = _DummySourcePreprocessor(
+        project=_make_project(tmp_path),
+        plan={"mode": "source", "src_dims": (24, 24, 12)},
+        data_folder=tmp_path / "input_source",
+        output_folder=tmp_path / "output_source",
+        hdf5_shards=True,
+    )
+
+    assert pre.hdf5_shards is True
+    assert pre.delete_pt_after_shard_creation is False
+
+
 def test_labelbounded_init_only_enables_hdf5_shards_for_lbd_mode(tmp_path):
     pre_enabled = LabelBoundedDataGenerator(
         project=SimpleNamespace(),
@@ -211,9 +271,10 @@ def test_labelbounded_init_only_enables_hdf5_shards_for_lbd_mode(tmp_path):
 
 
 def test_preprocessor_uses_plan_src_dims_when_hdf5_shards_enabled(tmp_path):
-    output_folder = tmp_path / "preprocessed"
+    project = _make_project(tmp_path)
+    output_folder = project.rapid_access_folder / "lbd" / "run_001"
     _prepare_three_cases(output_folder)
-    pre = _make_preprocessor(output_folder, (24, 24, 12))
+    pre = _make_preprocessor(project, output_folder, (24, 24, 12))
 
     shards = pre._maybe_create_hdf5_shards(df_hdf5_run=pre.df_hdf5)
 
@@ -225,10 +286,37 @@ def test_preprocessor_uses_plan_src_dims_when_hdf5_shards_enabled(tmp_path):
     assert manifest["num_cases"] == 3
 
 
-def test_preprocessor_can_explicitly_opt_out_of_hdf5_shard_creation(tmp_path):
-    output_folder = tmp_path / "preprocessed"
+def test_source_preprocessor_writes_hdf5_shards_to_rapid_access(tmp_path):
+    project = _make_project(tmp_path)
+    output_folder = project.fixed_spacing_folder / "spc_100"
     _prepare_three_cases(output_folder)
-    pre = _make_preprocessor(output_folder, (24, 24, 12))
+    pre = _DummySourcePreprocessor(
+        project=project,
+        plan={"mode": "source", "src_dims": (24, 24, 12)},
+        data_folder=tmp_path / "input_source",
+        output_folder=output_folder,
+        hdf5_shards=True,
+    )
+    pre.df_hdf5 = pd.DataFrame({"case_id": ["case_000", "case_001", "case_002"]})
+
+    shards = pre._maybe_create_hdf5_shards(df_hdf5_run=pre.df_hdf5)
+
+    rapid_output = project.rapid_access_folder / "fixed_spacing" / "spc_100"
+    manifest_fn = rapid_output / "hdf5_shards" / "src_24_24_12" / "manifest.json"
+
+    assert pre.hdf5_output_folder == rapid_output
+    assert pre.hdf5_manifest_fn == manifest_fn
+    assert [pth.name for pth in shards] == ["shard_0000.h5"]
+    assert manifest_fn.exists() is True
+    assert (output_folder / "hdf5_shards").exists() is False
+    assert (output_folder / "images" / "case_000.pt").exists() is True
+
+
+def test_preprocessor_can_explicitly_opt_out_of_hdf5_shard_creation(tmp_path):
+    project = _make_project(tmp_path)
+    output_folder = project.rapid_access_folder / "lbd" / "run_001"
+    _prepare_three_cases(output_folder)
+    pre = _make_preprocessor(project, output_folder, (24, 24, 12))
 
     pre.hdf5_shards = False
     shards = pre._maybe_create_hdf5_shards(df_hdf5_run=pre.df_hdf5)

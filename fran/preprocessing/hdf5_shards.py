@@ -260,7 +260,8 @@ def _process_hdf5_shard_worker(kwargs):
 class HDF5ShardGenerator:
     def __init__(
         self,
-        output_folder,
+        pt_folder,
+        shard_folder,
         src_dims,
         cases_per_shard=5,
         max_shard_bytes=None,
@@ -268,7 +269,8 @@ class HDF5ShardGenerator:
         compression="gzip",
         compression_opts=1,
     ):
-        self.output_folder = Path(output_folder)
+        self.pt_folder = Path(pt_folder)
+        self.shard_folder = Path(shard_folder)
         self.src_dims = HDF5ShardWorker._normalize_src_dims(src_dims)
         self.cases_per_shard = cases_per_shard
         self.max_shard_bytes = max_shard_bytes
@@ -361,18 +363,18 @@ class HDF5ShardGenerator:
                 shard_fn.unlink()
 
     def setup(self, case_ids=None, num_processes=8):
-        images_folder = self.output_folder / "images"
-        lms_folder = self.output_folder / "lms"
-        indices_folder = self.output_folder / "indices"
+        images_folder = self.pt_folder / "images"
+        lms_folder = self.pt_folder / "lms"
+        indices_folder = self.pt_folder / "indices"
 
         for folder in (images_folder, lms_folder, indices_folder):
             if not folder.exists():
                 raise FileNotFoundError(f"Required folder missing: {folder}")
 
         src_tag = "_".join(str(v) for v in self.src_dims)
-        shards_folder = self.output_folder / "hdf5_shards" / f"src_{src_tag}"
+        shards_folder = self.shard_folder / "hdf5_shards" / f"src_{src_tag}"
         manifest_fn = shards_folder / "manifest.json"
-        maybe_makedirs([shards_folder])
+        maybe_makedirs([self.shard_folder, shards_folder])
         self.num_processes = max(1, int(num_processes))
         self.shards_folder = shards_folder
         self.manifest_fn = manifest_fn
@@ -422,7 +424,7 @@ class HDF5ShardGenerator:
                 return self
         if len(requested_case_ids) == 0:
             raise ValueError(
-                f"No shared requested case IDs found across images/lms/indices in {self.output_folder}"
+                f"No shared requested case IDs found across images/lms/indices in {self.pt_folder}"
             )
 
         case_records = []

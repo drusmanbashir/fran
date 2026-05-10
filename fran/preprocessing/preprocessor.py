@@ -2,6 +2,7 @@
 import itertools as il
 import json
 import sqlite3
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -269,9 +270,11 @@ def create_hdf5_shards(
     compression="gzip",
     compression_opts=1,
     num_processes=8,
+    shard_folder=None,
 ):
     writer = HDF5ShardWriter(
-        output_folder=output_folder,
+        pt_folder=output_folder,
+        shard_folder=output_folder if shard_folder is None else shard_folder,
         src_dims=src_dims,
         cases_per_shard=cases_per_shard,
         max_shard_bytes=max_shard_bytes,
@@ -314,15 +317,31 @@ class Preprocessor:
         self.devices = devices
 
     def _plan_allows_hdf5_shards(self) -> bool:
-        return (
+        if self.subfolder_key == "data_folder_source" and self.plan["mode"] == "source":
+            self.delete_pt_after_shard_creation = False
+            return True
+        if (
             self.subfolder_key == "data_folder_lbd" and self.plan["mode"] == "lbd"
-        ) or (self.subfolder_key == "data_folder_rbd" and self.plan["mode"] == "rbd")
+        ) or (self.subfolder_key == "data_folder_rbd" and self.plan["mode"] == "rbd"):
+            self.delete_pt_after_shard_creation = True
+            return True
+        self.delete_pt_after_shard_creation = False
+        return False
+
+    @property
+    def hdf5_output_folder(self):
+        parts = Path(self.output_folder).parts
+        project_idx = parts.index(self.project.project_title)
+        project_relative = Path(*parts[project_idx + 1 :])
+        return self.project.rapid_access_folder / project_relative
 
     @property
     def hdf5_manifest_fn(self):
         src_dims = self.plan["src_dims"]
         src_tag = "_".join(str(int(v)) for v in src_dims)
-        return self.output_folder / "hdf5_shards" / f"src_{src_tag}" / "manifest.json"
+        return (
+            self.hdf5_output_folder / "hdf5_shards" / f"src_{src_tag}" / "manifest.json"
+        )
 
     def _df_from_db(self):
         con = sqlite3.connect(str(self.project.db))
@@ -896,7 +915,8 @@ class Preprocessor:
             return []
         num_processes = getattr(self, "num_processes", 8)
         writer = HDF5ShardWriter(
-            output_folder=self.output_folder,
+            pt_folder=self.output_folder,
+            shard_folder=self.hdf5_output_folder,
             src_dims=self.plan["src_dims"] if src_dims is None else src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
@@ -908,7 +928,13 @@ class Preprocessor:
             case_ids=df_hdf5_run["case_id"].tolist(),
             num_processes=num_processes,
         )
-        return writer.run()
+        shard_paths = writer.run()
+        if self.delete_pt_after_shard_creation:
+            for subfolder in ("images", "lms", "indices"):
+                pth = self.output_folder / subfolder
+                if pth.exists():
+                    shutil.rmtree(pth)
+        return shard_paths
 
     def copy_to_rapid_access(
         self,
@@ -1345,5 +1371,4 @@ if __name__ == "__main__":
     )
 
 # %
-
 

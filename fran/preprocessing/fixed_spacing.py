@@ -251,7 +251,7 @@ class NiftiToTorchDataGenerator(Preprocessor):
         self.clip_center = clip_center
         self.half_precision = half_precision
         super().__init__(
-            project, plan, output_folder=output_folder, data_folder=data_folder
+            project, plan, output_folder=output_folder, data_folder=data_folder, hdf5_shards=True
         )
 
     def extra_worker_kwargs(self, mean_std_mode="dataset"):
