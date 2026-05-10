@@ -2,6 +2,7 @@ import json
 import multiprocessing as mp
 import os
 import errno
+import shutil
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -34,8 +35,6 @@ def _sendfile_copy(src: "Path", dst: "Path") -> None:
                     break
                 offset += sent
     else:
-        import shutil
-
         with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
             shutil.copyfileobj(fsrc, fdst, length=256 * 1024 * 1024)
 

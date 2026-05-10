@@ -931,13 +931,18 @@ class Preprocessor:
         from fran.preprocessing.hdf5_shards import copy_folder_to_rapid_access
 
         rapid_base = Path(self.project.rapid_access_folder)
+        output_folder = Path(self.output_folder)
 
         try:
-            rel_output = self.output_folder.relative_to(
+            rel_output = output_folder.relative_to(
                 Path(self.project.fixed_spacing_folder).parent.parent
             )
         except ValueError:
-            rel_output = Path(self.output_folder.name)
+            rel_output = (
+                output_folder.relative_to(output_folder.anchor)
+                if output_folder.is_absolute()
+                else output_folder
+            )
         rapid_output = rapid_base / rel_output
 
         if pt:
