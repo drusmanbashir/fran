@@ -157,6 +157,7 @@ def rewrite_html(body: str, scope: str) -> str:
         'action="/cancel_selected"': f'action="{FRAN_JOBS_PREFIX}/cancel_selected"',
         'action="/resubmit_selected"': f'action="{FRAN_JOBS_PREFIX}/resubmit_selected"',
         'formaction="/poll_all_active"': f'formaction="{FRAN_JOBS_PREFIX}/poll_all_active"',
+        'formaction="/hpc_refresh"': f'formaction="{FRAN_JOBS_PREFIX}/hpc_refresh"',
         'formaction="/cancel_selected"': f'formaction="{FRAN_JOBS_PREFIX}/cancel_selected"',
         'formaction="/resubmit_selected"': f'formaction="{FRAN_JOBS_PREFIX}/resubmit_selected"',
     }

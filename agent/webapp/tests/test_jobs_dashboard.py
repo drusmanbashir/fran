@@ -57,6 +57,8 @@ def test_jobs_page_proxies_hpc_and_local_scopes(tmp_path: Path, monkeypatch) -> 
     assert 'href="/"' in hpc_response.text
     assert 'href="/docs"' in hpc_response.text
     assert 'href="/openapi.json"' in hpc_response.text
+    assert 'formaction="/hpc/jobs/hpc_refresh"' in hpc_response.text
+    assert 'formaction="/hpc_refresh"' not in hpc_response.text
     assert "12345" in hpc_response.text
     assert "local-abc" not in hpc_response.text
 
