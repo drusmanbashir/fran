@@ -57,7 +57,7 @@ class UNetManager(LightningModule):
 
         self.sync_dist = sync_dist
         self.project = Project(project_title)
-        self.save_hyperparameters("project_title", "configs", "lr", "safe_mode", "val_device")
+        self.save_hyperparameters("project_title", "configs", "lr", "val_device")
         self.configs = configs
         self.plan = configs["plan_train"]
         self.model_params = configs["model_params"]
