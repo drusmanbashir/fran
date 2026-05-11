@@ -70,7 +70,7 @@ def main(args):
 
         Tm.setup(
             compiled=args.compiled,
-            batch_size=6,
+            batch_size=args.batch_size,
             cbs=cbs,
             devices=devices,
             epochs=args.epochs if not args.profiler else 1,
@@ -80,6 +80,7 @@ def main(args):
             description=args.description,
             batchsize_finder=args.batchsize_finder,
             val_every_n_epochs=args.test_every_n_epochs,
+            val_device=args.val_device,
         )
 
         Tm.N.compiled = args.compiled
@@ -115,6 +116,7 @@ if __name__ == "__main__":
         help="Active plan index for ConfigMaker.setup()",
     )
     parser.add_argument(
+        "-d",
         "--devices",
         type=parse_devices,
         default=1,
@@ -167,6 +169,11 @@ if __name__ == "__main__":
         help="Dataset backend if supported",
     )
     parser.add_argument(
+        "--val-device",
+        default="cuda",
+        help="Validation sliding-window stitch device",
+    )
+    parser.add_argument(
         "--periodic-test",
         type=int,
         default=0,
@@ -175,6 +182,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bsf",
         "--batchsize-finder",
+        "--batch-finder",
         type=str2bool,
         default=False,
         help="Enable batch size finder",

@@ -221,6 +221,7 @@ class Trainer:
         permanent_checkpoint_every_n_epochs: int = 100,
         dual_ssd: bool = False,
         batch_tfms: bool = False,
+        val_device: str = "cuda",
     ):
         batch_size_for_setup = batch_size
         if batchsize_finder:
@@ -249,6 +250,7 @@ class Trainer:
         self.debug = bool(debug)
         self.dual_ssd = bool(dual_ssd)
         self.batch_tfms = bool(batch_tfms)
+        self.val_device = str(val_device)
         self.maybe_alter_configs(batch_size_for_setup, compiled)
         self.set_lr(lr)
 
@@ -674,6 +676,7 @@ class Trainer:
             configs=self.configs,
             lr=self.lr,
             sync_dist=self.sync_dist,
+            val_device=self.val_device,
         )
         self.apply_monitor_metric_name(N)
         return N
@@ -687,6 +690,7 @@ class Trainer:
                 map_location=map_location,
                 strict=True,
                 weights_only=weights_only,
+                val_device=self.val_device,
                 **kwargs,
             )
         except RuntimeError:
@@ -696,6 +700,7 @@ class Trainer:
                 map_location=map_location,
                 strict=True,
                 weights_only=weights_only,
+                val_device=self.val_device,
                 **kwargs,
             )
         print("Model loaded from checkpoint: ", self.ckpt)

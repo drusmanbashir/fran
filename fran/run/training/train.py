@@ -126,6 +126,8 @@ def main(args):
             batchsize_finder=args.batchsize_finder,
             train_indices=train_indices,
             dual_ssd=args.dual_ssd,
+            batch_tfms=args.batch_tfms,
+            val_device=args.val_device,
         )
         if not args.all:
             setup_kwargs["val_every_n_epochs"] = args.val_every_n_epochs
@@ -151,6 +153,7 @@ if __name__ == "__main__":
         help="Active plan index for ConfigMaker.setup()",
     )
     parser.add_argument(
+        "-d",
         "--devices",
         type=parse_devices,
         default=1,
@@ -210,6 +213,11 @@ if __name__ == "__main__":
         help="Dataset backend if supported",
     )
     parser.add_argument(
+        "--val-device",
+        default="cuda",
+        help="Validation sliding-window stitch device",
+    )
+    parser.add_argument(
         "--all",
         type=str2bool,
         default=False,
@@ -231,6 +239,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bsf",
         "--batchsize-finder",
+        "--batch-finder",
         type=str2bool,
         default=False,
         help="Enable batch size finder",
@@ -241,6 +250,12 @@ if __name__ == "__main__":
         type=str2bool,
         default=False,
         help="Stage every other data dict on rapid_access_folder2",
+    )
+    parser.add_argument(
+        "--batch-tfms",
+        type=str2bool,
+        default=False,
+        help="Use batch-transform datamanager variants",
     )
     args = parser.parse_known_args()[0]
 

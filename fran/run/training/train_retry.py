@@ -5,6 +5,13 @@ import sys
 from pathlib import Path
 
 OOM_MARKERS = ("CUDA out of memory", "torch.OutOfMemoryError")
+VAL_MARKERS = (
+    "Validation ",
+    "validation_step",
+    "val_loop",
+    "evaluation_loop.py",
+    "swi_on_val_batch",
+)
 
 
 def str2bool(v: str) -> bool:
@@ -35,6 +42,14 @@ def run_stream(cmd):
     return rc, "".join(lines)
 
 
+def is_oom(output: str) -> bool:
+    return any(marker in output for marker in OOM_MARKERS)
+
+
+def is_val_oom(output: str) -> bool:
+    return is_oom(output) and any(marker in output for marker in VAL_MARKERS)
+
+
 def main():
     p = argparse.ArgumentParser(
         description="Run train.py and retry on CUDA OOM with lower batch size."
@@ -46,7 +61,7 @@ def main():
 
     p.add_argument("-t", "--project-title", "--project", dest="project_title")
     p.add_argument("-p", "--plan", "--plan-num", type=int, default=7)
-    p.add_argument("--devices", default="1")
+    p.add_argument("-d", "--devices", default="1")
     p.add_argument("-lr", "--learning-rate", dest="lr", type=float, default=None)
     p.add_argument("--bs", "--batch-size", dest="batch_size", type=int, default=4)
     p.add_argument("-f", "--fold", type=int, default=None)
@@ -54,10 +69,13 @@ def main():
     p.add_argument("--compiled", type=str2bool, default=True)
     p.add_argument("--profiler", type=str2bool, default=False)
     p.add_argument("--wandb", type=str2bool, default=True)
+    p.add_argument("--val-device", default="cuda")
+    p.add_argument("--batch-tfms", type=str2bool, default=False)
     p.add_argument("-r", "--run-name", dest="run_name", default=None)
     p.add_argument("--description", default=None)
     p.add_argument("--cache-rate", type=float, default=0.0)
     p.add_argument("--ds-type", default=None)
+    p.add_argument("--all", type=str2bool, default=False)
     p.add_argument(
         "--val-every-n-epochs", dest="val_every_n_epochs", type=int, default=5
     )
@@ -65,14 +83,18 @@ def main():
     p.add_argument(
         "--bsf",
         "--batchsize-finder",
+        "--batch-finder",
         dest="batchsize_finder",
         type=str2bool,
         default=False,
     )
+    p.add_argument("--dual-ssd", type=str2bool, default=False)
     args = p.parse_args()
 
     train_script = Path(__file__).with_name("train.py")
     bs = int(args.batch_size)
+    val_device = str(args.val_device)
+    used_val_cpu_retry = False
     last_rc = 1
 
     for attempt in range(1, args.max_retries + 1):
@@ -97,10 +119,18 @@ def main():
             str(args.wandb).lower(),
             "--cache-rate",
             str(args.cache_rate),
+            "--batch-tfms",
+            str(args.batch_tfms).lower(),
+            "--val-device",
+            val_device,
             "--val-every-n-epochs",
             str(args.val_every_n_epochs),
             "--bsf",
             "false",
+            "--all",
+            str(args.all).lower(),
+            "--dual-ssd",
+            str(args.dual_ssd).lower(),
         ]
         if args.run_name is not None:
             cmd += ["--run-name", str(args.run_name)]
@@ -111,12 +141,22 @@ def main():
         if args.train_indices is not None:
             cmd += ["--train-indices", str(args.train_indices)]
 
-        print(f"[train_retry] attempt={attempt}/{args.max_retries} bs={bs} bsf=false")
+        print(
+            f"[train_retry] attempt={attempt}/{args.max_retries} "
+            f"bs={bs} bsf=false val_device={val_device} "
+            f"batch_tfms={str(args.batch_tfms).lower()}"
+        )
         last_rc, output = run_stream(cmd)
         if last_rc == 0:
             break
 
-        if not any(marker in output for marker in OOM_MARKERS):
+        if is_val_oom(output) and val_device != "cpu" and not used_val_cpu_retry:
+            val_device = "cpu"
+            used_val_cpu_retry = True
+            print("[train_retry] validation OOM detected; retrying with val_device=cpu")
+            continue
+
+        if not is_oom(output):
             break
 
         next_bs = max(args.min_bs, bs - args.step)

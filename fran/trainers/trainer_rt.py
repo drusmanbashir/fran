@@ -299,6 +299,7 @@ class TrainerRT(Trainer):
         permanent_checkpoint_every_n_epochs: int = 100,
         dual_ssd: bool = False,
         batch_tfms: bool = False,
+        val_device: str = "cuda",
     ):
         """Run-through setup without validation or early-stopping public arguments."""
         return super().setup(
@@ -323,6 +324,7 @@ class TrainerRT(Trainer):
             permanent_checkpoint_every_n_epochs=permanent_checkpoint_every_n_epochs,
             dual_ssd=dual_ssd,
             batch_tfms=batch_tfms,
+            val_device=val_device,
         )
 
     def init_cbs(

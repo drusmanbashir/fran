@@ -1,19 +1,67 @@
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TRAIN_RETRY_PY="$SCRIPT_DIR/train_retry.py"
-PROJECT="kits2"
-PLAN_NUM="3"
-FOLD="1"
-EPOCHS="500"
-BS="3"
-BSF="true"
-DEVICES='[1]'
-WANDB="true"
-TRAIN_INDICES="20"
-VAL_EVERY_N_EPOCHS="1"
+PROJECT="${1:-kits2}"
+PLAN_NUM="${2:-3}"
+DEVICES="${3:-[1]}"
+BS="${4:-3}"
+EPOCHS="${5:-500}"
+FOLD="${6:-1}"
+VAL_DEVICE="${7:-cuda}"
+COMPILED="${8:-false}"
+PROFILER="${9:-false}"
+WANDB="${10:-true}"
+CACHE_RATE="${11:-0.0}"
+LR="${12:-}"
+RUN_NAME="${13:-}"
+DESCRIPTION="${14:-}"
+DS_TYPE="${15:-}"
+ALL="${16:-false}"
+VAL_EVERY_N_EPOCHS="${17:-1}"
+TRAIN_INDICES="${18:-20}"
+BSF="${19:-true}"
+DUAL_SSD="${20:-false}"
+MAX_RETRIES="${21:-3}"
+STEP="${22:-1}"
+MIN_BS="${23:-1}"
+PYTHON_BIN="${24:-python}"
 
-# python "$TRAIN_RETRY_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --fold "$FOLD" --epochs "$EPOCHS" --bs "$BS" --bsf "$BSF" --devices "$DEVICES" --wandb "$WANDB" --train-indices "$TRAIN_INDICES" --val-every-n-epochs "$VAL_EVERY_N_EPOCHS"
-# python "$SCRIPT_DIR/train.py" --project lits32 --devices [0] --bs 8 --fold 2
-# python "$SCRIPT_DIR/train.py" --project litsmc --devices [0] --bs 10 --fold 1 --bsf true --epochs 500
-# python "$SCRIPT_DIR/train.py" --project kits2 --plan-num 3 --fold 1 --epochs 500 --bs 18 --bsf false --devices [1] --wandb true --train-indices 40 --val-every-n-epochs 5
-python "$TRAIN_RETRY_PY" --project "$PROJECT" --plan-num "$PLAN_NUM" --fold "$FOLD" --epochs "$EPOCHS" --bs "$BS" --bsf "$BSF" --devices "$DEVICES" --wandb "$WANDB" --train-indices "$TRAIN_INDICES" --val-every-n-epochs "$VAL_EVERY_N_EPOCHS"
+cmd=(
+  "$PYTHON_BIN" "$TRAIN_RETRY_PY"
+  --project "$PROJECT"
+  --plan-num "$PLAN_NUM"
+  --devices "$DEVICES"
+  --bs "$BS"
+  --fold "$FOLD"
+  --epochs "$EPOCHS"
+  --compiled "$COMPILED"
+  --profiler "$PROFILER"
+  --wandb "$WANDB"
+  --cache-rate "$CACHE_RATE"
+  --val-device "$VAL_DEVICE"
+  --all "$ALL"
+  --val-every-n-epochs "$VAL_EVERY_N_EPOCHS"
+  --bsf "$BSF"
+  --dual-ssd "$DUAL_SSD"
+  --max-retries "$MAX_RETRIES"
+  --step "$STEP"
+  --min-bs "$MIN_BS"
+)
+
+if [[ -n "$LR" ]]; then
+  cmd+=(--learning-rate "$LR")
+fi
+if [[ -n "$RUN_NAME" && "$RUN_NAME" != "none" && "$RUN_NAME" != "null" ]]; then
+  cmd+=(--run-name "$RUN_NAME")
+fi
+if [[ -n "$DESCRIPTION" ]]; then
+  cmd+=(--description "$DESCRIPTION")
+fi
+if [[ -n "$DS_TYPE" ]]; then
+  cmd+=(--ds-type "$DS_TYPE")
+fi
+if [[ -n "$TRAIN_INDICES" && "$TRAIN_INDICES" != "none" && "$TRAIN_INDICES" != "null" ]]; then
+  cmd+=(--train-indices "$TRAIN_INDICES")
+fi
+
+exec "${cmd[@]}"

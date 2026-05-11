@@ -7,32 +7,60 @@ PYTHON_BIN="$HOME_DIR/mambaforge/envs/dl/bin/python"
 BLOCK_SUSPEND="$RUN_DIR/misc/block_suspend.py"
 TRAIN_PY="$SCRIPT_DIR/train.py"
 SUSPEND_ONLY="--suspend-only"
-PROJECT="totalseg"
-PLAN_NUM="8"
-FOLD="1"
-EPOCHS="8"
-DEVICES='[0]'
-WANDB="true"
-VAL_EVERY_N_EPOCHS="2"
-VAL_DEVICE="cuda"
-RUN_NAME=""
-# EXAMPLE_RUN_NAME="KITS23-SIRIG"
-
-# exec "$PYTHON_BIN" "$BLOCK_SUSPEND" --suspend-only "$TRAIN_PY" --project kits23 --plan-num 2 --fold 1 --epochs 800 --devices [0] --wandb true --val-every-n-epochs 2 --run-name "$EXAMPLE_RUN_NAME"
+PROJECT="${1:-totalseg}"
+PLAN_NUM="${2:-8}"
+DEVICES="${3:-[0]}"
+BS="${4:-4}"
+EPOCHS="${5:-8}"
+FOLD="${6:-1}"
+VAL_DEVICE="${7:-cuda}"
+COMPILED="${8:-false}"
+PROFILER="${9:-false}"
+WANDB="${10:-true}"
+CACHE_RATE="${11:-0.0}"
+LR="${12:-}"
+RUN_NAME="${13:-}"
+DESCRIPTION="${14:-}"
+DS_TYPE="${15:-}"
+ALL="${16:-false}"
+VAL_EVERY_N_EPOCHS="${17:-2}"
+TRAIN_INDICES="${18:-}"
+BSF="${19:-false}"
+DUAL_SSD="${20:-false}"
 
 cmd=(
   "$PYTHON_BIN" "$BLOCK_SUSPEND" "$SUSPEND_ONLY" "$TRAIN_PY"
   --project "$PROJECT"
   --plan-num "$PLAN_NUM"
-  --fold "$FOLD"
-  --epochs "$EPOCHS"
   --devices "$DEVICES"
+  --bs "$BS"
+  --epochs "$EPOCHS"
+  --fold "$FOLD"
+  --compiled "$COMPILED"
+  --profiler "$PROFILER"
   --wandb "$WANDB"
+  --cache-rate "$CACHE_RATE"
+  --val-device "$VAL_DEVICE"
+  --all "$ALL"
   --val-every-n-epochs "$VAL_EVERY_N_EPOCHS"
+  --bsf "$BSF"
+  --dual-ssd "$DUAL_SSD"
 )
 
-if [[ -n "${RUN_NAME}" && "${RUN_NAME}" != "none" && "${RUN_NAME}" != "null" ]]; then
+if [[ -n "$LR" ]]; then
+  cmd+=(--learning-rate "$LR")
+fi
+if [[ -n "$RUN_NAME" && "$RUN_NAME" != "none" && "$RUN_NAME" != "null" ]]; then
   cmd+=(--run-name "$RUN_NAME")
+fi
+if [[ -n "$DESCRIPTION" ]]; then
+  cmd+=(--description "$DESCRIPTION")
+fi
+if [[ -n "$DS_TYPE" ]]; then
+  cmd+=(--ds-type "$DS_TYPE")
+fi
+if [[ -n "$TRAIN_INDICES" && "$TRAIN_INDICES" != "none" && "$TRAIN_INDICES" != "null" ]]; then
+  cmd+=(--train-indices "$TRAIN_INDICES")
 fi
 
 exec "${cmd[@]}"
