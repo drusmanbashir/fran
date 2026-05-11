@@ -50,13 +50,14 @@ class UNetManager(LightningModule):
         configs,
         lr=None,
         sync_dist=False,
+        val_device="cuda",
         monitor="train0_loss_dice",
     ):
         super().__init__()
 
         self.sync_dist = sync_dist
         self.project = Project(project_title)
-        self.save_hyperparameters("project_title", "configs", "lr")
+        self.save_hyperparameters("project_title", "configs", "lr", "safe_mode", "val_device")
         self.configs = configs
         self.plan = configs["plan_train"]
         self.model_params = configs["model_params"]
@@ -64,6 +65,7 @@ class UNetManager(LightningModule):
         self.lr = lr if lr else self.model_params["lr"]
         self.model = self.create_model()
         self.monitor =monitor
+        self.val_device = val_device
 
     # def on_fit_start(self):
     #     self.create_loss_fnc()
@@ -80,7 +82,7 @@ class UNetManager(LightningModule):
 
     def create_val_inferer(self):
         sw_device = "cuda"
-        device = "cuda"  # or "cpu" if cuda fails oom
+        device = self.val_device
         cprint(f"batch size")
 
         batch_size = 1

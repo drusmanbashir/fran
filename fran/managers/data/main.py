@@ -1125,7 +1125,6 @@ class DataManager(LightningDataModule):
         )
 
     def create_valid_dataloader(self):
-
         num_workers, persistent_workers = self._num_workers()
         sampler = None
         if self.val_sampling < 1.0:

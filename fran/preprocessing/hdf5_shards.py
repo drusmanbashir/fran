@@ -480,6 +480,7 @@ class HDF5ShardGenerator(Preprocessor):
         self.postprocess(overwrite=overwrite, num_processes=num_processes)
 
     def process(self, num_processes=8):
+        maybe_makedirs(self.shards_folder)
         completed_shards = []
         failed_shards = []
         max_workers = (
