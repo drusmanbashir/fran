@@ -19,8 +19,9 @@ DS_TYPE="${15:-}"
 ALL="${16:-false}"
 VAL_EVERY_N_EPOCHS="${17:-5}"
 TRAIN_INDICES="${18:-}"
-BSF="${19:-false}"
+BSF="${19:-true}"
 DUAL_SSD="${20:-false}"
+BATCH_TFMS="${21:-false}"
 
 cmd=(
   python -m ipdb "$TRAIN_PY"
@@ -39,6 +40,7 @@ cmd=(
   --val-every-n-epochs "$VAL_EVERY_N_EPOCHS"
   --bsf "$BSF"
   --dual-ssd "$DUAL_SSD"
+  --batch-tfms "$BATCH_TFMS"
 )
 
 if [[ -n "$LR" ]]; then

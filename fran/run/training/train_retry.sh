@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TRAIN_RETRY_PY="$SCRIPT_DIR/train_retry.py"
-PROJECT="${1:-kits2}"
-PLAN_NUM="${2:-3}"
-DEVICES="${3:-[1]}"
+PROJECT="${1:-totalseg}"
+PLAN_NUM="${2:-8}"
+DEVICES="${3:-[0]}"
 BS="${4:-3}"
 EPOCHS="${5:-500}"
 FOLD="${6:-1}"
@@ -25,6 +25,7 @@ MAX_RETRIES="${21:-3}"
 STEP="${22:-1}"
 MIN_BS="${23:-1}"
 PYTHON_BIN="${24:-python}"
+BATCH_TFMS="${25:-false}"
 
 cmd=(
   "$PYTHON_BIN" "$TRAIN_RETRY_PY"
@@ -43,6 +44,7 @@ cmd=(
   --val-every-n-epochs "$VAL_EVERY_N_EPOCHS"
   --bsf "$BSF"
   --dual-ssd "$DUAL_SSD"
+  --batch-tfms "$BATCH_TFMS"
   --max-retries "$MAX_RETRIES"
   --step "$STEP"
   --min-bs "$MIN_BS"

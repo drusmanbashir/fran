@@ -25,6 +25,7 @@ MAX_RETRIES="${21:-3}"
 STEP="${22:-1}"
 MIN_BS="${23:-1}"
 PYTHON_BIN="${24:-python}"
+BATCH_TFMS="${25:-false}"
 
 cmd=(
   "$PYTHON_BIN" "$TRAIN_RETRY_PY"
@@ -43,6 +44,7 @@ cmd=(
   --val-every-n-epochs "$VAL_EVERY_N_EPOCHS"
   --bsf "$BSF"
   --dual-ssd "$DUAL_SSD"
+  --batch-tfms "$BATCH_TFMS"
   --max-retries "$MAX_RETRIES"
   --step "$STEP"
   --min-bs "$MIN_BS"
