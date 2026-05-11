@@ -1,6 +1,7 @@
 # %%
 from pathlib import Path
 
+from fran.preprocessing.hdf5_shards import HDF5ShardGenerator
 import pandas as pd
 import ray
 import torch
@@ -371,8 +372,6 @@ class FGBGIndicesResampleDataset(NiftiToTorchDataGenerator):
 
 
 
-ResampleDatasetniftiToTorch = NiftiToTorchDataGenerator
-
 
 # %%
 if __name__ == "__main__":
@@ -383,9 +382,6 @@ if __name__ == "__main__":
     from fran.inference.base import list_to_chunks
     from fran.managers import Project
     from utilz.fileio import load_dict
-
-
-    from fran.preprocessing.fixed_spacing import ResampleDatasetniftiToTorch
     from fran.transforms.fg_indices import FgBgToIndicesd2
     from fran.transforms.inferencetransforms import ToCPUd
     from monai.transforms.utility.dictionary import (
@@ -410,14 +406,56 @@ if __name__ == "__main__":
 
     plan = conf["plan_train"]
     plan["mode"]
+    print(plan)
 
     FolderNames(P, plan).folders
     print(P.global_properties)
 # %%
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     Rs = NiftiToTorchDataGenerator(P, plan, P.raw_data_folder)
+    Rs.setup()
     Rs.process(overwrite=False, num_processes=16)
+
     Rs.postprocess(num_processes=16)
+# %%
+
+    F = Rs
+
+    overwrite =True
+    src_dims = F.plan["src_dims"] 
+    cases_per_shard = 5
+    max_shard_bytes = None
+    overwrite_hdf5_shards = False
+    hdf5_compression = "gzip"
+    hdf5_compression_opts = 1
+    num_processes = 8
+# %%  # T:block_start|FGBGIndicesResampleDataset.process
+#SECTION:-------------------- process--------------------------------------------------------------------------------------  # T:block_meta|FGBGIndicesResampleDataset.process
+    if not hasattr(F, "df"):  # T:self_ref|if not hasattr(self, "df"):
+        print("No data frames have been created. Run setup")
+        pass  # T:early_return|    return 0
+    if len(F.df) == 0:  # T:self_ref|if len(self.df) == 0:
+        if getattr(F, "run_postprocess_if_empty", False):  # T:self_ref|    if getattr(self, "run_postprocess_if_empty", False):
+            F.postprocess(overwrite=overwrite, num_processes=num_processes)  # T:self_ref|        self.postprocess(overwrite=overwrite, num_processes=num_processes)
+            pass  # T:early_return|        return 0
+        print("No data frames have been created. Run setup")
+        pass  # T:early_return|    return 0
+    df_pt_run = F.df if overwrite else F.df_pt  # T:self_ref|df_pt_run = self.df if overwrite else self.df_pt
+    df_hdf5_run = F.df_hdf5  # T:self_ref|df_hdf5_run = self.df if overwrite else self.df_hdf5
+    F.process_pt(df_pt_run=df_pt_run, num_processes=num_processes)  # T:self_ref|self.process_pt(df_pt_run=df_pt_run, num_processes=num_processes)
+# %%
+    F.process_hdf5(  # T:self_ref|self.process_hdf5(
+        df_hdf5_run=df_hdf5_run,
+        cases_per_shard=cases_per_shard,
+        max_shard_bytes=max_shard_bytes,
+        overwrite_hdf5_shards=overwrite_hdf5_shards,
+        hdf5_compression=hdf5_compression,
+        hdf5_compression_opts=hdf5_compression_opts,
+        num_processes=num_processes,
+    )
+# %%
+    F.postprocess(overwrite=overwrite, num_processes=num_processes)  # T:self_ref|self.postprocess(overwrite=overwrite, num_processes=num_processes)
+    # end PythonMethodScratch  # T:block_end|FGBGIndicesResampleDataset.process
 # %%
     src_dims = None
     cases_per_shard = 5
@@ -763,5 +801,49 @@ if __name__ == "__main__":
     datasources["lms"] = Rs.plan["datasources"]["lms"]
     Rs.plan["datasources"] = datasources
 
+# %%
+    src_dims = None
+    cases_per_shard = 5
+    max_shard_bytes = None
+    overwrite_hdf5_shards = False
+    hdf5_compression = "gzip"
+    hdf5_compression_opts = 1
+    num_processes = 8
+# %%  # T:block_start|FGBGIndicesResampleDataset.process_hdf5
+#SECTION:-------------------- process_hdf5--------------------------------------------------------------------------------------  # T:block_meta|FGBGIndicesResampleDataset.process_hdf5
+    writer = HDF5ShardGenerator(
+        pt_folder=F.output_folder,  # T:self_ref|    pt_folder=self.output_folder,
+        shard_folder=F.hdf5_output_folder,  # T:self_ref|    shard_folder=self.hdf5_output_folder,
+        src_dims=F.plan["src_dims"] if src_dims is None else src_dims,  # T:self_ref|    src_dims=self.plan["src_dims"] if src_dims is None else src_dims,
+        cases_per_shard=cases_per_shard,
+        max_shard_bytes=max_shard_bytes,
+        overwrite=overwrite_hdf5_shards,
+        compression=hdf5_compression,
+        compression_opts=hdf5_compression_opts,
+    )
+# %%
+    writer.setup(
+        case_ids=df_hdf5_run["case_id"].tolist(),
+        num_processes=num_processes,
+    )
+    try:
+        shard_paths = writer.run(num_processes=num_processes)
+    except Exception as e:
+        F.logger.exception(  # T:self_ref|    self.logger.exception(
+            e,
+            error_type="HDF5ShardWrite",
+            image=str(F.output_folder / "images"),  # T:self_ref|        image=str(self.output_folder / "images"),
+            lm=str(F.output_folder / "lms"),  # T:self_ref|        lm=str(self.output_folder / "lms"),
+        )
+        raise
+    if F.delete_pt_after_shard_creation:  # T:self_ref|if self.delete_pt_after_shard_creation:
+        for subfolder in ("images", "lms", "indices"):
+            pth = F.output_folder / subfolder  # T:self_ref|        pth = self.output_folder / subfolder
+            if pth.exists():
+                shutil.rmtree(pth)
+    process_hdf5_result = shard_paths  # T:return|return shard_paths
+    # end PythonMethodScratch  # T:block_end|FGBGIndicesResampleDataset.process_hdf5
+
+    
 
 # %%

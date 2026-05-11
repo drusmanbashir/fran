@@ -78,16 +78,4 @@ class NiftiToTorchSubsampledBgDataGenerator(NiftiToTorchDataGenerator):
             return self.output_folder / "indices"
         return self.output_folder / f"indices_bg_subsample_{subsample_bg}"
 
-    def postprocess_results(self, num_processes=8, **process_kwargs):
-        self._store_dataset_summary(num_processes=num_processes)
-        generate_bboxes_from_lms_folder(
-            self.output_folder / "lms",
-            num_processes=num_processes,
-        )
-        store_label_count(self.output_folder, num_processes=num_processes)
-        create_dataset_stats_artifacts(
-            lms_folder=self.output_folder / "lms",
-            gif=self.store_gifs,
-            label_stats=self.store_label_stats,
-            gif_window=infer_dataset_stats_window(self.project),
-        )
+

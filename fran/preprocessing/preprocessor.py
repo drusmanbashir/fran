@@ -4,6 +4,9 @@ import sqlite3
 import shutil
 from functools import cached_property
 from pathlib import Path
+import ipdb
+tr = ipdb.set_trace
+
 
 from fran.configs.parser import plan_requires_hdf5_shards
 from fran.utils.folder_names import FolderNames
@@ -16,7 +19,7 @@ from fran.configs.helpers import is_excel_None
 from fran.data.dataregistry import DS
 from fran.loggers.preprocessing import PreprocessingLogger
 from fran.preprocessing import bboxes_function_version
-from fran.preprocessing.hdf5_shards import HDF5ShardWriter
+from fran.preprocessing.hdf5_shards import HDF5ShardGenerator
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
     env_flag,
@@ -768,7 +771,6 @@ class Preprocessor:
     def process_hdf5(
         self,
         df_hdf5_run,
-        src_dims=None,
         cases_per_shard=5,
         max_shard_bytes=None,
         overwrite_hdf5_shards=False,
@@ -779,10 +781,10 @@ class Preprocessor:
 
         if self.hdf5_shards is False or len(df_hdf5_run) == 0:
             return []
-        writer = HDF5ShardWriter(
+        writer = HDF5ShardGenerator(
             pt_folder=self.output_folder,
             shard_folder=self.hdf5_output_folder,
-            src_dims=self.plan["src_dims"] if src_dims is None else src_dims,
+            src_dims=self.plan["src_dims"] ,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
             overwrite=overwrite_hdf5_shards,
@@ -810,29 +812,27 @@ class Preprocessor:
                     shutil.rmtree(pth)
         return shard_paths
 
-    def postprocess_results(self, num_processes=8, overwrite=False):
-        self._write_results_csv(num_processes=num_processes, overwrite=overwrite)
-        self._store_dataset_summary(num_processes=num_processes)
-        store_label_count(self.output_folder, num_processes=num_processes)
-        create_dataset_stats_artifacts(
-            lms_folder=self.output_folder / "lms",
-            gif=self.store_gifs,
-            label_stats=self.store_label_stats,
-            gif_window=infer_dataset_stats_window(self.project),
-        )
 
     def postprocess(self, overwrite=False, num_processes=8):
         if overwrite is False and self.postprocess_artifacts_missing() is False:
             cprint("Postprocess: skip existing artifacts", "cyan")
         else:
             cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
-            self.postprocess_results(num_processes=num_processes, overwrite=overwrite)
+            self._write_results_csv(num_processes=num_processes, overwrite=overwrite)
+            self._store_dataset_summary(num_processes=num_processes)
+            store_label_count(self.output_folder, num_processes=num_processes)
+            create_dataset_stats_artifacts(
+                lms_folder=self.output_folder / "lms",
+                gif=self.store_gifs,
+                label_stats=self.store_label_stats,
+                gif_window=infer_dataset_stats_window(self.project),
+            )
+
 
 
     def process(
         self,
         overwrite=False,
-        src_dims=None,
         cases_per_shard=5,
         max_shard_bytes=None,
         overwrite_hdf5_shards=False,
@@ -854,7 +854,6 @@ class Preprocessor:
         self.process_pt(df_pt_run=df_pt_run, num_processes=num_processes)
         self.process_hdf5(
             df_hdf5_run=df_hdf5_run,
-            src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,

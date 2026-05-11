@@ -544,4 +544,3 @@ class HDF5ShardGenerator:
         return self.run(num_processes=num_processes)
 
 
-HDF5ShardWriter = HDF5ShardGenerator

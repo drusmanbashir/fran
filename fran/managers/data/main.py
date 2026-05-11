@@ -1321,12 +1321,12 @@ class DataManagerSource(DataManager):
 
     @property
     def hdf5_folder(self):
-        name = tmt.data_folder.name
-        mode_folder = tmt.data_folder.parent.name
+        name = self.data_folder.name
+        mode_folder = self.data_folder.parent.name
         shards_parent_folder = (
-            tmt.project.rapid_access_folder / mode_folder / name / "hdf5_shards"
+            self.project.rapid_access_folder / mode_folder / name / "hdf5_shards"
         )
-        src_tag = "_".join(str(int(v)) for v in tmt.src_dims)
+        src_tag = "_".join(str(int(v)) for v in self.src_dims)
         shards_final_folder = shards_parent_folder / f"src_{src_tag}"
         return shards_final_folder
 
@@ -1641,7 +1641,6 @@ if __name__ == "__main__":
     tmt = M.train_manager
     tmt.hdf5_folder.exists()
     tmv.transforms_dict
-# %%
 # %%
     dl = tmt.dl
     iteri = iter(dl)
@@ -2091,17 +2090,4 @@ if __name__ == "__main__":
     M.prepare_data()
     M.setup(None)
 # %%
-    M.valid_ds[7]
-
-    keys_val = "L,Ld,E,Rva,Re,N"
-    dici = M.valid_ds.data[7]
-    dici = L(dici)
-    dici = Ld(dici)
-    dici = E(dici)
-    dici = Rva(dici)
-    dici = Re(dici)
-# %%
-
-# %%
-    M.val_indices = int(len(M.train_manager.cases) * 0.2)
 

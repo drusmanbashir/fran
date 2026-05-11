@@ -152,15 +152,6 @@ class FixedSizeDataGenerator(Preprocessor):
         self.create_output_folders()
         super().setup(debug=debug)
 
-    def postprocess_results(self, num_processes=8):
-        self._store_dataset_summary(num_processes=num_processes)
-        store_label_count(self.output_folder, num_processes=num_processes)
-        create_dataset_stats_artifacts(
-            lms_folder=self.output_folder/"lms",
-            gif=self.store_gifs,
-            label_stats=self.store_label_stats,
-            gif_window=infer_dataset_stats_window(self.project),
-        )
 
 
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
