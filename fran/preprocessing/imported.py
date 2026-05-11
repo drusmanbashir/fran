@@ -341,16 +341,12 @@ if __name__ == "__main__":
     from pprint import pp
 
     import numpy as np
-    from utilz.helpers import set_autoreload
-
-    set_autoreload()
 
     from fran.configs.parser import ConfigMaker
 
 # %%
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     from fran.managers import Project
-    from fran.preprocessing.preprocessor import store_label_count
     from fran.utils.common import *
     from fran.utils.folder_names import FolderNames
 
@@ -388,8 +384,7 @@ if __name__ == "__main__":
     debug = True
     overwrite = False
     L.setup(overwrite=overwrite, num_processes=num_processes, debug=debug)
-    L.process()
-    store_label_count(L.output_folder, 16)
+    L.run(overwrite=overwrite, num_processes=num_processes)
 # %%
     num_processes = 16
     L.create_data_df()

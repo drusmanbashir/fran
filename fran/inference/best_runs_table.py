@@ -6,11 +6,11 @@ from fran.inference.helpers import (
     filter_existing_files,
     get_patch_spacing,
     infer_project,
-    list_to_chunks,
     load_images_nifti,
     load_params,
 )
 from utilz.cprint import cprint
+from utilz.helpers import chunks
 
 os.environ["TORCHDYNAMO_DISABLE"] = "1"  # set as early as possible in the process
 
@@ -190,7 +190,7 @@ if __name__ == "__main__":
 # %%
     if overwrite == False and (isinstance(imgs[0], str) or isinstance(imgs[0], Path)):
         imgs = T.filter_existing_preds(imgs)
-    imgs = list_to_chunks(imgs, 4)
+    imgs = chunks(imgs, n_sized_chunks=4)
     # for imgs_sublist in imgs:
     #     output = T.process_imgs_sublist(imgs_sublist)
     imgs_sublist = imgs[0]

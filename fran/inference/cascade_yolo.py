@@ -7,11 +7,9 @@ import torch
 from monai.transforms.spatial.dictionary import Orientationd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, SqueezeDimd
 from tqdm.auto import tqdm
-from utilz.helpers import MatchError, find_matching_fn, set_autoreload
-
-set_autoreload()
+from utilz.helpers import MatchError, chunks, find_matching_fn
 from fran.inference.cascade import CascadeInferer, img_bbox_collated
-from fran.inference.helpers import SmartImageLoader, list_to_chunks, load_oriented_images
+from fran.inference.helpers import SmartImageLoader, load_oriented_images
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.misc_transforms import DummyTransform
 from fran.transforms.spatialtransforms import CropByYolo
@@ -239,7 +237,7 @@ class CascadeInfererYOLO(CascadeInferer):
         data = self.normalise_case_records(data)
         data_bboxes = self.extract_fg_bboxes(data, overwrite=overwrite)
         self.W.clear_localiser()
-        data_chunks = list_to_chunks(data_bboxes, chunksize)
+        data_chunks = chunks(data_bboxes, n_sized_chunks=chunksize)
         for data_sublist in data_chunks:
             output = self.process_data_sublist(data_sublist)
         return output
@@ -454,7 +452,7 @@ if __name__ == "__main__":
     data_out[0]["image"].shape
 # %%
     chunksize = 2
-    data_chunks = list_to_chunks(data_bboxes, chunksize)
+    data_chunks = chunks(data_bboxes, n_sized_chunks=chunksize)
     sublist = data_chunks[0]
 # %%
     D.create_and_set_postprocess_transforms()
@@ -464,7 +462,7 @@ if __name__ == "__main__":
     data_bboxes = D.extract_fg_bboxes(data, overwrite=overwrite)
 
     chunksize = 12
-    data_chunks = list_to_chunks(data_bboxes, chunksize)
+    data_chunks = chunks(data_bboxes, n_sized_chunks=chunksize)
     data_sublist = data_bboxes[:chunksize]
     data = D.apply_bboxes(data_sublist)
     Sq = SqueezeDimd(keys=["image"], dim=0)

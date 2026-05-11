@@ -377,7 +377,7 @@ if __name__ == "__main__":
 
 # %%
     PG.setup(overwrite=True)
-    PG.process(debug=deb)
+    PG.run(overwrite=True)
 # %%
     # PG.create_patches(overwrite=overwrite,debug=debug)
     lmg = "lm_group1"

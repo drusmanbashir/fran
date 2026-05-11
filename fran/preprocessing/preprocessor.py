@@ -19,7 +19,6 @@ from fran.configs.helpers import is_excel_None
 from fran.data.dataregistry import DS
 from fran.loggers.preprocessing import PreprocessingLogger
 from fran.preprocessing import bboxes_function_version
-from fran.preprocessing.hdf5_shards import HDF5ShardGenerator
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
     env_flag,
@@ -36,7 +35,7 @@ from utilz.rayz import shutdown_actors
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
 DEFAULT_HDF5_SRC_DIMS = (192, 192, 128)
-CPUS_PER_ACTOR = 1
+CPUS_PER_ACTOR = 2
 
 
 def bboxes_to_df(bboxes):
@@ -770,33 +769,30 @@ class Preprocessor:
 
     def process_hdf5(
         self,
-        df_hdf5_run,
         cases_per_shard=5,
-        max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
         num_processes=8,
     ):
 
-        if self.hdf5_shards is False or len(df_hdf5_run) == 0:
+        if self.hdf5_shards is False :
             return []
+
+        from fran.preprocessing.hdf5_shards import HDF5ShardGenerator
         writer = HDF5ShardGenerator(
-            pt_folder=self.output_folder,
-            shard_folder=self.hdf5_output_folder,
-            src_dims=self.plan["src_dims"] ,
+            project=self.project,
+            plan=self.plan,
+            data_folder = self.output_folder,
+            output_folder=self.hdf5_output_folder,
             cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
-            overwrite=overwrite_hdf5_shards,
             compression=hdf5_compression,
             compression_opts=hdf5_compression_opts,
         )
         writer.setup(
-            case_ids=df_hdf5_run["case_id"].tolist(),
-            num_processes=num_processes,
         )
         try:
-            shard_paths = writer.run(num_processes=num_processes)
+            writer.run(num_processes=num_processes, overwrite=overwrite_hdf5_shards)
         except Exception as e:
             self.logger.exception(
                 e,
@@ -810,13 +806,11 @@ class Preprocessor:
                 pth = self.output_folder / subfolder
                 if pth.exists():
                     shutil.rmtree(pth)
-        return shard_paths
 
     def run(
         self,
         overwrite=False,
         cases_per_shard=5,
-        max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
@@ -832,12 +826,9 @@ class Preprocessor:
             print("No data frames have been created. Run setup")
             return 0
         df_pt_run = self.df if overwrite else self.df_pt
-        df_hdf5_run = self.df if overwrite else self.df_hdf5
         self.process_pt(df_pt_run=df_pt_run, num_processes=num_processes)
         self.process_hdf5(
-            df_hdf5_run=df_hdf5_run,
             cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
@@ -1079,6 +1070,12 @@ class Preprocessor:
         )
 
 
+class Generator(Preprocessor):
+    pass
+
+
+class Worker(Preprocessor):
+    pass
 # %%
 # %%
 # SECTION:-------------------- --------------------------------------------------------------------------------------

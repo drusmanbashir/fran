@@ -148,18 +148,12 @@ class FixedSizeDataGenerator(Preprocessor):
     def register_existing_files(self):
         return self._register_existing_pt_files()
 
-    def setup(self, debug=False):
-        self.create_output_folders()
-        super().setup(debug=debug)
 
 
 
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     import torch
-    from utilz.helpers import set_autoreload
-
-    set_autoreload()
 
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
@@ -187,8 +181,7 @@ if __name__ == "__main__":
     F.setup(overwrite=overwrite_, debug=debug_)
 
 # %%
-    F.process()
-    F.run_postprocess_only()
+    F.run(overwrite=overwrite_)
 
     # pd.set_option("display.width", 200)  # total line width before
 #

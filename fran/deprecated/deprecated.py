@@ -1,11 +1,7 @@
 # %%
-# NOTE: UTILITY functions to reconcile previous version with new.
-import itertools as il
-
-import numpy as np
 import torch
 from fran.trainers.helpers import checkpoint_from_model_id
-from utilz.helpers import pp, slice_list
+from utilz.helpers import pp
 
 
 def insert_plan_key(ckpt_fn):
@@ -40,19 +36,6 @@ def move_key_plan_to_dataset_params(ckpt_fn, key):
     value = config["dataset_params"][key]
     ckp["datamodule_hyper_parameters"]["config"]["plan"][key] = value
     torch.save(ckp, ckpt_fn)
-
-
-def list_to_chunks(input_list: list, chunksize: int):
-    n_lists = int(np.ceil(len(input_list) / chunksize))
-
-    fpl = int(len(input_list) / n_lists)
-    inds = [[fpl * x, fpl * (x + 1)] for x in range(n_lists - 1)]
-    inds.append([fpl * (n_lists - 1), None])
-
-    chunks = list(il.starmap(slice_list, zip([input_list] * n_lists, inds)))
-    return chunks
-
-
 def load_params(model_id):
     ckpt = checkpoint_from_model_id(model_id)
     dic_tmp = torch.load(ckpt, map_location="cpu")
@@ -484,4 +467,3 @@ if __name__ == "__main__":
         del lm.meta["filename"]
         torch.save(lm, fn)
 # %%
-

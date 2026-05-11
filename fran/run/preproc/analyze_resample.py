@@ -1,6 +1,5 @@
 # %%
 import ast
-import threading
 
 from fran.configs.parser import ConfigMaker, confirm_plan_analyzed
 from fran.managers import Project
@@ -13,13 +12,11 @@ from fran.preprocessing.fixed_size import FixedSizeDataGenerator
 from fran.preprocessing.imported import LabelBoundedDataGeneratorImported
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from fran.preprocessing.patch import PatchDataGenerator
-from fran.preprocessing.preprocessor import DEFAULT_HDF5_SRC_DIMS
 from fran.preprocessing.regionbounded import RegionBoundedDataGenerator
 from fran.utils.folder_names import FolderNames
-from tqdm.auto import tqdm
 from utilz.fileio import os, save_list, str_to_path
 from utilz.helpers import re
-from utilz.stringz import headline, info_from_filename
+from utilz.stringz import headline
 
 common_vars_filename = os.environ["FRAN_CONF"]
 
@@ -148,7 +145,9 @@ def process_plan(args):
             f"[analyze_resample] stage=generate_rbd_dataset complete plan={args.plan}"
         )
     elif I.plan["mode"] == "whole":
-        print(f"[analyze_resample] stage=generate_whole_images_dataset plan={args.plan}")
+        print(
+            f"[analyze_resample] stage=generate_whole_images_dataset plan={args.plan}"
+        )
         I.generate_whole_images_dataset(
             overwrite=args.overwrite,
             num_processes=args.num_processes,
@@ -190,84 +189,6 @@ def user_input(inp: str, out=int):
     return tmp
 
 
-class StageProgressCounter:
-    def __init__(self, output_folder, total: int):
-        self.output_folder = Path(output_folder)
-        self.total = int(total)
-        self.images_folder = self.output_folder / "images"
-        self.lms_folder = self.output_folder / "lms"
-        self.baseline_images = self._names(self.images_folder)
-        self.baseline_lms = self._names(self.lms_folder)
-
-    def _names(self, folder):
-        return {pth.name for pth in folder.glob("*.pt")}
-
-    def completed_cases(self):
-        raise NotImplementedError
-
-
-class ExactCaseOutputCounter(StageProgressCounter):
-    def completed_cases(self):
-        baseline = self.baseline_images.intersection(self.baseline_lms)
-        current = self._names(self.images_folder).intersection(self._names(self.lms_folder))
-        return min(self.total, len(current - baseline))
-
-
-class CaseOutputCounter(StageProgressCounter):
-    def completed_cases(self):
-        current = self._names(self.images_folder)
-        return min(self.total, len(current - self.baseline_images))
-
-
-class PatchCaseApproxCounter(StageProgressCounter):
-    def completed_cases(self):
-        current = self._names(self.images_folder)
-        new_patch_files = len(current - self.baseline_images)
-        case_ids = {info_from_filename(name, full_caseid=True)["case_id"] for name in current}
-        estimated_patches_per_case = len(current) / max(1, len(case_ids))
-        completed = int(new_patch_files / max(1.0, estimated_patches_per_case))
-        return min(self.total, completed)
-
-
-class OutputFolderProgressMonitor:
-    def __init__(
-        self,
-        counter,
-        desc: str = "Analyze/resample",
-        unit: str = "case",
-        poll_interval: float = 0.5,
-    ):
-        self.counter = counter
-        self.poll_interval = poll_interval
-        self.completed = 0
-        self.pbar = tqdm(total=self.counter.total, desc=desc, unit=unit)
-        self.stop_event = threading.Event()
-        self.thread = threading.Thread(target=self._run, daemon=True)
-
-    def sync(self):
-        completed = self.counter.completed_cases()
-        delta = completed - self.completed
-        if delta > 0:
-            self.pbar.update(delta)
-            self.completed = completed
-        return self.completed
-
-    def _run(self):
-        while not self.stop_event.wait(self.poll_interval):
-            self.sync()
-
-    def start(self):
-        self.sync()
-        self.thread.start()
-        return self
-
-    def stop(self):
-        self.stop_event.set()
-        self.thread.join()
-        self.sync()
-        self.pbar.close()
-
-
 class PreprocessingManager:
     def __init__(self, args, conf=None):
         self.args = args
@@ -286,48 +207,12 @@ class PreprocessingManager:
             generator.store_label_stats = False
         return generator
 
-    def _process_with_output_progress(
-        self,
-        generator,
-        counter_cls,
-        desc="Analyze/resample",
-        overwrite=None,
-        num_processes=1,
-        src_dims=DEFAULT_HDF5_SRC_DIMS,
-        cases_per_shard=5,
-        max_shard_bytes=None,
-        overwrite_hdf5_shards=False,
-        hdf5_compression="gzip",
-        hdf5_compression_opts=1,
-    ):
-        overwrite = bool(overwrite)
-        total = len(generator.df) if overwrite else len(generator.df_pt)
-        monitor = OutputFolderProgressMonitor(
-            counter=counter_cls(generator.output_folder, total),
-            desc=desc,
-        ).start()
-        try:
-            return generator.process(
-                overwrite=overwrite,
-                num_processes=num_processes,
-                src_dims=src_dims,
-                cases_per_shard=cases_per_shard,
-                max_shard_bytes=max_shard_bytes,
-                overwrite_hdf5_shards=overwrite_hdf5_shards,
-                hdf5_compression=hdf5_compression,
-                hdf5_compression_opts=hdf5_compression_opts,
-            )
-        finally:
-            monitor.stop()
-
     def resample_dataset(
         self,
         overwrite=False,
         num_processes=1,
         debug=False,
-        src_dims=DEFAULT_HDF5_SRC_DIMS,
         cases_per_shard=5,
-        max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
@@ -345,15 +230,10 @@ class PreprocessingManager:
         self._configure_postproc_artifacts(self.R)
 
         self.R.setup(debug=debug)
-        self._process_with_output_progress(
-            self.R,
-            ExactCaseOutputCounter,
-            desc="Resample",
+        self.R.run(
             overwrite=overwrite,
             num_processes=num_processes,
-            src_dims=src_dims,
             cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
@@ -364,9 +244,7 @@ class PreprocessingManager:
         overwrite=False,
         num_processes=1,
         debug=False,
-        src_dims=DEFAULT_HDF5_SRC_DIMS,
         cases_per_shard=5,
-        max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
@@ -388,15 +266,10 @@ class PreprocessingManager:
         )
         self._configure_postproc_artifacts(self.L)
         self.L.setup(debug=debug)
-        self._process_with_output_progress(
-            self.L,
-            CaseOutputCounter,
-            desc="LBD",
+        self.L.run(
             overwrite=overwrite,
             num_processes=num_processes,
-            src_dims=src_dims,
             cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
@@ -407,9 +280,7 @@ class PreprocessingManager:
         overwrite=False,
         num_processes=1,
         debug=False,
-        src_dims=DEFAULT_HDF5_SRC_DIMS,
         cases_per_shard=5,
-        max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
@@ -428,15 +299,10 @@ class PreprocessingManager:
         )
         self._configure_postproc_artifacts(self.L)
         self.L.setup(debug=debug)
-        self._process_with_output_progress(
-            self.L,
-            CaseOutputCounter,
-            desc="LBD imported",
+        self.L.run(
             overwrite=overwrite,
             num_processes=num_processes,
-            src_dims=src_dims,
             cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
@@ -447,9 +313,7 @@ class PreprocessingManager:
         overwrite=False,
         num_processes=1,
         debug=False,
-        src_dims=DEFAULT_HDF5_SRC_DIMS,
         cases_per_shard=5,
-        max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
@@ -471,15 +335,10 @@ class PreprocessingManager:
         )
         self._configure_postproc_artifacts(self.L)
         self.L.setup(debug=debug)
-        self._process_with_output_progress(
-            self.L,
-            CaseOutputCounter,
-            desc="RBD",
+        self.L.run(
             overwrite=overwrite,
             num_processes=num_processes,
-            src_dims=src_dims,
             cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
@@ -490,9 +349,7 @@ class PreprocessingManager:
         overwrite=False,
         num_processes=1,
         debug=False,
-        src_dims=DEFAULT_HDF5_SRC_DIMS,
         cases_per_shard=5,
-        max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
@@ -512,15 +369,10 @@ class PreprocessingManager:
         )
         self._configure_postproc_artifacts(self.W)
         self.W.setup(debug=debug)
-        self._process_with_output_progress(
-            self.W,
-            CaseOutputCounter,
-            desc="Whole",
+        self.W.run(
             overwrite=overwrite,
             num_processes=num_processes,
-            src_dims=src_dims,
             cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
@@ -531,9 +383,7 @@ class PreprocessingManager:
         debug=False,
         overwrite=False,
         num_processes=1,
-        src_dims=DEFAULT_HDF5_SRC_DIMS,
         cases_per_shard=5,
-        max_shard_bytes=None,
         overwrite_hdf5_shards=False,
         hdf5_compression="gzip",
         hdf5_compression_opts=1,
@@ -549,15 +399,10 @@ class PreprocessingManager:
         PG.setup(
             debug=debug,
         )
-        self._process_with_output_progress(
-            PG,
-            PatchCaseApproxCounter,
-            desc="Patches",
+        PG.run(
             overwrite=overwrite,
             num_processes=num_processes,
-            src_dims=src_dims,
             cases_per_shard=cases_per_shard,
-            max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,
             hdf5_compression=hdf5_compression,
             hdf5_compression_opts=hdf5_compression_opts,
@@ -654,7 +499,7 @@ if __name__ == "__main__":
     #     overwrite = False
     #     num_processes = 8
     #     I.R.setup(overwrite=overwrite, num_processes=num_processes)
-    #     I.R.process()
+    #     I.R.run()
     #     I.resample_output_folder = I.R.output_folder
     # resampled_data_folder = FolderNames(I.project, I.plan).folders[
     #
@@ -673,7 +518,7 @@ if __name__ == "__main__":
     #             num_processes=I.num_processes,
     #             debug=debug,
     #         )
-    #         PG.process(derive_bboxes=False)
+    #         PG.run()
     #     I.R.create_dataset_stats_artifacts()
     #
 # %%
@@ -694,7 +539,7 @@ if __name__ == "__main__":
 # %%
     #     device='cpu'
     #     I.L.setup(overwrite=overwrite, device=device,num_processes=num_processes,debug=True)
-    #     I.L.process()
+    #     I.L.run()
 # %%
     #
     #
@@ -714,3 +559,4 @@ if __name__ == "__main__":
 # from label_analysis.dataset_stats import end2end_lms_stats_and_plots
 # from utilz.overlay_grid_gif import create_nifti_overlay_grid_gif
 # %%
+

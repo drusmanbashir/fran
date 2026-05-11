@@ -8,9 +8,6 @@ from pathlib import Path
 
 import pandas as pd
 import torch.nn as nn
-from utilz.helpers import set_autoreload
-
-set_autoreload()
 
 from fran.architectures.create_network import create_model_from_conf
 from fran.architectures.unet3d.model import UNet3D

@@ -118,9 +118,7 @@ def confirm_plan_analyzed(project, plan):
         manifest_fn = (
             rapid_final_folder / "hdf5_shards" / f"src_{src_tag}" / "manifest.json"
         )
-        final_fldr_full = manifest_fn.exists() and json.load(open(manifest_fn))[
-            "num_pending_shards"
-        ] == 0
+        final_fldr_full = manifest_fn.exists()
     else:
         final_fldr_full = n_cases == cases_in_folder(existing_final_fldr)
     return {"src_fldr_full": src_fldr_full, "final_fldr_full": final_fldr_full}
@@ -597,7 +595,6 @@ def load_metadata(settingsfilename):
 if __name__ == "__main__":
 # SECTION:-------------------- setup-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR>
 
-    # set_autoreload()
     from fran.managers import Project
 
     P = Project(project_title="pancreas")

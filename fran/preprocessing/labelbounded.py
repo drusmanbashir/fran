@@ -280,7 +280,7 @@ if __name__ == "__main__":
     L.setup(
         overwrite=overwrite, device="cpu", num_processes=num_processes, debug=debug_
     )
-    L.process()
+    L.run(overwrite=overwrite, num_processes=num_processes)
 # %%
 # %%
     L.mini_dfs = L.split_dataframe_for_workers(L.df, num_processes)

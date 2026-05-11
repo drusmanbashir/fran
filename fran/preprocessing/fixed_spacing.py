@@ -330,7 +330,7 @@ class FGBGIndicesResampleDataset(NiftiToTorchDataGenerator):
     def register_existing_files(self):
         self.existing_files = list(self.indices_subfolder.glob("*"))
 
-    def process(
+    def run(
         self,
     ):
         if not hasattr(self, "dl"):
@@ -375,11 +375,11 @@ class FGBGIndicesResampleDataset(NiftiToTorchDataGenerator):
 
 # %%
 if __name__ == "__main__":
-    import numpy as np
 
 # SECTION:-------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR>
+    import numpy as np
     from fran.configs.parser import ConfigMaker, parse_nested_remapping
-    from fran.inference.base import list_to_chunks
+    from utilz.helpers import chunks
     from fran.managers import Project
     from utilz.fileio import load_dict
     from fran.transforms.fg_indices import FgBgToIndicesd2
@@ -412,15 +412,13 @@ if __name__ == "__main__":
     print(P.global_properties)
 # %%
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
-    Rs = NiftiToTorchDataGenerator(P, plan, P.raw_data_folder)
-    Rs.setup()
+    F = NiftiToTorchDataGenerator(P, plan, P.raw_data_folder)
+    F.setup()
 # %%
-    Rs.process(overwrite=False, num_processes=16)
-
-    Rs.postprocess(num_processes=16)
+    F.run(overwrite=False, num_processes=16)
 # %%
 
-    F = Rs
+    F = F
 
     overwrite =True
     src_dims = F.plan["src_dims"] 
@@ -472,7 +470,7 @@ if __name__ == "__main__":
 # %%
     overwrite = False
     num_processes = 8
-    F = Rs
+    F = F
     F.postprocess()
 # %%  # T:block_start|FGBGIndicesResampleDataset.postprocess
 #SECTION:-------------------- postprocess--------------------------------------------------------------------------------------  # T:block_meta|FGBGIndicesResampleDataset.postprocess
@@ -534,27 +532,27 @@ if __name__ == "__main__":
 # SECTION:-------------------- TS--------------------------------------------------------------------------------------# %%
 
     num_processes = 1
-    Rs.create_data_df()
-    Rs.register_existing_files()
-    mini_df = Rs.mini_dfs[0]
-    Rs.mini_dfs = Rs.split_dataframe_for_workers(Rs.df, num_processes)
+    F.create_data_df()
+    F.register_existing_files()
+    mini_df = F.mini_dfs[0]
+    F.mini_dfs = F.split_dataframe_for_workers(F.df, num_processes)
 # %%
-    Rs.process()
+    F.run()
     #
-    rr = Rs.results
+    rr = F.results
 
 # %%
-    dds = list_to_chunks(Rs.df, n_processes)
-    mini_df = Rs.df.iloc[:10]
+    dds = chunks(F.df, n_chunks=n_processes)
+    mini_df = F.df.iloc[:10]
 
     mean_std_mode = "dataset"
     actor_kwargs = dict(
-        project=Rs.project,
-        plan=Rs.plan,
-        data_folder=Rs.data_folder,
-        output_folder=Rs.output_folder,
-        clip_center=Rs.clip_center,
-        half_precision=Rs.half_precision,
+        project=F.project,
+        plan=F.plan,
+        data_folder=F.data_folder,
+        output_folder=F.output_folder,
+        clip_center=F.clip_center,
+        half_precision=F.half_precision,
         mean_std_mode=mean_std_mode,
     )
 
@@ -589,18 +587,18 @@ if __name__ == "__main__":
     spacing = [1, 1, 1]
     project = P
     overwrite = False
-    Rs = ResampleDatasetniftiToTorch(
+    F = ResampleDatasetniftiToTorch(
         project,
         plan,
         data_folder="/s/xnat_shadow/crc/sampling/nifti",
         output_folder="/s/xnat_shadow/crc/sampling/tensors/fixed_spacing/",
     )
-    Rs.setup(overwrite=overwrite)
-    Rs.process()
+    F.setup(overwrite=overwrite)
+    F.run(overwrite=overwrite)
 # %%
     F = FGBGIndicesResampleDataset(project, spacing=[0.8, 0.8, 1.5])
     F.setup()
-    F.process()
+    F.run()
     # R.register_existing_files()
 
 # %%
@@ -608,7 +606,7 @@ if __name__ == "__main__":
 # %%
     L = LoadSITKd(keys=["image", "lm"], image_only=True)
     R = LabelRemapd(keys=["lm"], remapping_key="remapping")
-    T = ToDeviced(keys=["image", "lm"], device=Rs.ds.device)
+    T = ToDeviced(keys=["image", "lm"], device=F.ds.device)
     Re = RecastToFloatd(keys=["image", "lm"])
 
     Ind = FgBgToIndicesd2(keys=["lm"], image_key="image", image_threshold=-2600)
@@ -623,25 +621,25 @@ if __name__ == "__main__":
     E = EnsureChannelFirstd(
         keys=["image", "lm"], channel_dim="no_channel"
     )  # funny shape output mismatch
-    Si = Spacingd(keys=["image"], pixdim=Rs.ds.spacing, mode="trilinear")
-    Sl = Spacingd(keys=["lm"], pixdim=Rs.ds.spacing, mode="nearest")
+    Si = Spacingd(keys=["image"], pixdim=F.ds.spacing, mode="trilinear")
+    Sl = Spacingd(keys=["lm"], pixdim=F.ds.spacing, mode="nearest")
     Rz = ResizeToTensord(keys=["lm"], key_template_tensor="image", mode="nearest")
 
     # Sm = Spacingd(keys=["lm"], pixdim=Rs.ds.spacing,mode="nearest")
     N = NormaliseClipd(
         keys=["image"],
-        clip_range=Rs.ds.global_properties["intensity_clip_range"],
-        mean=Rs.ds.mean,
-        std=Rs.ds.std,
+        clip_range=F.ds.global_properties["intensity_clip_range"],
+        mean=F.ds.mean,
+        std=F.ds.std,
     )
     Ch = ChangeDtyped(keys=["lm"], target_dtype=torch.uint8)
 
     # tfms = [R, L, T, Re, Ind, Ai, Am, E, Si, Rz,Ch]
     tfms = [L, R, T, Re, Ind, E, Si, Rz, Ch]
 # %%
-    dici = Rs.ds[0]
+    dici = F.ds[0]
     dici["lm"].meta
-    dici = Rs.ds.data[0]
+    dici = F.ds.data[0]
 
 # %%
     dici = L(dici)
@@ -783,10 +781,10 @@ if __name__ == "__main__":
 
 # %%
 
-    df = Rs.df
-    datasources = Rs.plan.get("datasources")
+    df = F.df
+    datasources = F.plan.get("datasources")
     datasources = datasources.split(",")
-    remappings = Rs.plan.get(Rs.remapping_key)
+    remappings = F.plan.get(F.remapping_key)
     assert len(remappings) == len(datasources), (
         f"There should be a unique remapping for each datasource.\n Got {len(datasources)} datasources and {len(remappings)} remappingss"
     )
@@ -795,15 +793,15 @@ if __name__ == "__main__":
         print(remapping)
         # Use .at or .loc with a list to assign the entire dictionary object
         mask = df["ds"] == ds
-        Rs.df.loc[mask, "remapping"] = [remapping] * mask.sum()
+        F.df.loc[mask, "remapping"] = [remapping] * mask.sum()
 
 # %%
 
-    datasources["lms"] = Rs.plan["datasources"]["lms"]
-    Rs.plan["datasources"] = datasources
+    datasources["lms"] = F.plan["datasources"]["lms"]
+    F.plan["datasources"] = datasources
 
 # %%
-    F=Rs
+    F=F
     cases_per_shard = 5
     max_shard_bytes = None
     overwrite_hdf5_shards = False

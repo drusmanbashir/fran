@@ -7,22 +7,8 @@ import SimpleITK as sitk
 from fran.inference.cascade import CascadeInferer
 from fran.inference.scoring import compute_dice_fran
 from fran.managers.project import Project
+from utilz.helpers import chunks
 from utilz.rayz import shutdown_actors
-
-
-def chunk_list(items, n_chunks):
-    if n_chunks <= 1 or len(items) <= 1:
-        return [items]
-    n_chunks = min(n_chunks, len(items))
-    q, r = divmod(len(items), n_chunks)
-    chunks = []
-    start = 0
-    for i in range(n_chunks):
-        size = q + (1 if i < r else 0)
-        end = start + size
-        chunks.append(items[start:end])
-        start = end
-    return [c for c in chunks if c]
 
 
 def case_processed_already(img_fn: Path, output_folder: Path) -> bool:
@@ -116,9 +102,9 @@ def run_multi_gpu_ray(images, gpus, cfg: RayConfig):
                 "output_folder": str(inferer.output_folder),
             }
 
-    chunks = chunk_list(images, len(gpus))
-    actors = [PredictActor.remote() for _ in chunks]
-    futures = [a.process.remote(asdict(cfg), chunk) for a, chunk in zip(actors, chunks)]
+    image_chunks = chunks(images, n_chunks=len(gpus))
+    actors = [PredictActor.remote() for _ in image_chunks]
+    futures = [a.process.remote(asdict(cfg), chunk) for a, chunk in zip(actors, image_chunks)]
     try:
         return ray.get(futures)
     finally:

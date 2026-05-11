@@ -1,4 +1,3 @@
-import itertools as il
 import math
 from pathlib import Path
 from typing import List, Optional
@@ -22,7 +21,6 @@ from monai.data.itk_torch_bridge import itk_image_to_metatensor as itm
 from monai.transforms.io.dictionary import LoadImaged
 from monai.transforms.utility.dictionary import EnsureChannelFirstd
 from utilz.cprint import cprint
-from utilz.helpers import slice_list
 from utilz.stringz import ast_literal_eval
 
 
@@ -134,20 +132,6 @@ def get_patch_spacing(run_name):
             raise NotImplementedError
     spacing = ast_literal_eval(spacing)
     return spacing
-
-
-def list_to_chunks(input_list: list, chunksize: int):
-    if len(input_list) < chunksize:
-        print("List too small, setting chunksize to len(list)")
-        chunksize = np.minimum(len(input_list), chunksize)
-    n_lists = int(np.ceil(len(input_list) / chunksize))
-
-    fpl = int(len(input_list) / n_lists)
-    inds = [[fpl * x, fpl * (x + 1)] for x in range(n_lists - 1)]
-    inds.append([fpl * (n_lists - 1), None])
-
-    chunks = list(il.starmap(slice_list, zip([input_list] * n_lists, inds)))
-    return chunks
 
 
 def load_params(model_id):

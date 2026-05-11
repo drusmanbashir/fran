@@ -39,7 +39,7 @@ if __name__ == "__main__":
         output_folder=fixed_fldr,
     )
     Rs.setup(overwrite=overwrite)
-    Rs.process()
+    Rs.run(overwrite=overwrite)
     # %%
     if not "labels_all" in P.global_properties.keys():
         P.set_lm_groups(plan["lm_groups"])
@@ -71,5 +71,5 @@ if __name__ == "__main__":
         folder_suffix=plan["plan_name"],
     )
     L.setup(overwrite=overwrite)
-    L.process()
+    L.run(overwrite=overwrite)
 # %%

@@ -22,9 +22,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from utilz.helpers import DictToAttr, ask_proceed, find_matching_fn, load_dict, np, pd, set_autoreload, str_to_path, tr
+from utilz.helpers import (
+    DictToAttr,
+    find_matching_fn,
+    load_dict,
+    np,
+    pd,
+    str_to_path,
+    tr,
+)
 
-set_autoreload()
 
 sys.path += ["/home/ub/Dropbox/code"]
 from utilz.fileio import load_yaml, maybe_makedirs, save_dict
@@ -181,7 +188,6 @@ class Project(DictToAttr):
             self.add_data(datasources, test)
         else:
             self.save_global_properties()
-
 
     def _init_global_properties(self, mnemonic):
         self.global_properties = {
@@ -495,18 +501,16 @@ class Project(DictToAttr):
             Path(COMMON_PATHS["rapid_access_folder"]) / self.project_title
         )
         self.project_folder = Path(COMMON_PATHS["projects_folder"]) / self.project_title
-        cold_datasets_folder = (
-            Path(COMMON_PATHS["cold_storage_folder"]) / "datasets"
-        )
+        cold_datasets_folder = Path(COMMON_PATHS["cold_storage_folder"]) / "datasets"
 
-        self.raw_data_folder = cold_datasets_folder / (
-            "raw_data/" + self.project_title
+        self.raw_data_folder = cold_datasets_folder / ("raw_data/" + self.project_title)
+        self.slow_access_folder = cold_datasets_folder / (
+            "preprocessed/" + self.project_title
         )
-        self.slow_access_folder = cold_datasets_folder/ ("preprocessed/" + self.project_title)
-        self.fixed_spacing_folder = self.slow_access_folder/"fixed_spacing"
-        self.fixed_size_folder =self.rapid_access_folder / ("fixed_size") 
-        self.dot_folder = self.rapid_access_folder/("dot")
-        
+        self.fixed_spacing_folder = self.slow_access_folder / "fixed_spacing"
+        self.fixed_size_folder = self.rapid_access_folder / ("fixed_size")
+        self.dot_folder = self.rapid_access_folder / ("dot")
+
         self.predictions_folder = Path(COMMON_PATHS["cold_storage_folder"]) / (
             "predictions/" + self.project_title
         )
@@ -1221,6 +1225,7 @@ class Project(DictToAttr):
 if __name__ == "__main__":
     from fran.utils.common import *
     from fran.configs.parser import ConfigMaker
+
     P = Project(project_title="kits23")
     projs = ["test"]
     P = Project(project_title=projs[0])
@@ -1228,8 +1233,10 @@ if __name__ == "__main__":
 
 # %%
     P = Project(project_title="test")
-    P.create("test",datasources=[DS.drli_short, DS.lidc_short, DS.kits23_short,DS.litq])
-    P.add_data([DS.drli_short, DS.lidc_short, DS.kits23_short,DS.nodes])
+    P.create(
+        "test", datasources=[DS.drli_short, DS.lidc_short, DS.kits23_short, DS.litq]
+    )
+    P.add_data([DS.drli_short, DS.lidc_short, DS.kits23_short, DS.nodes])
     P.maybe_store_projectwide_properties()
     P.delete()
     P._create_folds(overwrite=True)
@@ -1246,7 +1253,7 @@ if __name__ == "__main__":
     # P = Project(project_title="bones")
     # P.add_data([DS["drli_short"], DS["lidc"]])
     P.add_data([DS["curvaspdac"], DS["pancreasmsd07"]])
-    # %%
+# %%
 
     P.maybe_store_projectwide_properties()
     len(P.get_train_val_case_ids(0, ds="lidc")[0])
@@ -1255,7 +1262,8 @@ if __name__ == "__main__":
 #     valid_projects = "nodes","lidc","totalseg", "litsmc" ,"pancreas", "colon"
 #     for proj in valid_projects:
 #         pp.remove(proj)
-# # # %%
+# %%
 # #
 #
 # %%
+

@@ -12,7 +12,6 @@ import ray
 import torch
 from fran.inference.cascade_yolo import LocaliserInfererPT
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
-from fran.preprocessing.preprocessor import DEFAULT_HDF5_SRC_DIMS
 from fran.preprocessing.rayworker_base import RayWorkerBase
 from fran.transforms.spatialtransforms import (
     CropByYoloWithForegroundFallbackd,
@@ -288,10 +287,9 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
         self.I.run(imgs, overwrite=False)
         self.attach_bboxes(classes_in_bbox)
 
-    def process(
+    def run(
         self,
         overwrite=None,
-        src_dims=DEFAULT_HDF5_SRC_DIMS,
         cases_per_shard=5,
         max_shard_bytes=None,
         overwrite_hdf5_shards=False,
@@ -300,9 +298,8 @@ class RegionBoundedDataGenerator(LabelBoundedDataGenerator):
         num_processes=8,
     ):
         self.maybe_infer_bboxes()
-        return super().process(
+        return super().run(
             overwrite=overwrite,
-            src_dims=src_dims,
             cases_per_shard=cases_per_shard,
             max_shard_bytes=max_shard_bytes,
             overwrite_hdf5_shards=overwrite_hdf5_shards,
@@ -379,7 +376,7 @@ if __name__ == "__main__":
 # %%
 
 # %%
-    R.process()
+    R.run(overwrite=overwrite, num_processes=num_processes)
 # %%
 
 # %%  # T:block_start|RegionBoundedDataGenerator.maybe_infer_bboxes
@@ -554,7 +551,7 @@ if __name__ == "__main__":
     R.setup(
         overwrite=overwrite, device="cpu", num_processes=num_processes, debug=debug_
     )
-    R.process()
+    R.run(overwrite=overwrite, num_processes=num_processes)
 # %%
     R.mini_dfs = R.split_dataframe_for_workers(R.df, num_processes)
     mini_df = R.mini_dfs[0].iloc[:3]
@@ -573,7 +570,7 @@ if __name__ == "__main__":
     R.mini_dfs = R.split_dataframe_for_workers(
         R.df, R.num_processes
     )  # T:self_ref|self.mini_dfs = self.split_dataframe_for_workers(self.df, self.num_processes)
-    process_result = super().process()  # T:return|return super().process()
+    run_result = super().run()  # T:return|return super().run()
     # end PythonMethodScratch  # T:block_end|RegionBoundedDataGenerator.process
 # %%
     a = R.mini_dfs[0].iloc[:3]

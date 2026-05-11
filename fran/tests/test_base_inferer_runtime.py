@@ -54,8 +54,8 @@ def test_run_returns_last_processed_sublist(monkeypatch):
     monkeypatch.setattr(inferer, "maybe_filter_images", lambda data, overwrite=False: data)
     monkeypatch.setattr(
         base_module,
-        "list_to_chunks",
-        lambda data, chunksize: [["case_001"], ["case_002"], ["case_003"]],
+        "chunks",
+        lambda data, n_sized_chunks=None, n_chunks=None: [["case_001"], ["case_002"], ["case_003"]],
     )
     monkeypatch.setattr(
         inferer,
@@ -84,7 +84,11 @@ def test_pt_run_returns_last_processed_sublist_and_losses(monkeypatch):
     inferer = pt_module.BaseInfererPT.__new__(pt_module.BaseInfererPT)
     monkeypatch.setattr(inferer, "setup", lambda: None)
     monkeypatch.setattr(inferer, "maybe_filter_images", lambda imgs, overwrite=False: imgs)
-    monkeypatch.setattr(pt_module, "list_to_chunks", lambda imgs, chunksize: [["case_001"], ["case_002"]])
+    monkeypatch.setattr(
+        pt_module,
+        "chunks",
+        lambda imgs, n_sized_chunks=None, n_chunks=None: [["case_001"], ["case_002"]],
+    )
     def process_imgs_sublist(imgs_sublist, gt_fldr=None):
         inferer.losses.append({"case_id": imgs_sublist[0]})
         return imgs_sublist[0]

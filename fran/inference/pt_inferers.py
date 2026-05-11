@@ -7,10 +7,10 @@ from monai.transforms.io.dictionary import LoadImaged, SaveImaged
 from monai.utils.enums import LossReduction
 from torch.utils.data import DataLoader
 from utilz.cprint import cprint
-from utilz.helpers import find_matching_fn
+from utilz.helpers import chunks, find_matching_fn
 
 from fran.inference.base import BaseInferer
-from fran.inference.helpers import list_to_chunks, load_images_pt
+from fran.inference.helpers import load_images_pt
 from fran.managers.wandb.wandb import WandbManager, download_path_no_wandb, download_wandb_checkpoint
 from fran.transforms.imageio import LoadImage, TorchReader, TorchWriter
 
@@ -66,7 +66,7 @@ class BaseInfererPT(BaseInferer):
         self.losses=[]
         self.setup()
         imgs = self.maybe_filter_images(imgs, overwrite)
-        for imgs_sublist in list_to_chunks(imgs, chunksize):
+        for imgs_sublist in chunks(imgs, n_sized_chunks=chunksize):
             output = self.process_imgs_sublist(imgs_sublist, gt_fldr)
         return output, self.losses
 
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     devices = [0]
     T.setup()
     imgs = T.maybe_filter_images(imgs, overwrite)
-    # imgs = list_to_chunks(imgs, chunksize)
+    # imgs = chunks(imgs, n_sized_chunks=chunksize)
     imgs_sublist = val_fns
 
     outs = T.run(imgs_sublist, gt_fldr,overwrite=True)

@@ -2,9 +2,6 @@
 from __future__ import annotations
 
 import os
-from utilz.helpers import set_autoreload
-
-set_autoreload()
 
 from pathlib import Path
 from typing import Optional
