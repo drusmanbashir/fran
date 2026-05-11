@@ -812,25 +812,7 @@ class Preprocessor:
                     shutil.rmtree(pth)
         return shard_paths
 
-
-    def postprocess(self, overwrite=False, num_processes=8):
-        if overwrite is False and self.postprocess_artifacts_missing() is False:
-            cprint("Postprocess: skip existing artifacts", "cyan")
-        else:
-            cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
-            self._write_results_csv(num_processes=num_processes, overwrite=overwrite)
-            self._store_dataset_summary(num_processes=num_processes)
-            store_label_count(self.output_folder, num_processes=num_processes)
-            create_dataset_stats_artifacts(
-                lms_folder=self.output_folder / "lms",
-                gif=self.store_gifs,
-                label_stats=self.store_label_stats,
-                gif_window=infer_dataset_stats_window(self.project),
-            )
-
-
-
-    def process(
+    def run(
         self,
         overwrite=False,
         cases_per_shard=5,
@@ -863,75 +845,22 @@ class Preprocessor:
         )
         self.postprocess(overwrite=overwrite, num_processes=num_processes)
 
-    def copy_to_rapid_access(
-        self,
-        pt: bool = True,
-        shards: bool = True,
-        overwrite: bool = False,
-    ) -> None:
-        """
-        Copy preprocessed files from cold storage to project rapid_access SSD.
-        Cold storage originals are never touched.
-
-        Args:
-            pt:       Copy .pt tensor folders (images/, lms/, indices/)
-            shards:   Copy HDF5 shard folder (hdf5_shards/src_<dims>/)
-            overwrite: Re-copy even if destination files already exist
-        """
-        from fran.preprocessing.hdf5_shards import copy_folder_to_rapid_access
-
-        rapid_base = Path(self.project.rapid_access_folder)
-        output_folder = Path(self.output_folder)
-
-        try:
-            rel_output = output_folder.relative_to(
-                Path(self.project.fixed_spacing_folder).parent.parent
+    def postprocess(self, overwrite=False, num_processes=8):
+        if overwrite is False and self.postprocess_artifacts_missing() is False:
+            cprint("Postprocess: skip existing artifacts", "cyan")
+        else:
+            cprint("Postprocess: full-folder stats/artifacts scan ...", "cyan")
+            self._write_results_csv(num_processes=num_processes, overwrite=overwrite)
+            self._store_dataset_summary(num_processes=num_processes)
+            store_label_count(self.output_folder, num_processes=num_processes)
+            create_dataset_stats_artifacts(
+                lms_folder=self.output_folder / "lms",
+                gif=self.store_gifs,
+                label_stats=self.store_label_stats,
+                gif_window=infer_dataset_stats_window(self.project),
             )
-        except ValueError:
-            rel_output = (
-                output_folder.relative_to(output_folder.anchor)
-                if output_folder.is_absolute()
-                else output_folder
-            )
-        rapid_output = rapid_base / rel_output
 
-        if pt:
-            for subfolder in ("images", "lms", "indices"):
-                src = self.output_folder / subfolder
-                if src.exists():
-                    copy_folder_to_rapid_access(
-                        src,
-                        rapid_output / subfolder,
-                        glob="*.pt",
-                        overwrite=overwrite,
-                    )
 
-        if shards and getattr(self, "plan", None) and "src_dims" in self.plan:
-            src_dims = self.plan["src_dims"]
-            src_tag = "_".join(str(int(v)) for v in src_dims)
-            src = self.output_folder / "hdf5_shards" / f"src_{src_tag}"
-            if src.exists():
-                copy_folder_to_rapid_access(
-                    src,
-                    rapid_output / "hdf5_shards" / f"src_{src_tag}",
-                    glob="*",
-                    overwrite=overwrite,
-                )
-    #
-    # def get_tensor_folder_stats(self,num_processes=8, debug=True):
-    #     analysis = analyze_tensor_data_folder(
-    #         self.output_folder / ("images"),
-    #         glob_pattern="*",
-    #         debug=debug,
-    #         recursive=False,
-    #         include_per_file_stats=True,
-    #         num_processes=num_processes,
-    #     )
-    #     results = analysis["per_file_stats"]
-    #     self.shapes = [a["shape"] for a in results]
-    #     self.results = pd.DataFrame(results)[["max", "min", "median"]]
-    #     self._store_dataset_summary(num_processes=num_processes, debug=debug)
-    #
     def _store_dataset_summary(self, num_processes=8, debug=False):
         self.image_folder_stats, self.lm_folder_stats = (
             self._collect_output_folder_stats(num_processes=num_processes, debug=debug)
@@ -1059,6 +988,76 @@ class Preprocessor:
     def should_use_ray(self, num_processes=8):
         debug = getattr(self, "debug", False)
         return (num_processes > 1) and (not debug)
+
+    def copy_to_rapid_access(
+        self,
+        pt: bool = True,
+        shards: bool = True,
+        overwrite: bool = False,
+    ) -> None:
+        """
+        Copy preprocessed files from cold storage to project rapid_access SSD.
+        Cold storage originals are never touched.
+
+        Args:
+            pt:       Copy .pt tensor folders (images/, lms/, indices/)
+            shards:   Copy HDF5 shard folder (hdf5_shards/src_<dims>/)
+            overwrite: Re-copy even if destination files already exist
+        """
+        from fran.preprocessing.hdf5_shards import copy_folder_to_rapid_access
+
+        rapid_base = Path(self.project.rapid_access_folder)
+        output_folder = Path(self.output_folder)
+
+        try:
+            rel_output = output_folder.relative_to(
+                Path(self.project.fixed_spacing_folder).parent.parent
+            )
+        except ValueError:
+            rel_output = (
+                output_folder.relative_to(output_folder.anchor)
+                if output_folder.is_absolute()
+                else output_folder
+            )
+        rapid_output = rapid_base / rel_output
+
+        if pt:
+            for subfolder in ("images", "lms", "indices"):
+                src = self.output_folder / subfolder
+                if src.exists():
+                    copy_folder_to_rapid_access(
+                        src,
+                        rapid_output / subfolder,
+                        glob="*.pt",
+                        overwrite=overwrite,
+                    )
+
+        if shards and getattr(self, "plan", None) and "src_dims" in self.plan:
+            src_dims = self.plan["src_dims"]
+            src_tag = "_".join(str(int(v)) for v in src_dims)
+            src = self.output_folder / "hdf5_shards" / f"src_{src_tag}"
+            if src.exists():
+                copy_folder_to_rapid_access(
+                    src,
+                    rapid_output / "hdf5_shards" / f"src_{src_tag}",
+                    glob="*",
+                    overwrite=overwrite,
+                )
+    #
+    # def get_tensor_folder_stats(self,num_processes=8, debug=True):
+    #     analysis = analyze_tensor_data_folder(
+    #         self.output_folder / ("images"),
+    #         glob_pattern="*",
+    #         debug=debug,
+    #         recursive=False,
+    #         include_per_file_stats=True,
+    #         num_processes=num_processes,
+    #     )
+    #     results = analysis["per_file_stats"]
+    #     self.shapes = [a["shape"] for a in results]
+    #     self.results = pd.DataFrame(results)[["max", "min", "median"]]
+    #     self._store_dataset_summary(num_processes=num_processes, debug=debug)
+    #
 
     @cached_property
     def logger(self):

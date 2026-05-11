@@ -414,6 +414,7 @@ if __name__ == "__main__":
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     Rs = NiftiToTorchDataGenerator(P, plan, P.raw_data_folder)
     Rs.setup()
+# %%
     Rs.process(overwrite=False, num_processes=16)
 
     Rs.postprocess(num_processes=16)
@@ -802,7 +803,7 @@ if __name__ == "__main__":
     Rs.plan["datasources"] = datasources
 
 # %%
-    src_dims = None
+    F=Rs
     cases_per_shard = 5
     max_shard_bytes = None
     overwrite_hdf5_shards = False
@@ -814,7 +815,7 @@ if __name__ == "__main__":
     writer = HDF5ShardGenerator(
         pt_folder=F.output_folder,  # T:self_ref|    pt_folder=self.output_folder,
         shard_folder=F.hdf5_output_folder,  # T:self_ref|    shard_folder=self.hdf5_output_folder,
-        src_dims=F.plan["src_dims"] if src_dims is None else src_dims,  # T:self_ref|    src_dims=self.plan["src_dims"] if src_dims is None else src_dims,
+        src_dims=F.plan["src_dims"] ,
         cases_per_shard=cases_per_shard,
         max_shard_bytes=max_shard_bytes,
         overwrite=overwrite_hdf5_shards,
@@ -826,6 +827,7 @@ if __name__ == "__main__":
         case_ids=df_hdf5_run["case_id"].tolist(),
         num_processes=num_processes,
     )
+# %%
     try:
         shard_paths = writer.run(num_processes=num_processes)
     except Exception as e:
