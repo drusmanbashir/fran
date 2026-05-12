@@ -1,6 +1,7 @@
 import math
 from pathlib import Path
 from typing import List, Optional
+import itertools as il
 
 import itk
 import numpy as np

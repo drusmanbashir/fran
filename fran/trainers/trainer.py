@@ -120,9 +120,7 @@ class Trainer:
         self.checkpoint_kwargs = {}
         self.early_stopping_kwargs = {
             "monitor": "val0_loss_dice",
-            "check_on_train_epoch_end": False,
         }
-
 
     def available_checkpoint_epochs(self) -> list[tuple[int, Path]]:
         if self.ckpt is not None:
@@ -677,7 +675,7 @@ class Trainer:
 
 
 # %%
-# SECTION: -------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR> <CR>
+# SECTION: -------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.utils.common import *
@@ -695,7 +693,6 @@ if __name__ == "__main__":
     planT = conf["plan_train"]
     planV = conf["plan_valid"]
     pp(planT)
-
     planT["mode"]
     # add_plan_to_db(plan,"/r/datasets/preprocessed/totalseg/lbd/spc_100_100_100_plan5",P.db)
     # if (lm==3).any():
@@ -711,12 +708,12 @@ if __name__ == "__main__":
     # counts = df.groupby("case_id").size()
     # counts2 = counts.sort_values(ascending=False)
     # bb= counts2.index[:200]
-# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
     bs = 2
     device_id = 0
-    batchsize_finder = False
     batchsize_finder = True
+    batchsize_finder = False
     batch_tfms = True
     batch_tfms = False
     wandb = False
@@ -725,8 +722,8 @@ if __name__ == "__main__":
     override_dm = True
 
     # run_name = "KITS23-SIRIG"
-    run_name = "TOTALSEG-NJUGU"
     run_name = None
+    run_name = "TOTALSEG-HEDA"
     tags = []
     description = f""
     conf["dataset_params"]["fold"] = 0
@@ -739,7 +736,7 @@ if __name__ == "__main__":
     val_every_n_epochs = 1
     train_indices = 50
 # %%
-# SECTION:--------------------  TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
+# SECTION:--------------------  TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     Tm = Trainer(P.project_title, conf, run_name)
 # %%
     Tm.setup(
