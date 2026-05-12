@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fran.callback.base import BatchSizeSafetyMargin
-from fran.callback.case_recorder import CaseIDRecorder
+from fran.callback.case_recorder import CaseIDRecorder, infer_labels_and_update_out_channels
 from fran.callback.wandb.wandb import WandbLogBestCkpt
+from fran.managers.data.main import DataManagerDual
+from fran.managers.data.run_through import DataManagerRT, DataManagerRTBTfms
 from fran.trainers.trainer import Trainer, TrainerL
 from fran.utils.batch_size_scaling import _adjust_batch_size, _reset_progress, _try_loop_run
 from lightning.pytorch.callbacks import Callback
@@ -297,11 +299,12 @@ class TrainerRT(Trainer):
         lr_floor=None,
         wandb_grid_epoch_freq: int = 5,
         permanent_checkpoint_every_n_epochs: int = 100,
-        dual_ssd: bool = False,
         batch_tfms: bool = False,
         val_device: str = "cuda",
     ):
-        """Run-through setup without validation or early-stopping public arguments."""
+        """Run-through setup without validation or early-stopping public arguments. 
+        no dual-ssd option"""
+
         return super().setup(
             batch_size=batch_size,
             train_indices=train_indices,
@@ -322,7 +325,7 @@ class TrainerRT(Trainer):
             lr_floor=lr_floor,
             wandb_grid_epoch_freq=wandb_grid_epoch_freq,
             permanent_checkpoint_every_n_epochs=permanent_checkpoint_every_n_epochs,
-            dual_ssd=dual_ssd,
+            dual_ssd=False,
             batch_tfms=batch_tfms,
             val_device=val_device,
         )
@@ -366,6 +369,29 @@ class TrainerRT(Trainer):
                 BatchSizeSafetyMargin(),
             ]
         return cbs, logger, profiler
+
+    def resolve_orchestrator_class(self, batch_tfms: Optional[bool] = None):
+            return DataManagerRTBTfms if batch_tfms else DataManagerRT
+
+
+    def init_dm(self):
+        dm_class = self.resolve_orchestrator_class(batch_tfms=self.batch_tfms)
+        dm =dm_class(
+                project_title=self.project.project_title,
+                configs=self.configs,
+                batch_size=self.configs["dataset_params"]["batch_size"],
+                cache_rate=self.configs["dataset_params"]["cache_rate"],
+                device=self.configs["dataset_params"].get("device", "cuda"),
+                ds_type=self.configs["dataset_params"].get("ds_type"),
+                train_indices=self.train_indices,
+                debug=self.debug,
+                batch_tfms=self.batch_tfms,
+            )
+        
+        labels_all = self.configs["plan_train"].get("labels_all")
+        if not labels_all:
+            infer_labels_and_update_out_channels(dm=dm, configs=self.configs)
+        return dm
 
 # %%
 #SECTION:-------------------- setup--------------------------------------------------------------------------------------

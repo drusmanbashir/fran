@@ -180,8 +180,8 @@ class DataManagerDualBTfms(DataManagerDual):
             val_indices=val_indices,
             val_sampling=val_sampling,
             debug=debug,
-            batch_tfms=batch_tfms,
         )
+        self.batch_tfms = batch_tfms
 
     def _create_batch_affine(self):
         affine3d = self.configs["affine3d"]

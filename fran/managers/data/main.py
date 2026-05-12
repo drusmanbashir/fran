@@ -1125,6 +1125,11 @@ class DataManager(LightningDataModule):
         )
 
     def create_valid_dataloader(self):
+
+        if isinstance(self.ds, GridPatchDataset):
+            bs = 1
+        else:
+            bs= self.effective_batch_size
         num_workers, persistent_workers = self._num_workers()
         sampler = None
         if self.val_sampling < 1.0:
@@ -1136,7 +1141,7 @@ class DataManager(LightningDataModule):
             )
         self.dl = DataLoader(
             self.ds,
-            batch_size=self.effective_batch_size,
+            batch_size=bs,
             num_workers=num_workers,
             collate_fn=self.collate_fn,
             persistent_workers=persistent_workers,
@@ -2094,4 +2099,3 @@ if __name__ == "__main__":
     M.prepare_data()
     M.setup(None)
 # %%
-

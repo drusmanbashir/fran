@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 from fran.callback.case_recorder import CaseIDRecorder
 from fran.utils.misc import parse_devices
+from utilz.stringz import headline
 
 tr = ipdb.set_trace
 
@@ -112,6 +113,7 @@ def main(args):
             setup_kwargs["val_every_n_epochs"] = args.val_every_n_epochs
         Tm.setup(**setup_kwargs)
         Tm.N.compiled = args.compiled
+
         Tm.fit()
 
 
@@ -238,17 +240,17 @@ if __name__ == "__main__":
     )
     args = parser.parse_known_args()[0]
 
-    # %%
+# %%
     # args.fold = 1
-    # args.project = "kits2"
-    #
-    # args.devices = '1'
-    #
+    # args.project = "totalseg"
+    # args.plan = 8
+    # args.devices = '0'
+    # args.val_every_n_epochs = 1
     # headline("DEVS")
     # print(args.devices)
     # print("After parse:")
     # print(parse_devices(args.devices))
-    # %%
+# %%
 
     import sys
 

@@ -5,13 +5,6 @@ import sys
 from pathlib import Path
 
 OOM_MARKERS = ("CUDA out of memory", "torch.OutOfMemoryError")
-VAL_MARKERS = (
-    "Validation ",
-    "validation_step",
-    "val_loop",
-    "evaluation_loop.py",
-    "swi_on_val_batch",
-)
 
 
 def str2bool(v: str) -> bool:
@@ -44,10 +37,6 @@ def run_stream(cmd):
 
 def is_oom(output: str) -> bool:
     return any(marker in output for marker in OOM_MARKERS)
-
-
-def is_val_oom(output: str) -> bool:
-    return is_oom(output) and any(marker in output for marker in VAL_MARKERS)
 
 
 def main():
@@ -94,7 +83,6 @@ def main():
     train_script = Path(__file__).with_name("train.py")
     bs = int(args.batch_size)
     val_device = str(args.val_device)
-    used_val_cpu_retry = False
     bsf = bool(args.batchsize_finder)
     last_rc = 1
 
@@ -150,12 +138,6 @@ def main():
         last_rc, output = run_stream(cmd)
         if last_rc == 0:
             break
-
-        if is_val_oom(output) and val_device != "cpu" and not used_val_cpu_retry:
-            val_device = "cpu"
-            used_val_cpu_retry = True
-            print("[train_retry] validation OOM detected; retrying with val_device=cpu")
-            continue
 
         if not is_oom(output):
             break

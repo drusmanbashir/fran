@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
+from fran.managers.data.batch_tfms import DataManagerBTfms, DataManagerDualBTfms
 from fran.managers.data.main import DataManagerDual
 from utilz.cprint import cprint
 
@@ -11,7 +12,6 @@ class DataManagerRT(DataManagerDual):
         project_title,
         configs: dict,
         batch_size: int,
-        manager_class,
         cache_rate=0.0,
         device="cuda",
         ds_type=None,
@@ -20,7 +20,6 @@ class DataManagerRT(DataManagerDual):
         debug=False,
         batch_tfms: bool = False,
     ):
-        self.manager_class = manager_class
         super().__init__(
             project_title=project_title,
             configs=configs,
@@ -30,7 +29,7 @@ class DataManagerRT(DataManagerDual):
             ds_type=ds_type,
             save_hyperparameters=True,
             data_folder=data_folder,
-            manager_class_train=manager_class,
+            manager_class_train=None,
             manager_class_valid=None,
             train_indices=train_indices,
             val_indices=None,
@@ -40,7 +39,9 @@ class DataManagerRT(DataManagerDual):
         )
 
     def _build_managers(self):
-        self.train_manager = self.manager_class(
+
+        inf_tr, _inf_val = self.infer_manager_classes(self.configs)
+        self.train_manager = inf_tr(
             project=self.project,
             configs=self.configs,
             batch_size=self.batch_size,
@@ -105,3 +106,9 @@ class DataManagerRT(DataManagerDual):
 
     def _validation_crash(self):
         raise RuntimeError("DataManagerRT has no validation path")
+
+
+class DataManagerRTBTfms(DataManagerRT, DataManagerDualBTfms):
+    def infer_manager_classes(self, configs) -> Tuple[type, type]:
+        return DataManagerDualBTfms.infer_manager_classes(self,configs)
+

@@ -112,7 +112,6 @@ class Trainer:
             )
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
-        self.batch_tfms = False
 
     def monitor_metric_name(self, metric: str) -> str:
         """Map validation monitors onto training metrics for run-through fits."""
@@ -120,16 +119,6 @@ class Trainer:
             return "train" + metric[3:]
         return metric
 
-    def run_through_helpers(self):
-        """Lazy imports for run-through support."""
-        from fran.managers.data.run_through import DataManagerRT
-        from fran.trainers.trainer_rt import CaseIDRecorderRT, WandbLogBestCkptRT
-
-        return SimpleNamespace(
-            DataManagerRT=DataManagerRT,
-            CaseIDRecorderRT=CaseIDRecorderRT,
-            WandbLogBestCkptRT=WandbLogBestCkptRT,
-        )
 
     def apply_monitor_metric_name(self, model: UNetManager) -> None:
         """Align model and scheduler monitors with the configured training mode."""
@@ -331,48 +320,20 @@ class Trainer:
         cache_rate = self.configs["dataset_params"]["cache_rate"]
         ds_type = self.configs["dataset_params"]["ds_type"]
         self.configs["plan_train"]["val_every_n_epochs"] = self.val_every_n_epochs
-        if self.run_through:
-            rt = self.run_through_helpers()
-            manager_class = self.resolve_datamanager(
-                self.configs["plan_train"]["mode"],
-                batch_tfms=self.batch_tfms,
-            )
-            if self.dual_ssd:
-                manager_class = dual_ssd_manager_class(manager_class)
-            dm = rt.DataManagerRT(
-                project_title=self.project.project_title,
-                configs=self.configs,
-                batch_size=self.configs["dataset_params"]["batch_size"],
-                manager_class=manager_class,
-                cache_rate=cache_rate,
-                device=self.configs["dataset_params"].get("device", "cuda"),
-                ds_type=ds_type,
-                train_indices=self.train_indices,
-                debug=self.debug,
-                batch_tfms=self.batch_tfms,
-            )
-        else:
-            manager_class_train = self.resolve_datamanager(
-                self.configs["plan_train"]["mode"]
-            )
-            manager_class_valid = self.resolve_datamanager(
-                self.configs["plan_valid"]["mode"]
-            )
-            dm_class = self.resolve_orchestrator_class()
-            dm = dm_class(
-                project_title=self.project.project_title,
-                configs=self.configs,
-                batch_size=self.configs["dataset_params"]["batch_size"],
-                cache_rate=cache_rate,
-                device=self.configs["dataset_params"].get("device", "cuda"),
-                ds_type=ds_type,
-                manager_class_train=manager_class_train,
-                manager_class_valid=manager_class_valid,
-                train_indices=self.train_indices,
-                val_indices=self.val_indices,
-                val_sampling=self.val_sampling,
-                batch_tfms=self.batch_tfms,
-            )
+
+        dm_class = self.resolve_orchestrator_class()
+        dm = dm_class(
+            project_title=self.project.project_title,
+            configs=self.configs,
+            batch_size=self.configs["dataset_params"]["batch_size"],
+            cache_rate=cache_rate,
+            device=self.configs["dataset_params"].get("device", "cuda"),
+            ds_type=ds_type,
+            train_indices=self.train_indices,
+            val_indices=self.val_indices,
+            val_sampling=self.val_sampling,
+            batch_tfms=self.batch_tfms,
+        )
 
         labels_all = self.configs["plan_train"].get("labels_all")
         if not labels_all:
@@ -452,11 +413,10 @@ class Trainer:
         print("Data Manager initialized.\n {}".format(self.D))
 
     def resolve_orchestrator_class(self, batch_tfms: Optional[bool] = None):
-        if batch_tfms is None:
-            batch_tfms = self.batch_tfms
         if self.dual_ssd:
             return DataManagerDualSSDBTfms if batch_tfms else DataManagerDualSSD
-        return DataManagerDualBTfms if batch_tfms else DataManagerDual
+        else:
+            return DataManagerDualBTfms if batch_tfms else DataManagerDual
 
     def set_lr(self, lr):
         if self.ckpt:
@@ -764,10 +724,10 @@ if __name__ == "__main__":
     from utilz.helpers import pp
 
     P = Project("lidc")
-    P = Project("totalseg")
     P = Project("kits23")
+    P = Project("totalseg")
     C = ConfigMaker(P)
-    C.setup(3)
+    C.setup(8)
 
     conf = C.configs
     print(conf["model_params"])
@@ -793,11 +753,12 @@ if __name__ == "__main__":
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
-    bs = 16
+    bs = 4
     device_id = 0
     batchsize_finder = True
     batchsize_finder = False
     batch_tfms=True
+    batch_tfms=False
     wandb = False
     wandb = True
     override_dm = False
@@ -815,7 +776,7 @@ if __name__ == "__main__":
     compiled = False
     cbs = []
     wandb_grid_epoch_freq = 20
-    val_every_n_epochs = 2
+    val_every_n_epochs = 1
     train_indices = 20
 # %%
 # SECTION:--------------------  TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
@@ -865,6 +826,12 @@ if __name__ == "__main__":
         print(batch["image"].shape)
 
 # %%
+    tmt.setup()
+    dl = tmv.dl
+    iteri = iter(dl)
+    batch = next(iteri)
+    print(batch["image"].device)
+# %%
     ds = tmv.ds
     ds[0]
     dici = ds[0]
@@ -883,5 +850,4 @@ if __name__ == "__main__":
     device = "cpu"
     sw_device = "cuda:1"
     bs = 1  # start lower if you are hitting OOM
-# %%
 # %%
