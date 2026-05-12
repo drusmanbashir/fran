@@ -753,10 +753,10 @@ if __name__ == "__main__":
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
-    bs = 4
+    bs = 2
     device_id = 0
-    batchsize_finder = True
     batchsize_finder = False
+    batchsize_finder = True
     batch_tfms=True
     batch_tfms=False
     wandb = False
@@ -777,7 +777,7 @@ if __name__ == "__main__":
     cbs = []
     wandb_grid_epoch_freq = 20
     val_every_n_epochs = 1
-    train_indices = 20
+    train_indices = 50
 # %%
 # SECTION:--------------------  TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     Tm = Trainer(P.project_title, conf, run_name)

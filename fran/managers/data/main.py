@@ -1125,11 +1125,16 @@ class DataManager(LightningDataModule):
         )
 
     def create_valid_dataloader(self):
-
-        if isinstance(self.ds, GridPatchDataset):
+        # if isinstance(self.ds, GridPatchDataset):
+        #     bs = 1
+        # else:
+        #     bs= self.effective_batch_size
+        if self.plan["mode"] in ["source", "ldb", "rbd"]:
             bs = 1
         else:
             bs= self.effective_batch_size
+
+
         num_workers, persistent_workers = self._num_workers()
         sampler = None
         if self.val_sampling < 1.0:
@@ -1646,7 +1651,7 @@ if __name__ == "__main__":
     tmt.hdf5_folder.exists()
     tmv.transforms_dict
 # %%
-    dl = tmt.dl
+    dl = tmv.dl
     iteri = iter(dl)
     batch = next(iteri)
 # %%
@@ -1654,7 +1659,9 @@ if __name__ == "__main__":
     print(batch['image'].meta['filename_or_obj'])
 # %%
     for x, batch in enumerate(iteri):
+        headline("Next batch")
         batch = next(iteri)
+        print(batch["image"].meta["filename_or_obj"])
         print(batch["image"].shape)
 # %%
 
