@@ -1620,7 +1620,7 @@ if __name__ == "__main__":
     conf = CL.configs
 # %%
 # SECTION:-------------------- LIDC-------------------------------------------------------------------------------------- <CR>
-    batch_size = 4
+    batch_size = 1
     ds_type = "lmdb"
     ds_type = None
     proj_tit = proj.project_title
@@ -1643,6 +1643,11 @@ if __name__ == "__main__":
 # %%
     dl = tmt.dl
     iteri = iter(dl)
+    batch = next(iteri)
+# %%
+    print(batch['image'].shape)
+    print(batch['image'].meta['filename_or_obj'])
+# %%
     for x, batch in enumerate(iteri):
         batch = next(iteri)
         print(batch["image"].shape)

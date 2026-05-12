@@ -213,7 +213,6 @@ def patch_collated(batch):
 
 
 def source_collated(batch):
-
     imgs = []
     labels = []
     fns_imgs = []
@@ -224,7 +223,7 @@ def source_collated(batch):
         labels.extend(labels_)
         fns_imgs.extend(fns_imgs_)
         fns_labels.extend(fns_labels_)
-    if len(batch) == 1:
+    if len(imgs) == 1:
         fns_imgs = fns_imgs[0]
         fns_labels = fns_labels[0]
     imgs_out = torch.stack(imgs, 0)

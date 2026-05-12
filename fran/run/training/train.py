@@ -50,18 +50,6 @@ class UniqueArgValue(argparse.Action):
         setattr(namespace, self.dest, values)
 
 
-def derive_train_indices(ds: str, train_indices: int):
-    assert isinstance(train_indices, int), "train indices must be an int"
-    fldr = ds["folder"]
-    fldr = Path(fldr)
-    fn = fldr / ("dataset_stats/lesion_stats.csv")
-    df = pd.read_csv(fn)
-    counts = df.groupby("case_id").size()
-    counts2 = counts.sort_values(ascending=False)
-    train_indices = min(train_indices, len(counts2))
-    bb = counts2.index[:train_indices]
-    return bb
-
 
 def main(args):
 
@@ -83,15 +71,6 @@ def main(args):
         # --- Project & configs ----------------------------------------------------
         P = Project(args.project_title)
         devices = parse_devices(args.devices)
-        if args.train_indices is not None:
-            datasources = P.global_properties["datasources"]
-            if len(datasources) != 1:
-                print("train_indices can only be used with a single datasource")
-                raise NotImplementedError
-            train_indices = derive_train_indices(datasources[0], args.train_indices)
-        else:
-            print("No train indices passed", args.train_indices)
-            train_indices = None
         C = ConfigMaker(P)
         plan = int(args.plan)
         C.setup(plan)
@@ -124,7 +103,7 @@ def main(args):
             wandb=args.wandb,
             description=args.description,
             batchsize_finder=args.batchsize_finder,
-            train_indices=train_indices,
+            train_indices=args.train_indices,
             dual_ssd=args.dual_ssd,
             batch_tfms=args.batch_tfms,
             val_device=args.val_device,

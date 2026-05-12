@@ -229,10 +229,6 @@ class Trainer:
             # batch does not pre-allocate GPU state before the probe downshifts it.
             batch_size_for_setup = 2 if batch_size is None else min(int(batch_size), 2)
         effective_val_every_n_epochs = 1 if self.run_through else int(val_every_n_epochs)
-        if self.run_through is False:
-            assert (
-                effective_val_every_n_epochs % 2 == 0
-            ), "val_every_n_epochs must be an even integer"
         if isinstance(train_indices, str):
             train_indices = train_indices.strip()
             if train_indices == "" or train_indices.lower() in {"none", "null"}:
