@@ -92,6 +92,11 @@ class FranBatchSizeFinder(BatchSizeFinder):
 class Trainer:
     """Trainer variant with W&B logging/callback plumbing."""
 
+    case_id_recorder_cls = CaseIDRecorder
+    wandb_best_ckpt_cls = WandbLogBestCkpt
+    batchsize_finder_cls = FranBatchSizeFinder
+    monitor_metric_name = "val0_loss"
+
     def __init__(
         self,
         project_title,
@@ -112,21 +117,12 @@ class Trainer:
             )
         self.ckpt = None if run_name is None else checkpoint_from_model_id(run_name)
         self.qc_configs(configs, self.project)
+        self.checkpoint_kwargs = {}
+        self.early_stopping_kwargs = {
+            "monitor": "val0_loss_dice",
+            "check_on_train_epoch_end": False,
+        }
 
-    def monitor_metric_name(self, metric: str) -> str:
-        """Map validation monitors onto training metrics for run-through fits."""
-        if self.run_through and isinstance(metric, str) and metric.startswith("val"):
-            return "train" + metric[3:]
-        return metric
-
-
-    def apply_monitor_metric_name(self, model: UNetManager) -> None:
-        """Align model and scheduler monitors with the configured training mode."""
-        model.monitor = self.monitor_metric_name(model.monitor)
-        if "scheduler_monitor" in model.model_params:
-            model.model_params["scheduler_monitor"] = self.monitor_metric_name(
-                model.model_params["scheduler_monitor"]
-            )
 
     def available_checkpoint_epochs(self) -> list[tuple[int, Path]]:
         if self.ckpt is not None:
@@ -201,13 +197,9 @@ class Trainer:
         batchsize_finder=False,
         override_dm_checkpoint=False,
         early_stopping=True,
-        early_stopping_monitor="val0_loss_dice",
-        early_stopping_mode="min",
         early_stopping_patience=30,
-        early_stopping_min_delta=0.0,
         lr_floor=None,
         wandb_grid_epoch_freq: int = 5,
-        permanent_checkpoint_every_n_epochs: int = 100,
         dual_ssd: bool = False,
         batch_tfms: bool = False,
         val_device: str = "cuda",
@@ -217,7 +209,9 @@ class Trainer:
             # Build dataloaders at the finder start size so a larger user-requested
             # batch does not pre-allocate GPU state before the probe downshifts it.
             batch_size_for_setup = 2 if batch_size is None else min(int(batch_size), 2)
-        effective_val_every_n_epochs = 1 if self.run_through else int(val_every_n_epochs)
+        effective_val_every_n_epochs = (
+            1 if self.run_through else int(val_every_n_epochs)
+        )
         if isinstance(train_indices, str):
             train_indices = train_indices.strip()
             if train_indices == "" or train_indices.lower() in {"none", "null"}:
@@ -283,15 +277,8 @@ class Trainer:
             tags=tags,
             description=description,
             early_stopping=early_stopping,
-            early_stopping_monitor=early_stopping_monitor,
-            early_stopping_mode=early_stopping_mode,
-            early_stopping_patience=early_stopping_patience_epochs,
-            early_stopping_min_delta=early_stopping_min_delta,
             lr_floor=lr_floor,
             wandb_grid_epoch_freq=int(wandb_grid_epoch_freq),
-            permanent_checkpoint_every_n_epochs=int(
-                permanent_checkpoint_every_n_epochs
-            ),
         )
         self._ensure_local_ckpt_on_wandb_resume(logger)
 
@@ -445,38 +432,21 @@ class Trainer:
         tags,
         description="",
         early_stopping=True,
-        early_stopping_monitor="val0_loss_dice",
-        early_stopping_mode="min",
-        early_stopping_patience=30,
-        early_stopping_min_delta=0.0,
         lr_floor=None,
         wandb_grid_epoch_freq: int = 5,
-        permanent_checkpoint_every_n_epochs: int = 100,
     ):
         """Build callbacks, logger, and profiler for the current training mode."""
-        checkpoint_monitor = self.monitor_metric_name("val0_loss")
-        early_stopping_monitor = self.monitor_metric_name(early_stopping_monitor)
-        checkpoint_filename = f"{{epoch}}-{{{checkpoint_monitor}:.2f}}"
-        case_id_recorder_cls = CaseIDRecorder
-        wandb_best_ckpt_cls = WandbLogBestCkpt
-        batch_size_finder_cls = FranBatchSizeFinder
-        checkpoint_kwargs = {}
-        early_stopping_kwargs = {}
-        if self.run_through:
-            rt = self.run_through_helpers()
-            case_id_recorder_cls = rt.CaseIDRecorderRT
-            wandb_best_ckpt_cls = rt.WandbLogBestCkptRT
-            checkpoint_kwargs["save_on_train_epoch_end"] = True
-            early_stopping_kwargs["check_on_train_epoch_end"] = True
 
         cbs = [
-            case_id_recorder_cls(
+            self.case_id_recorder_cls(
                 vip_label=self.configs["plan_train"].get("vip_label", 1), freq=20
             )
         ]
         if batchsize_finder == True:
             cbs += [
-                batch_size_finder_cls(batch_arg_name="batch_size", mode="binsearch"),
+                self.batchsize_finder_cls(
+                    batch_arg_name="batch_size", mode="binsearch"
+                ),
                 BatchSizeSafetyMargin(),
             ]
 
@@ -487,21 +457,22 @@ class Trainer:
             ModelCheckpoint(
                 save_top_k=2,
                 save_last=True,
-                monitor=checkpoint_monitor,
+                monitor=self.monitor_metric_name,
                 every_n_epochs=10,
-                filename=checkpoint_filename,
                 enable_version_counter=True,
                 auto_insert_metric_name=True,
-                **checkpoint_kwargs,
+                filename=f"{{epoch}}-{{{self.monitor_metric_name}:.2f}}",
+                mode="min",
+                **self.checkpoint_kwargs,
             ),
             ModelCheckpoint(  # 2nd checkpointer
                 save_top_k=-1,
                 save_last=True,
-                every_n_epochs=int(permanent_checkpoint_every_n_epochs),
+                every_n_epochs=100,
                 filename="epoch{epoch:04d}-snapshot",
                 enable_version_counter=False,
                 auto_insert_metric_name=False,
-                **checkpoint_kwargs,
+                **self.checkpoint_kwargs,
             ),
             LearningRateMonitor(logging_interval="epoch"),
         ]
@@ -509,11 +480,10 @@ class Trainer:
         if early_stopping:
             cbs += [
                 EarlyStopping(
-                    monitor=early_stopping_monitor,
-                    mode=early_stopping_mode,
-                    patience=int(early_stopping_patience),
-                    min_delta=float(early_stopping_min_delta),
-                    **early_stopping_kwargs,
+                    mode="min",
+                    patience=30,
+                    min_delta=0.0,
+                    **self.early_stopping_kwargs,
                 )
             ]
 
@@ -554,7 +524,7 @@ class Trainer:
                     patch_size=self.configs["plan_train"]["patch_size"],
                     epoch_freq=max(1, int(wandb_grid_epoch_freq)),
                 ),
-                wandb_best_ckpt_cls(),
+                self.wandb_best_ckpt_cls(),
             ]
 
         if profiler:
@@ -610,23 +580,15 @@ class Trainer:
         cbs = trn.callbacks
         cbb = [c for c in cbs if isinstance(c, cb)][0]
         if len(cbb) == 0:
-            print (cbs)
+            print(cbs)
             raise ValueError(f"Callback {cb} not found in trainer callbacks")
         return cbb
-
 
     def heuristic_batch_size(self):
         raise NotImplementedError
 
     def init_trainer(self, epochs):
         """Create a fresh UNetManager with monitor names normalized for this mode."""
-        if "scheduler_monitor" in self.configs["model_params"]:
-            self.configs["model_params"]["scheduler_monitor"] = (
-                self.monitor_metric_name(
-                    self.configs["model_params"]["scheduler_monitor"]
-                )
-            )
-
         N = UNetManager(
             project_title=self.project.project_title,
             configs=self.configs,
@@ -634,7 +596,6 @@ class Trainer:
             sync_dist=self.sync_dist,
             val_device=self.val_device,
         )
-        self.apply_monitor_metric_name(N)
         return N
 
     def load_trainer(self, map_location="cpu", **kwargs):
@@ -660,7 +621,6 @@ class Trainer:
                 **kwargs,
             )
         print("Model loaded from checkpoint: ", self.ckpt)
-        self.apply_monitor_metric_name(N)
         return N
 
     def resolve_datamanager(self, mode: str, batch_tfms: Optional[bool] = None):
@@ -757,8 +717,8 @@ if __name__ == "__main__":
     device_id = 0
     batchsize_finder = False
     batchsize_finder = True
-    batch_tfms=True
-    batch_tfms=False
+    batch_tfms = True
+    batch_tfms = False
     wandb = False
     wandb = True
     override_dm = False

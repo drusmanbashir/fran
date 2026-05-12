@@ -105,11 +105,11 @@ def main(args):
             description=args.description,
             batchsize_finder=args.batchsize_finder,
             train_indices=args.train_indices,
-            dual_ssd=args.dual_ssd,
             batch_tfms=args.batch_tfms,
             val_device=args.val_device,
         )
         if not args.all:
+            setup_kwargs["dual_ssd"] = args.dual_ssd
             setup_kwargs["val_every_n_epochs"] = args.val_every_n_epochs
         Tm.setup(**setup_kwargs)
         Tm.N.compiled = args.compiled

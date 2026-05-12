@@ -1,4 +1,3 @@
-
 # %%
 import uuid
 from copy import deepcopy
@@ -7,12 +6,19 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fran.callback.base import BatchSizeSafetyMargin
-from fran.callback.case_recorder import CaseIDRecorder, infer_labels_and_update_out_channels
+from fran.callback.case_recorder import (
+    CaseIDRecorder,
+    infer_labels_and_update_out_channels,
+)
 from fran.callback.wandb.wandb import WandbLogBestCkpt
 from fran.managers.data.main import DataManagerDual
 from fran.managers.data.run_through import DataManagerRT, DataManagerRTBTfms
 from fran.trainers.trainer import Trainer, TrainerL
-from fran.utils.batch_size_scaling import _adjust_batch_size, _reset_progress, _try_loop_run
+from fran.utils.batch_size_scaling import (
+    _adjust_batch_size,
+    _reset_progress,
+    _try_loop_run,
+)
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers.logger import DummyLogger
 from lightning.pytorch.utilities.memory import garbage_collection_cuda, is_oom_error
@@ -263,6 +269,11 @@ class WandbLogBestCkptRT(WandbLogBestCkpt):
 class TrainerRT(Trainer):
     """Compatibility shim for run-through training on top of the base Trainer."""
 
+    case_id_recorder_cls = CaseIDRecorderRT
+    wandb_best_ckpt_cls = WandbLogBestCkptRT
+    batchsize_finder_cls = BatchSizeFinderRT
+    monitor_metric_name = "train0_loss"
+
     def __init__(
         self,
         project_title,
@@ -278,6 +289,10 @@ class TrainerRT(Trainer):
             ckpt=ckpt,
             run_through=True,
         )
+
+        self.checkpoint_kwargs["save_on_train_epoch_end"] = True
+        self.early_stopping_kwargs = {"monitor": "train0_loss_dice"}
+        self.early_stopping_kwargs["check_on_train_epoch_end"] = True
 
     def setup(
         self,
@@ -302,7 +317,7 @@ class TrainerRT(Trainer):
         batch_tfms: bool = False,
         val_device: str = "cuda",
     ):
-        """Run-through setup without validation or early-stopping public arguments. 
+        """Run-through setup without validation or early-stopping public arguments.
         no dual-ssd option"""
 
         return super().setup(
@@ -339,14 +354,10 @@ class TrainerRT(Trainer):
         tags,
         description="",
         early_stopping=False,
-        early_stopping_monitor="val0_loss_dice",
-        early_stopping_mode="min",
-        early_stopping_patience=30,
-        early_stopping_min_delta=0.0,
         lr_floor=None,
         wandb_grid_epoch_freq: int = 5,
-        permanent_checkpoint_every_n_epochs: int = 100,
     ):
+
         cbs, logger, profiler = super().init_cbs(
             cbs=cbs,
             wandb=wandb,
@@ -355,13 +366,8 @@ class TrainerRT(Trainer):
             tags=tags,
             description=description,
             early_stopping=early_stopping,
-            early_stopping_monitor=early_stopping_monitor,
-            early_stopping_mode=early_stopping_mode,
-            early_stopping_patience=early_stopping_patience,
-            early_stopping_min_delta=early_stopping_min_delta,
             lr_floor=lr_floor,
             wandb_grid_epoch_freq=wandb_grid_epoch_freq,
-            permanent_checkpoint_every_n_epochs=permanent_checkpoint_every_n_epochs,
         )
         if batchsize_finder:
             cbs[1:1] = [
@@ -371,30 +377,30 @@ class TrainerRT(Trainer):
         return cbs, logger, profiler
 
     def resolve_orchestrator_class(self, batch_tfms: Optional[bool] = None):
-            return DataManagerRTBTfms if batch_tfms else DataManagerRT
-
+        return DataManagerRTBTfms if batch_tfms else DataManagerRT
 
     def init_dm(self):
         dm_class = self.resolve_orchestrator_class(batch_tfms=self.batch_tfms)
-        dm =dm_class(
-                project_title=self.project.project_title,
-                configs=self.configs,
-                batch_size=self.configs["dataset_params"]["batch_size"],
-                cache_rate=self.configs["dataset_params"]["cache_rate"],
-                device=self.configs["dataset_params"].get("device", "cuda"),
-                ds_type=self.configs["dataset_params"].get("ds_type"),
-                train_indices=self.train_indices,
-                debug=self.debug,
-                batch_tfms=self.batch_tfms,
-            )
-        
+        dm = dm_class(
+            project_title=self.project.project_title,
+            configs=self.configs,
+            batch_size=self.configs["dataset_params"]["batch_size"],
+            cache_rate=self.configs["dataset_params"]["cache_rate"],
+            device=self.configs["dataset_params"].get("device", "cuda"),
+            ds_type=self.configs["dataset_params"].get("ds_type"),
+            train_indices=self.train_indices,
+            debug=self.debug,
+            batch_tfms=self.batch_tfms,
+        )
+
         labels_all = self.configs["plan_train"].get("labels_all")
         if not labels_all:
             infer_labels_and_update_out_channels(dm=dm, configs=self.configs)
         return dm
 
+
 # %%
-#SECTION:-------------------- setup--------------------------------------------------------------------------------------
+# SECTION:-------------------- setup--------------------------------------------------------------------------------------
 if __name__ == "__main__":
     from fran.configs.parser import ConfigMaker
     from fran.managers import Project
@@ -404,8 +410,8 @@ if __name__ == "__main__":
     C.setup(2)
     conf = C.configs
     conf["dataset_params"]["fold"] = 0
-    run_name= "KITS23-SIRIG"
-    
+    run_name = "KITS23-SIRIG"
+
 # %%
 
     Tm = TrainerRT(
@@ -473,3 +479,4 @@ if __name__ == "__main__":
             dual_ssd=dual_ssd,
             batch_tfms=batch_tfms,
         )
+
