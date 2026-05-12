@@ -66,7 +66,7 @@ def main():
     p.add_argument("--bs", "--batch-size", dest="batch_size", type=int, default=4)
     p.add_argument("-f", "--fold", type=int, default=None)
     p.add_argument("-e", "--epochs", type=int, default=600)
-    p.add_argument("--compiled", type=str2bool, default=True)
+    p.add_argument("--compiled", type=str2bool, default=False)
     p.add_argument("--profiler", type=str2bool, default=False)
     p.add_argument("--wandb", type=str2bool, default=True)
     p.add_argument("--val-device", default="cuda")
@@ -95,6 +95,7 @@ def main():
     bs = int(args.batch_size)
     val_device = str(args.val_device)
     used_val_cpu_retry = False
+    bsf = bool(args.batchsize_finder)
     last_rc = 1
 
     for attempt in range(1, args.max_retries + 1):
@@ -126,7 +127,7 @@ def main():
             "--val-every-n-epochs",
             str(args.val_every_n_epochs),
             "--bsf",
-            "false",
+            str(bsf).lower(),
             "--all",
             str(args.all).lower(),
             "--dual-ssd",
@@ -143,7 +144,7 @@ def main():
 
         print(
             f"[train_retry] attempt={attempt}/{args.max_retries} "
-            f"bs={bs} bsf=false val_device={val_device} "
+            f"bs={bs} bsf={str(bsf).lower()} val_device={val_device} "
             f"batch_tfms={str(args.batch_tfms).lower()}"
         )
         last_rc, output = run_stream(cmd)
