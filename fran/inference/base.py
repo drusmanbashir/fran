@@ -2,6 +2,8 @@
 import os
 import pickle
 
+from monai.data.folder_layout import FolderLayoutBase
+
 from fran.inference.helpers import (
     filter_existing_files,
     get_patch_spacing,
@@ -10,7 +12,8 @@ from fran.inference.helpers import (
     load_params,
 )
 from utilz.cprint import cprint
-from utilz.helpers import chunks
+from utilz.fileio import maybe_makedirs
+from utilz.helpers import chunks, info_from_filename
 
 os.environ["TORCHDYNAMO_DISABLE"] = "1"  # set as early as possible in the process
 
@@ -19,7 +22,7 @@ import torch
 import torch._dynamo as dynamo
 from fran.managers import Project
 from tqdm.auto import tqdm as pbar
-from utilz.stringz import headline
+from utilz.stringz import headline, strip_extension
 
 tr = ipdb.set_trace
 
@@ -53,6 +56,25 @@ from monai.transforms.utility.dictionary import (
     SqueezeDimd,
 )
 from utilz.dictopts import DictToAttr, fix_ast
+
+
+class TokenFolderLayout(FolderLayoutBase):
+    def __init__(self, data_root_dir: str, extension=".nii.gz"):
+        self.data_root_dir = Path(data_root_dir)
+        self.extension = extension
+
+    def filename(self, subject, idx=None, **kwargs):
+        subject = Path(subject)
+        subject_fname = subject.name
+        subject_fname_noext = strip_extension(subject_fname)
+        subjenct_fname2 = subject_fname_noext + self.extension
+        project_title = info_from_filename(subject_fname, full_caseid=False)[
+            "proj_title"
+        ]
+        project_dir = self.data_root_dir / project_title
+        maybe_makedirs(project_dir)
+        full_path = project_dir / subjenct_fname2
+        return full_path
 
 
 def load_model_on_fabric(
@@ -374,12 +396,17 @@ class BaseInferer(DictToAttr):
             setattr(self, key, value)
 
     def create_postprocess_transforms(self, preprocess_transform):
+        layout = TokenFolderLayout(
+            data_root_dir=self.output_folder,
+            extension=".nii.gz",
+        )
         Sav = SaveImaged(
             keys=["pred"],
             output_dir=self.output_folder,
             output_postfix="",
             separate_folder=False,
             output_dtype=np.uint8,
+            folder_layout=layout,
         )
         Sq = SqueezeDimd(keys=["pred", "image"], dim=0)
 
@@ -587,7 +614,6 @@ if __name__ == "__main__":
     run_nodes = best_runs["nodes"]["run_ids"]
     run = run_nodes[0]
 
-
     debug_ = False
 
     save_channels = False
@@ -782,3 +808,4 @@ if __name__ == "__main__":
 # %%
     batch["pred"].shape
 # %%
+

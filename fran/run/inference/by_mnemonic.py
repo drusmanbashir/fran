@@ -3,8 +3,6 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-import ipdb
-tr = ipdb.set_trace
 
 import pandas as pd
 from label_analysis.totalseg import TotalSegmenterLabels
@@ -23,6 +21,7 @@ from fran.utils.common import COMMON_PATHS
 BEST_RUNS_PATH = Path("/s/fran_storage/conf/best_runs.yaml")
 RUNS_REGISTRY_NAME_COLS = ("run_name", "run_id", "model_id", "id")
 MODE_ALIASES = {"kbd": "rbd"}
+LOCALISER_TYPES = {"yolo", "tsl"}
 TSL_FAMILY_BY_MNEMONIC = {
     "kidneys": "kidney",
     "liver": "liver",
@@ -40,6 +39,13 @@ class InferenceSpec:
     run_w: str | None = None
     localiser_labels: list[int] | None = None
     localiser_regions: list[str] | None = None
+    k_largest: int | None = None
+
+
+@dataclass(frozen=True)
+class TargetRun:
+    mnemonic: str | None
+    run_name: str
     k_largest: int | None = None
 
 
@@ -218,64 +224,20 @@ def tsl_region_labels(family: str) -> list[int]:
     return list(structure.label_region)
 
 
-def resolve_tsl_localiser_labels(mnemonic: str, run_name: str) -> list[int]:
+def resolve_tsl_localiser_labels(mnemonic: str | None, run_name: str) -> list[int]:
     metadata = load_run_metadata(run_name)
     family = family_from_metadata(metadata)
     if family is not None:
         return tsl_region_labels(family)
     if mnemonic == "nodes":
         return tsl_region_labels("label_region")
+    if mnemonic is None:
+        raise ValueError(
+            f"Cannot resolve fallback TSL label family for run_name={run_name}"
+        )
     if mnemonic not in TSL_FAMILY_BY_MNEMONIC:
         raise ValueError(f"No TSL label family mapping for mnemonic={mnemonic}")
     return tsl_region_labels(TSL_FAMILY_BY_MNEMONIC[mnemonic])
-
-
-def choose_localiser_type(runs, explicit: str | None, mnemonic: str) -> str | None:
-    if not isinstance(runs, dict):
-        if explicit is not None:
-            raise ValueError(
-                f"Mnemonic={mnemonic} has no localiser runs configured; omit --localiser-type"
-            )
-        return None
-    if "yolo" not in runs and "TSL" not in runs:
-        if explicit is not None:
-            raise ValueError(
-                f"Mnemonic={mnemonic} has no localiser runs configured; omit --localiser-type"
-            )
-        return None
-    yolo_runs = nonempty_runs(runs["yolo"]) if "yolo" in runs else []
-    tsl_runs = nonempty_runs(runs["TSL"]) if "TSL" in runs else []
-    if explicit is not None:
-        runs = yolo_runs if explicit == "yolo" else tsl_runs
-        if not runs:
-            raise ValueError(
-                f"Mnemonic={mnemonic} has no {explicit} localiser runs configured in best_runs; "
-                "pass a configured --localiser-type or omit it"
-            )
-        return explicit
-    if yolo_runs and tsl_runs:
-        raise ValueError(
-            f"Mnemonic={mnemonic} has both yolo and TSL localiser runs configured; "
-            "pass --localiser-type"
-        )
-    if yolo_runs:
-        return "yolo"
-    if tsl_runs:
-        return "TSL"
-    return None
-
-
-def split_runs_by_localiser_type(run_names: list[str]) -> dict[str, list[str]]:
-    buckets = {"yolo": [], "TSL": []}
-    for run_name in run_names:
-        metadata = load_run_metadata(run_name)
-        mode = normalize_mode(metadata["mode"]) if "mode" in metadata else None
-        if mode == "rbd":
-            buckets["yolo"].append(run_name)
-        elif mode in ("lbd", "pbd"):
-            buckets["TSL"].append(run_name)
-    return buckets
-
 
 def resolve_input_images(folder: str | None, datasets: list[str] | None) -> list[Path]:
     if (folder is None) == (datasets is None):
@@ -324,92 +286,173 @@ def resolve_standalone_inferer_cls(run_name: str):
     return inferer_cls
 
 
-def resolve_run_spec(
-    mnemonic: str, entry: dict, best_runs: dict, run_name: str
-) -> InferenceSpec:
+def run_mode(run_name: str) -> str:
     metadata = load_run_metadata(run_name)
-    mode = normalize_mode(metadata["mode"]) if "mode" in metadata else None
-    if mode == "rbd":
-        return InferenceSpec(
-            inferer_cls=CascadeInfererYOLO,
-            run_name=run_name,
-            localiser_regions=resolve_yolo_regions(run_name),
-            k_largest=entry["k_largest"] if "k_largest" in entry else None,
+    if "mode" in metadata:
+        return normalize_mode(metadata["mode"])
+    _, mode = resolve_inferer_cls(run_name)
+    return normalize_mode(mode)
+
+
+def resolve_k_largest(entry: dict | None) -> int | None:
+    if entry is None or "k_largest" not in entry:
+        return None
+    return entry["k_largest"]
+
+
+def resolve_target_run(mnemonic_raw: str, best_runs: dict) -> TargetRun:
+    token = mnemonic_raw.strip()
+    if looks_like_run_name(token):
+        mnemonic, entry = best_runs_entry_for_run_name(token, best_runs)
+        return TargetRun(
+            mnemonic=mnemonic,
+            run_name=token,
+            k_largest=resolve_k_largest(entry),
         )
-    if mode in ("lbd", "pbd"):
-        return InferenceSpec(
-            inferer_cls=CascadeInferer,
-            run_name=run_name,
-            run_w=best_runs["whole"]["runs"][0],
-            localiser_labels=resolve_tsl_localiser_labels(mnemonic, run_name),
-            k_largest=entry["k_largest"] if "k_largest" in entry else None,
-        )
-    inferer_cls = resolve_standalone_inferer_cls(run_name)
-    return InferenceSpec(inferer_cls=inferer_cls, run_name=run_name)
-
-
-def resolve_direct_run_name_spec(run_name: str, best_runs: dict) -> InferenceSpec:
-    _, entry = best_runs_entry_for_run_name(run_name, best_runs)
-    k_largest = entry["k_largest"] if entry is not None and "k_largest" in entry else None
-    inferer_cls = resolve_standalone_inferer_cls(run_name)
-    if inferer_cls not in (BaseInferer, WholeImageInferer):
-        raise ValueError(
-            f"Direct run_name '{run_name}' resolves to {inferer_cls.__name__}; "
-            "only standalone whole/source runs are supported here"
-        )
-    return InferenceSpec(inferer_cls=inferer_cls, run_name=run_name, k_largest=k_largest)
-
-
-def resolve_spec(mnemonic_raw: str, localiser_type: str | None) -> InferenceSpec:
-    best_runs = load_best_runs()
-    if looks_like_run_name(mnemonic_raw):
-        return resolve_direct_run_name_spec(mnemonic_raw.strip(), best_runs)
-    mnemonic = canonical_mnemonic(mnemonic_raw, best_runs)
+    mnemonic = canonical_mnemonic(token, best_runs)
     entry = best_runs[mnemonic]
-    runs = entry["runs"]
-    run_names = ordered_runs(runs)
-    if localiser_type is not None:
-        typed_runs = split_runs_by_localiser_type(run_names)[localiser_type]
-        if not typed_runs:
+    return TargetRun(
+        mnemonic=mnemonic,
+        run_name=resolve_standalone_run(entry["runs"]),
+        k_largest=resolve_k_largest(entry),
+    )
+
+
+def resolve_default_run_w(best_runs: dict) -> str:
+    return best_runs["whole"]["runs"][0]
+
+
+def resolve_yolo_spec(run_name: str, k_largest: int | None) -> InferenceSpec:
+    return InferenceSpec(
+        inferer_cls=CascadeInfererYOLO,
+        run_name=run_name,
+        localiser_regions=resolve_yolo_regions(run_name),
+        k_largest=k_largest,
+    )
+
+
+def resolve_tsl_spec(
+    mnemonic: str | None,
+    run_name: str,
+    run_w: str,
+    k_largest: int | None,
+) -> InferenceSpec:
+    if run_mode(run_w) != "whole":
+        raise ValueError(f"--run-w must resolve to whole run, found {run_w}")
+    return InferenceSpec(
+        inferer_cls=CascadeInferer,
+        run_name=run_name,
+        run_w=run_w,
+        localiser_labels=resolve_tsl_localiser_labels(mnemonic, run_w),
+        k_largest=k_largest,
+    )
+
+
+def native_localiser_type(run_name: str) -> str | None:
+    mode = run_mode(run_name)
+    if mode == "rbd":
+        return "yolo"
+    if mode in ("lbd", "pbd"):
+        return "tsl"
+    return None
+
+
+def resolve_native_spec(target: TargetRun, best_runs: dict) -> InferenceSpec:
+    localiser_type = native_localiser_type(target.run_name)
+    if localiser_type == "yolo":
+        return resolve_yolo_spec(target.run_name, target.k_largest)
+    if localiser_type == "tsl":
+        return resolve_tsl_spec(
+            target.mnemonic,
+            target.run_name,
+            resolve_default_run_w(best_runs),
+            target.k_largest,
+        )
+    inferer_cls = resolve_standalone_inferer_cls(target.run_name)
+    return InferenceSpec(
+        inferer_cls=inferer_cls,
+        run_name=target.run_name,
+        k_largest=target.k_largest,
+    )
+
+
+def resolve_override_spec(
+    target: TargetRun,
+    best_runs: dict,
+    localiser_type: str | None,
+    run_w: str | None,
+) -> InferenceSpec | None:
+    if run_w is not None and localiser_type == "yolo":
+        raise ValueError("--run-w only supports tsl localiser override")
+    if run_w is not None or localiser_type == "tsl":
+        return resolve_tsl_spec(
+            target.mnemonic,
+            target.run_name,
+            resolve_default_run_w(best_runs) if run_w is None else run_w,
+            target.k_largest,
+        )
+    if localiser_type == "yolo":
+        return resolve_yolo_spec(target.run_name, target.k_largest)
+    return None
+
+
+def resolve_spec(
+    mnemonic_raw: str, localiser_type: str | None = None, run_w: str | None = None
+) -> InferenceSpec:
+    best_runs = load_best_runs()
+    target = resolve_target_run(mnemonic_raw, best_runs)
+    native_type = native_localiser_type(target.run_name)
+    native_spec = resolve_native_spec(target, best_runs)
+    if run_w is not None or localiser_type is not None:
+        if native_type is None:
             raise ValueError(
-                f"Mnemonic={mnemonic} has no {localiser_type} localiser runs configured in best_runs"
+                f"Run {target.run_name} is standalone; localiser override unsupported"
             )
-        run_name = typed_runs[0]
-    else:
-        run_name = run_names[0]
-    print({"run_names": run_names, "selected_run": run_name})
-    return resolve_run_spec(mnemonic, entry, best_runs, run_name)
+        override_spec = resolve_override_spec(target, best_runs, localiser_type, run_w)
+        print(
+            {
+                "selected_run": target.run_name,
+                "native_localiser_type": native_type,
+                "override_localiser_type": localiser_type if run_w is None else "tsl",
+                "override_run_w": run_w,
+            }
+        )
+        return override_spec
+    print(
+        {
+            "selected_run": target.run_name,
+            "native_localiser_type": native_type,
+            "override_localiser_type": None,
+            "override_run_w": None,
+        }
+    )
+    return native_spec
 
 
 def build_inferer(spec: InferenceSpec, gpus: list[int], patch_overlap: float):
+    common_kwargs = dict(devices=gpus, save=True, save_channels=False)
     if spec.inferer_cls is CascadeInfererYOLO:
         return CascadeInfererYOLO(
             localiser_regions=spec.localiser_regions,
             run_p=spec.run_name,
-            devices=gpus,
             patch_overlap=patch_overlap,
-            save=True,
-            save_channels=False,
             k_largest=spec.k_largest,
+            **common_kwargs,
         )
     if spec.inferer_cls is CascadeInferer:
         return CascadeInferer(
             run_w=spec.run_w,
             run_p=spec.run_name,
             localiser_labels=spec.localiser_labels,
-            devices=gpus,
             patch_overlap=patch_overlap,
-            save=True,
-            save_channels=False,
             save_localiser=False,
             k_largest=spec.k_largest,
+            **common_kwargs,
         )
     if spec.inferer_cls in (BaseInferer, WholeImageInferer):
         return spec.inferer_cls(
             run_name=spec.run_name,
-            devices=gpus,
-            save=True,
-            save_channels=False,
+            **common_kwargs,
         )
     raise ValueError(f"Unsupported inferer class {spec.inferer_cls}")
 
@@ -417,7 +460,8 @@ def build_inferer(spec: InferenceSpec, gpus: list[int], patch_overlap: float):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Mnemonic-driven inference runner")
     parser.add_argument("mnemonic")
-    parser.add_argument("--localiser-type", choices=["yolo", "TSL"], default=None)
+    parser.add_argument("--localiser-type", type=str.lower, choices=sorted(LOCALISER_TYPES))
+    parser.add_argument("--run-w")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--folder")
     source.add_argument("--dataset", nargs="+")
@@ -431,7 +475,7 @@ def parse_args(argv=None):
 def main(args=None):
     args = parse_args(args) if isinstance(args, list) or args is None else args
     input_images = resolve_input_images(args.folder, args.dataset)
-    spec = resolve_spec(args.mnemonic, args.localiser_type)
+    spec = resolve_spec(args.mnemonic, args.localiser_type, args.run_w)
     inferer = build_inferer(spec, args.gpus, args.patch_overlap)
     print(
         {

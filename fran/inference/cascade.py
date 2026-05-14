@@ -1,15 +1,19 @@
-# %%
 import itertools as il
 import sys
 from copy import deepcopy
+import ipdb
+tr = ipdb.set_trace
 
 import ipdb
+from monai.data.folder_layout import FolderLayout
 import numpy as np
 import torch
+from fran.managers.base import load_checkpoint
 from utilz.listify import listify
 from fran.data.dataset import FillBBoxPatchesd
 from fran.inference.base import (
     BaseInferer,
+    TokenFolderLayout,
     get_patch_spacing,
     load_images_nifti,
     load_params,
@@ -30,8 +34,6 @@ from monai.transforms.post.dictionary import AsDiscreted, Invertd
 from monai.transforms.spatial.dictionary import Resized
 from monai.transforms.utility.dictionary import CastToTyped
 from utilz.cprint import cprint
-
-
 
 def inferer_from_params(run_w):
     ckpt = checkpoint_from_model_id(run_w)
@@ -410,6 +412,11 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
 
     def create_postprocess_transforms(self):
         keys = listify(self.run_p)
+
+        layout = TokenFolderLayout(
+                data_root_dir=self.output_folder,
+                extension=".nii.gz",
+            )
         self.postprocess_transforms_dict = {
             # "U": ToDeviceD(keys=keys, device=self.device),
             "MR": RenameDictKeys(new_keys=["pred"], keys=keys),
@@ -424,12 +431,14 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
             ),
             "F": FillBBoxPatchesd(),
             "R": RestoreOriginalOrientationd(keys=["pred"]),
+            
             "S": SaveImaged(
                 keys=["pred"],
                 output_dir=self.output_folder,
                 output_postfix="",
                 separate_folder=False,
                 output_dtype=np.uint8,
+                folder_layout=layout,
             ),
         }
 
@@ -475,34 +484,23 @@ if __name__ == "__main__":
 # %%
 # SECTION:-------------------- KITS-------------------------------------------------------------------------------------- <CR>
     TSL = TotalSegmenterLabels()
-
-    P = Project("kits2")
-    _, val = P.get_train_val_case_ids(fold=1)
-    kits_imgs = [
-        img
-        for img in kits_imgs
-        if info_from_filename(img.name, full_caseid=True)["case_id"] in val
-    ]
+    P = Project("kits23")
     devices = [0]
+    _, val = P.get_train_val_case_ids(fold=1)
     # run_kid = best_runs["kidneys"]["run_ids"][0]
-    run_kid = best_runs["kidneys"]["run_ids"][1]
-    run_tot = best_runs["totalseg"]["run_ids"][0]
-    run_kw = run_tot
+    run_tot = best_runs["whole"]["runs"][0]
+    run_kid = best_runs["kidneys"]["runs"][0]
+    bad_case = "litq_28_20191116"
 
-    run_kw = run_w
-    run_ = inferer_from_params(run_kw)
+    label_loc = TSL.kidney.label_minimal
+    run_kw=  best_runs["whole"]["runs"][0]
 
-    if "Whole" in str(run_):
-        label_loc = TSL.kidney.label_region
-    elif "Base" in str(run_):
-        label_loc = TSL.kidney.label_minimal
-    else:
-        raise ValueError
+
     safe_mode = True
     overwrite = True
     overwrite = False
-    debug_ = True
     debug_ = False
+    debug_ = True
     save_channels = False
     save_localiser = True
 
@@ -520,9 +518,17 @@ if __name__ == "__main__":
     )
 
 # %%
+    batch['image'].meta
+# %%
+    bd_fn = "/s/xnat_shadow/litq/images/litq_28_20191116.nrrd"
+
     imgs = kits_imgs
     imgs = imgs_bosniak
-    preds = En.run(imgs, chunksize=4, overwrite=overwrite)
+    imgs = imgs_litsmc
+    fns = [fn for fn in imgs if "litq_" in fn.name]
+    imgs = fns[1:]
+    En.debug=True
+    preds = En.run(imgs, chunksize=1, overwrite=overwrite)
 # %%
     pred = preds[0]["pred"]
     image = load_images_nifti(imgs_addd)[0]
@@ -644,9 +650,10 @@ if __name__ == "__main__":
 
 # SECTION:-------------------- TOTALSEG WholeImageinferer-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 
-    devices = [1]
-    debug_ = False
+    devices = [0]
+    debug_ = True
     safe_mode = False
+    overwrite=False
 
     W = WholeImageInferer(
         run_w1,
@@ -659,15 +666,45 @@ if __name__ == "__main__":
     )
 # %%
 
+    
     imgs = nodes_imgs[:2]
     imgs = imgs_colonmsd
     imgs = kits_imgs
     # preds = W.run(imgs_crc, chunksize=6)
-    imgs = imgs_lidc[:10]
-    overwrite = True
-    preds = W.run(imgs, chunksize=2, overwrite=overwrite)
+    imgs = imgs_lidc
+    preds = W.run(imgs, chunksize=4, overwrite=overwrite)
 # %%
 
+    def filter_existing_files(files, target_folder,recursive=True):
+        files = [Path(img) for img in files]
+        file_names = [fn.name for fn in files]
+        print(
+            "Filtering existing predictions\nNumber of images provided: {}".format(
+                len(files)
+            )
+        )
+        if recursive==True:
+            existing_fns = list(target_folder.rglob("*"))
+        else:
+            existing_fns = list(target_folder.glob("*"))
+        existing_fnnames = [fn.name for fn in existing_fns]
+        to_do = []
+        for fn in file_names:
+            if fn in existing_fnnames:
+                to_do.append(False)
+            else:
+                to_do.append(True)
+
+        files = list(il.compress(files, to_do))
+        print(
+            "Number of images not found in folder {0}:  {1}".format(
+                target_folder, len(files)
+            )
+        )
+        return files
+# %%
+
+# %%
     dl = W.pred_dl
     iteri = iter(dl)
     batch = next(iteri)
@@ -757,7 +794,7 @@ if __name__ == "__main__":
 
 # SECTION:-------------------- TROUBLESHOOTING En.run-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 # SECTION:-------------------- extract_fg_bboxes-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR>
-    imgs_sublist = imgs_bosniak[:5]
+    imgs_sublist = imgs[:5]
 
     En.create_postprocess_transforms()
     data = load_images_nifti(imgs_sublist)
@@ -766,6 +803,10 @@ if __name__ == "__main__":
 
     print(En.bboxes[0])
     data = apply_bboxes(data, En.bboxes)
+    data[0].keys()
+    img = data[0]['image']
+    ImageMaskViewer([img,img])
+
     print(data[0].keys())
 # %%
     En.debug = True
@@ -916,10 +957,5 @@ if __name__ == "__main__":
             preds_all_runs[En.P.run_name].append(batch)
 # %%
 
-        print(batch.keys())
-        print(batch["pred"].shape)
-# %%
-    fn = "/s/fran_storage/predictions/lidc2/LITS-911/litq_10.nii.gz"
-    lm = sitk.ReadImage(fn)
 
-    lm.GetSize()
+

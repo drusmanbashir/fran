@@ -6,9 +6,9 @@ HOME_DIR="$(cd "$FRAN_ROOT/../.." && pwd)"
 PYTHON_BIN="$HOME_DIR/mambaforge/envs/dl/bin/python"
 BLOCK_SUSPEND="$RUN_DIR/misc/block_suspend.py"
 ANALYZE_RESAMPLE_PY="$SCRIPT_DIR/analyze_resample.py"
-PROJECT="totalseg"
-PLAN_NUM="8"
-NUM_PROCESSES="16"
+PROJECT="kits23"
+PLAN_NUM="3"
+NUM_PROCESSES="20"
 OVERWRITE="${OVERWRITE:-False}"
 
 if [[ $# -gt 0 ]]; then

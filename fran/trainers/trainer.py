@@ -120,6 +120,7 @@ class Trainer:
         self.checkpoint_kwargs = {}
         self.early_stopping_kwargs = {
             "monitor": "val0_loss_dice",
+            "check_on_train_epoch_end": False,
         }
 
     def available_checkpoint_epochs(self) -> list[tuple[int, Path]]:
@@ -682,10 +683,10 @@ if __name__ == "__main__":
     from utilz.helpers import pp
 
     P = Project("lidc")
-    P = Project("kits23")
     P = Project("totalseg")
+    P = Project("kits23")
     C = ConfigMaker(P)
-    C.setup(8)
+    C.setup(3)
 
     conf = C.configs
     print(conf["model_params"])
@@ -710,7 +711,7 @@ if __name__ == "__main__":
     # bb= counts2.index[:200]
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
-    bs = 2
+    bs = 4
     device_id = 0
     batchsize_finder = True
     batchsize_finder = False
@@ -722,8 +723,8 @@ if __name__ == "__main__":
     override_dm = True
 
     # run_name = "KITS23-SIRIG"
-    run_name = None
     run_name = "TOTALSEG-HEDA"
+    run_name = None
     tags = []
     description = f""
     conf["dataset_params"]["fold"] = 0
@@ -734,7 +735,7 @@ if __name__ == "__main__":
     cbs = []
     wandb_grid_epoch_freq = 20
     val_every_n_epochs = 1
-    train_indices = 50
+    train_indices = None
 # %%
 # SECTION:--------------------  TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     Tm = Trainer(P.project_title, conf, run_name)
@@ -773,8 +774,8 @@ if __name__ == "__main__":
     tmt.collate_fn
     tmv.collate_fn
     tmv.batch_size
-    tmv.prepare_data()
 # %%
+    tmv.prepare_data()
     tmv.setup()
     dl = tmv.dl
     iteri = iter(dl)
@@ -784,7 +785,14 @@ if __name__ == "__main__":
 
 # %%
     tmt.setup()
+    aa =tmt.ds[0]
+    aa[0]['image'].meta
+# %%
     dl = tmv.dl
+    for i, batch in enumerate(dl):
+        print(i)
+# %%
+
     iteri = iter(dl)
     batch = next(iteri)
     print(batch["image"].device)
