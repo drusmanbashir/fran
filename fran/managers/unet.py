@@ -144,10 +144,16 @@ class UNetManager(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        batch = self.swi_on_val_batch(batch, batch_idx)
-        pred = batch["pred"]
-        target = batch["lm"]
-        loss = self.loss_fnc(pred, target, use_mask=False)
+        if "patch_coords" in batch:
+            pred = self.forward(batch["image"])
+            batch["pred"] = pred
+            target = batch["lm"]
+            loss = self.loss_fnc(pred, target, use_mask=True)
+        else:
+            batch = self.swi_on_val_batch(batch, batch_idx)
+            pred = batch["pred"]
+            target = batch["lm"]
+            loss = self.loss_fnc(pred, target, use_mask=False)
         loss_dict = self.loss_fnc.loss_dict
 
         self.log_losses(loss_dict, prefix=f"val{dataloader_idx}")
