@@ -17,7 +17,12 @@ import pandas as pd
 import torch
 import operator
 from fran.configs.helpers import is_excel_None
-from fran.data.collate import patch_collated, source_collated, whole_collated
+from fran.data.collate import (
+    grid_collated,
+    patch_collated,
+    source_collated,
+    whole_collated,
+)
 from fran.data.dataset import NormaliseClipd
 from fran.managers.project import Project
 from fran.preprocessing.helpers import bbox_bg_only, compute_fgbg_ratio, import_h5py
@@ -28,6 +33,7 @@ from fran.transforms.intensitytransforms import RandRandGaussianNoised
 from fran.transforms.misc_transforms import DummyTransform, LoadTorchDict, MetaToDict
 from utilz.listify import listify
 from fran.utils.folder_names import FolderNames
+from fran.utils.common import PAD_VALUE
 from fran.utils.misc import convert_remapping
 from lightning import LightningDataModule
 from lightning.pytorch import LightningDataModule
@@ -116,6 +122,66 @@ class PatchIterdWithPaddingFlag:
                     original_spatial_shape=d.get("original_spatial_shape"),
                 )
                 yield d, coords
+
+
+class PadLmOutsideOriginald(MapTransform):
+    """
+    Mark only out-of-bounds label voxels in a grid patch with PAD_VALUE.
+    Image padding stays zero; loss masking keys off the label sentinel.
+    """
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        coords_key: str = "patch_coords",
+        original_spatial_shape_key: str = "original_spatial_shape",
+        pad_value: int = PAD_VALUE,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, allow_missing_keys)
+        self.coords_key = coords_key
+        self.original_spatial_shape_key = original_spatial_shape_key
+        self.pad_value = int(pad_value)
+
+    def __call__(self, data):
+        d = dict(data)
+        coords = d.get(self.coords_key)
+        original_spatial_shape = d.get(self.original_spatial_shape_key)
+        if coords is None or original_spatial_shape is None:
+            return d
+
+        coords_arr = np.asarray(coords)
+        shape_arr = np.asarray(original_spatial_shape)
+        if coords_arr.ndim != 2 or coords_arr.shape[1] != 2:
+            return d
+        if coords_arr.shape[0] == shape_arr.shape[0] + 1:
+            coords_arr = coords_arr[1:]
+
+        for key in self.key_iterator(d):
+            tensor = d[key]
+            spatial_shape = tuple(int(v) for v in tensor.shape[1:])
+            padded_mask = torch.ones(
+                spatial_shape, dtype=torch.bool, device=tensor.device
+            )
+            valid_slices = []
+            for dim, (coord_pair, orig_dim, patch_dim) in enumerate(
+                zip(coords_arr, shape_arr, spatial_shape)
+            ):
+                start, stop = (int(v) for v in coord_pair)
+                pad_before = max(0, -start)
+                pad_after = max(0, stop - int(orig_dim))
+                valid_start = min(patch_dim, pad_before)
+                valid_stop = max(valid_start, patch_dim - pad_after)
+                valid_slices.append(slice(valid_start, valid_stop))
+
+            padded_mask[tuple(valid_slices)] = False
+            if not padded_mask.any():
+                continue
+            tensor = tensor.clone()
+            tensor[(slice(None), padded_mask)] = self.pad_value
+            d[key] = tensor
+            d["is_padded"] = True
+        return d
 
 
 def int_to_ratios(n_fg_labels, fgbg_ratio=3):
@@ -1129,7 +1195,7 @@ class DataManager(LightningDataModule):
         #     bs = 1
         # else:
         #     bs= self.effective_batch_size
-        if self.plan["mode"] in ["source", "ldb", "rbd"]:
+        if self.plan["mode"] in ["source", "lbd", "rbd"]:
             bs = 1
         else:
             bs= self.effective_batch_size
@@ -1137,12 +1203,16 @@ class DataManager(LightningDataModule):
 
         num_workers, persistent_workers = self._num_workers()
         sampler = None
-        if self.val_sampling < 1.0:
+        if self.val_sampling < 1.0 and not isinstance(self.ds, GridPatchDataset):
             n_samples = max(1, int(len(self.ds) * self.val_sampling))
             sampler = RandomSampler(
                 self.ds,
                 replacement=False,
                 num_samples=n_samples,
+            )
+        elif self.val_sampling < 1.0:
+            warnings.warn(
+                "val_sampling is ignored for GridPatchDataset validation streams."
             )
         self.dl = DataLoader(
             self.ds,
@@ -1286,7 +1356,7 @@ class DataManager(LightningDataModule):
 
 class DataManagerSource(DataManager):
     keys_tr = "Ld,Rtr,L2,E,F1,F2,Affine,ResizePC,N,IntensityTfms"
-    keys_val = "L,E,N,Remap,ResizeP"
+    keys_val = "L,E,N,Remap"
 
     def __init__(self, project, configs: dict, batch_size=8, cache_rate=0.0, **kwargs):
         super().__init__(project, configs, batch_size, cache_rate, **kwargs)
@@ -1301,7 +1371,7 @@ class DataManagerSource(DataManager):
         if self.is_train_all_split():
             self.collate_fn = source_collated
         elif self.is_eval_split():
-            self.collate_fn = patch_collated
+            self.collate_fn = grid_collated
         else:
             raise NotImplementedError
 
@@ -1316,7 +1386,7 @@ class DataManagerSource(DataManager):
     def override_batch_size_valid_split(self, split="valid"):
         if split == "valid":
             self.batch_size = self.effective_batch_size = 1
-            self.collate_fn = None
+            self.collate_fn = grid_collated
 
     def create_transforms(self):
         super().create_transforms()
@@ -1327,6 +1397,38 @@ class DataManagerSource(DataManager):
             manifest_fn=hdf5_manifest_fn,
         )
         self.transforms_dict["Ld"] = Ld
+
+    def create_dataset(self):
+        if not hasattr(self, "data") or len(self.data) == 0:
+            print("No data. DS is not being created at this point.")
+            return 0
+        print(f"[DEBUG] Number of cases: {len(self.data)}")
+        example_case = self.data[0] if len(self.data) > 0 else {}
+        if isinstance(example_case, dict):
+            example_ref = example_case.get("image", example_case.get("case_id", "None"))
+        else:
+            example_ref = str(example_case)
+        print(f"[DEBUG] Example case: {example_ref}")
+
+        if self.is_eval_split():
+            case_ds = self._create_modal_ds()
+            patch_iter = PatchIterd(
+                keys=["image", "lm"],
+                patch_size=self.plan["patch_size"],
+                mode="constant",
+                constant_values=0,
+            )
+            patch_iter = PatchIterdWithPaddingFlag(patch_iter)
+            patch_tfms = Compose([PadLmOutsideOriginald(keys=["lm"])])
+            self.ds = GridPatchDataset(
+                data=case_ds,
+                patch_iter=patch_iter,
+                transform=patch_tfms,
+                with_coordinates=False,
+            )
+            print("GridPatchDataset set up for source-family validation.")
+            return
+        self.ds = self._create_modal_ds()
 
     @property
     def hdf5_folder(self):
