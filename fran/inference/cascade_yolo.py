@@ -4,6 +4,7 @@ from pathlib import Path
 
 import ipdb
 import torch
+from ultralytics.models.yolo import YOLO
 from monai.transforms.spatial.dictionary import Orientationd
 from monai.transforms.utility.dictionary import EnsureChannelFirstd, SqueezeDimd
 from tqdm.auto import tqdm
@@ -13,11 +14,14 @@ from fran.inference.helpers import SmartImageLoader, load_oriented_images
 from fran.transforms.imageio import LoadSITKd
 from fran.transforms.misc_transforms import DummyTransform
 from fran.transforms.spatialtransforms import CropByYolo
+from fran.utils.common import COMMON_PATHS
+from fran.preprocessing.imported import resolve_relative_path
 from localiser.inference.localiserinferer import LocaliserInferer
+from localiser.inference.base import load_yolo_state_dict
 from localiser.transforms.tsl import TSLRegions
 from localiser.utils.bbox_helpers import standardize_bboxes, yolo_bbox_to_slices
 from utilz.cprint import cprint
-from utilz.fileio import load_json
+from utilz.fileio import load_json, load_yaml
 
 
 def add_channel_slices(bbox):
@@ -87,7 +91,9 @@ class LocaliserInfererPT(LocaliserInferer):
         save_jpg=True,
         letterbox=True,
         mem_quota=0.8,
+        yolo_wts_path: Path | None = None,
     ):
+        self.yolo_wts_path = yolo_wts_path
         super().__init__(
             localiser_regions,
             window,
@@ -98,6 +104,21 @@ class LocaliserInfererPT(LocaliserInferer):
             letterbox,
             mem_quota,
         )
+
+    def setup(self, localiser_regions: list[str]):
+        self.setup_fabric()
+        self.yolo_ckpt = self.yolo_wts_path
+        if self.yolo_ckpt is None:
+            raise ValueError("yolo_wts_path must be resolved before LocaliserInfererPT setup")
+        yolo_folder = Path(self.yolo_ckpt).parent.parent
+        self.yolo_state_dict = load_yolo_state_dict(yolo_folder)
+        self.model = YOLO(self.yolo_ckpt)
+        self.model = self.model.to(self.fabric_device)
+        self.model.model.eval()
+        class_names = self.yolo_state_dict["data"]["names"]
+        self.classes = {name: ind for ind, name in enumerate(class_names)}
+        self.init_attrs_from_yolo_specs()
+        self.create_and_set_preprocess_transforms()
 
     def delete_image_orig(self, outputs):
         # Keep the 3D source image, but drop 2D projections and duplicate aliases
@@ -156,8 +177,10 @@ class CascadeInfererYOLO(CascadeInferer):
         save=True,
         k_largest=None,
         debug=False,
+        yolo_run_key: str | None = None,
     ):
         self.localiser_regions = localiser_regions
+        self.yolo_run_key = yolo_run_key
         self.yolo_bs = 12
         self.yolo_specs = None
         self.classes = None
@@ -214,12 +237,42 @@ class CascadeInfererYOLO(CascadeInferer):
             record["bbox_fn"] = bbox_fn
         return record
 
+    def resolve_yolo_override(self) -> Path | None:
+        if self.yolo_run_key is None:
+            return None
+        best_runs_path = Path(COMMON_PATHS["cold_storage_folder"]) / "conf" / "best_runs.yaml"
+        yolo_runs = load_yaml(best_runs_path)["yolo"]
+        if self.yolo_run_key in yolo_runs:
+            return Path(resolve_relative_path(yolo_runs[self.yolo_run_key]))
+        candidate = Path(resolve_relative_path(self.yolo_run_key))
+        if candidate.exists():
+            return candidate
+        raise ValueError(f"Unknown YOLO localiser override {self.yolo_run_key}")
+
+    def resolve_yolo_default(self) -> Path:
+        regions = {
+            str(region).strip().lower()
+            for region in self.localiser_regions
+            if str(region).strip()
+        }
+        best_runs_path = Path(COMMON_PATHS["cold_storage_folder"]) / "conf" / "best_runs.yaml"
+        yolo_runs = load_yaml(best_runs_path)["yolo"]
+        run_key = "ab_ch_ne_pe" if {"all", "neck"} & regions else "ab_ch_pe"
+        return Path(resolve_relative_path(yolo_runs[run_key]))
+
+    def resolve_yolo_weights_path(self) -> Path:
+        override = self.resolve_yolo_override()
+        if override is not None:
+            return override
+        return self.resolve_yolo_default()
+
     def setup_localiser_inferer(self):
         W = self.YoloInferer(
             localiser_regions=self.localiser_regions,
             bs=self.yolo_bs,
             devices=self.devices,
             debug=self.debug,
+            yolo_wts_path=self.resolve_yolo_weights_path(),
         )
         self.yolo_specs = W.yolo_state_dict
         self.classes = localiser_regions_to_yolo_classes(

@@ -59,15 +59,21 @@ def load_runs_registry(path: Path | None = None) -> pd.DataFrame:
     if not path.exists():
         path.touch()
     if path.stat().st_size == 0:
-        return pd.DataFrame(columns=["run_name"])
+        return pd.DataFrame(columns=["mnemonic", "run_name", "k_largest"])
     df = pd.read_csv(path)
+    if "mnemonic" not in df.columns:
+        df["mnemonic"] = pd.Series(dtype="object")
     if "run_name" not in df.columns:
         df["run_name"] = pd.Series(dtype="object")
+    if "k_largest" not in df.columns:
+        df["k_largest"] = pd.Series(dtype="float64")
     return df
 
 
 def is_excluded_col(col: str) -> bool:
     if col in COL_EXCEPTIONS["exact"]:
+        return True
+    if "/" in col:
         return True
     return any(col.startswith(prefix) for prefix in COL_EXCEPTIONS["prefix"])
 
@@ -84,19 +90,43 @@ def _as_list(value) -> list[str]:
     return [value]
 
 
-def collect_run_names(best_runs: dict) -> list[str]:
-    run_names = []
-    for entry in best_runs.values():
-        if not isinstance(entry, dict) or "runs" not in entry:
+def plan_row_values(plan: dict) -> dict:
+    return {
+        key: value
+        for key, value in plan.items()
+        if key != "run_name" and "/" not in str(key)
+    }
+
+
+def collect_run_targets(best_runs: dict) -> list[tuple[str, str, int | None]]:
+    targets = []
+    seen = set()
+    for mnemonic, entry in best_runs.items():
+        if not isinstance(entry, dict):
             continue
-        runs = entry["runs"]
-        if isinstance(runs, list):
-            run_names.extend(item for item in runs if item)
-            continue
-        if isinstance(runs, dict):
-            for value in runs.values():
-                run_names.extend(_as_list(value))
-    return list(dict.fromkeys(run_names))
+        candidate_entries = [entry]
+        if mnemonic == "totalseg" and "runs" not in entry:
+            candidate_entries = [
+                subentry for subentry in entry.values() if isinstance(subentry, dict)
+            ]
+        run_specs = []
+        for candidate in candidate_entries:
+            if "runs" not in candidate:
+                continue
+            k_largest = candidate["k_largest"] if "k_largest" in candidate else None
+            runs = candidate["runs"]
+            run_names = (
+                [item for item in runs if item]
+                if isinstance(runs, list)
+                else [run_name for value in runs.values() for run_name in _as_list(value)]
+            )
+            run_specs.extend((run_name, k_largest) for run_name in run_names)
+        for run_name, k_largest in run_specs:
+            if run_name in seen:
+                continue
+            seen.add(run_name)
+            targets.append((mnemonic, run_name, k_largest))
+    return targets
 
 
 def expand_wandb_config(payload: dict) -> dict:
@@ -144,19 +174,13 @@ def local_run_params_available(run_name: str) -> bool:
     return len(matches) == 1
 
 
-def row_from_checkpoint(run_name: str) -> dict | None:
+def row_from_checkpoint(run_name: str, mnemonic: str, k_largest: int | None) -> dict | None:
     if not local_run_params_available(run_name):
         return None
     configs = load_params(run_name)["configs"]
-    row = {"run_name": run_name}
+    row = {"mnemonic": mnemonic, "run_name": run_name, "k_largest": k_largest}
     if "plan_train" in configs and isinstance(configs["plan_train"], dict):
-        row.update(
-            {
-                key: value
-                for key, value in configs["plan_train"].items()
-                if key != "run_name"
-            }
-        )
+        row.update(plan_row_values(configs["plan_train"]))
     if "source_plan_run" in configs and "source_plan_run" not in row:
         row["source_plan_run"] = configs["source_plan_run"]
     ckpt = checkpoint_from_model_id(run_name, normalize_keys=False)
@@ -203,8 +227,8 @@ def remote_checkpoints_dir(run_name: str) -> str | None:
     return matches[0]
 
 
-def resolve_checkpoint_row(run_name: str) -> dict | None:
-    row = row_from_checkpoint(run_name)
+def resolve_checkpoint_row(run_name: str, mnemonic: str, k_largest: int | None) -> dict | None:
+    row = row_from_checkpoint(run_name, mnemonic, k_largest)
     if row is not None:
         return row
     remote_dir = remote_checkpoints_dir(run_name)
@@ -217,7 +241,7 @@ def resolve_checkpoint_row(run_name: str) -> dict | None:
         raise ValueError(f"Cannot map remote checkpoint path to local cold storage: {remote_dir}")
     local_dir = Path(local_cold + remote_dir[len(remote_cold) :])
     download_path_no_wandb(remote_dir, local_dir)
-    return row_from_checkpoint(run_name)
+    return row_from_checkpoint(run_name, mnemonic, k_largest)
 
 
 def history_tail_values(run, keys: list[str]) -> dict:
@@ -229,25 +253,25 @@ def history_tail_values(run, keys: list[str]) -> dict:
     return values
 
 
-def row_from_run(run_name: str, run) -> dict:
+def row_from_run(run_name: str, mnemonic: str, k_largest: int | None, run) -> dict:
     plan_prefix = "configs/datamodule/plan_train/"
     config_payload = dict(run.config)
     raw_payload = dict(run.rawconfig)
     payload = expand_wandb_config(config_payload)
-    row = {"run_name": run_name}
+    row = {"mnemonic": mnemonic, "run_name": run_name, "k_largest": k_largest}
     if "plan_train" in payload and isinstance(payload["plan_train"], dict):
-        row.update(payload["plan_train"])
+        row.update(plan_row_values(payload["plan_train"]))
     for source in (config_payload, raw_payload):
         for key, value in source.items():
             if str(key).startswith(plan_prefix):
                 suffix = str(key).removeprefix(plan_prefix)
-                if suffix == "run_name":
+                if suffix == "run_name" or "/" in suffix:
                     continue
                 row[suffix] = value
     if "plan_train" not in payload and len(raw_payload) > 0:
         raw_nested = expand_wandb_config(raw_payload)
         if "plan_train" in raw_nested and isinstance(raw_nested["plan_train"], dict):
-            row.update(raw_nested["plan_train"])
+            row.update(plan_row_values(raw_nested["plan_train"]))
     row["last_epoch"] = run.summary.get("epoch")
     row["last_lr"] = run.summary.get("lr-Adam")
     if pd.isna(row["last_epoch"]) or pd.isna(row["last_lr"]):
@@ -263,17 +287,26 @@ def row_from_run(run_name: str, run) -> dict:
 def update_runs_registry(
     best_runs_path: Path = BEST_RUNS_PATH,
     registry_csv: Path | None = None,
+    overwrite: bool = False,
 ) -> pd.DataFrame:
     best_runs = load_best_runs(best_runs_path)
-    collected = collect_run_names(best_runs)
+    targets = collect_run_targets(best_runs)
+    mnemonic_by_run = {run_name: mnemonic for mnemonic, run_name, _ in targets}
+    k_largest_by_run = {run_name: k_largest for _, run_name, k_largest in targets}
+    collected = [run_name for _, run_name, _ in targets]
     collected_set = set(collected)
 
     registry_csv = runs_registry_path() if registry_csv is None else registry_csv
     df = load_runs_registry(registry_csv)
-    df = df[df["run_name"].isin(collected_set)].reset_index(drop=True)
-
-    existing = set(df["run_name"].tolist()) if len(df) else set()
-    pending = [run_name for run_name in collected if run_name not in existing]
+    if overwrite:
+        df = pd.DataFrame(columns=df.columns)
+        pending = collected
+    else:
+        df = df[df["run_name"].isin(collected_set)].reset_index(drop=True)
+        df["mnemonic"] = df["run_name"].map(mnemonic_by_run)
+        df["k_largest"] = df["run_name"].map(k_largest_by_run)
+        existing = set(df["run_name"].tolist()) if len(df) else set()
+        pending = [run_name for run_name in collected if run_name not in existing]
 
     if pending:
         os.environ["WANDB_API_KEY"] = get_wandb_config()
@@ -281,17 +314,19 @@ def update_runs_registry(
         rows = []
         unresolved = []
         for run_name in pending:
+            mnemonic = mnemonic_by_run[run_name]
+            k_largest = k_largest_by_run[run_name]
             try:
                 run = resolve_run(api, run_name)
             except FileNotFoundError:
-                row = resolve_checkpoint_row(run_name)
+                row = resolve_checkpoint_row(run_name, mnemonic, k_largest)
                 if row is None:
                     print(f"Skipping unresolved run: {run_name}")
                     unresolved.append(run_name)
                     continue
                 rows.append(row)
                 continue
-            rows.append(row_from_run(run_name, run))
+            rows.append(row_from_run(run_name, mnemonic, k_largest, run))
         if rows:
             df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True, sort=False)
         if unresolved:
@@ -303,6 +338,8 @@ def update_runs_registry(
             for run_name in unresolved:
                 cprint(run_name, color="yellow", bold=True)
 
+    if "k_largest" not in df.columns:
+        df["k_largest"] = pd.Series(dtype="float64")
     if "run_name" not in df.columns:
         df["run_name"] = pd.Series(dtype="object")
     df = df[[col for col in df.columns if not is_excluded_col(str(col))]]

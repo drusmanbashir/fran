@@ -1,6 +1,6 @@
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INFER_PY="$SCRIPT_DIR/by_mnemonic.py"
+INFER_PY="$SCRIPT_DIR/infer.py"
 
 LOCALISER_TYPE="${LOCALISER_TYPE:-}"
 FOLDER="${FOLDER:-}"

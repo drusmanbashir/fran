@@ -85,10 +85,26 @@ deepcore = [
   "requests>=2.31",
   "scipy>=1.10",
 ]
-full = [
+# Local Ubuntu/Sinclair workstation profile.
+sinclair = [
   "fran[train,tracking,detection,tuning,dicom]",
   "utilz[full] @ git+https://github.com/drusmanbashir/utilz.git@main",
   "label_analysis[full] @ git+https://github.com/drusmanbashir/label_analysis.git@main",
+]
+
+# Slicer supplements only. This assumes the Slicer Python runtime already provides
+# its bundled scientific stack and any local editable repos on PYTHONPATH.
+slicer = [
+  "dynamic-network-architectures",
+  "nnunetv2",
+  "polars",
+  "ultralytics",
+  "ultralytics-thop",
+]
+
+# HPC-safe profile. Keep GUI-heavy and workstation-only tools out of this set.
+hpc = [
+  "fran[train,tracking]",
 ]
 
 [tool.setuptools.packages.find]

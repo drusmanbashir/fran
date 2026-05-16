@@ -722,8 +722,8 @@ if __name__ == "__main__":
     override_dm = False
     override_dm = True
 
-    # run_name = "KITS23-SIRIG"
     run_name = "TOTALSEG-HEDA"
+    run_name = "KITS23-SIRIG"
     run_name = None
     tags = []
     description = f""
@@ -780,8 +780,8 @@ if __name__ == "__main__":
     dl = tmv.dl
     iteri = iter(dl)
 # %%
-    for i, batch in enumerate(iteri):
-        print(batch["image"].shape)
+    batch = next(iteri)
+    batch['image'].shape
 
 # %%
     tmt.setup()

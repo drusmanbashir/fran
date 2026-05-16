@@ -106,9 +106,13 @@ This file is the runnable-entrypoint inventory for `fran/fran/run/`.
   - Higher-level inference helper entrypoint.
   - Use when calling FRAN inference flows programmatically or through a thin CLI.
 
-- `inference/by_mnemonic.py <mnemonic> [--localiser-type {TSL,yolo}] (--folder <folder> | --dataset <dataset>)`
+- `inference/by_mnem.py <mnemonic> [--localiser-type {TSL,yolo}] (--folder <folder> | --dataset <dataset>)`
   - Mnemonic-driven inference CLI.
   - Resolves top runs from `best_runs.yaml`, infers TSL localiser labels from run-registry remapping metadata, and dispatches to `CascadeInferer` or `CascadeInfererYOLO`.
+
+- `inference/by_mnem_multi_gpu.py <mnemonic> [--localiser-type {full,whole,yolo}] (--folder <folder> | --dataset <dataset>)`
+  - Two-GPU mnemonic-driven inference CLI.
+  - Resolves spec once, pre-filters existing predictions before chunking, then runs two Ray actors across GPUs `0` and `1`.
 
 - `inference/main.py`
   - Small bootstrap/demo entrypoint for inference flows.

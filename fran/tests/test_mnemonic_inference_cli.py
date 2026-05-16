@@ -4,14 +4,14 @@ from types import SimpleNamespace
 
 import pytest
 
-mnemonic = importlib.import_module("fran.run.inference.by_mnemonic")
+mnemonic = importlib.import_module("fran.run.inference.infer")
 
 
 def test_resolve_spec_tsl_uses_region_family_from_remapping(monkeypatch):
     monkeypatch.setattr(
         mnemonic,
-        "load_best_runs",
-        lambda path=mnemonic.BEST_RUNS_PATH: {
+        "load_yaml",
+        lambda path: {
             "whole": {"runs": ["TOTALSEG-FREHA"]},
             "kidneys": {
                 "runs": {"TSL": ["KITS2-bk"], "yolo": ["KITS23-SIRIG"]},
@@ -37,8 +37,8 @@ def test_resolve_spec_tsl_uses_region_family_from_remapping(monkeypatch):
 def test_resolve_spec_auto_prefers_yolo_when_tsl_missing(monkeypatch):
     monkeypatch.setattr(
         mnemonic,
-        "load_best_runs",
-        lambda path=mnemonic.BEST_RUNS_PATH: {
+        "load_yaml",
+        lambda path: {
             "whole": {"runs": ["TOTALSEG-FREHA"]},
             "kidneys": {"runs": {"TSL": None, "yolo": ["KITS23-SIRIG"]}},
         },
@@ -56,19 +56,19 @@ def test_resolve_spec_auto_prefers_yolo_when_tsl_missing(monkeypatch):
     assert spec.localiser_regions == ["abdomen", "pelvis"]
 
 
-def test_resolve_input_folders_requires_exactly_one_source():
+def test_resolve_input_images_requires_exactly_one_source():
     with pytest.raises(ValueError, match="exactly one"):
-        mnemonic.resolve_input_folders(None, None)
+        mnemonic.resolve_input_images(None, None)
 
     with pytest.raises(ValueError, match="exactly one"):
-        mnemonic.resolve_input_folders("/tmp/images", ["kits23"])
+        mnemonic.resolve_input_images("/tmp/images", ["kits23"])
 
 
 def test_resolve_spec_auto_selects_first_ordered_run(monkeypatch, capsys):
     monkeypatch.setattr(
         mnemonic,
-        "load_best_runs",
-        lambda path=mnemonic.BEST_RUNS_PATH: {
+        "load_yaml",
+        lambda path: {
             "whole": {"runs": ["TOTALSEG-FREHA"]},
             "kidneys": {"runs": {"TSL": ["KITS2-bk"], "yolo": ["KITS23-SIRIG"]}},
         },
@@ -94,8 +94,8 @@ def test_resolve_spec_auto_selects_first_ordered_run(monkeypatch, capsys):
 def test_resolve_spec_explicit_localiser_type_uses_registry_mode_bucket(monkeypatch):
     monkeypatch.setattr(
         mnemonic,
-        "load_best_runs",
-        lambda path=mnemonic.BEST_RUNS_PATH: {
+        "load_yaml",
+        lambda path: {
             "whole": {"runs": ["TOTALSEG-FREHA"]},
             "kidneys": {"runs": {"TSL": ["KITS23-SIRIG"], "yolo": ["KITS2-bk"]}},
         },
@@ -120,8 +120,8 @@ def test_resolve_spec_explicit_localiser_type_uses_registry_mode_bucket(monkeypa
 def test_resolve_spec_prefers_minimal_for_nested_standalone_runs(monkeypatch):
     monkeypatch.setattr(
         mnemonic,
-        "load_best_runs",
-        lambda path=mnemonic.BEST_RUNS_PATH: {
+        "load_yaml",
+        lambda path: {
             "totalseg": {"runs": {"full": ["FULL-RUN"], "minimal": ["MIN-RUN"]}},
         },
     )
@@ -150,8 +150,8 @@ def test_main_uses_dataset_images_folder_for_yolo(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         mnemonic,
-        "load_best_runs",
-        lambda path=mnemonic.BEST_RUNS_PATH: {
+        "load_yaml",
+        lambda path: {
             "whole": {"runs": ["TOTALSEG-FREHA"]},
             "kidneys": {
                 "runs": {"TSL": None, "yolo": ["KITS23-SIRIG"]},

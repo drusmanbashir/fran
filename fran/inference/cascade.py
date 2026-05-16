@@ -288,7 +288,17 @@ class CascadeInferer(BaseInferer):  # SPACING HAS TO BE SAME IN PATCHES
         )
 
     def apply_bboxes(self, data, bboxes):
-        return apply_bboxes(data, bboxes)
+
+        data2 = []
+        for i, dat in enumerate(data):
+            dat["full_meta"] = deepcopy(dat["image"].meta)
+            dat["full_meta"]["spatial_shape"] = tuple(
+                int(v) for v in dat["image"].shape
+            )
+            dat["image"] = dat["image"][tuple(bboxes[i][1:])]
+            dat["bounding_box"] = bboxes[i]
+            data2.append(dat)
+        return data2
 
     def create_and_set_postprocess_transforms(self):
         self.create_postprocess_transforms()
@@ -489,7 +499,7 @@ if __name__ == "__main__":
     _, val = P.get_train_val_case_ids(fold=1)
     # run_kid = best_runs["kidneys"]["run_ids"][0]
     run_tot = best_runs["whole"]["runs"][0]
-    run_kid = best_runs["kidneys"]["runs"][0]
+    run_kid = best_runs["kidneys"]["runs"][1]
     bad_case = "litq_28_20191116"
 
     label_loc = TSL.kidney.label_minimal
@@ -497,10 +507,10 @@ if __name__ == "__main__":
 
 
     safe_mode = True
-    overwrite = True
     overwrite = False
-    debug_ = False
+    overwrite = True
     debug_ = True
+    debug_ = False
     save_channels = False
     save_localiser = True
 
@@ -518,17 +528,14 @@ if __name__ == "__main__":
     )
 
 # %%
-    batch['image'].meta
-# %%
-    bd_fn = "/s/xnat_shadow/litq/images/litq_28_20191116.nrrd"
 
     imgs = kits_imgs
     imgs = imgs_bosniak
+    # fns = [fn for fn in imgs if "litq_" in fn.name]
+    # imgs = fns
     imgs = imgs_litsmc
-    fns = [fn for fn in imgs if "litq_" in fn.name]
-    imgs = fns[1:]
-    En.debug=True
-    preds = En.run(imgs, chunksize=1, overwrite=overwrite)
+    imgs = [fn for fn in imgs if "drli" in fn.name]
+    preds = En.run(imgs, chunksize=4, overwrite=overwrite)
 # %%
     pred = preds[0]["pred"]
     image = load_images_nifti(imgs_addd)[0]

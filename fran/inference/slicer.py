@@ -1,91 +1,46 @@
-from contextlib import contextmanager
+from dataclasses import dataclass
 
-from fran.inference.cascade import CascadeInferer
-from torch.profiler import ProfilerActivity, profile
-
-
-class SlicerCascadeInferer(CascadeInferer):
-    def __init__(
-        self,
-        run_w,
-        run_p,
-        localiser_labels: list[str],  # these labels will be used to create bbox
-        patch_overlap=0.2,
-        devices=[1],
-        safe_mode=False,
-        profile=None,
-        save_channels=False,
-        save=True,
-        save_localiser=True,
-        k_largest=None,  # assign a number if there are organs involved
-        **kwargs,
-    ):
-        super().__init__(
-            run_w=run_w,
-            run_p=run_p,
-            localiser_labels=localiser_labels,
-            patch_overlap=patch_overlap,
-            devices=devices,
-            safe_mode=safe_mode,
-            profile=profile,
-            save_channels=save_channels,
-            save_localiser=save_localiser,
-            save=save,
-            k_largest=k_largest,
-            **kwargs,
-        )
-        self.profile_enabled = profile
-
-    def profile_decorator(self, func):
-        @contextmanager
-        def profiler(*args, **kwargs):
-            if self.profile_enabled:
-                with profile(
-                    activities=[ProfilerActivity.CPU], record_shapes=True
-                ) as prof:
-                    yield
-                    # print(prof.key_averages(group_by_stack_n=5).table(sort_by="self_cpu_time_total", row_limit=2))
-                    # prof.export_stacks("/home/ub/.tmp/profiler_stacks.txt", "self_cpu_time_total")
-                print(
-                    prof.key_averages().table(
-                        sort_by="self_cpu_time_total", row_limit=100
-                    ),
-                    file=open("/tmp/profile2.txt", "a"),
-                )
-            else:
-                yield
-
-        def wrapper(*args, **kwargs):
-            with profiler():
-                return func(*args, **kwargs)
-
-        return wrapper
-
-    #
-    # def transforms(self):
-    #
-    #     self.E = EnsureChannelFirstd(keys=["image"], channel_dim="no_channel")
-    #     self.S = Spacingd(keys=["image"], pixdim=self.dataset_params['spacings'])
-    #     self.N = NormaliseClipd(
-    #         keys=["image"],
-    #         clip_range=self.dataset_params["intensity_clip_range"],
-    #         mean=self.dataset_params["mean_fg"],
-    #         std=self.dataset_params["std_fg"],
-    #     )
-    #     self.O = Orientationd(keys=["image"], axcodes="RAS")  # nOTE RAS
-    #
-    #
-
-    # @profile_decorator
-    # def run(self, img):
-    #     data = self.load_images(img)
-    #     self.bboxes = self.extract_fg_bboxes(data)
-    #     data = self.apply_bboxes(data, self.bboxes)
-    #     pred_patches = self.patch_prediction(data)
-    #     pred_patches = self.decollate_patches(pred_patches, self.bboxes)
-    #     output = self.postprocess(pred_patches)
-    #     return output
+from fran.run.inference import infer
 
 
-if __name__ == "__main__":
-    pass
+@dataclass(frozen=True)
+class SlicerInferenceSelection:
+    body_part: str
+    run_name: str | None = None
+    localiser_type: str | None = None
+    localiser_run_name: str | None = None
+    devices: list[int] | str = (0,)
+    patch_overlap: float = 0.2
+    safe_mode: bool = True
+    save: bool = False
+    save_channels: bool = False
+
+
+def build_inferer(selection: SlicerInferenceSelection):
+    spec = infer.resolve_inference_spec(
+        mnemonic_or_run=selection.body_part,
+        run_name=selection.run_name,
+        localiser_type=selection.localiser_type,
+        localiser_run_name=selection.localiser_run_name,
+    )
+    inferer = infer.build_inferer(
+        spec=spec,
+        gpus=list(selection.devices)
+        if selection.devices != "cpu"
+        else selection.devices,
+        safe_mode=selection.safe_mode,
+        patch_overlap=selection.patch_overlap,
+        save=selection.save,
+        save_channels=selection.save_channels,
+    )
+    return inferer, spec
+
+
+class SlicerInfererAdapter:
+    def __init__(self, selection: SlicerInferenceSelection):
+        self.selection = selection
+        self.inferer, self.spec = build_inferer(selection)
+
+    def process_data_sublist(self, images):
+        self.inferer.setup()
+        return self.inferer.process_data_sublist(images)
