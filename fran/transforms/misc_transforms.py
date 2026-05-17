@@ -9,7 +9,7 @@ import SimpleITK as sitk
 import torch
 from fran.transforms.base import ItemTransform, MonaiDictTransform
 from label_analysis.geometry_pt import BBoxInfoFromPT
-from label_analysis.helpers import listify, relabel
+from label_analysis.utils.helpers import listify, relabel
 from monai.apps.detection.transforms.array import ConvertBoxMode
 
 # from label_analysis.merge import merge_pt

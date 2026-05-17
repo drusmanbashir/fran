@@ -131,8 +131,8 @@ class Datasource:
 
     def relabel(self, remapping: dict = None, target_label: int = None):
         # label_analysis has optional heavy deps (e.g. radiomics); import only when relabeling.
-        from label_analysis.helpers import relabel as relabel_labels
-        from label_analysis.helpers import to_binary, to_int
+        from label_analysis.utils.helpers import relabel as relabel_labels
+        from label_analysis.utils.helpers import to_binary, to_int
 
         assert remapping or target_label, (
             "Must specify either a remapping_dict or specify a target_label so all labels are converted to it"

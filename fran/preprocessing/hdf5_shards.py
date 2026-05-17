@@ -9,7 +9,11 @@ import re
 from fran.preprocessing.preprocessor import Preprocessor
 import numpy as np
 import torch
-from fran.preprocessing.helpers import import_h5py, sanitize_meta_for_monai
+from fran.preprocessing.helpers import (
+    import_h5py,
+    infer_indices_folder,
+    sanitize_meta_for_monai,
+)
 from utilz.cprint import cprint
 from utilz.fileio import maybe_makedirs
 
@@ -368,6 +372,10 @@ class HDF5ShardGenerator(Preprocessor):
     def create_data_df(self):
         super().create_data_df()
         self.df.drop(columns=["pt_processed"], inplace=True)
+
+    @property
+    def indices_subfolder(self):
+        return infer_indices_folder(self.data_folder, self.plan)
 
     def _store_shard_ind(self, shard_fn):
         name = shard_fn.name

@@ -1,17 +1,80 @@
-# %%
+import ast
 import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
+from fran.configs.helpers import is_excel_None
 from fran.configs.mnemonics import Mnemonics
 from fran.transforms.imageio import ToTensorT
+from label_analysis.utils.utils import SITKImageMaskFixer
+from utilz.fileio import (
+    Union,
+    maybe_makedirs,
+    os,
+    pd,
+    save_dict,
+    save_list,
+    sitk,
+    str_to_path,
+    torch,
+    tr,
+)
+from utilz.helpers import (
+    find_matching_fn,
+    info_from_filename,
+    multiprocess_multiarg,
+    re,
+)
 from utilz.listify import listify
-from label_analysis.utils import SITKImageMaskFixer
-from utilz.fileio import Union, maybe_makedirs, os, pd, save_dict, save_list, sitk, str_to_path, torch, tr
-from utilz.helpers import find_matching_fn, info_from_filename, multiprocess_multiarg, re
 from utilz.stringz import info_from_filename
+
+
+@str_to_path([0, 1, 2])
+def create_df_from_folders(
+    images_folder=None,
+    lms_folder=None,
+    indices_folder=None,
+):
+    image_fns = list(images_folder.glob("*")) if images_folder is not None else []
+    lm_fns = list(lms_folder.glob("*")) if lms_folder is not None else []
+    dicis = []
+    for img_fn in image_fns:
+        case_id = info_from_filename(img_fn.name, full_caseid=True)["case_id"]
+        dici = {"case_id": case_id}
+
+        if images_folder is not None:
+            dici["image"] = img_fn
+        if lms_folder is not None:
+            lm_fn = find_matching_fn(img_fn, lm_fns, tags=["case_id"])[0]
+            dici["lm"] = lm_fn
+        if indices_folder is not None:
+            match_name = dici["lm"].name if "lm" in dici else img_fn.name
+            ind_fn = indices_folder / match_name
+            if not ind_fn.exists():
+                raise MatchError(
+                    "No matching indices file found for {0}".format(match_name)
+                )
+            dici["indices"] = ind_fn
+        dicis.append(dici)
+    df = pd.DataFrame(dicis)
+    return df
+
+
+def infer_indices_folder(base_folder, plan) -> Path:
+    fg_indices_exclude = plan["fg_indices_exclude"]
+    if is_excel_None(fg_indices_exclude):
+        indices_subfolder = "indices"
+    else:
+        if isinstance(fg_indices_exclude, str):
+            fg_indices_exclude = ast.literal_eval(fg_indices_exclude)
+        fg_indices_exclude = listify(fg_indices_exclude)
+        indices_subfolder = "indices_fg_exclude_{}".format(
+            "".join([str(x) for x in fg_indices_exclude])
+        )
+    return Path(base_folder) / indices_subfolder
 
 
 def env_flag(name: str, default: bool) -> bool:
@@ -297,7 +360,7 @@ def show_gif_in_chrome_if_available(gif_path: Path) -> None:
 
 
 def create_dataset_stats_artifacts(
-    lms_folder,  gif: bool = True, label_stats=False, preview=True, gif_window="abdomen" 
+    lms_folder, gif: bool = True, label_stats=False, preview=True, gif_window="abdomen"
 ):
     lms_folder = Path(lms_folder)
     dataset_root = lms_folder.parent
@@ -330,11 +393,11 @@ def create_dataset_stats_artifacts(
             show_gif_in_chrome_if_available(output_gif)
 
 
-def postprocess_artifacts_missing(data_folder:Path) ->dict:
+def postprocess_artifacts_missing(data_folder: Path) -> dict:
     data_folder = Path(data_folder)
     want_label_stats = env_flag("FRAN_STORE_LABEL_STATS", True)
     want_gif = env_flag("FRAN_STORE_GIFS", False)
-    missings={ "label_stats":want_label_stats, "gif":want_gif}
+    missings = {"label_stats": want_label_stats, "gif": want_gif}
     stats_folder = data_folder / "dataset_stats"
     labels_stats_fn = data_folder / "lesion_stats.csv"
     gif_fn = stats_folder / "snapshot.gif"
@@ -343,7 +406,6 @@ def postprocess_artifacts_missing(data_folder:Path) ->dict:
     if not want_gif or gif_fn.exists():
         missings["gif"] = False
     return missings
-
 
 
 class BBoxesFromMask(object):
@@ -437,22 +499,20 @@ def compute_fgbg_ratio(dataset_details_df, nnz_allowed):
     if nnz_allowed:
         inds = dataset_details_df.index
     else:
-        inds = dataset_details_df.index[
-            dataset_details_df["has_fg"]
-        ]
+        inds = dataset_details_df.index[dataset_details_df["has_fg"]]
     n_bg_total = dataset_details_df.loc[inds, "n_bg"].sum()
     fgbg_ratio = n_fg_total / n_bg_total
     return fgbg_ratio
 
 
 if __name__ == "__main__":
-    # %%
+# %%
     fn = "/s/fran_storage/datasets/raw_data/lidc/lms/lidc_0030.nii.gz"
     fn = "/s/xnat_shadow/crc/lms/crc_CRC004_20190425_CAP1p5.nii.gz"
     A = BBoxesFromMask(fn, bg_label=0)
     A()
     print(A.bboxes_info)
-    # %%
+# %%
     import os
     import zipfile
 
@@ -468,7 +528,7 @@ if __name__ == "__main__":
     im = torch.load(pth, weights_only=False)
     im = torch.Tensor(im)
     torch.save(im, "/tmp/pt_tensor.pt", _use_new_zipfile_serialization=True)
-    # %%
+# %%
 
     path = "/tmp/pt_tensor.pt"
 
@@ -476,7 +536,7 @@ if __name__ == "__main__":
     t = torch.arange(6, dtype=torch.float32).reshape(2, 3).contiguous()
     # torch.save(t, path, _use_new_zipfile_serialization=True)
     torch.jit.save(torch.jit.script(t), path)
-    # %%
+# %%
     import torch
     from torch import nn
 
@@ -502,7 +562,7 @@ if __name__ == "__main__":
     print("PY_OBJ_TYPE:", type(obj))  # <class 'torch.Tensor'>
     print("PY_TENSOR_SHAPE:", obj.shape)
 
-    # %%
+# %%
     import io
 
     x = torch.arange(10)
@@ -510,7 +570,7 @@ if __name__ == "__main__":
     torch.save(x, f, _use_new_zipfile_serialization=True)
     # send f wherever
 
-    # %%
+# %%
     path = "/tmp/pt_tensor.pt"
     with open(path, "wb") as outfile:
         # Copy the BytesIO stream to the output file

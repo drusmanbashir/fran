@@ -13,7 +13,7 @@ LABEL_ANALYSIS_ROOT = Path.home() / "code" / "label_analysis"
 sys.path.insert(0, str(LABEL_ANALYSIS_ROOT))
 
 from label_analysis.geometry_itk import LabelMapGeometryITK
-from label_analysis.helpers import get_labels
+from label_analysis.utils.helpers import get_labels
 
 
 def _case_id_from_name(fn: Path) -> str:

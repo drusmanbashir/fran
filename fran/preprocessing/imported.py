@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 from fran.configs.parser import parse_excel_datasources, parse_excel_remapping
+from fran.preprocessing.helpers import infer_indices_folder
 from fran.preprocessing.labelbounded import LabelBoundedDataGenerator
 from tqdm.auto import tqdm as pbar
 from utilz.helpers import find_matching_fn
@@ -161,19 +162,7 @@ class _LBDImportedSamplerWorkerBase(RayWorkerBase):
 
     @property
     def indices_subfolder(self):
-        fg_indices_exclude = self.plan.get("fg_indices_exclude")
-        if fg_indices_exclude is None:
-            fg_indices_exclude = []
-        elif isinstance(fg_indices_exclude, int):
-            fg_indices_exclude = [fg_indices_exclude]
-        if len(fg_indices_exclude) > 0:
-            indices_subfolder = "indices_fg_exclude_{}".format(
-                "".join([str(x) for x in fg_indices_exclude])
-            )
-        else:
-            indices_subfolder = "indices"
-        indices_subfolder = self.output_folder / indices_subfolder
-        return indices_subfolder
+        return infer_indices_folder(self.output_folder, self.plan)
 
 
 @ray.remote(num_cpus=CPUS_PER_ACTOR)

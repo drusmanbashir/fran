@@ -1,8 +1,23 @@
 # %%
 # training.py — minimal runner to Tm.fit()
+from functools import reduce
+from operator import add
+
 import ipdb
 
 tr = ipdb.set_trace
+
+
+def int_to_ratios(n_fg_labels, fgbg_ratio=3):
+    ratios = [1] + [fgbg_ratio / n_fg_labels] * n_fg_labels
+    return ratios
+
+
+def list_to_fgbg(class_ratios):
+    bg = class_ratios[0]
+    fg = class_ratios[1:]
+    fg = reduce(add, fg)
+    return fg, bg
 
 
 from typing import List, Union
@@ -123,3 +138,5 @@ if __name__ == "__main__":
 # %%
 # %%
 # %%
+
+

@@ -7,7 +7,7 @@ import SimpleITK as sitk
 matplotlib.use("Agg")  # Set non-interactive backend
 
 import ipdb
-from label_analysis.helpers import to_label
+from label_analysis.utils.helpers import to_label
 
 tr = ipdb.set_trace
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     from dicom_utils.sitk_to_dcm import nifti_rgb_to_dicom_series
     from fran.inference.cascade import CascadeInferer
     from fran.managers import Project
-    from label_analysis.helpers import to_int
+    from label_analysis.utils.helpers import to_int
     from label_analysis.merge import LabelMapGeometry
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter

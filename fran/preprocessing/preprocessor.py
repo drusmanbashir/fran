@@ -21,6 +21,7 @@ from fran.loggers.preprocessing import PreprocessingLogger
 from fran.preprocessing import bboxes_function_version
 from fran.preprocessing.helpers import (
     create_dataset_stats_artifacts,
+    create_df_from_folders,
     env_flag,
     import_h5py,
     infer_dataset_stats_window,
@@ -30,7 +31,7 @@ from fran.preprocessing.helpers import (
 from fran.utils.dataset_properties import analyze_tensor_data_folder
 from utilz.cprint import cprint
 from utilz.fileio import maybe_makedirs, save_dict, save_json
-from utilz.helpers import create_df_from_folder, multiprocess_multiarg
+from utilz.helpers import multiprocess_multiarg
 from utilz.rayz import shutdown_actors
 from utilz.stringz import ast_literal_eval, info_from_filename, strip_extension
 
@@ -319,7 +320,7 @@ def create_hdf5_shards(
 
 
 class Preprocessor:
-    delete_pt_after_shard_creation=True
+    delete_pt_after_shard_creation=False
     subfolder_key = None
     PREPROCESS_LOG_COLUMNS = [
         "timestamp",
@@ -380,7 +381,12 @@ class Preprocessor:
         return df
 
     def _df_from_folder(self):
-        df = create_df_from_folder(self.data_folder)
+        indices_folder = self.indices_subfolder if hasattr(self, "indices_subfolder") else None
+        df = create_df_from_folders(
+            images_folder=self.data_folder / "images",
+            lms_folder=self.data_folder / "lms",
+            indices_folder=indices_folder,
+        )
         extract_ds = lambda x: x.split("_")[0]
         df["ds"] = df["case_id"].apply(extract_ds)
         df = self._normalize_folder_df_ds_from_project_db(df)

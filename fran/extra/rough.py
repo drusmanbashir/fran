@@ -1,5 +1,5 @@
 from fran.run.misc import view_image
-from label_analysis.helpers import get_labels
+from label_analysis.utils.helpers import get_labels
 from tqdm.auto import tqdm
 import matplotlib
 matplotlib.get_backend()

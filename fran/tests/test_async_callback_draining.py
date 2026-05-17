@@ -1,23 +1,13 @@
 from types import SimpleNamespace
 
 import pandas as pd
+import torch
 
 from fran.callback.case_recorder import (
     CaseIDRecorder,
     selected_case_recorder_plot_labels,
 )
 from fran.callback.wandb.wandb import WandbImageGridCallback
-
-
-class DoneFuture:
-    def __init__(self, result):
-        self._result = result
-
-    def done(self):
-        return True
-
-    def result(self):
-        return self._result
 
 
 class FakeLogger:
@@ -30,25 +20,15 @@ class FakeLogger:
         self.logged_images.append((key, images))
 
 
-def test_case_id_recorder_drains_completed_exports_during_train_batch_start(tmp_path):
+def test_case_id_recorder_train_batch_start_collects_without_async_state(tmp_path):
     callback = CaseIDRecorder(freq=5, local_folder=tmp_path)
     callback.on_fit_start(None, None)
-    callback._pending_plot_exports = [
-        DoneFuture(
-            {
-                "artifacts": [{"key": "valid_plot", "path": str(tmp_path / "plot.png")}],
-                "plotly_fallback_message": None,
-            }
-        )
-    ]
-    trainer = SimpleNamespace(current_epoch=0, logger=FakeLogger())
+    trainer = SimpleNamespace(current_epoch=4, logger=FakeLogger())
+    batch = {"image": SimpleNamespace(meta={"filename_or_obj": "case.pt"})}
 
-    callback.on_train_batch_start(trainer, None, {}, 0)
+    callback.on_train_batch_start(trainer, None, batch, 0)
 
-    assert trainer.logger.logged_images == [
-        ("valid_plot", [str(tmp_path / "plot.png")])
-    ]
-    assert callback._pending_plot_exports == []
+    assert callback.files_this_batch == "case.pt"
 
 
 def test_case_id_recorder_limits_plot_labels_to_requested_subset(tmp_path):
@@ -86,34 +66,27 @@ def test_selected_case_recorder_plot_labels_intersects_with_available_labels():
     assert labels == ["loss_dice_label2", "loss_dice_label1"]
 
 
-def test_wandb_grid_callback_drains_completed_renders_during_validation_batch_start(
-    monkeypatch, tmp_path
-):
+def test_wandb_grid_callback_logs_sync_grid_image_on_scheduled_epoch(monkeypatch):
     callback = WandbImageGridCallback(
         classes=2,
         patch_size=(8, 8, 8),
-        epoch_freq=5,
-        local_folder=tmp_path,
+        epoch_freq=1,
     )
-    image_path = tmp_path / "grid.png"
-    image_path.write_bytes(
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf6\x178U\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
-    callback._pending_grid_renders = [
-        DoneFuture({"image_path": str(image_path), "key": "images/grid"})
-    ]
+    callback.grid_imgs = [torch.zeros((4, 3, 4, 4), dtype=torch.uint8)]
+    callback.grid_preds = [torch.zeros((4, 3, 4, 4), dtype=torch.uint8)]
+    callback.grid_labels = [torch.zeros((4, 3, 4, 4), dtype=torch.uint8)]
+    callback.grid_case_ids = [["a", "b", "c", "d"]]
     logged = []
     trainer = SimpleNamespace(
         current_epoch=0,
         logger=SimpleNamespace(experiment=SimpleNamespace(log=logged.append)),
     )
     monkeypatch.setattr(
-        "fran.callback.wandb.wandb.wandb.Image", lambda image: ("wandb-image", image.size)
+        "fran.callback.wandb.wandb.wandb.Image",
+        lambda image: ("wandb-image", image.shape),
     )
 
-    callback.on_validation_batch_start(trainer, None, {}, 0)
+    callback.on_train_epoch_end(trainer, None)
 
     assert len(logged) == 1
     assert list(logged[0]) == ["images/grid"]
-    assert callback._pending_grid_renders == []
-    assert image_path.exists() is False

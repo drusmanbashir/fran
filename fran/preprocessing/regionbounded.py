@@ -4,7 +4,7 @@ import json
 import math
 from pathlib import Path
 
-from fran.preprocessing.helpers import import_h5py
+from fran.preprocessing.helpers import import_h5py, infer_indices_folder
 import ipdb
 from localiser.inference.base import bbox_from_file
 import numpy as np
@@ -153,16 +153,7 @@ class _RBDSamplerWorkerBase(RayWorkerBase):
 
     @property
     def indices_subfolder(self):
-        fg_indices_exclude = self.plan.get("fg_indices_exclude")
-        if fg_indices_exclude is None:
-            indices_subfolder = "indices"
-        elif isinstance(fg_indices_exclude, int):
-            indices_subfolder = f"indices_fg_exclude_{fg_indices_exclude}"
-        else:
-            indices_subfolder = "indices_fg_exclude_{}".format(
-                "".join([str(x) for x in fg_indices_exclude])
-            )
-        return self.output_folder / indices_subfolder
+        return infer_indices_folder(self.output_folder, self.plan)
 
 
 @ray.remote(num_cpus=1)

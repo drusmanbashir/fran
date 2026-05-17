@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import ray
 from fran.configs.helpers import is_excel_None
+from fran.preprocessing.helpers import infer_indices_folder
 from fran.preprocessing.preprocessor import (
     Preprocessor,
     store_label_count,
@@ -57,18 +58,7 @@ class _LBDSamplerWorkerBase(RayWorkerBase):
 
     @property
     def indices_subfolder(self):
-        fg_indices_exclude = self.plan.get("fg_indices_exclude")
-        if fg_indices_exclude is None:
-            fg_indices_exclude = []
-        elif isinstance(fg_indices_exclude, int):
-            fg_indices_exclude = [fg_indices_exclude]
-        if len(fg_indices_exclude) > 0:
-            indices_subfolder = "indices_fg_exclude_{}".format(
-                "".join([str(x) for x in fg_indices_exclude])
-            )
-        else:
-            indices_subfolder = "indices"
-        return self.output_folder / indices_subfolder
+        return infer_indices_folder(self.output_folder, self.plan)
 
 
 @ray.remote(num_cpus=1)
@@ -81,7 +71,7 @@ class LBDSamplerWorkerLocal(_LBDSamplerWorkerBase):
 
 
 class LabelBoundedDataGenerator(Preprocessor):
-    delete_pt_after_shard_creation=True
+    delete_pt_after_shard_creation=False
     actor_cls = LBDSamplerWorkerImpl
     local_worker_cls = LBDSamplerWorkerLocal
     remapping_key = "remapping_lbd_rbd"
@@ -185,19 +175,7 @@ class LabelBoundedDataGenerator(Preprocessor):
 
     @property
     def indices_subfolder(self):
-        fg_indices_exclude = self.plan.get("fg_indices_exclude")
-        if fg_indices_exclude is None:
-            fg_indices_exclude = []
-        elif isinstance(fg_indices_exclude, int):
-            fg_indices_exclude = [fg_indices_exclude]
-        if len(fg_indices_exclude) > 0:
-            indices_subfolder = "indices_fg_exclude_{}".format(
-                "".join([str(x) for x in fg_indices_exclude])
-            )
-        else:
-            indices_subfolder = "indices"
-        indices_subfolder = self.output_folder / indices_subfolder
-        return indices_subfolder
+        return infer_indices_folder(self.output_folder, self.plan)
 
 
 class FGBGIndicesLBD(LabelBoundedDataGenerator):

@@ -10,7 +10,7 @@ import numpy as np
 import SimpleITK as sitk
 import torch
 from fran.transforms.base import Transform
-from label_analysis.helpers import get_labels as gl
+from label_analysis.utils.helpers import get_labels as gl
 from monai.config import PathLike
 from monai.config.type_definitions import KeysCollection
 from monai.data import ImageWriter

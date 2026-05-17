@@ -1,4 +1,5 @@
 import random
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -9,10 +10,11 @@ import wandb
 from fran.configs.mnemonics import Mnemonics
 from fran.transforms.spatialtransforms import one_hot
 from fran.utils.colour_palette import colour_palette
+from utilz.stringz import info_from_filename
 from lightning.pytorch.callbacks import Callback
 from PIL import Image, ImageDraw, ImageFont
 from torchvision.utils import make_grid
-from utilz.stringz import info_from_filename
+from utilz.helpers import is_hpc
 
 
 def _candidate_wandb_projects(project) -> list[str]:
@@ -64,18 +66,14 @@ def download_run_artifact_by_name(
     api = api or wandb.Api()
     for candidate in _candidate_wandb_projects(project):
         try:
-            run = _resolve_run_by_name(
-                api=api, project_name=candidate, run_name=run_name
-            )
+            run = _resolve_run_by_name(api=api, project_name=candidate, run_name=run_name)
             break
         except FileNotFoundError:
             continue
     else:
         raise FileNotFoundError(f"Unable to resolve run '{run_name}'.")
 
-    matching = [
-        a for a in run.logged_artifacts() if _artifact_basename(a) == artifact_name
-    ]
+    matching = [a for a in run.logged_artifacts() if _artifact_basename(a) == artifact_name]
     if not matching:
         raise FileNotFoundError(
             f"No logged artifact named '{artifact_name}' in run '{run_name}'"
@@ -167,6 +165,32 @@ def _annotate_wandb_grid_image(
     return np.asarray(canvas)
 
 
+def render_wandb_grid_worker(job: dict) -> dict:
+    Path(job["local_folder"]).mkdir(parents=True, exist_ok=True)
+    grid_stack = torch.from_numpy(job["grid_stack"])
+    grid_tiles = grid_stack.permute(1, 0, 2, 3, 4).contiguous()
+    grid_tiles = grid_tiles.view(-1, 3, grid_stack.shape[-2], grid_stack.shape[-1])
+    rendered_grid = make_grid(
+        grid_tiles,
+        nrow=job["imgs_per_batch"] * 3,
+        scale_each=True,
+        padding=job["padding"],
+    )
+    rendered_image = rendered_grid.permute(1, 2, 0).cpu().numpy().astype("uint8")
+    rendered_image = _annotate_wandb_grid_image(
+        rendered_image,
+        job["case_ids"],
+        int(grid_stack.shape[-1]),
+        int(grid_stack.shape[-2]),
+        job["imgs_per_batch"],
+        job["padding"],
+        job["val_start_idx"],
+    )
+    image_path = Path(job["image_path"])
+    Image.fromarray(rendered_image).save(image_path)
+    return {"image_path": str(image_path), "key": "images/grid"}
+
+
 class WandbImageGridCallback(Callback):
     def __init__(
         self,
@@ -175,6 +199,7 @@ class WandbImageGridCallback(Callback):
         grid_rows=6,
         imgs_per_batch=4,
         epoch_freq=5,
+        local_folder="/tmp/fran_wandb_grids",
     ):
         self.patch_size = torch.Size(patch_size)
         self.stride = int(self.patch_size[0] / imgs_per_batch)
@@ -182,7 +207,17 @@ class WandbImageGridCallback(Callback):
         self.grid_rows = grid_rows
         self.imgs_per_batch = imgs_per_batch
         self.epoch_freq = epoch_freq
+        self.local_folder = Path(local_folder)
+        self.local_folder.mkdir(parents=True, exist_ok=True)
+        self._skip_async_grid_render = is_hpc()
         self.reset_grid()
+        self._reset_async_grid_render_state()
+
+    def _reset_async_grid_render_state(self) -> None:
+        self._grid_render_executor = None
+        self._pending_grid_renders = []
+        self._max_pending_grid_renders = 2
+        self._warned_grid_render_backlog = False
 
     def reset_grid(self):
         self.grid_imgs = []
@@ -192,30 +227,44 @@ class WandbImageGridCallback(Callback):
         self.val_start_idx = None
 
     def on_train_start(self, trainer, pl_module):
+        self._shutdown_grid_render_executor()
         trainer.store_preds = False
         len_dl = int(len(trainer.train_dataloader) / trainer.accumulate_grad_batches)
         self.freq = max(2, int(len_dl / self.grid_rows))
+        self._reset_async_grid_render_state()
 
     def on_train_epoch_start(self, trainer, pl_module):
+        """Reset grid state on scheduled epochs and mark RT no-val mode."""
         epoch = trainer.current_epoch + 1
         if epoch % self.epoch_freq == 0:
             self.reset_grid()
+            if trainer.limit_val_batches == 0:
+                self.validation_grid_created = True
+                self.val_start_idx = None
 
     def on_validation_epoch_start(self, trainer, pl_module):
         self.validation_grid_created = False
 
     def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
+        self._drain_completed_grid_renders(trainer)
         epoch = trainer.current_epoch + 1
         if epoch % self.epoch_freq == 0:
             trainer.store_preds = trainer.global_step % self.freq == 0
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        self._drain_completed_grid_renders(trainer)
         if trainer.store_preds:
             self.populate_grid(pl_module, batch)
+
+    def on_validation_batch_start(
+        self, trainer, pl_module, batch, batch_idx, dataloader_idx=0
+    ):
+        self._drain_completed_grid_renders(trainer)
 
     def on_validation_batch_end(
         self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
     ):
+        self._drain_completed_grid_renders(trainer)
         if trainer.store_preds and not self.validation_grid_created:
             self.pad_to_row()
             self.val_start_idx = self.grid_item_count()
@@ -223,10 +272,113 @@ class WandbImageGridCallback(Callback):
             self.validation_grid_created = True
 
     def on_train_epoch_end(self, trainer, pl_module):
+        """Submit due grid renders without blocking epoch progress."""
+        self._drain_completed_grid_renders(trainer)
         epoch = trainer.current_epoch + 1
         if epoch % self.epoch_freq != 0 or len(self.grid_imgs) == 0:
             return
+        if trainer.limit_val_batches == 0:
+            self.val_start_idx = None
+        if self._skip_async_grid_render:
+            self._render_and_log_grid_sync(trainer)
+            return
+        self._submit_async_grid_render(trainer)
 
+    def on_fit_end(self, trainer, pl_module):
+        self._drain_completed_grid_renders(trainer, wait=True)
+        self._shutdown_grid_render_executor()
+
+    def _ensure_grid_render_executor(self) -> ProcessPoolExecutor:
+        if self._grid_render_executor is None:
+            self._grid_render_executor = ProcessPoolExecutor(max_workers=1)
+        return self._grid_render_executor
+
+    def _build_async_grid_job(self, trainer) -> dict:
+        max_items = self.imgs_per_batch * 10
+        grid_stack = self.stack_grids()[:, :max_items].contiguous().cpu().numpy()
+        case_ids = self.flatten_case_ids(max_items)
+        val_start_idx = self.val_start_idx
+        if val_start_idx is not None and val_start_idx >= max_items:
+            val_start_idx = None
+        epoch = trainer.current_epoch + 1
+        image_path = self.local_folder / f"grid_epoch_{epoch}_step_{trainer.global_step}.png"
+        return {
+            "case_ids": case_ids,
+            "grid_stack": grid_stack,
+            "image_path": str(image_path),
+            "imgs_per_batch": self.imgs_per_batch,
+            "local_folder": str(self.local_folder),
+            "padding": 1,
+            "val_start_idx": val_start_idx,
+        }
+
+    def _submit_async_grid_render(self, trainer) -> None:
+        self._drain_completed_grid_renders(trainer)
+        if len(self._pending_grid_renders) >= self._max_pending_grid_renders:
+            if not self._warned_grid_render_backlog:
+                print(
+                    "WandbImageGridCallback async render backlog is full. Skipping grid render for this epoch."
+                )
+                self._warned_grid_render_backlog = True
+            return
+
+        future = self._ensure_grid_render_executor().submit(
+            render_wandb_grid_worker, self._build_async_grid_job(trainer)
+        )
+        future._fran_grid_logged = False
+        run = trainer.logger.experiment
+        future.add_done_callback(
+            lambda done_future, run=run: self._finalize_async_grid_render(
+                run, done_future
+            )
+        )
+        self._pending_grid_renders.append(future)
+
+    def _finalize_async_grid_render(self, run, future) -> None:
+        """Log a completed grid render from the main process."""
+        if future._fran_grid_logged:
+            return
+        future._fran_grid_logged = True
+        try:
+            result = future.result()
+        except Exception as e:
+            print(f"WandbImageGridCallback async render failed: {e}")
+            return
+
+        image_path = Path(result["image_path"])
+        try:
+            with Image.open(image_path) as rendered_image:
+                run.log({result["key"]: wandb.Image(rendered_image.copy())})
+        except Exception as e:
+            print(e)
+        finally:
+            if image_path.exists():
+                image_path.unlink()
+
+    def _drain_completed_grid_renders(self, trainer, wait: bool = False) -> None:
+        if len(self._pending_grid_renders) == 0:
+            return
+
+        pending_futures = []
+        for future in self._pending_grid_renders:
+            if future._fran_grid_logged:
+                continue
+            if wait:
+                self._finalize_async_grid_render(trainer.logger.experiment, future)
+                continue
+            pending_futures.append(future)
+
+        self._pending_grid_renders = pending_futures
+        if len(self._pending_grid_renders) < self._max_pending_grid_renders:
+            self._warned_grid_render_backlog = False
+
+    def _shutdown_grid_render_executor(self) -> None:
+        if self._grid_render_executor is None:
+            return
+        self._grid_render_executor.shutdown(wait=True)
+        self._grid_render_executor = None
+
+    def _render_and_log_grid_sync(self, trainer) -> None:
         grid_stack = self.stack_grids()
         max_items = self.imgs_per_batch * 10
         grid_stack = grid_stack[:, :max_items]
@@ -240,14 +392,14 @@ class WandbImageGridCallback(Callback):
         val_start_idx = self.val_start_idx
         if val_start_idx is not None and val_start_idx >= max_items:
             val_start_idx = None
-        rendered_image = _annotate_wandb_grid_image(
-            img=rendered_image,
-            case_ids=case_ids,
-            tile_w=grid_stack.shape[-1],
-            tile_h=grid_stack.shape[-2],
-            nrow=self.imgs_per_batch,
-            padding=padding,
-            val_start_idx=val_start_idx,
+        rendered_image = self.annotate_grid(
+            rendered_image,
+            case_ids,
+            grid_stack.shape[-1],
+            grid_stack.shape[-2],
+            self.imgs_per_batch,
+            padding,
+            val_start_idx,
         )
 
         run = trainer.logger.experiment
@@ -382,6 +534,27 @@ class WandbImageGridCallback(Callback):
             out.append(info_from_filename(name, full_caseid=True)["case_id"])
         return out
 
+    def draw_validation_separator(self, draw, canvas, tile_h, nrow, padding, val_start_idx):
+        _draw_validation_separator_on_canvas(
+            draw=draw,
+            canvas=canvas,
+            tile_h=tile_h,
+            nrow=nrow,
+            padding=padding,
+            val_start_idx=val_start_idx,
+        )
+
+    def annotate_grid(self, img, case_ids, tile_w, tile_h, nrow, padding, val_start_idx=None):
+        return _annotate_wandb_grid_image(
+            img=img,
+            case_ids=case_ids,
+            tile_w=tile_w,
+            tile_h=tile_h,
+            nrow=nrow,
+            padding=padding,
+            val_start_idx=val_start_idx,
+        )0
+
 
 class WandbLogBestCkpt(Callback):
     def on_validation_epoch_end(self, trainer, pl_module):
@@ -396,16 +569,18 @@ class WandbLogBestCkpt(Callback):
         )
 
 
+# %%
 if __name__ == "__main__":
     from fran.managers.project import Project
 
     project_title = "kits23"
     run_name = "KITS23-SIRIG"
     artifact_name = "case_recorder"
-    destination_folder = None
+    destination_folder = None  # None -> project.log_folder
     alias = "latest"
 
     project = Project(project_title)
+# %%
     downloaded = download_run_artifact_by_name(
         project=project,
         run_name=run_name,
@@ -414,3 +589,4 @@ if __name__ == "__main__":
         alias=alias,
     )
     print(f"Downloaded artifact to: {downloaded}")
+# %%

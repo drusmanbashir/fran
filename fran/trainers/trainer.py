@@ -45,6 +45,7 @@ from fran.trainers.helpers import (
     checkpoint_from_model_id,
     switch_ckpt_keys,
 )
+from lightning.fabric import Fabric
 from lightning.pytorch import Trainer as TrainerL
 from lightning.pytorch.callbacks import (
     BatchSizeFinder,
@@ -56,7 +57,7 @@ from lightning.pytorch.callbacks import (
 from lightning.pytorch.profilers import AdvancedProfiler
 from utilz.cprint import cprint
 from utilz.stringz import headline
-
+from fran.callback.callback import FranBatchSizeFinder
 
 def _flatten_dict(d: dict, base: str = "") -> dict:
     out = {}
@@ -67,26 +68,6 @@ def _flatten_dict(d: dict, base: str = "") -> dict:
         else:
             out[key] = v
     return out
-
-
-class FranBatchSizeFinder(BatchSizeFinder):
-    """
-    Use Lightning's stock batch-size finder, but restore the temporary
-    probe checkpoint with weights_only=False so PyTorch 2.6+ can unpickle
-    the trusted local temp checkpoint it just wrote.
-    """
-
-    def scale_batch_size(self, trainer, pl_module) -> None:
-        restore = trainer._checkpoint_connector.restore
-
-        def restore_trusted_temp_checkpoint(checkpoint_path=None, weights_only=None):
-            return restore(checkpoint_path, weights_only=False)
-
-        trainer._checkpoint_connector.restore = restore_trusted_temp_checkpoint
-        try:
-            super().scale_batch_size(trainer, pl_module)
-        finally:
-            trainer._checkpoint_connector.restore = restore
 
 
 class Trainer:
@@ -174,6 +155,22 @@ class Trainer:
             "W&B run resume requested, but no local checkpoint is available. "
             "Refusing to continue to avoid resuming logs without resuming model state."
         )
+
+    def setup_model_for_cuda(self, device=0, precision="bf16-mixed"):
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA is not available.")
+        if not hasattr(self, "N"):
+            raise RuntimeError("Call setup() before setup_model_for_cuda().")
+
+        fabric = Fabric(
+            accelerator="gpu",
+            devices=[device],
+            precision=precision,
+        )
+        self.N.model.eval()
+        self.N.model = fabric.setup(self.N.model)
+        self.fabric_infer = fabric
+        return self.N.model
 
     def setup(
         self,
@@ -675,6 +672,27 @@ class Trainer:
         return Path(last) if last else None
 
 
+    def setup_tm_for_cuda(self, device=0, precision="bf16-mixed",
+      wrap_inner_model=True):
+          fabric = Fabric(
+              accelerator="gpu",
+              devices=[device],
+              precision=precision,
+          )
+
+          if wrap_inner_model:
+              self.N.model.eval()
+              self.N.model = fabric.setup(self.N.model)
+              model = self.N.model
+          else:
+              self.N.eval()
+              self.N = fabric.setup(self.N)
+              model = self.N
+
+          return fabric, model
+
+
+
 # %%
 # SECTION: -------------------- SETUP-------------------------------------------------------------------------------------- P = Project("nodes") <CR> <CR> <CR> <CR> <CR> <CR>
 if __name__ == "__main__":
@@ -686,7 +704,7 @@ if __name__ == "__main__":
     P = Project("totalseg")
     P = Project("kits23")
     C = ConfigMaker(P)
-    C.setup(3)
+    C.setup(1)
 
     conf = C.configs
     print(conf["model_params"])
@@ -733,9 +751,9 @@ if __name__ == "__main__":
     profiler = False
     compiled = False
     cbs = []
-    wandb_grid_epoch_freq = 20
+    wandb_grid_epoch_freq = 2
     val_every_n_epochs = 1
-    train_indices = None
+    train_indices = 100
 # %%
 # SECTION:--------------------  TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     Tm = Trainer(P.project_title, conf, run_name)
@@ -760,6 +778,7 @@ if __name__ == "__main__":
     )
 # %%
 
+
     Tm.fit()
     # model(inputs)
 # %%
@@ -782,6 +801,10 @@ if __name__ == "__main__":
 # %%
     batch = next(iteri)
     batch['image'].shape
+    model = Tm.setup_model_for_cuda(device=0)
+    batch = Tm.fabric_infer.to_device(batch)
+    with torch.inference_mode():
+        preds = model(batch["image"])
 
 # %%
     tmt.setup()
