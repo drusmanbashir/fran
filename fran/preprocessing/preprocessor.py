@@ -380,8 +380,7 @@ class Preprocessor:
         df["lm"] = df["lm"].apply(Path)
         return df
 
-    def _df_from_folder(self):
-        indices_folder = self.indices_subfolder if hasattr(self, "indices_subfolder") else None
+    def _df_from_folder(self, indices_folder=None):
         df = create_df_from_folders(
             images_folder=self.data_folder / "images",
             lms_folder=self.data_folder / "lms",
@@ -791,6 +790,7 @@ class Preprocessor:
             plan=self.plan,
             data_folder = self.output_folder,
             output_folder=self.hdf5_output_folder,
+            indices_folder=self.indices_subfolder,
             cases_per_shard=cases_per_shard,
             compression=hdf5_compression,
             compression_opts=hdf5_compression_opts,

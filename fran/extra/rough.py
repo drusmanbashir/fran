@@ -33,13 +33,10 @@ if __name__ == "__main__":
       fix  = Path("/r/datasets/preprocessed/kits2/fixed_spacing/spc_080_080_150/images")
       im_fn =  Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144/images/kits23_00487.pt")
       lm_fn =  Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_54787144/lms/kits23_00487.pt")
+      img_fn = Path("/r/datasets/preprocessed/lits/lbd/spc_080_080_150_ex040/images/lits_15ub.pt")
+      lm_fn = Path("/r/datasets/preprocessed/lits/lbd/spc_080_080_150_ex040/lms/lits_15ub.pt")
 
 
-      d = torch.load("/tmp/localiser_totalseg_abdpelvis_crops/totalseg_s0407.pt", weights_only=False)
-      img = d["image"]          # torch.Tensor, cropped RAS 1mm array
-      bbox = d["bbox"]
-      print(img.shape, bbox)
-      img = img.permute(2,0,1)
 # %%
         img_fldr = Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_75d46294/images")
         lm_fldr = Path("/r/datasets/preprocessed/kits23/rbd/spc_080_080_150_75d46294/lms")

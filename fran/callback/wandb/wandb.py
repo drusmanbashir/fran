@@ -258,7 +258,6 @@ class WandbImageGridCallback(Callback):
         label = batch["lm"].cpu().squeeze(1)
         label = one_hot(label, self.classes, axis=1)
         pred = batch["pred"]
-
         assert pred.dim() == img.dim(), "pred dim does not match img dim"
         pred = F.softmax(pred.to(torch.float32), dim=1)
 

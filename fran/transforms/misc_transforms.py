@@ -406,7 +406,6 @@ class HalfPrecisiond(MapTransform):
     ) -> None:
         super().__init__(keys, allow_missing_keys)
 
-
     def __call__(self, d: dict):
         for key in self.key_iterator(d):
             d[key] = d[key].to(torch.float16)
@@ -440,6 +439,7 @@ class DictToMetad(MapTransform):
         for key in self.key_iterator(d):
             d[key].meta.update(meta_data)
         return d
+
 
 def create_augmentations(after_item_intensity: dict, after_item_spatial: dict):
     intensity_augs = []
@@ -476,8 +476,9 @@ if __name__ == "__main__":
     T = TensorToDict(keys=["indices"], select_keys=["lm_fg_indices", "lm_bg_indices"])
     dici = T(dici)
 
-    # %%
+# %%
     F = FgBgToIndicesd2(keys=["lm"], ignore_labels=[1])
     dici = {"image": img, "lm": lm}
     dici = F(dici)
 # %%
+

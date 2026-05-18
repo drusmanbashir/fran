@@ -24,6 +24,10 @@ from fran.data.collate import (
     whole_collated,
 )
 from fran.data.dataset import NormaliseClipd
+from fran.managers.data.valid_patch_stream import (
+    ValidPatchStreamDataset,
+    valid_patch_stream_collated,
+)
 from fran.managers.project import Project
 from fran.preprocessing.helpers import bbox_bg_only, compute_fgbg_ratio, import_h5py
 from fran.run.preproc.archive_preprocessed import ensure_rapid_data_folder
@@ -1135,8 +1139,9 @@ class DataManager(LightningDataModule):
             indices_fn = inds_fldr / img_fn.name
             assert img_fn.exists(), "Missing image {}".format(img_fn)
             assert lm_fn.exists(), "Missing labelmap fn {}".format(lm_fn)
+            case_id = info_from_filename(img_fn.name, full_caseid=True)["case_id"]
             dici = {
-                "case_id": img_fn.stem,
+                "case_id": case_id,
                 "data_folder": str(self.data_folder),
                 "image": str(img_fn),
                 "lm": str(lm_fn),
@@ -1171,7 +1176,7 @@ class DataManager(LightningDataModule):
         return data_folder
 
     def _num_workers(self):
-        if isinstance(self.ds, GridPatchDataset):
+        if isinstance(self.ds, (GridPatchDataset, ValidPatchStreamDataset)):
             return 0, False
         else:
             num_workers = min(12, self.effective_batch_size * 2)
@@ -1191,19 +1196,13 @@ class DataManager(LightningDataModule):
         )
 
     def create_valid_dataloader(self):
-        # if isinstance(self.ds, GridPatchDataset):
-        #     bs = 1
-        # else:
-        #     bs= self.effective_batch_size
-        if self.plan["mode"] in ["source", "lbd", "rbd"]:
-            bs = 1
-        else:
-            bs= self.effective_batch_size
-
+        bs = self.effective_batch_size
 
         num_workers, persistent_workers = self._num_workers()
         sampler = None
-        if self.val_sampling < 1.0 and not isinstance(self.ds, GridPatchDataset):
+        if self.val_sampling < 1.0 and not isinstance(
+            self.ds, (GridPatchDataset, ValidPatchStreamDataset)
+        ):
             n_samples = max(1, int(len(self.ds) * self.val_sampling))
             sampler = RandomSampler(
                 self.ds,
@@ -1212,7 +1211,7 @@ class DataManager(LightningDataModule):
             )
         elif self.val_sampling < 1.0:
             warnings.warn(
-                "val_sampling is ignored for GridPatchDataset validation streams."
+                "val_sampling is ignored for patch-stream validation datasets."
             )
         self.dl = DataLoader(
             self.ds,
@@ -1371,7 +1370,7 @@ class DataManagerSource(DataManager):
         if self.is_train_all_split():
             self.collate_fn = source_collated
         elif self.is_eval_split():
-            self.collate_fn = grid_collated
+            self.collate_fn = valid_patch_stream_collated
         else:
             raise NotImplementedError
 
@@ -1385,8 +1384,7 @@ class DataManagerSource(DataManager):
 
     def override_batch_size_valid_split(self, split="valid"):
         if split == "valid":
-            self.batch_size = self.effective_batch_size = 1
-            self.collate_fn = grid_collated
+            self.collate_fn = valid_patch_stream_collated
 
     def create_transforms(self):
         super().create_transforms()
@@ -1412,21 +1410,11 @@ class DataManagerSource(DataManager):
 
         if self.is_eval_split():
             case_ds = self._create_modal_ds()
-            patch_iter = PatchIterd(
-                keys=["image", "lm"],
+            self.ds = ValidPatchStreamDataset(
+                case_dataset=case_ds,
                 patch_size=self.plan["patch_size"],
-                mode="constant",
-                constant_values=0,
             )
-            patch_iter = PatchIterdWithPaddingFlag(patch_iter)
-            patch_tfms = Compose([PadLmOutsideOriginald(keys=["lm"])])
-            self.ds = GridPatchDataset(
-                data=case_ds,
-                patch_iter=patch_iter,
-                transform=patch_tfms,
-                with_coordinates=False,
-            )
-            print("GridPatchDataset set up for source-family validation.")
+            print("ValidPatchStreamDataset set up for source-family validation.")
             return
         self.ds = self._create_modal_ds()
 

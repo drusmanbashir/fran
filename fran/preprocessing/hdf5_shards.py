@@ -345,12 +345,16 @@ class HDF5ShardGenerator(Preprocessor):
         plan,
         data_folder,
         output_folder,
+        indices_folder=None,
         cases_per_shard=5,
         compression="gzip",
         compression_opts=1,
     ):
         self.data_folder = Path(data_folder)
         self.output_folder = Path(output_folder)
+        self._indices_folder = (
+            Path(indices_folder) if indices_folder is not None else None
+        )
         src_dims = plan["src_dims"]
         self.plan = plan
         self.project = project
@@ -370,11 +374,26 @@ class HDF5ShardGenerator(Preprocessor):
         self.shard_paths = []  # T:self_ref|self.shard_paths = []
 
     def create_data_df(self):
-        super().create_data_df()
+        indices_folder = self.indices_subfolder
+        if not indices_folder.exists():
+            raise FileNotFoundError(
+                f"indices folder not found for shard generation: {indices_folder}"
+            )
+        self.df = self._df_from_folder(indices_folder=indices_folder)
+        assert len(self.df) > 0, "No valid case files found in {}".format(
+            self.data_folder
+        )
+        self.case_ids = self.df["case_id"].tolist()
+        self.df = self.df.map(lambda x: x.lower() if isinstance(x, str) else x)
+        self.df["pt_processed"] = None
+        self.df["hdf5_processed"] = None
+        print("Total number of cases: ", len(self.df))
         self.df.drop(columns=["pt_processed"], inplace=True)
 
     @property
     def indices_subfolder(self):
+        if self._indices_folder is not None:
+            return self._indices_folder
         return infer_indices_folder(self.data_folder, self.plan)
 
     def _store_shard_ind(self, shard_fn):

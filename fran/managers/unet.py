@@ -20,6 +20,7 @@ from typing import Any, Union
 import numpy as np
 import torch._dynamo
 from fran.evaluation.losses import CombinedLoss, DeepSupervisionLoss
+from fran.evaluation.patch_stream_loss import PatchStreamValidationLoss
 from utilz.stringz import info_from_filename
 
 torch._dynamo.config.suppress_errors = True
@@ -99,6 +100,8 @@ class UNetManager(LightningModule):
     @dynamo.disable()
     def _run_swi(self, img):
         # the only thing inside is the SlidingWindowInferer call
+        if not hasattr(self, "val_inferer"):
+            self.create_val_inferer()
         return self.val_inferer(inputs=img, network=self.model)
 
     def swi_on_val_batch(self, batch, batch_idx):
@@ -144,21 +147,37 @@ class UNetManager(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        if "patch_coords" in batch:
+        if batch.get("validation_impl") == "patch_stream":
+            pred = self.forward(batch["image"])
+            batch["pred"] = pred
+            target = batch["lm"]
+            loss_fnc_patch_val = getattr(self, "loss_fnc_patch_val", None)
+            if loss_fnc_patch_val is None:
+                loss = self.loss_fnc(pred, target, use_mask=True)
+                loss_dict = self.loss_fnc.loss_dict
+            else:
+                loss = loss_fnc_patch_val(pred, target, batch, use_mask=True)
+                loss_dict = loss_fnc_patch_val.loss_dict
+        elif "patch_coords" in batch:
             pred = self.forward(batch["image"])
             batch["pred"] = pred
             target = batch["lm"]
             loss = self.loss_fnc(pred, target, use_mask=True)
+            loss_dict = self.loss_fnc.loss_dict
         else:
             batch = self.swi_on_val_batch(batch, batch_idx)
             pred = batch["pred"]
             target = batch["lm"]
             loss = self.loss_fnc(pred, target, use_mask=False)
-        loss_dict = self.loss_fnc.loss_dict
+            loss_dict = self.loss_fnc.loss_dict
 
         self.log_losses(loss_dict, prefix=f"val{dataloader_idx}")
         self.maybe_store_preds(pred)
         return loss, loss_dict
+
+    def on_validation_epoch_start(self):
+        if hasattr(self, "loss_fnc_patch_val"):
+            self.loss_fnc_patch_val.reset()
 
 
     def test_step(self, batch, batch_idx):
@@ -393,6 +412,7 @@ class UNetManager(LightningModule):
             loss_params["include_background"] = include_background
             loss_func = CombinedLoss(**loss_params, fg_classes=fg_classes)
             self.loss_fnc = loss_func
+        self.loss_fnc_patch_val = PatchStreamValidationLoss(self.loss_fnc)
 
 
 class UNetManagerMulti(UNetManager):

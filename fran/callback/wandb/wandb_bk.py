@@ -1,5 +1,5 @@
 import random
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -188,7 +188,12 @@ def render_wandb_grid_worker(job: dict) -> dict:
     )
     image_path = Path(job["image_path"])
     Image.fromarray(rendered_image).save(image_path)
-    return {"image_path": str(image_path), "key": "images/grid"}
+    return {
+        "epoch": int(job["epoch"]),
+        "image_path": str(image_path),
+        "key": "images/grid",
+        "step": int(job["step"]),
+    }
 
 
 class WandbImageGridCallback(Callback):
@@ -216,8 +221,11 @@ class WandbImageGridCallback(Callback):
     def _reset_async_grid_render_state(self) -> None:
         self._grid_render_executor = None
         self._pending_grid_renders = []
-        self._max_pending_grid_renders = 2
+        self._max_pending_grid_renders = 1
         self._warned_grid_render_backlog = False
+        self._submitted_grid_epochs = []
+        self._logged_grid_epochs = []
+        self._failed_grid_epochs = []
 
     def reset_grid(self):
         self.grid_imgs = []
@@ -268,7 +276,7 @@ class WandbImageGridCallback(Callback):
         if trainer.store_preds and not self.validation_grid_created:
             self.pad_to_row()
             self.val_start_idx = self.grid_item_count()
-            self.populate_grid_val(pl_module, batch)
+            self.populate_grid(pl_module, batch)
             self.validation_grid_created = True
 
     def on_train_epoch_end(self, trainer, pl_module):
@@ -288,9 +296,12 @@ class WandbImageGridCallback(Callback):
         self._drain_completed_grid_renders(trainer, wait=True)
         self._shutdown_grid_render_executor()
 
-    def _ensure_grid_render_executor(self) -> ProcessPoolExecutor:
+    def _ensure_grid_render_executor(self) -> ThreadPoolExecutor:
         if self._grid_render_executor is None:
-            self._grid_render_executor = ProcessPoolExecutor(max_workers=1)
+            self._grid_render_executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="fran-wandb-grid",
+            )
         return self._grid_render_executor
 
     def _build_async_grid_job(self, trainer) -> dict:
@@ -304,11 +315,13 @@ class WandbImageGridCallback(Callback):
         image_path = self.local_folder / f"grid_epoch_{epoch}_step_{trainer.global_step}.png"
         return {
             "case_ids": case_ids,
+            "epoch": epoch,
             "grid_stack": grid_stack,
             "image_path": str(image_path),
             "imgs_per_batch": self.imgs_per_batch,
             "local_folder": str(self.local_folder),
             "padding": 1,
+            "step": int(trainer.global_step),
             "val_start_idx": val_start_idx,
         }
 
@@ -322,34 +335,36 @@ class WandbImageGridCallback(Callback):
                 self._warned_grid_render_backlog = True
             return
 
+        job = self._build_async_grid_job(trainer)
         future = self._ensure_grid_render_executor().submit(
-            render_wandb_grid_worker, self._build_async_grid_job(trainer)
+            render_wandb_grid_worker, job
         )
         future._fran_grid_logged = False
-        run = trainer.logger.experiment
-        future.add_done_callback(
-            lambda done_future, run=run: self._finalize_async_grid_render(
-                run, done_future
-            )
-        )
+        future._fran_grid_epoch = int(job["epoch"])
+        future._fran_grid_step = int(job["step"])
         self._pending_grid_renders.append(future)
+        self._submitted_grid_epochs.append(int(job["epoch"]))
 
-    def _finalize_async_grid_render(self, run, future) -> None:
+    def _finalize_async_grid_render(self, run, future: Future) -> None:
         """Log a completed grid render from the main process."""
         if future._fran_grid_logged:
             return
-        future._fran_grid_logged = True
         try:
             result = future.result()
         except Exception as e:
+            future._fran_grid_logged = True
+            self._failed_grid_epochs.append(int(getattr(future, "_fran_grid_epoch", -1)))
             print(f"WandbImageGridCallback async render failed: {e}")
             return
 
+        future._fran_grid_logged = True
         image_path = Path(result["image_path"])
         try:
             with Image.open(image_path) as rendered_image:
                 run.log({result["key"]: wandb.Image(rendered_image.copy())})
+            self._logged_grid_epochs.append(int(result["epoch"]))
         except Exception as e:
+            self._failed_grid_epochs.append(int(result["epoch"]))
             print(e)
         finally:
             if image_path.exists():
@@ -364,6 +379,9 @@ class WandbImageGridCallback(Callback):
             if future._fran_grid_logged:
                 continue
             if wait:
+                self._finalize_async_grid_render(trainer.logger.experiment, future)
+                continue
+            if future.done():
                 self._finalize_async_grid_render(trainer.logger.experiment, future)
                 continue
             pending_futures.append(future)
@@ -404,17 +422,6 @@ class WandbImageGridCallback(Callback):
 
         run = trainer.logger.experiment
         run.log({"images/grid": wandb.Image(rendered_image)})
-
-    def populate_grid_val(self, pl_module, batch):
-        img = batch["image"].cpu()
-        label = batch["lm"].cpu().squeeze(1)
-        label = one_hot(label, self.classes, axis=1)
-        pred = batch["pred"]
-
-        assert pred.dim() == img.dim(), "pred dim does not match img dim"
-        pred = F.softmax(pred.to(torch.float32), dim=1)
-
-        self.append_grid_batch(img, label, pred, batch)
 
     def populate_grid(self, pl_module, batch):
         img = batch["image"].cpu()
@@ -553,7 +560,7 @@ class WandbImageGridCallback(Callback):
             nrow=nrow,
             padding=padding,
             val_start_idx=val_start_idx,
-        )0
+        )
 
 
 class WandbLogBestCkpt(Callback):
@@ -589,4 +596,84 @@ if __name__ == "__main__":
         alias=alias,
     )
     print(f"Downloaded artifact to: {downloaded}")
+# %%
+    trainer = Tm.trainer
+    cb._submit_async_grid_render(trainer)
+    cb.grid_imgs
+
+    len(cb._pending_grid_renders)
+    job = cb._build_async_grid_job(trainer)
+    out = render_wandb_grid_worker(job)
+# %%
+
+# %%
+    import time
+    from PIL import Image
+    import wandb
+
+# %%
+    t0 = time.perf_counter()
+    with Image.open(out["image_path"]) as im:
+      im2 = im.copy()
+    t1 = time.perf_counter()
+
+    wb = wandb.Image(im2)
+    t2 = time.perf_counter()
+
+    print("Image.open+copy:", t1 - t0)
+    print("wandb.Image:", t2 - t1)
+
+# %%
+    import time
+
+    t0 = time.perf_counter()
+    trainer.logger.experiment.log({out["key"]: wb})
+    t1 = time.perf_counter()
+
+    print("run.log:", t1 - t0)
+
+# %%
+    import time
+
+    t0 = time.perf_counter()
+    for i in range(3):
+      trainer.logger.experiment.log({f"{out['key']}_bench": wb})
+    t1 = time.perf_counter()
+    print("3x run.log avg:", (t1 - t0) / 3)
+
+# %%
+    trainer = trainer
+# %%  # T:block_start|WandbLogBestCkpt._submit_async_grid_render
+#SECTION:-------------------- _submit_async_grid_render--------------------------------------------------------------------------------------  # T:block_meta|WandbLogBestCkpt._submit_async_grid_render
+    cb = cbs[3]
+# %%
+# %%
+    W = cb
+    # requires W = WandbLogBestCkpt(...) in __main__  # T:requires_alias|W = WandbLogBestCkpt(...)
+    W._drain_completed_grid_renders(trainer)  # T:self_ref|self._drain_completed_grid_renders(trainer)
+# %%
+    if len(W._pending_grid_renders) >= W._max_pending_grid_renders:  # T:self_ref|if len(self._pending_grid_renders) >= self._max_pending_grid_renders:
+        if not W._warned_grid_render_backlog:  # T:self_ref|    if not self._warned_grid_render_backlog:
+            print(
+                "WandbImageGridCallback async render backlog is full. Skipping grid render for this epoch."
+            )
+            W._warned_grid_render_backlog = True  # T:self_ref|        self._warned_grid_render_backlog = True
+        pass  # T:early_return|    return
+# %%
+    future = W._ensure_grid_render_executor().submit(  # T:self_ref|future = self._ensure_grid_render_executor().submit(
+        render_wandb_grid_worker, W._build_async_grid_job(trainer)  # T:self_ref|    render_wandb_grid_worker, self._build_async_grid_job(trainer)
+    )
+    future._fran_grid_logged = False
+    run = trainer.logger.experiment
+    future.add_done_callback(
+        lambda done_future, run=run: W._finalize_async_grid_render(  # T:self_ref|    lambda done_future, run=run: self._finalize_async_grid_render(
+            run, done_future
+        )
+    )
+# %%
+    W._pending_grid_renders
+    # end PythonMethodScratch  # T:block_end|WandbLogBestCkpt._submit_async_grid_render
+
+# %%
+
 # %%

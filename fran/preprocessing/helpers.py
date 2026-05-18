@@ -23,6 +23,7 @@ from utilz.fileio import (
     tr,
 )
 from utilz.helpers import (
+    MatchError,
     find_matching_fn,
     info_from_filename,
     multiprocess_multiarg,

@@ -6,14 +6,14 @@ from typing import Optional
 
 import torch
 from utilz.helpers import in_ipython
-from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.case_recorder import (
     CaseIDRecorder,
     infer_labels_and_update_out_channels,
 )
+from fran.callback.base import BatchSizeSafetyMargin
 from fran.callback.debug_epoch_limit import DebugEpochBatchLimit
 from fran.callback.incremental import LRFloorStop
-from fran.callback.wandb.wandb import WandbImageGridCallback, WandbLogBestCkpt
+from fran.callback.wandb.wandb_bk import WandbImageGridCallback, WandbLogBestCkpt
 from fran.configs.helpers import normalize_logging_payload
 from fran.managers import Project
 from fran.managers.data.batch_tfms import (
@@ -429,14 +429,15 @@ class Trainer:
         description="",
         early_stopping=True,
         lr_floor=None,
-        wandb_grid_epoch_freq: int = 5,
+        wandb_grid_epoch_freq: int = 10,
     ):
         """Build callbacks, logger, and profiler for the current training mode."""
 
         cbs = [
             self.case_id_recorder_cls(
                 vip_label=self.configs["plan_train"].get("vip_label", 1), freq=20
-            )
+            ),
+            # CrashDumpCallback(project=self.project, run_name=self.run_name),
         ]
         if batchsize_finder == True:
             cbs += [
@@ -568,17 +569,20 @@ class Trainer:
             "If no list is provided, fgbg_ratio must be an integer"
         )
 
-    def get_callback(self, cb=CaseIDRecorder):
+    def get_callback(self, cb:str="CaseIDRecorder"):
         trn = getattr(self, "trainer", None)
         if trn is None:
             print("Trainer is not initialized yet. No callbacks available.")
             return
         cbs = trn.callbacks
-        cbb = [c for c in cbs if isinstance(c, cb)][0]
+        # cbb = [c for c in cbs if isinstance(c, cb)]
+        cbb= [c for c in cbs if cb in type(c).__name__ ]
         if len(cbb) == 0:
-            print(cbs)
+            print([type(cb).__name__ for cb in cbs])
             raise ValueError(f"Callback {cb} not found in trainer callbacks")
-        return cbb
+        else:
+            cb = cbb[0]
+        return cb
 
     def heuristic_batch_size(self):
         raise NotImplementedError
@@ -703,8 +707,9 @@ if __name__ == "__main__":
     P = Project("lidc")
     P = Project("totalseg")
     P = Project("kits23")
+    P = Project("lits")
     C = ConfigMaker(P)
-    C.setup(1)
+    C.setup(12)
 
     conf = C.configs
     print(conf["model_params"])
@@ -730,7 +735,7 @@ if __name__ == "__main__":
 # SECTION:-------------------- TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> devices = 2 <CR> <CR> <CR> <CR> <CR> <CR> <CR>
 # %%
     bs = 4
-    device_id = 0
+    device_id = 1
     batchsize_finder = True
     batchsize_finder = False
     batch_tfms = True
@@ -742,6 +747,7 @@ if __name__ == "__main__":
 
     run_name = "TOTALSEG-HEDA"
     run_name = "KITS23-SIRIG"
+    run_name = "LITS-LICH"
     run_name = None
     tags = []
     description = f""
@@ -751,9 +757,11 @@ if __name__ == "__main__":
     profiler = False
     compiled = False
     cbs = []
-    wandb_grid_epoch_freq = 2
-    val_every_n_epochs = 1
-    train_indices = 100
+    wandb_grid_epoch_freq = 20
+    val_every_n_epochs = 2
+    train_indices = None
+    train_indices = 50
+    epochs = 500
 # %%
 # SECTION:--------------------  TRAINING-------------------------------------------------------------------------------------- <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR> <CR>
     Tm = Trainer(P.project_title, conf, run_name)
@@ -768,7 +776,7 @@ if __name__ == "__main__":
         debug=debug_,
         batch_size=bs,
         devices=[device_id],
-        epochs=600 if profiler == False else 1,
+        epochs=epochs,
         batchsize_finder=batchsize_finder,
         profiler=profiler,
         wandb=wandb,
@@ -777,8 +785,6 @@ if __name__ == "__main__":
         description=description,
     )
 # %%
-
-
     Tm.fit()
     # model(inputs)
 # %%
@@ -798,9 +804,11 @@ if __name__ == "__main__":
     tmv.setup()
     dl = tmv.dl
     iteri = iter(dl)
+    tmv.data
 # %%
     batch = next(iteri)
     batch['image'].shape
+    batch['case_id']
     model = Tm.setup_model_for_cuda(device=0)
     batch = Tm.fabric_infer.to_device(batch)
     with torch.inference_mode():
@@ -838,4 +846,7 @@ if __name__ == "__main__":
     device = "cpu"
     sw_device = "cuda:1"
     bs = 1  # start lower if you are hitting OOM
+# %%
+    cb = Tm.get_callback(WandbImageGridCallback)
+    cb 
 # %%

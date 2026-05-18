@@ -4,6 +4,8 @@
 - changes under /home/ub/code/fran outside /home/ub/code/fran/fran/run/ require explicit user approval first.
 - For ad hoc tests, smoke scripts, and temporary test artifacts in this repo, use a temp folder under `/s/agent_rw/tmp/` and delete it after tests pass.
 - If i request a trainer job submission (not for code testing), do it in a tmux session 'dl', if not possible then use 'dl{n}' (n=1,2,3...) and keep track of which session is running which job in /s/agent_rw/tmp/TMUX.md
+## Inference
+- for full totalseg runs, always use safe-mode and prefer `cuda:0` / `--gpus 0`
 ## Common File Locations And Purposes
 - `/s/fran_storage/conf/datasets.yaml`: canonical dataset aliases and root folders.
 - `/s/fran_storage/conf/best_runs.yaml`: curated best runs for non-LIDC projects.

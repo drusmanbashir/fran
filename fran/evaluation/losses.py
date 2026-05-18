@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Callable, Optional, TypeAlias
 
 import lightning.pytorch as pl
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -103,9 +104,10 @@ class _DiceCELossMultiOutput(nn.Module):
         super().__init__()
         self.include_background = bool(include_background)
         self.target_label_sanitizer = None
-        look_up_option(reduction, DiceCEReduction)
 
-        dice_kwargs = dict(
+        dice_reduction = LossReduction.NONE
+        reduction = look_up_option(reduction, DiceCEReduction).value
+        self.dice_m = MaskedDiceLoss(
             include_background=include_background,
             to_onehot_y=True,
             sigmoid=sigmoid,
@@ -113,13 +115,24 @@ class _DiceCELossMultiOutput(nn.Module):
             other_act=other_act,
             squared_pred=squared_pred,
             jaccard=jaccard,
-            reduction=LossReduction.NONE,
+            reduction=dice_reduction,
             smooth_nr=smooth_nr,
             smooth_dr=smooth_dr,
             batch=batch,
         )
-        self.dice_m = MaskedDiceLoss(**dice_kwargs)
-        self.dice = DiceLoss(**dice_kwargs)
+        self.dice = DiceLoss(
+            include_background=include_background,
+            to_onehot_y=True,
+            sigmoid=sigmoid,
+            softmax=softmax,
+            other_act=other_act,
+            squared_pred=squared_pred,
+            jaccard=jaccard,
+            reduction=dice_reduction,
+            smooth_nr=smooth_nr,
+            smooth_dr=smooth_dr,
+            batch=batch,
+        )
         self.cross_entropy = nn.CrossEntropyLoss(weight=ce_weight, reduction="mean")
 
         if lambda_dice < 0.0:
@@ -163,8 +176,12 @@ class _DiceCELossMultiOutput(nn.Module):
     def compute_dice_loss(
         self, input: torch.Tensor, target: torch.Tensor, mask: Optional[torch.Tensor]
     ) -> torch.Tensor:
-        loss_dice = self.dice_m(input, target, mask=mask) if mask is not None else self.dice(input, target)
-        return loss_dice.flatten(start_dim=2).mean(dim=-1)
+        if mask is not None:
+            loss_dice_unreduced = self.dice_m(input, target, mask=mask)
+        else:
+            loss_dice_unreduced = self.dice(input, target)
+        loss_dice_unreduced = loss_dice_unreduced.flatten(start_dim=2).mean(-1)
+        return loss_dice_unreduced
 
     def forward(
         self, input: torch.Tensor, target: torch.Tensor, use_mask: bool = False
@@ -216,69 +233,75 @@ class DeepSupervisionLoss(pl.LightningModule):
         super().__init__()
         assert fg_classes > 0, "fg_classes should be at least 1"
 
+        self.include_background = bool(include_background)
         self.levels = levels
         self.fg_classes = fg_classes
-        self.include_background = bool(include_background)
         self.deep_supervision_scales = [list(scale) for scale in deep_supervision_scales]
         self.LossFunc = _DiceCELossMultiOutput(
             include_background=include_background,
             softmax=True,
             sigmoid=False,
         )
-        self.register_buffer("weights", self._create_weights(levels), persistent=False)
 
     def set_target_label_sanitizer(self, sanitizer: Callable) -> None:
         self.LossFunc.set_target_label_sanitizer(sanitizer)
 
-    def _create_weights(self, levels: int) -> torch.Tensor:
-        weights = torch.tensor([1 / (2**i) for i in range(levels)])
+    def create_labels(self, bs, fg_classes):
+        class_start = 0 if self.include_background else 1
+        classes = list(range(class_start, class_start + fg_classes))
+        self.loss_labels = ["loss", "loss_ce", "loss_dice"] + [
+            "loss_dice_label{}".format(x) for x in classes
+        ]
+
+    def create_weights(self, device):
+        weights = torch.tensor(
+            [1 / (2**i) for i in range(self.levels)], requires_grad=False, device=device
+        )
         mask = torch.tensor(
-            [True] + [i < levels - 1 for i in range(1, levels)], dtype=torch.bool
+            [True]
+            + [True if i < self.levels - 1 else False for i in range(1, self.levels)]
         )
         weights[~mask] = 0
-        return weights / weights.sum()
+        self.weights = weights / weights.sum()
 
-    def _scale_tensor(
-        self, tensor: torch.Tensor, scale: list[float], mode: str
-    ) -> torch.Tensor:
-        if all(axis == 1 for axis in scale):
-            return tensor
-        size = [int(round(axis_scale * dim)) for axis_scale, dim in zip(scale, tensor.shape[2:])]
-        was_fp = tensor.is_floating_point()
-        interp_input = tensor if was_fp else tensor.float()
-        scaled = F.interpolate(interp_input, size=size, mode=mode)
-        if mode == "nearest" and not was_fp:
-            scaled = scaled.to(tensor.dtype)
-        return scaled
+    def maybe_create_labels(self, target: torch.Tensor | TensorSeq) -> None:
+        if not hasattr(self, "loss_labels"):
+            if isinstance(target, (list, tuple)):
+                bs = target[0].shape[0]
+            else:
+                bs = target.shape[0]
+            self.create_labels(bs, self.fg_classes)
+
+    def maybe_create_weights(self, preds: torch.Tensor | TensorSeq) -> None:
+        if not hasattr(self, "weights"):
+            if isinstance(preds, (list, tuple)):
+                self.create_weights(preds[0].device)
+            else:
+                self.create_weights(preds.device)
 
     def apply_ds_scales(
-        self, tensor_in: torch.Tensor | TensorSeq, mode: str
+        self,
+        tnsr_inp: torch.Tensor | TensorSeq,
+        mode: str,
     ) -> list[torch.Tensor]:
-        scaled = []
-        for level, scale in enumerate(self.deep_supervision_scales):
-            tensor = tensor_in[level] if isinstance(tensor_in, (list, tuple)) else tensor_in
-            scaled.append(self._scale_tensor(tensor, scale, mode))
-        return scaled
-
-    def _level_losses(
-        self, preds: torch.Tensor | TensorSeq, target: torch.Tensor, use_mask: bool
-    ) -> list[dict]:
-        scaled_target = self.apply_ds_scales(target, "nearest")
-        if isinstance(preds, (list, tuple)):
-            return [
-                self.LossFunc(pred_level, target_level, use_mask=use_mask)
-                for pred_level, target_level in zip(preds, scaled_target)
-            ]
-        if isinstance(preds, torch.Tensor) and preds.dim() == scaled_target[0].dim() + 1:
-            pred_levels = torch.unbind(preds, dim=1)
-            scaled_preds = self.apply_ds_scales(pred_levels, "trilinear")
-            return [
-                self.LossFunc(pred_level, target_level, use_mask=use_mask)
-                for pred_level, target_level in zip(scaled_preds, scaled_target)
-            ]
-        if isinstance(preds, torch.Tensor):
-            return [self.LossFunc(preds, target, use_mask=use_mask)]
-        raise NotImplementedError("preds must be either list or stacked tensor")
+        tnsr_listed: list[torch.Tensor] = []
+        for ind, sc in enumerate(self.deep_supervision_scales):
+            if isinstance(tnsr_inp, (list, tuple)):
+                tnsr = tnsr_inp[ind]
+            else:
+                tnsr = tnsr_inp
+            if all(i == 1 for i in sc):
+                tnsr_listed.append(tnsr)
+            else:
+                t_shape = list(tnsr.shape[2:])
+                size = [int(np.round(ss * aa)) for ss, aa in zip(sc, t_shape)]
+                was_fp = tnsr.is_floating_point()
+                interp_inp = tnsr if was_fp else tnsr.float()
+                tnsr_downsampled = F.interpolate(interp_inp, size=size, mode=mode)
+                if mode == "nearest" and not was_fp:
+                    tnsr_downsampled = tnsr_downsampled.to(tnsr.dtype)
+                tnsr_listed.append(tnsr_downsampled)
+        return tnsr_listed
 
     def forward(
         self,
@@ -286,12 +309,59 @@ class DeepSupervisionLoss(pl.LightningModule):
         target: torch.Tensor,
         use_mask: bool = False,
     ) -> torch.Tensor:
-        losses = self._level_losses(preds, target, use_mask=use_mask)
-        self.loss_dict = _build_loss_dict(losses[0], self.include_background)
-        weights = self.weights[: len(losses)].to(losses[0]["loss"].device)
-        return torch.stack(
-            [weight * level_loss["loss"] for weight, level_loss in zip(weights, losses)]
-        ).sum()
+        self.maybe_create_weights(preds)
+        self.maybe_create_labels(target)
+
+        scaled_target = self.apply_ds_scales(target, "nearest")
+        if isinstance(preds, (list, tuple)):
+            losses = [
+                self.LossFunc(xx, yy, use_mask=use_mask)
+                for xx, yy in zip(preds, scaled_target)
+            ]
+        elif isinstance(preds, torch.Tensor):
+            if preds.dim() == scaled_target[0].dim() + 1:
+                pred_levels: tuple[torch.Tensor, ...] = torch.unbind(preds, dim=1)
+                scaled_preds = self.apply_ds_scales(pred_levels, "trilinear")
+                losses = [
+                    self.LossFunc(xx, yy, use_mask=use_mask)
+                    for xx, yy in zip(scaled_preds, scaled_target)
+                ]
+            else:
+                losses = [self.LossFunc(preds, target, use_mask=use_mask)]
+        else:
+            raise NotImplementedError("preds must be either list or stacked tensor")
+
+        self.set_loss_dict(losses[0])
+        weights = self.weights[: len(losses)]
+        losses_weighted = torch.stack(
+            [w * loss["loss"] for w, loss in zip(weights, losses)]
+        )
+        return losses_weighted.sum()
+
+    def set_loss_dict(self, losses: dict):
+        per_case_class = losses["loss_dice_unreduced"]
+        bs, num_classes = per_case_class.shape[:2]
+        class_ids = _class_ids(self.include_background, num_classes)
+        class_losses = per_case_class.mean(0)
+        meta = losses["meta"]
+        filenames = _normalize_filenames(meta, bs)
+        case_ids = _case_ids_from_filenames(filenames)
+
+        self.loss_dict = {
+            "loss": _detach_for_logging(losses["loss"]),
+            "loss_ce": _detach_for_logging(losses["loss_ce"]),
+            "loss_dice": _detach_for_logging(losses["loss_dice"]),
+        }
+        for class_id, loss in zip(class_ids, class_losses):
+            self.loss_dict[f"loss_dice_label{class_id}"] = _detach_for_logging(loss)
+        for batch_ind in range(bs):
+            self.loss_dict[f"batch{batch_ind}_filename"] = filenames[batch_ind]
+            self.loss_dict[f"batch{batch_ind}_case_id"] = case_ids[batch_ind]
+            for class_ind, class_id in enumerate(class_ids):
+                val = per_case_class[batch_ind][class_ind]
+                self.loss_dict[f"loss_dice_batch{batch_ind}_label{class_id}"] = (
+                    _detach_for_logging(val)
+                )
 
 
 # %%

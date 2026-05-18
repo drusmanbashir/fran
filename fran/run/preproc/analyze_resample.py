@@ -467,11 +467,12 @@ if __name__ == "__main__":
 # %%
     # cprint("Warning: Using args saved into file analyze_resample.py", color= "red")
     # args.project_title="tmpts"
-    # args.project_title = "litsmc"
+    # args.project_title = "lits"
     # args.plan = 12
-    # args.num_processes = 6
+    # args.num_processes = 12
     # args.overwrite = False
-    # args.debug = True
+    # args.debug = False
+    # # args.debug = True
     # #
 # %%
     cprint("Project: {0}".format(args.project_title), color="green")
@@ -482,7 +483,59 @@ if __name__ == "__main__":
     main(args)
 
 # %%
-
+    # I = PreprocessingManager(args)
+    # print(
+    #     f"[analyze_resample] stage=resample_dataset plan={args.plan} mode={I.plan['mode']} num_processes={args.num_processes}"
+    # )
+    # I.resample_dataset(
+    #     overwrite=args.overwrite,
+    #     num_processes=args.num_processes,
+    #     debug=args.debug,
+    # )
+    # print(f"[analyze_resample] stage=resample_dataset complete plan={args.plan}")
+    # # args.num_processes = 1
+    #
+# %%
+#     if I.plan["mode"] in ["pbd", "patch"]:
+#         print(
+#             f"[analyze_resample] stage=generate_hires_patches_dataset plan={args.plan}"
+#         )
+#         I.generate_hires_patches_dataset(
+#             overwrite=args.overwrite,
+#             num_processes=args.num_processes,
+#             debug=args.debug,
+#         )
+#         print(
+#             f"[analyze_resample] stage=generate_hires_patches_dataset complete plan={args.plan}"
+#         )
+#     elif I.plan["mode"] == "lbd":
+#         imported_folder = I.plan.get("imported_folder", None)
+# # %%
+#         if imported_folder is None:
+#             print(f"[analyze_resample] stage=generate_lbd_dataset plan={args.plan}")
+#             I.generate_lbd_dataset(
+#                 overwrite=args.overwrite,
+#                 num_processes=args.num_processes,
+#                 debug=args.debug,
+#             )
+#             print(
+#                 f"[analyze_resample] stage=generate_lbd_dataset complete plan={args.plan}"
+#             )
+# # %%
+#         else:
+#             print(
+#                 f"[analyze_resample] stage=generate_TSlabelboundeddataset plan={args.plan} imported_folder={imported_folder}"
+#             )
+#             I.generate_TSlabelboundeddataset(
+#                 overwrite=args.overwrite,
+#                 num_processes=args.num_processes,
+#                 debug=args.debug,
+#             )
+#             print(
+#                 f"[analyze_resample] stage=generate_TSlabelboundeddataset complete plan={args.plan}"
+#             )
+#
+#
     #     I.resample_dataset(overwrite=args.overwrite, num_processes=args.num_processes)
     #     I.plan["mode"]
     #

@@ -1,8 +1,9 @@
 import numpy as np
 import torch
-from monai.data import GridPatchDataset, MetaTensor
+from monai.data import MetaTensor
 
 from fran.managers.data.main import DataManagerSource, PadLmOutsideOriginald
+from fran.managers.data.valid_patch_stream import ValidPatchStreamDataset
 from fran.managers import unet as unet_module
 from fran.utils.common import PAD_VALUE
 
@@ -24,12 +25,13 @@ def test_pad_lm_outside_original_marks_only_out_of_bounds_voxels():
     assert torch.all(out["lm"][:, 1:, :3, :] == 0)
 
 
-def test_source_valid_dataset_uses_grid_patch_dataset():
+def test_source_valid_dataset_uses_patch_stream_dataset():
     manager = DataManagerSource.__new__(DataManagerSource)
     manager.data = [
         {
             "image": MetaTensor(torch.ones(1, 4, 4, 5), meta={"filename_or_obj": "case_001.pt"}),
             "lm": MetaTensor(torch.zeros(1, 4, 4, 5, dtype=torch.int16), meta={"filename_or_obj": "case_001.pt"}),
+            "case_id": "case_001",
         }
     ]
     manager.transforms = lambda x: x
@@ -40,11 +42,23 @@ def test_source_valid_dataset_uses_grid_patch_dataset():
 
     manager.create_dataset()
 
-    assert isinstance(manager.ds, GridPatchDataset)
+    assert isinstance(manager.ds, ValidPatchStreamDataset)
     patches = list(iter(manager.ds))
     assert len(patches) == 2
     assert patches[1]["image"].shape == (1, 4, 4, 4)
     assert torch.all(patches[1]["lm"][:, :, :, 1:] == PAD_VALUE)
+
+
+def test_source_valid_split_keeps_effective_batch_size_for_patch_stream():
+    manager = DataManagerSource.__new__(DataManagerSource)
+    manager.collate_fn = None
+    manager.batch_size = 4
+    manager.effective_batch_size = 4
+
+    manager.override_batch_size_valid_split(split="valid")
+
+    assert manager.batch_size == 4
+    assert manager.effective_batch_size == 4
 
 
 def test_validation_step_uses_masked_direct_loss_for_grid_batches():
